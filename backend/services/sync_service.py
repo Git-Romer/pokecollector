@@ -237,6 +237,33 @@ def perform_sync(db: Session) -> dict:
             db.commit()
             logger.info("Set detail enrichment complete")
 
+        # 2a. Sync all cards for all known sets (full catalogue)
+        sets_to_sync = db.query(Set).filter(Set.lang.is_not(None)).all()
+        logger.info(f"Syncing full card catalogue for {len(sets_to_sync)} sets...")
+        for set_obj in sets_to_sync:
+            tcg_id = set_obj.tcg_set_id or set_obj.id
+            set_lang = set_obj.lang or "en"
+            existing_card_count = db.query(Card).filter(
+                Card.set_id == tcg_id, Card.lang == set_lang
+            ).count()
+            set_total = set_obj.total or 0
+            if existing_card_count >= set_total and existing_card_count > 0:
+                continue  # Already have all cards for this lang
+            try:
+                set_detail = pokemon_api.get_set_cards(tcg_id, lang=set_lang)
+                cards_data = set_detail.get("cards", [])
+                # Update set total if needed
+                if cards_data and not set_obj.total:
+                    set_obj.total = len(cards_data)
+                for card_data in cards_data:
+                    parsed = pokemon_api.parse_card_for_db(card_data, default_set_id=tcg_id, lang=set_lang)
+                    upsert_card(db, parsed)
+                db.commit()
+            except Exception as e:
+                logger.warning(f"Failed to sync cards for set {set_obj.id}: {e}")
+                db.rollback()
+        logger.info("Full card catalogue sync complete")
+
         # 2. Sync collection cards (priority)
         collection_card_ids = [
             item.card_id for item in db.query(CollectionItem.card_id).all()
@@ -252,7 +279,7 @@ def perform_sync(db: Session) -> dict:
             try:
                 card_data = pokemon_api.get_card(card_id, lang=lang)
                 if card_data:
-                    parsed = pokemon_api.parse_card_for_db(card_data)
+                    parsed = pokemon_api.parse_card_for_db(card_data, lang=lang)
                     # Ensure set exists (check by tcg_set_id since set IDs are now composite)
                     if parsed.get("set_id"):
                         set_exists = db.query(Set).filter(

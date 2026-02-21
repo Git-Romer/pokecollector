@@ -133,7 +133,7 @@ def get_set_checklist(set_id: str, db: Session = Depends(get_db)):
     """Get set checklist - cards with ownership status.
 
     set_id is the composite DB key (e.g. 'sv1_de').
-    Cards are fetched from TCGdex using the original tcg_set_id + lang.
+    Cards are served exclusively from the local DB — no live API call.
     """
     set_obj = db.query(Set).filter(Set.id == set_id).first()
     if not set_obj:
@@ -143,43 +143,11 @@ def get_set_checklist(set_id: str, db: Session = Depends(get_db)):
     tcg_id = set_obj.tcg_set_id or set_obj.id
     set_lang = set_obj.lang or "en"
 
-    # Get cards from DB (cards.set_id stores original TCGdex ID)
-    cards = db.query(Card).filter(Card.set_id == tcg_id).order_by(
-        Card.number.asc()
-    ).all()
-
-    # Always reload from TCGdex if we have fewer cards in DB than the set total
-    set_total = set_obj.total or 0
-    needs_reload = len(cards) < set_total or not cards
-
-    if needs_reload:
-        try:
-            set_detail = pokemon_api.get_set_cards(tcg_id, lang=set_lang)
-            cards_data = set_detail.get("cards", [])
-
-            # Update set with full details if available
-            if set_detail.get("releaseDate") and not set_obj.release_date:
-                set_obj.release_date = set_detail["releaseDate"]
-            serie = set_detail.get("serie") or {}
-            if serie.get("name") and not set_obj.series:
-                set_obj.series = serie["name"]
-
-            if cards_data and not set_obj.total:
-                set_obj.total = len(cards_data)
-
-            for card_data in cards_data:
-                parsed = pokemon_api.parse_card_for_db(card_data, default_set_id=tcg_id)
-                existing = db.query(Card).filter(Card.id == parsed["id"]).first()
-                if not existing:
-                    db.add(Card(**parsed))
-
-            db.commit()
-            cards = db.query(Card).filter(Card.set_id == tcg_id).order_by(
-                Card.number.asc()
-            ).all()
-        except Exception as e:
-            if not cards:
-                raise HTTPException(status_code=500, detail=str(e))
+    # Serve ONLY from DB — no live API call; filter by lang to avoid language mix-up
+    cards = db.query(Card).filter(
+        Card.set_id == tcg_id,
+        Card.lang == set_lang,
+    ).order_by(Card.number.asc()).all()
 
     # Get owned card IDs
     owned_card_ids = {

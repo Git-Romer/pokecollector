@@ -52,6 +52,7 @@ class Card(Base):
     images_small = Column(String)
     images_large = Column(String)
     is_custom = Column(Boolean, default=False)
+    lang = Column(String, default="en")      # "en" or "de"
     # Cardmarket EUR prices
     price_market = Column(Float)
     price_low = Column(Float)
