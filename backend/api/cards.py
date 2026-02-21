@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, cast, Integer
 from typing import Optional, List
 from database import get_db
 from models import Card, Set, PriceHistory, CustomCardMatch, CollectionItem, WishlistItem, BinderCard, Setting
@@ -64,9 +64,12 @@ def _search_by_code_number(
     if not set_obj:
         return {"data": [], "total_count": 0, "page": page, "page_size": page_size}
 
+    # Use original TCGdex ID (cards.set_id stores this, not the composite DB key)
+    tcg_set_id = set_obj.tcg_set_id or set_obj.id
+
     # 3. Look for card in DB (number may be zero-padded or not)
     card = db.query(Card).filter(
-        Card.set_id == set_obj.id,
+        Card.set_id == tcg_set_id,
         Card.number == card_number,
     ).first()
 
@@ -82,7 +85,7 @@ def _search_by_code_number(
     card_number_stripped = card_number.lstrip("0") or "0"
     if card_number_stripped != card_number:
         card = db.query(Card).filter(
-            Card.set_id == set_obj.id,
+            Card.set_id == tcg_set_id,
             Card.number == card_number_stripped,
         ).first()
         if card:
@@ -93,24 +96,8 @@ def _search_by_code_number(
                 "page_size": page_size,
             }
 
-    # 4. Not in DB — try the API
-    try:
-        api_result = pokemon_api.search_cards(set_id=set_obj.id, page=1, page_size=500, lang="de")
-        all_cards = api_result.get("data", [])
-        matched = [
-            c for c in all_cards
-            if str(c.get("number") or "").lstrip("0") == card_number_stripped
-            or str(c.get("number") or "") == card_number
-        ]
-        start = (page - 1) * page_size
-        return {
-            "data": matched[start : start + page_size],
-            "total_count": len(matched),
-            "page": page,
-            "page_size": page_size,
-        }
-    except Exception:
-        return {"data": [], "total_count": 0, "page": page, "page_size": page_size}
+    # Card not in DB — return empty result (will appear after sync)
+    return {"data": [], "total_count": 0, "page": page, "page_size": page_size}
 
 
 @router.post("/custom")
@@ -180,62 +167,6 @@ def update_custom_card(card_id: str, update: CustomCardUpdate, db: Session = Dep
     return card
 
 
-def _do_search_and_cache(
-    db, name, set_id, type_filter, rarity, artist, hp_min, hp_max,
-    sort_by, sort_order, page, page_size, lang
-):
-    """Run a search against the TCGdex API for a single language and cache results."""
-    effective_name = name
-    if set_id and name and re.match(r'^\d+$', name.strip()):
-        effective_name = None
-
-    result = pokemon_api.search_cards(
-        name=effective_name,
-        set_id=set_id,
-        type_filter=type_filter,
-        rarity=rarity,
-        artist=artist,
-        hp_min=hp_min,
-        hp_max=hp_max,
-        sort_by=sort_by,
-        sort_order=sort_order,
-        page=1,
-        page_size=500,  # fetch all to allow dedup/merge when lang="all"
-        local_id=name.strip() if set_id and name and re.match(r'^\d+$', name.strip()) else None,
-        lang=lang,
-    )
-    cards_data = result.get("data", [])
-
-    # Add lang tag to each card in the result
-    for card in cards_data:
-        card["_lang"] = lang
-
-    # Cache brief card data in DB
-    for card_data in cards_data:
-        try:
-            parsed = pokemon_api.parse_card_for_db(card_data)
-            if parsed.get("set_id"):
-                existing_set = db.query(Set).filter(Set.id == parsed["set_id"]).first()
-                if not existing_set:
-                    db.add(Set(id=parsed["set_id"], name=parsed["set_id"], total=0))
-            existing = db.query(Card).filter(Card.id == parsed["id"]).first()
-            if existing:
-                for k, v in parsed.items():
-                    if k != "id" and v is not None:
-                        setattr(existing, k, v)
-            else:
-                db.add(Card(**parsed))
-        except Exception:
-            pass
-
-    try:
-        db.commit()
-    except Exception:
-        db.rollback()
-
-    return cards_data
-
-
 @router.get("/search")
 def search_cards(
     name: Optional[str] = None,
@@ -252,12 +183,11 @@ def search_cards(
     lang: Optional[str] = Query("all", description="Language filter: 'de', 'en', or 'all'"),
     db: Session = Depends(get_db),
 ):
-    """Search cards via TCGdex API and cache minimal results.
+    """Search cards from the local DB.
 
     Special patterns supported:
     - "MEP 022" or "sv08 032" → set abbreviation/id + card number search
-    - Pure number with set_id filter → number search within the selected set
-    - lang: "de" → only German API, "en" → only English API, "all" → both (merged, dedup by ID)
+    - lang: "de" → German cards only, "en" → English cards only, "all" → all languages
     """
     search_lang = lang or "all"
 
@@ -270,39 +200,59 @@ def search_cards(
                 card_number = m.group(2)
                 return _search_by_code_number(db, set_code, card_number, page, page_size)
 
-        if search_lang == "all":
-            # Search both languages and merge (dedup by card ID, keeping first occurrence)
-            de_cards = _do_search_and_cache(
-                db, name, set_id, type_filter, rarity, artist, hp_min, hp_max,
-                sort_by, sort_order, page, page_size, "de"
-            )
-            en_cards = _do_search_and_cache(
-                db, name, set_id, type_filter, rarity, artist, hp_min, hp_max,
-                sort_by, sort_order, page, page_size, "en"
-            )
-            # Merge: DE first, then add EN cards not already seen (by ID)
-            seen_ids = set()
-            merged = []
-            for card in de_cards + en_cards:
-                cid = card.get("id")
-                if cid not in seen_ids:
-                    seen_ids.add(cid)
-                    merged.append(card)
+        # ── Pure DB search ────────────────────────────────────────────────────
+        query = db.query(Card).filter(Card.is_custom == False)
 
-            total_count = len(merged)
-            start = (page - 1) * page_size
-            cards_data = merged[start:start + page_size]
+        if name:
+            query = query.filter(Card.name.ilike(f"%{name}%"))
+
+        if set_id:
+            # set_id may be composite DB key (sv1_en) or original tcg id (sv1)
+            set_obj = db.query(Set).filter(
+                (Set.id == set_id) | (Set.tcg_set_id == set_id)
+            ).first()
+            if set_obj:
+                query = query.filter(Card.set_id == (set_obj.tcg_set_id or set_obj.id))
+            else:
+                query = query.filter(Card.set_id == set_id)
+
+        if search_lang != "all":
+            query = query.filter(Card.lang == search_lang)
+
+        if type_filter:
+            query = query.filter(Card.types.contains([type_filter]))
+
+        if rarity:
+            query = query.filter(Card.rarity.ilike(f"%{rarity}%"))
+
+        if artist:
+            query = query.filter(Card.artist.ilike(f"%{artist}%"))
+
+        if hp_min is not None:
+            query = query.filter(cast(Card.hp, Integer) >= hp_min)
+
+        if hp_max is not None:
+            query = query.filter(cast(Card.hp, Integer) <= hp_max)
+
+        if sort_by == "name":
+            col = Card.name
+        elif sort_by == "number":
+            col = Card.number
+        elif sort_by == "rarity":
+            col = Card.rarity
         else:
-            cards_data = _do_search_and_cache(
-                db, name, set_id, type_filter, rarity, artist, hp_min, hp_max,
-                sort_by, sort_order, page, page_size, search_lang
-            )
-            total_count = len(cards_data)
-            start = (page - 1) * page_size
-            cards_data = cards_data[start:start + page_size]
+            col = Card.name
+
+        if sort_order == "desc":
+            query = query.order_by(col.desc())
+        else:
+            query = query.order_by(col.asc())
+
+        total_count = query.count()
+        cards = query.offset((page - 1) * page_size).limit(page_size).all()
 
         return {
-            "data": cards_data,
+            "data": [_card_to_dict(c) for c in cards],
             "total_count": total_count,
             "page": page,
             "page_size": page_size,
@@ -325,23 +275,19 @@ def get_custom_matches(db: Session = Depends(get_db)):
     for match in matches:
         custom_card = db.query(Card).filter(Card.id == match.custom_card_id).first()
 
-        # Try to get the API card info (brief)
+        # Try to get the API card info from the local DB
         api_card_info = None
-        try:
-            api_data = pokemon_api.get_card(match.api_card_id, lang="en")
-            if api_data:
-                parsed = pokemon_api.parse_card_for_db(api_data)
-                api_card_info = {
-                    "id": parsed["id"],
-                    "name": parsed["name"],
-                    "images_small": parsed.get("images_small"),
-                    "images_large": parsed.get("images_large"),
-                    "rarity": parsed.get("rarity"),
-                    "number": parsed.get("number"),
-                    "set_id": parsed.get("set_id"),
-                }
-        except Exception:
-            pass
+        api_card = db.query(Card).filter(Card.id == match.api_card_id).first()
+        if api_card:
+            api_card_info = {
+                "id": api_card.id,
+                "name": api_card.name,
+                "images_small": api_card.images_small,
+                "images_large": api_card.images_large,
+                "rarity": api_card.rarity,
+                "number": api_card.number,
+                "set_id": api_card.set_id,
+            }
 
         result.append({
             "match_id": match.id,

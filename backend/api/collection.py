@@ -2,38 +2,21 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from database import get_db
-from models import CollectionItem, Card, Set
+from models import CollectionItem, Card
 from schemas import CollectionItemCreate, CollectionItemUpdate, CollectionItemResponse
-from services import pokemon_api
 import datetime
 
 router = APIRouter()
 
 
 def ensure_card_exists(db: Session, card_id: str, lang: str = "en") -> Card:
-    """Ensure card exists in DB, fetch from API if not."""
+    """Ensure card exists in DB. Raises 404 if not found (sync first)."""
     card = db.query(Card).filter(Card.id == card_id).first()
     if not card:
-        card_data = pokemon_api.get_card(card_id, lang=lang)
-        if not card_data:
-            # Try fallback language
-            fallback = "de" if lang == "en" else "en"
-            card_data = pokemon_api.get_card(card_id, lang=fallback)
-        if not card_data:
-            raise HTTPException(status_code=404, detail=f"Card {card_id} not found")
-        parsed = pokemon_api.parse_card_for_db(card_data)
-        # Ensure set exists
-        if parsed.get("set_id"):
-            set_data = card_data.get("set", {})
-            if set_data:
-                set_parsed = pokemon_api.parse_set_for_db(set_data)
-                existing_set = db.query(Set).filter(Set.id == set_parsed["id"]).first()
-                if not existing_set:
-                    db.add(Set(**set_parsed))
-        card = Card(**parsed)
-        db.add(card)
-        db.commit()
-        db.refresh(card)
+        raise HTTPException(
+            status_code=404,
+            detail=f"Card {card_id} not found in local database. Please run a Sync first."
+        )
     return card
 
 

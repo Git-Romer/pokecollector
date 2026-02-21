@@ -245,11 +245,14 @@ def get_set_cards(set_id: str, lang: str = "en") -> Dict:
         return response.json()
 
 
-def parse_card_for_db(card_data: Dict, default_set_id: Optional[str] = None) -> Dict:
+def parse_card_for_db(card_data: Dict, default_set_id: Optional[str] = None, lang: Optional[str] = None) -> Dict:
     """Parse TCGdex card data into database-ready format.
 
     Works with both brief card data (id/localId/name/image) returned by /cards
     and full card detail returned by /cards/{id}.
+
+    lang: optional language tag ("en" or "de") to store on the card record.
+          Defaults to "en" if not provided.
     """
     prices = extract_prices(card_data)
     set_data = card_data.get("set") or {}
@@ -273,6 +276,7 @@ def parse_card_for_db(card_data: Dict, default_set_id: Optional[str] = None) -> 
         "artist": card_data.get("illustrator"),
         "images_small": f"{image}/low.webp" if image else None,
         "images_large": f"{image}/high.webp" if image else None,
+        "lang": lang or "en",
         **prices,
     }
 
