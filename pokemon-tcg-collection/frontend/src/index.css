@@ -1,0 +1,733 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── CSS Custom Properties ──────────────────────────────────────────────── */
+:root {
+  --color-bg:          #08080f;
+  --color-surface:     #0f0f1a;
+  --color-card:        #141422;
+  --color-elevated:    #1a1a2e;
+  --color-border:      rgba(255,255,255,0.07);
+  --color-border-subtle: rgba(255,255,255,0.03);
+
+  --color-text-primary:   #ffffff;
+  --color-text-secondary: #a0a0b8;
+  --color-text-muted:     #606078;
+
+  --color-brand-red:       #e3000b;
+  --color-brand-red-light: #ff4d4d;
+  --color-brand-red-dark:  #b80009;
+
+  --color-green:  #22c55e;
+  --color-yellow: #eab308;
+  --color-blue:   #3b82f6;
+
+  /* Safe area for notched phones */
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-top:    env(safe-area-inset-top, 0px);
+
+  /* Bottom nav height (used for main content padding) */
+  --bottom-nav-height: 4rem; /* 64px */
+}
+
+/* ─── Scrollbar — premium dark ───────────────────────────────────────────── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.08) transparent;
+}
+*::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.1);
+  border-radius: 3px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(227,0,11,0.5);
+}
+
+/* ─── Base Typography — word-wrap everywhere ─────────────────────────────── */
+@layer base {
+  html {
+    font-size: 16px;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  html, body {
+    width: 100%;
+  }
+
+  body {
+    background: radial-gradient(ellipse 80% 40% at 50% -10%, rgba(227,0,11,0.07) 0%, transparent 60%), #08080f;
+    color: var(--color-text-primary);
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    min-height: 100dvh;
+  }
+
+  /* Global text overflow prevention */
+  *, *::before, *::after {
+    box-sizing: border-box;
+    min-width: 0;
+    word-break: break-word;
+    overflow-wrap: break-word;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    overflow-wrap: break-word;
+    word-break: break-word;
+    hyphens: auto;
+  }
+
+  p, span, li, td, th, label, a {
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+
+  img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+  }
+}
+
+/* ─── Component Classes ──────────────────────────────────────────────────── */
+@layer components {
+
+  /* ── Card — glass morphism ── */
+  .card {
+    background: rgba(20, 20, 40, 0.6);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 16px;
+    padding: 1rem;
+    transition: all 0.2s ease;
+  }
+  .card-hover {
+    @apply card cursor-pointer;
+  }
+  .card-hover:hover {
+    border-color: rgba(227,0,11,0.3);
+    box-shadow: 0 0 20px rgba(227,0,11,0.1);
+  }
+  .card-surface {
+    background: rgba(15, 15, 26, 0.8);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 16px;
+    padding: 1rem;
+  }
+
+  /* ── Buttons — bold with glow ── */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2
+           text-white px-4 py-2.5 rounded-lg font-semibold text-sm
+           transition-all duration-200
+           disabled:opacity-50 disabled:cursor-not-allowed
+           select-none;
+    background: #e3000b;
+    box-shadow: 0 0 16px rgba(227,0,11,0.3);
+  }
+  .btn-primary:hover {
+    box-shadow: 0 0 24px rgba(227,0,11,0.45);
+    background: #cc000a;
+  }
+  .btn-primary:active {
+    background: #b80009;
+  }
+  .btn-primary-sm {
+    @apply btn-primary px-3 py-1.5 text-xs;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2
+           bg-transparent
+           text-text-secondary hover:text-text-primary
+           px-4 py-2.5 rounded-lg font-medium text-sm
+           transition-all duration-200
+           disabled:opacity-50 disabled:cursor-not-allowed
+           select-none;
+    border: 1px solid rgba(255,255,255,0.07);
+  }
+  .btn-ghost:hover {
+    background: rgba(26, 26, 46, 0.8);
+    border-color: rgba(255,255,255,0.12);
+  }
+  .btn-ghost-sm {
+    @apply btn-ghost px-3 py-1.5 text-xs;
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2
+           bg-transparent hover:bg-red-900/30 active:bg-red-900/40
+           text-red-400 hover:text-red-300
+           px-3 py-2 rounded-lg text-sm
+           transition-all duration-150;
+  }
+
+  /* ── Inputs — sleek dark ── */
+  .input {
+    background: rgba(15, 15, 26, 0.8);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 0.75rem;
+    padding: 0.625rem 0.75rem;
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+    width: 100%;
+    transition: all 0.2s ease;
+    outline: none;
+  }
+  .input::placeholder {
+    color: var(--color-text-muted);
+  }
+  .input:focus {
+    border-color: rgba(227,0,11,0.4);
+    box-shadow: 0 0 0 3px rgba(227,0,11,0.1);
+  }
+  .input-sm {
+    @apply input py-2 text-xs;
+  }
+
+  .select {
+    background: rgba(15, 15, 26, 0.8);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 0.75rem;
+    padding: 0.625rem 0.75rem;
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+    width: 100%;
+    transition: all 0.2s ease;
+    outline: none;
+    appearance: none;
+    cursor: pointer;
+  }
+  .select:focus {
+    border-color: rgba(227,0,11,0.4);
+    box-shadow: 0 0 0 3px rgba(227,0,11,0.1);
+  }
+  .select-sm {
+    @apply select py-2 text-xs;
+  }
+
+  /* ── Badges ── */
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium leading-none whitespace-nowrap flex-shrink-0;
+  }
+  .badge-red {
+    @apply badge bg-brand-red/20 text-brand-red;
+  }
+  .badge-green {
+    @apply badge bg-green/20 text-green;
+  }
+  .badge-yellow {
+    @apply badge bg-yellow/20 text-yellow;
+  }
+  .badge-blue {
+    @apply badge bg-blue/20 text-blue;
+  }
+  .badge-gray {
+    @apply badge bg-bg-elevated text-text-muted;
+  }
+  .badge-purple {
+    @apply badge bg-purple-500/20 text-purple-400;
+  }
+
+  /* ── Section Headers ── */
+  .section-header {
+    @apply flex items-center justify-between gap-2 mb-3;
+  }
+  .section-title {
+    @apply text-base font-semibold text-text-primary;
+  }
+  .section-subtitle {
+    @apply text-sm text-text-muted;
+  }
+
+  /* ── Page Layout ── */
+  .page-container {
+    @apply space-y-4 pb-2;
+  }
+  .page-title {
+    @apply text-xl font-bold text-text-primary;
+  }
+
+  /* ── Bottom Nav — frosted glass ── */
+  .bottom-nav {
+    @apply fixed bottom-0 left-0 right-0 z-40
+           flex items-stretch
+           pb-[env(safe-area-inset-bottom,0px)]
+           lg:hidden;
+    background: rgba(15, 15, 26, 0.85);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+  .bottom-nav-item {
+    @apply flex flex-col items-center justify-center gap-0.5
+           flex-1 py-2 text-[10px] font-medium
+           transition-colors duration-150 select-none cursor-pointer;
+  }
+  .bottom-nav-active {
+    @apply text-brand-red;
+  }
+  .bottom-nav-inactive {
+    @apply text-text-muted hover:text-text-secondary;
+  }
+
+  /* ── Safe area utilities ── */
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .pb-nav {
+    padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 0.5rem);
+  }
+
+  /* ── More Sheet Animation ── */
+  .more-sheet-enter {
+    animation: slideUp 0.25s ease-out;
+  }
+
+  /* ── Stat Card — glass with top highlight ── */
+  .stat-card {
+    background: rgba(20, 20, 40, 0.5);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-top: 1px solid rgba(255,255,255,0.12);
+    border-radius: 16px;
+    padding: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  .stat-value {
+    font-size: 1.5rem;
+    font-weight: 800;
+    line-height: 1;
+    color: white;
+  }
+  .stat-label {
+    @apply text-xs text-text-muted;
+  }
+
+  /* ── List Item ── */
+  .list-item {
+    @apply flex items-center gap-3 p-3 rounded-xl;
+    background: rgba(20, 20, 40, 0.6);
+    border: 1px solid rgba(255,255,255,0.07);
+  }
+  .list-item-hover {
+    @apply list-item transition-all duration-150 cursor-pointer;
+  }
+  .list-item-hover:hover {
+    background: rgba(26, 26, 46, 0.8);
+    border-color: rgba(255,255,255,0.1);
+  }
+
+  /* ── Divider ── */
+  .divider {
+    border-top: 1px solid rgba(255,255,255,0.06);
+    margin: 0.75rem 0;
+  }
+
+  /* ── Empty State ── */
+  .empty-state {
+    @apply flex flex-col items-center justify-center text-center py-12 px-4 gap-3;
+  }
+  .empty-state-icon {
+    @apply text-text-muted;
+  }
+  .empty-state-text {
+    @apply text-text-muted text-sm;
+  }
+
+  /* ── Skeleton ── */
+  .skeleton {
+    background: linear-gradient(90deg, rgba(20,20,40,0.5) 25%, rgba(30,30,50,0.5) 50%, rgba(20,20,40,0.5) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
+
+  @keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+}
+
+/* ─── Utility Overrides ──────────────────────────────────────────────────── */
+@layer utilities {
+  .text-truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .text-safe {
+    overflow-wrap: break-word;
+    word-break: break-word;
+    min-width: 0;
+  }
+
+  .flex-min-0 {
+    min-width: 0;
+    flex: 1 1 0%;
+  }
+
+  /* Progress bar red glow */
+  .progress-glow {
+    box-shadow: 0 0 6px rgba(227,0,11,0.5);
+  }
+
+  /* Pokemon card — hover lift + glow */
+  .pokemon-card-glow {
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  }
+  .pokemon-card-glow:hover {
+    transform: scale(1.03);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 16px rgba(227,0,11,0.2);
+    border-color: rgba(227,0,11,0.35);
+  }
+
+  /* Card image — crisp rendering */
+  .card-image-wrapper img {
+    transition: filter 0.2s ease;
+  }
+  .pokemon-card-glow:hover .card-image-wrapper img {
+    filter: brightness(1.05) saturate(1.1);
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(227,0,11,0.4); }
+
+  /* No scrollbar utility */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+}
+
+/* ===================== */
+/* POKEMON VISUAL SYSTEM */
+/* ===================== */
+
+/* Trainer Card — the hero widget on Dashboard */
+.trainer-card {
+  background: linear-gradient(135deg, #1a2040 0%, #0d1530 60%, #1a1030 100%);
+  border: 2px solid rgba(245,200,66,0.5);
+  border-radius: 16px;
+  box-shadow: 0 0 40px rgba(245,200,66,0.12), 0 0 80px rgba(245,200,66,0.05), 0 8px 32px rgba(0,0,0,0.5);
+  position: relative;
+  overflow: hidden;
+}
+.trainer-card::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  right: -20%;
+  width: 400px;
+  height: 400px;
+  background: radial-gradient(circle, rgba(245,200,66,0.04) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+/* Pokeball watermark rings (decorative) */
+.pokeball-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 20px solid rgba(255,255,255,0.025);
+  pointer-events: none;
+}
+
+/* Holo card effect — for rare+ cards in collection grid */
+.card-holo {
+  border-color: rgba(245,200,66,0.4) !important;
+  box-shadow: 0 0 8px rgba(245,200,66,0.2), 0 2px 8px rgba(0,0,0,0.4);
+}
+.card-holo::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    135deg,
+    transparent 25%,
+    rgba(255,255,255,0.06) 45%,
+    rgba(255,255,255,0.1) 50%,
+    rgba(255,255,255,0.06) 55%,
+    transparent 75%
+  );
+  background-size: 200% 200%;
+  animation: holo-shift 4s ease-in-out infinite;
+  border-radius: inherit;
+  pointer-events: none;
+}
+@keyframes holo-shift {
+  0%, 100% { background-position: 0% 0%; }
+  50% { background-position: 100% 100%; }
+}
+
+/* Secret rare / rainbow — for ultra rare cards */
+.card-secret {
+  border-color: rgba(180,100,255,0.5) !important;
+  box-shadow: 0 0 12px rgba(150,80,255,0.25);
+}
+.card-secret::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    135deg,
+    rgba(255,100,150,0.08),
+    rgba(100,150,255,0.08),
+    rgba(255,200,100,0.08),
+    rgba(100,255,180,0.08)
+  );
+  background-size: 400% 400%;
+  animation: rainbow-shift 6s ease infinite;
+  border-radius: inherit;
+  pointer-events: none;
+}
+@keyframes rainbow-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Binder grid — looks like a real Pokemon binder */
+.binder-grid {
+  background: rgba(10,14,26,0.8);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 16px;
+  padding: 12px;
+}
+
+/* Card in binder */
+.binder-card {
+  position: relative;
+  cursor: pointer;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.08);
+  transition: all 0.2s ease;
+}
+.binder-card img {
+  transition: transform 0.3s ease;
+}
+.binder-card:hover {
+  transform: scale(1.04);
+  border-color: rgba(227,0,11,0.45);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.55), 0 0 20px rgba(227,0,11,0.18);
+}
+.binder-card:hover img {
+  transform: scale(1.02);
+  transition: transform 0.3s ease;
+}
+
+/* Pokeball loader */
+@keyframes pokeball-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+.pokeball-loader {
+  animation: pokeball-spin 1s linear infinite;
+}
+
+/* Gold value text */
+.text-gold { color: #f5c842; }
+.bg-gold { background-color: #f5c842; }
+.border-gold { border-color: rgba(245,200,66,0.4); }
+
+/* HP bar — like Pokemon game */
+.hp-bar-track {
+  height: 8px;
+  background: rgba(0,0,0,0.4);
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,0.05);
+  overflow: hidden;
+}
+.hp-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+.hp-bar-fill.healthy { background: linear-gradient(90deg, #4caf50, #8bc34a); }
+.hp-bar-fill.medium { background: linear-gradient(90deg, #ff9800, #ffc107); }
+.hp-bar-fill.low { background: linear-gradient(90deg, #e3000b, #ff5722); }
+
+/* ================================================ */
+/* GAME UI — ANIMATED BACKGROUND                    */
+/* ================================================ */
+@keyframes bg-breathe {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+body {
+  background: linear-gradient(-45deg, #06080f, #08060e, #060c0e, #080810);
+  background-size: 400% 400%;
+  animation: bg-breathe 25s ease infinite;
+}
+
+/* Energy orbs — ambient colored glows in background */
+#root::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 280px 220px at 12% 18%, rgba(227,0,11,0.07) 0%, transparent 100%),
+    radial-gradient(ellipse 350px 250px at 88% 12%, rgba(79,195,247,0.05) 0%, transparent 100%),
+    radial-gradient(ellipse 220px 300px at 75% 82%, rgba(102,187,106,0.04) 0%, transparent 100%),
+    radial-gradient(ellipse 180px 180px at 25% 72%, rgba(245,200,66,0.03) 0%, transparent 100%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+#root > * { position: relative; z-index: 1; }
+
+/* ================================================ */
+/* 3D CARD EFFECT — The signature Pokemon feel      */
+/* ================================================ */
+.card-3d {
+  transform-style: preserve-3d;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+  cursor: pointer;
+}
+.card-3d:hover {
+  transform: perspective(700px) rotateY(-8deg) rotateX(4deg) scale(1.03);
+  box-shadow:
+    10px 18px 40px rgba(0,0,0,0.7),
+    -3px 0 18px rgba(227,0,11,0.12),
+    inset 0 0 0 1px rgba(255,255,255,0.08);
+}
+
+/* ================================================ */
+/* FULLSCREEN CARD DETAIL OVERLAY                   */
+/* ================================================ */
+.card-detail-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0,0,0,0);
+  transition: background 0.3s ease;
+}
+.card-detail-overlay.open {
+  background: rgba(0,0,0,0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.card-detail-panel {
+  width: 100%;
+  max-width: 640px;
+  max-height: 90dvh;
+  overflow-y: auto;
+  background: linear-gradient(180deg, #0f1224 0%, #0a0d1a 100%);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-bottom: none;
+  border-radius: 24px 24px 0 0;
+  transform: translateY(100%);
+  transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+  padding-bottom: env(safe-area-inset-bottom, 20px);
+}
+.card-detail-overlay.open .card-detail-panel {
+  transform: translateY(0);
+}
+
+/* Desktop: centered modal instead of bottom sheet */
+@media (min-width: 768px) {
+  .card-detail-overlay {
+    align-items: center;
+  }
+  .card-detail-panel {
+    max-height: 85dvh;
+    border-radius: 24px;
+    border: 1px solid rgba(255,255,255,0.12);
+    transform: scale(0.92) translateY(16px);
+    opacity: 0;
+    transition: transform 0.3s ease, opacity 0.3s ease;
+  }
+  .card-detail-overlay.open .card-detail-panel {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+
+/* ================================================ */
+/* FEATURED SET HERO (Sets page)                    */
+/* ================================================ */
+.set-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 20px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: linear-gradient(135deg, #0f1428 0%, #1a0f28 50%, #0f1428 100%);
+  min-height: 180px;
+}
+.set-hero-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 60% 60% at 70% 50%, rgba(227,0,11,0.12) 0%, transparent 70%);
+}
+.set-hero-logo {
+  max-height: 100px;
+  max-width: 60%;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 24px rgba(0,0,0,0.8));
+}
+
+/* ================================================ */
+/* ENERGY TYPE BADGES                               */
+/* ================================================ */
+.energy-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+/* ─── HomeScreen: floating energy orb animation ─────────────────────────── */
+@keyframes float-orb {
+  0%, 100% { transform: translateY(0px) scale(1); }
+  33%       { transform: translateY(-20px) scale(1.05); }
+  66%       { transform: translateY(10px) scale(0.95); }
+}
+
+.energy-fire    { background: rgba(255,107,53,0.2); color: #ff8a65; border: 1px solid rgba(255,107,53,0.3); }
+.energy-water   { background: rgba(79,195,247,0.2); color: #4fc3f7; border: 1px solid rgba(79,195,247,0.3); }
+.energy-grass   { background: rgba(102,187,106,0.2); color: #81c784; border: 1px solid rgba(102,187,106,0.3); }
+.energy-lightning { background: rgba(253,216,53,0.2); color: #fdd835; border: 1px solid rgba(253,216,53,0.3); }
+.energy-psychic { background: rgba(206,147,216,0.2); color: #ce93d8; border: 1px solid rgba(206,147,216,0.3); }
+.energy-fighting { background: rgba(255,112,67,0.2); color: #ff7043; border: 1px solid rgba(255,112,67,0.3); }
+.energy-darkness { background: rgba(120,144,156,0.2); color: #90a4ae; border: 1px solid rgba(120,144,156,0.3); }
+.energy-metal   { background: rgba(176,190,197,0.2); color: #b0bec5; border: 1px solid rgba(176,190,197,0.3); }
+.energy-dragon  { background: rgba(149,117,205,0.2); color: #9575cd; border: 1px solid rgba(149,117,205,0.3); }
+.energy-colorless { background: rgba(158,158,158,0.2); color: #9e9e9e; border: 1px solid rgba(158,158,158,0.3); }
+.energy-rare    { background: rgba(245,200,66,0.15); color: #f5c842; border: 1px solid rgba(245,200,66,0.35); }
+.energy-ultra   { background: rgba(227,0,11,0.15); color: #ff5252; border: 1px solid rgba(227,0,11,0.35); }
