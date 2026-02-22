@@ -11,16 +11,15 @@ import {
 import { getDashboard, triggerPriceSync, getSyncStatus, getInvestmentTracker, getSetting } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
-import { format, parseISO, subWeeks, subMonths, subYears } from 'date-fns'
+import { format, parseISO, subDays, subWeeks, subMonths, subYears } from 'date-fns'
 
 // ── Time-range definitions ────────────────────────────────────────────────────
 const PERIODS = [
-  { key: '1W',  label: '1W',  getFrom: () => subWeeks(new Date(), 1) },
-  { key: '1M',  label: '1M',  getFrom: () => subMonths(new Date(), 1) },
-  { key: '3M',  label: '3M',  getFrom: () => subMonths(new Date(), 3) },
-  { key: '6M',  label: '6M',  getFrom: () => subMonths(new Date(), 6) },
-  { key: '1J',  label: '1J',  getFrom: () => subYears(new Date(), 1) },
-  { key: 'ALL', label: 'Alle', getFrom: () => null },
+  { key: '1D',  label: '1D',   getFrom: () => subDays(new Date(), 1) },
+  { key: '1W',  label: '1W',   getFrom: () => subWeeks(new Date(), 1) },
+  { key: '1M',  label: '1M',   getFrom: () => subMonths(new Date(), 1) },
+  { key: '1Y',  label: '1Y',   getFrom: () => subYears(new Date(), 1) },
+  { key: 'MAX', label: 'Max',  getFrom: () => null },
 ]
 
 // ── Custom chart tooltip ──────────────────────────────────────────────────────
@@ -311,7 +310,7 @@ export default function HomeScreen() {
                     border: chartPeriod === p.key ? '1px solid rgba(245,200,66,0.3)' : '1px solid transparent',
                   }}
                 >
-                  {p.key === 'ALL' ? t('common.all') : p.label}
+                  {p.label}
                 </button>
               ))}
             </div>
