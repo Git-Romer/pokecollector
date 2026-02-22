@@ -151,7 +151,7 @@ export default function CardSearch() {
   const { data, isLoading, error, isFetching } = useQuery({
     queryKey: ['card-search', queryParams, langFilter],
     queryFn: () => searchCards(queryParams).then(r => r.data),
-    enabled: !!hasQuery,
+    enabled: !!hasQuery || langFilter !== 'all',
     placeholderData: (prev) => prev,
   })
 

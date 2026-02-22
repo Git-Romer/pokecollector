@@ -38,10 +38,24 @@ def _card_to_dict(card: Card) -> dict:
         "images_small": card.images_small,
         "images_large": card.images_large,
         "is_custom": card.is_custom or False,
+        "lang": card.lang or "en",
         "price_market": card.price_market,
         "price_low": card.price_low,
         "price_trend": card.price_trend,
-        "lang": card.lang or "en",
+        "price_avg1": card.price_avg1,
+        "price_avg7": card.price_avg7,
+        "price_avg30": card.price_avg30,
+        # Holo prices (may be None if not yet synced)
+        "price_market_holo": getattr(card, 'price_market_holo', None),
+        "price_low_holo": getattr(card, 'price_low_holo', None),
+        "price_trend_holo": getattr(card, 'price_trend_holo', None),
+        "price_avg1_holo": getattr(card, 'price_avg1_holo', None),
+        "price_avg7_holo": getattr(card, 'price_avg7_holo', None),
+        "price_avg30_holo": getattr(card, 'price_avg30_holo', None),
+        # TCGPlayer
+        "price_tcg_normal_market": getattr(card, 'price_tcg_normal_market', None),
+        "price_tcg_reverse_market": getattr(card, 'price_tcg_reverse_market', None),
+        "price_tcg_holo_market": getattr(card, 'price_tcg_holo_market', None),
     }
 
 
