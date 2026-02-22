@@ -1,3 +1,5 @@
+// IMPORTANT: Every key added to de.js MUST also be added to en.js with an English translation.
+// The SettingsContext falls back to German if a key is missing in the active language file.
 const de = {
   // Navigation
   nav: {

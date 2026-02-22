@@ -120,6 +120,17 @@ export default function CardSearch() {
     return allSets.filter(s => s.series === filters.series)
   }, [allSets, filters.series])
 
+  const setMap = useMemo(() => {
+    // Keyed by both tcg_set_id (e.g. "sv1") and composite id (e.g. "sv1_de") so
+    // card.set_id (which stores the TCGdex set ID) resolves to the correct set object.
+    const map = {}
+    allSets.forEach(s => {
+      if (s.tcg_set_id) map[s.tcg_set_id] = s
+      if (s.id) map[s.id] = s
+    })
+    return map
+  }, [allSets])
+
   const queryParams = {
     name: filters.name || undefined,
     type: filters.type || undefined,
@@ -390,7 +401,8 @@ export default function CardSearch() {
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {data.data?.map((card) => {
                 const imgSrc = card.images?.small || card.images_small || (card.image ? `${card.image}/low.webp` : null)
-                const cardSetName = card.set?.name || card.set_ref?.name || card.set_id || ''
+                const setObj = setMap[card.set_id] || null
+                const cardSetName = card.set?.name || setObj?.abbreviation || setObj?.name || card.set_id || ''
                 return (
                   <div
                     key={card.id}

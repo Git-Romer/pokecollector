@@ -189,6 +189,7 @@ def get_set_checklist(set_id: str, db: Session = Depends(get_db)):
             "total": set_obj.total,
             "images_symbol": set_obj.images_symbol,
             "images_logo": set_obj.images_logo,
+            "lang": set_obj.lang or "en",
         },
         "cards": checklist,
         "owned_count": owned_count,
