@@ -509,6 +509,29 @@ const en = {
     neverSynced: 'Never',
     errorPrefix: 'Error: ',
     cardUpdated: 'Card updated!',
+    // Sync section row labels
+    syncSetsCards: 'Sync Sets & Cards',
+    interval: 'Interval',
+    syncSetsCardsDesc: 'Sets & Cards',
+    syncPricesOnly: 'Sync Prices Only',
+    priceInterval: 'Price Interval',
+    syncPricesOnlyDesc: 'Prices Only',
+    // Sync interval options (days)
+    day1: '1 day',
+    days2: '2 days',
+    days3: '3 days',
+    days5: '5 days',
+    days7: '7 days',
+    days14: '14 days',
+    days30: '30 days',
+    // Price sync interval options (time)
+    min15: '15 min',
+    min30: '30 min',
+    hour1: '1 hr',
+    hours2: '2 hrs',
+    hours6: '6 hrs',
+    hours12: '12 hrs',
+    hours24: '24 hrs',
   },
 
   // Period selector

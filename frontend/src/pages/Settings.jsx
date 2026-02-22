@@ -446,7 +446,7 @@ export default function Settings() {
 
         {/* Card 1: Full Sync */}
         <SettingsCard>
-          <SettingsRow label="Sets & Karten synchronisieren" description={lastSyncText}>
+          <SettingsRow label={t('settings.syncSetsCards')} description={lastSyncText}>
             <button
               onClick={() => syncMutation.mutate()}
               disabled={isRunning}
@@ -457,17 +457,17 @@ export default function Settings() {
               {isRunning ? t('settings.running') : t('settings.syncButton')}
             </button>
           </SettingsRow>
-          <SettingsRow label="Intervall" description="Sets & Karten" last>
+          <SettingsRow label={t('settings.interval')} description={t('settings.syncSetsCardsDesc')} last>
             <SelectControl
               value={fullSyncIntervalDays}
               options={[
-                { value: '1',  label: '1 Tag' },
-                { value: '2',  label: '2 Tage' },
-                { value: '3',  label: '3 Tage' },
-                { value: '5',  label: '5 Tage' },
-                { value: '7',  label: '7 Tage' },
-                { value: '14', label: '14 Tage' },
-                { value: '30', label: '30 Tage' },
+                { value: '1',  label: t('settings.day1') },
+                { value: '2',  label: t('settings.days2') },
+                { value: '3',  label: t('settings.days3') },
+                { value: '5',  label: t('settings.days5') },
+                { value: '7',  label: t('settings.days7') },
+                { value: '14', label: t('settings.days14') },
+                { value: '30', label: t('settings.days30') },
               ]}
               onChange={handleFullSyncIntervalChange}
             />
@@ -476,7 +476,7 @@ export default function Settings() {
 
         {/* Card 2: Price Sync */}
         <SettingsCard>
-          <SettingsRow label="Nur Preise synchronisieren" description={lastSyncText}>
+          <SettingsRow label={t('settings.syncPricesOnly')} description={lastSyncText}>
             <button
               onClick={() => priceSyncMutation.mutate()}
               disabled={isPriceSyncRunning}
@@ -487,17 +487,17 @@ export default function Settings() {
               {isPriceSyncRunning ? t('settings.running') : t('settings.syncButton')}
             </button>
           </SettingsRow>
-          <SettingsRow label="Preisintervall" description="Nur Preise" last>
+          <SettingsRow label={t('settings.priceInterval')} description={t('settings.syncPricesOnlyDesc')} last>
             <SelectControl
               value={priceSyncIntervalMinutes}
               options={[
-                { value: '15',   label: '15 Min' },
-                { value: '30',   label: '30 Min' },
-                { value: '60',   label: '1 Std' },
-                { value: '120',  label: '2 Std' },
-                { value: '360',  label: '6 Std' },
-                { value: '720',  label: '12 Std' },
-                { value: '1440', label: '24 Std' },
+                { value: '15',   label: t('settings.min15') },
+                { value: '30',   label: t('settings.min30') },
+                { value: '60',   label: t('settings.hour1') },
+                { value: '120',  label: t('settings.hours2') },
+                { value: '360',  label: t('settings.hours6') },
+                { value: '720',  label: t('settings.hours12') },
+                { value: '1440', label: t('settings.hours24') },
               ]}
               onChange={handlePriceSyncIntervalChange}
             />

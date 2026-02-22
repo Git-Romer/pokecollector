@@ -509,6 +509,29 @@ const de = {
     neverSynced: 'Noch nie',
     errorPrefix: 'Fehler: ',
     cardUpdated: 'Karte aktualisiert!',
+    // Sync section row labels
+    syncSetsCards: 'Sets & Karten synchronisieren',
+    interval: 'Intervall',
+    syncSetsCardsDesc: 'Sets & Karten',
+    syncPricesOnly: 'Nur Preise synchronisieren',
+    priceInterval: 'Preisintervall',
+    syncPricesOnlyDesc: 'Nur Preise',
+    // Sync interval options (days)
+    day1: '1 Tag',
+    days2: '2 Tage',
+    days3: '3 Tage',
+    days5: '5 Tage',
+    days7: '7 Tage',
+    days14: '14 Tage',
+    days30: '30 Tage',
+    // Price sync interval options (time)
+    min15: '15 Min',
+    min30: '30 Min',
+    hour1: '1 Std',
+    hours2: '2 Std',
+    hours6: '6 Std',
+    hours12: '12 Std',
+    hours24: '24 Std',
   },
 
   // Period selector

@@ -143,10 +143,28 @@ def get_set_checklist(set_id: str, db: Session = Depends(get_db)):
     tcg_id = set_obj.tcg_set_id or set_obj.id
     set_lang = set_obj.lang or "en"
 
-    # Serve ONLY from DB — no live API call; set_id already ensures correct language version
+    # Query DB for cards matching both set_id and lang
     cards = db.query(Card).filter(
         Card.set_id == tcg_id,
+        Card.lang == set_lang,
     ).order_by(Card.number.asc()).all()
+
+    # If no cards found for this language, fetch from TCGdex and cache them
+    if not cards:
+        try:
+            set_data = pokemon_api.get_set_cards(tcg_id, lang=set_lang)
+            for card_data in set_data.get("cards", []):
+                parsed = pokemon_api.parse_card_for_db(card_data, default_set_id=tcg_id, lang=set_lang)
+                existing = db.query(Card).filter(Card.id == parsed["id"]).first()
+                if not existing:
+                    db.add(Card(**parsed))
+            db.commit()
+            cards = db.query(Card).filter(
+                Card.set_id == tcg_id,
+                Card.lang == set_lang,
+            ).order_by(Card.number.asc()).all()
+        except Exception:
+            pass
 
     # Get owned card IDs
     owned_card_ids = {

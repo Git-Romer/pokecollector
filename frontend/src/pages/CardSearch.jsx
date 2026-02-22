@@ -403,6 +403,7 @@ export default function CardSearch() {
                 const imgSrc = card.images?.small || card.images_small || (card.image ? `${card.image}/low.webp` : null)
                 const setObj = setMap[card.set_id] || null
                 const cardSetName = card.set?.name || setObj?.abbreviation || setObj?.name || card.set_id || ''
+                const cardDisplay = cardSetName + (card.number ? ` · #${card.number}` : '')
                 return (
                   <div
                     key={card.id}
@@ -433,7 +434,7 @@ export default function CardSearch() {
                           </span>
                         )}
                       </div>
-                      <p className="text-[10px] text-text-muted truncate">{cardSetName}</p>
+                      <p className="text-[10px] text-text-muted truncate">{cardDisplay}</p>
                     </div>
                   </div>
                 )
