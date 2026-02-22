@@ -1,3 +1,15 @@
+# ⚠️ Disclaimer
+Everything below (and in this repo) is unapologetically vibecoded.
+Expect vibes, not guarantees. Proceed with good humor and version control.  
+
+Contributions are welcome. Open a pull request for fixes, features, or docs. Not sure where to start? Open an issue and we’ll chat. Small improvements are great.
+
+Found a bug or have an idea? Open an issue. Include steps to reproduce, expected vs. actual behavior. Screenshots or logs help.
+
+Fork, branch, and submit a focused PR. Add or update tests and docs as needed. Explain the “why” and link related issues. Make sure checks pass.
+
+Be kind. Be clear. Assume good intent. Keep feedback constructive.
+
 # 🃏 PokéCollector
 
 > A self-hosted, full-stack Pokémon TCG collection management app — track your cards, monitor prices, manage binders, and analyse your portfolio.
@@ -174,4 +186,4 @@ All settings are persisted in the database and editable via the Settings page:
 
 ## 📝 License
 
-MIT
+[GNU AGPLv3](LICENSE)
