@@ -143,10 +143,9 @@ def get_set_checklist(set_id: str, db: Session = Depends(get_db)):
     tcg_id = set_obj.tcg_set_id or set_obj.id
     set_lang = set_obj.lang or "en"
 
-    # Serve ONLY from DB — no live API call; filter by lang to avoid language mix-up
+    # Serve ONLY from DB — no live API call; set_id already ensures correct language version
     cards = db.query(Card).filter(
         Card.set_id == tcg_id,
-        Card.lang == set_lang,
     ).order_by(Card.number.asc()).all()
 
     # Get owned card IDs

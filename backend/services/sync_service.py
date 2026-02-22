@@ -183,9 +183,9 @@ def check_custom_card_matches(db: Session):
             logger.warning(f"Failed to check API match for custom card {card.id}: {e}")
 
 
-def perform_sync(db: Session) -> dict:
-    """Perform a full sync cycle."""
-    log = SyncLog(started_at=datetime.datetime.utcnow(), status="running")
+def perform_full_sync(db: Session) -> dict:
+    """Perform a full sync cycle: sets + cards + prices."""
+    log = SyncLog(started_at=datetime.datetime.utcnow(), status="running", sync_type="full")
     db.add(log)
     db.commit()
 
@@ -264,7 +264,7 @@ def perform_sync(db: Session) -> dict:
                 db.rollback()
         logger.info("Full card catalogue sync complete")
 
-        # 2. Sync collection cards (priority)
+        # 3. Update prices for collection + wishlist cards
         collection_card_ids = [
             item.card_id for item in db.query(CollectionItem.card_id).all()
         ]
@@ -315,13 +315,86 @@ def perform_sync(db: Session) -> dict:
         log.status = "success"
         db.commit()
 
-        logger.info(f"Sync complete: {cards_updated} cards, {sets_updated} sets updated")
+        logger.info(f"Full sync complete: {cards_updated} cards, {sets_updated} sets updated")
         return {"cards_updated": cards_updated, "sets_updated": sets_updated, "status": "success"}
 
     except Exception as e:
-        logger.error(f"Sync failed: {e}")
+        logger.error(f"Full sync failed: {e}")
         log.finished_at = datetime.datetime.utcnow()
         log.status = "error"
         log.error_message = str(e)
         db.commit()
         raise
+
+
+def perform_price_sync(db: Session) -> dict:
+    """Perform a price-only sync: update prices for collection + wishlist cards."""
+    log = SyncLog(started_at=datetime.datetime.utcnow(), status="running", sync_type="price")
+    db.add(log)
+    db.commit()
+
+    cards_updated = 0
+    updated_card_ids = []
+
+    try:
+        lang = _get_language(db)
+
+        collection_card_ids = [
+            item.card_id for item in db.query(CollectionItem.card_id).all()
+        ]
+        wishlist_card_ids = [
+            item.card_id for item in db.query(WishlistItem.card_id).all()
+        ]
+
+        priority_ids = list(set(collection_card_ids + wishlist_card_ids))
+        logger.info(f"Price sync: updating prices for {len(priority_ids)} cards...")
+
+        for card_id in priority_ids[:MAX_CARDS_PER_SYNC]:
+            try:
+                card_data = pokemon_api.get_card(card_id, lang=lang)
+                if card_data:
+                    parsed = pokemon_api.parse_card_for_db(card_data, lang=lang)
+                    # Ensure set exists (check by tcg_set_id since set IDs are now composite)
+                    if parsed.get("set_id"):
+                        set_exists = db.query(Set).filter(
+                            (Set.tcg_set_id == parsed["set_id"]) | (Set.id == parsed["set_id"])
+                        ).first()
+                        if not set_exists:
+                            parsed["set_id"] = None
+                    card = upsert_card(db, parsed)
+                    record_price_history(db, card)
+                    updated_card_ids.append(card_id)
+                    cards_updated += 1
+            except Exception as e:
+                logger.warning(f"Failed to sync card {card_id}: {e}")
+
+        db.commit()
+
+        # Check wishlist alerts
+        check_wishlist_alerts(db, updated_card_ids)
+
+        # Take portfolio snapshot
+        take_portfolio_snapshot(db)
+
+        # Update sync log
+        log.finished_at = datetime.datetime.utcnow()
+        log.cards_updated = cards_updated
+        log.sets_updated = 0
+        log.status = "success"
+        db.commit()
+
+        logger.info(f"Price sync complete: {cards_updated} cards updated")
+        return {"cards_updated": cards_updated, "sets_updated": 0, "status": "success"}
+
+    except Exception as e:
+        logger.error(f"Price sync failed: {e}")
+        log.finished_at = datetime.datetime.utcnow()
+        log.status = "error"
+        log.error_message = str(e)
+        db.commit()
+        raise
+
+
+def perform_sync(db: Session) -> dict:
+    """Alias for perform_full_sync (backward compatibility)."""
+    return perform_full_sync(db)

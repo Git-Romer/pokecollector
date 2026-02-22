@@ -8,7 +8,8 @@ router = APIRouter()
 
 DEFAULT_SETTINGS = {
     "trainer_name": "TRAINER",
-    "sync_interval_hours": "24",
+    "full_sync_interval_days": "5",
+    "price_sync_interval_minutes": "30",
     "telegram_enabled": "false",
     "telegram_chat_id": "",
     "price_alerts_enabled": "false",
@@ -58,6 +59,11 @@ def get_telegram_status(db: Session = Depends(get_db)):
 @router.get("/{key}")
 def get_setting(key: str, db: Session = Depends(get_db)):
     """Return a single setting value."""
+    # Legacy alias: sync_interval_hours → full_sync_interval_days
+    if key == "sync_interval_hours":
+        row = db.query(Setting).filter(Setting.key == "full_sync_interval_days").first()
+        days = int(row.value) if row else 5
+        return {"key": key, "value": str(days * 24)}
     row = db.query(Setting).filter(Setting.key == key).first()
     if row:
         return {"key": key, "value": row.value}

@@ -71,7 +71,10 @@ export const getAnalyticsNewSets = () => api.get('/analytics/new-sets')
 
 // Sync
 export const triggerSync = () => api.post('/sync/')
+export const triggerPriceSync = () => api.post('/sync/prices')
 export const getSyncStatus = () => api.get('/sync/status')
+export const rescheduleFullSync = (intervalDays) => api.post('/sync/reschedule-full', { interval_days: intervalDays })
+export const reschedulePriceSync = (intervalMinutes) => api.post('/sync/reschedule-prices', { interval_minutes: intervalMinutes })
 
 // Products
 export const getProducts = () => api.get('/products/')
