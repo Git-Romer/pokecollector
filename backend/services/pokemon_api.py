@@ -276,7 +276,7 @@ def parse_card_for_db(card_data: Dict, default_set_id: Optional[str] = None, lan
         "artist": card_data.get("illustrator"),
         "images_small": f"{image}/low.webp" if image else None,
         "images_large": f"{image}/high.webp" if image else None,
-        "lang": lang or "en",
+        "lang": card_data.get("_lang") or lang or "en",
         **prices,
     }
 
