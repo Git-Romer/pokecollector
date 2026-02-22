@@ -203,7 +203,12 @@ def get_all_sets(display_lang: str = "en") -> List[Dict]:
                     sid = s.get("id")
                     if not sid:
                         continue
-                    entry = dict(s)
+                    # Fetch full detail to populate abbreviation and other fields
+                    try:
+                        detail = client.get(f"{url}/sets/{sid}", timeout=30.0)
+                        entry = detail.json() if detail.status_code == 200 else dict(s)
+                    except Exception:
+                        entry = dict(s)
                     entry["_lang"] = lang
                     entry["_db_key"] = f"{sid}_{lang}"
                     entry["_series_name"] = set_to_series.get(sid)
