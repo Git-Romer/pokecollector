@@ -277,9 +277,10 @@ def perform_full_sync(db: Session) -> dict:
 
         for card_id in priority_ids[:MAX_CARDS_PER_SYNC]:
             try:
-                card_data = pokemon_api.get_card(card_id, lang=lang)
+                tcg_id, card_lang = pokemon_api.strip_lang_suffix(card_id)
+                card_data = pokemon_api.get_card(tcg_id, lang=card_lang)
                 if card_data:
-                    parsed = pokemon_api.parse_card_for_db(card_data, lang=lang)
+                    parsed = pokemon_api.parse_card_for_db(card_data, lang=card_lang)
                     # Ensure set exists (check by tcg_set_id since set IDs are now composite)
                     if parsed.get("set_id"):
                         set_exists = db.query(Set).filter(
@@ -351,9 +352,10 @@ def perform_price_sync(db: Session) -> dict:
 
         for card_id in priority_ids[:MAX_CARDS_PER_SYNC]:
             try:
-                card_data = pokemon_api.get_card(card_id, lang=lang)
+                tcg_id, card_lang = pokemon_api.strip_lang_suffix(card_id)
+                card_data = pokemon_api.get_card(tcg_id, lang=card_lang)
                 if card_data:
-                    parsed = pokemon_api.parse_card_for_db(card_data, lang=lang)
+                    parsed = pokemon_api.parse_card_for_db(card_data, lang=card_lang)
                     # Ensure set exists (check by tcg_set_id since set IDs are now composite)
                     if parsed.get("set_id"):
                         set_exists = db.query(Set).filter(

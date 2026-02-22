@@ -39,7 +39,8 @@ class Set(Base):
 class Card(Base):
     __tablename__ = "cards"
 
-    id = Column(String, primary_key=True)
+    id = Column(String, primary_key=True)          # Composite DB key: "sv1-1_de" / "sv1-1_en"
+    tcg_card_id = Column(String, nullable=True)    # Original TCGdex ID "sv1-1"; NULL for custom cards
     name = Column(String, nullable=False)
     set_id = Column(String, nullable=True)   # Original TCGdex set ID (no FK constraint)
     number = Column(String)

@@ -245,8 +245,20 @@ def get_set_cards(set_id: str, lang: str = "en") -> Dict:
         return response.json()
 
 
+def strip_lang_suffix(card_db_id: str) -> tuple:
+    """Return (tcg_card_id, lang) from a composite DB card ID like 'sv1-1_de'."""
+    for suffix in ("_de", "_en"):
+        if card_db_id.endswith(suffix):
+            return card_db_id[:-len(suffix)], suffix[1:]
+    return card_db_id, "en"  # fallback for custom/legacy
+
+
 def parse_card_for_db(card_data: Dict, default_set_id: Optional[str] = None, lang: Optional[str] = None) -> Dict:
     """Parse TCGdex card data into database-ready format.
+
+    ID scheme: "{tcgdex_id}_{lang}", e.g. "sv1-1_de"
+    tcg_card_id: original TCGdex ID, e.g. "sv1-1"
+    Custom cards are NOT handled here (they set their own IDs).
 
     Works with both brief card data (id/localId/name/image) returned by /cards
     and full card detail returned by /cards/{id}.
@@ -263,8 +275,13 @@ def parse_card_for_db(card_data: Dict, default_set_id: Optional[str] = None, lan
     hp_raw = card_data.get("hp")
     hp = str(hp_raw) if hp_raw is not None else None
 
+    card_lang = card_data.get("_lang") or lang or "en"
+    tcgdex_id = card_data.get("id", "")
+    db_id = f"{tcgdex_id}_{card_lang}"
+
     return {
-        "id": card_data["id"],
+        "id": db_id,
+        "tcg_card_id": tcgdex_id,
         "name": card_data.get("name", ""),
         "set_id": set_id,
         "number": card_data.get("localId"),
@@ -276,7 +293,7 @@ def parse_card_for_db(card_data: Dict, default_set_id: Optional[str] = None, lan
         "artist": card_data.get("illustrator"),
         "images_small": f"{image}/low.webp" if image else None,
         "images_large": f"{image}/high.webp" if image else None,
-        "lang": card_data.get("_lang") or lang or "en",
+        "lang": card_lang,
         **prices,
     }
 
