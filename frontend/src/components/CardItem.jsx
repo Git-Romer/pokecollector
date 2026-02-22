@@ -21,6 +21,7 @@ const RARITY_COLORS = {
 
 const PRICE_FIELD_MAP = {
   avg: 'price_market',
+  market: 'price_market',
   low: 'price_low',
   trend: 'price_trend',
   avg1: 'price_avg1',
@@ -342,7 +343,7 @@ export function CardItem({ card, showActions = true, onAddToBinder = null, compa
 
   if (compact) {
     return (
-      <div className="card cursor-pointer group p-2 hover:shadow-glow" onClick={() => setShowModal(true)}>
+      <div className="card cursor-pointer group p-2 hover:border-brand-red/20 transition-all" onClick={() => setShowModal(true)}>
         <div className="aspect-[2.5/3.5] w-full rounded-xl overflow-hidden ring-1 ring-white/5 group-hover:ring-2 group-hover:ring-brand-red/30 transition-all duration-200">
           {cardImage ? (
             <img src={cardImage} alt={cardName} className="w-full h-full object-cover shadow-lg group-hover:scale-[1.02] transition-transform duration-300" loading="lazy" />
@@ -358,7 +359,7 @@ export function CardItem({ card, showActions = true, onAddToBinder = null, compa
 
   return (
     <>
-      <div className="card cursor-pointer group hover:shadow-glow" onClick={() => setShowModal(true)}>
+      <div className="card cursor-pointer group hover:border-brand-red/20 transition-all" onClick={() => setShowModal(true)}>
         <div className="aspect-[2.5/3.5] w-full mb-3 rounded-xl overflow-hidden ring-1 ring-white/5 group-hover:ring-2 group-hover:ring-brand-red/30 transition-all duration-200">
           {cardImage ? (
             <img src={cardImage} alt={cardName} className="w-full h-full object-cover shadow-lg group-hover:scale-[1.02] transition-transform duration-300" loading="lazy" />

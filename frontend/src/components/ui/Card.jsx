@@ -36,7 +36,7 @@ export default function Card({ className = '', onClick, padding = 'md', variant 
   if (onClick) {
     base.push('cursor-pointer')
     if (variant === 'default') {
-      base.push('hover:border-brand-red/30 hover:shadow-glow active:bg-bg-elevated')
+      base.push('hover:border-brand-red/20 active:bg-bg-elevated')
     }
   }
 
