@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { Plus, Check, Heart, BookOpen, X, PenLine, Pencil, TrendingUp } from 'lucide-react'
-import { addToCollection, addToWishlist, createCustomCard, updateCustomCard, getEbayGradedPrice, getSetting, getCardInLang } from '../api/client'
+import { addToCollection, addToWishlist, createCustomCard, updateCustomCard, getEbayGradedPrice, getSetting } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import PeriodSelector, { CARD_PERIODS, PERIOD_PRICE_FIELD } from './PeriodSelector'
 import toast from 'react-hot-toast'
@@ -456,7 +456,8 @@ export function CardItem({ card, showActions = true, onAddToBinder = null, compa
 }
 
 const CARD_VARIANTS = [
-  'Normal', 'Holo', 'Reverse Holo', 'Full Art', 'Alt Art', 'Gold', 'Rainbow',
+  'Normal', 'Holo', 'Reverse Holo', 'First Edition', 'Double Rare',
+  'Full Art', 'Alt Art', 'Gold', 'Rainbow',
   'Illustration Rare', 'Special Illustration Rare', 'Crown Rare', 'Promo',
   'Art Rare', 'Ultra Rare', 'Secret Rare', 'Shiny',
 ]
@@ -469,7 +470,6 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
   const [variant, setVariant] = useState('')
   const [purchasePrice, setPurchasePrice] = useState('')
   const [modalPeriod, setModalPeriod] = useState('total')
-  const [cardLang, setCardLang] = useState(card.lang || defaultLang)
   const [grade, setGrade] = useState('raw')
   const [ebayPrice, setEbayPrice] = useState(null)
   const [ebayLoading, setEbayLoading] = useState(false)
@@ -484,21 +484,12 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
   })
   const ebayConfigured = !!(ebayKeyData?.value && ebayKeyData.value.trim())
 
-  // When language changes, resolve the correct card ID for that language
-  useEffect(() => {
-    if (card.is_custom) return
-    if (cardLang === (card.lang || defaultLang) && resolvedCardId === card.id) return
-    getCardInLang(card.id, cardLang)
-      .then(r => setResolvedCardId(r.data.id))
-      .catch(() => setResolvedCardId(card.id))
-  }, [card.id, cardLang])
-
   const fetchEbayPrice = async () => {
     if (!card.name || grade === 'raw') return
     setEbayLoading(true)
     setEbayPrice(null)
     try {
-      const result = await getEbayGradedPrice(card.name, grade, cardLang)
+      const result = await getEbayGradedPrice(card.name, grade, card.lang || 'en')
       setEbayPrice(result)
     } catch {
       setEbayPrice({ error: 'fetch_failed' })
@@ -532,12 +523,36 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
   })
 
   const ALL_PRICE_KEYS = ['trend', 'avg1', 'avg7', 'avg30', 'low']
+  const ALL_HOLO_PRICE_KEYS = ['trend-holo', 'avg1-holo', 'avg7-holo', 'avg30-holo', 'low-holo']
+
+  const HOLO_PRICE_FIELD_MAP = {
+    'trend-holo': 'price_trend_holo',
+    'avg1-holo': 'price_avg1_holo',
+    'avg7-holo': 'price_avg7_holo',
+    'avg30-holo': 'price_avg30_holo',
+    'low-holo': 'price_low_holo',
+  }
+
   const displayedPrices = ALL_PRICE_KEYS
     .map(key => {
       const val = getPriceValue(card, key)
       return val != null ? { key, val } : null
     })
     .filter(Boolean)
+
+  const displayedHoloPrices = ALL_HOLO_PRICE_KEYS
+    .map(key => {
+      const field = HOLO_PRICE_FIELD_MAP[key]
+      const val = card[field]
+      return val != null ? { key, val } : null
+    })
+    .filter(Boolean)
+
+  const tcgPrices = [
+    card.price_tcg_normal_market != null ? { key: 'tcg-normal', val: card.price_tcg_normal_market, label: 'Normal' } : null,
+    card.price_tcg_reverse_market != null ? { key: 'tcg-reverse', val: card.price_tcg_reverse_market, label: 'Reverse' } : null,
+    card.price_tcg_holo_market != null ? { key: 'tcg-holo', val: card.price_tcg_holo_market, label: 'Holo' } : null,
+  ].filter(Boolean)
 
   const periodPriceKey = PERIOD_PRICE_FIELD[modalPeriod]?.replace('price_', '') || 'trend'
   const selectedPeriodPrice = getPriceValue(card, periodPriceKey)
@@ -654,33 +669,39 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
               </div>
             )}
 
-            <div className="space-y-3">
-              {/* Language selector — fixed per card item */}
-              <div>
-                <label className="text-xs text-text-muted mb-1.5 block font-medium">
-                  🌐 {t('lang.selectLabel')}
-                </label>
-                <div className="flex gap-2">
-                  {['de', 'en'].map(l => (
-                    <button
-                      key={l}
-                      type="button"
-                      onClick={() => setCardLang(l)}
-                      className={clsx(
-                        'flex-1 py-1.5 rounded-lg text-sm font-bold transition-all border',
-                        cardLang === l
-                          ? l === 'de'
-                            ? 'bg-yellow/20 text-yellow border-yellow/50'
-                            : 'bg-blue/20 text-blue-400 border-blue-400/50'
-                          : 'bg-bg-surface text-text-muted border-border hover:border-text-muted'
-                      )}
-                    >
-                      {l === 'de' ? `🇩🇪 ${t('lang.de_full')}` : `🇬🇧 ${t('lang.en_full')}`}
-                    </button>
+            {displayedHoloPrices.length > 0 && (
+              <div className="bg-bg-card rounded-xl p-3 space-y-2">
+                <p className="text-xs text-text-muted font-medium uppercase tracking-wide">
+                  Cardmarket Holo (€)
+                </p>
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 text-xs">
+                  {displayedHoloPrices.map(({ key, val }) => (
+                    <div key={key}>
+                      <span className="text-text-muted block">{key}</span>
+                      <span className="font-bold text-green">{formatPrice(val)}</span>
+                    </div>
                   ))}
                 </div>
               </div>
+            )}
 
+            {tcgPrices.length > 0 && (
+              <div className="bg-bg-card rounded-xl p-3 space-y-2">
+                <p className="text-xs text-text-muted font-medium uppercase tracking-wide">
+                  TCGPlayer (USD)
+                </p>
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  {tcgPrices.map(({ key, val, label }) => (
+                    <div key={key}>
+                      <span className="text-text-muted block">{label}</span>
+                      <span className="font-bold text-blue-400">${val.toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-3">
               {/* Grade selector */}
               <div>
                 <label className="text-xs text-text-muted mb-1.5 block font-medium">
@@ -778,7 +799,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
                   card_id: resolvedCardId, quantity, condition,
                   variant: variant || null,
                   purchase_price: purchasePrice ? parseFloat(purchasePrice) : undefined,
-                  lang: cardLang,
+                  lang: card.lang || 'en',
                   grade: grade || 'raw',
                 })} disabled={addMutation.isPending}>
                   <Plus size={16} /> {addMutation.isPending ? t('card.adding') : t('card.addToCollection')}

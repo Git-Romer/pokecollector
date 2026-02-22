@@ -45,6 +45,29 @@ class CardBase(BaseModel):
     price_avg1: Optional[float] = None
     price_avg7: Optional[float] = None
     price_avg30: Optional[float] = None
+    # Cardmarket holo
+    price_market_holo: Optional[float] = None
+    price_low_holo: Optional[float] = None
+    price_trend_holo: Optional[float] = None
+    price_avg1_holo: Optional[float] = None
+    price_avg7_holo: Optional[float] = None
+    price_avg30_holo: Optional[float] = None
+    # TCGPlayer
+    price_tcg_normal_low: Optional[float] = None
+    price_tcg_normal_mid: Optional[float] = None
+    price_tcg_normal_high: Optional[float] = None
+    price_tcg_normal_market: Optional[float] = None
+    price_tcg_reverse_low: Optional[float] = None
+    price_tcg_reverse_mid: Optional[float] = None
+    price_tcg_reverse_market: Optional[float] = None
+    price_tcg_holo_low: Optional[float] = None
+    price_tcg_holo_mid: Optional[float] = None
+    price_tcg_holo_market: Optional[float] = None
+    # Variants
+    variants_normal: Optional[bool] = None
+    variants_reverse: Optional[bool] = None
+    variants_holo: Optional[bool] = None
+    variants_first_edition: Optional[bool] = None
 
     class Config:
         from_attributes = True

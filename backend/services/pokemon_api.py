@@ -36,8 +36,9 @@ def get_base_url(lang: str = "en") -> str:
 
 
 def extract_prices(card_data: Dict) -> Dict[str, Optional[float]]:
-    """Extract Cardmarket EUR prices from TCGdex card data."""
+    """Extract Cardmarket EUR and TCGPlayer USD prices from TCGdex card data."""
     prices = {
+        # Cardmarket non-holo
         "price_market": None,
         "price_low": None,
         "price_mid": None,
@@ -46,20 +47,69 @@ def extract_prices(card_data: Dict) -> Dict[str, Optional[float]]:
         "price_avg1": None,
         "price_avg7": None,
         "price_avg30": None,
+        # Cardmarket holo
+        "price_market_holo": None,
+        "price_low_holo": None,
+        "price_trend_holo": None,
+        "price_avg1_holo": None,
+        "price_avg7_holo": None,
+        "price_avg30_holo": None,
+        # TCGPlayer normal
+        "price_tcg_normal_low": None,
+        "price_tcg_normal_mid": None,
+        "price_tcg_normal_high": None,
+        "price_tcg_normal_market": None,
+        # TCGPlayer reverse holofoil
+        "price_tcg_reverse_low": None,
+        "price_tcg_reverse_mid": None,
+        "price_tcg_reverse_market": None,
+        # TCGPlayer holofoil
+        "price_tcg_holo_low": None,
+        "price_tcg_holo_mid": None,
+        "price_tcg_holo_market": None,
     }
 
     pricing = card_data.get("pricing") or {}
+
+    # Cardmarket
     cardmarket = pricing.get("cardmarket") or {}
     if cardmarket:
         avg = cardmarket.get("avg")
         prices["price_market"] = avg
         prices["price_low"] = cardmarket.get("low")
-        prices["price_mid"] = avg          # Use avg as mid price
-        prices["price_high"] = cardmarket.get("avg30")   # avg30 as high
+        prices["price_mid"] = avg
+        prices["price_high"] = cardmarket.get("avg30")
         prices["price_trend"] = cardmarket.get("trend")
         prices["price_avg1"] = cardmarket.get("avg1")
         prices["price_avg7"] = cardmarket.get("avg7")
         prices["price_avg30"] = cardmarket.get("avg30")
+        # Holo prices
+        prices["price_market_holo"] = cardmarket.get("avg-holo")
+        prices["price_low_holo"] = cardmarket.get("low-holo")
+        prices["price_trend_holo"] = cardmarket.get("trend-holo")
+        prices["price_avg1_holo"] = cardmarket.get("avg1-holo")
+        prices["price_avg7_holo"] = cardmarket.get("avg7-holo")
+        prices["price_avg30_holo"] = cardmarket.get("avg30-holo")
+
+    # TCGPlayer
+    tcgplayer = pricing.get("tcgplayer") or {}
+    if tcgplayer:
+        normal = tcgplayer.get("normal") or {}
+        if normal:
+            prices["price_tcg_normal_low"] = normal.get("lowPrice")
+            prices["price_tcg_normal_mid"] = normal.get("midPrice")
+            prices["price_tcg_normal_high"] = normal.get("highPrice")
+            prices["price_tcg_normal_market"] = normal.get("marketPrice")
+        reverse = tcgplayer.get("reverse-holofoil") or {}
+        if reverse:
+            prices["price_tcg_reverse_low"] = reverse.get("lowPrice")
+            prices["price_tcg_reverse_mid"] = reverse.get("midPrice")
+            prices["price_tcg_reverse_market"] = reverse.get("marketPrice")
+        holo = tcgplayer.get("holofoil") or {}
+        if holo:
+            prices["price_tcg_holo_low"] = holo.get("lowPrice")
+            prices["price_tcg_holo_mid"] = holo.get("midPrice")
+            prices["price_tcg_holo_market"] = holo.get("marketPrice")
 
     return prices
 
@@ -284,6 +334,8 @@ def parse_card_for_db(card_data: Dict, default_set_id: Optional[str] = None, lan
     tcgdex_id = card_data.get("id", "")
     db_id = f"{tcgdex_id}_{card_lang}"
 
+    variants = card_data.get("variants") or {}
+
     return {
         "id": db_id,
         "tcg_card_id": tcgdex_id,
@@ -299,6 +351,10 @@ def parse_card_for_db(card_data: Dict, default_set_id: Optional[str] = None, lan
         "images_small": f"{image}/low.webp" if image else None,
         "images_large": f"{image}/high.webp" if image else None,
         "lang": card_lang,
+        "variants_normal": variants.get("normal"),
+        "variants_reverse": variants.get("reverse"),
+        "variants_holo": variants.get("holo"),
+        "variants_first_edition": variants.get("firstEdition"),
         **prices,
     }
 

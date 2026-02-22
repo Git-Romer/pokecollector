@@ -48,22 +48,20 @@ def _card_to_dict(card: Card) -> dict:
 def _search_by_code_number(
     db: Session, set_code: str, card_number: str, page: int, page_size: int
 ) -> dict:
-    """Search for a card by set abbreviation/id + card number (localId)."""
+    """Search for a card by set abbreviation/id + card number (localId).
+    Returns cards for ALL languages so the user can filter with the top-level lang selector.
+    """
     set_code_upper = set_code.upper()
 
-    # 1. Try abbreviation (case-insensitive)
-    set_obj = db.query(Set).filter(
-        func.upper(Set.abbreviation) == set_code_upper
-    ).first()
+    # 1. Find all matching set objects (may have sv1_de AND sv1_en)
+    set_objs = db.query(Set).filter(
+        (func.upper(Set.abbreviation) == set_code_upper) |
+        (func.upper(Set.id) == set_code_upper) |
+        (func.upper(Set.tcg_set_id) == set_code_upper)
+    ).all()
 
-    # 2. Fall back to set id (case-insensitive)
-    if not set_obj:
-        set_obj = db.query(Set).filter(
-            func.upper(Set.id) == set_code_upper
-        ).first()
-
-    if not set_obj:
-        # 3. Fall back to live TCGdex API to find the set by abbreviation
+    if not set_objs:
+        # Fall back to live TCGdex API to find the set by abbreviation
         try:
             api_sets = pokemon_api.get_all_sets()
             for api_set in api_sets:
@@ -72,7 +70,6 @@ def _search_by_code_number(
                     abbr_obj.get("official") if isinstance(abbr_obj, dict) else None
                 )
                 if official and official.upper() == set_code_upper:
-                    # Upsert this set into the DB so future lookups are instant
                     parsed_set = pokemon_api.parse_set_for_db(api_set)
                     parsed_set["lang"] = api_set.get("_lang", "en")
                     existing_set = db.query(Set).filter(Set.id == parsed_set["id"]).first()
@@ -86,78 +83,74 @@ def _search_by_code_number(
                         db.add(set_obj)
                     db.commit()
                     db.refresh(set_obj)
-                    break
+            set_objs = db.query(Set).filter(
+                (func.upper(Set.abbreviation) == set_code_upper) |
+                (func.upper(Set.id) == set_code_upper) |
+                (func.upper(Set.tcg_set_id) == set_code_upper)
+            ).all()
         except Exception:
             pass
 
-    if not set_obj:
+    if not set_objs:
         return {"data": [], "total_count": 0, "page": page, "page_size": page_size}
 
-    # Use original TCGdex ID (cards.set_id stores this, not the composite DB key)
-    tcg_set_id = set_obj.tcg_set_id or set_obj.id
-    set_lang = set_obj.lang or "en"
+    # Collect unique TCGdex set IDs
+    tcg_set_ids = list({s.tcg_set_id or s.id for s in set_objs})
 
-    # 4. Look for card in DB (number may be zero-padded or not)
-    card = db.query(Card).filter(
-        Card.set_id == tcg_set_id,
+    # 2. Look for cards in DB matching any of those set IDs and the given number
+    cards = db.query(Card).filter(
+        Card.set_id.in_(tcg_set_ids),
         Card.number == card_number,
-    ).first()
-
-    if card:
-        return {
-            "data": [_card_to_dict(card)],
-            "total_count": 1,
-            "page": page,
-            "page_size": page_size,
-        }
+    ).all()
 
     # Also try without leading zeros (e.g. "022" → "22")
-    card_number_stripped = card_number.lstrip("0") or "0"
-    if card_number_stripped != card_number:
-        card = db.query(Card).filter(
-            Card.set_id == tcg_set_id,
-            Card.number == card_number_stripped,
-        ).first()
-        if card:
-            return {
-                "data": [_card_to_dict(card)],
-                "total_count": 1,
-                "page": page,
-                "page_size": page_size,
-            }
+    if not cards:
+        card_number_stripped = card_number.lstrip("0") or "0"
+        if card_number_stripped != card_number:
+            cards = db.query(Card).filter(
+                Card.set_id.in_(tcg_set_ids),
+                Card.number == card_number_stripped,
+            ).all()
 
-    # 5. Card not in DB — fetch the full set from TCGdex and cache all cards
-    try:
-        set_data = pokemon_api.get_set_cards(tcg_set_id, lang=set_lang)
-        for card_data in set_data.get("cards", []):
-            parsed = pokemon_api.parse_card_for_db(card_data, default_set_id=tcg_set_id, lang=set_lang)
-            existing = db.query(Card).filter(Card.id == parsed["id"]).first()
-            if not existing:
-                db.add(Card(**parsed))
-        db.commit()
-    except Exception:
-        pass
+    # 3. Card not in DB — fetch from TCGdex and cache
+    if not cards:
+        for set_obj in set_objs:
+            tcg_set_id = set_obj.tcg_set_id or set_obj.id
+            set_lang = set_obj.lang or "en"
+            try:
+                set_data = pokemon_api.get_set_cards(tcg_set_id, lang=set_lang)
+                for card_data in set_data.get("cards", []):
+                    parsed = pokemon_api.parse_card_for_db(card_data, default_set_id=tcg_set_id, lang=set_lang)
+                    existing = db.query(Card).filter(Card.id == parsed["id"]).first()
+                    if not existing:
+                        db.add(Card(**parsed))
+                db.commit()
+            except Exception:
+                pass
 
-    # Search again after caching
-    card = db.query(Card).filter(
-        Card.set_id == tcg_set_id,
-        Card.number == card_number,
-    ).first()
-    if not card and card_number_stripped != card_number:
-        card = db.query(Card).filter(
-            Card.set_id == tcg_set_id,
-            Card.number == card_number_stripped,
-        ).first()
+        cards = db.query(Card).filter(
+            Card.set_id.in_(tcg_set_ids),
+            Card.number == card_number,
+        ).all()
+        if not cards:
+            card_number_stripped = card_number.lstrip("0") or "0"
+            if card_number_stripped != card_number:
+                cards = db.query(Card).filter(
+                    Card.set_id.in_(tcg_set_ids),
+                    Card.number == card_number_stripped,
+                ).all()
 
-    if card:
-        return {
-            "data": [_card_to_dict(card)],
-            "total_count": 1,
-            "page": page,
-            "page_size": page_size,
-        }
+    if not cards:
+        return {"data": [], "total_count": 0, "page": page, "page_size": page_size}
 
-    return {"data": [], "total_count": 0, "page": page, "page_size": page_size}
+    start = (page - 1) * page_size
+    page_cards = cards[start:start + page_size]
+    return {
+        "data": [_card_to_dict(c) for c in page_cards],
+        "total_count": len(cards),
+        "page": page,
+        "page_size": page_size,
+    }
 
 
 @router.post("/custom")
