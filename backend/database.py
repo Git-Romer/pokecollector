@@ -112,6 +112,29 @@ def _run_migrations(conn):
         "ALTER TABLE sets ADD COLUMN IF NOT EXISTS release_date VARCHAR",
         # v39: Add tcg_card_id column to cards table (original TCGdex ID, separate from composite DB key)
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS tcg_card_id VARCHAR",
+        # v40: Add Cardmarket holo price columns
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS price_market_holo FLOAT",
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS price_low_holo FLOAT",
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS price_trend_holo FLOAT",
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS price_avg1_holo FLOAT",
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS price_avg7_holo FLOAT",
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS price_avg30_holo FLOAT",
+        # v40: Add TCGPlayer price columns
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS price_tcg_normal_low FLOAT",
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS price_tcg_normal_mid FLOAT",
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS price_tcg_normal_high FLOAT",
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS price_tcg_normal_market FLOAT",
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS price_tcg_reverse_low FLOAT",
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS price_tcg_reverse_mid FLOAT",
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS price_tcg_reverse_market FLOAT",
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS price_tcg_holo_low FLOAT",
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS price_tcg_holo_mid FLOAT",
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS price_tcg_holo_market FLOAT",
+        # v40: Add variant boolean columns
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS variants_normal BOOLEAN",
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS variants_reverse BOOLEAN",
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS variants_holo BOOLEAN",
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS variants_first_edition BOOLEAN",
     ]
     for stmt in migrations:
         try:

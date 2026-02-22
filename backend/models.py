@@ -63,6 +63,31 @@ class Card(Base):
     price_avg1 = Column(Float)
     price_avg7 = Column(Float)
     price_avg30 = Column(Float)
+    # Cardmarket EUR holo prices
+    price_market_holo = Column(Float)
+    price_low_holo = Column(Float)
+    price_trend_holo = Column(Float)
+    price_avg1_holo = Column(Float)
+    price_avg7_holo = Column(Float)
+    price_avg30_holo = Column(Float)
+    # TCGPlayer USD prices — normal variant
+    price_tcg_normal_low = Column(Float)
+    price_tcg_normal_mid = Column(Float)
+    price_tcg_normal_high = Column(Float)
+    price_tcg_normal_market = Column(Float)
+    # TCGPlayer USD prices — reverse holofoil variant
+    price_tcg_reverse_low = Column(Float)
+    price_tcg_reverse_mid = Column(Float)
+    price_tcg_reverse_market = Column(Float)
+    # TCGPlayer USD prices — holofoil variant
+    price_tcg_holo_low = Column(Float)
+    price_tcg_holo_mid = Column(Float)
+    price_tcg_holo_market = Column(Float)
+    # Card variants from TCGdex
+    variants_normal = Column(Boolean)
+    variants_reverse = Column(Boolean)
+    variants_holo = Column(Boolean)
+    variants_first_edition = Column(Boolean)
     updated_at = Column(DateTime, default=func.now())
 
     # Relationship to Set via tcg_set_id (viewonly, no DB FK)
