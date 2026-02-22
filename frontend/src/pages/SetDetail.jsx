@@ -19,8 +19,10 @@ export default function SetDetail() {
     queryFn: () => getSetChecklist(setId).then(r => r.data),
   })
 
+  const setLang = data?.set?.lang || 'en'
+
   const addMutation = useMutation({
-    mutationFn: (cardId) => addToCollection({ card_id: cardId, quantity: 1, condition: 'NM' }),
+    mutationFn: (cardId) => addToCollection({ card_id: cardId, quantity: 1, condition: 'NM', lang: setLang }),
     onSuccess: () => {
       toast.success(t('card.addedToCollection'))
       queryClient.invalidateQueries({ queryKey: ['set-checklist', setId] })
@@ -138,11 +140,15 @@ export default function SetDetail() {
       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
         {filteredCards.map((card) => (
           <div key={card.id}
+            onClick={() => { if (!card.owned) addMutation.mutate(card.id) }}
+            onKeyDown={(e) => { if (!card.owned && (e.key === 'Enter' || e.key === ' ')) addMutation.mutate(card.id) }}
+            role={card.owned ? undefined : 'button'}
+            tabIndex={card.owned ? undefined : 0}
             className={clsx(
-              'relative group rounded-lg overflow-hidden cursor-pointer transition-all duration-200',
+              'relative group rounded-lg overflow-hidden transition-all duration-200',
               card.owned
-                ? 'ring-2 ring-green/50 hover:ring-green'
-                : 'opacity-60 hover:opacity-90 ring-1 ring-brand-red/30 hover:ring-brand-red/60'
+                ? 'ring-2 ring-green/50 hover:ring-green cursor-default'
+                : 'opacity-60 hover:opacity-90 ring-1 ring-brand-red/30 hover:ring-brand-red/60 cursor-pointer'
             )}>
             {card.images_small ? (
               <img src={card.images_small} alt={card.name} className="w-full aspect-[2.5/3.5] object-cover" loading="lazy" />
