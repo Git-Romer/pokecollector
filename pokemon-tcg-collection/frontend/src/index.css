@@ -616,10 +616,6 @@ body {
 }
 .card-3d:hover {
   transform: perspective(700px) rotateY(-8deg) rotateX(4deg) scale(1.03);
-  box-shadow:
-    10px 18px 40px rgba(0,0,0,0.7),
-    -3px 0 18px rgba(227,0,11,0.12),
-    inset 0 0 0 1px rgba(255,255,255,0.08);
 }
 
 /* ================================================ */
