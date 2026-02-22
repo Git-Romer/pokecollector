@@ -319,13 +319,18 @@ def migrate_custom_card(match_id: int, db: Session = Depends(get_db)):
     custom_card_id = match.custom_card_id
     api_card_id = match.api_card_id
 
+    # Determine the language of the custom card for language-aware migration
+    custom_card_obj = db.query(Card).filter(Card.id == custom_card_id).first()
+    custom_lang = (custom_card_obj.lang or "en") if custom_card_obj else "en"
+
     # 1. Fetch API card and upsert in DB
     try:
-        api_data = pokemon_api.get_card(api_card_id, lang="en")
-        fetch_lang = "en"
+        api_data = pokemon_api.get_card(api_card_id, lang=custom_lang)
+        fetch_lang = custom_lang
         if not api_data:
-            api_data = pokemon_api.get_card(api_card_id, lang="de")
-            fetch_lang = "de"
+            fallback_lang = "de" if custom_lang == "en" else "en"
+            api_data = pokemon_api.get_card(api_card_id, lang=fallback_lang)
+            fetch_lang = fallback_lang
         if not api_data:
             raise HTTPException(status_code=404, detail="API card not found on TCGdex")
         parsed = pokemon_api.parse_card_for_db(api_data, lang=fetch_lang)
@@ -364,7 +369,7 @@ def migrate_custom_card(match_id: int, db: Session = Depends(get_db)):
     try:
         db.query(CollectionItem).filter(
             CollectionItem.card_id == custom_card_id
-        ).update({"card_id": composite_api_card_id}, synchronize_session=False)
+        ).update({"card_id": composite_api_card_id, "lang": custom_lang}, synchronize_session=False)
     except Exception:
         pass  # ignore unique constraint violations (duplicates)
 

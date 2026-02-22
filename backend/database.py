@@ -209,7 +209,8 @@ def migrate_card_ids():
         db.close()
 
 
-
+def init_db():
+    """Initialize the database: create tables, run migrations, seed settings."""
     from models import Base as ModelBase, Setting
     ModelBase.metadata.create_all(bind=engine)
 
@@ -232,7 +233,7 @@ def migrate_card_ids():
         for key, value in DEFAULT_SETTINGS.items():
             existing = db.query(Setting).filter(Setting.key == key).first()
             if not existing:
-                db.add(Setting(key=key, value=value))
+                db.add(Setting(key=key, value=str(value)))
         db.commit()
     except Exception:
         db.rollback()

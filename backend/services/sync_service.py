@@ -159,9 +159,10 @@ def check_custom_card_matches(db: Session):
         if existing_match:
             continue
 
+        card_lang = card.lang or "en"
         api_card_id = f"{card.set_id}-{card.number}"
         try:
-            api_card = pokemon_api.get_card(api_card_id, lang=_get_language(db))
+            api_card = pokemon_api.get_card(api_card_id, lang=card_lang)
             if api_card:
                 match = CustomCardMatch(
                     custom_card_id=card.id,
