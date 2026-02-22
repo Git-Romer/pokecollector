@@ -140,8 +140,10 @@ Respond ONLY with this exact JSON (no markdown, no explanation):
                         card_id = c.get("id")
                         if not card_id:
                             continue
+                        composite_id = f"{card_id}_{lang}"
                         all_results.append({
-                            "id": card_id,
+                            "id": composite_id,
+                            "tcg_card_id": card_id,
                             "name": c.get("name"),
                             "set": c.get("set", {}).get("name") if isinstance(c.get("set"), dict) else None,
                             "number": c.get("localId"),

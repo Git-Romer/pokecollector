@@ -330,7 +330,7 @@ def get_custom_matches(db: Session = Depends(get_db)):
         try:
             api_data = pokemon_api.get_card(match.api_card_id, lang="en")
             if api_data:
-                parsed = pokemon_api.parse_card_for_db(api_data)
+                parsed = pokemon_api.parse_card_for_db(api_data, lang="en")
                 api_card_info = {
                     "id": parsed["id"],
                     "name": parsed["name"],
@@ -376,11 +376,14 @@ def migrate_custom_card(match_id: int, db: Session = Depends(get_db)):
     # 1. Fetch API card and upsert in DB
     try:
         api_data = pokemon_api.get_card(api_card_id, lang="en")
+        fetch_lang = "en"
         if not api_data:
             api_data = pokemon_api.get_card(api_card_id, lang="de")
+            fetch_lang = "de"
         if not api_data:
             raise HTTPException(status_code=404, detail="API card not found on TCGdex")
-        parsed = pokemon_api.parse_card_for_db(api_data)
+        parsed = pokemon_api.parse_card_for_db(api_data, lang=fetch_lang)
+        composite_api_card_id = parsed["id"]  # e.g. "sv1-1_en"
 
         # Ensure set record exists
         if parsed.get("set_id"):
@@ -393,8 +396,8 @@ def migrate_custom_card(match_id: int, db: Session = Depends(get_db)):
                 else:
                     db.add(Set(id=parsed["set_id"], name=parsed["set_id"], total=0))
 
-        # Upsert API card
-        existing_api_card = db.query(Card).filter(Card.id == api_card_id).first()
+        # Upsert API card using composite ID
+        existing_api_card = db.query(Card).filter(Card.id == composite_api_card_id).first()
         if existing_api_card:
             for k, v in parsed.items():
                 if k != "id" and v is not None:
@@ -415,7 +418,7 @@ def migrate_custom_card(match_id: int, db: Session = Depends(get_db)):
     try:
         db.query(CollectionItem).filter(
             CollectionItem.card_id == custom_card_id
-        ).update({"card_id": api_card_id}, synchronize_session=False)
+        ).update({"card_id": composite_api_card_id}, synchronize_session=False)
     except Exception:
         pass  # ignore unique constraint violations (duplicates)
 
@@ -423,7 +426,7 @@ def migrate_custom_card(match_id: int, db: Session = Depends(get_db)):
     try:
         db.query(WishlistItem).filter(
             WishlistItem.card_id == custom_card_id
-        ).update({"card_id": api_card_id}, synchronize_session=False)
+        ).update({"card_id": composite_api_card_id}, synchronize_session=False)
     except Exception:
         pass
 
@@ -431,7 +434,7 @@ def migrate_custom_card(match_id: int, db: Session = Depends(get_db)):
     try:
         db.query(BinderCard).filter(
             BinderCard.card_id == custom_card_id
-        ).update({"card_id": api_card_id}, synchronize_session=False)
+        ).update({"card_id": composite_api_card_id}, synchronize_session=False)
     except Exception:
         pass
 
@@ -451,7 +454,7 @@ def migrate_custom_card(match_id: int, db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Migration failed: {e}")
 
-    return {"status": "migrated", "api_card_id": api_card_id}
+    return {"status": "migrated", "api_card_id": composite_api_card_id}
 
 
 @router.post("/custom/dismiss/{match_id}")
@@ -497,17 +500,21 @@ def get_card(card_id: str, lang: Optional[str] = Query("en"), db: Session = Depe
         return card
 
     # Fetch full card detail from TCGdex (includes pricing)
-    card_lang = lang or "en"
+    # strip_lang_suffix handles both composite IDs (sv1-1_de) and legacy IDs (sv1-1)
+    tcg_card_id, detected_lang = pokemon_api.strip_lang_suffix(card_id)
+    card_lang = lang or detected_lang
     try:
-        card_data = pokemon_api.get_card(card_id, lang=card_lang)
+        card_data = pokemon_api.get_card(tcg_card_id, lang=card_lang)
         if not card_data:
             # Try the other language as fallback
             fallback = "de" if card_lang == "en" else "en"
-            card_data = pokemon_api.get_card(card_id, lang=fallback)
+            card_data = pokemon_api.get_card(tcg_card_id, lang=fallback)
+            if card_data:
+                card_lang = fallback
         if not card_data:
             raise HTTPException(status_code=404, detail="Card not found")
 
-        parsed = pokemon_api.parse_card_for_db(card_data)
+        parsed = pokemon_api.parse_card_for_db(card_data, lang=card_lang)
 
         # Ensure set exists
         if parsed.get("set_id"):

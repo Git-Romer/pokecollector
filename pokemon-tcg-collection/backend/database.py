@@ -110,6 +110,8 @@ def _run_migrations(conn):
         END$$""",
         # v38: Add release_date column to sets table
         "ALTER TABLE sets ADD COLUMN IF NOT EXISTS release_date VARCHAR",
+        # v39: Add tcg_card_id column to cards table (original TCGdex ID, separate from composite DB key)
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS tcg_card_id VARCHAR",
     ]
     for stmt in migrations:
         try:
@@ -117,6 +119,92 @@ def _run_migrations(conn):
             conn.commit()
         except Exception:
             conn.rollback()
+
+
+def migrate_card_ids():
+    """Migrate card IDs from plain TCGdex format (e.g. 'sv1-1') to composite format (e.g. 'sv1-1_de').
+
+    This migration is idempotent — safe to run multiple times.
+    Custom cards (is_custom=True) are skipped.
+    """
+    import logging
+    from sqlalchemy import text as sql_text
+    logger = logging.getLogger(__name__)
+
+    db = SessionLocal()
+    try:
+        # Step 1: Find non-custom cards with old-format IDs (not ending in _en or _de)
+        rows = db.execute(sql_text(
+            "SELECT id, lang FROM cards "
+            "WHERE (is_custom IS NULL OR is_custom = FALSE) "
+            "AND id NOT LIKE '%\\_en' AND id NOT LIKE '%\\_de'"
+        )).fetchall()
+
+        if rows:
+            logger.info(f"migrate_card_ids: migrating {len(rows)} card(s) to composite IDs...")
+
+        for row in rows:
+            old_id = row[0]
+            lang = row[1] or "en"
+            new_id = f"{old_id}_{lang}"
+            try:
+                db.execute(sql_text(
+                    "UPDATE collection SET card_id = :new_id WHERE card_id = :old_id"
+                ), {"new_id": new_id, "old_id": old_id})
+                db.execute(sql_text(
+                    "UPDATE wishlist SET card_id = :new_id WHERE card_id = :old_id"
+                ), {"new_id": new_id, "old_id": old_id})
+                db.execute(sql_text(
+                    "UPDATE price_history SET card_id = :new_id WHERE card_id = :old_id"
+                ), {"new_id": new_id, "old_id": old_id})
+                db.execute(sql_text(
+                    "UPDATE binder_cards SET card_id = :new_id WHERE card_id = :old_id"
+                ), {"new_id": new_id, "old_id": old_id})
+                db.execute(sql_text(
+                    "UPDATE custom_card_matches SET custom_card_id = :new_id WHERE custom_card_id = :old_id"
+                ), {"new_id": new_id, "old_id": old_id})
+                db.execute(sql_text(
+                    "UPDATE cards SET id = :new_id, tcg_card_id = :old_id WHERE id = :old_id"
+                ), {"new_id": new_id, "old_id": old_id})
+                db.commit()
+            except Exception as e:
+                db.rollback()
+                logger.warning(f"migrate_card_ids: failed to migrate card '{old_id}': {e}")
+
+        # Step 2: Backfill tcg_card_id for already-composite cards that have NULL tcg_card_id
+        composite_rows = db.execute(sql_text(
+            "SELECT id FROM cards "
+            "WHERE tcg_card_id IS NULL "
+            "AND (is_custom IS NULL OR is_custom = FALSE) "
+            "AND (id LIKE '%\\_en' OR id LIKE '%\\_de')"
+        )).fetchall()
+
+        for row in composite_rows:
+            composite_id = row[0]
+            for suffix in ("_en", "_de"):
+                if composite_id.endswith(suffix):
+                    tcg_card_id = composite_id[:-len(suffix)]
+                    break
+            else:
+                continue
+            try:
+                db.execute(sql_text(
+                    "UPDATE cards SET tcg_card_id = :tcg_id WHERE id = :id"
+                ), {"tcg_id": tcg_card_id, "id": composite_id})
+                db.commit()
+            except Exception as e:
+                db.rollback()
+                logger.warning(f"migrate_card_ids: failed to backfill tcg_card_id for '{composite_id}': {e}")
+
+        if rows or composite_rows:
+            logger.info("migrate_card_ids: migration complete")
+
+    except Exception as e:
+        db.rollback()
+        import logging as _logging
+        _logging.getLogger(__name__).warning(f"migrate_card_ids: migration aborted: {e}")
+    finally:
+        db.close()
 
 
 def init_db():
@@ -129,6 +217,12 @@ def init_db():
             _run_migrations(conn)
     except Exception:
         pass  # Non-blocking — may not be needed on fresh installs
+
+    # Migrate card IDs to composite format (idempotent)
+    try:
+        migrate_card_ids()
+    except Exception:
+        pass  # Non-blocking
 
     # Initialize default settings (INSERT IF NOT EXISTS)
     db = SessionLocal()
