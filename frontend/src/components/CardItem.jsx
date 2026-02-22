@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { Plus, Check, Heart, BookOpen, X, PenLine, Pencil, TrendingUp } from 'lucide-react'
-import { addToCollection, addToWishlist, createCustomCard, updateCustomCard, getEbayGradedPrice, getSetting } from '../api/client'
+import { addToCollection, addToWishlist, createCustomCard, updateCustomCard, getEbayGradedPrice, getSetting, getCardInLang } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import PeriodSelector, { CARD_PERIODS, PERIOD_PRICE_FIELD } from './PeriodSelector'
 import toast from 'react-hot-toast'
@@ -469,10 +469,11 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
   const [variant, setVariant] = useState('')
   const [purchasePrice, setPurchasePrice] = useState('')
   const [modalPeriod, setModalPeriod] = useState('total')
-  const [cardLang, setCardLang] = useState(defaultLang)
+  const [cardLang, setCardLang] = useState(card.lang || defaultLang)
   const [grade, setGrade] = useState('raw')
   const [ebayPrice, setEbayPrice] = useState(null)
   const [ebayLoading, setEbayLoading] = useState(false)
+  const [resolvedCardId, setResolvedCardId] = useState(card.id)
   const { t, formatPrice } = useSettings()
   const queryClient = useQueryClient()
 
@@ -482,6 +483,15 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
     queryFn: () => getSetting('ebay_app_id').catch(() => ({ value: '' })),
   })
   const ebayConfigured = !!(ebayKeyData?.value && ebayKeyData.value.trim())
+
+  // When language changes, resolve the correct card ID for that language
+  useEffect(() => {
+    if (card.is_custom) return
+    if (cardLang === (card.lang || defaultLang) && resolvedCardId === card.id) return
+    getCardInLang(card.id, cardLang)
+      .then(r => setResolvedCardId(r.data.id))
+      .catch(() => setResolvedCardId(card.id))
+  }, [card.id, cardLang])
 
   const fetchEbayPrice = async () => {
     if (!card.name || grade === 'raw') return
@@ -765,7 +775,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
 
               <div className="flex gap-2 pb-safe">
                 <button className="btn-primary flex-1" onClick={() => addMutation.mutate({
-                  card_id: card.id, quantity, condition,
+                  card_id: resolvedCardId, quantity, condition,
                   variant: variant || null,
                   purchase_price: purchasePrice ? parseFloat(purchasePrice) : undefined,
                   lang: cardLang,
