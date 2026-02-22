@@ -442,3 +442,334 @@ export default function Settings() {
 
       {/* ── 3. SYNCHRONISATION ── */}
       <section className="space-y-1">
+        <SectionHeader title={t('settings.sectionSync')} />
+
+        {/* Card 1: Full Sync */}
+        <SettingsCard>
+          <SettingsRow label="Sets & Karten synchronisieren" description={lastSyncText}>
+            <button
+              onClick={() => syncMutation.mutate()}
+              disabled={isRunning}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity disabled:opacity-50"
+              style={{ background: 'rgba(227,0,11,0.15)', color: '#e3000b', border: '1px solid rgba(227,0,11,0.3)' }}
+            >
+              <RefreshCw size={13} className={isRunning ? 'animate-spin' : ''} />
+              {isRunning ? t('settings.running') : t('settings.syncButton')}
+            </button>
+          </SettingsRow>
+          <SettingsRow label="Intervall" description="Sets & Karten" last>
+            <SelectControl
+              value={fullSyncIntervalDays}
+              options={[
+                { value: '1',  label: '1 Tag' },
+                { value: '2',  label: '2 Tage' },
+                { value: '3',  label: '3 Tage' },
+                { value: '5',  label: '5 Tage' },
+                { value: '7',  label: '7 Tage' },
+                { value: '14', label: '14 Tage' },
+                { value: '30', label: '30 Tage' },
+              ]}
+              onChange={handleFullSyncIntervalChange}
+            />
+          </SettingsRow>
+        </SettingsCard>
+
+        {/* Card 2: Price Sync */}
+        <SettingsCard>
+          <SettingsRow label="Nur Preise synchronisieren" description={lastSyncText}>
+            <button
+              onClick={() => priceSyncMutation.mutate()}
+              disabled={isPriceSyncRunning}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity disabled:opacity-50"
+              style={{ background: 'rgba(227,0,11,0.15)', color: '#e3000b', border: '1px solid rgba(227,0,11,0.3)' }}
+            >
+              <RefreshCw size={13} className={isPriceSyncRunning ? 'animate-spin' : ''} />
+              {isPriceSyncRunning ? t('settings.running') : t('settings.syncButton')}
+            </button>
+          </SettingsRow>
+          <SettingsRow label="Preisintervall" description="Nur Preise" last>
+            <SelectControl
+              value={priceSyncIntervalMinutes}
+              options={[
+                { value: '15',   label: '15 Min' },
+                { value: '30',   label: '30 Min' },
+                { value: '60',   label: '1 Std' },
+                { value: '120',  label: '2 Std' },
+                { value: '360',  label: '6 Std' },
+                { value: '720',  label: '12 Std' },
+                { value: '1440', label: '24 Std' },
+              ]}
+              onChange={handlePriceSyncIntervalChange}
+            />
+          </SettingsRow>
+        </SettingsCard>
+      </section>
+
+      {/* ── 4. BENACHRICHTIGUNGEN ── */}
+      <section className="space-y-1">
+        <SectionHeader title={t('settings.sectionNotifications')} />
+        <SettingsCard>
+          <SettingsRow
+            label={t('settings.telegramBot')}
+            description={t('settings.telegramBotDesc')}
+          >
+            {telegramStatus?.configured ? (
+              <span
+                className="text-xs font-bold px-2.5 py-1 rounded-full"
+                style={{ background: 'rgba(102,187,106,0.15)', color: '#66bb6a', border: '1px solid rgba(102,187,106,0.3)' }}
+              >
+                {t('settings.telegramConfigured')}
+              </span>
+            ) : (
+              <span
+                className="text-xs font-bold px-2.5 py-1 rounded-full"
+                style={{ background: 'rgba(227,0,11,0.1)', color: '#e3000b', border: '1px solid rgba(227,0,11,0.25)' }}
+              >
+                {t('settings.telegramNotConfigured')}
+              </span>
+            )}
+          </SettingsRow>
+          <SettingsRow label={t('settings.telegramBotToken')} description={t('settings.telegramBotTokenDesc')}>
+            <div className="flex items-center gap-2">
+              <input
+                type="password"
+                value={telegramBotToken}
+                onChange={e => { setTelegramBotToken(e.target.value); setTelegramBotTokenDirty(true) }}
+                placeholder="1234567890:AAF..."
+                className="input text-xs font-mono"
+                style={{ minWidth: 0, width: 180 }}
+              />
+              {telegramBotTokenDirty && (
+                <button
+                  onClick={async () => {
+                    await saveSetting('telegram_bot_token', telegramBotToken)
+                    setTelegramBotTokenDirty(false)
+                    queryClient.invalidateQueries({ queryKey: ['setting', 'telegram_bot_token'] })
+                    queryClient.invalidateQueries({ queryKey: ['telegram-status'] })
+                    toast.success(t('settings.apiKeySaved'))
+                  }}
+                  className="btn-primary-sm flex-shrink-0"
+                >
+                  {t('common.save')}
+                </button>
+              )}
+            </div>
+          </SettingsRow>
+          <SettingsRow label={t('settings.telegramChatId')} description={t('settings.telegramChatIdDesc')}>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={telegramChatId}
+                onChange={e => { setTelegramChatId(e.target.value); setTelegramChatIdDirty(true) }}
+                placeholder="-100123456789"
+                className="input text-xs font-mono"
+                style={{ minWidth: 0, width: 140 }}
+              />
+              {telegramChatIdDirty && (
+                <button
+                  onClick={async () => {
+                    await saveSetting('telegram_chat_id', telegramChatId)
+                    setTelegramChatIdDirty(false)
+                    queryClient.invalidateQueries({ queryKey: ['setting', 'telegram_chat_id'] })
+                    queryClient.invalidateQueries({ queryKey: ['telegram-status'] })
+                    toast.success(t('settings.apiKeySaved'))
+                  }}
+                  className="btn-primary-sm flex-shrink-0"
+                >
+                  {t('common.save')}
+                </button>
+              )}
+            </div>
+          </SettingsRow>
+          <SettingsRow
+            label={t('settings.priceAlerts')}
+            description={t('settings.priceAlertsDesc')}
+          >
+            <Toggle value={priceAlertsEnabled} onChange={handlePriceAlertsToggle} />
+          </SettingsRow>
+          {priceAlertsEnabled && (
+            <SettingsRow
+              label={t('settings.threshold')}
+              description={t('settings.thresholdDesc')}
+              last
+            >
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="number"
+                  value={alertThreshold}
+                  onChange={(e) => setAlertThreshold(e.target.value)}
+                  onBlur={handleAlertThresholdBlur}
+                  min="1"
+                  max="100"
+                  className="text-xs font-semibold text-text-primary rounded-lg px-3 py-1.5 outline-none w-16 text-right"
+                  style={{
+                    background: 'rgba(255,255,255,0.07)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                  }}
+                />
+                <span className="text-xs text-text-muted">%</span>
+              </div>
+            </SettingsRow>
+          )}
+          {!priceAlertsEnabled && <div style={{ height: 0 }} />}
+        </SettingsCard>
+      </section>
+
+      {/* ── 5. DATEN ── */}
+      <section className="space-y-1">
+        <SectionHeader title={t('settings.sectionData')} />
+        <SettingsCard>
+          <SettingsRow label={t('settings.csvExport')} description={t('settings.csvExportDesc')}>
+            <button
+              onClick={exportCSV}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity"
+              style={{ background: 'rgba(255,255,255,0.07)', color: '#90a4ae', border: '1px solid rgba(255,255,255,0.1)' }}
+            >
+              <Download size={13} /> {t('settings.exportButton')}
+            </button>
+          </SettingsRow>
+          <SettingsRow label={t('settings.backupDownload')} description={t('settings.backupDownloadDesc')}>
+            <button
+              onClick={downloadBackup}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity"
+              style={{ background: 'rgba(255,255,255,0.07)', color: '#90a4ae', border: '1px solid rgba(255,255,255,0.1)' }}
+            >
+              <Download size={13} /> {t('settings.backupButton')}
+            </button>
+          </SettingsRow>
+          <SettingsRow label={t('settings.backupImport')} description={t('settings.backupImportDesc')} last>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={restoring}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity disabled:opacity-50"
+              style={{ background: 'rgba(255,255,255,0.07)', color: '#90a4ae', border: '1px solid rgba(255,255,255,0.1)' }}
+            >
+              <Upload size={13} /> {restoring ? t('settings.importing') : t('settings.importButton')}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".sql"
+              className="hidden"
+              onChange={handleRestoreUpload}
+            />
+          </SettingsRow>
+        </SettingsCard>
+      </section>
+
+      {/* ── 6. KI / KARTEN-SCANNER ── */}
+      <section className="space-y-1">
+        <SectionHeader title={t('settings.sectionAI')} />
+        <SettingsCard>
+          <SettingsRow label={t('settings.geminiApiKey')} description={t('settings.geminiApiKeyDesc')} last>
+            <div className="flex items-center gap-2 w-full mt-2">
+              <input
+                type="password"
+                value={geminiKey}
+                onChange={e => { setGeminiKey(e.target.value); setGeminiDirty(true) }}
+                placeholder="AIza..."
+                className="input flex-1 text-xs font-mono"
+                style={{ minWidth: 0 }}
+              />
+              {geminiDirty && (
+                <button
+                  onClick={async () => {
+                    await saveSetting('gemini_api_key', geminiKey)
+                    setGeminiDirty(false)
+                    queryClient.invalidateQueries({ queryKey: ['setting', 'gemini_api_key'] })
+                    toast.success(t('settings.apiKeySaved'))
+                  }}
+                  className="btn-primary-sm flex-shrink-0"
+                >
+                  {t('common.save')}
+                </button>
+              )}
+            </div>
+          </SettingsRow>
+        </SettingsCard>
+      </section>
+
+      {/* ── 7. EBAY API ── */}
+      <section className="space-y-1">
+        <SectionHeader title={t('settings.sectionEbay')} />
+        <SettingsCard>
+          <SettingsRow
+            label={t('settings.ebayAppId')}
+            description={t('settings.ebayAppIdDesc')}
+            last
+          >
+            <div className="flex flex-col items-end gap-2 w-full">
+              <div className="flex items-center gap-2 w-full justify-end">
+                <input
+                  type="password"
+                  value={ebayAppId}
+                  onChange={e => { setEbayAppId(e.target.value); setEbayDirty(true) }}
+                  placeholder="YourApp-abc12-34def-56789-gh0ij"
+                  className="input flex-1 text-xs font-mono"
+                  style={{ minWidth: 0, maxWidth: 220 }}
+                />
+                {ebayDirty && (
+                  <button
+                    onClick={async () => {
+                      await saveSetting('ebay_app_id', ebayAppId)
+                      setEbayDirty(false)
+                      queryClient.invalidateQueries({ queryKey: ['setting', 'ebay_app_id'] })
+                      toast.success(t('settings.apiKeySaved'))
+                    }}
+                    className="btn-primary-sm flex-shrink-0"
+                  >
+                    {t('common.save')}
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {ebayAppId && ebayAppId.trim() ? (
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-full"
+                    style={{ background: 'rgba(102,187,106,0.15)', color: '#66bb6a', border: '1px solid rgba(102,187,106,0.3)' }}>
+                    ✅ {t('settings.ebayConfigured')}
+                  </span>
+                ) : (
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-full"
+                    style={{ background: 'rgba(255,152,0,0.15)', color: '#ff9800', border: '1px solid rgba(255,152,0,0.3)' }}>
+                    ⚠️ {t('settings.ebayNotConfigured')}
+                  </span>
+                )}
+                <a
+                  href="https://developer.ebay.com"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs font-semibold text-brand-red hover:opacity-80 transition-opacity"
+                >
+                  developer.ebay.com ↗
+                </a>
+              </div>
+            </div>
+          </SettingsRow>
+        </SettingsCard>
+      </section>
+
+      {/* ── 8. ÜBER DIE APP ── */}
+      <section className="space-y-1">
+        <SectionHeader title={t('settings.sectionAbout')} />
+        <SettingsCard>
+          <SettingsRow label={t('settings.app')} description="Pokemon TCG Collection">
+            <span className="text-xs font-bold text-text-muted px-2 py-1 rounded-lg"
+              style={{ background: 'rgba(255,255,255,0.05)' }}>
+              v38.0
+            </span>
+          </SettingsRow>
+          <SettingsRow label={t('settings.dataSource')} description={t('settings.dataSourceDesc')} last>
+            <a
+              href="https://tcgdex.net"
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs font-semibold text-brand-red hover:opacity-80 transition-opacity"
+            >
+              TCGdex ↗
+            </a>
+          </SettingsRow>
+        </SettingsCard>
+      </section>
+    </div>
+  )
+}
