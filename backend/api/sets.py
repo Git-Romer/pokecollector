@@ -149,7 +149,20 @@ def get_set_checklist(set_id: str, db: Session = Depends(get_db)):
         Card.lang == set_lang,
     ).order_by(Card.number.asc()).all()
 
-    # If no cards found for this language, fetch from TCGdex and cache them
+    # If no lang-filtered cards found, check if there are cards with NULL/wrong lang
+    # (pre-migration cards) and fix them
+    if not cards:
+        existing_cards = db.query(Card).filter(
+            Card.set_id == tcg_id,
+        ).order_by(Card.number.asc()).all()
+        if existing_cards:
+            # Update their lang to match this set
+            for c in existing_cards:
+                c.lang = set_lang
+            db.commit()
+            cards = existing_cards  # Use them directly
+
+    # If still no cards, fetch from TCGdex and cache them
     if not cards:
         try:
             set_data = pokemon_api.get_set_cards(tcg_id, lang=set_lang)
@@ -158,13 +171,20 @@ def get_set_checklist(set_id: str, db: Session = Depends(get_db)):
                 existing = db.query(Card).filter(Card.id == parsed["id"]).first()
                 if not existing:
                     db.add(Card(**parsed))
+                else:
+                    # Update lang on existing card if it was NULL
+                    if not existing.lang:
+                        existing.lang = set_lang
             db.commit()
             cards = db.query(Card).filter(
                 Card.set_id == tcg_id,
                 Card.lang == set_lang,
             ).order_by(Card.number.asc()).all()
         except Exception:
-            pass
+            # Last resort: return any cards for this set regardless of lang
+            cards = db.query(Card).filter(
+                Card.set_id == tcg_id,
+            ).order_by(Card.number.asc()).all()
 
     # Get owned card IDs
     owned_card_ids = {
