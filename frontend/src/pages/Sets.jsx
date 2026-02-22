@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { RefreshCw, Search, Bell, BellOff, SortAsc, Filter, ChevronUp, ChevronDown } from 'lucide-react'
+import { Search, Bell, BellOff, SortAsc, Filter, ChevronUp, ChevronDown } from 'lucide-react'
 import { getSets, markSetsSeen } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
@@ -17,19 +17,9 @@ export default function Sets() {
   const [langFilter, setLangFilter] = useState('all') // 'de' | 'en' | 'all'
   const queryClient = useQueryClient()
 
-  const { data: sets = [], isLoading, isFetching } = useQuery({
+  const { data: sets = [], isLoading } = useQuery({
     queryKey: ['sets', langFilter],
     queryFn: () => getSets({ lang: langFilter }).then(r => r.data),
-  })
-
-  const refreshMutation = useMutation({
-    mutationFn: () => getSets({ refresh: true, lang: langFilter }),
-    onSuccess: (data) => {
-      queryClient.setQueryData(['sets', langFilter], data.data)
-      queryClient.invalidateQueries({ queryKey: ['sets'] })
-      toast.success(t('sets.refreshed'))
-    },
-    onError: () => toast.error(t('sets.refreshFailed')),
   })
 
   const markSeenMutation = useMutation({
@@ -99,11 +89,6 @@ export default function Sets() {
               <BellOff size={14} /> {t('sets.markAllSeen')}
             </button>
           )}
-          <button onClick={() => refreshMutation.mutate()} disabled={refreshMutation.isPending || isFetching}
-            className="btn-ghost text-sm py-1.5">
-            <RefreshCw size={14} className={refreshMutation.isPending ? 'animate-spin' : ''} />
-            {t('common.refresh')}
-          </button>
         </div>
       </div>
 

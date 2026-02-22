@@ -8,7 +8,7 @@ import {
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts'
-import { getDashboard, triggerSync, getSyncStatus, getInvestmentTracker, getSetting } from '../api/client'
+import { getDashboard, triggerPriceSync, getSyncStatus, getInvestmentTracker, getSetting } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
 import { format, parseISO, subWeeks, subMonths, subYears } from 'date-fns'
@@ -90,7 +90,7 @@ export default function HomeScreen() {
   const trainerName = trainerNameData?.value || 'Trainer'
 
   const syncMutation = useMutation({
-    mutationFn: triggerSync,
+    mutationFn: triggerPriceSync,
     onSuccess: () => {
       toast.success(t('settings.syncStarted'))
       setTimeout(() => queryClient.invalidateQueries(), 3000)
@@ -98,7 +98,7 @@ export default function HomeScreen() {
     onError: () => toast.error(t('settings.syncFailed')),
   })
 
-  const isRunning = syncStatus?.is_running || syncMutation.isPending
+  const isRunning = syncStatus?.is_running || syncStatus?.is_price_sync_running || syncMutation.isPending
 
   const totalValue = Number(data?.total_value ?? 0)
   const totalCost = Number(data?.total_cost ?? 0)

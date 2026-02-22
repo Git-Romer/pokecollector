@@ -179,6 +179,7 @@ class SyncLog(Base):
     sets_updated = Column(Integer, default=0)
     status = Column(String, default="running")  # running/success/error
     error_message = Column(Text)
+    sync_type = Column(String, nullable=True, default="full")  # "full" or "price"
 
 
 class PortfolioSnapshot(Base):

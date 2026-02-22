@@ -2,7 +2,8 @@ import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { RefreshCw, Download, Upload } from 'lucide-react'
 import {
-  getSyncStatus, triggerSync, downloadBackup, restoreBackup, exportCSV,
+  getSyncStatus, triggerSync, triggerPriceSync, rescheduleFullSync, reschedulePriceSync,
+  downloadBackup, restoreBackup, exportCSV,
   getSetting, setSetting, getTelegramStatus, saveSettings,
 } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
@@ -124,8 +125,9 @@ export default function Settings() {
   const [geminiKey, setGeminiKey] = useState('')
   const [geminiDirty, setGeminiDirty] = useState(false)
 
-  // Sync interval
-  const [syncInterval, setSyncIntervalState] = useState('24')
+  // Full sync interval (days) and price sync interval (minutes)
+  const [fullSyncIntervalDays, setFullSyncIntervalDays] = useState('5')
+  const [priceSyncIntervalMinutes, setPriceSyncIntervalMinutes] = useState('30')
 
   // Notification settings
   const [priceAlertsEnabled, setPriceAlertsEnabled] = useState(false)
@@ -137,9 +139,14 @@ export default function Settings() {
     queryFn: () => getSetting('trainer_name').catch(() => ({ value: 'TRAINER' })),
   })
 
-  const { data: syncIntervalData } = useQuery({
-    queryKey: ['setting', 'sync_interval_hours'],
-    queryFn: () => getSetting('sync_interval_hours').catch(() => ({ value: '24' })),
+  const { data: fullSyncIntervalData } = useQuery({
+    queryKey: ['setting', 'full_sync_interval_days'],
+    queryFn: () => getSetting('full_sync_interval_days').catch(() => ({ value: '5' })),
+  })
+
+  const { data: priceSyncIntervalData } = useQuery({
+    queryKey: ['setting', 'price_sync_interval_minutes'],
+    queryFn: () => getSetting('price_sync_interval_minutes').catch(() => ({ value: '30' })),
   })
 
   const { data: priceAlertsData } = useQuery({
@@ -199,8 +206,12 @@ export default function Settings() {
   }, [trainerData])
 
   useEffect(() => {
-    if (syncIntervalData?.value) setSyncIntervalState(syncIntervalData.value)
-  }, [syncIntervalData])
+    if (fullSyncIntervalData?.value) setFullSyncIntervalDays(fullSyncIntervalData.value)
+  }, [fullSyncIntervalData])
+
+  useEffect(() => {
+    if (priceSyncIntervalData?.value) setPriceSyncIntervalMinutes(priceSyncIntervalData.value)
+  }, [priceSyncIntervalData])
 
   useEffect(() => {
     if (priceAlertsData?.value) setPriceAlertsEnabled(priceAlertsData.value === 'true')
@@ -226,7 +237,7 @@ export default function Settings() {
     if (telegramChatIdData?.value !== undefined && !telegramChatIdDirty) setTelegramChatId(telegramChatIdData.value)
   }, [telegramChatIdData])
 
-  // Sync mutation
+  // Sync mutation (full)
   const syncMutation = useMutation({
     mutationFn: triggerSync,
     onSuccess: () => {
@@ -236,7 +247,18 @@ export default function Settings() {
     onError: () => toast.error(t('settings.syncFailed')),
   })
 
+  // Price sync mutation
+  const priceSyncMutation = useMutation({
+    mutationFn: triggerPriceSync,
+    onSuccess: () => {
+      toast.success(t('settings.syncStarted'))
+      setTimeout(() => queryClient.invalidateQueries(), 3000)
+    },
+    onError: () => toast.error(t('settings.syncFailed')),
+  })
+
   const isRunning = syncStatus?.is_running || syncMutation.isPending
+  const isPriceSyncRunning = syncStatus?.is_price_sync_running || priceSyncMutation.isPending
 
   // Save helper
   const saveSetting = async (key, value) => {
@@ -255,9 +277,16 @@ export default function Settings() {
     setTrainerDirty(false)
   }
 
-  const handleSyncIntervalChange = async (val) => {
-    setSyncIntervalState(val)
-    await saveSetting('sync_interval_hours', val)
+  const handleFullSyncIntervalChange = async (val) => {
+    setFullSyncIntervalDays(val)
+    await saveSetting('full_sync_interval_days', val)
+    try { await rescheduleFullSync(parseInt(val)) } catch {}
+  }
+
+  const handlePriceSyncIntervalChange = async (val) => {
+    setPriceSyncIntervalMinutes(val)
+    await saveSetting('price_sync_interval_minutes', val)
+    try { await reschedulePriceSync(parseInt(val)) } catch {}
   }
 
   const handlePriceAlertsToggle = async (val) => {
@@ -414,36 +443,10 @@ export default function Settings() {
       {/* ── 3. SYNCHRONISATION ── */}
       <section className="space-y-1">
         <SectionHeader title={t('settings.sectionSync')} />
+
+        {/* Card 1: Full Sync */}
         <SettingsCard>
-          <SettingsRow label={t('settings.syncInterval')} description={t('settings.syncIntervalDesc')}>
-            <SelectControl
-              value={syncInterval}
-              options={[
-                { value: '0',    label: t('settings.syncManual') },
-                { value: '24',   label: t('settings.syncDaily') },
-                { value: '12',   label: t('settings.syncEvery12h') },
-                { value: '6',    label: t('settings.syncEvery6h') },
-                { value: '1',    label: t('settings.syncHourly') },
-                { value: '0.5',  label: t('settings.syncEvery30m') },
-              ]}
-              onChange={handleSyncIntervalChange}
-            />
-          </SettingsRow>
-          <SettingsRow label={t('settings.lastSyncDesc')} description={lastSyncText}>
-            <div
-              className={`flex items-center gap-1.5 text-xs font-semibold ${
-                isRunning ? 'text-yellow-400' : 'text-green-400'
-              }`}
-            >
-              <div
-                className={`w-1.5 h-1.5 rounded-full ${
-                  isRunning ? 'bg-yellow-400 animate-pulse' : 'bg-green-400'
-                }`}
-              />
-              {isRunning ? t('settings.running') : t('settings.idle')}
-            </div>
-          </SettingsRow>
-          <SettingsRow label={t('settings.syncNow')} description={t('settings.syncNowDesc')} last>
+          <SettingsRow label="Sets & Karten synchronisieren" description={lastSyncText}>
             <button
               onClick={() => syncMutation.mutate()}
               disabled={isRunning}
@@ -453,6 +456,51 @@ export default function Settings() {
               <RefreshCw size={13} className={isRunning ? 'animate-spin' : ''} />
               {isRunning ? t('settings.running') : t('settings.syncButton')}
             </button>
+          </SettingsRow>
+          <SettingsRow label="Intervall" description="Sets & Karten" last>
+            <SelectControl
+              value={fullSyncIntervalDays}
+              options={[
+                { value: '1',  label: '1 Tag' },
+                { value: '2',  label: '2 Tage' },
+                { value: '3',  label: '3 Tage' },
+                { value: '5',  label: '5 Tage' },
+                { value: '7',  label: '7 Tage' },
+                { value: '14', label: '14 Tage' },
+                { value: '30', label: '30 Tage' },
+              ]}
+              onChange={handleFullSyncIntervalChange}
+            />
+          </SettingsRow>
+        </SettingsCard>
+
+        {/* Card 2: Price Sync */}
+        <SettingsCard>
+          <SettingsRow label="Nur Preise synchronisieren" description={lastSyncText}>
+            <button
+              onClick={() => priceSyncMutation.mutate()}
+              disabled={isPriceSyncRunning}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity disabled:opacity-50"
+              style={{ background: 'rgba(227,0,11,0.15)', color: '#e3000b', border: '1px solid rgba(227,0,11,0.3)' }}
+            >
+              <RefreshCw size={13} className={isPriceSyncRunning ? 'animate-spin' : ''} />
+              {isPriceSyncRunning ? t('settings.running') : t('settings.syncButton')}
+            </button>
+          </SettingsRow>
+          <SettingsRow label="Preisintervall" description="Nur Preise" last>
+            <SelectControl
+              value={priceSyncIntervalMinutes}
+              options={[
+                { value: '15',   label: '15 Min' },
+                { value: '30',   label: '30 Min' },
+                { value: '60',   label: '1 Std' },
+                { value: '120',  label: '2 Std' },
+                { value: '360',  label: '6 Std' },
+                { value: '720',  label: '12 Std' },
+                { value: '1440', label: '24 Std' },
+              ]}
+              onChange={handlePriceSyncIntervalChange}
+            />
           </SettingsRow>
         </SettingsCard>
       </section>
