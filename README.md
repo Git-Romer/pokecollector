@@ -16,6 +16,7 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 
 ![Dark Theme](https://img.shields.io/badge/theme-dark-1a1a2e?style=flat-square) ![TCGdex](https://img.shields.io/badge/card%20data-TCGdex-e3000b?style=flat-square) ![Docker](https://img.shields.io/badge/deploy-Docker-2496ed?style=flat-square) ![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square) ![React](https://img.shields.io/badge/frontend-React%2018-61dafb?style=flat-square)
 
+![WebApp Preview](preview-homescreen.png)
 ---
 
 ## ✨ Features
