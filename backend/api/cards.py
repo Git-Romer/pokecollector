@@ -41,6 +41,7 @@ def _card_to_dict(card: Card) -> dict:
         "price_market": card.price_market,
         "price_low": card.price_low,
         "price_trend": card.price_trend,
+        "lang": card.lang or "en",
     }
 
 
@@ -484,6 +485,35 @@ def dismiss_custom_match(match_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
     return {"status": "dismissed"}
+
+
+@router.get("/{card_id}/lang/{lang}")
+def get_card_in_lang(card_id: str, lang: str, db: Session = Depends(get_db)):
+    """Given a card_id (any language variant), find the equivalent card in the requested language.
+
+    Strategy:
+    1. Load the source card.
+    2. Determine its original TCGdex set_id and number.
+    3. Query for a card with the same set_id + number but lang = requested lang.
+    4. If found, return it. If not, return the original card (fallback).
+    """
+    source = db.query(Card).filter(Card.id == card_id).first()
+    if not source:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    # Look for sibling card with same set_id + number but requested lang
+    sibling = db.query(Card).filter(
+        Card.set_id == source.set_id,
+        Card.number == source.number,
+        Card.lang == lang,
+        Card.is_custom == False,
+    ).first()
+
+    if sibling:
+        return _card_to_dict(sibling)
+
+    # Fallback: return original card
+    return _card_to_dict(source)
 
 
 @router.get("/{card_id}/price-history", response_model=List[PriceHistoryResponse])

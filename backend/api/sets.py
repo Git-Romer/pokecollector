@@ -89,17 +89,22 @@ def get_sets(
         except Exception:
             pass
 
-    # Compute owned_count per set (join via tcg_set_id)
+    # Compute owned_count per set, grouped by (set_id, lang) so DE and EN sets are counted separately
     owned_counts = (
-        db.query(Card.set_id, func.count(func.distinct(CollectionItem.card_id)).label('cnt'))
+        db.query(
+            Card.set_id,
+            CollectionItem.lang,
+            func.count(func.distinct(CollectionItem.card_id)).label('cnt')
+        )
         .join(CollectionItem, CollectionItem.card_id == Card.id)
-        .group_by(Card.set_id)
+        .group_by(Card.set_id, CollectionItem.lang)
         .all()
     )
-    owned_map = {row[0]: row[1] for row in owned_counts}
+    owned_map = {(set_id, item_lang): cnt for set_id, item_lang, cnt in owned_counts}
     for set_obj in sets:
-        # tcg_set_id is the original ID used in cards.set_id
-        set_obj.owned_count = owned_map.get(set_obj.tcg_set_id or set_obj.id, 0)
+        tcg_id = set_obj.tcg_set_id or set_obj.id
+        set_lang = set_obj.lang or 'en'
+        set_obj.owned_count = owned_map.get((tcg_id, set_lang), 0)
 
     return sets
 
