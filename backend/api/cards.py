@@ -62,12 +62,41 @@ def _search_by_code_number(
         ).first()
 
     if not set_obj:
+        # 3. Fall back to live TCGdex API to find the set by abbreviation
+        try:
+            api_sets = pokemon_api.get_all_sets()
+            for api_set in api_sets:
+                abbr_obj = api_set.get("abbreviation") or {}
+                official = (
+                    abbr_obj.get("official") if isinstance(abbr_obj, dict) else None
+                )
+                if official and official.upper() == set_code_upper:
+                    # Upsert this set into the DB so future lookups are instant
+                    parsed_set = pokemon_api.parse_set_for_db(api_set)
+                    parsed_set["lang"] = api_set.get("_lang", "en")
+                    existing_set = db.query(Set).filter(Set.id == parsed_set["id"]).first()
+                    if existing_set:
+                        for k, v in parsed_set.items():
+                            if k != "id" and v is not None:
+                                setattr(existing_set, k, v)
+                        set_obj = existing_set
+                    else:
+                        set_obj = Set(**parsed_set)
+                        db.add(set_obj)
+                    db.commit()
+                    db.refresh(set_obj)
+                    break
+        except Exception:
+            pass
+
+    if not set_obj:
         return {"data": [], "total_count": 0, "page": page, "page_size": page_size}
 
     # Use original TCGdex ID (cards.set_id stores this, not the composite DB key)
     tcg_set_id = set_obj.tcg_set_id or set_obj.id
+    set_lang = set_obj.lang or "en"
 
-    # 3. Look for card in DB (number may be zero-padded or not)
+    # 4. Look for card in DB (number may be zero-padded or not)
     card = db.query(Card).filter(
         Card.set_id == tcg_set_id,
         Card.number == card_number,
@@ -96,7 +125,37 @@ def _search_by_code_number(
                 "page_size": page_size,
             }
 
-    # Card not in DB — return empty result (will appear after sync)
+    # 5. Card not in DB — fetch the full set from TCGdex and cache all cards
+    try:
+        set_data = pokemon_api.get_set_cards(tcg_set_id, lang=set_lang)
+        for card_data in set_data.get("cards", []):
+            parsed = pokemon_api.parse_card_for_db(card_data, default_set_id=tcg_set_id, lang=set_lang)
+            existing = db.query(Card).filter(Card.id == parsed["id"]).first()
+            if not existing:
+                db.add(Card(**parsed))
+        db.commit()
+    except Exception:
+        pass
+
+    # Search again after caching
+    card = db.query(Card).filter(
+        Card.set_id == tcg_set_id,
+        Card.number == card_number,
+    ).first()
+    if not card and card_number_stripped != card_number:
+        card = db.query(Card).filter(
+            Card.set_id == tcg_set_id,
+            Card.number == card_number_stripped,
+        ).first()
+
+    if card:
+        return {
+            "data": [_card_to_dict(card)],
+            "total_count": 1,
+            "page": page,
+            "page_size": page_size,
+        }
+
     return {"data": [], "total_count": 0, "page": page, "page_size": page_size}
 
 
