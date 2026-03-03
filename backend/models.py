@@ -212,7 +212,7 @@ class PortfolioSnapshot(Base):
     __tablename__ = "portfolio_snapshots"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    date = Column(Date, nullable=False, unique=True)
+    date = Column(DateTime, nullable=False)  # full UTC timestamp, no unique constraint
     total_value = Column(Float, default=0)
     total_cards = Column(Integer, default=0)
     total_cost = Column(Float, default=0)
