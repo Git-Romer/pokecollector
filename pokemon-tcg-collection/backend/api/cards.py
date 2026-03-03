@@ -45,7 +45,7 @@ def _card_to_dict(card: Card) -> dict:
 
 
 def _search_by_code_number(
-    db: Session, set_code: str, card_number: str, page: int, page_size: int
+    db: Session, set_code: str, card_number: str, page: int, page_size: int, lang: str = "all"
 ) -> dict:
     """Search for a card by set abbreviation/id + card number (localId)."""
     set_code_upper = set_code.upper()
@@ -65,10 +65,10 @@ def _search_by_code_number(
         return {"data": [], "total_count": 0, "page": page, "page_size": page_size}
 
     # 3. Look for card in DB (number may be zero-padded or not)
-    card = db.query(Card).filter(
-        Card.set_id == set_obj.id,
-        Card.number == card_number,
-    ).first()
+    card_filters = [Card.set_id == set_obj.id, Card.number == card_number]
+    if lang != "all":
+        card_filters.append(Card.lang == lang)
+    card = db.query(Card).filter(*card_filters).first()
 
     if card:
         return {
@@ -81,10 +81,10 @@ def _search_by_code_number(
     # Also try without leading zeros (e.g. "022" → "22")
     card_number_stripped = card_number.lstrip("0") or "0"
     if card_number_stripped != card_number:
-        card = db.query(Card).filter(
-            Card.set_id == set_obj.id,
-            Card.number == card_number_stripped,
-        ).first()
+        stripped_filters = [Card.set_id == set_obj.id, Card.number == card_number_stripped]
+        if lang != "all":
+            stripped_filters.append(Card.lang == lang)
+        card = db.query(Card).filter(*stripped_filters).first()
         if card:
             return {
                 "data": [_card_to_dict(card)],
@@ -268,7 +268,7 @@ def search_cards(
             if m:
                 set_code = m.group(1)
                 card_number = m.group(2)
-                return _search_by_code_number(db, set_code, card_number, page, page_size)
+                return _search_by_code_number(db, set_code, card_number, page, page_size, lang=search_lang)
 
         if search_lang == "all":
             # Search both languages and merge (dedup by card ID, keeping first occurrence)

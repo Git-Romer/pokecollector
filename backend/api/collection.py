@@ -2,21 +2,47 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from database import get_db
-from models import CollectionItem, Card
+from models import CollectionItem, Card, Set
 from schemas import CollectionItemCreate, CollectionItemUpdate, CollectionItemResponse
+from services import pokemon_api
 import datetime
 
 router = APIRouter()
 
 
 def ensure_card_exists(db: Session, card_id: str, lang: str = "en") -> Card:
-    """Ensure card exists in DB. Raises 404 if not found (sync first)."""
+    """Ensure card exists in DB. If not found locally, try to fetch from TCGdex."""
     card = db.query(Card).filter(Card.id == card_id).first()
     if not card:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Card {card_id} not found in local database. Please run a Sync first."
-        )
+        tcg_card_id, _ = pokemon_api.strip_lang_suffix(card_id)
+        card_data = pokemon_api.get_card(tcg_card_id, lang=lang)
+        if not card_data:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Card {card_id} not found in local database. Please run a Sync first."
+            )
+        parsed = pokemon_api.parse_card_for_db(card_data, lang=lang)
+        if parsed.get("set_id"):
+            set_data = card_data.get("set", {})
+            if set_data:
+                set_parsed = pokemon_api.parse_set_for_db(set_data)
+                set_parsed["lang"] = set_data.get("_lang", lang)
+                existing_set = db.query(Set).filter(Set.id == set_parsed["id"]).first()
+                if not existing_set:
+                    db.add(Set(**set_parsed))
+        card = Card(**parsed)
+        db.add(card)
+        try:
+            db.commit()
+            db.refresh(card)
+        except Exception:
+            db.rollback()
+            card = db.query(Card).filter(Card.id == card_id).first()
+            if not card:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Card {card_id} not found in local database. Please run a Sync first."
+                )
     return card
 
 
@@ -50,11 +76,15 @@ def get_collection(
 def add_to_collection(item: CollectionItemCreate, db: Session = Depends(get_db)):
     """Add a card to the collection. Cards with identical card_id+variant+lang+condition+purchase_price are grouped."""
     item_lang = item.lang or "en"
-    ensure_card_exists(db, item.card_id, lang=item_lang)
+
+    # Resolve the correct language-variant card_id
+    tcg_card_id, _ = pokemon_api.strip_lang_suffix(item.card_id)
+    effective_card_id = f"{tcg_card_id}_{item_lang}"
+    ensure_card_exists(db, effective_card_id, lang=item_lang)
 
     # Find existing entry for same card + variant + lang + condition + purchase_price combination
     existing = db.query(CollectionItem).filter(
-        CollectionItem.card_id == item.card_id,
+        CollectionItem.card_id == effective_card_id,
         CollectionItem.variant == item.variant,
         CollectionItem.lang == item_lang,
         CollectionItem.condition == item.condition,
@@ -68,7 +98,7 @@ def add_to_collection(item: CollectionItemCreate, db: Session = Depends(get_db))
         return existing
     else:
         db_item = CollectionItem(
-            card_id=item.card_id,
+            card_id=effective_card_id,
             quantity=item.quantity,
             condition=item.condition,
             variant=item.variant,
