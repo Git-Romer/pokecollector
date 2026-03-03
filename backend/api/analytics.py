@@ -122,34 +122,10 @@ def _calc_products_cost(db: Session):
     )
 
 
-def _ensure_portfolio_snapshot(db: Session):
-    """Ensure today's portfolio snapshot exists. Creates it if missing."""
-    today = datetime.date.today()
-    existing = db.query(PortfolioSnapshot).filter(PortfolioSnapshot.date == today).first()
-    if existing:
-        # Update snapshot with current values (prices may have changed)
-        collection_items = db.query(CollectionItem).join(Card).all()
-        total_value = sum(
-            (item.card.price_market or 0) * item.quantity
-            for item in collection_items
-            if item.card
-        )
-        total_cards = sum(item.quantity for item in collection_items)
-        # total_cost = card purchase prices + UNSOLD product purchases
-        cards_cost = sum(
-            (item.purchase_price or 0) * item.quantity
-            for item in collection_items
-        )
-        products_cost = _calc_products_cost(db)
-        total_cost = cards_cost + products_cost
+def _take_portfolio_snapshot(db: Session):
+    """Insert a new portfolio snapshot (called on every price sync)."""
+    now = datetime.datetime.utcnow()
 
-        existing.total_value = total_value
-        existing.total_cards = total_cards
-        existing.total_cost = total_cost
-        db.commit()
-        return
-
-    # Create new snapshot
     collection_items = db.query(CollectionItem).join(Card).all()
     total_value = sum(
         (item.card.price_market or 0) * item.quantity
@@ -157,6 +133,7 @@ def _ensure_portfolio_snapshot(db: Session):
         if item.card
     )
     total_cards = sum(item.quantity for item in collection_items)
+    # total_cost = card purchase prices + UNSOLD product purchases
     cards_cost = sum(
         (item.purchase_price or 0) * item.quantity
         for item in collection_items
@@ -165,7 +142,7 @@ def _ensure_portfolio_snapshot(db: Session):
     total_cost = cards_cost + products_cost
 
     snapshot = PortfolioSnapshot(
-        date=today,
+        date=now,
         total_value=total_value,
         total_cards=total_cards,
         total_cost=total_cost,
@@ -174,15 +151,86 @@ def _ensure_portfolio_snapshot(db: Session):
     db.commit()
 
 
-@router.get("/investment-tracker")
-def get_investment_tracker(db: Session = Depends(get_db)):
-    """Get portfolio value over time. Ensures today's snapshot exists."""
-    # Always ensure we have a current snapshot
-    _ensure_portfolio_snapshot(db)
+def _bucket_by_week(snapshots):
+    """Keep the last snapshot per ISO week."""
+    buckets = {}
+    for s in snapshots:
+        bucket = s.date.strftime('%Y-W%W')
+        buckets[bucket] = s
+    return list(buckets.values())
 
-    snapshots = db.query(PortfolioSnapshot).order_by(
-        PortfolioSnapshot.date.asc()
-    ).all()
+
+def _downsample(snapshots, period: str):
+    """Downsample snapshot list based on period."""
+    if not snapshots:
+        return snapshots
+
+    if period == '1d':
+        # raw — every 30 min, ≤ 48 pts — no downsampling needed
+        return snapshots
+
+    if period == '1w':
+        # 2 per day — keep last value per 12-hour half-day bucket
+        buckets = {}
+        for s in snapshots:
+            half = 'am' if s.date.hour < 12 else 'pm'
+            bucket = s.date.strftime('%Y-%m-%d_') + half
+            buckets[bucket] = s
+        return list(buckets.values())
+
+    if period in ('1m', '3m'):
+        # 1 per day — daily last value
+        buckets = {}
+        for s in snapshots:
+            bucket = s.date.strftime('%Y-%m-%d')
+            buckets[bucket] = s
+        return list(buckets.values())
+
+    if period in ('6m', '1y'):
+        return _bucket_by_week(snapshots)
+
+    # max — 1 per week, or 1 per month if > 2 years of data
+    if snapshots[-1].date - snapshots[0].date > datetime.timedelta(days=730):
+        # 1 per month
+        buckets = {}
+        for s in snapshots:
+            bucket = s.date.strftime('%Y-%m')
+            buckets[bucket] = s
+        return list(buckets.values())
+    return _bucket_by_week(snapshots)
+
+
+@router.get("/investment-tracker")
+def get_investment_tracker(period: str = Query('max'), db: Session = Depends(get_db)):
+    """Get portfolio value over time with optional period filtering and downsampling."""
+    # Always insert a fresh snapshot so the current state is represented
+    _take_portfolio_snapshot(db)
+
+    period = period.lower()
+
+    # Determine cutoff date based on period
+    now = datetime.datetime.utcnow()
+    cutoff = None
+    if period == '1d':
+        cutoff = now - datetime.timedelta(days=1)
+    elif period == '1w':
+        cutoff = now - datetime.timedelta(weeks=1)
+    elif period == '1m':
+        cutoff = now - datetime.timedelta(days=30)
+    elif period == '3m':
+        cutoff = now - datetime.timedelta(days=90)
+    elif period == '6m':
+        cutoff = now - datetime.timedelta(days=180)
+    elif period == '1y':
+        cutoff = now - datetime.timedelta(days=365)
+    # 'max' → no cutoff
+
+    query = db.query(PortfolioSnapshot).order_by(PortfolioSnapshot.date.asc())
+    if cutoff:
+        query = query.filter(PortfolioSnapshot.date >= cutoff)
+    snapshots = query.all()
+
+    snapshots = _downsample(snapshots, period)
 
     return [
         {

@@ -112,6 +112,10 @@ def _run_migrations(conn):
         "ALTER TABLE sets ADD COLUMN IF NOT EXISTS release_date VARCHAR",
         # v39: Add tcg_card_id column to cards table (original TCGdex ID, separate from composite DB key)
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS tcg_card_id VARCHAR",
+        # v41: Change portfolio_snapshots.date from Date to Timestamp (store full UTC datetime)
+        # and drop the unique constraint so multiple snapshots per day are allowed
+        "ALTER TABLE portfolio_snapshots ALTER COLUMN date TYPE TIMESTAMP USING date::TIMESTAMP",
+        "ALTER TABLE portfolio_snapshots DROP CONSTRAINT IF EXISTS portfolio_snapshots_date_key",
     ]
     for stmt in migrations:
         try:

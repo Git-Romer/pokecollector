@@ -135,6 +135,10 @@ def _run_migrations(conn):
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS variants_reverse BOOLEAN",
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS variants_holo BOOLEAN",
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS variants_first_edition BOOLEAN",
+        # v41: Change portfolio_snapshots.date from Date to Timestamp (store full UTC datetime)
+        # and drop the unique constraint so multiple snapshots per day are allowed
+        "ALTER TABLE portfolio_snapshots ALTER COLUMN date TYPE TIMESTAMP USING date::TIMESTAMP",
+        "ALTER TABLE portfolio_snapshots DROP CONSTRAINT IF EXISTS portfolio_snapshots_date_key",
     ]
     for stmt in migrations:
         try:

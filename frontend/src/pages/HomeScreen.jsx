@@ -11,15 +11,15 @@ import {
 import { getDashboard, triggerPriceSync, getSyncStatus, getInvestmentTracker, getSetting } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
-import { format, parseISO, subDays, subWeeks, subMonths, subYears } from 'date-fns'
+import { format, parseISO } from 'date-fns'
 
 // ── Time-range definitions ────────────────────────────────────────────────────
 const PERIODS = [
-  { key: '1D',  label: '1D',   getFrom: () => subDays(new Date(), 1) },
-  { key: '1W',  label: '1W',   getFrom: () => subWeeks(new Date(), 1) },
-  { key: '1M',  label: '1M',   getFrom: () => subMonths(new Date(), 1) },
-  { key: '1Y',  label: '1Y',   getFrom: () => subYears(new Date(), 1) },
-  { key: 'MAX', label: 'Max',  getFrom: () => null },
+  { key: '1D',  label: '1D',   apiPeriod: '1d' },
+  { key: '1W',  label: '1W',   apiPeriod: '1w' },
+  { key: '1M',  label: '1M',   apiPeriod: '1m' },
+  { key: '1Y',  label: '1Y',   apiPeriod: '1y' },
+  { key: 'MAX', label: 'Max',  apiPeriod: 'max' },
 ]
 
 // ── Custom chart tooltip ──────────────────────────────────────────────────────
@@ -75,9 +75,10 @@ export default function HomeScreen() {
   })
 
   // Portfolio history for chart — uses analytics/investment-tracker
+  const activePeriod = PERIODS.find(p => p.key === chartPeriod)
   const { data: investmentData = [] } = useQuery({
-    queryKey: ['investment-tracker'],
-    queryFn: () => getInvestmentTracker().then(r => r.data),
+    queryKey: ['investment-tracker', chartPeriod],
+    queryFn: () => getInvestmentTracker({ period: activePeriod?.apiPeriod ?? 'max' }).then(r => r.data),
     refetchInterval: 120000,
   })
 
@@ -113,19 +114,14 @@ export default function HomeScreen() {
   const recentCards = data?.recent_additions?.slice(0, 12) ?? []
   const topCards = data?.top_cards?.slice(0, 8) ?? []
 
-  // Filter chart data by selected period
+  // Map chart data — backend already filters and downsamples
   const chartData = useMemo(() => {
-    const period = PERIODS.find(p => p.key === chartPeriod)
-    const fromDate = period?.getFrom()
-    return (investmentData || [])
-      .filter(d => {
-        if (!fromDate) return true
-        return new Date(d.date) >= fromDate
-      })
-      .map(d => ({
-        date: format(parseISO(d.date), 'dd.MM.'),
-        value: d.value,
-      }))
+    const fmtMap = { '1D': 'HH:mm', '1W': 'EEE dd.MM', '1Y': 'MMM yy', 'MAX': 'MMM yy' }
+    const dateFmt = fmtMap[chartPeriod] ?? 'dd.MM.'
+    return (investmentData || []).map(d => ({
+      date: format(parseISO(d.date), dateFmt),
+      value: d.value,
+    }))
   }, [investmentData, chartPeriod])
 
   // Determine chart color based on trend

@@ -104,11 +104,8 @@ def check_wishlist_alerts(db: Session, updated_card_ids: list):
 
 
 def take_portfolio_snapshot(db: Session):
-    """Take a daily portfolio value snapshot."""
-    today = datetime.date.today()
-    existing = db.query(PortfolioSnapshot).filter(PortfolioSnapshot.date == today).first()
-    if existing:
-        return  # Already done today
+    """Insert a portfolio snapshot with the current UTC timestamp."""
+    now = datetime.datetime.utcnow()
 
     # Calculate current portfolio value
     collection_items = db.query(CollectionItem).join(Card).all()
@@ -124,7 +121,7 @@ def take_portfolio_snapshot(db: Session):
     )
 
     snapshot = PortfolioSnapshot(
-        date=today,
+        date=now,
         total_value=total_value,
         total_cards=total_cards,
         total_cost=total_cost,
