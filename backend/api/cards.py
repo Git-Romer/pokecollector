@@ -60,10 +60,10 @@ def _card_to_dict(card: Card) -> dict:
 
 
 def _search_by_code_number(
-    db: Session, set_code: str, card_number: str, page: int, page_size: int
+    db: Session, set_code: str, card_number: str, page: int, page_size: int, lang: str = "all"
 ) -> dict:
     """Search for a card by set abbreviation/id + card number (localId).
-    Returns cards for ALL languages so the user can filter with the top-level lang selector.
+    Returns cards for ALL languages unless lang is specified.
     """
     set_code_upper = set_code.upper()
 
@@ -112,19 +112,19 @@ def _search_by_code_number(
     tcg_set_ids = list({s.tcg_set_id or s.id for s in set_objs})
 
     # 2. Look for cards in DB matching any of those set IDs and the given number
-    cards = db.query(Card).filter(
-        Card.set_id.in_(tcg_set_ids),
-        Card.number == card_number,
-    ).all()
+    lang_filters = [Card.set_id.in_(tcg_set_ids), Card.number == card_number]
+    if lang != "all":
+        lang_filters.append(Card.lang == lang)
+    cards = db.query(Card).filter(*lang_filters).all()
 
     # Also try without leading zeros (e.g. "022" → "22")
     if not cards:
         card_number_stripped = card_number.lstrip("0") or "0"
         if card_number_stripped != card_number:
-            cards = db.query(Card).filter(
-                Card.set_id.in_(tcg_set_ids),
-                Card.number == card_number_stripped,
-            ).all()
+            stripped_filters = [Card.set_id.in_(tcg_set_ids), Card.number == card_number_stripped]
+            if lang != "all":
+                stripped_filters.append(Card.lang == lang)
+            cards = db.query(Card).filter(*stripped_filters).all()
 
     # 3. Card not in DB — fetch from TCGdex and cache
     if not cards:
@@ -142,17 +142,17 @@ def _search_by_code_number(
             except Exception:
                 pass
 
-        cards = db.query(Card).filter(
-            Card.set_id.in_(tcg_set_ids),
-            Card.number == card_number,
-        ).all()
+        lang_filters = [Card.set_id.in_(tcg_set_ids), Card.number == card_number]
+        if lang != "all":
+            lang_filters.append(Card.lang == lang)
+        cards = db.query(Card).filter(*lang_filters).all()
         if not cards:
             card_number_stripped = card_number.lstrip("0") or "0"
             if card_number_stripped != card_number:
-                cards = db.query(Card).filter(
-                    Card.set_id.in_(tcg_set_ids),
-                    Card.number == card_number_stripped,
-                ).all()
+                stripped_filters = [Card.set_id.in_(tcg_set_ids), Card.number == card_number_stripped]
+                if lang != "all":
+                    stripped_filters.append(Card.lang == lang)
+                cards = db.query(Card).filter(*stripped_filters).all()
 
     if not cards:
         return {"data": [], "total_count": 0, "page": page, "page_size": page_size}
@@ -265,7 +265,7 @@ def search_cards(
             if m:
                 set_code = m.group(1)
                 card_number = m.group(2)
-                return _search_by_code_number(db, set_code, card_number, page, page_size)
+                return _search_by_code_number(db, set_code, card_number, page, page_size, lang=search_lang)
 
         # ── Pure DB search ────────────────────────────────────────────────────
         query = db.query(Card).filter(Card.is_custom == False)

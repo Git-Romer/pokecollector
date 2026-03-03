@@ -67,11 +67,15 @@ def get_collection(
 def add_to_collection(item: CollectionItemCreate, db: Session = Depends(get_db)):
     """Add a card to the collection. Cards with identical card_id+variant+lang+condition+purchase_price are grouped."""
     item_lang = item.lang or "en"
-    ensure_card_exists(db, item.card_id, lang=item_lang)
+
+    # Resolve the correct language-variant card_id
+    tcg_card_id, _ = pokemon_api.strip_lang_suffix(item.card_id)
+    effective_card_id = f"{tcg_card_id}_{item_lang}"
+    ensure_card_exists(db, effective_card_id, lang=item_lang)
 
     # Find existing entry for same card + variant + lang + condition + purchase_price combination
     existing = db.query(CollectionItem).filter(
-        CollectionItem.card_id == item.card_id,
+        CollectionItem.card_id == effective_card_id,
         CollectionItem.variant == item.variant,
         CollectionItem.lang == item_lang,
         CollectionItem.condition == item.condition,
@@ -85,7 +89,7 @@ def add_to_collection(item: CollectionItemCreate, db: Session = Depends(get_db))
         return existing
     else:
         db_item = CollectionItem(
-            card_id=item.card_id,
+            card_id=effective_card_id,
             quantity=item.quantity,
             condition=item.condition,
             variant=item.variant,
