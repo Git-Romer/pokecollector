@@ -118,6 +118,17 @@ def update_collection_item(
     # Use exclude_unset so only fields explicitly sent in the request are updated.
     # This allows null values (e.g. clearing variant or purchase_price) to be saved.
     update_data = update.model_dump(exclude_unset=True)
+
+    # If lang is being changed, also update card_id to the correct language variant
+    new_lang = update_data.get("lang")
+    if new_lang and new_lang != item.lang:
+        card = db.query(Card).filter(Card.id == item.card_id).first()
+        if card and not card.is_custom:
+            tcg_id, _ = pokemon_api.strip_lang_suffix(item.card_id)
+            new_card_id = f"{tcg_id}_{new_lang}"
+            ensure_card_exists(db, new_card_id, lang=new_lang)
+            update_data["card_id"] = new_card_id
+
     for field, value in update_data.items():
         setattr(item, field, value)
 
