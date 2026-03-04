@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, cast, Integer
 from typing import Optional, List
 from database import get_db
 from models import Card, Set, PriceHistory, CustomCardMatch, CollectionItem, WishlistItem, BinderCard, Setting
@@ -118,7 +118,7 @@ def create_custom_card(data: CardCustomCreate, db: Session = Depends(get_db)):
     """Create a card manually (not from TCGdex API)."""
     # Generate card ID
     if data.set_id and data.number:
-        card_id = f"{data.set_id}-{data.number}"
+        card_id = f"custom-{data.set_id}-{data.number}"
     else:
         card_id = f"custom-{uuid4().hex[:8]}"
 
@@ -178,6 +178,13 @@ def update_custom_card(card_id: str, update: CustomCardUpdate, db: Session = Dep
     db.commit()
     db.refresh(card)
     return card
+
+
+@router.get("/custom", response_model=List[CardBase])
+def list_custom_cards(db: Session = Depends(get_db)):
+    """Return all manually created custom cards."""
+    cards = db.query(Card).filter(Card.is_custom == True).order_by(Card.id.desc()).all()
+    return [_card_to_dict(c) for c in cards]
 
 
 def _do_search_and_cache(
@@ -270,6 +277,23 @@ def search_cards(
                 card_number = m.group(2)
                 return _search_by_code_number(db, set_code, card_number, page, page_size, lang=search_lang)
 
+        # ── Always include matching custom cards (page 1 only) ───────────────
+        custom_q = db.query(Card).filter(Card.is_custom == True)
+        if name:
+            custom_q = custom_q.filter(Card.name.ilike(f"%{name}%"))
+        if type_filter:
+            custom_q = custom_q.filter(Card.types.contains([type_filter]))
+        if rarity:
+            custom_q = custom_q.filter(Card.rarity.ilike(f"%{rarity}%"))
+        if artist:
+            custom_q = custom_q.filter(Card.artist.ilike(f"%{artist}%"))
+        if hp_min is not None:
+            custom_q = custom_q.filter(cast(Card.hp, Integer) >= hp_min)
+        if hp_max is not None:
+            custom_q = custom_q.filter(cast(Card.hp, Integer) <= hp_max)
+        custom_cards_dicts = [_card_to_dict(c) for c in custom_q.order_by(Card.name).all()] if page == 1 else []
+        custom_count = custom_q.count()
+
         if search_lang == "all":
             # Search both languages and merge (dedup by card ID, keeping first occurrence)
             de_cards = _do_search_and_cache(
@@ -302,8 +326,8 @@ def search_cards(
             cards_data = cards_data[start:start + page_size]
 
         return {
-            "data": cards_data,
-            "total_count": total_count,
+            "data": custom_cards_dicts + cards_data,
+            "total_count": custom_count + total_count,
             "page": page,
             "page_size": page_size,
         }
