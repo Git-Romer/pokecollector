@@ -15,7 +15,6 @@ import { format, parseISO } from 'date-fns'
 
 // ── Time-range definitions ────────────────────────────────────────────────────
 const PERIODS = [
-  { key: '1D',  label: '1D',   apiPeriod: '1d' },
   { key: '1W',  label: '1W',   apiPeriod: '1w' },
   { key: '1M',  label: '1M',   apiPeriod: '1m' },
   { key: '1Y',  label: '1Y',   apiPeriod: '1y' },
@@ -116,7 +115,7 @@ export default function HomeScreen() {
 
   // Map chart data — backend already filters and downsamples
   const chartData = useMemo(() => {
-    const fmtMap = { '1D': 'HH:mm', '1W': 'EEE dd.MM', '1Y': 'MMM yy', 'MAX': 'MMM yy' }
+    const fmtMap = { '1W': 'EEE dd.MM', '1Y': 'MMM yy', 'MAX': 'MMM yy' }
     const dateFmt = fmtMap[chartPeriod] ?? 'dd.MM.'
     return (investmentData || []).map(d => ({
       date: format(parseISO(d.date), dateFmt),

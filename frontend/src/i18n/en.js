@@ -197,6 +197,7 @@ const en = {
     allSets: 'All Sets',
     allTypes: 'All Types',
     searchCards: 'Search cards...',
+    clearFilters: 'Clear filters',
   },
 
   // Sets
@@ -525,13 +526,12 @@ const en = {
     days14: '14 days',
     days30: '30 days',
     // Price sync interval options (time)
-    min15: '15 min',
-    min30: '30 min',
-    hour1: '1 hr',
-    hours2: '2 hrs',
-    hours6: '6 hrs',
-    hours12: '12 hrs',
-    hours24: '24 hrs',
+    min60: 'Every hour',
+    min120: 'Every 2 hours',
+    min180: 'Every 3 hours',
+    min360: 'Every 6 hours',
+    min720: 'Every 12 hours',
+    min1440: 'Every 24 hours',
   },
 
   // Period selector

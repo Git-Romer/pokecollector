@@ -491,13 +491,12 @@ export default function Settings() {
             <SelectControl
               value={priceSyncIntervalMinutes}
               options={[
-                { value: '15',   label: t('settings.min15') },
-                { value: '30',   label: t('settings.min30') },
-                { value: '60',   label: t('settings.hour1') },
-                { value: '120',  label: t('settings.hours2') },
-                { value: '360',  label: t('settings.hours6') },
-                { value: '720',  label: t('settings.hours12') },
-                { value: '1440', label: t('settings.hours24') },
+                { value: '60',   label: t('settings.min60') },
+                { value: '120',  label: t('settings.min120') },
+                { value: '180',  label: t('settings.min180') },
+                { value: '360',  label: t('settings.min360') },
+                { value: '720',  label: t('settings.min720') },
+                { value: '1440', label: t('settings.min1440') },
               ]}
               onChange={handlePriceSyncIntervalChange}
             />
