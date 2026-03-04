@@ -6,6 +6,7 @@ import { useSettings } from '../contexts/SettingsContext'
 import PeriodSelector, { CARD_PERIODS, PERIOD_PRICE_FIELD } from './PeriodSelector'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
+import { useTilt } from '../hooks/useTilt'
 
 const RARITY_COLORS = {
   'Common': 'text-text-secondary',
@@ -340,10 +341,11 @@ export function CardItem({ card, showActions = true, onAddToBinder = null, compa
     ?? card.price_trend
 
   const rarityColor = RARITY_COLORS[cardRarity] || 'text-text-secondary'
+  const { ref: tiltRef, onMouseMove: tiltMove, onMouseLeave: tiltLeave } = useTilt(10)
 
   if (compact) {
     return (
-      <div className="card cursor-pointer group p-2 hover:border-brand-red/20 transition-all" onClick={() => setShowModal(true)}>
+      <div ref={tiltRef} className="card cursor-pointer group p-2 hover:border-brand-red/20 transition-all" onClick={() => setShowModal(true)} onMouseMove={tiltMove} onMouseLeave={tiltLeave}>
         <div className="aspect-[2.5/3.5] w-full rounded-xl overflow-hidden ring-1 ring-white/5 group-hover:ring-2 group-hover:ring-brand-red/30 transition-all duration-200">
           {cardImage ? (
             <img src={cardImage} alt={cardName} className="w-full h-full object-cover shadow-lg group-hover:scale-[1.02] transition-transform duration-300" loading="lazy" />
@@ -359,7 +361,7 @@ export function CardItem({ card, showActions = true, onAddToBinder = null, compa
 
   return (
     <>
-      <div className="card cursor-pointer group hover:border-brand-red/20 transition-all" onClick={() => setShowModal(true)}>
+      <div ref={tiltRef} className="card cursor-pointer group hover:border-brand-red/20 transition-all" onClick={() => setShowModal(true)} onMouseMove={tiltMove} onMouseLeave={tiltLeave}>
         <div className="aspect-[2.5/3.5] w-full mb-3 rounded-xl overflow-hidden ring-1 ring-white/5 group-hover:ring-2 group-hover:ring-brand-red/30 transition-all duration-200">
           {cardImage ? (
             <img src={cardImage} alt={cardName} className="w-full h-full object-cover shadow-lg group-hover:scale-[1.02] transition-transform duration-300" loading="lazy" />

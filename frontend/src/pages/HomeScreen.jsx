@@ -12,6 +12,7 @@ import { getDashboard, triggerPriceSync, getSyncStatus, getInvestmentTracker, ge
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
 import { format, parseISO } from 'date-fns'
+import { useTilt } from '../hooks/useTilt'
 
 // ── Time-range definitions ────────────────────────────────────────────────────
 const PERIODS = [
@@ -38,10 +39,11 @@ function ChartTooltip({ active, payload, label }) {
 // ── Card thumbnail ────────────────────────────────────────────────────────────
 function CardThumb({ card, onClick }) {
   const img = card.images_small || card.image_url
+  const { ref, onMouseMove, onMouseLeave } = useTilt(8)
   return (
-    <div className="flex-shrink-0 w-[72px] cursor-pointer group" onClick={onClick}>
+    <div ref={ref} className="flex-shrink-0 w-[72px] cursor-pointer group" onClick={onClick} onMouseMove={onMouseMove} onMouseLeave={onMouseLeave}>
       <div className="aspect-[2.5/3.5] rounded-xl overflow-hidden shadow-lg transition-all duration-150
-        group-hover:scale-[1.03] group-hover:shadow-brand-red/20"
+        group-hover:shadow-brand-red/20"
         style={{ border: '1px solid rgba(255,255,255,0.07)', boxShadow: '0 4px 16px rgba(0,0,0,0.5)' }}>
         {img
           ? <img src={img} alt={card.name} className="w-full h-full object-cover" loading="lazy" />
