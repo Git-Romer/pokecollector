@@ -50,23 +50,83 @@ const HOLO_FIELD_MAP = {
   price_avg30: 'price_avg30_holo',
 }
 
-// ─── Variant visual effect helper ──────────────────────────────────────────
-function getVariantStyle(variant) {
-  if (!variant) return {}
+// ─── Holo shimmer overlay ──────────────────────────────────────────────────
+const HOLO_KEYFRAMES = `
+@keyframes holoShimmer {
+  0%   { transform: translateX(-100%) rotate(25deg); opacity: 0; }
+  15%  { opacity: 0.7; }
+  50%  { opacity: 0.5; }
+  85%  { opacity: 0.7; }
+  100% { transform: translateX(200%) rotate(25deg); opacity: 0; }
+}
+@keyframes holoShimmerAlt {
+  0%   { transform: translateX(-120%) rotate(-20deg); opacity: 0; }
+  20%  { opacity: 0.6; }
+  80%  { opacity: 0.4; }
+  100% { transform: translateX(220%) rotate(-20deg); opacity: 0; }
+}
+`
+
+if (typeof document !== 'undefined' && !document.getElementById('holo-keyframes')) {
+  const style = document.createElement('style')
+  style.id = 'holo-keyframes'
+  style.textContent = HOLO_KEYFRAMES
+  document.head.appendChild(style)
+}
+
+function HoloOverlay({ variant }) {
+  if (!variant) return null
   const v = variant.toLowerCase()
-  if (v.includes('holo') && v.includes('reverse')) {
-    return { boxShadow: '0 0 12px 2px rgba(99,179,237,0.5)', border: '1px solid rgba(99,179,237,0.4)' }
+
+  let gradient = null
+  let animationName = 'holoShimmer'
+  let duration = '3s'
+  let delay = '0s'
+
+  if (v.includes('reverse')) {
+    // Blue/cyan shimmer for Reverse Holo
+    gradient = 'linear-gradient(105deg, transparent 30%, rgba(99,179,237,0.7) 50%, rgba(147,210,255,0.5) 55%, transparent 70%)'
+    duration = '2.8s'
+    animationName = 'holoShimmerAlt'
+  } else if (v.includes('holo') || v === 'holo') {
+    // Gold/rainbow shimmer for Holo
+    gradient = 'linear-gradient(105deg, transparent 25%, rgba(245,200,66,0.8) 45%, rgba(255,230,100,0.6) 52%, rgba(245,200,66,0.8) 58%, transparent 75%)'
+    duration = '3.2s'
+  } else if (v.includes('alt art') || v.includes('illustration rare') || v.includes('special illustration')) {
+    // Purple shimmer for Alt Art / Special Illustration
+    gradient = 'linear-gradient(105deg, transparent 20%, rgba(167,139,250,0.7) 42%, rgba(196,181,253,0.5) 50%, rgba(167,139,250,0.7) 58%, transparent 78%)'
+    duration = '4s'
+  } else if (v.includes('first edition') || v.includes('1st edition')) {
+    // Green shimmer for 1st Edition
+    gradient = 'linear-gradient(105deg, transparent 30%, rgba(52,211,153,0.7) 50%, rgba(110,231,183,0.5) 55%, transparent 70%)'
+    duration = '3.5s'
+  } else {
+    // Generic shimmer for any other special variant
+    gradient = 'linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.4) 50%, transparent 70%)'
+    duration = '3s'
   }
-  if (v.includes('holo')) {
-    return { boxShadow: '0 0 14px 3px rgba(245,200,66,0.55)', border: '1px solid rgba(245,200,66,0.5)' }
-  }
-  if (v.includes('alt art') || v.includes('illustration rare') || v.includes('special illustration')) {
-    return { boxShadow: '0 0 16px 4px rgba(167,139,250,0.55)', border: '1px solid rgba(167,139,250,0.5)' }
-  }
-  if (v.includes('first edition') || v.includes('1st edition')) {
-    return { boxShadow: '0 0 12px 2px rgba(52,211,153,0.5)', border: '1px solid rgba(52,211,153,0.4)' }
-  }
-  return {}
+
+  if (!gradient) return null
+
+  return (
+    <div
+      className="absolute inset-0 pointer-events-none overflow-hidden rounded-xl"
+      style={{ zIndex: 2 }}
+    >
+      <div
+        style={{
+          position: 'absolute',
+          top: '-20%',
+          left: 0,
+          width: '60%',
+          height: '140%',
+          background: gradient,
+          animation: `${animationName} ${duration} ease-in-out ${delay} infinite`,
+          mixBlendMode: 'screen',
+        }}
+      />
+    </div>
+  )
 }
 
 // ─── CollectionEditModal ────────────────────────────────────────────────────
@@ -309,9 +369,7 @@ export default function Collection() {
     const map = new Map()
     items.forEach(i => {
       const s = i.card?.set_ref
-      const key = s?.id ?? i.card?.set_id  // fall back to card's own set_id for German/multi-lang cards
-      const name = s?.name ?? key           // use set_id as display name if set_ref has no name
-      if (key && name) map.set(key, name)
+      if (s?.id) map.set(s.id, s.name)
     })
     return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]))
   }, [items])
@@ -331,8 +389,7 @@ export default function Collection() {
       if (filterCondition && item.condition !== filterCondition) return false
       if (filterVariant && item.variant !== filterVariant) return false
       if (filterSet) {
-        const cardSetKey = item.card?.set_ref?.id ?? item.card?.set_id
-        if (cardSetKey !== filterSet) return false
+        if (item.card?.set_ref?.id !== filterSet) return false
       }
       if (filterType && !(card?.types || []).includes(filterType)) return false
       if (filterMinPrice && marketPrice < parseFloat(filterMinPrice)) return false
@@ -553,7 +610,6 @@ export default function Collection() {
                     >
                       <div
                         className="aspect-[2.5/3.5] relative rounded-xl overflow-hidden flex-shrink-0"
-                        style={getVariantStyle(item.variant)}
                       >
                         {card?.images_small
                           ? <img
@@ -568,17 +624,27 @@ export default function Collection() {
                               </span>
                             </div>
                         }
+                        <HoloOverlay variant={item.variant} />
                       </div>
-                      {card?.set_ref?.name && card?.number && (
-                        <p className="text-[10px] text-text-muted font-mono leading-tight truncate mt-0.5 px-0.5">
-                          {card.set_ref.name} · #{card.number}
-                        </p>
-                      )}
-                      {card?.set_ref?.name && !card?.number && (
-                        <p className="text-[10px] text-text-muted leading-tight truncate mt-0.5 px-0.5">
-                          {card.set_ref.name}
-                        </p>
-                      )}
+                      {(() => {
+                        const abbr = card?.set_ref?.abbreviation
+                        const num = card?.number
+                        const setName = card?.set_ref?.name
+                        if (abbr && num) {
+                          return (
+                            <p className="text-[10px] font-mono font-bold text-brand-red/70 leading-tight truncate mt-0.5 px-0.5">
+                              {abbr} {num}
+                            </p>
+                          )
+                        } else if (setName) {
+                          return (
+                            <p className="text-[10px] text-text-muted leading-tight truncate mt-0.5 px-0.5">
+                              {setName}
+                            </p>
+                          )
+                        }
+                        return null
+                      })()}
                       <div className="flex flex-wrap gap-0.5 mt-0.5 px-0.5">
                         {item.quantity > 1 && (
                           <span className="inline-flex items-center gap-0.5 text-[10px] font-black px-1.5 py-0.5 rounded-full bg-brand-red/20 text-brand-red border border-brand-red/40">
@@ -695,7 +761,13 @@ export default function Collection() {
                                     </span>
                                   )}
                                 </div>
-                                {card?.number && <p className="text-[10px] font-mono text-text-muted">#{card.number}</p>}
+                                {(() => {
+                                  const abbr = card?.set_ref?.abbreviation
+                                  const num = card?.number
+                                  if (abbr && num) return <p className="text-[10px] font-mono text-brand-red/70">{abbr} {num}</p>
+                                  if (num) return <p className="text-[10px] font-mono text-text-muted">#{num}</p>
+                                  return null
+                                })()}
                               </div>
                             </div>
                           </td>
