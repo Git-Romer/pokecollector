@@ -83,9 +83,13 @@ def add_to_collection(item: CollectionItemCreate, db: Session = Depends(get_db))
     item_lang = item.lang or "en"
 
     # Resolve the correct language-variant card_id
-    tcg_card_id, _ = pokemon_api.strip_lang_suffix(item.card_id)
-    effective_card_id = f"{tcg_card_id}_{item_lang}"
-    ensure_card_exists(db, effective_card_id, lang=item_lang)
+    if item.card_id.startswith("custom-"):
+        # Custom cards are stored with their original ID (no language suffix)
+        effective_card_id = item.card_id
+    else:
+        tcg_card_id, _ = pokemon_api.strip_lang_suffix(item.card_id)
+        effective_card_id = f"{tcg_card_id}_{item_lang}"
+        ensure_card_exists(db, effective_card_id, lang=item_lang)
 
     # Find existing entry for same card + variant + lang + condition + purchase_price combination
     existing = db.query(CollectionItem).filter(
