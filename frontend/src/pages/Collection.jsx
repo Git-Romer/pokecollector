@@ -41,6 +41,15 @@ const VARIANT_COLORS = {
 
 const GRADE_OPTIONS = ['raw', 'PSA 9', 'PSA 10', 'BGS 9', 'BGS 9.5', 'CGC 9', 'CGC 10']
 
+const HOLO_VARIANTS = new Set(['Holo', 'Holo Rare', 'Holo V', 'Holo VMAX', 'Holo VSTAR', 'Holo ex'])
+const HOLO_FIELD_MAP = {
+  price_market: 'price_market_holo',
+  price_trend: 'price_trend_holo',
+  price_avg1: 'price_avg1_holo',
+  price_avg7: 'price_avg7_holo',
+  price_avg30: 'price_avg30_holo',
+}
+
 // ─── CollectionEditModal ────────────────────────────────────────────────────
 // Opens when clicking any card in the collection. Allows editing + deleting.
 function CollectionEditModal({ item, onClose }) {
@@ -264,9 +273,16 @@ export default function Collection() {
     staleTime: 5 * 60 * 1000,
   })
 
-  function getMarketPrice(card) {
+  function getEffectivePrice(card, variant, primaryField = 'price_market') {
     if (!card) return 0
-    return card.price_market ?? 0
+    if (HOLO_VARIANTS.has(variant)) {
+      // Map primary field to its holo equivalent
+      const holoField = HOLO_FIELD_MAP[primaryField] ?? 'price_market_holo'
+      const holoVal = card[holoField]
+      if (holoVal != null) return holoVal
+    }
+    // Reverse Holo: standard non-holo CM price (reverse premium is TCGPlayer/USD only)
+    return card[primaryField] ?? card.price_market ?? 0
   }
 
   const rarities = useMemo(() => [...new Set(items.map(i => i.card?.rarity).filter(Boolean))].sort(), [items])
@@ -289,7 +305,7 @@ export default function Collection() {
   const filtered = useMemo(() => {
     let result = items.filter(item => {
       const card = item.card
-      const marketPrice = getMarketPrice(card)
+      const marketPrice = getEffectivePrice(card, item.variant)
       if (filterRarity && card?.rarity !== filterRarity) return false
       if (filterCondition && item.condition !== filterCondition) return false
       if (filterVariant && item.variant !== filterVariant) return false
@@ -308,8 +324,8 @@ export default function Collection() {
         case 'added_at': valA = a.added_at || ''; valB = b.added_at || ''; break
         case 'quantity': valA = a.quantity; valB = b.quantity; break
         case 'purchase_price': valA = a.purchase_price ?? -1; valB = b.purchase_price ?? -1; break
-        case 'market_price': valA = getMarketPrice(a.card); valB = getMarketPrice(b.card); break
-        case 'price_trend': valA = a.card?.price_trend ?? -1; valB = b.card?.price_trend ?? -1; break
+        case 'market_price': valA = getEffectivePrice(a.card, a.variant); valB = getEffectivePrice(b.card, b.variant); break
+        case 'price_trend': valA = getEffectivePrice(a.card, a.variant, 'price_trend'); valB = getEffectivePrice(b.card, b.variant, 'price_trend'); break
         case 'set': valA = a.card?.set_ref?.name || ''; valB = b.card?.set_ref?.name || ''; break
         case 'name': valA = a.card?.name?.toLowerCase() || ''; valB = b.card?.name?.toLowerCase() || ''; break
         default: return 0
@@ -322,7 +338,7 @@ export default function Collection() {
     return result
   }, [items, filterRarity, filterCondition, filterSet, filterType, filterMinPrice, filterMaxPrice, filterDuplicates, searchText, sortBy, sortOrder])
 
-  const totalValue = filtered.reduce((sum, item) => sum + (getMarketPrice(item.card) * item.quantity), 0)
+  const totalValue = filtered.reduce((sum, item) => sum + (getEffectivePrice(item.card, item.variant) * item.quantity), 0)
   const totalCards = filtered.reduce((sum, item) => sum + item.quantity, 0)
 
   const resetFilters = () => {
@@ -597,7 +613,7 @@ export default function Collection() {
                   <tbody>
                     {filtered.map((item) => {
                       const card = item.card
-                      const marketPrice = getMarketPrice(card)
+                      const marketPrice = getEffectivePrice(card, item.variant)
                       const totalVal = marketPrice * item.quantity
                       const buyTotal = (item.purchase_price || 0) * item.quantity
                       const pnl = item.purchase_price ? totalVal - buyTotal : null
@@ -697,7 +713,7 @@ export default function Collection() {
               <div className="md:hidden space-y-2 p-2">
                 {filtered.map((item) => {
                   const card = item.card
-                  const marketPrice = getMarketPrice(card)
+                  const marketPrice = getEffectivePrice(card, item.variant)
                   const totalVal = marketPrice * item.quantity
                   const buyTotal = (item.purchase_price || 0) * item.quantity
                   const pnl = item.purchase_price ? totalVal - buyTotal : null

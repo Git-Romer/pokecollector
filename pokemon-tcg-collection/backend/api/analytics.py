@@ -8,6 +8,20 @@ import datetime
 
 router = APIRouter()
 
+# Variants that use the Cardmarket holo price family
+HOLO_VARIANTS = {"Holo", "Holo Rare", "Holo V", "Holo VMAX", "Holo VSTAR", "Holo ex"}
+
+
+def _get_item_price(item):
+    """Return the correct market price for a collection item, respecting holo variant."""
+    card = item.card
+    if not card:
+        return 0
+    # Reverse Holo: uses standard non-holo CM price (reverse premium is TCGPlayer/USD only)
+    if item.variant in HOLO_VARIANTS and card.price_market_holo is not None:
+        return card.price_market_holo
+    return card.price_market or 0
+
 
 @router.get("/duplicates")
 def get_duplicates(db: Session = Depends(get_db)):
@@ -128,7 +142,7 @@ def _take_portfolio_snapshot(db: Session):
 
     collection_items = db.query(CollectionItem).join(Card).all()
     total_value = sum(
-        (item.card.price_market or 0) * item.quantity
+        _get_item_price(item) * item.quantity
         for item in collection_items
         if item.card
     )
