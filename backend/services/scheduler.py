@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler()
 
 _DEFAULT_FULL_SYNC_DAYS = 5
-_DEFAULT_PRICE_SYNC_MINUTES = 30
+_DEFAULT_PRICE_SYNC_MINUTES = 60
 
 
 def _get_full_sync_interval_days() -> int:

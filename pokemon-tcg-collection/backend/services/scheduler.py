@@ -30,14 +30,14 @@ def start_scheduler():
         now_utc = datetime.datetime.now(datetime.timezone.utc)
         scheduler.add_job(
             run_sync,
-            trigger=IntervalTrigger(minutes=30),
+            trigger=IntervalTrigger(minutes=60),
             id="sync_job",
             name="Pokemon TCG Sync",
             replace_existing=True,
             next_run_time=now_utc,  # Run immediately on first startup
         )
         scheduler.start()
-        logger.info(f"Scheduler started at {now_utc.isoformat()} - sync every 30 minutes, first run immediately")
+        logger.info(f"Scheduler started at {now_utc.isoformat()} - sync every 60 minutes, first run immediately")
     else:
         logger.info("Scheduler already running")
 

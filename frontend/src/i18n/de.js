@@ -197,6 +197,7 @@ const de = {
     allSets: 'Alle Sets',
     allTypes: 'Alle Typen',
     searchCards: 'Karten suchen...',
+    clearFilters: 'Filter zurücksetzen',
   },
 
   // Sets
@@ -525,13 +526,12 @@ const de = {
     days14: '14 Tage',
     days30: '30 Tage',
     // Price sync interval options (time)
-    min15: '15 Min',
-    min30: '30 Min',
-    hour1: '1 Std',
-    hours2: '2 Std',
-    hours6: '6 Std',
-    hours12: '12 Std',
-    hours24: '24 Std',
+    min60: 'Stündlich',
+    min120: 'Alle 2 Stunden',
+    min180: 'Alle 3 Stunden',
+    min360: 'Alle 6 Stunden',
+    min720: 'Alle 12 Stunden',
+    min1440: 'Alle 24 Stunden',
   },
 
   // Period selector

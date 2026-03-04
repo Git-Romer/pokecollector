@@ -50,6 +50,25 @@ const HOLO_FIELD_MAP = {
   price_avg30: 'price_avg30_holo',
 }
 
+// ─── Variant visual effect helper ──────────────────────────────────────────
+function getVariantStyle(variant) {
+  if (!variant) return {}
+  const v = variant.toLowerCase()
+  if (v.includes('holo') && v.includes('reverse')) {
+    return { boxShadow: '0 0 12px 2px rgba(99,179,237,0.5)', border: '1px solid rgba(99,179,237,0.4)' }
+  }
+  if (v.includes('holo')) {
+    return { boxShadow: '0 0 14px 3px rgba(245,200,66,0.55)', border: '1px solid rgba(245,200,66,0.5)' }
+  }
+  if (v.includes('alt art') || v.includes('illustration rare') || v.includes('special illustration')) {
+    return { boxShadow: '0 0 16px 4px rgba(167,139,250,0.55)', border: '1px solid rgba(167,139,250,0.5)' }
+  }
+  if (v.includes('first edition') || v.includes('1st edition')) {
+    return { boxShadow: '0 0 12px 2px rgba(52,211,153,0.5)', border: '1px solid rgba(52,211,153,0.4)' }
+  }
+  return {}
+}
+
 // ─── CollectionEditModal ────────────────────────────────────────────────────
 // Opens when clicking any card in the collection. Allows editing + deleting.
 function CollectionEditModal({ item, onClose }) {
@@ -290,7 +309,9 @@ export default function Collection() {
     const map = new Map()
     items.forEach(i => {
       const s = i.card?.set_ref
-      if (s?.id) map.set(s.id, s.name)
+      const key = s?.id ?? i.card?.set_id
+      const name = s?.name ?? key
+      if (key && name) map.set(key, name)
     })
     return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]))
   }, [items])
@@ -309,7 +330,10 @@ export default function Collection() {
       if (filterRarity && card?.rarity !== filterRarity) return false
       if (filterCondition && item.condition !== filterCondition) return false
       if (filterVariant && item.variant !== filterVariant) return false
-      if (filterSet && card?.set_ref?.id !== filterSet) return false
+      if (filterSet) {
+        const cardSetKey = item.card?.set_ref?.id ?? item.card?.set_id
+        if (cardSetKey !== filterSet) return false
+      }
       if (filterType && !(card?.types || []).includes(filterType)) return false
       if (filterMinPrice && marketPrice < parseFloat(filterMinPrice)) return false
       if (filterMaxPrice && marketPrice > parseFloat(filterMaxPrice)) return false
@@ -336,7 +360,7 @@ export default function Collection() {
     })
 
     return result
-  }, [items, filterRarity, filterCondition, filterSet, filterType, filterMinPrice, filterMaxPrice, filterDuplicates, searchText, sortBy, sortOrder])
+  }, [items, filterRarity, filterCondition, filterVariant, filterSet, filterType, filterMinPrice, filterMaxPrice, filterDuplicates, searchText, sortBy, sortOrder])
 
   const totalValue = filtered.reduce((sum, item) => sum + (getEffectivePrice(item.card, item.variant) * item.quantity), 0)
   const totalCards = filtered.reduce((sum, item) => sum + item.quantity, 0)
@@ -429,7 +453,7 @@ export default function Collection() {
 
           {hasActiveFilters && (
             <button onClick={resetFilters} className="btn-ghost text-sm py-1.5">
-              <X size={14} /> {t('common.clear')}
+              <X size={14} /> {t('collection.clearFilters')}
             </button>
           )}
         </div>
@@ -527,7 +551,10 @@ export default function Collection() {
                       className={`binder-card ${rarityClass} cursor-pointer`}
                       onClick={() => setEditingCollectionItem(item)}
                     >
-                      <div className="aspect-[2.5/3.5]">
+                      <div
+                        className="aspect-[2.5/3.5] relative rounded-xl overflow-hidden flex-shrink-0"
+                        style={getVariantStyle(item.variant)}
+                      >
                         {card?.images_small
                           ? <img
                               src={card.images_small}
@@ -542,31 +569,42 @@ export default function Collection() {
                             </div>
                         }
                       </div>
-                      {item.quantity > 1 && (
-                        <span className="absolute bottom-0.5 right-0.5 bg-black/85 text-white text-[9px] font-black rounded px-1 leading-4">
-                          ×{item.quantity}
-                        </span>
+                      {card?.set_ref?.name && card?.number && (
+                        <p className="text-[10px] text-text-muted font-mono leading-tight truncate mt-0.5 px-0.5">
+                          {card.set_ref.name} · #{card.number}
+                        </p>
                       )}
-                      {item.variant && item.variant !== 'Normal' && (
-                        <span className="absolute top-0.5 left-0.5 bg-purple-900/80 text-purple-200 text-[8px] font-bold rounded px-1 leading-tight hidden sm:block">
-                          ✨
-                        </span>
+                      {card?.set_ref?.name && !card?.number && (
+                        <p className="text-[10px] text-text-muted leading-tight truncate mt-0.5 px-0.5">
+                          {card.set_ref.name}
+                        </p>
                       )}
-                      {item.lang && (
-                        <span className={`absolute top-0.5 right-0.5 text-[8px] font-black rounded px-1 leading-4 ${
-                          item.lang === 'de'
-                            ? 'bg-yellow-900/80 text-yellow-300'
-                            : 'bg-blue-900/80 text-blue-300'
-                        }`}>
-                          {item.lang.toUpperCase()}
-                        </span>
-                      )}
-                      {item.grade && item.grade !== 'raw' && (
-                        <span className="absolute bottom-0.5 left-0.5 text-[8px] font-black rounded px-1 leading-4"
-                          style={{ background: 'rgba(184,134,11,0.85)', color: '#fef08a' }}>
-                          {item.grade}
-                        </span>
-                      )}
+                      <div className="flex flex-wrap gap-0.5 mt-0.5 px-0.5">
+                        {item.quantity > 1 && (
+                          <span className="inline-flex items-center gap-0.5 text-[10px] font-black px-1.5 py-0.5 rounded-full bg-brand-red/20 text-brand-red border border-brand-red/40">
+                            ×{item.quantity}
+                          </span>
+                        )}
+                        {item.variant && item.variant !== 'Normal' && (
+                          <span className="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-yellow/15 text-yellow border border-yellow/30 truncate max-w-[80px]">
+                            ✨ {item.variant}
+                          </span>
+                        )}
+                        {item.grade && item.grade !== 'raw' && (
+                          <span className="inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40">
+                            🏅 {item.grade}
+                          </span>
+                        )}
+                        {item.lang && (
+                          <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${
+                            item.lang === 'de'
+                              ? 'bg-yellow/20 text-yellow border border-yellow/30'
+                              : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                          }`}>
+                            {item.lang.toUpperCase()}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   )
                 })}
@@ -657,7 +695,7 @@ export default function Collection() {
                                     </span>
                                   )}
                                 </div>
-                                {card?.number && <p className="text-xs text-text-muted">#{card.number}</p>}
+                                {card?.number && <p className="text-[10px] font-mono text-text-muted">#{card.number}</p>}
                               </div>
                             </div>
                           </td>
@@ -731,7 +769,7 @@ export default function Collection() {
                       key={item.id}
                       image={card?.images_small}
                       name={card?.name}
-                      subtext={card?.set_ref?.name || '-'}
+                      subtext={[card?.set_ref?.name, card?.number ? `#${card.number}` : null].filter(Boolean).join(' · ') || '-'}
                       badges={badges}
                       value={marketPrice > 0 ? formatPrice(marketPrice) : '-'}
                       valueSecondary={pnl !== null ? `${pnl >= 0 ? '+' : ''}${formatPrice(pnl)}` : undefined}

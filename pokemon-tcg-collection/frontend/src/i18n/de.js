@@ -195,6 +195,7 @@ const de = {
     allSets: 'Alle Sets',
     allTypes: 'Alle Typen',
     searchCards: 'Karten suchen...',
+    clearFilters: 'Filter zurücksetzen',
   },
 
   // Sets
@@ -507,6 +508,13 @@ const de = {
     neverSynced: 'Noch nie',
     errorPrefix: 'Fehler: ',
     cardUpdated: 'Karte aktualisiert!',
+    // Price sync interval options (time)
+    min60: 'Stündlich',
+    min120: 'Alle 2 Stunden',
+    min180: 'Alle 3 Stunden',
+    min360: 'Alle 6 Stunden',
+    min720: 'Alle 12 Stunden',
+    min1440: 'Alle 24 Stunden',
   },
 
   // Period selector
