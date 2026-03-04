@@ -5,6 +5,21 @@ import { ArrowLeft, Plus, Trash2, Search, Package, Star } from 'lucide-react'
 import { getBinderCards, removeCardFromBinder, addCardToBinder, searchCards, getCollection } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
+import { useTilt } from '../hooks/useTilt'
+
+function TiltBinderCard({ className, children }) {
+  const { ref, onMouseMove, onMouseLeave } = useTilt(10)
+  return (
+    <div
+      ref={ref}
+      className={className}
+      onMouseMove={onMouseMove}
+      onMouseLeave={onMouseLeave}
+    >
+      {children}
+    </div>
+  )
+}
 
 export default function BinderDetail() {
   const { binderId } = useParams()
@@ -220,7 +235,7 @@ export default function BinderDetail() {
             const isMissing = isWishlist && !isOwned
 
             return (
-              <div key={card.id} className="relative group rounded-xl overflow-hidden card p-0">
+              <TiltBinderCard key={card.id} className="relative group rounded-xl overflow-hidden card p-0">
                 {card.images_small ? (
                   <img src={card.images_small} alt={card.name}
                     className={`w-full aspect-[2.5/3.5] object-cover transition-all ${isMissing ? 'grayscale opacity-60' : ''}`}
@@ -253,7 +268,7 @@ export default function BinderDetail() {
                     {card.quantity}x
                   </div>
                 )}
-              </div>
+              </TiltBinderCard>
             )
           })}
         </div>

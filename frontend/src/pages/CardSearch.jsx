@@ -6,6 +6,22 @@ import { CardItem, CustomCardModal, CardModal } from '../components/CardItem'
 import { useSettings } from '../contexts/SettingsContext'
 import Sheet from '../components/ui/Sheet'
 import CardScanner from '../components/CardScanner'
+import { useTilt } from '../hooks/useTilt'
+
+function TiltCardWrapper({ children, className, onClick }) {
+  const { ref, onMouseMove, onMouseLeave } = useTilt(12)
+  return (
+    <div
+      ref={ref}
+      className={className}
+      onClick={onClick}
+      onMouseMove={onMouseMove}
+      onMouseLeave={onMouseLeave}
+    >
+      {children}
+    </div>
+  )
+}
 
 const CODE_NUMBER_RE = /^([A-Za-z]+\d*)\s+(\d+)$/
 
@@ -405,7 +421,7 @@ export default function CardSearch() {
                 const cardSetName = card.set?.name || setObj?.abbreviation || setObj?.name || card.set_id || ''
                 const cardDisplay = cardSetName + (card.number ? ` · #${card.number}` : '')
                 return (
-                  <div
+                  <TiltCardWrapper
                     key={card.id}
                     className="card-3d group relative"
                     onClick={() => setSelectedCard(card)}
@@ -436,7 +452,7 @@ export default function CardSearch() {
                       </div>
                       <p className="text-[10px] text-text-muted truncate">{cardDisplay}</p>
                     </div>
-                  </div>
+                  </TiltCardWrapper>
                 )
               })}
             </div>

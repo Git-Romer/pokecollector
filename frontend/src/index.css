@@ -463,8 +463,6 @@
 
 /* Holo card effect — for rare+ cards in collection grid */
 .card-holo {
-  border-color: rgba(245,200,66,0.4) !important;
-  box-shadow: 0 0 8px rgba(245,200,66,0.2), 0 2px 8px rgba(0,0,0,0.4);
 }
 .card-holo::after {
   content: '';
@@ -473,9 +471,9 @@
   background: linear-gradient(
     135deg,
     transparent 25%,
-    rgba(255,255,255,0.06) 45%,
-    rgba(255,255,255,0.1) 50%,
-    rgba(255,255,255,0.06) 55%,
+    rgba(255,255,255,0.025) 45%,
+    rgba(255,255,255,0.04) 50%,
+    rgba(255,255,255,0.025) 55%,
     transparent 75%
   );
   background-size: 200% 200%;
@@ -490,8 +488,6 @@
 
 /* Secret rare / rainbow — for ultra rare cards */
 .card-secret {
-  border-color: rgba(180,100,255,0.5) !important;
-  box-shadow: 0 0 12px rgba(150,80,255,0.25);
 }
 .card-secret::after {
   content: '';
@@ -611,11 +607,8 @@ body {
 /* ================================================ */
 .card-3d {
   transform-style: preserve-3d;
-  transition: transform 0.25s ease, box-shadow 0.25s ease;
+  will-change: transform;
   cursor: pointer;
-}
-.card-3d:hover {
-  transform: perspective(700px) rotateY(-8deg) rotateX(4deg) scale(1.03);
 }
 
 /* ================================================ */

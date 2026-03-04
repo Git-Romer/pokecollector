@@ -7,6 +7,22 @@ import { useSettings } from '../contexts/SettingsContext'
 import CardListItem from '../components/CardListItem'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
+import { useTilt } from '../hooks/useTilt'
+
+function TiltBinderCard({ className, onClick, children }) {
+  const { ref, onMouseMove, onMouseLeave } = useTilt(10)
+  return (
+    <div
+      ref={ref}
+      className={className}
+      onClick={onClick}
+      onMouseMove={onMouseMove}
+      onMouseLeave={onMouseLeave}
+    >
+      {children}
+    </div>
+  )
+}
 
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
 const CONDITION_COLORS = {
@@ -85,24 +101,24 @@ function HoloOverlay({ variant }) {
 
   if (v.includes('reverse')) {
     // Blue/cyan shimmer for Reverse Holo
-    gradient = 'linear-gradient(105deg, transparent 30%, rgba(99,179,237,0.7) 50%, rgba(147,210,255,0.5) 55%, transparent 70%)'
+    gradient = 'linear-gradient(105deg, transparent 30%, rgba(99,179,237,0.25) 50%, rgba(147,210,255,0.15) 55%, transparent 70%)'
     duration = '2.8s'
     animationName = 'holoShimmerAlt'
   } else if (v.includes('holo') || v === 'holo') {
     // Gold/rainbow shimmer for Holo
-    gradient = 'linear-gradient(105deg, transparent 25%, rgba(245,200,66,0.8) 45%, rgba(255,230,100,0.6) 52%, rgba(245,200,66,0.8) 58%, transparent 75%)'
+    gradient = 'linear-gradient(105deg, transparent 25%, rgba(245,200,66,0.20) 45%, rgba(255,230,100,0.15) 52%, rgba(245,200,66,0.20) 58%, transparent 75%)'
     duration = '3.2s'
   } else if (v.includes('alt art') || v.includes('illustration rare') || v.includes('special illustration')) {
     // Purple shimmer for Alt Art / Special Illustration
-    gradient = 'linear-gradient(105deg, transparent 20%, rgba(167,139,250,0.7) 42%, rgba(196,181,253,0.5) 50%, rgba(167,139,250,0.7) 58%, transparent 78%)'
+    gradient = 'linear-gradient(105deg, transparent 20%, rgba(167,139,250,0.20) 42%, rgba(196,181,253,0.15) 50%, rgba(167,139,250,0.20) 58%, transparent 78%)'
     duration = '4s'
   } else if (v.includes('first edition') || v.includes('1st edition')) {
     // Green shimmer for 1st Edition
-    gradient = 'linear-gradient(105deg, transparent 30%, rgba(52,211,153,0.7) 50%, rgba(110,231,183,0.5) 55%, transparent 70%)'
+    gradient = 'linear-gradient(105deg, transparent 30%, rgba(52,211,153,0.25) 50%, rgba(110,231,183,0.15) 55%, transparent 70%)'
     duration = '3.5s'
   } else {
     // Generic shimmer for any other special variant
-    gradient = 'linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.4) 50%, transparent 70%)'
+    gradient = 'linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.25) 50%, transparent 70%)'
     duration = '3s'
   }
 
@@ -603,7 +619,7 @@ export default function Collection() {
                   }
 
                   return (
-                    <div
+                    <TiltBinderCard
                       key={item.id}
                       className={`binder-card ${rarityClass} cursor-pointer`}
                       onClick={() => setEditingCollectionItem(item)}
@@ -671,7 +687,7 @@ export default function Collection() {
                           </span>
                         )}
                       </div>
-                    </div>
+                    </TiltBinderCard>
                   )
                 })}
               </div>
