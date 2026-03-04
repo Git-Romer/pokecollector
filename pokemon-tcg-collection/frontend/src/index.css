@@ -525,7 +525,6 @@
   cursor: pointer;
   border-radius: 8px;
   overflow: hidden;
-  border: 1px solid rgba(255,255,255,0.08);
   transition: all 0.2s ease;
 }
 .binder-card img {
@@ -533,8 +532,6 @@
 }
 .binder-card:hover {
   transform: scale(1.04);
-  border-color: rgba(227,0,11,0.45);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.55), 0 0 20px rgba(227,0,11,0.18);
 }
 .binder-card:hover img {
   transform: scale(1.02);
