@@ -11,6 +11,7 @@ const api = axios.create({
 // Cards
 export const searchCards = (params) => api.get('/cards/search', { params })
 export const getCard = (id) => api.get(`/cards/${id}`)
+export const getCardInLang = (cardId, lang) => api.get(`/cards/${cardId}/lang/${lang}`)
 export const getPriceHistory = (id) => api.get(`/cards/${id}/price-history`)
 export const createCustomCard = (data) => api.post('/cards/custom', data)
 export const updateCustomCard = (cardId, data) => api.put(`/cards/custom/${cardId}`, data).then(r => r.data)

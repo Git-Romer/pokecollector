@@ -133,23 +133,42 @@ def update_collection_item(
     update: CollectionItemUpdate,
     db: Session = Depends(get_db),
 ):
-    """Update a collection item."""
+    """Update a collection item. When lang changes, rebind card_id to the correct language variant."""
     item = db.query(CollectionItem).filter(CollectionItem.id == item_id).first()
     if not item:
         raise HTTPException(status_code=404, detail="Collection item not found")
 
-    # Use exclude_unset so only fields explicitly sent in the request are updated.
-    # This allows null values (e.g. clearing variant or purchase_price) to be saved.
     update_data = update.model_dump(exclude_unset=True)
 
-    # If lang is being changed, also update card_id to the correct language variant
     new_lang = update_data.get("lang")
     if new_lang and new_lang != item.lang:
-        card = db.query(Card).filter(Card.id == item.card_id).first()
-        if card and not card.is_custom:
-            tcg_id, _ = pokemon_api.strip_lang_suffix(item.card_id)
-            new_card_id = f"{tcg_id}_{new_lang}"
+        # Only rebind for non-custom cards (custom cards have no lang variant in DB)
+        existing_card = db.query(Card).filter(Card.id == item.card_id).first()
+        if not existing_card or not existing_card.is_custom:
+            tcg_card_id, _ = pokemon_api.strip_lang_suffix(item.card_id)
+            new_card_id = f"{tcg_card_id}_{new_lang}"
             ensure_card_exists(db, new_card_id, lang=new_lang)
+
+            # Check for a duplicate entry that would cause a unique constraint violation
+            new_variant = update_data.get("variant", item.variant)
+            new_condition = update_data.get("condition", item.condition)
+            new_purchase_price = update_data.get("purchase_price", item.purchase_price)
+            duplicate = db.query(CollectionItem).filter(
+                CollectionItem.id != item_id,
+                CollectionItem.card_id == new_card_id,
+                CollectionItem.variant == new_variant,
+                CollectionItem.lang == new_lang,
+                CollectionItem.condition == new_condition,
+                CollectionItem.purchase_price == new_purchase_price,
+            ).first()
+
+            if duplicate:
+                duplicate.quantity += item.quantity
+                db.delete(item)
+                db.commit()
+                db.refresh(duplicate)
+                return duplicate
+
             update_data["card_id"] = new_card_id
 
     for field, value in update_data.items():

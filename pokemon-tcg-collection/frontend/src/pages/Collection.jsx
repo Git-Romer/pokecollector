@@ -1,7 +1,7 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Trash2, Check, X, Filter, SortAsc, Download, ChevronUp, ChevronDown, Search, PenLine, Grid2X2, List } from 'lucide-react'
-import { getCollection, updateCollectionItem, removeFromCollection, exportCSV, exportPDF, getSets } from '../api/client'
+import { getCollection, updateCollectionItem, removeFromCollection, exportCSV, exportPDF, getSets, getCardInLang } from '../api/client'
 import { CustomCardModal } from '../components/CardItem'
 import { useSettings } from '../contexts/SettingsContext'
 import CardListItem from '../components/CardListItem'
@@ -160,6 +160,20 @@ function CollectionEditModal({ item, onClose }) {
   const [price, setPrice] = useState(item.purchase_price ? String(item.purchase_price) : '')
 
   const cardImage = card?.images_large || card?.images_small || (card?.image ? `${card.image}/high.webp` : null)
+  const [previewImage, setPreviewImage] = useState(cardImage)
+
+  const tcgBaseId = item.card_id?.replace(/_(?:de|en)$/, '') ?? ''
+
+  useEffect(() => {
+    if (!tcgBaseId || card?.is_custom) return
+    getCardInLang(tcgBaseId, lang)
+      .then(res => {
+        const c = res.data
+        const img = c?.images_large || c?.images_small || null
+        if (img) setPreviewImage(img)
+      })
+      .catch(() => {}) // silently ignore if sibling card not found
+  }, [lang])
 
   const updateMutation = useMutation({
     mutationFn: () => updateCollectionItem(item.id, {
@@ -216,8 +230,8 @@ function CollectionEditModal({ item, onClose }) {
         <div className="p-5">
           {/* Header */}
           <div className="flex items-start gap-4 mb-5">
-            {cardImage && (
-              <img src={cardImage} alt={card?.name} className="w-20 rounded-xl shadow-lg flex-shrink-0" />
+            {previewImage && (
+              <img src={previewImage} alt={card?.name} className="w-20 rounded-xl shadow-lg flex-shrink-0" />
             )}
             <div className="flex-1 min-w-0">
               <div className="flex items-start justify-between gap-2">
