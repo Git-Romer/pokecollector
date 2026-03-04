@@ -24,12 +24,15 @@ def _get_language(db: Session) -> str:
 
 def _card_to_dict(card: Card) -> dict:
     """Convert a Card ORM object to a dict matching the search result format."""
+    set_ref = getattr(card, 'set_ref', None)
+    set_ref_dict = {"id": set_ref.id, "name": set_ref.name} if set_ref else None
     return {
         "id": card.id,
         "name": card.name,
         "number": card.number,
         "localId": card.number,
         "set_id": card.set_id,
+        "set_ref": set_ref_dict,
         "rarity": card.rarity,
         "types": card.types,
         "supertype": card.supertype,
@@ -154,14 +157,31 @@ def _search_by_code_number(
                     stripped_filters.append(Card.lang == lang)
                 cards = db.query(Card).filter(*stripped_filters).all()
 
-    if not cards:
+    # Also search custom cards matching set_id + number
+    custom_cards = db.query(Card).filter(
+        Card.is_custom,
+        Card.number == card_number,
+        func.upper(Card.set_id) == set_code_upper,
+    ).all()
+    if not custom_cards and card_number != (card_number.lstrip("0") or "0"):
+        card_number_stripped = card_number.lstrip("0") or "0"
+        custom_cards = db.query(Card).filter(
+            Card.is_custom,
+            Card.number == card_number_stripped,
+            func.upper(Card.set_id) == set_code_upper,
+        ).all()
+
+    existing_ids = {c.id for c in cards}
+    all_cards = cards + [c for c in custom_cards if c.id not in existing_ids]
+
+    if not all_cards:
         return {"data": [], "total_count": 0, "page": page, "page_size": page_size}
 
     start = (page - 1) * page_size
-    page_cards = cards[start:start + page_size]
+    page_cards = all_cards[start:start + page_size]
     return {
         "data": [_card_to_dict(c) for c in page_cards],
-        "total_count": len(cards),
+        "total_count": len(all_cards),
         "page": page,
         "page_size": page_size,
     }
@@ -188,7 +208,7 @@ def create_custom_card(data: CardCustomCreate, db: Session = Depends(get_db)):
     if data.set_id:
         existing_set = db.query(Set).filter(Set.id == data.set_id).first()
         if not existing_set:
-            db.add(Set(id=data.set_id, name=data.set_id, total=0))
+            db.add(Set(id=data.set_id, name=data.set_id, total=0, tcg_set_id=data.set_id, lang=data.lang or "en"))
 
     # image_url is stored as images_small and images_large (unchanged, not TCGdex)
     card = Card(
@@ -203,6 +223,7 @@ def create_custom_card(data: CardCustomCreate, db: Session = Depends(get_db)):
         images_small=data.image_url or None,
         images_large=data.image_url or None,
         is_custom=True,
+        lang=data.lang or "en",
     )
     db.add(card)
     try:

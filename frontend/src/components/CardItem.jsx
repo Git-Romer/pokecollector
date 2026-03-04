@@ -117,6 +117,7 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
     e.preventDefault()
     if (!name.trim()) return
     const effectiveSetId = setChoice === '__custom__' ? customSetId.trim() : setChoice || undefined
+    const selectedSet = effectiveSetId ? sets.find(s => s.id === effectiveSetId) : null
     const payload = {
       name: name.trim(),
       set_id: effectiveSetId || undefined,
@@ -126,6 +127,7 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
       hp: hp.trim() || undefined,
       artist: artist.trim() || undefined,
       image_url: imageUrl.trim() || undefined,
+      lang: selectedSet?.lang || undefined,
     }
     if (isEditMode) {
       updateMutation.mutate(payload)
