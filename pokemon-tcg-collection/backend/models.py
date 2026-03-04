@@ -53,6 +53,7 @@ class Card(Base):
     images_small = Column(String)
     images_large = Column(String)
     is_custom = Column(Boolean, default=False)
+    lang = Column(String, default="en")      # "en" or "de"
     # Cardmarket EUR prices
     price_market = Column(Float)
     price_low = Column(Float)
@@ -67,8 +68,8 @@ class Card(Base):
     # Relationship to Set via tcg_set_id (viewonly, no DB FK)
     set_ref = relationship(
         "Set",
-        primaryjoin="foreign(Card.set_id) == Set.tcg_set_id",
-        foreign_keys="[Card.set_id]",
+        primaryjoin="and_(Set.tcg_set_id == foreign(Card.set_id), Set.lang == foreign(Card.lang))",
+        foreign_keys="[Card.set_id, Card.lang]",
         uselist=False,
         viewonly=True,
         overlaps="cards",
