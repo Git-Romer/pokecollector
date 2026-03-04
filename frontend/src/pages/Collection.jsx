@@ -309,8 +309,8 @@ export default function Collection() {
     const map = new Map()
     items.forEach(i => {
       const s = i.card?.set_ref
-      const key = s?.id ?? i.card?.set_id
-      const name = s?.name ?? key
+      const key = s?.id ?? i.card?.set_id  // fall back to card's own set_id for German/multi-lang cards
+      const name = s?.name ?? key           // use set_id as display name if set_ref has no name
       if (key && name) map.set(key, name)
     })
     return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]))
