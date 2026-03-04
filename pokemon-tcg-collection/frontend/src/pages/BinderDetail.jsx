@@ -7,12 +7,13 @@ import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
 import { useTilt } from '../hooks/useTilt'
 
-function TiltBinderCard({ className, children }) {
+function TiltBinderCard({ className, onClick, children }) {
   const { ref, onMouseMove, onMouseLeave } = useTilt(10)
   return (
     <div
       ref={ref}
       className={className}
+      onClick={onClick}
       onMouseMove={onMouseMove}
       onMouseLeave={onMouseLeave}
     >
