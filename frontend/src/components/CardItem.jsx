@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { Plus, Check, Heart, BookOpen, X, PenLine, Pencil, TrendingUp } from 'lucide-react'
-import { addToCollection, addToWishlist, createCustomCard, updateCustomCard, getEbayGradedPrice, getSetting } from '../api/client'
+import { addToCollection, addToWishlist, createCustomCard, updateCustomCard, getEbayGradedPrice, getSetting, getSets } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import PeriodSelector, { CARD_PERIODS, PERIOD_PRICE_FIELD } from './PeriodSelector'
 import toast from 'react-hot-toast'
@@ -40,7 +40,7 @@ function getPriceValue(card, priceKey) {
 
 const POKEMON_TYPES = ['Fire', 'Water', 'Grass', 'Lightning', 'Psychic', 'Fighting', 'Darkness', 'Metal', 'Dragon', 'Colorless', 'Fairy', 'Stellar']
 
-export function CustomCardModal({ onClose, onCreated, sets = [], autoAddCollection = false, editCard = null }) {
+export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoAddCollection = false, editCard = null }) {
   const { t } = useSettings()
   const [name, setName] = useState(editCard?.name || '')
   const [setChoice, setSetChoice] = useState(editCard?.set_id || '')
@@ -58,6 +58,14 @@ export function CustomCardModal({ onClose, onCreated, sets = [], autoAddCollecti
   const [variant, setVariant] = useState('')
   const [purchasePrice, setPurchasePrice] = useState('')
   const queryClient = useQueryClient()
+
+  const { data: fetchedSets = [] } = useQuery({
+    queryKey: ['sets'],
+    queryFn: () => getSets().then(r => r.data),
+    staleTime: 60000,
+    enabled: setsProp.length === 0,
+  })
+  const sets = setsProp.length > 0 ? setsProp : fetchedSets
 
   const isEditMode = !!editCard
 

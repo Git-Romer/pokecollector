@@ -368,16 +368,26 @@ export default function CardSearch() {
         </div>
       )}
 
-      {recentCustomCards.length > 0 && (
+      {recentCustomCards.length > 0 && filters.name.trim() && (
         <div>
-          <p className="text-xs text-yellow font-medium mb-2 flex items-center gap-1">
-            <PenLine size={12} /> {t('cardSearch.customCard')}
-          </p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-            {recentCustomCards.map((card) => (
-              <CardItem key={card.id} card={card} />
-            ))}
-          </div>
+          {(() => {
+            const matched = recentCustomCards.filter(c =>
+              c.name.toLowerCase().includes(filters.name.toLowerCase())
+            )
+            if (!matched.length) return null
+            return (
+              <>
+                <p className="text-xs text-yellow font-medium mb-2 flex items-center gap-1">
+                  <PenLine size={12} /> {t('cardSearch.customCard')}
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                  {matched.map((card) => (
+                    <CardItem key={card.id} card={card} />
+                  ))}
+                </div>
+              </>
+            )
+          })()}
         </div>
       )}
 
