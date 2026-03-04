@@ -9,13 +9,14 @@ import CardScanner from '../components/CardScanner'
 import { useTilt } from '../hooks/useTilt'
 
 function TiltCardWrapper({ children, className, onClick }) {
-  const { ref, onMouseMove, onMouseLeave } = useTilt(12)
+  const { ref, onMouseMove, onMouseEnter, onMouseLeave } = useTilt(12)
   return (
     <div
       ref={ref}
       className={className}
       onClick={onClick}
       onMouseMove={onMouseMove}
+      onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
       {children}
