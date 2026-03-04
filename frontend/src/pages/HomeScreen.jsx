@@ -39,9 +39,9 @@ function ChartTooltip({ active, payload, label }) {
 // ── Card thumbnail ────────────────────────────────────────────────────────────
 function CardThumb({ card, onClick }) {
   const img = card.images_small || card.image_url
-  const { ref, onMouseMove, onMouseLeave } = useTilt(8)
+  const { ref, onMouseMove, onMouseEnter, onMouseLeave } = useTilt(8)
   return (
-    <div ref={ref} className="flex-shrink-0 w-[72px] cursor-pointer group" onClick={onClick} onMouseMove={onMouseMove} onMouseLeave={onMouseLeave}>
+    <div ref={ref} className="flex-shrink-0 w-[72px] cursor-pointer group" onClick={onClick} onMouseMove={onMouseMove} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
       <div className="aspect-[2.5/3.5] rounded-xl overflow-hidden shadow-lg transition-all duration-150
         group-hover:shadow-brand-red/20"
         style={{ border: '1px solid rgba(255,255,255,0.07)', boxShadow: '0 4px 16px rgba(0,0,0,0.5)' }}>

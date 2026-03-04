@@ -10,13 +10,14 @@ import clsx from 'clsx'
 import { useTilt } from '../hooks/useTilt'
 
 function TiltBinderCard({ className, onClick, children }) {
-  const { ref, onMouseMove, onMouseLeave } = useTilt(10)
+  const { ref, onMouseMove, onMouseEnter, onMouseLeave } = useTilt(10)
   return (
     <div
       ref={ref}
       className={className}
       onClick={onClick}
       onMouseMove={onMouseMove}
+      onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
       {children}
