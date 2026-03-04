@@ -82,6 +82,7 @@ class CardCustomCreate(BaseModel):
     hp: Optional[str] = None
     artist: Optional[str] = None
     image_url: Optional[str] = None
+    lang: Optional[str] = None
 
 
 class CustomCardUpdate(BaseModel):
