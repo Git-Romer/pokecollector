@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Search, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, SortAsc, Hash, PenLine, SlidersHorizontal, Camera } from 'lucide-react'
-import { searchCards, getSets } from '../api/client'
+import { searchCards, getSets, getCustomCards } from '../api/client'
 import { CardItem, CustomCardModal, CardModal } from '../components/CardItem'
 import { useSettings } from '../contexts/SettingsContext'
 import Sheet from '../components/ui/Sheet'
@@ -111,6 +111,7 @@ function FilterForm({ filters, setFilter, allSeries, setsForSeries, toggleSortOr
 
 export default function CardSearch() {
   const { t } = useSettings()
+  const queryClient = useQueryClient()
   const [searchInput, setSearchInput] = useState('')
   const [filters, setFilters] = useState({
     name: '', type: '', rarity: '', set_id: '', series: '', artist: '',
@@ -121,9 +122,13 @@ export default function CardSearch() {
   const [showFilters, setShowFilters] = useState(false)
   const [showCustomModal, setShowCustomModal] = useState(false)
   const [showScanner, setShowScanner] = useState(false)
-  const [recentCustomCards, setRecentCustomCards] = useState([])
   const [selectedCard, setSelectedCard] = useState(null)
   const pageSize = 20
+
+  const { data: recentCustomCards = [] } = useQuery({
+    queryKey: ['custom-cards'],
+    queryFn: () => getCustomCards().then(r => r.data),
+  })
 
   const { data: allSets = [] } = useQuery({
     queryKey: ['sets'],
@@ -197,8 +202,8 @@ export default function CardSearch() {
   const activeFilterCount = [filters.type, filters.rarity, filters.set_id, filters.series, filters.artist, filters.hp_min, filters.hp_max, filters.sort_by].filter(Boolean).length
   const totalPages = data ? Math.ceil(data.total_count / pageSize) : 0
 
-  const handleCustomCreated = (card) => {
-    setRecentCustomCards(prev => [card, ...prev.filter(c => c.id !== card.id)])
+  const handleCustomCreated = () => {
+    queryClient.invalidateQueries({ queryKey: ['custom-cards'] })
   }
 
   const filterFormProps = { filters, setFilter, allSeries, setsForSeries, toggleSortOrder, t }
