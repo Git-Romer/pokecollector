@@ -10,6 +10,18 @@ router = APIRouter()
 # Valid price fields that can be requested
 VALID_PRICE_FIELDS = {"price_market", "price_trend", "price_avg1", "price_avg7", "price_avg30"}
 
+# Variants that use the Cardmarket holo price family
+HOLO_VARIANTS = {"Holo", "Holo Rare", "Holo V", "Holo VMAX", "Holo VSTAR", "Holo ex"}
+
+# Maps each standard price field to its holo equivalent
+HOLO_FIELD_MAP = {
+    "price_market": "price_market_holo",
+    "price_trend": "price_trend_holo",
+    "price_avg1": "price_avg1_holo",
+    "price_avg7": "price_avg7_holo",
+    "price_avg30": "price_avg30_holo",
+}
+
 
 @router.get("/")
 def get_dashboard(
@@ -27,8 +39,13 @@ def get_dashboard(
     total_cards = sum(item.quantity for item in items)
     unique_cards = len(items)
 
-    def get_card_price(card, field):
-        """Get price by field, fall back to price_market if None."""
+    def get_card_price(card, field, variant=None):
+        """Get price by field, apply holo override for holo variants, fall back to price_market if None."""
+        if variant in HOLO_VARIANTS:
+            holo_field = HOLO_FIELD_MAP.get(field, field)
+            val = getattr(card, holo_field, None)
+            if val is not None:
+                return val
         val = getattr(card, field, None)
         if val is None:
             val = card.price_market
@@ -36,7 +53,7 @@ def get_dashboard(
 
     # Always use price_market for current portfolio value on home/collection
     total_value = sum(
-        get_card_price(item.card, price_field) * item.quantity
+        get_card_price(item.card, price_field, variant=item.variant) * item.quantity
         for item in items if item.card
     )
 
@@ -83,7 +100,7 @@ def get_dashboard(
     def card_value(item):
         if not item.card:
             return 0
-        return get_card_price(item.card, price_field) * item.quantity
+        return get_card_price(item.card, price_field, variant=item.variant) * item.quantity
 
     top_cards = sorted(
         [item for item in items if item.card],
@@ -94,7 +111,7 @@ def get_dashboard(
     top_cards_data = []
     for item in top_cards:
         card = item.card
-        display_price = get_card_price(card, price_field)
+        display_price = get_card_price(card, price_field, variant=item.variant)
         top_cards_data.append({
             "id": card.id,
             "name": card.name,
