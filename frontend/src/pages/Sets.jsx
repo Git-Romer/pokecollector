@@ -317,6 +317,9 @@ export default function Sets() {
                     )}
                   </div>
                   <p className="text-[11px] text-text-muted mb-0.5">
+                    {set.abbreviation && (
+                      <span className="font-mono font-bold text-text-secondary mr-1">{set.abbreviation}</span>
+                    )}
                     {set.series}
                     {set.total ? ` · ${set.total} ${t('sets.cards')}` : ''}
                   </p>
