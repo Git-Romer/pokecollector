@@ -40,6 +40,11 @@ export const login = (username, password) => {
 }
 
 export const getMe = () => api.get('/auth/me').then(r => r.data)
+export const getUsers = () => api.get('/auth/users').then(r => r.data)
+export const createUser = (data) => api.post('/auth/users', data).then(r => r.data)
+export const updateUser = (id, data) => api.put(`/auth/users/${id}`, data).then(r => r.data)
+export const deleteUser = (id) => api.delete(`/auth/users/${id}`).then(r => r.data)
+export const changePassword = (data) => api.put('/auth/me/password', data).then(r => r.data)
 
 // Cards
 export const searchCards = (params) => api.get('/cards/search', { params })
