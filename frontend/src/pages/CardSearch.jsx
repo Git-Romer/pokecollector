@@ -217,6 +217,45 @@ export default function CardSearch() {
     queryClient.invalidateQueries({ queryKey: ['custom-cards'] })
   }
 
+  const matchedCustomCards = useMemo(() => {
+    const searchTerm = filters.name.trim()
+    if (!searchTerm) return []
+
+    const lowerSearchTerm = searchTerm.toLowerCase()
+    const codeMatch = CODE_NUMBER_RE.exec(searchTerm)
+
+    return recentCustomCards.filter((card) => {
+      if (card.name.toLowerCase().includes(lowerSearchTerm)) {
+        return true
+      }
+
+      if (!codeMatch) {
+        return false
+      }
+
+      const [, rawSetCode, rawNumber] = codeMatch
+      const normalizedSetCode = rawSetCode.toLowerCase()
+      const normalizedNumber = String(parseInt(rawNumber, 10))
+      const matchingSet = allSets.find((set) => (
+        set.tcg_set_id?.toLowerCase() === card.set_id?.toLowerCase() ||
+        set.id?.toLowerCase() === card.set_id?.toLowerCase()
+      ))
+      const setMatches = [
+        card.set_id,
+        matchingSet?.abbreviation,
+        matchingSet?.tcg_set_id,
+        matchingSet?.id,
+      ].some((value) => value?.toLowerCase() === normalizedSetCode)
+      const cardNumber = card.number ?? ''
+      const numberMatches = (
+        cardNumber === rawNumber ||
+        (cardNumber.replace(/^0+/, '') || '0') === normalizedNumber
+      )
+
+      return setMatches && numberMatches
+    })
+  }, [allSets, filters.name, recentCustomCards])
+
   const filterFormProps = { filters, setFilter, allSeries, setsForSeries, toggleSortOrder, t }
 
   return (
@@ -379,26 +418,16 @@ export default function CardSearch() {
         </div>
       )}
 
-      {recentCustomCards.length > 0 && filters.name.trim() && (
+      {matchedCustomCards.length > 0 && filters.name.trim() && (
         <div>
-          {(() => {
-            const matched = recentCustomCards.filter(c =>
-              c.name.toLowerCase().includes(filters.name.toLowerCase())
-            )
-            if (!matched.length) return null
-            return (
-              <>
-                <p className="text-xs text-yellow font-medium mb-2 flex items-center gap-1">
-                  <PenLine size={12} /> {t('cardSearch.customCard')}
-                </p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                  {matched.map((card) => (
-                    <CardItem key={card.id} card={card} />
-                  ))}
-                </div>
-              </>
-            )
-          })()}
+          <p className="text-xs text-yellow font-medium mb-2 flex items-center gap-1">
+            <PenLine size={12} /> {t('cardSearch.customCard')}
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            {matchedCustomCards.map((card) => (
+              <CardItem key={card.id} card={card} />
+            ))}
+          </div>
         </div>
       )}
 
