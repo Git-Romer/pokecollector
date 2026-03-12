@@ -2,14 +2,16 @@ import { NavLink } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   LayoutDashboard, Search, Library, Grid2X2, Heart,
-  BookOpen, BarChart3, ShoppingBag, Settings, Zap
+  BookOpen, BarChart3, ShoppingBag, Settings, Zap, LogOut
 } from 'lucide-react'
 import { getDashboard, getCustomMatches } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
+import { useAuth } from '../contexts/AuthContext'
 import clsx from 'clsx'
 
 export default function Sidebar() {
   const { t, formatPrice } = useSettings()
+  const { user, logout } = useAuth()
 
   const navItems = [
     { to: '/dashboard',  icon: LayoutDashboard, label: t('nav.dashboard') },
@@ -111,6 +113,24 @@ export default function Sidebar() {
           </div>
         </div>
       )}
+
+      <div className="p-3 border-t border-border">
+        <div className="px-3 py-2">
+          <p className="text-[11px] uppercase tracking-[0.18em] text-text-muted">
+            {t('auth.username')}
+          </p>
+          <p className="mt-1 text-sm font-medium text-text-primary truncate">
+            {user?.username || user?.email || user?.name || '-'}
+          </p>
+        </div>
+        <button
+          onClick={logout}
+          className="w-full flex items-center gap-2 text-text-muted hover:text-brand-red px-3 py-2 text-sm transition-colors"
+        >
+          <LogOut size={16} />
+          <span>{t('auth.logout')}</span>
+        </button>
+      </div>
     </aside>
   )
 }

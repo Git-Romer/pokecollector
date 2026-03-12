@@ -77,6 +77,16 @@ const de = {
     loss: 'Verlust',
   },
 
+  auth: {
+    login: 'Anmelden',
+    logout: 'Abmelden',
+    username: 'Benutzername',
+    password: 'Passwort',
+    loginFailed: 'Anmeldung fehlgeschlagen',
+    signingIn: 'Anmelden...',
+    signInToCollection: 'Melde dich bei deiner Sammlung an',
+  },
+
   // Home Screen
   home: {
     welcomeBack: 'Willkommen zurück',

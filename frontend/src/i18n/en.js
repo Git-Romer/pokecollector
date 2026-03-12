@@ -77,6 +77,16 @@ const en = {
     loss: 'Loss',
   },
 
+  auth: {
+    login: 'Login',
+    logout: 'Logout',
+    username: 'Username',
+    password: 'Password',
+    loginFailed: 'Login failed',
+    signingIn: 'Signing in...',
+    signInToCollection: 'Sign in to your collection',
+  },
+
   // Home Screen
   home: {
     welcomeBack: 'Welcome back',

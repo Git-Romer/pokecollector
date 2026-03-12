@@ -8,6 +8,39 @@ const api = axios.create({
   },
 })
 
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token')
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('token')
+      localStorage.removeItem('user')
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login'
+      }
+    }
+    return Promise.reject(error)
+  }
+)
+
+export const login = (username, password) => {
+  const params = new URLSearchParams()
+  params.append('username', username)
+  params.append('password', password)
+  return api.post('/auth/login', params, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  }).then(r => r.data)
+}
+
+export const getMe = () => api.get('/auth/me').then(r => r.data)
+
 // Cards
 export const searchCards = (params) => api.get('/cards/search', { params })
 export const getCard = (id) => api.get(`/cards/${id}`)
@@ -88,11 +121,50 @@ export const deleteProduct = (id) => api.delete(`/products/${id}`)
 export const getProductsSummary = () => api.get('/products/summary')
 
 // Export
-export const exportCSV = () => window.open('/api/export/csv', '_blank')
-export const exportPDF = () => window.open('/api/export/pdf', '_blank')
+export const exportCSV = () => {
+  const token = localStorage.getItem('token')
+  return api.get('/export/csv', {
+    responseType: 'blob',
+    headers: { Authorization: `Bearer ${token}` },
+  }).then(r => {
+    const url = window.URL.createObjectURL(r.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'collection.csv'
+    a.click()
+    window.URL.revokeObjectURL(url)
+  })
+}
+export const exportPDF = () => {
+  const token = localStorage.getItem('token')
+  return api.get('/export/pdf', {
+    responseType: 'blob',
+    headers: { Authorization: `Bearer ${token}` },
+  }).then(r => {
+    const url = window.URL.createObjectURL(r.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'collection.pdf'
+    a.click()
+    window.URL.revokeObjectURL(url)
+  })
+}
 
 // Backup
-export const downloadBackup = () => window.open('/api/backup/download', '_blank')
+export const downloadBackup = () => {
+  const token = localStorage.getItem('token')
+  return api.get('/backup/download', {
+    responseType: 'blob',
+    headers: { Authorization: `Bearer ${token}` },
+  }).then(r => {
+    const url = window.URL.createObjectURL(r.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'backup.sql'
+    a.click()
+    window.URL.revokeObjectURL(url)
+  })
+}
 export const restoreBackup = (file) => {
   const formData = new FormData()
   formData.append('file', file)
