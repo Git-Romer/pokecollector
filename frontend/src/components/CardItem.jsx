@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
-import { Plus, Check, Heart, BookOpen, X, PenLine, Pencil, TrendingUp } from 'lucide-react'
-import { addToCollection, addToWishlist, createCustomCard, updateCustomCard, getEbayGradedPrice, getSetting, getSets } from '../api/client'
+import { Plus, Check, Heart, BookOpen, X, PenLine, Pencil, TrendingUp, Trash2 } from 'lucide-react'
+import { addToCollection, addToWishlist, createCustomCard, updateCustomCard, deleteCustomCard, getEbayGradedPrice, getSetting, getSets } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import PeriodSelector, { CARD_PERIODS, PERIOD_PRICE_FIELD } from './PeriodSelector'
 import toast from 'react-hot-toast'
@@ -111,6 +111,21 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
     },
   })
 
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteCustomCard(editCard.id),
+    onSuccess: (res) => {
+      toast.success(res?.data?.message || t('common.success'))
+      queryClient.invalidateQueries({ queryKey: ['collection'] })
+      queryClient.invalidateQueries({ queryKey: ['card-search'] })
+      queryClient.invalidateQueries({ queryKey: ['custom-cards'] })
+      onClose()
+    },
+    onError: (err) => {
+      const detail = err?.response?.data?.detail || t('common.error')
+      toast.error(detail)
+    },
+  })
+
   const addMutation = useMutation({
     mutationFn: (data) => addToCollection(data),
     onSuccess: () => {
@@ -161,6 +176,12 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
 
   const toggleType = (tp) => {
     setSelectedTypes(prev => prev.includes(tp) ? prev.filter(t => t !== tp) : [...prev, tp])
+  }
+
+  const handleDelete = () => {
+    if (!editCard) return
+    if (!window.confirm(t('common.confirm_delete'))) return
+    deleteMutation.mutate()
   }
 
   return (
@@ -260,6 +281,16 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
                 )}
               </div>
               <div className="flex gap-3 pt-2">
+                {isEditMode && (
+                  <button
+                    type="button"
+                    onClick={handleDelete}
+                    disabled={deleteMutation.isPending}
+                    className="btn-ghost text-brand-red border-brand-red/30 hover:bg-brand-red/10 px-3"
+                  >
+                    <Trash2 size={16} /> {deleteMutation.isPending ? t('common.deleting') : t('common.delete')}
+                  </button>
+                )}
                 <button type="submit" disabled={(isEditMode ? updateMutation.isPending : createMutation.isPending) || !name.trim()} className="btn-primary flex-1">
                   {isEditMode
                     ? (updateMutation.isPending ? t('common.saving') : t('common.save'))

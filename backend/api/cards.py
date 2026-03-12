@@ -250,6 +250,30 @@ def update_custom_card(card_id: str, update: CustomCardUpdate, db: Session = Dep
     return card
 
 
+@router.delete("/custom/{card_id}")
+def delete_custom_card(card_id: str, db: Session = Depends(get_db)):
+    """Delete a custom card and all related records."""
+    card = db.query(Card).filter(Card.id == card_id).first()
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+    if not card.is_custom:
+        raise HTTPException(status_code=400, detail="Card is not custom")
+
+    try:
+        db.query(CollectionItem).filter(CollectionItem.card_id == card_id).delete(synchronize_session=False)
+        db.query(WishlistItem).filter(WishlistItem.card_id == card_id).delete(synchronize_session=False)
+        db.query(BinderCard).filter(BinderCard.card_id == card_id).delete(synchronize_session=False)
+        db.query(PriceHistory).filter(PriceHistory.card_id == card_id).delete(synchronize_session=False)
+        db.query(CustomCardMatch).filter(CustomCardMatch.custom_card_id == card_id).delete(synchronize_session=False)
+        db.delete(card)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return {"message": "Custom card deleted"}
+
+
 @router.get("/custom", response_model=List[CardBase])
 def list_custom_cards(db: Session = Depends(get_db)):
     """Return all manually created custom cards."""
