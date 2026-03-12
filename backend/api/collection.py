@@ -93,8 +93,12 @@ def add_to_collection(item: CollectionItemCreate, db: Session = Depends(get_db))
 
     # Resolve the correct language-variant card_id
     if item.card_id.startswith("custom-"):
-        # Custom cards are stored with their original ID (no language suffix)
+        # Custom cards keep their original ID (no language suffix)
         effective_card_id = item.card_id
+        # Always derive lang from the custom card record itself
+        custom_card = db.query(Card).filter(Card.id == item.card_id).first()
+        if custom_card and custom_card.lang:
+            item_lang = custom_card.lang
     else:
         tcg_card_id, _ = pokemon_api.strip_lang_suffix(item.card_id)
         effective_card_id = f"{tcg_card_id}_{item_lang}"
