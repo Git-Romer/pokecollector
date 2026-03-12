@@ -155,6 +155,7 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
       condition,
       variant: variant || null,
       purchase_price: purchasePrice ? parseFloat(purchasePrice) : undefined,
+      lang: createdCard.lang || 'en',
     })
   }
 
@@ -439,7 +440,7 @@ export function CardItem({ card, showActions = true, onAddToBinder = null, compa
               className="flex-1 bg-brand-red/20 hover:bg-brand-red/40 text-brand-red text-xs py-1.5 rounded-lg font-medium transition-all flex items-center justify-center gap-1"
               onClick={(e) => {
                 e.stopPropagation()
-                addMutation.mutate({ card_id: card.id, quantity: 1, condition: 'NM' })
+                addMutation.mutate({ card_id: card.id, quantity: 1, condition: 'NM', lang: card.lang || 'en' })
               }}>
               <Plus size={12} /> {t('common.add')}
             </button>
