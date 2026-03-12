@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { Plus, Check, Heart, BookOpen, X, PenLine, Pencil, TrendingUp } from 'lucide-react'
 import { addToCollection, addToWishlist, createCustomCard, updateCustomCard, getEbayGradedPrice, getSetting, getSets } from '../api/client'
@@ -43,7 +43,7 @@ const POKEMON_TYPES = ['Fire', 'Water', 'Grass', 'Lightning', 'Psychic', 'Fighti
 export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoAddCollection = false, editCard = null }) {
   const { t } = useSettings()
   const [name, setName] = useState(editCard?.name || '')
-  const [setChoice, setSetChoice] = useState(editCard?.set_id || '')
+  const [setChoice, setSetChoice] = useState('')
   const [customSetId, setCustomSetId] = useState('')
   const [number, setNumber] = useState(editCard?.number || '')
   const [rarity, setRarity] = useState(editCard?.rarity || '')
@@ -66,6 +66,16 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
     enabled: setsProp.length === 0,
   })
   const sets = setsProp.length > 0 ? setsProp : fetchedSets
+
+  // Resolve editCard.set_id (TCGdex ID like 'pfl') to composite dropdown key ('pfl_de')
+  useEffect(() => {
+    if (editCard?.set_id && sets.length > 0 && !setChoice) {
+      const match = sets.find(s => s.tcg_set_id === editCard.set_id && s.lang === editCard.lang)
+        || sets.find(s => s.tcg_set_id === editCard.set_id)
+        || sets.find(s => s.id === editCard.set_id)
+      if (match) setSetChoice(match.id)
+    }
+  }, [sets, editCard])
 
   const isEditMode = !!editCard
 

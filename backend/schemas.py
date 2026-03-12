@@ -93,6 +93,7 @@ class CustomCardUpdate(BaseModel):
     types: Optional[List] = None
     image_url: Optional[str] = None
     hp: Optional[str] = None
+    lang: Optional[str] = None
 
 
 class CardWithSet(CardBase):
