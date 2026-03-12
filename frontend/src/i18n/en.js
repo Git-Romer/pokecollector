@@ -85,6 +85,8 @@ const en = {
     loginFailed: 'Login failed',
     signingIn: 'Signing in...',
     signInToCollection: 'Sign in to your collection',
+    switchUser: 'Switch User',
+    welcomeBack: 'Welcome back',
   },
 
   // Home Screen
