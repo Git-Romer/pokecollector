@@ -139,7 +139,7 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
       hp: hp.trim() || undefined,
       artist: artist.trim() || undefined,
       image_url: imageUrl.trim() || undefined,
-      lang: selectedSet?.lang || undefined,
+      lang: selectedSet?.lang || 'en',
     }
     if (isEditMode) {
       updateMutation.mutate(payload)
