@@ -85,6 +85,8 @@ const de = {
     loginFailed: 'Anmeldung fehlgeschlagen',
     signingIn: 'Anmelden...',
     signInToCollection: 'Melde dich bei deiner Sammlung an',
+    switchUser: 'Anderer Benutzer',
+    welcomeBack: 'Willkommen zurück',
   },
 
   // Home Screen

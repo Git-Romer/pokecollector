@@ -3,14 +3,16 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   LayoutDashboard, Search, Library, Grid2X2, MoreHorizontal,
-  Heart, BookOpen, BarChart3, ShoppingBag, Settings, X, Zap
+  Heart, BookOpen, BarChart3, ShoppingBag, Settings, X, Zap, LogOut
 } from 'lucide-react'
 import { getCustomMatches } from '../api/client'
+import { useAuth } from '../contexts/AuthContext'
 import { useSettings } from '../contexts/SettingsContext'
 import clsx from 'clsx'
 
 export default function BottomNav() {
   const { t } = useSettings()
+  const { logout } = useAuth()
   const [showMore, setShowMore] = useState(false)
   const navigate = useNavigate()
 
@@ -42,6 +44,12 @@ export default function BottomNav() {
   const handleMoreNav = (to) => {
     setShowMore(false)
     navigate(to)
+  }
+
+  const handleLogout = () => {
+    setShowMore(false)
+    logout()
+    navigate('/login')
   }
 
   return (
@@ -109,7 +117,7 @@ export default function BottomNav() {
             </div>
 
             {/* Grid of nav items */}
-            <div className="grid grid-cols-3 gap-2 p-4 safe-area-bottom">
+            <div className="grid grid-cols-3 gap-2 p-4">
               {moreNav.map(({ to, icon: Icon, label, badge }) => (
                 <button
                   key={to}
@@ -127,6 +135,16 @@ export default function BottomNav() {
                   <span className="text-xs text-text-muted text-center leading-tight">{label}</span>
                 </button>
               ))}
+            </div>
+
+            <div className="border-t border-border px-4 pb-4 pt-3 safe-area-bottom">
+              <button
+                onClick={handleLogout}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/15 hover:text-red-300"
+              >
+                <LogOut size={18} />
+                <span>{t('auth.logout')}</span>
+              </button>
             </div>
           </div>
         </>
