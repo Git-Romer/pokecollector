@@ -118,9 +118,11 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
     if (!name.trim()) return
     const effectiveSetId = setChoice === '__custom__' ? customSetId.trim() : setChoice || undefined
     const selectedSet = effectiveSetId ? sets.find(s => s.id === effectiveSetId) : null
+    // Use the original TCGdex set ID (tcg_set_id) for cards.set_id, not the composite DB key
+    const setIdForCard = selectedSet?.tcg_set_id || effectiveSetId || undefined
     const payload = {
       name: name.trim(),
-      set_id: effectiveSetId || undefined,
+      set_id: setIdForCard,
       number: number.trim() || undefined,
       rarity: rarity || undefined,
       types: selectedTypes.length > 0 ? selectedTypes : undefined,
