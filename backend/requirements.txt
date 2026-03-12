@@ -14,4 +14,3 @@ pillow==12.1.1
 alembic==1.13.1
 bcrypt
 python-jose[cryptography]
-passlib[bcrypt]
