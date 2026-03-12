@@ -158,17 +158,23 @@ def _search_by_code_number(
                 cards = db.query(Card).filter(*stripped_filters).all()
 
     # Also search custom cards matching set_id + number
+    custom_set_ids = {
+        identifier.upper()
+        for set_obj in set_objs
+        for identifier in (set_obj.tcg_set_id, set_obj.abbreviation, set_obj.id)
+        if identifier
+    }
     custom_cards = db.query(Card).filter(
         Card.is_custom,
         Card.number == card_number,
-        func.upper(Card.set_id) == set_code_upper,
+        func.upper(Card.set_id).in_(custom_set_ids),
     ).all()
     if not custom_cards and card_number != (card_number.lstrip("0") or "0"):
         card_number_stripped = card_number.lstrip("0") or "0"
         custom_cards = db.query(Card).filter(
             Card.is_custom,
             Card.number == card_number_stripped,
-            func.upper(Card.set_id) == set_code_upper,
+            func.upper(Card.set_id).in_(custom_set_ids),
         ).all()
 
     existing_ids = {c.id for c in cards}
