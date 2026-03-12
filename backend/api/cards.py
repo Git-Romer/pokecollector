@@ -157,37 +157,14 @@ def _search_by_code_number(
                     stripped_filters.append(Card.lang == lang)
                 cards = db.query(Card).filter(*stripped_filters).all()
 
-    # Also search custom cards matching set_id + number
-    custom_set_ids = {
-        identifier.upper()
-        for set_obj in set_objs
-        for identifier in (set_obj.tcg_set_id, set_obj.abbreviation, set_obj.id)
-        if identifier
-    }
-    custom_cards = db.query(Card).filter(
-        Card.is_custom,
-        Card.number == card_number,
-        func.upper(Card.set_id).in_(custom_set_ids),
-    ).all()
-    if not custom_cards and card_number != (card_number.lstrip("0") or "0"):
-        card_number_stripped = card_number.lstrip("0") or "0"
-        custom_cards = db.query(Card).filter(
-            Card.is_custom,
-            Card.number == card_number_stripped,
-            func.upper(Card.set_id).in_(custom_set_ids),
-        ).all()
-
-    existing_ids = {c.id for c in cards}
-    all_cards = cards + [c for c in custom_cards if c.id not in existing_ids]
-
-    if not all_cards:
+    if not cards:
         return {"data": [], "total_count": 0, "page": page, "page_size": page_size}
 
     start = (page - 1) * page_size
-    page_cards = all_cards[start:start + page_size]
+    page_cards = cards[start:start + page_size]
     return {
         "data": [_card_to_dict(c) for c in page_cards],
-        "total_count": len(all_cards),
+        "total_count": len(cards),
         "page": page,
         "page_size": page_size,
     }
