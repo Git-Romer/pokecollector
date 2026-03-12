@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
+from api.auth import get_current_user
 from database import get_db
-from models import CollectionItem, Card, Set
+from models import CollectionItem, Card, Set, User
 from schemas import CollectionItemCreate, CollectionItemUpdate, CollectionItemResponse
 from services import pokemon_api
 import datetime
@@ -62,6 +63,7 @@ def ensure_card_exists(db: Session, card_id: str, lang: str = "en") -> Card:
 
 @router.get("/", response_model=List[CollectionItemResponse])
 def get_collection(
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
     sort_by: Optional[str] = "added_at",
     order: Optional[str] = "desc",
@@ -69,7 +71,7 @@ def get_collection(
     """Get all collection items."""
     query = db.query(CollectionItem).options(
         joinedload(CollectionItem.card).joinedload(Card.set_ref)
-    )
+    ).filter(CollectionItem.user_id == current_user.id)
 
     sort_col = {
         "added_at": CollectionItem.added_at,
@@ -87,7 +89,11 @@ def get_collection(
 
 
 @router.post("/", response_model=CollectionItemResponse)
-def add_to_collection(item: CollectionItemCreate, db: Session = Depends(get_db)):
+def add_to_collection(
+    item: CollectionItemCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Add a card to the collection. Cards with identical card_id+variant+lang+condition+purchase_price are grouped."""
     item_lang = item.lang or "en"
 
@@ -111,6 +117,7 @@ def add_to_collection(item: CollectionItemCreate, db: Session = Depends(get_db))
         CollectionItem.lang == item_lang,
         CollectionItem.condition == item.condition,
         CollectionItem.purchase_price == item.purchase_price,
+        CollectionItem.user_id == current_user.id,
     ).first()
 
     if existing:
@@ -127,6 +134,7 @@ def add_to_collection(item: CollectionItemCreate, db: Session = Depends(get_db))
             purchase_price=item.purchase_price,
             lang=item_lang,
             grade=item.grade if hasattr(item, 'grade') else 'raw',
+            user_id=current_user.id,
             added_at=datetime.datetime.utcnow(),
         )
         db.add(db_item)
@@ -139,10 +147,14 @@ def add_to_collection(item: CollectionItemCreate, db: Session = Depends(get_db))
 def update_collection_item(
     item_id: int,
     update: CollectionItemUpdate,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Update a collection item."""
-    item = db.query(CollectionItem).filter(CollectionItem.id == item_id).first()
+    item = db.query(CollectionItem).filter(
+        CollectionItem.id == item_id,
+        CollectionItem.user_id == current_user.id,
+    ).first()
     if not item:
         raise HTTPException(status_code=404, detail="Collection item not found")
 
@@ -169,9 +181,16 @@ def update_collection_item(
 
 
 @router.delete("/{item_id}")
-def remove_from_collection(item_id: int, db: Session = Depends(get_db)):
+def remove_from_collection(
+    item_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Remove a card from collection."""
-    item = db.query(CollectionItem).filter(CollectionItem.id == item_id).first()
+    item = db.query(CollectionItem).filter(
+        CollectionItem.id == item_id,
+        CollectionItem.user_id == current_user.id,
+    ).first()
     if not item:
         raise HTTPException(status_code=404, detail="Collection item not found")
 
@@ -181,9 +200,14 @@ def remove_from_collection(item_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/stats/summary")
-def get_collection_stats(db: Session = Depends(get_db)):
+def get_collection_stats(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Get collection statistics."""
-    items = db.query(CollectionItem).options(joinedload(CollectionItem.card)).all()
+    items = db.query(CollectionItem).options(
+        joinedload(CollectionItem.card)
+    ).filter(CollectionItem.user_id == current_user.id).all()
 
     total_cards = sum(item.quantity for item in items)
     unique_cards = len(set(item.card_id for item in items))

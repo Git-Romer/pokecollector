@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
+from api.auth import get_current_user
 from database import get_db
-from models import CollectionItem, Card
+from models import CollectionItem, Card, User
 import io
 import csv
 import datetime
@@ -11,11 +12,14 @@ router = APIRouter()
 
 
 @router.get("/csv")
-def export_csv(db: Session = Depends(get_db)):
+def export_csv(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Export collection as CSV."""
     items = db.query(CollectionItem).options(
         joinedload(CollectionItem.card).joinedload(Card.set_ref)
-    ).all()
+    ).filter(CollectionItem.user_id == current_user.id).all()
 
     output = io.StringIO()
     writer = csv.writer(output)
@@ -61,7 +65,10 @@ def export_csv(db: Session = Depends(get_db)):
 
 
 @router.get("/pdf")
-def export_pdf(db: Session = Depends(get_db)):
+def export_pdf(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Export collection as PDF."""
     try:
         from reportlab.lib import colors
@@ -72,7 +79,7 @@ def export_pdf(db: Session = Depends(get_db)):
 
         items = db.query(CollectionItem).options(
             joinedload(CollectionItem.card).joinedload(Card.set_ref)
-        ).all()
+        ).filter(CollectionItem.user_id == current_user.id).all()
 
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(

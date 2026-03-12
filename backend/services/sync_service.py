@@ -2,7 +2,7 @@ import logging
 import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from models import Card, Set, CollectionItem, WishlistItem, PriceHistory, SyncLog, PortfolioSnapshot, CustomCardMatch, Setting
+from models import Card, Set, CollectionItem, WishlistItem, PriceHistory, SyncLog, PortfolioSnapshot, CustomCardMatch, Setting, ProductPurchase, User
 from services import pokemon_api, telegram
 
 logger = logging.getLogger(__name__)
@@ -103,30 +103,46 @@ def check_wishlist_alerts(db: Session, updated_card_ids: list):
     db.commit()
 
 
-def take_portfolio_snapshot(db: Session):
-    """Insert a portfolio snapshot with the current UTC timestamp."""
+def take_portfolio_snapshot(db: Session, user_id: int | None = None):
+    """Insert one or more portfolio snapshots with the current UTC timestamp."""
     now = datetime.datetime.utcnow()
 
-    # Calculate current portfolio value
-    collection_items = db.query(CollectionItem).join(Card).all()
-    total_value = sum(
-        (item.card.price_market or 0) * item.quantity
-        for item in collection_items
-        if item.card
-    )
-    total_cards = sum(item.quantity for item in collection_items)
-    total_cost = sum(
-        (item.purchase_price or 0) * item.quantity
-        for item in collection_items
-    )
+    if user_id is None:
+        user_ids = [row.id for row in db.query(User.id).all()]
+    else:
+        user_ids = [user_id]
 
-    snapshot = PortfolioSnapshot(
-        date=now,
-        total_value=total_value,
-        total_cards=total_cards,
-        total_cost=total_cost,
-    )
-    db.add(snapshot)
+    for scoped_user_id in user_ids:
+        collection_items = db.query(CollectionItem).join(Card).filter(
+            CollectionItem.user_id == scoped_user_id
+        ).all()
+        total_value = sum(
+            (item.card.price_market or 0) * item.quantity
+            for item in collection_items
+            if item.card
+        )
+        total_cards = sum(item.quantity for item in collection_items)
+        cards_cost = sum(
+            (item.purchase_price or 0) * item.quantity
+            for item in collection_items
+        )
+        products_cost = sum(
+            product.purchase_price
+            for product in db.query(ProductPurchase).filter(
+                ProductPurchase.user_id == scoped_user_id,
+                ProductPurchase.purchase_price.isnot(None),
+                ProductPurchase.sold_price.is_(None),
+            ).all()
+        )
+
+        snapshot = PortfolioSnapshot(
+            date=now,
+            user_id=scoped_user_id,
+            total_value=total_value,
+            total_cards=total_cards,
+            total_cost=cards_cost + products_cost,
+        )
+        db.add(snapshot)
     db.commit()
 
 

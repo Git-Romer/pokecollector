@@ -1,8 +1,9 @@
 import os
 from fastapi import APIRouter, Depends, HTTPException
+from api.auth import get_current_user
 from sqlalchemy.orm import Session
 from database import get_db
-from models import Setting
+from models import Setting, User
 
 router = APIRouter()
 
@@ -21,7 +22,10 @@ DEFAULT_SETTINGS = {
 
 
 @router.get("/")
-def get_settings(db: Session = Depends(get_db)):
+def get_settings(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Return all settings as a JSON object."""
     rows = db.query(Setting).all()
     result = dict(DEFAULT_SETTINGS)
@@ -30,7 +34,11 @@ def get_settings(db: Session = Depends(get_db)):
 
 
 @router.put("/")
-def update_settings(data: dict, db: Session = Depends(get_db)):
+def update_settings(
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Update one or more settings. Accepts a JSON object with key-value pairs."""
     for key, value in data.items():
         row = db.query(Setting).filter(Setting.key == key).first()
@@ -46,7 +54,10 @@ def update_settings(data: dict, db: Session = Depends(get_db)):
 
 
 @router.get("/telegram_status")
-def get_telegram_status(db: Session = Depends(get_db)):
+def get_telegram_status(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Check if Telegram bot token is configured (DB first, then env)."""
     # Check DB first
     token_row = db.query(Setting).filter(Setting.key == "telegram_bot_token").first()
@@ -57,7 +68,11 @@ def get_telegram_status(db: Session = Depends(get_db)):
 
 
 @router.get("/{key}")
-def get_setting(key: str, db: Session = Depends(get_db)):
+def get_setting(
+    key: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Return a single setting value."""
     # Legacy alias: sync_interval_hours → full_sync_interval_days
     if key == "sync_interval_hours":
@@ -74,7 +89,12 @@ def get_setting(key: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{key}")
-def set_setting(key: str, body: dict, db: Session = Depends(get_db)):
+def set_setting(
+    key: str,
+    body: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Set a single setting value. Body: {value: '...'}"""
     value = str(body.get("value", ""))
     row = db.query(Setting).filter(Setting.key == key).first()

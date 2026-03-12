@@ -1,5 +1,7 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from fastapi.responses import FileResponse, StreamingResponse
+from api.auth import get_current_user
+from models import User
 import subprocess
 import os
 import datetime
@@ -33,8 +35,10 @@ def get_db_params():
 
 
 @router.get("/download")
-def download_backup():
+def download_backup(current_user: User = Depends(get_current_user)):
     """Create and download a PostgreSQL dump."""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
     os.makedirs(BACKUP_DIR, exist_ok=True)
     params = get_db_params()
     if not params:
@@ -82,8 +86,13 @@ def download_backup():
 
 
 @router.post("/restore")
-async def restore_backup(file: UploadFile = File(...)):
+async def restore_backup(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
     """Restore database from a SQL dump file."""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
     params = get_db_params()
     if not params:
         raise HTTPException(status_code=500, detail="Database URL not configured")

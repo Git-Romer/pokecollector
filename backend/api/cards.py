@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, cast, Integer
 from typing import Optional, List
+from api.auth import get_current_user
 from database import get_db
-from models import Card, Set, PriceHistory, CustomCardMatch, CollectionItem, WishlistItem, BinderCard, Setting
+from models import Card, Set, PriceHistory, CustomCardMatch, CollectionItem, WishlistItem, BinderCard, Setting, User
 from schemas import CardBase, CardWithSet, PriceHistoryResponse, CardCustomCreate, CustomCardUpdate
 from services import pokemon_api
 import datetime
@@ -171,7 +172,11 @@ def _search_by_code_number(
 
 
 @router.post("/custom")
-def create_custom_card(data: CardCustomCreate, db: Session = Depends(get_db)):
+def create_custom_card(
+    data: CardCustomCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Create a card manually (not from TCGdex API)."""
     # Generate card ID
     if data.set_id and data.number:
@@ -232,7 +237,12 @@ def create_custom_card(data: CardCustomCreate, db: Session = Depends(get_db)):
 
 
 @router.put("/custom/{card_id}", response_model=CardBase)
-def update_custom_card(card_id: str, update: CustomCardUpdate, db: Session = Depends(get_db)):
+def update_custom_card(
+    card_id: str,
+    update: CustomCardUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Update an existing custom card's fields."""
     card = db.query(Card).filter(Card.id == card_id, Card.is_custom == True).first()
     if not card:
@@ -251,7 +261,11 @@ def update_custom_card(card_id: str, update: CustomCardUpdate, db: Session = Dep
 
 
 @router.delete("/custom/{card_id}")
-def delete_custom_card(card_id: str, db: Session = Depends(get_db)):
+def delete_custom_card(
+    card_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Delete a custom card and all related records."""
     card = db.query(Card).filter(Card.id == card_id).first()
     if not card:
@@ -275,7 +289,10 @@ def delete_custom_card(card_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/custom", response_model=List[CardBase])
-def list_custom_cards(db: Session = Depends(get_db)):
+def list_custom_cards(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Return all manually created custom cards."""
     cards = db.query(Card).filter(Card.is_custom == True).order_by(Card.id.desc()).all()
     return [_card_to_dict(c) for c in cards]
@@ -296,6 +313,7 @@ def search_cards(
     page_size: int = 20,
     lang: Optional[str] = Query("all", description="Language filter: 'de', 'en', or 'all'"),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Search cards from the local DB.
 
@@ -376,7 +394,10 @@ def search_cards(
 
 
 @router.get("/custom/matches")
-def get_custom_matches(db: Session = Depends(get_db)):
+def get_custom_matches(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Return all pending custom card matches with details for preview."""
     matches = (
         db.query(CustomCardMatch)
@@ -415,7 +436,11 @@ def get_custom_matches(db: Session = Depends(get_db)):
 
 
 @router.post("/custom/migrate/{match_id}")
-def migrate_custom_card(match_id: int, db: Session = Depends(get_db)):
+def migrate_custom_card(
+    match_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Migrate a custom card to its API equivalent.
 
     Steps:
@@ -523,7 +548,11 @@ def migrate_custom_card(match_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/custom/dismiss/{match_id}")
-def dismiss_custom_match(match_id: int, db: Session = Depends(get_db)):
+def dismiss_custom_match(
+    match_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Dismiss a custom card match (keep the manual card, ignore the API version)."""
     match = db.query(CustomCardMatch).filter(CustomCardMatch.id == match_id).first()
     if not match:
@@ -542,7 +571,12 @@ def dismiss_custom_match(match_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{card_id}/lang/{lang}")
-def get_card_in_lang(card_id: str, lang: str, db: Session = Depends(get_db)):
+def get_card_in_lang(
+    card_id: str,
+    lang: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Given a card_id (any language variant), find the equivalent card in the requested language.
 
     Strategy:
@@ -571,7 +605,11 @@ def get_card_in_lang(card_id: str, lang: str, db: Session = Depends(get_db)):
 
 
 @router.get("/{card_id}/price-history", response_model=List[PriceHistoryResponse])
-def get_price_history(card_id: str, db: Session = Depends(get_db)):
+def get_price_history(
+    card_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Get price history for a specific card."""
     history = (
         db.query(PriceHistory)
@@ -583,7 +621,12 @@ def get_price_history(card_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/{card_id}", response_model=CardBase)
-def get_card(card_id: str, lang: Optional[str] = Query("en"), db: Session = Depends(get_db)):
+def get_card(
+    card_id: str,
+    lang: Optional[str] = Query("en"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Get a single card from DB or fetch full detail from TCGdex.
 
     lang: the language to fetch from (defaults to "en"). The card's stored language
