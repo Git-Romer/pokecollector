@@ -290,25 +290,6 @@ def search_cards(
                 card_number = m.group(2)
                 return _search_by_code_number(db, set_code, card_number, page, page_size, lang=search_lang)
 
-        # ── Include matching custom cards only when a search term is provided ──
-        custom_cards_dicts = []
-        custom_count = 0
-        if name and name.strip():
-            custom_q = db.query(Card).filter(Card.is_custom == True)
-            custom_q = custom_q.filter(Card.name.ilike(f"%{name}%"))
-            if type_filter:
-                custom_q = custom_q.filter(Card.types.contains([type_filter]))
-            if rarity:
-                custom_q = custom_q.filter(Card.rarity.ilike(f"%{rarity}%"))
-            if artist:
-                custom_q = custom_q.filter(Card.artist.ilike(f"%{artist}%"))
-            if hp_min is not None:
-                custom_q = custom_q.filter(cast(Card.hp, Integer) >= hp_min)
-            if hp_max is not None:
-                custom_q = custom_q.filter(cast(Card.hp, Integer) <= hp_max)
-            custom_cards_dicts = [_card_to_dict(c) for c in custom_q.order_by(Card.name).all()] if page == 1 else []
-            custom_count = custom_q.count()
-
         # ── Pure DB search ────────────────────────────────────────────────────
         query = db.query(Card).filter(Card.is_custom == False)
 
@@ -361,8 +342,8 @@ def search_cards(
         cards = query.offset((page - 1) * page_size).limit(page_size).all()
 
         return {
-            "data": custom_cards_dicts + [_card_to_dict(c) for c in cards],
-            "total_count": custom_count + total_count,
+            "data": [_card_to_dict(c) for c in cards],
+            "total_count": total_count,
             "page": page,
             "page_size": page_size,
         }
