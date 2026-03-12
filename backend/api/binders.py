@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 from typing import List
+from api.auth import get_current_user
 from database import get_db
-from models import Binder, BinderCard, Card, CollectionItem
+from models import Binder, BinderCard, Card, CollectionItem, User
 from schemas import BinderCreate, BinderUpdate, BinderResponse
 from api.collection import ensure_card_exists
 import datetime
@@ -11,9 +12,14 @@ router = APIRouter()
 
 
 @router.get("/", response_model=List[BinderResponse])
-def get_binders(db: Session = Depends(get_db)):
+def get_binders(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Get all binders."""
-    binders = db.query(Binder).order_by(Binder.created_at.desc()).all()
+    binders = db.query(Binder).filter(
+        Binder.user_id == current_user.id
+    ).order_by(Binder.created_at.desc()).all()
     result = []
     for binder in binders:
         count = db.query(BinderCard).filter(BinderCard.binder_id == binder.id).count()
@@ -30,13 +36,18 @@ def get_binders(db: Session = Depends(get_db)):
 
 
 @router.post("/", response_model=BinderResponse)
-def create_binder(binder: BinderCreate, db: Session = Depends(get_db)):
+def create_binder(
+    binder: BinderCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Create a new binder."""
     db_binder = Binder(
         name=binder.name,
         description=binder.description,
         color=binder.color,
         binder_type=binder.binder_type,
+        user_id=current_user.id,
         created_at=datetime.datetime.utcnow(),
     )
     db.add(db_binder)
@@ -57,10 +68,14 @@ def create_binder(binder: BinderCreate, db: Session = Depends(get_db)):
 def update_binder(
     binder_id: int,
     update: BinderUpdate,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Update a binder."""
-    binder = db.query(Binder).filter(Binder.id == binder_id).first()
+    binder = db.query(Binder).filter(
+        Binder.id == binder_id,
+        Binder.user_id == current_user.id,
+    ).first()
     if not binder:
         raise HTTPException(status_code=404, detail="Binder not found")
 
@@ -88,9 +103,16 @@ def update_binder(
 
 
 @router.delete("/{binder_id}")
-def delete_binder(binder_id: int, db: Session = Depends(get_db)):
+def delete_binder(
+    binder_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Delete a binder."""
-    binder = db.query(Binder).filter(Binder.id == binder_id).first()
+    binder = db.query(Binder).filter(
+        Binder.id == binder_id,
+        Binder.user_id == current_user.id,
+    ).first()
     if not binder:
         raise HTTPException(status_code=404, detail="Binder not found")
 
@@ -100,13 +122,20 @@ def delete_binder(binder_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{binder_id}/cards")
-def get_binder_cards(binder_id: int, db: Session = Depends(get_db)):
+def get_binder_cards(
+    binder_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Get all cards in a binder.
     
     - collection binder: only returns cards that are in the collection
     - wishlist binder: returns all cards with an `owned` flag
     """
-    binder = db.query(Binder).filter(Binder.id == binder_id).first()
+    binder = db.query(Binder).filter(
+        Binder.id == binder_id,
+        Binder.user_id == current_user.id,
+    ).first()
     if not binder:
         raise HTTPException(status_code=404, detail="Binder not found")
 
@@ -125,7 +154,8 @@ def get_binder_cards(binder_id: int, db: Session = Depends(get_db)):
 
         # Check if in collection
         col_item = db.query(CollectionItem).filter(
-            CollectionItem.card_id == bc.card_id
+            CollectionItem.card_id == bc.card_id,
+            CollectionItem.user_id == current_user.id,
         ).first()
         in_collection = col_item is not None
 
@@ -171,9 +201,17 @@ def get_binder_cards(binder_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{binder_id}/cards")
-def add_card_to_binder(binder_id: int, card_id: str, db: Session = Depends(get_db)):
+def add_card_to_binder(
+    binder_id: int,
+    card_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Add a card to a binder."""
-    binder = db.query(Binder).filter(Binder.id == binder_id).first()
+    binder = db.query(Binder).filter(
+        Binder.id == binder_id,
+        Binder.user_id == current_user.id,
+    ).first()
     if not binder:
         raise HTTPException(status_code=404, detail="Binder not found")
 
@@ -198,8 +236,20 @@ def add_card_to_binder(binder_id: int, card_id: str, db: Session = Depends(get_d
 
 
 @router.delete("/{binder_id}/cards/{card_id}")
-def remove_card_from_binder(binder_id: int, card_id: str, db: Session = Depends(get_db)):
+def remove_card_from_binder(
+    binder_id: int,
+    card_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Remove a card from a binder."""
+    binder = db.query(Binder).filter(
+        Binder.id == binder_id,
+        Binder.user_id == current_user.id,
+    ).first()
+    if not binder:
+        raise HTTPException(status_code=404, detail="Binder not found")
+
     bc = db.query(BinderCard).filter(
         BinderCard.binder_id == binder_id,
         BinderCard.card_id == card_id,

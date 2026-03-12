@@ -6,8 +6,9 @@ import re
 import logging
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from sqlalchemy.orm import Session
+from api.auth import get_current_user
 from database import get_db
-from models import Setting
+from models import Setting, User
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,11 @@ def get_gemini_key(db: Session) -> str:
 
 
 @router.post("/recognize")
-async def recognize_card(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def recognize_card(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """
     Accepts a card image, uses Gemini Vision to extract card details
     including the card's language, then searches TCGdex in that language.

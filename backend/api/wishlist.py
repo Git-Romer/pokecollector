@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 from typing import List
+from api.auth import get_current_user
 from database import get_db
-from models import WishlistItem, Card, Set
+from models import WishlistItem, Card, Set, User
 from schemas import WishlistItemCreate, WishlistItemUpdate, WishlistItemResponse
 from api.collection import ensure_card_exists
 import datetime
@@ -11,21 +12,31 @@ router = APIRouter()
 
 
 @router.get("/", response_model=List[WishlistItemResponse])
-def get_wishlist(db: Session = Depends(get_db)):
+def get_wishlist(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Get all wishlist items."""
     items = db.query(WishlistItem).options(
         joinedload(WishlistItem.card).joinedload(Card.set_ref)
+    ).filter(
+        WishlistItem.user_id == current_user.id
     ).order_by(WishlistItem.created_at.desc()).all()
     return items
 
 
 @router.post("/", response_model=WishlistItemResponse)
-def add_to_wishlist(item: WishlistItemCreate, db: Session = Depends(get_db)):
+def add_to_wishlist(
+    item: WishlistItemCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Add a card to the wishlist."""
     ensure_card_exists(db, item.card_id)
 
     existing = db.query(WishlistItem).filter(
-        WishlistItem.card_id == item.card_id
+        WishlistItem.card_id == item.card_id,
+        WishlistItem.user_id == current_user.id,
     ).first()
 
     if existing:
@@ -41,6 +52,7 @@ def add_to_wishlist(item: WishlistItemCreate, db: Session = Depends(get_db)):
         card_id=item.card_id,
         price_alert_above=item.price_alert_above,
         price_alert_below=item.price_alert_below,
+        user_id=current_user.id,
         created_at=datetime.datetime.utcnow(),
     )
     db.add(db_item)
@@ -53,10 +65,14 @@ def add_to_wishlist(item: WishlistItemCreate, db: Session = Depends(get_db)):
 def update_wishlist_item(
     item_id: int,
     update: WishlistItemUpdate,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Update price alerts for a wishlist item."""
-    item = db.query(WishlistItem).filter(WishlistItem.id == item_id).first()
+    item = db.query(WishlistItem).filter(
+        WishlistItem.id == item_id,
+        WishlistItem.user_id == current_user.id,
+    ).first()
     if not item:
         raise HTTPException(status_code=404, detail="Wishlist item not found")
 
@@ -71,9 +87,16 @@ def update_wishlist_item(
 
 
 @router.delete("/{item_id}")
-def remove_from_wishlist(item_id: int, db: Session = Depends(get_db)):
+def remove_from_wishlist(
+    item_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Remove a card from the wishlist."""
-    item = db.query(WishlistItem).filter(WishlistItem.id == item_id).first()
+    item = db.query(WishlistItem).filter(
+        WishlistItem.id == item_id,
+        WishlistItem.user_id == current_user.id,
+    ).first()
     if not item:
         raise HTTPException(status_code=404, detail="Wishlist item not found")
 

@@ -105,11 +105,23 @@ class Card(Base):
     binder_cards = relationship("BinderCard", back_populates="card", lazy="dynamic")
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String, unique=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    role = Column(String, default="trainer")  # "admin" or "trainer"
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=func.now())
+
+
 class CollectionItem(Base):
     __tablename__ = "collection"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     card_id = Column(String, ForeignKey("cards.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     quantity = Column(Integer, default=1)
     condition = Column(String, default="NM")  # Mint/NM/LP/MP/HP
     variant = Column(String, nullable=True)  # Normal/Holo/Reverse Holo/Full Art/etc.
@@ -128,6 +140,7 @@ class WishlistItem(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     card_id = Column(String, ForeignKey("cards.id"), nullable=False, unique=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     price_alert_above = Column(Float)
     price_alert_below = Column(Float)
     notified_at = Column(DateTime)
@@ -158,6 +171,7 @@ class Binder(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     description = Column(Text)
     color = Column(String, default="#EE1515")
     binder_type = Column(String, default="collection")  # "collection" or "wishlist"
@@ -185,6 +199,7 @@ class ProductPurchase(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     product_name = Column(String, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     product_type = Column(String)  # Booster, Display, ETB, Tin, Bundle, etc.
     purchase_price = Column(Float, nullable=False)
     current_value = Column(Float)
@@ -213,6 +228,7 @@ class PortfolioSnapshot(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     date = Column(DateTime, nullable=False)  # full UTC timestamp, no unique constraint
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     total_value = Column(Float, default=0)
     total_cards = Column(Integer, default=0)
     total_cost = Column(Float, default=0)

@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text, func
 from typing import List, Optional
+from api.auth import get_current_user
 from database import get_db
-from models import Set, Card, CollectionItem, Setting
+from models import Set, Card, CollectionItem, Setting, User
 from schemas import SetBase
 from services import pokemon_api
 
@@ -42,6 +43,7 @@ def _refresh_sets(db: Session, display_lang: str):
 @router.get("/", response_model=List[SetBase])
 def get_sets(
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     refresh: bool = False,
     lang: Optional[str] = Query("all", description="Language filter: 'de', 'en', or 'all'"),
 ):
@@ -110,14 +112,20 @@ def get_sets(
 
 
 @router.get("/new")
-def get_new_sets(db: Session = Depends(get_db)):
+def get_new_sets(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Get newly detected sets."""
     new_sets = db.query(Set).filter(Set.is_new == True).all()
     return new_sets
 
 
 @router.post("/mark-seen")
-def mark_sets_seen(db: Session = Depends(get_db)):
+def mark_sets_seen(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Mark all new sets as seen."""
     db.query(Set).filter(Set.is_new == True).update({"is_new": False})
     db.commit()
@@ -125,7 +133,11 @@ def mark_sets_seen(db: Session = Depends(get_db)):
 
 
 @router.get("/{set_id}", response_model=SetBase)
-def get_set(set_id: str, db: Session = Depends(get_db)):
+def get_set(
+    set_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Get a single set by DB key (e.g. 'sv1_de' or 'sv1_en')."""
     set_obj = db.query(Set).filter(Set.id == set_id).first()
     if not set_obj:
@@ -134,7 +146,11 @@ def get_set(set_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/{set_id}/checklist")
-def get_set_checklist(set_id: str, db: Session = Depends(get_db)):
+def get_set_checklist(
+    set_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Get set checklist - cards with ownership status.
 
     set_id is the composite DB key (e.g. 'sv1_de').
@@ -195,6 +211,7 @@ def get_set_checklist(set_id: str, db: Session = Depends(get_db)):
     owned_card_ids = {
         item.card_id
         for item in db.query(CollectionItem.card_id).filter(
+            CollectionItem.user_id == current_user.id,
             CollectionItem.card_id.in_([c.id for c in cards])
         ).all()
     }

@@ -19,7 +19,9 @@ export function SettingsProvider({ children }) {
 
   // Load settings from backend on mount
   useEffect(() => {
-    fetch('/api/settings/')
+    const token = localStorage.getItem('token')
+    if (!token) { setLoaded(true); return }
+    fetch('/api/settings/', { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.json())
       .then(data => {
         setSettings(prev => ({ ...prev, ...data }))

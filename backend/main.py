@@ -14,9 +14,16 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting Pokemon TCG Collection API...")
-    from database import init_db
+    from database import SessionLocal, init_db
+    from services.auth import bootstrap_admin
     init_db()
     logger.info("Database initialized")
+
+    db = SessionLocal()
+    try:
+        bootstrap_admin(db)
+    finally:
+        db.close()
 
     from services.scheduler import start_scheduler
     start_scheduler()
@@ -45,10 +52,11 @@ app.add_middleware(
 )
 
 # Include routers
-from api import cards, collection, sets, wishlist, binders, dashboard, analytics, sync, products, export, backup, settings
+from api import auth, cards, collection, sets, wishlist, binders, dashboard, analytics, sync, products, export, backup, settings
 from api.recognize import router as recognize_router
 from api.ebay import router as ebay_router
 
+app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(cards.router, prefix="/api/cards", tags=["cards"])
 app.include_router(recognize_router, prefix="/api/cards", tags=["recognize"])
 app.include_router(collection.router, prefix="/api/collection", tags=["collection"])

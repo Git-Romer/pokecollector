@@ -1,5 +1,7 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import PokeBallLoader from './components/PokeBallLoader'
 import { SettingsProvider } from './contexts/SettingsContext'
+import { AuthProvider, useAuth } from './contexts/AuthContext'
 import Layout from './components/Layout'
 import HomeScreen from './pages/HomeScreen'
 import Dashboard from './pages/Dashboard'
@@ -14,29 +16,55 @@ import Analytics from './pages/Analytics'
 import Products from './pages/Products'
 import Settings from './pages/Settings'
 import CardMigration from './pages/CardMigration'
+import Login from './pages/Login'
+
+function ProtectedRoutes() {
+  const { user, loading } = useAuth()
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-bg-primary">
+        <PokeBallLoader size={48} />
+      </div>
+    )
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />
+  }
+
+  return (
+    <Routes>
+      <Route path="/" element={<Layout />}>
+        <Route index element={<HomeScreen />} />
+        <Route path="dashboard" element={<Dashboard />} />
+        <Route path="search" element={<CardSearch />} />
+        <Route path="collection" element={<Collection />} />
+        <Route path="sets" element={<Sets />} />
+        <Route path="sets/:setId" element={<SetDetail />} />
+        <Route path="wishlist" element={<Wishlist />} />
+        <Route path="binders" element={<Binders />} />
+        <Route path="binders/:binderId" element={<BinderDetail />} />
+        <Route path="analytics" element={<Analytics />} />
+        <Route path="products" element={<Products />} />
+        <Route path="settings" element={<Settings />} />
+        <Route path="migration" element={<CardMigration />} />
+      </Route>
+    </Routes>
+  )
+}
 
 export default function App() {
   return (
-    <SettingsProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Layout />}>
-            <Route index element={<HomeScreen />} />
-            <Route path="dashboard" element={<Dashboard />} />
-            <Route path="search" element={<CardSearch />} />
-            <Route path="collection" element={<Collection />} />
-            <Route path="sets" element={<Sets />} />
-            <Route path="sets/:setId" element={<SetDetail />} />
-            <Route path="wishlist" element={<Wishlist />} />
-            <Route path="binders" element={<Binders />} />
-            <Route path="binders/:binderId" element={<BinderDetail />} />
-            <Route path="analytics" element={<Analytics />} />
-            <Route path="products" element={<Products />} />
-            <Route path="settings" element={<Settings />} />
-            <Route path="migration" element={<CardMigration />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
-    </SettingsProvider>
+    <AuthProvider>
+      <SettingsProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/*" element={<ProtectedRoutes />} />
+          </Routes>
+        </BrowserRouter>
+      </SettingsProvider>
+    </AuthProvider>
   )
 }

@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, BackgroundTasks
+from api.auth import get_current_user
 from sqlalchemy.orm import Session
 from database import get_db
-from models import SyncLog
+from models import SyncLog, User
 from services.sync_service import perform_sync, perform_price_sync
 import datetime
 
@@ -24,7 +25,11 @@ def _ensure_utc_z(dt) -> str:
 
 
 @router.post("/")
-def trigger_sync(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+def trigger_sync(
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Manually trigger a full sync."""
     global _sync_running
     if _sync_running:
@@ -48,7 +53,11 @@ def trigger_sync(background_tasks: BackgroundTasks, db: Session = Depends(get_db
 
 
 @router.post("/prices")
-def trigger_price_sync(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+def trigger_price_sync(
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Trigger a price-only sync."""
     global _price_sync_running
     if _price_sync_running:
@@ -72,7 +81,11 @@ def trigger_price_sync(background_tasks: BackgroundTasks, db: Session = Depends(
 
 
 @router.post("/reschedule-full")
-def reschedule_full_sync(body: dict, db: Session = Depends(get_db)):
+def reschedule_full_sync(
+    body: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Reschedule the full sync job. Body: {"interval_days": 5}"""
     from models import Setting
     from services.scheduler import reschedule_full_sync as _reschedule_full
@@ -94,7 +107,11 @@ def reschedule_full_sync(body: dict, db: Session = Depends(get_db)):
 
 
 @router.post("/reschedule-prices")
-def reschedule_price_sync(body: dict, db: Session = Depends(get_db)):
+def reschedule_price_sync(
+    body: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Reschedule the price sync job. Body: {"interval_minutes": 30}"""
     from models import Setting
     from services.scheduler import reschedule_price_sync as _reschedule_price
@@ -116,7 +133,10 @@ def reschedule_price_sync(body: dict, db: Session = Depends(get_db)):
 
 
 @router.get("/status")
-def get_sync_status(db: Session = Depends(get_db)):
+def get_sync_status(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Get sync status and history."""
     global _sync_running, _price_sync_running
 

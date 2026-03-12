@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, desc
+from api.auth import get_current_user
 from database import get_db
-from models import CollectionItem, Card, Set, PortfolioSnapshot, SyncLog, ProductPurchase
+from models import CollectionItem, Card, Set, PortfolioSnapshot, SyncLog, ProductPurchase, User
 import datetime
 
 router = APIRouter()
@@ -27,6 +28,7 @@ HOLO_FIELD_MAP = {
 def get_dashboard(
     db: Session = Depends(get_db),
     price_field: str = Query(default="price_market", description="Price field to use for value calculation"),
+    current_user: User = Depends(get_current_user),
 ):
     """Get dashboard statistics."""
     # Validate price_field
@@ -34,7 +36,11 @@ def get_dashboard(
         price_field = "price_market"
 
     # Collection stats
-    items = db.query(CollectionItem).options(joinedload(CollectionItem.card)).all()
+    items = db.query(CollectionItem).options(
+        joinedload(CollectionItem.card)
+    ).filter(
+        CollectionItem.user_id == current_user.id
+    ).all()
 
     total_cards = sum(item.quantity for item in items)
     unique_cards = len(items)
@@ -64,7 +70,9 @@ def get_dashboard(
     )
     # Product purchases (booster packs, displays, ETB, etc.)
     # Only count UNSOLD products — sold ones are no longer actively invested
-    all_products = db.query(ProductPurchase).all()
+    all_products = db.query(ProductPurchase).filter(
+        ProductPurchase.user_id == current_user.id
+    ).all()
     # A product is "sold" when sold_price is set AND > 0
     unsold_products = [p for p in all_products if not (p.sold_price is not None and p.sold_price > 0)]
     sold_products = [p for p in all_products if p.sold_price is not None and p.sold_price > 0]
@@ -130,7 +138,9 @@ def get_dashboard(
         })
 
     # Portfolio value history (last 90 days)
-    snapshots = db.query(PortfolioSnapshot).order_by(
+    snapshots = db.query(PortfolioSnapshot).filter(
+        PortfolioSnapshot.user_id == current_user.id
+    ).order_by(
         PortfolioSnapshot.date.asc()
     ).limit(90).all()
 
@@ -146,6 +156,8 @@ def get_dashboard(
     # Recent additions (last 12)
     recent = db.query(CollectionItem).options(
         joinedload(CollectionItem.card).joinedload(Card.set_ref)
+    ).filter(
+        CollectionItem.user_id == current_user.id
     ).order_by(CollectionItem.added_at.desc()).limit(12).all()
 
     recent_data = []

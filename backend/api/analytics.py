@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
+from api.auth import get_current_user
 from database import get_db
-from models import CollectionItem, Card, PriceHistory, PortfolioSnapshot, Set, ProductPurchase
+from models import CollectionItem, Card, PriceHistory, PortfolioSnapshot, Set, ProductPurchase, User
 from typing import Optional
 import datetime
 
@@ -24,11 +25,17 @@ def _get_item_price(item):
 
 
 @router.get("/duplicates")
-def get_duplicates(db: Session = Depends(get_db)):
+def get_duplicates(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Get all cards owned more than once, sorted by total value."""
     items = db.query(CollectionItem).options(
         joinedload(CollectionItem.card).joinedload(Card.set_ref)
-    ).filter(CollectionItem.quantity > 1).all()
+    ).filter(
+        CollectionItem.user_id == current_user.id,
+        CollectionItem.quantity > 1,
+    ).all()
 
     result = []
     for item in items:
@@ -50,12 +57,21 @@ def get_duplicates(db: Session = Depends(get_db)):
 
 
 @router.get("/top-movers")
-def get_top_movers(days: int = Query(7, ge=1, le=30), db: Session = Depends(get_db)):
+def get_top_movers(
+    days: int = Query(7, ge=1, le=30),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Get cards with most price change in last N days."""
     cutoff_date = datetime.date.today() - datetime.timedelta(days=days)
 
     # Get collection card IDs
-    col_card_ids = [item.card_id for item in db.query(CollectionItem.card_id).all()]
+    col_card_ids = [
+        item.card_id
+        for item in db.query(CollectionItem.card_id).filter(
+            CollectionItem.user_id == current_user.id
+        ).all()
+    ]
     if not col_card_ids:
         return []
 
@@ -98,9 +114,16 @@ def get_top_movers(days: int = Query(7, ge=1, le=30), db: Session = Depends(get_
 
 
 @router.get("/rarity-stats")
-def get_rarity_stats(db: Session = Depends(get_db)):
+def get_rarity_stats(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Get rarity distribution of collection."""
-    items = db.query(CollectionItem).options(joinedload(CollectionItem.card)).all()
+    items = db.query(CollectionItem).options(
+        joinedload(CollectionItem.card)
+    ).filter(
+        CollectionItem.user_id == current_user.id
+    ).all()
 
     rarity_counts = {}
     rarity_values = {}
@@ -127,20 +150,24 @@ def get_rarity_stats(db: Session = Depends(get_db)):
     return result
 
 
-def _calc_products_cost(db: Session):
+def _calc_products_cost(db: Session, user_id: int):
     """Calculate cost of unsold products only (sold products no longer tied up)."""
-    all_products = db.query(ProductPurchase).all()
+    all_products = db.query(ProductPurchase).filter(
+        ProductPurchase.user_id == user_id
+    ).all()
     return sum(
         p.purchase_price for p in all_products
         if p.purchase_price is not None and p.sold_price is None
     )
 
 
-def _take_portfolio_snapshot(db: Session):
+def _take_portfolio_snapshot(db: Session, user_id: int):
     """Insert a new portfolio snapshot (called on every price sync)."""
     now = datetime.datetime.utcnow()
 
-    collection_items = db.query(CollectionItem).join(Card).all()
+    collection_items = db.query(CollectionItem).join(Card).filter(
+        CollectionItem.user_id == user_id
+    ).all()
     total_value = sum(
         _get_item_price(item) * item.quantity
         for item in collection_items
@@ -152,11 +179,12 @@ def _take_portfolio_snapshot(db: Session):
         (item.purchase_price or 0) * item.quantity
         for item in collection_items
     )
-    products_cost = _calc_products_cost(db)
+    products_cost = _calc_products_cost(db, user_id)
     total_cost = cards_cost + products_cost
 
     snapshot = PortfolioSnapshot(
         date=now,
+        user_id=user_id,
         total_value=total_value,
         total_cards=total_cards,
         total_cost=total_cost,
@@ -215,10 +243,14 @@ def _downsample(snapshots, period: str):
 
 
 @router.get("/investment-tracker")
-def get_investment_tracker(period: str = Query('max'), db: Session = Depends(get_db)):
+def get_investment_tracker(
+    period: str = Query('max'),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Get portfolio value over time with optional period filtering and downsampling."""
     # Always insert a fresh snapshot so the current state is represented
-    _take_portfolio_snapshot(db)
+    _take_portfolio_snapshot(db, current_user.id)
 
     period = period.lower()
 
@@ -239,7 +271,9 @@ def get_investment_tracker(period: str = Query('max'), db: Session = Depends(get
         cutoff = now - datetime.timedelta(days=365)
     # 'max' → no cutoff
 
-    query = db.query(PortfolioSnapshot).order_by(PortfolioSnapshot.date.asc())
+    query = db.query(PortfolioSnapshot).filter(
+        PortfolioSnapshot.user_id == current_user.id
+    ).order_by(PortfolioSnapshot.date.asc())
     if cutoff:
         query = query.filter(PortfolioSnapshot.date >= cutoff)
     snapshots = query.all()
@@ -259,7 +293,10 @@ def get_investment_tracker(period: str = Query('max'), db: Session = Depends(get
 
 
 @router.get("/new-sets")
-def get_new_sets(db: Session = Depends(get_db)):
+def get_new_sets(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Get newly detected sets."""
     new_sets = db.query(Set).filter(Set.is_new == True).all()
     return [

@@ -77,6 +77,16 @@ const de = {
     loss: 'Verlust',
   },
 
+  auth: {
+    login: 'Anmelden',
+    logout: 'Abmelden',
+    username: 'Benutzername',
+    password: 'Passwort',
+    loginFailed: 'Anmeldung fehlgeschlagen',
+    signingIn: 'Anmelden...',
+    signInToCollection: 'Melde dich bei deiner Sammlung an',
+  },
+
   // Home Screen
   home: {
     welcomeBack: 'Willkommen zurück',
@@ -510,6 +520,33 @@ const de = {
     neverSynced: 'Noch nie',
     errorPrefix: 'Fehler: ',
     cardUpdated: 'Karte aktualisiert!',
+    tabs: {
+      general: 'Allgemein',
+      dataSync: 'Daten & Sync',
+      notifications: 'Benachrichtigungen',
+      users: 'Benutzer',
+    },
+    users: {
+      title: 'Benutzerverwaltung',
+      addUser: 'Benutzer hinzufügen',
+      username: 'Benutzername',
+      password: 'Passwort',
+      role: 'Rolle',
+      admin: 'Admin',
+      trainer: 'Trainer',
+      active: 'Aktiv',
+      inactive: 'Inaktiv',
+      deleteConfirm: 'Benutzer wirklich löschen?',
+      changePassword: 'Passwort ändern',
+      currentPassword: 'Aktuelles Passwort',
+      newPassword: 'Neues Passwort',
+      passwordChanged: 'Passwort geändert',
+      userCreated: 'Benutzer erstellt',
+      userUpdated: 'Benutzer aktualisiert',
+      userDeleted: 'Benutzer gelöscht',
+      cannotDeleteSelf: 'Du kannst dich nicht selbst löschen',
+      createdAt: 'Erstellt am',
+    },
     // Sync section row labels
     syncSetsCards: 'Sets & Karten synchronisieren',
     interval: 'Intervall',

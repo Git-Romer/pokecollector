@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Optional
+from api.auth import get_current_user
 from database import get_db
-from models import ProductPurchase
+from models import ProductPurchase, User
 from schemas import ProductPurchaseCreate, ProductPurchaseUpdate, ProductPurchaseResponse
 import datetime
 
@@ -18,9 +19,14 @@ def get_product_types():
 
 
 @router.get("/", response_model=List[ProductPurchaseResponse])
-def get_products(db: Session = Depends(get_db)):
+def get_products(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Get all product purchases."""
-    products = db.query(ProductPurchase).order_by(
+    products = db.query(ProductPurchase).filter(
+        ProductPurchase.user_id == current_user.id
+    ).order_by(
         ProductPurchase.purchase_date.desc()
     ).all()
 
@@ -52,7 +58,11 @@ def get_products(db: Session = Depends(get_db)):
 
 
 @router.post("/", response_model=ProductPurchaseResponse)
-def create_product(product: ProductPurchaseCreate, db: Session = Depends(get_db)):
+def create_product(
+    product: ProductPurchaseCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Log a new product purchase."""
     db_product = ProductPurchase(
         product_name=product.product_name,
@@ -63,6 +73,7 @@ def create_product(product: ProductPurchaseCreate, db: Session = Depends(get_db)
         purchase_date=product.purchase_date,
         sold_date=product.sold_date,
         notes=product.notes,
+        user_id=current_user.id,
         created_at=datetime.datetime.utcnow(),
     )
     db.add(db_product)
@@ -86,10 +97,14 @@ def create_product(product: ProductPurchaseCreate, db: Session = Depends(get_db)
 def update_product(
     product_id: int,
     update: ProductPurchaseUpdate,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Update a product purchase."""
-    product = db.query(ProductPurchase).filter(ProductPurchase.id == product_id).first()
+    product = db.query(ProductPurchase).filter(
+        ProductPurchase.id == product_id,
+        ProductPurchase.user_id == current_user.id,
+    ).first()
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
@@ -113,9 +128,16 @@ def update_product(
 
 
 @router.delete("/{product_id}")
-def delete_product(product_id: int, db: Session = Depends(get_db)):
+def delete_product(
+    product_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Delete a product purchase."""
-    product = db.query(ProductPurchase).filter(ProductPurchase.id == product_id).first()
+    product = db.query(ProductPurchase).filter(
+        ProductPurchase.id == product_id,
+        ProductPurchase.user_id == current_user.id,
+    ).first()
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
@@ -125,9 +147,14 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/summary")
-def get_products_summary(db: Session = Depends(get_db)):
+def get_products_summary(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """Get product investment summary (broker-style P&L)."""
-    products = db.query(ProductPurchase).all()
+    products = db.query(ProductPurchase).filter(
+        ProductPurchase.user_id == current_user.id
+    ).all()
 
     total_invested = sum(p.purchase_price for p in products)
     total_current_value = sum(

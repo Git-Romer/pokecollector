@@ -77,6 +77,16 @@ const en = {
     loss: 'Loss',
   },
 
+  auth: {
+    login: 'Login',
+    logout: 'Logout',
+    username: 'Username',
+    password: 'Password',
+    loginFailed: 'Login failed',
+    signingIn: 'Signing in...',
+    signInToCollection: 'Sign in to your collection',
+  },
+
   // Home Screen
   home: {
     welcomeBack: 'Welcome back',
@@ -510,6 +520,33 @@ const en = {
     neverSynced: 'Never',
     errorPrefix: 'Error: ',
     cardUpdated: 'Card updated!',
+    tabs: {
+      general: 'General',
+      dataSync: 'Data & Sync',
+      notifications: 'Notifications',
+      users: 'Users',
+    },
+    users: {
+      title: 'User Management',
+      addUser: 'Add User',
+      username: 'Username',
+      password: 'Password',
+      role: 'Role',
+      admin: 'Admin',
+      trainer: 'Trainer',
+      active: 'Active',
+      inactive: 'Inactive',
+      deleteConfirm: 'Really delete this user?',
+      changePassword: 'Change Password',
+      currentPassword: 'Current Password',
+      newPassword: 'New Password',
+      passwordChanged: 'Password changed',
+      userCreated: 'User created',
+      userUpdated: 'User updated',
+      userDeleted: 'User deleted',
+      cannotDeleteSelf: 'Cannot delete yourself',
+      createdAt: 'Created at',
+    },
     // Sync section row labels
     syncSetsCards: 'Sync Sets & Cards',
     interval: 'Interval',
