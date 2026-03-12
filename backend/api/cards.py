@@ -204,11 +204,23 @@ def create_custom_card(data: CardCustomCreate, db: Session = Depends(get_db)):
             detail=f"Eine Karte mit der ID '{card_id}' existiert bereits."
         )
 
+    # Derive language from the set if not explicitly provided
+    card_lang = data.lang
+    if not card_lang and data.set_id:
+        existing_set = db.query(Set).filter(
+            (Set.tcg_set_id == data.set_id) | (Set.id == data.set_id)
+        ).first()
+        if existing_set:
+            card_lang = existing_set.lang
+    card_lang = card_lang or "en"
+
     # Ensure set record exists if set_id given
     if data.set_id:
-        existing_set = db.query(Set).filter(Set.id == data.set_id).first()
+        existing_set = db.query(Set).filter(
+            (Set.tcg_set_id == data.set_id) | (Set.id == data.set_id)
+        ).first()
         if not existing_set:
-            db.add(Set(id=data.set_id, name=data.set_id, total=0, tcg_set_id=data.set_id, lang=data.lang or "en"))
+            db.add(Set(id=data.set_id, name=data.set_id, total=0, tcg_set_id=data.set_id, lang=card_lang))
 
     # image_url is stored as images_small and images_large (unchanged, not TCGdex)
     card = Card(
@@ -223,7 +235,7 @@ def create_custom_card(data: CardCustomCreate, db: Session = Depends(get_db)):
         images_small=data.image_url or None,
         images_large=data.image_url or None,
         is_custom=True,
-        lang=data.lang or "en",
+        lang=card_lang,
     )
     db.add(card)
     try:
