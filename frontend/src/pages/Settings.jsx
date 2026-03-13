@@ -8,6 +8,7 @@ import {
   getUsers, createUser, updateUser, deleteUser, changePassword, changeAvatar,
 } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
+import { useTheme } from '../hooks/useTheme'
 import { useSettings } from '../contexts/SettingsContext'
 import Modal from '../components/ui/Modal'
 import AvatarPicker from '../components/AvatarPicker'
@@ -50,7 +51,7 @@ function SettingsRow({ label, description, children, last }) {
           <p className="text-xs text-text-muted mt-0.5" style={{overflowWrap:"anywhere"}}>{description}</p>
         )}
       </div>
-      <div className="flex-shrink-0">{children}</div>
+      <div className="flex-shrink-0 w-full sm:w-auto">{children}</div>
     </div>
   )
 }
@@ -126,9 +127,6 @@ export default function Settings() {
   const { settings, updateSettings, t } = useSettings()
   const [activeTab, setActiveTab] = useState('general')
 
-  // Trainer name
-  const [trainerName, setTrainerName] = useState('')
-  const [trainerDirty, setTrainerDirty] = useState(false)
   const [geminiKey, setGeminiKey] = useState('')
   const [geminiDirty, setGeminiDirty] = useState(false)
 
@@ -141,11 +139,6 @@ export default function Settings() {
   const [alertThreshold, setAlertThreshold] = useState('10')
 
   // Load individual settings from backend
-  const { data: trainerData } = useQuery({
-    queryKey: ['setting', 'trainer_name'],
-    queryFn: () => getSetting('trainer_name').catch(() => ({ value: 'TRAINER' })),
-  })
-
   const { data: fullSyncIntervalData } = useQuery({
     queryKey: ['setting', 'full_sync_interval_days'],
     queryFn: () => getSetting('full_sync_interval_days').catch(() => ({ value: '5' })),
@@ -206,12 +199,6 @@ export default function Settings() {
   })
 
   // Sync fetched data → local state
-  useEffect(() => {
-    if (trainerData?.value !== undefined && !trainerDirty) {
-      setTrainerName(trainerData.value)
-    }
-  }, [trainerData])
-
   useEffect(() => {
     if (fullSyncIntervalData?.value) setFullSyncIntervalDays(fullSyncIntervalData.value)
   }, [fullSyncIntervalData])
@@ -286,12 +273,6 @@ export default function Settings() {
     } catch {
       toast.error(t('settings.saveFailed'))
     }
-  }
-
-  const handleSaveTrainerName = async () => {
-    await saveSetting('trainer_name', trainerName)
-    queryClient.invalidateQueries({ queryKey: ['setting', 'trainer_name'] })
-    setTrainerDirty(false)
   }
 
   const handleFullSyncIntervalChange = async (val) => {
@@ -408,7 +389,8 @@ export default function Settings() {
             <SettingsCard>
               <SettingsRow
                 label={t('auth.chooseAvatar')}
-                description={user?.username || trainerName || 'Trainer'}
+                description={user?.username || 'Trainer'}
+                last
               >
                 <button
                   type="button"
@@ -431,42 +413,42 @@ export default function Settings() {
                   </span>
                 </button>
               </SettingsRow>
-              <SettingsRow
-                label={t('settings.trainerName')}
-                description={t('settings.trainerNameDesc')}
-                last
-              >
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={trainerName}
-                    onChange={(e) => {
-                      setTrainerName(e.target.value)
-                      setTrainerDirty(true)
-                    }}
-                    onBlur={() => { if (trainerDirty) handleSaveTrainerName() }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleSaveTrainerName() }}
-                    placeholder="TRAINER"
-                    className="text-xs font-semibold text-text-primary rounded-lg px-3 py-1.5 outline-none w-32 text-right"
-                    style={{
-                      background: 'rgba(255,255,255,0.07)',
-                      border: '1px solid rgba(255,255,255,0.1)',
-                    }}
-                  />
-                  {trainerDirty && (
-                    <button
-                      onClick={handleSaveTrainerName}
-                      className="text-xs font-semibold text-brand-red hover:opacity-80 transition-opacity"
-                    >
-                      {t('common.save')}
-                    </button>
-                  )}
-                </div>
-              </SettingsRow>
+
             </SettingsCard>
           </section>
 
-          {/* ── 2. DARSTELLUNG ── */}
+          {/* ── 2. THEME ── */}
+          <section className="space-y-1">
+            <SectionHeader title={t('settings.sectionTheme')} />
+            <SettingsCard>
+              <div className="px-4 py-3.5">
+                <p className="text-sm font-semibold text-text-primary mb-3">{t('settings.theme')}</p>
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                  {themes.map((th) => (
+                    <button
+                      key={th.id}
+                      onClick={() => setTheme(th.id)}
+                      className={`flex flex-col items-center gap-1.5 rounded-xl p-3 transition-all ${
+                        theme === th.id
+                          ? 'ring-2 ring-offset-1 ring-offset-transparent'
+                          : 'hover:bg-bg-elevated'
+                      }`}
+                      style={{
+                        background: theme === th.id ? `${th.color}15` : 'rgba(255,255,255,0.03)',
+                        border: `1px solid ${theme === th.id ? `${th.color}50` : 'rgba(255,255,255,0.05)'}`,
+                        ...(theme === th.id ? { ringColor: th.color } : {}),
+                      }}
+                    >
+                      <span className="text-xl">{th.emoji}</span>
+                      <span className="text-[10px] font-semibold text-text-secondary">{th.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </SettingsCard>
+          </section>
+
+          {/* ── 3. DARSTELLUNG ── */}
           <section className="space-y-1">
             <SectionHeader title={t('settings.sectionAppearance')} />
             <SettingsCard>

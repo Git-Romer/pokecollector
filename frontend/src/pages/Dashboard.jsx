@@ -8,6 +8,7 @@ import {
 import { TrendingUp, TrendingDown } from 'lucide-react'
 import { getDashboard } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
+import { useAuth } from '../contexts/AuthContext'
 import { format, parseISO } from 'date-fns'
 import PeriodSelector, { CARD_PERIODS, PERIOD_PRICE_FIELD } from '../components/PeriodSelector'
 import TrainerCard from '../components/TrainerCard'
@@ -103,7 +104,7 @@ export default function Dashboard() {
       {/* ─── 1. TRAINER CARD HERO ──────────────────────────────────── */}
       {data && (
         <TrainerCard
-          trainerName="Gilles"
+          trainerName={user?.username || "Trainer"}
           totalCards={totalCards}
           totalValue={totalValue}
           collectedSets={ownedSets}

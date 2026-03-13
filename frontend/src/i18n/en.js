@@ -461,6 +461,8 @@ const en = {
     saved: 'Saved',
     saveFailed: 'Failed to save',
     // Settings page section headers
+    theme: 'Color Theme',
+    sectionTheme: 'Theme',
     sectionTrainer: 'Trainer',
     sectionAppearance: 'Appearance',
     sectionSync: 'Synchronization',

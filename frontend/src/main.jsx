@@ -5,6 +5,12 @@ import { Toaster } from 'react-hot-toast'
 import App from './App.jsx'
 import './index.css'
 
+// Apply saved theme before first paint to prevent flash
+const savedTheme = localStorage.getItem('theme')
+if (savedTheme && savedTheme !== 'default') {
+  document.documentElement.setAttribute('data-theme', savedTheme)
+}
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
