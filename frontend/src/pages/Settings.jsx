@@ -381,7 +381,7 @@ export default function Settings() {
         <h1 className="text-2xl font-black text-text-primary tracking-tight">{t('settings.title')}</h1>
         <p className="text-sm text-text-muted mt-1">{t('settings.appConfig')}</p>
       </div>
-      <div className="flex gap-2 border-b border-border px-1 overflow-x-auto scrollbar-none">
+      <div className="flex border-b border-border overflow-x-auto scrollbar-none -mx-4 px-4" style={{WebkitOverflowScrolling:"touch"}}>
         {[
           { key: 'general', label: t('settings.tabs.general') },
           { key: 'sync', label: t('settings.tabs.dataSync') },
@@ -391,7 +391,7 @@ export default function Settings() {
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`px-4 py-2.5 text-sm font-semibold whitespace-nowrap transition-colors border-b-2 ${
+            className={`px-3 py-2 text-xs sm:text-sm font-semibold whitespace-nowrap transition-colors border-b-2 flex-shrink-0 ${
               activeTab === tab.key ? 'border-brand-red text-brand-red' : 'border-transparent text-text-muted hover:text-text-primary'
             }`}
           >

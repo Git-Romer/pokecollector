@@ -16,6 +16,15 @@ import { format, parseISO } from 'date-fns'
 import { useTilt } from '../hooks/useTilt'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 
+// Compact number formatter for mobile (1.2k, 3.4M, etc.)
+function compactNum(n) {
+  if (typeof n === 'string') return n // already formatted (e.g. price)
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M'
+  if (n >= 10_000) return (n / 1_000).toFixed(1).replace(/\.0$/, '') + 'k'
+  if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, '') + 'k'
+  return n.toLocaleString()
+}
+
 // ── Time-range definitions ────────────────────────────────────────────────────
 const PERIODS = [
   { key: '1W',  label: '1W',   apiPeriod: '1w' },
@@ -151,19 +160,19 @@ export default function HomeScreen() {
   const STAT_CARDS = [
     {
       icon: <Layers size={16} />,
-      value: data?.total_cards ?? 0,
+      value: compactNum(data?.total_cards ?? 0),
       label: t('home.cardsTotal'),
       color: '#4fc3f7',
     },
     {
       icon: <Grid2X2 size={16} />,
-      value: data?.owned_sets ?? 0,
+      value: compactNum(data?.owned_sets ?? 0),
       label: t('home.sets'),
       color: '#ce93d8',
     },
     {
       icon: <Star size={16} />,
-      value: data?.unique_cards ?? 0,
+      value: compactNum(data?.unique_cards ?? 0),
       label: t('home.unique'),
       color: '#81c784',
     },
@@ -289,7 +298,7 @@ export default function HomeScreen() {
         <div className="h-px bg-gradient-to-r from-transparent via-brand-red/30 to-transparent" />
 
         {/* ── STAT CARDS ROW ── */}
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {STAT_CARDS.map(stat => (
             <div
               key={stat.label}
@@ -300,7 +309,7 @@ export default function HomeScreen() {
               }}
             >
               <span style={{ color: stat.color }}>{stat.icon}</span>
-              <p className="text-base font-black leading-none" style={{ color: stat.color }}>
+              <p className="text-sm sm:text-base font-black leading-none truncate max-w-full" style={{ color: stat.color }}>
                 {isLoading ? '—' : stat.value}
               </p>
               <p className="text-[10px] text-text-muted leading-tight">{stat.label}</p>
