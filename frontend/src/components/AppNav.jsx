@@ -1,4 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom'
+import { LogOut } from 'lucide-react'
+import { useAuth } from '../contexts/AuthContext'
 import { useSettings } from '../contexts/SettingsContext'
 
 const PAGE_TITLE_KEYS = {
@@ -17,7 +19,10 @@ const PAGE_TITLE_KEYS = {
 export default function AppNav() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { logout } = useAuth()
   const { t } = useSettings()
+
+  const handleLogout = () => { logout(); navigate('/login') }
 
   if (location.pathname === '/') return null
 
@@ -28,13 +33,21 @@ export default function AppNav() {
 
   return (
     <>
-      {/* Page title — subtle top strip */}
+      {/* Page title — subtle top strip with logout */}
       {title && (
-        <div className="sticky top-0 z-40 px-4 pt-5 pb-3 pointer-events-none"
+        <div className="sticky top-0 z-40 px-4 pt-5 pb-3 flex items-center justify-between"
           style={{ background: 'linear-gradient(to bottom, rgba(6,8,15,0.98) 70%, transparent)' }}>
-          <p className="text-[11px] font-black uppercase tracking-[0.2em] text-text-muted text-center">
+          <div className="w-8" />
+          <p className="text-[11px] font-black uppercase tracking-[0.2em] text-text-muted text-center truncate flex-1 min-w-0">
             {title}
           </p>
+          <button
+            onClick={handleLogout}
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-text-muted hover:text-brand-red transition-colors pointer-events-auto"
+            aria-label={t('auth.logout')}
+          >
+            <LogOut size={16} />
+          </button>
         </div>
       )}
 

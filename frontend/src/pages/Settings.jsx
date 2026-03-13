@@ -827,22 +827,22 @@ function UsersTab({ t, queryClient }) {
   const createMut = useMutation({
     mutationFn: (data) => createUser(data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['users'] }); toast.success(t('settings.users.userCreated')); setShowModal(false) },
-    onError: (e) => toast.error(e.response?.data?.detail || 'Error'),
+    onError: (e) => toast.error(e.response?.data?.detail || t('common.error')),
   })
   const updateMut = useMutation({
     mutationFn: ({ id, data }) => updateUser(id, data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['users'] }); toast.success(t('settings.users.userUpdated')); setShowModal(false); setEditingUser(null) },
-    onError: (e) => toast.error(e.response?.data?.detail || 'Error'),
+    onError: (e) => toast.error(e.response?.data?.detail || t('common.error')),
   })
   const deleteMut = useMutation({
     mutationFn: (id) => deleteUser(id),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['users'] }); toast.success(t('settings.users.userDeleted')) },
-    onError: (e) => toast.error(e.response?.data?.detail || 'Error'),
+    onError: (e) => toast.error(e.response?.data?.detail || t('common.error')),
   })
   const changePwMut = useMutation({
     mutationFn: (data) => changePassword(data),
     onSuccess: () => { toast.success(t('settings.users.passwordChanged')); setCurrentPw(''); setNewPw('') },
-    onError: (e) => toast.error(e.response?.data?.detail || 'Error'),
+    onError: (e) => toast.error(e.response?.data?.detail || t('common.error')),
   })
 
   const openCreate = () => { setEditingUser(null); setFormUsername(''); setFormPassword(''); setFormRole('trainer'); setShowModal(true) }
