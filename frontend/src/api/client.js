@@ -186,9 +186,6 @@ export const getSetting = (key) => api.get(`/settings/${key}`).then(r => r.data)
 export const setSetting = (key, value) => api.post(`/settings/${key}`, { value }).then(r => r.data)
 export const getTelegramStatus = () => api.get('/settings/telegram_status').then(r => r.data)
 
-// eBay
-export const getEbayGradedPrice = (cardName, grade, lang = 'en') =>
-  api.get('/ebay/graded-price', { params: { card_name: cardName, grade, lang } }).then(r => r.data)
 
 // Social
 export const getLeaderboard = () => api.get('/social/leaderboard')

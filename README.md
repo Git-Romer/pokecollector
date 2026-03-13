@@ -65,6 +65,26 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - Collection binder type: only shows cards you own
 - Checklist binder type: shows all cards, highlights owned ones
 
+### 👥 Multi-User
+- Multiple user accounts with JWT authentication
+- Admin and Trainer roles
+- Per-user collections, wishlists, and portfolio tracking
+- Animated Pokémon avatar selection (Gen 1 sprites)
+
+### 🏆 Social Features
+- **Trainer Leaderboard**: ranked by portfolio value, cards, P&L
+- **Trainer Comparison**: side-by-side stats, card overlap, trade suggestions
+- **Achievements**: 20 badges (PokeAPI gym badge sprites) with progress tracking
+
+### 🎨 Themes
+- 9 Pokémon-type color themes (Fire, Water, Grass, Electric, Psychic, Dragon, Dark, Fairy)
+- Instant switch, stored per device
+
+### 🖼️ Image Cache
+- All card and set images proxied through the backend
+- Lazy caching in PostgreSQL (fetched on first view, served from DB after)
+- Works offline for previously viewed cards
+
 ### ⚙️ Settings & Utilities
 - **Language**: German / English UI
 - **Primary Price**: choose which Cardmarket price drives your portfolio value
@@ -72,7 +92,6 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - **Export**: CSV or PDF of your full collection
 - **Backup / Restore**: full PostgreSQL dump and restore
 - **Sync**: manual trigger or automatic (configurable interval)
-- **eBay graded price lookup**: search eBay sold listings for PSA/BGS/CGC graded cards
 
 ---
 
@@ -99,9 +118,6 @@ TELEGRAM_CHAT_ID=your_chat_id
 
 # Optional — for AI card recognition
 GEMINI_API_KEY=your_gemini_key
-
-# Optional — for eBay graded price lookup
-EBAY_APP_ID=your_ebay_app_id
 ```
 
 > No TCGdex API key required — it's a free open API.
