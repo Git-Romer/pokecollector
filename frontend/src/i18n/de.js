@@ -474,6 +474,8 @@ const de = {
     // Settings page row labels
     multiUserMode: 'Mehrspieler-Modus',
     multiUserModeDesc: 'Login-Bildschirm und Benutzerverwaltung aktivieren',
+    username: 'Benutzername',
+    usernameDesc: 'Dein angezeigter Name',
     trainerName: 'Trainer-Name',
     trainerNameDesc: 'Wird auf dem Startbildschirm angezeigt',
     languageDesc: 'App-Sprache ändern',

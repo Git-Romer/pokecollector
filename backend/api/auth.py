@@ -233,3 +233,18 @@ def change_avatar(data: dict, current_user: User = Depends(get_current_user), db
     current_user.avatar_id = avatar_id
     db.commit()
     return {"id": current_user.id, "username": current_user.username, "role": current_user.role, "avatar_id": current_user.avatar_id}
+
+
+@router.put("/me/username")
+def change_username(data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    new_username = (data.get("username") or "").strip()
+    if not new_username or len(new_username) < 2:
+        raise HTTPException(status_code=400, detail="Username must be at least 2 characters")
+    if len(new_username) > 32:
+        raise HTTPException(status_code=400, detail="Username must be at most 32 characters")
+    existing = db.query(User).filter(User.username == new_username, User.id != current_user.id).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Username already taken")
+    current_user.username = new_username
+    db.commit()
+    return {"id": current_user.id, "username": current_user.username, "role": current_user.role, "avatar_id": current_user.avatar_id}

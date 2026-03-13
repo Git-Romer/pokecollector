@@ -5,7 +5,7 @@ import {
   getSyncStatus, triggerSync, triggerPriceSync, rescheduleFullSync, reschedulePriceSync,
   downloadBackup, restoreBackup, exportCSV,
   getSetting, setSetting, getTelegramStatus, saveSettings, setAuthMode,
-  getUsers, createUser, updateUser, deleteUser, changePassword, changeAvatar,
+  getUsers, createUser, updateUser, deleteUser, changePassword, changeAvatar, changeUsername,
 } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../hooks/useTheme'
@@ -122,6 +122,8 @@ export default function Settings() {
   const fileInputRef = useRef(null)
   const [restoring, setRestoring] = useState(false)
   const [showAvatarPicker, setShowAvatarPicker] = useState(false)
+  const [editingUsername, setEditingUsername] = useState(false)
+  const [usernameInput, setUsernameInput] = useState('')
   const queryClient = useQueryClient()
   const { user, updateCurrentUser, multiUser } = useAuth()
   const { settings, updateSettings, t } = useSettings()
@@ -340,6 +342,16 @@ export default function Settings() {
   const currentCurrency = settings.currency || 'EUR'
   const currentPriceType = settings.price_primary || 'trend'
 
+  const usernameMutation = useMutation({
+    mutationFn: (username) => changeUsername(username),
+    onSuccess: (updatedUser) => {
+      updateCurrentUser(updatedUser)
+      setEditingUsername(false)
+      toast.success(t('common.saved'))
+    },
+    onError: () => toast.error(t('common.error')),
+  })
+
   const handleAvatarSelect = (avatarId) => {
     avatarMutation.mutate(avatarId)
   }
@@ -382,7 +394,6 @@ export default function Settings() {
               <SettingsRow
                 label={t('auth.chooseAvatar')}
                 description={user?.username || 'Trainer'}
-                last
               >
                 <button
                   type="button"
@@ -404,6 +415,34 @@ export default function Settings() {
                     {avatarMutation.isPending ? t('common.loading') : t('common.edit')}
                   </span>
                 </button>
+              </SettingsRow>
+              <SettingsRow label={t('settings.username')} description={t('settings.usernameDesc')} last>
+                {editingUsername ? (
+                  <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); usernameInput.trim() && usernameMutation.mutate(usernameInput.trim()) }}>
+                    <input
+                      type="text"
+                      value={usernameInput}
+                      onChange={(e) => setUsernameInput(e.target.value)}
+                      className="w-32 rounded-lg border border-border bg-bg-primary px-2 py-1.5 text-xs text-text-primary outline-none focus:border-brand-red"
+                      autoFocus
+                      maxLength={32}
+                    />
+                    <button type="submit" disabled={usernameMutation.isPending} className="rounded-lg bg-brand-red px-2 py-1.5 text-xs font-semibold text-white">
+                      {usernameMutation.isPending ? '...' : '✓'}
+                    </button>
+                    <button type="button" onClick={() => setEditingUsername(false)} className="rounded-lg border border-border px-2 py-1.5 text-xs text-text-muted">
+                      ✕
+                    </button>
+                  </form>
+                ) : (
+                  <button
+                    onClick={() => { setUsernameInput(user?.username || ''); setEditingUsername(true) }}
+                    className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-text-primary transition-colors hover:border-brand-red/50"
+                  >
+                    <Pencil size={12} />
+                    {user?.username || 'Trainer'}
+                  </button>
+                )}
               </SettingsRow>
 
             </SettingsCard>

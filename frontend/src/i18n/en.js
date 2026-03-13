@@ -474,6 +474,8 @@ const en = {
     // Settings page row labels
     multiUserMode: 'Multi-User Mode',
     multiUserModeDesc: 'Enable login screen and user management',
+    username: 'Username',
+    usernameDesc: 'Your display name',
     trainerName: 'Trainer Name',
     trainerNameDesc: 'Displayed on the home screen',
     languageDesc: 'Change app language',
