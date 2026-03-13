@@ -21,6 +21,7 @@ const de = {
 
   // Common / General
   common: {
+    back: 'Zurück',
     loading: 'Laden...',
     noResults: 'Keine Ergebnisse',
     save: 'Speichern',
@@ -643,6 +644,7 @@ const de = {
   ebay: {
     gradedPrice: 'Graded-Preis',
     fetchPrice: 'Preis abrufen',
+    back: 'Zurück',
     loading: 'Lädt…',
     notConfigured: 'eBay API nicht konfiguriert',
     avgPrice: 'Durchschnitt',
