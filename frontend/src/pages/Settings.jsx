@@ -125,6 +125,7 @@ export default function Settings() {
   const queryClient = useQueryClient()
   const { user, updateCurrentUser } = useAuth()
   const { settings, updateSettings, t } = useSettings()
+  const { theme, setTheme, themes } = useTheme()
   const [activeTab, setActiveTab] = useState('general')
 
   const [geminiKey, setGeminiKey] = useState('')
