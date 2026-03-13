@@ -418,7 +418,7 @@ export default function Settings() {
                   <div className="flex h-16 w-16 items-center justify-center rounded-full border border-border bg-bg-card">
                     {user?.avatar_id ? (
                       <img
-                        src={`https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${user.avatar_id}.png`}
+                        src={`https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/${user.avatar_id}.gif`}
                         alt={`${user.username} avatar`}
                         className="h-12 w-12 pixelated"
                       />

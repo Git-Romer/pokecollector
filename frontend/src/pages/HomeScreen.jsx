@@ -220,7 +220,7 @@ export default function HomeScreen() {
           <div className="mb-1 flex items-center justify-center gap-2 truncate max-w-[90vw] mx-auto">
             {user?.avatar_id ? (
               <img
-                src={`https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${user.avatar_id}.png`}
+                src={`https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/${user.avatar_id}.gif`}
                 alt={`${trainerName} avatar`}
                 className="h-6 w-6 pixelated"
               />

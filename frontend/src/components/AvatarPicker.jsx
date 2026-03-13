@@ -1,7 +1,7 @@
 import Modal from './ui/Modal'
 import { useSettings } from '../contexts/SettingsContext'
 
-const SPRITE_BASE_URL = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon'
+const SPRITE_BASE_URL = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated'
 const POKEMON_IDS = Array.from({ length: 151 }, (_, index) => index + 1)
 
 export default function AvatarPicker({ isOpen, onClose, onSelect, currentAvatarId }) {
@@ -37,7 +37,7 @@ export default function AvatarPicker({ isOpen, onClose, onSelect, currentAvatarI
                   title={`#${pokemonId}`}
                 >
                   <img
-                    src={`${SPRITE_BASE_URL}/${pokemonId}.png`}
+                    src={`${SPRITE_BASE_URL}/${pokemonId}.gif`}
                     alt={`Pokemon ${pokemonId}`}
                     className="h-12 w-12 pixelated"
                     loading="lazy"

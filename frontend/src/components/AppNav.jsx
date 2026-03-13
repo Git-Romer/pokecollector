@@ -48,7 +48,7 @@ export default function AppNav() {
           >
             {user?.avatar_id ? (
               <img
-                src={`https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${user.avatar_id}.png`}
+                src={`https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/${user.avatar_id}.gif`}
                 alt={`${user.username} avatar`}
                 className="h-5 w-5 pixelated"
               />

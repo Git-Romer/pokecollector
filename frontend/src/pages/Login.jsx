@@ -67,7 +67,7 @@ export default function Login() {
                 >
                   {lastUserAvatar ? (
                     <img
-                      src={`https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${lastUserAvatar}.png`}
+                      src={`https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/${lastUserAvatar}.gif`}
                       alt={`${lastUser} avatar`}
                       className="w-16 h-16 pixelated"
                     />
