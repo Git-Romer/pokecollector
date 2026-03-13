@@ -82,6 +82,8 @@ const de = {
     logout: 'Abmelden',
     username: 'Benutzername',
     password: 'Passwort',
+    chooseAvatar: 'Pokémon-Avatar wählen',
+    avatarChanged: 'Avatar geändert!',
     loginFailed: 'Anmeldung fehlgeschlagen',
     signingIn: 'Anmelden...',
     signInToCollection: 'Melde dich bei deiner Sammlung an',
