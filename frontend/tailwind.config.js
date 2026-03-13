@@ -10,10 +10,10 @@ export default {
       colors: {
         // Dark theme backgrounds — deep blue-black
         bg: {
-          DEFAULT: '#08080f',
-          surface: '#0f0f1a',
-          card: '#141422',
-          elevated: '#1a1a2e',
+          DEFAULT: 'var(--color-bg)',
+          surface: 'var(--color-surface)',
+          card: 'var(--color-card)',
+          elevated: 'var(--color-elevated)',
         },
         border: {
           DEFAULT: 'rgba(255,255,255,0.07)',
@@ -26,9 +26,9 @@ export default {
         },
         // Pokemon brand — richer, more saturated
         brand: {
-          red: '#e3000b',
-          'red-light': '#ff4d4d',
-          'red-dark': '#b80009',
+          red: 'var(--color-brand-red)',
+          'red-light': 'var(--color-brand-red-light)',
+          'red-dark': 'var(--color-brand-red-dark)',
           'red-glow': 'rgba(227,0,11,0.35)',
         },
         // Status — keeping legacy names for backward compat

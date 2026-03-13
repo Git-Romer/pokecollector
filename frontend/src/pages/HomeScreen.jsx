@@ -8,7 +8,7 @@ import {
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts'
-import { getDashboard, triggerPriceSync, getSyncStatus, getInvestmentTracker, getSetting } from '../api/client'
+import { getDashboard, triggerPriceSync, getSyncStatus, getInvestmentTracker } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import { useAuth } from '../contexts/AuthContext'
 import toast from 'react-hot-toast'
@@ -95,12 +95,7 @@ export default function HomeScreen() {
     refetchInterval: 120000,
   })
 
-  const { data: trainerNameData } = useQuery({
-    queryKey: ['setting', 'trainer_name'],
-    queryFn: () => getSetting('trainer_name').catch(() => ({ value: 'Trainer' })),
-    staleTime: 60000,
-  })
-  const trainerName = trainerNameData?.value || 'Trainer'
+  const trainerName = user?.username || 'Trainer'
 
   const syncMutation = useMutation({
     mutationFn: triggerPriceSync,

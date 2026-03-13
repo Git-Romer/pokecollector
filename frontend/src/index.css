@@ -717,3 +717,84 @@ body {
 .energy-colorless { background: rgba(158,158,158,0.2); color: #9e9e9e; border: 1px solid rgba(158,158,158,0.3); }
 .energy-rare    { background: rgba(245,200,66,0.15); color: #f5c842; border: 1px solid rgba(245,200,66,0.35); }
 .energy-ultra   { background: rgba(227,0,11,0.15); color: #ff5252; border: 1px solid rgba(227,0,11,0.35); }
+
+/* ─── Pokemon Type Themes ────────────────────────────────────────────────── */
+[data-theme="fire"] {
+  --color-bg:          #0f0805;
+  --color-surface:     #1a0f08;
+  --color-card:        #221408;
+  --color-elevated:    #2e1a0a;
+  --color-brand-red:   #ff6b35;
+  --color-brand-red-light: #ff9466;
+  --color-brand-red-dark:  #cc5528;
+}
+
+[data-theme="water"] {
+  --color-bg:          #050a10;
+  --color-surface:     #081220;
+  --color-card:        #0c1a2e;
+  --color-elevated:    #10223a;
+  --color-brand-red:   #4fc3f7;
+  --color-brand-red-light: #81d4fa;
+  --color-brand-red-dark:  #2196f3;
+}
+
+[data-theme="grass"] {
+  --color-bg:          #050f08;
+  --color-surface:     #081a0f;
+  --color-card:        #0c2214;
+  --color-elevated:    #102e1a;
+  --color-brand-red:   #66bb6a;
+  --color-brand-red-light: #81c784;
+  --color-brand-red-dark:  #43a047;
+}
+
+[data-theme="electric"] {
+  --color-bg:          #0f0d05;
+  --color-surface:     #1a1608;
+  --color-card:        #221e0a;
+  --color-elevated:    #2e280e;
+  --color-brand-red:   #fdd835;
+  --color-brand-red-light: #ffee58;
+  --color-brand-red-dark:  #f9a825;
+}
+
+[data-theme="psychic"] {
+  --color-bg:          #0d050f;
+  --color-surface:     #16081a;
+  --color-card:        #1e0c22;
+  --color-elevated:    #28102e;
+  --color-brand-red:   #ce93d8;
+  --color-brand-red-light: #e1bee7;
+  --color-brand-red-dark:  #ab47bc;
+}
+
+[data-theme="dragon"] {
+  --color-bg:          #08050f;
+  --color-surface:     #100a1a;
+  --color-card:        #180f24;
+  --color-elevated:    #20142e;
+  --color-brand-red:   #9575cd;
+  --color-brand-red-light: #b39ddb;
+  --color-brand-red-dark:  #7e57c2;
+}
+
+[data-theme="dark"] {
+  --color-bg:          #050505;
+  --color-surface:     #0a0a0a;
+  --color-card:        #121212;
+  --color-elevated:    #1a1a1a;
+  --color-brand-red:   #78909c;
+  --color-brand-red-light: #90a4ae;
+  --color-brand-red-dark:  #546e7a;
+}
+
+[data-theme="fairy"] {
+  --color-bg:          #0f050a;
+  --color-surface:     #1a0812;
+  --color-card:        #220c18;
+  --color-elevated:    #2e1020;
+  --color-brand-red:   #f48fb1;
+  --color-brand-red-light: #f8bbd0;
+  --color-brand-red-dark:  #ec407a;
+}

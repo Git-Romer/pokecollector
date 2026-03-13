@@ -461,6 +461,8 @@ const de = {
     saved: 'Gespeichert',
     saveFailed: 'Fehler beim Speichern',
     // Settings page section headers
+    theme: 'Farbthema',
+    sectionTheme: 'Thema',
     sectionTrainer: 'Trainer',
     sectionAppearance: 'Darstellung',
     sectionSync: 'Synchronisation',
