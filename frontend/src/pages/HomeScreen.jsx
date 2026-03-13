@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  RefreshCw, TrendingUp, TrendingDown, Layers, BookOpen, Star, Wallet,
+  RefreshCw, TrendingUp, TrendingDown, Layers, BookOpen, Star, Wallet, LogOut,
   LayoutDashboard, Search, Library, Grid2X2, Heart, BarChart3, ShoppingBag, Settings,
 } from 'lucide-react'
 import {
@@ -10,6 +10,7 @@ import {
 } from 'recharts'
 import { getDashboard, triggerPriceSync, getSyncStatus, getInvestmentTracker, getSetting } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
+import { useAuth } from '../contexts/AuthContext'
 import toast from 'react-hot-toast'
 import { format, parseISO } from 'date-fns'
 import { useTilt } from '../hooks/useTilt'
@@ -61,6 +62,7 @@ export default function HomeScreen() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { formatPrice, t } = useSettings()
+  const { logout } = useAuth()
   const [chartPeriod, setChartPeriod] = useState('1M')
 
   const { data, isLoading } = useQuery({
@@ -187,8 +189,16 @@ export default function HomeScreen() {
 
       <div className="relative z-10 flex flex-col gap-6 px-4 pt-6 pb-10">
 
-        {/* ── TOP BAR: Sync button (top-right) ── */}
-        <div className="flex items-center justify-end">
+        {/* ── TOP BAR: Logout + Sync ── */}
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => { logout(); navigate('/login') }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-text-muted hover:text-brand-red transition-colors"
+            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
+          >
+            <LogOut size={12} />
+            {t('auth.logout')}
+          </button>
           <button
             onClick={() => syncMutation.mutate()}
             disabled={isRunning}
@@ -207,7 +217,7 @@ export default function HomeScreen() {
         {/* ── PORTFOLIO VALUE (large, prominent) ── */}
         <div className="text-center -mt-2">
           {/* Trainer greeting */}
-          <p className="text-sm font-semibold mb-1" style={{ color: 'rgba(255,255,255,0.55)' }}>
+          <p className="text-sm font-semibold mb-1 truncate max-w-[90vw] mx-auto" style={{ color: 'rgba(255,255,255,0.55)' }}>
             {t('home.hello')}, <span className="font-black" style={{ color: '#f5c842' }}>{trainerName}</span>! 👋
           </p>
           <p className="text-[11px] text-text-muted uppercase tracking-[0.2em] mb-2">{t('home.portfolioValue')}</p>
