@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { Plus, Check, Heart, BookOpen, X, PenLine, Pencil,  Trash2 } from 'lucide-react'
-import { addToCollection, addToWishlist, createCustomCard, updateCustomCard, deleteCustomCard, getSets } from '../api/client'
+import { addToCollection, addToWishlist, createCustomCard, updateCustomCard, deleteCustomCard, getSets, getPriceHistory } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import PeriodSelector, { CARD_PERIODS, PERIOD_PRICE_FIELD } from './PeriodSelector'
 import toast from 'react-hot-toast'
@@ -531,6 +532,15 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
   const { t, formatPrice } = useSettings()
   const queryClient = useQueryClient()
 
+  // Price history chart
+  const cardIdForHistory = card?.card_id || (typeof card?.id === 'string' ? card.id : null)
+  const { data: priceHistory = [] } = useQuery({
+    queryKey: ['price-history', cardIdForHistory],
+    queryFn: () => getPriceHistory(cardIdForHistory).then(r => r.data),
+    enabled: !!cardIdForHistory,
+    staleTime: 5 * 60 * 1000,
+  })
+
 
   const cardImage = card.images?.large || resolveCardImageUrl(card, 'large') || (card.image ? `${card.image}/high.webp` : null) || card.images?.small || resolveCardImageUrl(card)
   const setName = card.set?.name || card.set_ref?.name
@@ -735,6 +745,75 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
               </div>
             )}
 
+
+            {/* Price History Chart */}
+            {priceHistory.length > 1 && (
+              <div className="bg-bg-card rounded-xl p-3 space-y-2">
+                <p className="text-xs text-text-muted font-medium uppercase tracking-wide">
+                  {t('prices.history')}
+                </p>
+                <div className="h-[140px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={priceHistory} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                      <defs>
+                        <linearGradient id="priceGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#22c55e" stopOpacity={0.3} />
+                          <stop offset="100%" stopColor="#22c55e" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fontSize: 10, fill: '#606078' }}
+                        tickFormatter={(d) => new Date(d).toLocaleDateString('de-DE', { day: '2d', month: '2d' })}
+                        axisLine={false}
+                        tickLine={false}
+                        minTickGap={30}
+                      />
+                      <YAxis
+                        tick={{ fontSize: 10, fill: '#606078' }}
+                        tickFormatter={(v) => `${v.toFixed(0)}€`}
+                        axisLine={false}
+                        tickLine={false}
+                        width={40}
+                        domain={['auto', 'auto']}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          background: 'rgba(20,20,34,0.95)',
+                          border: '1px solid rgba(255,255,255,0.1)',
+                          borderRadius: '0.75rem',
+                          fontSize: '0.75rem',
+                        }}
+                        labelFormatter={(d) => new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        formatter={(val) => [`${val?.toFixed(2)}€`, t('prices.trend')]}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="price_trend"
+                        stroke="#22c55e"
+                        fill="url(#priceGrad)"
+                        strokeWidth={2}
+                        dot={false}
+                        activeDot={{ r: 3, fill: '#22c55e', stroke: 'none' }}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+                {(() => {
+                  const first = priceHistory[0]?.price_trend
+                  const last = priceHistory[priceHistory.length - 1]?.price_trend
+                  if (first && last && first > 0) {
+                    const change = ((last - first) / first) * 100
+                    return (
+                      <p className={`text-xs font-semibold ${change >= 0 ? 'text-green' : 'text-brand-red'}`}>
+                        {change >= 0 ? '↑' : '↓'} {Math.abs(change).toFixed(1)}% {t('prices.sinceTracking')}
+                      </p>
+                    )
+                  }
+                  return null
+                })()}
+              </div>
+            )}
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
