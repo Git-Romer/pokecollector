@@ -129,7 +129,6 @@ function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
               </select>
             </div>
 
-            <div>
 
             {/* Purchase price */}
             <div>
