@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { Navigate, useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Award, ArrowLeft, Trophy } from 'lucide-react'
 import { getAchievements } from '../api/client'
@@ -24,7 +24,7 @@ function TrainerAvatar({ avatarId, username }) {
 export default function Achievements() {
   const { userId } = useParams()
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, multiUser } = useAuth()
   const { t } = useSettings()
   const SOCIAL_TABS = [
     { to: '/leaderboard', label: t('nav.leaderboard'), icon: Trophy },
@@ -44,6 +44,10 @@ export default function Achievements() {
     const total = Number(data?.total ?? 20)
     return `${earned}/${total} ${t('achievements.earned')}`
   }, [data, t])
+
+  if (!multiUser) {
+    return <Navigate to="/" replace />
+  }
 
   return (
     <div className="page-container">

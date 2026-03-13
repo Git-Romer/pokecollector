@@ -20,9 +20,10 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
+      const token = localStorage.getItem('token')
       localStorage.removeItem('token')
       localStorage.removeItem('user')
-      if (window.location.pathname !== '/login') {
+      if (token && window.location.pathname !== '/login') {
         window.location.href = '/login'
       }
     }
@@ -40,6 +41,8 @@ export const login = (username, password) => {
 }
 
 export const getMe = () => api.get('/auth/me').then(r => r.data)
+export const getAuthMode = () => api.get('/auth/mode').then(r => r.data)
+export const setAuthMode = (enabled) => api.put('/auth/mode', { enabled }).then(r => r.data)
 export const getUsers = () => api.get('/auth/users').then(r => r.data)
 export const createUser = (data) => api.post('/auth/users', data).then(r => r.data)
 export const updateUser = (id, data) => api.put(`/auth/users/${id}`, data).then(r => r.data)
@@ -129,10 +132,13 @@ export const getProductsSummary = () => api.get('/products/summary')
 // Export
 export const exportCSV = () => {
   const token = localStorage.getItem('token')
-  return api.get('/export/csv', {
+  const config = {
     responseType: 'blob',
-    headers: { Authorization: `Bearer ${token}` },
-  }).then(r => {
+  }
+  if (token) {
+    config.headers = { Authorization: `Bearer ${token}` }
+  }
+  return api.get('/export/csv', config).then(r => {
     const url = window.URL.createObjectURL(r.data)
     const a = document.createElement('a')
     a.href = url
@@ -143,10 +149,13 @@ export const exportCSV = () => {
 }
 export const exportPDF = () => {
   const token = localStorage.getItem('token')
-  return api.get('/export/pdf', {
+  const config = {
     responseType: 'blob',
-    headers: { Authorization: `Bearer ${token}` },
-  }).then(r => {
+  }
+  if (token) {
+    config.headers = { Authorization: `Bearer ${token}` }
+  }
+  return api.get('/export/pdf', config).then(r => {
     const url = window.URL.createObjectURL(r.data)
     const a = document.createElement('a')
     a.href = url
@@ -159,10 +168,13 @@ export const exportPDF = () => {
 // Backup
 export const downloadBackup = () => {
   const token = localStorage.getItem('token')
-  return api.get('/backup/download', {
+  const config = {
     responseType: 'blob',
-    headers: { Authorization: `Bearer ${token}` },
-  }).then(r => {
+  }
+  if (token) {
+    config.headers = { Authorization: `Bearer ${token}` }
+  }
+  return api.get('/backup/download', config).then(r => {
     const url = window.URL.createObjectURL(r.data)
     const a = document.createElement('a')
     a.href = url

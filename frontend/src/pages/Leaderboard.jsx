@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowUpDown, Trophy, Award } from 'lucide-react'
 import { getLeaderboard } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
+import { useAuth } from '../contexts/AuthContext'
 import TabNav from '../components/TabNav'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 
@@ -33,6 +34,7 @@ function TrainerAvatar({ avatarId, username }) {
 export default function Leaderboard() {
   const navigate = useNavigate()
   const { t, formatPrice } = useSettings()
+  const { multiUser } = useAuth()
   const [sortBy, setSortBy] = useState('total_value')
   const SOCIAL_TABS = [
     { to: '/leaderboard', label: t('nav.leaderboard'), icon: Trophy },
@@ -52,6 +54,10 @@ export default function Leaderboard() {
       return Number(b?.total_value ?? 0) - Number(a?.total_value ?? 0)
     })
   }, [data, sortBy])
+
+  if (!multiUser) {
+    return <Navigate to="/" replace />
+  }
 
   return (
     <div className="page-container">

@@ -4,7 +4,7 @@ import { RefreshCw, Download, Upload, Plus, Pencil, Trash2, User, UserCheck, Use
 import {
   getSyncStatus, triggerSync, triggerPriceSync, rescheduleFullSync, reschedulePriceSync,
   downloadBackup, restoreBackup, exportCSV,
-  getSetting, setSetting, getTelegramStatus, saveSettings,
+  getSetting, setSetting, getTelegramStatus, saveSettings, setAuthMode,
   getUsers, createUser, updateUser, deleteUser, changePassword, changeAvatar,
 } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
@@ -123,7 +123,7 @@ export default function Settings() {
   const [restoring, setRestoring] = useState(false)
   const [showAvatarPicker, setShowAvatarPicker] = useState(false)
   const queryClient = useQueryClient()
-  const { user, updateCurrentUser } = useAuth()
+  const { user, updateCurrentUser, multiUser } = useAuth()
   const { settings, updateSettings, t } = useSettings()
   const { theme, setTheme, themes } = useTheme()
   const [activeTab, setActiveTab] = useState('general')
@@ -359,7 +359,7 @@ export default function Settings() {
           { key: 'general', label: t('settings.tabs.general') },
           { key: 'sync', label: t('settings.tabs.dataSync') },
           { key: 'notifications', label: t('settings.tabs.notifications') },
-          ...(user?.role === 'admin' ? [{ key: 'users', label: t('settings.tabs.users') }] : []),
+          ...(user?.role === 'admin' && multiUser ? [{ key: 'users', label: t('settings.tabs.users') }] : []),
         ].map((tab) => (
           <button
             key={tab.key}
@@ -439,6 +439,31 @@ export default function Settings() {
               </div>
             </SettingsCard>
           </section>
+
+          {user?.role === 'admin' && (
+            <section className="space-y-1">
+              <SectionHeader title={t('settings.sectionMultiUser')} />
+              <SettingsCard>
+                <SettingsRow
+                  label={t('settings.multiUserMode')}
+                  description={t('settings.multiUserModeDesc')}
+                  last
+                >
+                  <Toggle
+                    value={multiUser}
+                    onChange={async (val) => {
+                      try {
+                        await setAuthMode(val)
+                        window.location.reload()
+                      } catch {
+                        toast.error(t('common.error'))
+                      }
+                    }}
+                  />
+                </SettingsRow>
+              </SettingsCard>
+            </section>
+          )}
 
           {/* ── 3. DARSTELLUNG ── */}
           <section className="space-y-1">
@@ -764,7 +789,7 @@ export default function Settings() {
         </>
       )}
 
-      {activeTab === 'users' && user?.role === 'admin' && (
+      {activeTab === 'users' && user?.role === 'admin' && multiUser && (
         <UsersTab t={t} queryClient={queryClient} />
       )}
 

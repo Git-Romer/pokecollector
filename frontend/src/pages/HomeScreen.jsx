@@ -72,7 +72,7 @@ export default function HomeScreen() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { formatPrice, t } = useSettings()
-  const { user, logout } = useAuth()
+  const { user, logout, multiUser } = useAuth()
   const [chartPeriod, setChartPeriod] = useState('1M')
 
   const { data, isLoading } = useQuery({
@@ -146,7 +146,7 @@ export default function HomeScreen() {
     { to: '/search',     icon: Search,     label: t('nav.cardSearch'),  color: '#ce93d8' },
     { to: '/sets',       icon: Grid2X2,    label: t('nav.sets'),        color: '#81c784' },
     { to: '/analytics',  icon: BarChart3,  label: t('nav.analytics'),   color: '#f5c842' },
-    { to: '/leaderboard', icon: Trophy,    label: t('nav.leaderboard'), color: '#ffd54f' },
+    ...(multiUser ? [{ to: '/leaderboard', icon: Trophy, label: t('nav.leaderboard'), color: '#ffd54f' }] : []),
     { to: '/settings',   icon: Settings,   label: t('nav.settings'),    color: '#b0bec5' },
   ]
 
@@ -194,14 +194,18 @@ export default function HomeScreen() {
 
         {/* ── TOP BAR: Logout + Sync ── */}
         <div className="flex items-center justify-between">
-          <button
-            onClick={() => { logout(); navigate('/login') }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-text-muted hover:text-brand-red transition-colors"
-            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
-          >
-            <LogOut size={12} />
-            {t('auth.logout')}
-          </button>
+          {multiUser ? (
+            <button
+              onClick={() => { logout(); navigate('/login') }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-text-muted hover:text-brand-red transition-colors"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
+            >
+              <LogOut size={12} />
+              {t('auth.logout')}
+            </button>
+          ) : (
+            <div />
+          )}
           <button
             onClick={() => syncMutation.mutate()}
             disabled={isRunning}

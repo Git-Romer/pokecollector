@@ -25,6 +25,7 @@ DEFAULT_SETTINGS = {
     "language": "de",
     "price_display": '["trend", "avg1", "avg7", "avg30", "low"]',
     "price_primary": "trend",
+    "multi_user_mode": "false",
 }
 
 
@@ -299,5 +300,23 @@ def get_setting(key: str, default=None):
         from models import Setting
         row = db.query(Setting).filter(Setting.key == key).first()
         return row.value if row else default
+    finally:
+        db.close()
+
+
+def save_setting(key: str, value):
+    """Create or update a single setting value in the database."""
+    db = SessionLocal()
+    try:
+        from models import Setting
+        row = db.query(Setting).filter(Setting.key == key).first()
+        if row:
+            row.value = str(value)
+        else:
+            db.add(Setting(key=key, value=str(value)))
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()

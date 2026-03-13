@@ -22,7 +22,7 @@ import Compare from './pages/Compare'
 import Achievements from './pages/Achievements'
 
 function ProtectedRoutes() {
-  const { user, loading } = useAuth()
+  const { user, loading, multiUser } = useAuth()
 
   if (loading) {
     return (
@@ -32,8 +32,16 @@ function ProtectedRoutes() {
     )
   }
 
-  if (!user) {
+  if (!user && multiUser) {
     return <Navigate to="/login" replace />
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-bg-primary">
+        <PokeBallLoader size={48} />
+      </div>
+    )
   }
 
   return (

@@ -1,9 +1,10 @@
 import { useMemo } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeftRight } from 'lucide-react'
 import { compareUsers } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
+import { useAuth } from '../contexts/AuthContext'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 
 function TrainerAvatar({ avatarId, username }) {
@@ -81,6 +82,7 @@ export default function Compare() {
   const { userId } = useParams()
   const navigate = useNavigate()
   const { t, formatPrice } = useSettings()
+  const { multiUser } = useAuth()
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['compare', userId],
@@ -93,6 +95,10 @@ export default function Compare() {
     if (!total) return 0
     return (Number(data?.overlap ?? 0) / total) * 100
   }, [data])
+
+  if (!multiUser) {
+    return <Navigate to="/" replace />
+  }
 
   return (
     <div className="page-container">

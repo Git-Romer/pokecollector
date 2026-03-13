@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from database import get_db
+from database import get_db, get_setting, save_setting
 from models import User
 from services.auth import create_access_token, decode_token, hash_password, verify_password
 
@@ -51,6 +51,14 @@ def field_was_set(model: BaseModel, field_name: str) -> bool:
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
     if not token:
+        multi = get_setting("multi_user_mode")
+        if multi is None:
+            user_count = db.query(User).count()
+            multi = "true" if user_count > 1 else "false"
+        if str(multi).lower() != "true":
+            admin = db.query(User).filter(User.role == "admin", User.is_active == True).first()
+            if admin:
+                return admin
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
         payload = decode_token(token)
@@ -94,6 +102,26 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 @router.get("/me")
 def get_me(current_user: User = Depends(get_current_user)):
     return {"id": current_user.id, "username": current_user.username, "role": current_user.role, "avatar_id": current_user.avatar_id}
+
+
+@router.get("/mode")
+def get_auth_mode(db: Session = Depends(get_db)):
+    multi = get_setting("multi_user_mode")
+    if multi is None:
+        multi = "true" if db.query(User).count() > 1 else "false"
+    return {"multi_user": str(multi).lower() == "true"}
+
+
+@router.put("/mode")
+def set_auth_mode(
+    enabled: bool = Body(..., embed=True),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    save_setting("multi_user_mode", str(enabled).lower())
+    return {"multi_user": enabled}
 
 
 @router.get("/users")
