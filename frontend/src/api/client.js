@@ -190,4 +190,9 @@ export const getTelegramStatus = () => api.get('/settings/telegram_status').then
 export const getEbayGradedPrice = (cardName, grade, lang = 'en') =>
   api.get('/ebay/graded-price', { params: { card_name: cardName, grade, lang } }).then(r => r.data)
 
+// Social
+export const getLeaderboard = () => api.get('/social/leaderboard')
+export const compareUsers = (userId) => api.get(`/social/compare/${userId}`)
+export const getAchievements = (userId) => api.get(`/social/achievements/${userId}`)
+
 export default api

@@ -17,6 +17,9 @@ import Products from './pages/Products'
 import Settings from './pages/Settings'
 import CardMigration from './pages/CardMigration'
 import Login from './pages/Login'
+import Leaderboard from './pages/Leaderboard'
+import Compare from './pages/Compare'
+import Achievements from './pages/Achievements'
 
 function ProtectedRoutes() {
   const { user, loading } = useAuth()
@@ -47,6 +50,10 @@ function ProtectedRoutes() {
         <Route path="binders/:binderId" element={<BinderDetail />} />
         <Route path="analytics" element={<Analytics />} />
         <Route path="products" element={<Products />} />
+        <Route path="leaderboard" element={<Leaderboard />} />
+        <Route path="leaderboard/compare/:userId" element={<Compare />} />
+        <Route path="achievements" element={<Achievements />} />
+        <Route path="achievements/:userId" element={<Achievements />} />
         <Route path="settings" element={<Settings />} />
         <Route path="migration" element={<CardMigration />} />
       </Route>
