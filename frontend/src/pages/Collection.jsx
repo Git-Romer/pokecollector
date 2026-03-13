@@ -57,7 +57,6 @@ const VARIANT_COLORS = {
   'Normal': 'badge-gray',
 }
 
-const GRADE_OPTIONS = ['raw', 'PSA 9', 'PSA 10', 'BGS 9', 'BGS 9.5', 'CGC 9', 'CGC 10']
 
 const HOLO_VARIANTS = new Set(['Holo', 'Holo Rare', 'Holo V', 'Holo VMAX', 'Holo VSTAR', 'Holo ex'])
 const HOLO_FIELD_MAP = {
@@ -157,7 +156,6 @@ function CollectionEditModal({ item, onClose }) {
   const [quantity, setQuantity] = useState(item.quantity)
   const [condition, setCondition] = useState(item.condition || 'NM')
   const [variant, setVariant] = useState(item.variant || '')
-  const [grade, setGrade] = useState(item.grade || 'raw')
   const [lang, setLang] = useState(item.lang || 'en')
   const [price, setPrice] = useState(item.purchase_price ? String(item.purchase_price) : '')
 
@@ -168,7 +166,6 @@ function CollectionEditModal({ item, onClose }) {
       quantity,
       condition,
       variant: variant || null,
-      grade: grade || 'raw',
       lang,
       purchase_price: price ? parseFloat(price) : null,
     }),
@@ -269,12 +266,7 @@ function CollectionEditModal({ item, onClose }) {
               </select>
             </div>
 
-            <div>
-              <label className="text-xs text-text-muted mb-1 block">🏅 {t('card.grade')}</label>
-              <select value={grade} onChange={e => setGrade(e.target.value)} className="select">
-                {GRADE_OPTIONS.map(g => <option key={g} value={g}>{g === 'raw' ? t('card.gradeRaw') : g}</option>)}
-              </select>
-            </div>
+            
 
             <div>
               <label className="text-xs text-text-muted mb-1.5 block">🌐 {t('lang.selectLabel')}</label>
@@ -674,11 +666,6 @@ export default function Collection() {
                             ✨ {item.variant}
                           </span>
                         )}
-                        {item.grade && item.grade !== 'raw' && (
-                          <span className="inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40">
-                            🏅 {item.grade}
-                          </span>
-                        )}
                         {item.lang && (
                           <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${
                             item.lang === 'de'
@@ -772,12 +759,6 @@ export default function Collection() {
                                       {item.lang.toUpperCase()}
                                     </span>
                                   )}
-                                  {item.grade && item.grade !== 'raw' && (
-                                    <span className="text-[9px] font-black px-1 py-0.5 rounded leading-none"
-                                      style={{ background: 'rgba(184,134,11,0.2)', color: '#b8860b', border: '1px solid rgba(184,134,11,0.4)' }}>
-                                      {item.grade}
-                                    </span>
-                                  )}
                                 </div>
                                 {(() => {
                                   const abbr = card?.set_ref?.abbreviation
@@ -848,7 +829,6 @@ export default function Collection() {
 
                   const badges = []
                   if (item.lang) badges.push({ label: item.lang.toUpperCase(), variant: item.lang === 'de' ? 'yellow' : 'blue' })
-                  if (item.grade && item.grade !== 'raw') badges.push({ label: item.grade, variant: 'gold' })
                   if (item.variant) badges.push({ label: item.variant, variant: 'purple' })
                   if (item.condition) badges.push({ label: item.condition, variant: item.condition === 'Mint' ? 'green' : item.condition === 'NM' ? 'blue' : 'yellow' })
                   if (item.quantity > 1) badges.push({ label: `×${item.quantity}`, variant: 'red' })

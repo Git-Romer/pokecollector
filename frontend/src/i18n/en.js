@@ -633,8 +633,6 @@ const en = {
     addedToWishlist: 'added to wishlist!',
     wishlistFailed: 'Failed to add to wishlist',
     editCard: 'Edit card',
-    grade: 'Grade (PSA/BGS/CGC)',
-    gradeRaw: 'Raw (ungraded)',
   },
 
 

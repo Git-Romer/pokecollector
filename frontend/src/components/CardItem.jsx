@@ -520,7 +520,6 @@ const CARD_VARIANTS = [
   'Art Rare', 'Ultra Rare', 'Secret Rare', 'Shiny',
 ]
 
-const GRADE_OPTIONS = ['raw', 'PSA 9', 'PSA 10', 'BGS 9', 'BGS 9.5', 'CGC 9', 'CGC 10']
 
 export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
   const [quantity, setQuantity] = useState(1)
@@ -528,7 +527,6 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
   const [variant, setVariant] = useState('')
   const [purchasePrice, setPurchasePrice] = useState('')
   const [modalPeriod, setModalPeriod] = useState('total')
-  const [grade, setGrade] = useState('raw')
   const [resolvedCardId, setResolvedCardId] = useState(card.id)
   const { t, formatPrice } = useSettings()
   const queryClient = useQueryClient()
@@ -738,24 +736,6 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
             )}
 
             <div className="space-y-3">
-              {/* Grade selector */}
-              <div>
-                <label className="text-xs text-text-muted mb-1.5 block font-medium">
-                  🏅 {t('card.grade')}
-                </label>
-                <select
-                  value={grade}
-                  onChange={(e) => setGrade(e.target.value)}
-                  className="select"
-                >
-                  {GRADE_OPTIONS.map(g => (
-                    <option key={g} value={g}>
-                      {g === 'raw' ? t('card.gradeRaw') : g}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-text-muted mb-1 block">{t('card.quantity')}</label>
@@ -788,7 +768,6 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
                   variant: variant || null,
                   purchase_price: purchasePrice ? parseFloat(purchasePrice) : undefined,
                   lang: card.lang || 'en',
-                  grade: grade || 'raw',
                 })} disabled={addMutation.isPending}>
                   <Plus size={16} /> {addMutation.isPending ? t('card.adding') : t('card.addToCollection')}
                 </button>

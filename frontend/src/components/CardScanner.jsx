@@ -11,7 +11,6 @@ const CARD_VARIANTS = [
   'Illustration Rare', 'Special Illustration Rare', 'Crown Rare', 'Promo',
   'Art Rare', 'Ultra Rare', 'Secret Rare', 'Shiny',
 ]
-const GRADE_OPTIONS = ['raw', 'PSA 9', 'PSA 10', 'BGS 9', 'BGS 9.5', 'CGC 9', 'CGC 10']
 
 // ─── Add-to-Collection Modal für Scan-Ergebnis ──────────────────────────────
 function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
@@ -19,7 +18,6 @@ function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
   const [quantity, setQuantity] = useState(1)
   const [condition, setCondition] = useState('NM')
   const [variant, setVariant] = useState('')
-  const [grade, setGrade] = useState('raw')
   const [lang, setLang] = useState(match.lang || defaultLang || 'en')
   const [purchasePrice, setPurchasePrice] = useState('')
   const [adding, setAdding] = useState(false)
@@ -33,7 +31,6 @@ function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
         quantity,
         condition,
         variant: variant || null,
-        grade: grade || 'raw',
         lang,
         purchase_price: purchasePrice ? parseFloat(purchasePrice) : undefined,
       })
@@ -132,13 +129,7 @@ function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
               </select>
             </div>
 
-            {/* Grade */}
             <div>
-              <label className="text-xs text-text-muted mb-1 block">🏅 {t('card.grade')}</label>
-              <select value={grade} onChange={e => setGrade(e.target.value)} className="select">
-                {GRADE_OPTIONS.map(g => <option key={g} value={g}>{g === 'raw' ? t('card.gradeRaw') : g}</option>)}
-              </select>
-            </div>
 
             {/* Purchase price */}
             <div>
