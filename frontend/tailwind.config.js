@@ -26,7 +26,7 @@ export default {
         },
         // Pokemon brand — richer, more saturated
         brand: {
-          red: 'var(--color-brand-red)',
+          red: 'rgb(var(--color-brand-red-rgb) / <alpha-value>)',
           'red-light': 'var(--color-brand-red-light)',
           'red-dark': 'var(--color-brand-red-dark)',
           'red-glow': 'rgba(227,0,11,0.35)',
