@@ -463,6 +463,7 @@ const en = {
     // Settings page section headers
     theme: 'Color Theme',
     sectionTheme: 'Theme',
+    sectionMultiUser: 'Multi-User',
     sectionTrainer: 'Trainer',
     sectionAppearance: 'Appearance',
     sectionSync: 'Synchronization',
@@ -471,6 +472,8 @@ const en = {
     sectionAI: 'AI / Card Scanner',
     sectionAbout: 'About the App',
     // Settings page row labels
+    multiUserMode: 'Multi-User Mode',
+    multiUserModeDesc: 'Enable login screen and user management',
     trainerName: 'Trainer Name',
     trainerNameDesc: 'Displayed on the home screen',
     languageDesc: 'Change app language',

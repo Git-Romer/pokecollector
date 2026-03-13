@@ -463,6 +463,7 @@ const de = {
     // Settings page section headers
     theme: 'Farbthema',
     sectionTheme: 'Thema',
+    sectionMultiUser: 'Mehrspieler',
     sectionTrainer: 'Trainer',
     sectionAppearance: 'Darstellung',
     sectionSync: 'Synchronisation',
@@ -471,6 +472,8 @@ const de = {
     sectionAI: 'KI / Karten-Scanner',
     sectionAbout: 'Über die App',
     // Settings page row labels
+    multiUserMode: 'Mehrspieler-Modus',
+    multiUserModeDesc: 'Login-Bildschirm und Benutzerverwaltung aktivieren',
     trainerName: 'Trainer-Name',
     trainerNameDesc: 'Wird auf dem Startbildschirm angezeigt',
     languageDesc: 'App-Sprache ändern',

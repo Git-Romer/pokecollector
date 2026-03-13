@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react'
-import { getMe } from '../api/client'
+import { getAuthMode, getMe } from '../api/client'
 
 const AuthContext = createContext(null)
 
@@ -15,18 +15,29 @@ export function AuthProvider({ children }) {
     }
   })
   const [loading, setLoading] = useState(true)
+  const [multiUser, setMultiUser] = useState(true)
 
   useEffect(() => {
-    const token = localStorage.getItem('token')
-    if (!token) {
-      setLoading(false)
-      return
-    }
-
-    getMe()
-      .then((currentUser) => {
-        setUser(currentUser)
-        localStorage.setItem('user', JSON.stringify(currentUser))
+    getAuthMode()
+      .then(({ multi_user }) => {
+        setMultiUser(multi_user)
+        const token = localStorage.getItem('token')
+        if (!multi_user || token) {
+          return getMe().then((currentUser) => {
+            setUser(currentUser)
+            localStorage.setItem('user', JSON.stringify(currentUser))
+          })
+        }
+        setUser(null)
+      })
+      .catch(() => {
+        const token = localStorage.getItem('token')
+        if (token) {
+          return getMe().then((currentUser) => {
+            setUser(currentUser)
+            localStorage.setItem('user', JSON.stringify(currentUser))
+          })
+        }
       })
       .catch(() => {
         localStorage.removeItem('token')
@@ -59,7 +70,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, loginUser, updateCurrentUser, logout }}>
+    <AuthContext.Provider value={{ user, loading, multiUser, loginUser, updateCurrentUser, logout }}>
       {children}
     </AuthContext.Provider>
   )
