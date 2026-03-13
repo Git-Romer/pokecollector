@@ -234,7 +234,7 @@ export default function HomeScreen() {
           {isLoading ? (
             <div className="skeleton h-14 w-48 mx-auto rounded-xl" />
           ) : (
-            <p className="text-5xl font-black tracking-tight"
+            <p className="text-4xl sm:text-5xl font-black tracking-tight"
               style={{ color: '#f5c842', textShadow: '0 0 40px rgba(245,200,66,0.25)' }}>
               {formatPrice(totalValue)}
             </p>
@@ -380,7 +380,7 @@ export default function HomeScreen() {
         {/* ── NAVIGATION PORTAL GRID ── */}
         <div>
           <p className="text-xs font-bold text-white uppercase tracking-wider mb-3">{t('home.navigation')}</p>
-          <div className="grid grid-cols-4 gap-2.5">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
             {PORTAL_ITEMS.map(({ to, icon: Icon, label, color }) => (
               <button
                 key={to}

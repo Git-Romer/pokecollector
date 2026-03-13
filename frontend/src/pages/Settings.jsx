@@ -41,13 +41,13 @@ function SettingsCard({ children }) {
 function SettingsRow({ label, description, children, last }) {
   return (
     <div
-      className="flex items-center justify-between gap-4 px-4 py-3.5"
+      className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 px-4 py-3.5"
       style={!last ? { borderBottom: '1px solid rgba(255,255,255,0.05)' } : {}}
     >
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-text-primary">{label}</p>
         {description && (
-          <p className="text-xs text-text-muted mt-0.5">{description}</p>
+          <p className="text-xs text-text-muted mt-0.5" style={{overflowWrap:"anywhere"}}>{description}</p>
         )}
       </div>
       <div className="flex-shrink-0">{children}</div>

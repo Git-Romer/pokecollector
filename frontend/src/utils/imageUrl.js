@@ -5,7 +5,10 @@ export const setImageUrl = (setId, imageType) =>
   setId ? `/api/images/set/${encodeURIComponent(setId)}/${imageType}` : null
 
 export const resolveCardImageUrl = (card, size = 'small') => {
-  if (card?.id) return cardImageUrl(card.id, size)
+  // card_id is the actual card identifier (e.g. "sv1-1_de")
+  // id might be a collection item integer ID, so prefer card_id or string id
+  const cid = card?.card_id || (typeof card?.id === 'string' ? card.id : null)
+  if (cid) return cardImageUrl(cid, size)
 
   if (size === 'large') {
     return card?.images?.large
