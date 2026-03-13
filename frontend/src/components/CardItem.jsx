@@ -7,6 +7,7 @@ import PeriodSelector, { CARD_PERIODS, PERIOD_PRICE_FIELD } from './PeriodSelect
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
 import { useTilt } from '../hooks/useTilt'
+import { resolveCardImageUrl } from '../utils/imageUrl'
 
 const RARITY_COLORS = {
   'Common': 'text-text-secondary',
@@ -303,8 +304,8 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
           ) : (
             <div className="space-y-4">
               <div className="flex items-center gap-4 p-3 bg-bg-card rounded-xl border border-border">
-                {createdCard.images_small ? (
-                  <img src={createdCard.images_small} alt={createdCard.name} className="w-16 h-20 object-cover rounded" />
+                {resolveCardImageUrl(createdCard) ? (
+                  <img src={resolveCardImageUrl(createdCard)} alt={createdCard.name} className="w-16 h-20 object-cover rounded" />
                 ) : (
                   <div className="w-16 h-20 bg-bg-surface rounded flex items-center justify-center text-text-muted text-xl">🃏</div>
                 )}
@@ -385,7 +386,7 @@ export function CardItem({ card, showActions = true, onAddToBinder = null, compa
     onError: () => toast.error(t('card.wishlistFailed')),
   })
 
-  const cardImage = card.images?.small || card.images_small || (card.image ? `${card.image}/low.webp` : null)
+  const cardImage = card.images?.small || resolveCardImageUrl(card) || (card.image ? `${card.image}/low.webp` : null)
   const cardName = card.name
   const cardRarity = card.rarity
   const setName = card.set?.name || card.set_ref?.name || ''
@@ -555,7 +556,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
     }
   }
 
-  const cardImage = card.images?.large || card.images_large || (card.image ? `${card.image}/high.webp` : null) || card.images?.small || card.images_small
+  const cardImage = card.images?.large || resolveCardImageUrl(card, 'large') || (card.image ? `${card.image}/high.webp` : null) || card.images?.small || resolveCardImageUrl(card)
   const setName = card.set?.name || card.set_ref?.name
 
   const addMutation = useMutation({

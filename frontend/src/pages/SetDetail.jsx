@@ -6,6 +6,7 @@ import { getSetChecklist, addToCollection } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
+import { resolveCardImageUrl, resolveSetImageUrl } from '../utils/imageUrl'
 
 export default function SetDetail() {
   const { setId } = useParams()
@@ -71,8 +72,8 @@ export default function SetDetail() {
       {/* Set Header */}
       <div className="card">
         <div className="flex items-start gap-4">
-          {set?.images_logo && (
-            <img src={set.images_logo} alt={set.name} className="h-12 sm:h-16 object-contain flex-shrink-0 max-w-[120px]" />
+          {resolveSetImageUrl(set, 'logo') && (
+            <img src={resolveSetImageUrl(set, 'logo')} alt={set.name} className="h-12 sm:h-16 object-contain flex-shrink-0 max-w-[120px]" />
           )}
           <div className="flex-1 min-w-0">
             <h1 className="text-xl font-bold text-text-primary truncate">{set?.name}</h1>
@@ -150,8 +151,8 @@ export default function SetDetail() {
                 ? 'ring-2 ring-green/50 hover:ring-green cursor-default'
                 : 'opacity-60 hover:opacity-90 ring-1 ring-brand-red/30 hover:ring-brand-red/60 cursor-pointer'
             )}>
-            {card.images_small ? (
-              <img src={card.images_small} alt={card.name} className="w-full aspect-[2.5/3.5] object-cover" loading="lazy" />
+            {resolveCardImageUrl(card) ? (
+              <img src={resolveCardImageUrl(card)} alt={card.name} className="w-full aspect-[2.5/3.5] object-cover" loading="lazy" />
             ) : (
               <div className="w-full aspect-[2.5/3.5] bg-bg-card flex items-center justify-center text-xs text-text-muted p-1 text-center">
                 {card.name}

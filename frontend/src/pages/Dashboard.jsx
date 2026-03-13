@@ -12,6 +12,7 @@ import { format, parseISO } from 'date-fns'
 import PeriodSelector, { CARD_PERIODS, PERIOD_PRICE_FIELD } from '../components/PeriodSelector'
 import TrainerCard from '../components/TrainerCard'
 import PokeBallLoader from '../components/PokeBallLoader'
+import { resolveCardImageUrl } from '../utils/imageUrl'
 
 const CustomTooltip = ({ active, payload, label }) => {
   const { formatPrice } = useSettings()
@@ -130,8 +131,8 @@ export default function Dashboard() {
             {data.recent_additions.slice(0, 12).map(card => (
               <div key={card.id} className="flex-shrink-0 w-20 group cursor-pointer">
                 <div className="aspect-[2.5/3.5] rounded-lg overflow-hidden shadow-lg ring-1 ring-white/5 group-hover:ring-brand-red/50 group-hover:scale-[1.03] transition-all duration-150 transform-gpu origin-center">
-                  {card.images_small
-                    ? <img src={card.images_small} alt={card.name} className="w-full h-full object-cover" loading="lazy" />
+                  {resolveCardImageUrl(card)
+                    ? <img src={resolveCardImageUrl(card)} alt={card.name} className="w-full h-full object-cover" loading="lazy" />
                     : <div className="w-full h-full bg-bg-elevated flex items-center justify-center">
                         <span className="text-[9px] text-text-muted text-center p-1 leading-tight">{card.name}</span>
                       </div>
@@ -182,8 +183,8 @@ export default function Dashboard() {
               <div key={card.id} className="flex-shrink-0 w-24 group cursor-pointer">
                 <div className="relative">
                   <div className="aspect-[2.5/3.5] rounded-lg overflow-hidden shadow-lg ring-1 ring-white/5 group-hover:scale-[1.03] transition-all duration-150 group-hover:ring-gold/40 transform-gpu origin-center">
-                    {card.images_small
-                      ? <img src={card.images_small} alt={card.name} className="w-full h-full object-cover" loading="lazy" />
+                    {resolveCardImageUrl(card)
+                      ? <img src={resolveCardImageUrl(card)} alt={card.name} className="w-full h-full object-cover" loading="lazy" />
                       : <div className="w-full h-full bg-bg-elevated" />
                     }
                   </div>

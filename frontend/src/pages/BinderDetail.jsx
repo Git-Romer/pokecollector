@@ -6,6 +6,7 @@ import { getBinderCards, removeCardFromBinder, addCardToBinder, searchCards, get
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
 import { useTilt } from '../hooks/useTilt'
+import { resolveCardImageUrl } from '../utils/imageUrl'
 
 function TiltBinderCard({ className, onClick, children }) {
   const { ref, onMouseMove, onMouseEnter, onMouseLeave } = useTilt(10)
@@ -157,8 +158,8 @@ export default function BinderDetail() {
                       <div key={card.id}
                         className={`relative rounded-lg overflow-hidden cursor-pointer group ${alreadyAdded ? 'opacity-40' : ''}`}
                         onClick={() => !alreadyAdded && addMutation.mutate(card.id)}>
-                        {(card.images?.small || card.images_small || card.image) ? (
-                          <img src={card.images?.small || card.images_small || `${card.image}/low.webp`}
+                        {(card.images?.small || resolveCardImageUrl(card) || card.image) ? (
+                          <img src={resolveCardImageUrl(card)}
                             alt={card.name} className="w-full aspect-[2.5/3.5] object-cover" loading="lazy" />
                         ) : (
                           <div className="w-full aspect-[2.5/3.5] bg-bg-card flex items-center justify-center text-xs text-text-muted p-1 text-center">
@@ -194,8 +195,8 @@ export default function BinderDetail() {
                         className={`relative rounded-lg overflow-hidden cursor-pointer group ${alreadyAdded ? 'opacity-40' : ''}`}
                         onClick={() => !alreadyAdded && addMutation.mutate(card.id)}
                         title={`${card.name}${item.variant ? ` (${item.variant})` : ''} · ${item.quantity}x`}>
-                        {card.images_small ? (
-                          <img src={card.images_small} alt={card.name} className="w-full aspect-[2.5/3.5] object-cover" loading="lazy" />
+                        {resolveCardImageUrl(card) ? (
+                          <img src={resolveCardImageUrl(card)} alt={card.name} className="w-full aspect-[2.5/3.5] object-cover" loading="lazy" />
                         ) : (
                           <div className="w-full aspect-[2.5/3.5] bg-bg-card flex items-center justify-center text-xs text-text-muted p-1 text-center">
                             {card.name}
@@ -238,8 +239,8 @@ export default function BinderDetail() {
 
             return (
               <TiltBinderCard key={card.id} className="relative group rounded-xl overflow-hidden card p-0">
-                {card.images_small ? (
-                  <img src={card.images_small} alt={card.name}
+                {resolveCardImageUrl(card) ? (
+                  <img src={resolveCardImageUrl(card)} alt={card.name}
                     className={`w-full aspect-[2.5/3.5] object-cover transition-all ${isMissing ? 'grayscale opacity-60' : ''}`}
                     loading="lazy" />
                 ) : (

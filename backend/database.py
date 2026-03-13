@@ -61,6 +61,14 @@ def _run_migrations(conn):
             matched_at TIMESTAMP DEFAULT NOW(),
             status VARCHAR DEFAULT 'pending'
         )""",
+        """CREATE TABLE IF NOT EXISTS image_cache (
+            id SERIAL PRIMARY KEY,
+            image_key VARCHAR UNIQUE NOT NULL,
+            data BYTEA NOT NULL,
+            content_type VARCHAR DEFAULT 'image/webp',
+            cached_at TIMESTAMP DEFAULT NOW()
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_image_cache_key ON image_cache(image_key)",
         # v31: Add lang column to collection table (fixed card language per item)
         "ALTER TABLE collection ADD COLUMN IF NOT EXISTS lang VARCHAR DEFAULT 'en'",
         # v31: Add lang column to sets table (tracks which language APIs have this set)
