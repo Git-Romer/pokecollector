@@ -1,9 +1,10 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Trash2, Bell, BellOff, Edit2, Check, X, Heart, Filter, SortAsc, ChevronUp, ChevronDown } from 'lucide-react'
+import { Trash2, Bell, BellOff, Edit2, Check, X, Heart, Filter, SortAsc, ChevronUp, ChevronDown, Library, BookOpen } from 'lucide-react'
 import { getWishlist, removeFromWishlist, updateWishlistItem, addToCollection } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import CardListItem from '../components/CardListItem'
+import TabNav from '../components/TabNav'
 import toast from 'react-hot-toast'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 
@@ -59,6 +60,11 @@ export default function Wishlist() {
   const [filterHasAlert, setFilterHasAlert] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
   const queryClient = useQueryClient()
+  const COLLECTION_TABS = [
+    { to: '/collection', label: t('nav.collection'), icon: Library },
+    { to: '/binders', label: t('nav.binders'), icon: BookOpen },
+    { to: '/wishlist', label: t('nav.wishlist'), icon: Heart },
+  ]
 
   const { data: items = [], isLoading } = useQuery({
     queryKey: ['wishlist'],
@@ -127,6 +133,7 @@ export default function Wishlist() {
 
   return (
     <div className="space-y-4 pb-2">
+      <TabNav tabs={COLLECTION_TABS} />
       <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
         <div className="min-w-0">
           <h1 className="text-xl font-bold text-text-primary flex items-center gap-2">

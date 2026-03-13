@@ -4,11 +4,12 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell
 } from 'recharts'
-import { Plus, Trash2, Edit2, TrendingUp, TrendingDown, Package, Check, X, SortAsc, Filter, ChevronUp, ChevronDown } from 'lucide-react'
+import { Plus, Trash2, Edit2, TrendingUp, TrendingDown, Package, Check, X, SortAsc, Filter, ChevronUp, ChevronDown, BarChart3, ShoppingBag, LayoutDashboard } from 'lucide-react'
 import { getProducts, createProduct, updateProduct, deleteProduct, getProductsSummary } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import CardListItem from '../components/CardListItem'
 import PeriodSelector, { PRODUCT_PERIODS, getPeriodCutoff } from '../components/PeriodSelector'
+import TabNav from '../components/TabNav'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
 
@@ -102,6 +103,11 @@ export default function Products() {
   const [filterPnl, setFilterPnl] = useState('all')
   const [showFilters, setShowFilters] = useState(false)
   const queryClient = useQueryClient()
+  const ANALYTICS_TABS = [
+    { to: '/analytics', label: t('nav.analytics'), icon: BarChart3 },
+    { to: '/products', label: t('nav.products'), icon: ShoppingBag },
+    { to: '/dashboard', label: t('nav.dashboard'), icon: LayoutDashboard },
+  ]
 
   const { data: products = [], isLoading } = useQuery({
     queryKey: ['products'],
@@ -198,6 +204,7 @@ export default function Products() {
 
   return (
     <div className="space-y-4 pb-2">
+      <TabNav tabs={ANALYTICS_TABS} />
       <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
         <div className="min-w-0">
           <h1 className="text-xl font-bold text-text-primary">{t('products.title')}</h1>

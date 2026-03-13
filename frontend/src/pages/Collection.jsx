@@ -1,10 +1,11 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Trash2, Check, X, Filter, SortAsc, Download, ChevronUp, ChevronDown, Search, PenLine, Grid2X2, List } from 'lucide-react'
+import { Trash2, Check, X, Filter, SortAsc, Download, ChevronUp, ChevronDown, Search, PenLine, Grid2X2, List, Library, BookOpen, Heart } from 'lucide-react'
 import { getCollection, updateCollectionItem, removeFromCollection, exportCSV, exportPDF, getSets } from '../api/client'
 import { CustomCardModal } from '../components/CardItem'
 import { useSettings } from '../contexts/SettingsContext'
 import CardListItem from '../components/CardListItem'
+import TabNav from '../components/TabNav'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
 import { useTilt } from '../hooks/useTilt'
@@ -332,6 +333,11 @@ function CollectionEditModal({ item, onClose }) {
 
 export default function Collection() {
   const { t, formatPrice } = useSettings()
+  const COLLECTION_TABS = [
+    { to: '/collection', label: t('nav.collection'), icon: Library },
+    { to: '/binders', label: t('nav.binders'), icon: BookOpen },
+    { to: '/wishlist', label: t('nav.wishlist'), icon: Heart },
+  ]
   const [viewMode, setViewMode] = useState('grid')
   const [editingCollectionItem, setEditingCollectionItem] = useState(null) // for CollectionEditModal
   const [showCustomModal, setShowCustomModal] = useState(false)
@@ -441,6 +447,7 @@ export default function Collection() {
   if (isLoading) {
     return (
       <div className="space-y-4">
+        <TabNav tabs={COLLECTION_TABS} />
         <div className="skeleton h-8 w-48 rounded" />
         {[...Array(5)].map((_, i) => <div key={i} className="skeleton h-16 rounded-xl" />)}
       </div>
@@ -449,6 +456,7 @@ export default function Collection() {
 
   return (
     <div className="space-y-4 pb-2">
+      <TabNav tabs={COLLECTION_TABS} />
 
       {/* ─── Header ───────────────────────────────────────────────── */}
       <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">

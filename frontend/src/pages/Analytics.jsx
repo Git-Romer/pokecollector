@@ -5,7 +5,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   AreaChart, Area
 } from 'recharts'
-import { TrendingUp, TrendingDown, Copy, BarChart3, Activity, Plus, X, ShoppingCart } from 'lucide-react'
+import { TrendingUp, TrendingDown, Copy, BarChart3, Activity, Plus, X, ShoppingCart, ShoppingBag, LayoutDashboard } from 'lucide-react'
 import {
   getDuplicates, getTopMovers, getRarityStats,
   getInvestmentTracker, getAnalyticsNewSets, getProducts, createProduct
@@ -15,6 +15,7 @@ import CardListItem from '../components/CardListItem'
 import { format, parseISO } from 'date-fns'
 import clsx from 'clsx'
 import PeriodSelector, { CARD_PERIODS, PERIOD_DAYS } from '../components/PeriodSelector'
+import TabNav from '../components/TabNav'
 import toast from 'react-hot-toast'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 
@@ -159,6 +160,11 @@ export default function Analytics() {
   const [activeTab, setActiveTab] = useState('duplicates')
   const [showExpenseModal, setShowExpenseModal] = useState(false)
   const queryClient = useQueryClient()
+  const ANALYTICS_TABS = [
+    { to: '/analytics', label: t('nav.analytics'), icon: BarChart3 },
+    { to: '/products', label: t('nav.products'), icon: ShoppingBag },
+    { to: '/dashboard', label: t('nav.dashboard'), icon: LayoutDashboard },
+  ]
 
   const { data: duplicates = [], isLoading: dupLoading } = useQuery({
     queryKey: ['duplicates'],
@@ -217,6 +223,7 @@ export default function Analytics() {
 
   return (
     <div className="space-y-4 pb-2">
+      <TabNav tabs={ANALYTICS_TABS} />
       <div>
         <h1 className="text-xl font-bold text-text-primary">{t('analytics.title')}</h1>
         <p className="text-sm text-text-secondary mt-1">{t('analytics.subtitle')}</p>

@@ -5,7 +5,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Area, AreaChart
 } from 'recharts'
-import { TrendingUp, TrendingDown } from 'lucide-react'
+import { TrendingUp, TrendingDown, BarChart3, ShoppingBag, LayoutDashboard } from 'lucide-react'
 import { getDashboard } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import { useAuth } from '../contexts/AuthContext'
@@ -13,6 +13,7 @@ import { format, parseISO } from 'date-fns'
 import PeriodSelector, { CARD_PERIODS, PERIOD_PRICE_FIELD } from '../components/PeriodSelector'
 import TrainerCard from '../components/TrainerCard'
 import PokeBallLoader from '../components/PokeBallLoader'
+import TabNav from '../components/TabNav'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 
 const CustomTooltip = ({ active, payload, label }) => {
@@ -34,8 +35,14 @@ const CustomTooltip = ({ active, payload, label }) => {
 
 export default function Dashboard() {
   const { t, formatPrice } = useSettings()
+  const { user } = useAuth()
   const navigate = useNavigate()
   const [period, setPeriod] = useState('total')
+  const ANALYTICS_TABS = [
+    { to: '/analytics', label: t('nav.analytics'), icon: BarChart3 },
+    { to: '/products', label: t('nav.products'), icon: ShoppingBag },
+    { to: '/dashboard', label: t('nav.dashboard'), icon: LayoutDashboard },
+  ]
 
   const priceField = PERIOD_PRICE_FIELD[period] || 'price_trend'
 
@@ -48,6 +55,7 @@ export default function Dashboard() {
   if (isLoading) {
     return (
       <div className="space-y-5 animate-pulse pb-4">
+        <TabNav tabs={ANALYTICS_TABS} />
         {/* Trainer card skeleton */}
         <div className="rounded-2xl overflow-hidden border-2 border-gold/20" style={{ background: 'linear-gradient(135deg, #1a2040, #0d1530)' }}>
           <div className="h-9 bg-brand-red/70" />
@@ -76,9 +84,12 @@ export default function Dashboard() {
 
   if (error) {
     return (
-      <div className="card text-center py-12">
-        <PokeBallLoader size={48} className="mb-4 opacity-40" />
-        <p className="text-brand-red">{t('dashboard.backendError')}</p>
+      <div className="space-y-5 pb-2">
+        <TabNav tabs={ANALYTICS_TABS} />
+        <div className="card text-center py-12">
+          <PokeBallLoader size={48} className="mb-4 opacity-40" />
+          <p className="text-brand-red">{t('dashboard.backendError')}</p>
+        </div>
       </div>
     )
   }
@@ -100,6 +111,7 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-5 pb-2">
+      <TabNav tabs={ANALYTICS_TABS} />
 
       {/* ─── 1. TRAINER CARD HERO ──────────────────────────────────── */}
       {data && (
