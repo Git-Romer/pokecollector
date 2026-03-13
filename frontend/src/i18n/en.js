@@ -21,6 +21,7 @@ const en = {
 
   // Common / General
   common: {
+    back: 'Back',
     loading: 'Loading...',
     noResults: 'No results',
     save: 'Save',
@@ -643,6 +644,7 @@ const en = {
   ebay: {
     gradedPrice: 'Graded Price',
     fetchPrice: 'Fetch Price',
+    back: 'Back',
     loading: 'Loading…',
     notConfigured: 'eBay API not configured',
     avgPrice: 'Average',

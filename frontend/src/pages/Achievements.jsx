@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Award } from 'lucide-react'
+import { Award, ArrowLeft } from 'lucide-react'
 import { getAchievements } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { useSettings } from '../contexts/SettingsContext'
@@ -22,9 +22,11 @@ function TrainerAvatar({ avatarId, username }) {
 
 export default function Achievements() {
   const { userId } = useParams()
+  const navigate = useNavigate()
   const { user } = useAuth()
   const { t } = useSettings()
   const activeUserId = userId || user?.id
+  const isOtherUser = userId && Number(userId) !== user?.id
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['achievements', activeUserId],
@@ -43,6 +45,11 @@ export default function Achievements() {
       <div className="card relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_right,rgba(255,138,101,0.16),transparent_40%)]" />
         <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            {isOtherUser && (
+              <button onClick={() => navigate(-1)} className="flex items-center gap-1.5 text-sm text-text-muted hover:text-text-primary transition-colors mb-2 sm:mb-0 sm:absolute sm:-top-1 sm:left-0">
+                <ArrowLeft size={14} /> {t('common.back')}
+              </button>
+            )}
           <div className="flex items-center gap-3">
             <TrainerAvatar avatarId={data?.avatar_id || user?.avatar_id} username={data?.username || user?.username || 'Trainer'} />
             <div>
