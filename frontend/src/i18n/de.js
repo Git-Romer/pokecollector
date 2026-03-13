@@ -633,8 +633,6 @@ const de = {
     addedToWishlist: 'zur Wunschliste hinzugefügt!',
     wishlistFailed: 'Fehler beim Hinzufügen zur Wunschliste',
     editCard: 'Karte bearbeiten',
-    grade: 'Grade (PSA/BGS/CGC)',
-    gradeRaw: 'Roh (ungegraded)',
   },
 
 
