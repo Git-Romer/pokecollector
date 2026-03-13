@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
-import { Plus, Check, Heart, BookOpen, X, PenLine, Pencil, TrendingUp, Trash2 } from 'lucide-react'
-import { addToCollection, addToWishlist, createCustomCard, updateCustomCard, deleteCustomCard, getEbayGradedPrice, getSetting, getSets } from '../api/client'
+import { Plus, Check, Heart, BookOpen, X, PenLine, Pencil,  Trash2 } from 'lucide-react'
+import { addToCollection, addToWishlist, createCustomCard, updateCustomCard, deleteCustomCard, getSets } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import PeriodSelector, { CARD_PERIODS, PERIOD_PRICE_FIELD } from './PeriodSelector'
 import toast from 'react-hot-toast'
@@ -529,32 +529,10 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
   const [purchasePrice, setPurchasePrice] = useState('')
   const [modalPeriod, setModalPeriod] = useState('total')
   const [grade, setGrade] = useState('raw')
-  const [ebayPrice, setEbayPrice] = useState(null)
-  const [ebayLoading, setEbayLoading] = useState(false)
   const [resolvedCardId, setResolvedCardId] = useState(card.id)
   const { t, formatPrice } = useSettings()
   const queryClient = useQueryClient()
 
-  // Check if eBay API is configured
-  const { data: ebayKeyData } = useQuery({
-    queryKey: ['setting', 'ebay_app_id'],
-    queryFn: () => getSetting('ebay_app_id').catch(() => ({ value: '' })),
-  })
-  const ebayConfigured = !!(ebayKeyData?.value && ebayKeyData.value.trim())
-
-  const fetchEbayPrice = async () => {
-    if (!card.name || grade === 'raw') return
-    setEbayLoading(true)
-    setEbayPrice(null)
-    try {
-      const result = await getEbayGradedPrice(card.name, grade, card.lang || 'en')
-      setEbayPrice(result)
-    } catch {
-      setEbayPrice({ error: 'fetch_failed' })
-    } finally {
-      setEbayLoading(false)
-    }
-  }
 
   const cardImage = card.images?.large || resolveCardImageUrl(card, 'large') || (card.image ? `${card.image}/high.webp` : null) || card.images?.small || resolveCardImageUrl(card)
   const setName = card.set?.name || card.set_ref?.name
@@ -767,7 +745,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
                 </label>
                 <select
                   value={grade}
-                  onChange={(e) => { setGrade(e.target.value); setEbayPrice(null) }}
+                  onChange={(e) => setGrade(e.target.value)}
                   className="select"
                 >
                   {GRADE_OPTIONS.map(g => (
@@ -777,54 +755,6 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
                   ))}
                 </select>
               </div>
-
-              {/* eBay price lookup */}
-              {grade !== 'raw' && (
-                <div className="rounded-xl p-3 space-y-2"
-                  style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-medium text-text-muted uppercase tracking-wide">
-                      eBay {t('ebay.gradedPrice')}
-                    </p>
-                    {ebayConfigured ? (
-                      <button
-                        onClick={fetchEbayPrice}
-                        disabled={ebayLoading}
-                        className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-lg transition-opacity disabled:opacity-50"
-                        style={{ background: 'rgba(227,0,11,0.15)', color: '#e3000b', border: '1px solid rgba(227,0,11,0.3)' }}
-                      >
-                        <TrendingUp size={11} className={ebayLoading ? 'animate-pulse' : ''} />
-                        {ebayLoading ? t('ebay.loading') : t('ebay.fetchPrice')}
-                      </button>
-                    ) : (
-                      <span className="text-xs text-text-muted">⚠️ {t('ebay.notConfigured')}</span>
-                    )}
-                  </div>
-                  {ebayPrice && !ebayPrice.error && ebayPrice.average_price != null && (
-                    <div className="grid grid-cols-3 gap-2 text-xs pt-1 border-t border-border">
-                      <div>
-                        <span className="text-text-muted">{t('ebay.avgPrice')}</span>
-                        <p className="font-bold text-green">${ebayPrice.average_price}</p>
-                      </div>
-                      <div>
-                        <span className="text-text-muted">{t('ebay.minPrice')}</span>
-                        <p className="font-bold text-text-primary">${ebayPrice.min_price}</p>
-                      </div>
-                      <div>
-                        <span className="text-text-muted">{t('ebay.maxPrice')}</span>
-                        <p className="font-bold text-text-primary">${ebayPrice.max_price}</p>
-                      </div>
-                      <div className="col-span-3 text-text-muted">{ebayPrice.sales_count} {t('ebay.sales')}</div>
-                    </div>
-                  )}
-                  {ebayPrice && ebayPrice.average_price === null && !ebayPrice.error && (
-                    <p className="text-xs text-text-muted">{t('ebay.noResults')}</p>
-                  )}
-                  {ebayPrice?.error && ebayPrice.error !== 'not_configured' && (
-                    <p className="text-xs text-brand-red">{t('ebay.fetchFailed')}</p>
-                  )}
-                </div>
-              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>

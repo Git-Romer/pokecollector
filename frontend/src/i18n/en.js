@@ -520,11 +520,6 @@ const en = {
     telegramBotTokenDesc: 'Bot Token from @BotFather',
     telegramChatId: 'Telegram Chat ID',
     telegramChatIdDesc: 'Chat ID for bot messages',
-    sectionEbay: 'eBay API',
-    ebayAppId: 'eBay App ID',
-    ebayAppIdDesc: 'For graded card prices (PSA/BGS/CGC)',
-    ebayConfigured: 'Configured',
-    ebayNotConfigured: 'Not configured — eBay Developer Account required',
     app: 'App',
     dataSource: 'Data Source',
     dataSourceDesc: 'Card information & images',
@@ -642,20 +637,6 @@ const en = {
     gradeRaw: 'Raw (ungraded)',
   },
 
-  // eBay
-  ebay: {
-    gradedPrice: 'Graded Price',
-    fetchPrice: 'Fetch Price',
-    back: 'Back',
-    loading: 'Loading…',
-    notConfigured: 'eBay API not configured',
-    avgPrice: 'Average',
-    minPrice: 'Min',
-    maxPrice: 'Max',
-    sales: 'sales',
-    noResults: 'No completed sales found',
-    fetchFailed: 'Price fetch failed',
-  },
 
   // Card Scanner
   scanner: {

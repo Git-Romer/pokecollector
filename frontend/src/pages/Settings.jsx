@@ -165,18 +165,12 @@ export default function Settings() {
     queryFn: () => getSetting('gemini_api_key').catch(() => ({ value: '' })),
   })
 
-  const [ebayAppId, setEbayAppId] = useState('')
-  const [ebayDirty, setEbayDirty] = useState(false)
 
   const [telegramBotToken, setTelegramBotToken] = useState('')
   const [telegramBotTokenDirty, setTelegramBotTokenDirty] = useState(false)
   const [telegramChatId, setTelegramChatId] = useState('')
   const [telegramChatIdDirty, setTelegramChatIdDirty] = useState(false)
 
-  const { data: ebayAppIdData } = useQuery({
-    queryKey: ['setting', 'ebay_app_id'],
-    queryFn: () => getSetting('ebay_app_id').catch(() => ({ value: '' })),
-  })
 
   const { data: telegramBotTokenData } = useQuery({
     queryKey: ['setting', 'telegram_bot_token'],
@@ -220,9 +214,6 @@ export default function Settings() {
     if (geminiKeyData?.value !== undefined && !geminiDirty) setGeminiKey(geminiKeyData.value)
   }, [geminiKeyData])
 
-  useEffect(() => {
-    if (ebayAppIdData?.value !== undefined && !ebayDirty) setEbayAppId(ebayAppIdData.value)
-  }, [ebayAppIdData])
 
   useEffect(() => {
     if (telegramBotTokenData?.value !== undefined && !telegramBotTokenDirty) setTelegramBotToken(telegramBotTokenData.value)
@@ -522,63 +513,7 @@ export default function Settings() {
           </section>
 
           {/* ── 7. EBAY API ── */}
-          <section className="space-y-1">
-            <SectionHeader title={t('settings.sectionEbay')} />
-            <SettingsCard>
-              <SettingsRow
-                label={t('settings.ebayAppId')}
-                description={t('settings.ebayAppIdDesc')}
-                last
-              >
-                <div className="flex flex-col items-end gap-2 w-full">
-                  <div className="flex items-center gap-2 w-full justify-end">
-                    <input
-                      type="password"
-                      value={ebayAppId}
-                      onChange={e => { setEbayAppId(e.target.value); setEbayDirty(true) }}
-                      placeholder="YourApp-abc12-34def-56789-gh0ij"
-                      className="input flex-1 text-xs font-mono"
-                      style={{ minWidth: 0, maxWidth: 220 }}
-                    />
-                    {ebayDirty && (
-                      <button
-                        onClick={async () => {
-                          await saveSetting('ebay_app_id', ebayAppId)
-                          setEbayDirty(false)
-                          queryClient.invalidateQueries({ queryKey: ['setting', 'ebay_app_id'] })
-                          toast.success(t('settings.apiKeySaved'))
-                        }}
-                        className="btn-primary-sm flex-shrink-0"
-                      >
-                        {t('common.save')}
-                      </button>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {ebayAppId && ebayAppId.trim() ? (
-                      <span className="text-xs font-bold px-2.5 py-1 rounded-full"
-                        style={{ background: 'rgba(102,187,106,0.15)', color: '#66bb6a', border: '1px solid rgba(102,187,106,0.3)' }}>
-                        ✅ {t('settings.ebayConfigured')}
-                      </span>
-                    ) : (
-                      <span className="text-xs font-bold px-2.5 py-1 rounded-full"
-                        style={{ background: 'rgba(255,152,0,0.15)', color: '#ff9800', border: '1px solid rgba(255,152,0,0.3)' }}>
-                        ⚠️ {t('settings.ebayNotConfigured')}
-                      </span>
-                    )}
-                    <a
-                      href="https://developer.ebay.com"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs font-semibold text-brand-red hover:opacity-80 transition-opacity"
-                    >
-                      developer.ebay.com ↗
-                    </a>
-                  </div>
-                </div>
-              </SettingsRow>
-            </SettingsCard>
-          </section>
+          
 
           {/* ── 8. ÜBER DIE APP ── */}
           <section className="space-y-1">
