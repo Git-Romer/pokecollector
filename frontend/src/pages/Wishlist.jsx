@@ -5,6 +5,7 @@ import { getWishlist, removeFromWishlist, updateWishlistItem, addToCollection } 
 import { useSettings } from '../contexts/SettingsContext'
 import CardListItem from '../components/CardListItem'
 import toast from 'react-hot-toast'
+import { resolveCardImageUrl } from '../utils/imageUrl'
 
 function AlertEditor({ item, onDone }) {
   const [above, setAbove] = useState(item.price_alert_above || '')
@@ -246,8 +247,8 @@ export default function Wishlist() {
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-3">
                               <div className="w-8 h-10 flex-shrink-0 rounded overflow-hidden">
-                                {card?.images_small ? (
-                                  <img src={card.images_small} alt={card?.name} className="w-full h-full object-cover" />
+                                {resolveCardImageUrl(card) ? (
+                                  <img src={resolveCardImageUrl(card)} alt={card?.name} className="w-full h-full object-cover" />
                                 ) : (
                                   <div className="w-full h-full bg-border" />
                                 )}
@@ -339,7 +340,7 @@ export default function Wishlist() {
                   return (
                     <CardListItem
                       key={item.id}
-                      image={card?.images_small}
+                      image={resolveCardImageUrl(card)}
                       name={card?.name}
                       subtext={card?.set_ref?.name || '-'}
                       badges={badges}

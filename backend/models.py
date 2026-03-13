@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, String, Integer, Float, DateTime, Date, Boolean,
-    ForeignKey, Text, JSON, UniqueConstraint
+    ForeignKey, Text, JSON, UniqueConstraint, LargeBinary
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -253,3 +253,13 @@ class CustomCardMatch(Base):
     status = Column(String, default="pending")  # pending / migrated / dismissed
 
     custom_card = relationship("Card", foreign_keys=[custom_card_id])
+
+
+class ImageCache(Base):
+    __tablename__ = "image_cache"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    image_key = Column(String, unique=True, nullable=False, index=True)
+    data = Column(LargeBinary, nullable=False)
+    content_type = Column(String, default="image/webp")
+    cached_at = Column(DateTime, default=func.now())

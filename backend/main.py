@@ -52,7 +52,7 @@ app.add_middleware(
 )
 
 # Include routers
-from api import auth, cards, collection, sets, wishlist, binders, dashboard, analytics, sync, products, export, backup, settings
+from api import auth, cards, collection, sets, wishlist, binders, dashboard, analytics, sync, products, export, backup, settings, images
 from api.recognize import router as recognize_router
 from api.ebay import router as ebay_router
 
@@ -71,6 +71,7 @@ app.include_router(export.router, prefix="/api/export", tags=["export"])
 app.include_router(backup.router, prefix="/api/backup", tags=["backup"])
 app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 app.include_router(ebay_router, prefix="/api/ebay", tags=["ebay"])
+app.include_router(images.router, prefix="/api/images", tags=["images"])
 
 
 @app.get("/api/health")

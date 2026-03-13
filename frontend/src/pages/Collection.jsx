@@ -8,6 +8,7 @@ import CardListItem from '../components/CardListItem'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
 import { useTilt } from '../hooks/useTilt'
+import { resolveCardImageUrl } from '../utils/imageUrl'
 
 function TiltBinderCard({ className, onClick, children }) {
   const { ref, onMouseMove, onMouseEnter, onMouseLeave } = useTilt(10)
@@ -630,7 +631,7 @@ export default function Collection() {
                       >
                         {card?.images_small
                           ? <img
-                              src={card.images_small}
+                              src={resolveCardImageUrl(card)}
                               alt={card?.name}
                               className="w-full h-full object-cover"
                               loading="lazy"
@@ -749,7 +750,7 @@ export default function Collection() {
                             <div className="flex items-center gap-3">
                               <div className="w-8 h-10 flex-shrink-0 rounded overflow-hidden">
                                 {card?.images_small ? (
-                                  <img src={card.images_small} alt={card?.name} className="w-full h-full object-cover" />
+                                  <img src={resolveCardImageUrl(card)} alt={card?.name} className="w-full h-full object-cover" />
                                 ) : (
                                   <div className="w-full h-full bg-border" />
                                 )}

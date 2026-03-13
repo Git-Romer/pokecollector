@@ -14,6 +14,7 @@ import { useAuth } from '../contexts/AuthContext'
 import toast from 'react-hot-toast'
 import { format, parseISO } from 'date-fns'
 import { useTilt } from '../hooks/useTilt'
+import { resolveCardImageUrl } from '../utils/imageUrl'
 
 // ── Time-range definitions ────────────────────────────────────────────────────
 const PERIODS = [
@@ -39,7 +40,7 @@ function ChartTooltip({ active, payload, label }) {
 
 // ── Card thumbnail ────────────────────────────────────────────────────────────
 function CardThumb({ card, onClick }) {
-  const img = card.images_small || card.image_url
+  const img = resolveCardImageUrl(card)
   const { ref, onMouseMove, onMouseEnter, onMouseLeave } = useTilt(8)
   return (
     <div ref={ref} className="flex-shrink-0 w-[72px] cursor-pointer group" onClick={onClick} onMouseMove={onMouseMove} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
@@ -442,8 +443,8 @@ export default function HomeScreen() {
                     <div className="aspect-[2.5/3.5] rounded-xl overflow-hidden shadow-lg transition-all duration-150
                       group-hover:scale-[1.03]"
                       style={{ border:'1px solid rgba(245,200,66,0.2)', boxShadow:'0 4px 16px rgba(0,0,0,0.5)' }}>
-                      {card.images_small
-                        ? <img src={card.images_small} alt={card.name} className="w-full h-full object-cover" loading="lazy" />
+                      {resolveCardImageUrl(card)
+                        ? <img src={resolveCardImageUrl(card)} alt={card.name} className="w-full h-full object-cover" loading="lazy" />
                         : <div className="w-full h-full bg-bg-elevated" />
                       }
                     </div>

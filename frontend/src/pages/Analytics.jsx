@@ -16,6 +16,7 @@ import { format, parseISO } from 'date-fns'
 import clsx from 'clsx'
 import PeriodSelector, { CARD_PERIODS, PERIOD_DAYS } from '../components/PeriodSelector'
 import toast from 'react-hot-toast'
+import { resolveCardImageUrl } from '../utils/imageUrl'
 
 const RARITY_COLORS = [
   '#EF1515', '#3b82f6', '#22c55e', '#eab308', '#8b5cf6',
@@ -273,8 +274,8 @@ export default function Analytics() {
                       <tr key={item.id} className="border-b border-border/50 hover:bg-bg-elevated/50">
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
-                            {item.images_small && (
-                              <img src={item.images_small} alt={item.name} className="w-8 h-10 object-cover rounded flex-shrink-0" loading="lazy" />
+                            {resolveCardImageUrl(item) && (
+                              <img src={resolveCardImageUrl(item)} alt={item.name} className="w-8 h-10 object-cover rounded flex-shrink-0" loading="lazy" />
                             )}
                             <span className="text-sm font-medium text-text-primary">{item.name}</span>
                           </div>
@@ -293,7 +294,7 @@ export default function Analytics() {
                 {duplicates.map((item) => (
                   <CardListItem
                     key={item.id}
-                    image={item.images_small}
+                    image={resolveCardImageUrl(item)}
                     name={item.name}
                     subtext={item.set_name || '-'}
                     badges={[
@@ -325,8 +326,8 @@ export default function Analytics() {
             <div className="space-y-2">
               {topMovers.map((card) => (
                 <div key={card.card_id} className="card flex items-center gap-4">
-                  {card.images_small && (
-                    <img src={card.images_small} alt={card.name} className="w-10 h-14 object-cover rounded flex-shrink-0" loading="lazy" />
+                  {resolveCardImageUrl(card) && (
+                    <img src={resolveCardImageUrl(card)} alt={card.name} className="w-10 h-14 object-cover rounded flex-shrink-0" loading="lazy" />
                   )}
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-text-primary truncate">{card.name}</p>

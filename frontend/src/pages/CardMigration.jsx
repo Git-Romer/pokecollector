@@ -5,6 +5,7 @@ import { getCustomMatches, migrateCustomCard, dismissCustomMatch } from '../api/
 import { useSettings } from '../contexts/SettingsContext'
 import { format, parseISO } from 'date-fns'
 import toast from 'react-hot-toast'
+import { resolveCardImageUrl } from '../utils/imageUrl'
 
 function CardPreview({ card, label }) {
   const { t } = useSettings()
@@ -20,8 +21,8 @@ function CardPreview({ card, label }) {
   return (
     <div className="flex flex-col items-center gap-2">
       <div className="w-24 h-32 rounded-lg overflow-hidden bg-bg-card border border-border flex-shrink-0">
-        {card.images_small ? (
-          <img src={card.images_small} alt={card.name} className="w-full h-full object-cover" />
+        {resolveCardImageUrl(card) ? (
+          <img src={resolveCardImageUrl(card)} alt={card.name} className="w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             <span className="text-xs text-text-muted">{t('migration.noImage')}</span>

@@ -5,6 +5,7 @@ import { Search, Bell, BellOff, SortAsc, Filter, ChevronUp, ChevronDown } from '
 import { getSets, markSetsSeen } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
+import { resolveSetImageUrl } from '../utils/imageUrl'
 
 export default function Sets() {
   const navigate = useNavigate()
@@ -215,8 +216,8 @@ export default function Sets() {
                 </div>
               </div>
               <div className="flex-shrink-0 w-36 h-28 flex items-center justify-center">
-                {hero.images_logo
-                  ? <img src={hero.images_logo} alt={hero.name} className="set-hero-logo group-hover:scale-105 transition-transform duration-300" />
+                {resolveSetImageUrl(hero, 'logo')
+                  ? <img src={resolveSetImageUrl(hero, 'logo')} alt={hero.name} className="set-hero-logo group-hover:scale-105 transition-transform duration-300" />
                   : <div className="text-text-muted text-xs text-center">{hero.name}</div>
                 }
               </div>
@@ -268,24 +269,24 @@ export default function Sets() {
                     }}
                   />
                   {/* Subtle background symbol */}
-                  {set.images_symbol && (
+                  {resolveSetImageUrl(set, 'symbol') && (
                     <img
-                      src={set.images_symbol}
+                      src={resolveSetImageUrl(set, 'symbol')}
                       alt=""
                       className="absolute inset-0 w-full h-full object-contain opacity-[0.04] scale-150 pointer-events-none"
                     />
                   )}
 
-                  {set.images_logo ? (
+                  {resolveSetImageUrl(set, 'logo') ? (
                     <img
-                      src={set.images_logo}
+                      src={resolveSetImageUrl(set, 'logo')}
                       alt={set.name}
                       className="max-h-[80%] max-w-[75%] object-contain group-hover:scale-105 transition-transform duration-300 relative z-10"
                       loading="lazy"
                     />
-                  ) : set.images_symbol ? (
+                  ) : resolveSetImageUrl(set, 'symbol') ? (
                     <img
-                      src={set.images_symbol}
+                      src={resolveSetImageUrl(set, 'symbol')}
                       alt={set.name}
                       className="h-12 object-contain opacity-60 group-hover:scale-110 transition-transform duration-300 relative z-10"
                       loading="lazy"
