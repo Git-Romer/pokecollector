@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Trash2, Edit2, BookOpen, Star, Package, Check, X } from 'lucide-react'
+import { Plus, Trash2, Edit2, BookOpen, Star, Package, Check, X, Library, Heart } from 'lucide-react'
 import { getBinders, createBinder, updateBinder, deleteBinder } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
+import TabNav from '../components/TabNav'
 import toast from 'react-hot-toast'
 
 const BINDER_COLORS = [
@@ -82,6 +83,11 @@ export default function Binders() {
   const queryClient = useQueryClient()
   const [creating, setCreating] = useState(false)
   const [editingId, setEditingId] = useState(null)
+  const COLLECTION_TABS = [
+    { to: '/collection', label: t('nav.collection'), icon: Library },
+    { to: '/binders', label: t('nav.binders'), icon: BookOpen },
+    { to: '/wishlist', label: t('nav.wishlist'), icon: Heart },
+  ]
 
   const { data: binders = [], isLoading } = useQuery({
     queryKey: ['binders'],
@@ -118,6 +124,7 @@ export default function Binders() {
 
   return (
     <div className="space-y-4 pb-2">
+      <TabNav tabs={COLLECTION_TABS} />
       <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
         <div className="min-w-0">
           <h1 className="text-xl font-bold text-text-primary">{t('binders.title')}</h1>

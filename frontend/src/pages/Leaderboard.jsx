@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowUpDown, Trophy } from 'lucide-react'
+import { ArrowUpDown, Trophy, Award } from 'lucide-react'
 import { getLeaderboard } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
+import TabNav from '../components/TabNav'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 
 const SORT_OPTIONS = ['total_value', 'total_cards', 'unique_cards', 'sets_completed', 'pnl']
@@ -33,6 +34,10 @@ export default function Leaderboard() {
   const navigate = useNavigate()
   const { t, formatPrice } = useSettings()
   const [sortBy, setSortBy] = useState('total_value')
+  const SOCIAL_TABS = [
+    { to: '/leaderboard', label: t('nav.leaderboard'), icon: Trophy },
+    { to: '/achievements', label: t('nav.achievements'), icon: Award },
+  ]
 
   const { data = [], isLoading, error } = useQuery({
     queryKey: ['leaderboard'],
@@ -50,6 +55,7 @@ export default function Leaderboard() {
 
   return (
     <div className="page-container">
+      <TabNav tabs={SOCIAL_TABS} />
       <div className="card relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_right,rgba(255,213,79,0.16),transparent_40%)]" />
         <div className="relative flex items-start justify-between gap-3">

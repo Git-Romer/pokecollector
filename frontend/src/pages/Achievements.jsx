@@ -1,10 +1,11 @@
 import { useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Award, ArrowLeft } from 'lucide-react'
+import { Award, ArrowLeft, Trophy } from 'lucide-react'
 import { getAchievements } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { useSettings } from '../contexts/SettingsContext'
+import TabNav from '../components/TabNav'
 
 function TrainerAvatar({ avatarId, username }) {
   if (!avatarId) {
@@ -25,6 +26,10 @@ export default function Achievements() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { t } = useSettings()
+  const SOCIAL_TABS = [
+    { to: '/leaderboard', label: t('nav.leaderboard'), icon: Trophy },
+    { to: '/achievements', label: t('nav.achievements'), icon: Award },
+  ]
   const activeUserId = userId || user?.id
   const isOtherUser = userId && Number(userId) !== user?.id
 
@@ -42,6 +47,7 @@ export default function Achievements() {
 
   return (
     <div className="page-container">
+      <TabNav tabs={SOCIAL_TABS} />
       <div className="card relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_right,rgba(255,138,101,0.16),transparent_40%)]" />
         <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
