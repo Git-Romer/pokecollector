@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   RefreshCw, TrendingUp, TrendingDown, Layers, BookOpen, Star, Wallet, LogOut,
-  LayoutDashboard, Search, Library, Grid2X2, Heart, BarChart3, ShoppingBag, Settings,
+  LayoutDashboard, Search, Library, Grid2X2, Heart, BarChart3, ShoppingBag, Settings, Trophy, Award,
 } from 'lucide-react'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -154,6 +154,8 @@ export default function HomeScreen() {
     { to: '/wishlist',   icon: Heart,      label: t('nav.wishlist'),     color: '#f48fb1' },
     { to: '/binders',    icon: BookOpen,   label: t('nav.binders'),     color: '#ffcc80' },
     { to: '/products',   icon: ShoppingBag, label: t('nav.products'),   color: '#80cbc4' },
+    { to: '/leaderboard', icon: Trophy,    label: t('nav.leaderboard'), color: '#ffd54f' },
+    { to: '/achievements', icon: Award,    label: t('nav.achievements'), color: '#ff8a65' },
     { to: '/settings',   icon: Settings,   label: t('nav.settings'),    color: '#b0bec5' },
   ]
 
