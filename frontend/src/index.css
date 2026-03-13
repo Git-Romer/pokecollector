@@ -16,6 +16,7 @@
   --color-text-muted:     #606078;
 
   --color-brand-red:       #e3000b;
+  --color-brand-red-rgb:    227 0 11;
   --color-brand-red-light: #ff4d4d;
   --color-brand-red-dark:  #b80009;
 
@@ -725,6 +726,7 @@ body {
   --color-card:        #221408;
   --color-elevated:    #2e1a0a;
   --color-brand-red:   #ff6b35;
+  --color-brand-red-rgb:    255 107 53;
   --color-brand-red-light: #ff9466;
   --color-brand-red-dark:  #cc5528;
 }
@@ -735,6 +737,7 @@ body {
   --color-card:        #0c1a2e;
   --color-elevated:    #10223a;
   --color-brand-red:   #4fc3f7;
+  --color-brand-red-rgb:    79 195 247;
   --color-brand-red-light: #81d4fa;
   --color-brand-red-dark:  #2196f3;
 }
@@ -745,6 +748,7 @@ body {
   --color-card:        #0c2214;
   --color-elevated:    #102e1a;
   --color-brand-red:   #66bb6a;
+  --color-brand-red-rgb:    102 187 106;
   --color-brand-red-light: #81c784;
   --color-brand-red-dark:  #43a047;
 }
@@ -755,6 +759,7 @@ body {
   --color-card:        #221e0a;
   --color-elevated:    #2e280e;
   --color-brand-red:   #fdd835;
+  --color-brand-red-rgb:    253 216 53;
   --color-brand-red-light: #ffee58;
   --color-brand-red-dark:  #f9a825;
 }
@@ -765,6 +770,7 @@ body {
   --color-card:        #1e0c22;
   --color-elevated:    #28102e;
   --color-brand-red:   #ce93d8;
+  --color-brand-red-rgb:    206 147 216;
   --color-brand-red-light: #e1bee7;
   --color-brand-red-dark:  #ab47bc;
 }
@@ -775,6 +781,7 @@ body {
   --color-card:        #180f24;
   --color-elevated:    #20142e;
   --color-brand-red:   #9575cd;
+  --color-brand-red-rgb:    149 117 205;
   --color-brand-red-light: #b39ddb;
   --color-brand-red-dark:  #7e57c2;
 }
@@ -785,6 +792,7 @@ body {
   --color-card:        #121212;
   --color-elevated:    #1a1a1a;
   --color-brand-red:   #78909c;
+  --color-brand-red-rgb:    120 144 156;
   --color-brand-red-light: #90a4ae;
   --color-brand-red-dark:  #546e7a;
 }
@@ -795,6 +803,7 @@ body {
   --color-card:        #220c18;
   --color-elevated:    #2e1020;
   --color-brand-red:   #f48fb1;
+  --color-brand-red-rgb:    244 143 177;
   --color-brand-red-light: #f8bbd0;
   --color-brand-red-dark:  #ec407a;
 }
