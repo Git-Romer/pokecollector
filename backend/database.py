@@ -81,6 +81,8 @@ def _run_migrations(conn):
         "ALTER TABLE collection ADD COLUMN IF NOT EXISTS grade VARCHAR DEFAULT 'raw'",
         # v32: Add ebay_app_id to settings table
         "ALTER TABLE settings ADD COLUMN IF NOT EXISTS ebay_app_id VARCHAR",
+        # v41: Add Pokemon avatar selection to users
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_id INTEGER",
         # v36: Add tcg_set_id column to sets (original TCGdex ID, separate from composite DB key)
         "ALTER TABLE sets ADD COLUMN IF NOT EXISTS tcg_set_id VARCHAR",
         # v36: Populate tcg_set_id for old-format rows (id has no lang suffix)

@@ -19,7 +19,7 @@ const PAGE_TITLE_KEYS = {
 export default function AppNav() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { logout } = useAuth()
+  const { user, logout } = useAuth()
   const { t } = useSettings()
 
   const handleLogout = () => { logout(); navigate('/login') }
@@ -43,9 +43,16 @@ export default function AppNav() {
           </p>
           <button
             onClick={handleLogout}
-            className="w-8 h-8 flex items-center justify-center rounded-lg text-text-muted hover:text-brand-red transition-colors pointer-events-auto"
+            className="flex h-8 min-w-8 items-center justify-center gap-1.5 rounded-lg px-1.5 text-text-muted transition-colors hover:text-brand-red pointer-events-auto"
             aria-label={t('auth.logout')}
           >
+            {user?.avatar_id ? (
+              <img
+                src={`https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${user.avatar_id}.png`}
+                alt={`${user.username} avatar`}
+                className="h-5 w-5 pixelated"
+              />
+            ) : null}
             <LogOut size={16} />
           </button>
         </div>

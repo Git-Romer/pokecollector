@@ -82,6 +82,8 @@ const en = {
     logout: 'Logout',
     username: 'Username',
     password: 'Password',
+    chooseAvatar: 'Choose Pokemon Avatar',
+    avatarChanged: 'Avatar changed!',
     loginFailed: 'Login failed',
     signingIn: 'Signing in...',
     signInToCollection: 'Sign in to your collection',

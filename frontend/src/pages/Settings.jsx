@@ -1,15 +1,16 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { RefreshCw, Download, Upload, Plus, Pencil, Trash2, UserCheck, UserX } from 'lucide-react'
+import { RefreshCw, Download, Upload, Plus, Pencil, Trash2, User, UserCheck, UserX } from 'lucide-react'
 import {
   getSyncStatus, triggerSync, triggerPriceSync, rescheduleFullSync, reschedulePriceSync,
   downloadBackup, restoreBackup, exportCSV,
   getSetting, setSetting, getTelegramStatus, saveSettings,
-  getUsers, createUser, updateUser, deleteUser, changePassword,
+  getUsers, createUser, updateUser, deleteUser, changePassword, changeAvatar,
 } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { useSettings } from '../contexts/SettingsContext'
 import Modal from '../components/ui/Modal'
+import AvatarPicker from '../components/AvatarPicker'
 import { formatDistanceToNow } from 'date-fns'
 import toast from 'react-hot-toast'
 
@@ -119,8 +120,9 @@ function SelectControl({ value, options, onChange }) {
 export default function Settings() {
   const fileInputRef = useRef(null)
   const [restoring, setRestoring] = useState(false)
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false)
   const queryClient = useQueryClient()
-  const { user } = useAuth()
+  const { user, updateCurrentUser } = useAuth()
   const { settings, updateSettings, t } = useSettings()
   const [activeTab, setActiveTab] = useState('general')
 
@@ -262,6 +264,16 @@ export default function Settings() {
     onError: () => toast.error(t('settings.syncFailed')),
   })
 
+  const avatarMutation = useMutation({
+    mutationFn: (avatarId) => changeAvatar(avatarId),
+    onSuccess: (updatedUser) => {
+      updateCurrentUser(updatedUser)
+      localStorage.setItem('lastUserAvatar', updatedUser.avatar_id || '')
+      toast.success(t('auth.avatarChanged'))
+    },
+    onError: (err) => toast.error(err.response?.data?.detail || t('common.error')),
+  })
+
   const isRunning = syncStatus?.is_running || syncMutation.isPending
   const isPriceSyncRunning = syncStatus?.is_price_sync_running || priceSyncMutation.isPending
 
@@ -355,6 +367,10 @@ export default function Settings() {
   const currentCurrency = settings.currency || 'EUR'
   const currentPriceType = settings.price_primary || 'trend'
 
+  const handleAvatarSelect = (avatarId) => {
+    avatarMutation.mutate(avatarId)
+  }
+
   const lastSyncText = syncStatus?.last_sync?.finished_at
     ? formatDistanceToNow(new Date(syncStatus.last_sync.finished_at), { addSuffix: true })
     : t('settings.neverSynced')
@@ -390,6 +406,31 @@ export default function Settings() {
           <section className="space-y-1">
             <SectionHeader title={t('settings.sectionTrainer')} />
             <SettingsCard>
+              <SettingsRow
+                label={t('auth.chooseAvatar')}
+                description={user?.username || trainerName || 'Trainer'}
+              >
+                <button
+                  type="button"
+                  onClick={() => setShowAvatarPicker(true)}
+                  className="flex items-center gap-3 rounded-2xl border border-border bg-bg-primary px-3 py-2 transition-colors hover:border-brand-red/50"
+                >
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full border border-border bg-bg-card">
+                    {user?.avatar_id ? (
+                      <img
+                        src={`https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${user.avatar_id}.png`}
+                        alt={`${user.username} avatar`}
+                        className="h-12 w-12 pixelated"
+                      />
+                    ) : (
+                      <User size={24} className="text-text-muted" />
+                    )}
+                  </div>
+                  <span className="text-xs font-semibold text-text-primary">
+                    {avatarMutation.isPending ? t('common.loading') : t('common.edit')}
+                  </span>
+                </button>
+              </SettingsRow>
               <SettingsRow
                 label={t('settings.trainerName')}
                 description={t('settings.trainerNameDesc')}
@@ -808,6 +849,13 @@ export default function Settings() {
       {activeTab === 'users' && user?.role === 'admin' && (
         <UsersTab t={t} queryClient={queryClient} />
       )}
+
+      <AvatarPicker
+        isOpen={showAvatarPicker}
+        onClose={() => setShowAvatarPicker(false)}
+        onSelect={handleAvatarSelect}
+        currentAvatarId={user?.avatar_id ?? null}
+      />
     </div>
   )
 }

@@ -113,6 +113,7 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     role = Column(String, default="trainer")  # "admin" or "trainer"
     is_active = Column(Boolean, default=True)
+    avatar_id = Column(Integer, nullable=True)  # Pokemon number (1-151) for avatar sprite
     created_at = Column(DateTime, default=func.now())
 
 

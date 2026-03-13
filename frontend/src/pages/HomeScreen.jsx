@@ -62,7 +62,7 @@ export default function HomeScreen() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { formatPrice, t } = useSettings()
-  const { logout } = useAuth()
+  const { user, logout } = useAuth()
   const [chartPeriod, setChartPeriod] = useState('1M')
 
   const { data, isLoading } = useQuery({
@@ -217,9 +217,18 @@ export default function HomeScreen() {
         {/* ── PORTFOLIO VALUE (large, prominent) ── */}
         <div className="text-center -mt-2">
           {/* Trainer greeting */}
-          <p className="text-sm font-semibold mb-1 truncate max-w-[90vw] mx-auto" style={{ color: 'rgba(255,255,255,0.55)' }}>
-            {t('home.hello')}, <span className="font-black" style={{ color: '#f5c842' }}>{trainerName}</span>! 👋
-          </p>
+          <div className="mb-1 flex items-center justify-center gap-2 truncate max-w-[90vw] mx-auto">
+            {user?.avatar_id ? (
+              <img
+                src={`https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${user.avatar_id}.png`}
+                alt={`${trainerName} avatar`}
+                className="h-6 w-6 pixelated"
+              />
+            ) : null}
+            <p className="text-sm font-semibold truncate" style={{ color: 'rgba(255,255,255,0.55)' }}>
+              {t('home.hello')}, <span className="font-black" style={{ color: '#f5c842' }}>{trainerName}</span>! 👋
+            </p>
+          </div>
           <p className="text-[11px] text-text-muted uppercase tracking-[0.2em] mb-2">{t('home.portfolioValue')}</p>
           {isLoading ? (
             <div className="skeleton h-14 w-48 mx-auto rounded-xl" />

@@ -8,6 +8,7 @@ import { useSettings } from '../contexts/SettingsContext'
 
 export default function Login() {
   const [lastUser] = useState(() => localStorage.getItem('lastUser') || '')
+  const [lastUserAvatar] = useState(() => localStorage.getItem('lastUserAvatar') || '')
   const [showSwitchUser, setShowSwitchUser] = useState(() => !localStorage.getItem('lastUser'))
   const [username, setUsername] = useState(() => localStorage.getItem('lastUser') || '')
   const [password, setPassword] = useState('')
@@ -27,6 +28,7 @@ export default function Login() {
     try {
       const data = await login(username, password)
       localStorage.setItem('lastUser', username)
+      localStorage.setItem('lastUserAvatar', data.user.avatar_id || '')
       loginUser(data.access_token, data.user)
       navigate('/')
     } catch (err) {
@@ -58,10 +60,20 @@ export default function Login() {
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="flex flex-col items-center text-center">
                 <div
-                  className="flex h-24 w-24 items-center justify-center rounded-full border border-white/10 bg-bg-primary shadow-[0_20px_50px_rgba(0,0,0,0.35)]"
+                  className={`flex items-center justify-center rounded-full border border-white/10 bg-bg-primary shadow-[0_20px_50px_rgba(0,0,0,0.35)] ${
+                    lastUserAvatar ? 'h-28 w-28' : 'h-24 w-24'
+                  }`}
                   style={{ backgroundColor: 'rgba(10, 10, 15, 0.82)' }}
                 >
-                  <User size={40} className="text-text-primary" />
+                  {lastUserAvatar ? (
+                    <img
+                      src={`https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${lastUserAvatar}.png`}
+                      alt={`${lastUser} avatar`}
+                      className="w-16 h-16 pixelated"
+                    />
+                  ) : (
+                    <User size={40} className="text-text-primary" />
+                  )}
                 </div>
                 <p className="mt-4 text-xl font-semibold text-text-primary">{lastUser}</p>
               </div>

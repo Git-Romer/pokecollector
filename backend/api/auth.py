@@ -22,6 +22,7 @@ class CreateUserRequest(BaseModel):
     username: str
     password: str
     role: str = "trainer"
+    avatar_id: int | None = None
 
 
 class UpdateUserRequest(BaseModel):
@@ -29,11 +30,23 @@ class UpdateUserRequest(BaseModel):
     password: str | None = None
     role: str | None = None
     is_active: bool | None = None
+    avatar_id: int | None = None
 
 
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str
+
+
+def validate_avatar_id(avatar_id: int | None):
+    if avatar_id is not None and (avatar_id < 1 or avatar_id > 151):
+        raise HTTPException(status_code=400, detail="avatar_id must be 1-151")
+
+
+def field_was_set(model: BaseModel, field_name: str) -> bool:
+    if hasattr(model, "model_fields_set"):
+        return field_name in model.model_fields_set
+    return field_name in model.__fields_set__
 
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
@@ -74,13 +87,13 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     token = create_access_token({"sub": str(user.id), "role": user.role})
     return TokenResponse(
         access_token=token,
-        user={"id": user.id, "username": user.username, "role": user.role},
+        user={"id": user.id, "username": user.username, "role": user.role, "avatar_id": user.avatar_id},
     )
 
 
 @router.get("/me")
 def get_me(current_user: User = Depends(get_current_user)):
-    return {"id": current_user.id, "username": current_user.username, "role": current_user.role}
+    return {"id": current_user.id, "username": current_user.username, "role": current_user.role, "avatar_id": current_user.avatar_id}
 
 
 @router.get("/users")
@@ -94,6 +107,7 @@ def list_users(current_user: User = Depends(get_current_user), db: Session = Dep
             "username": u.username,
             "role": u.role,
             "is_active": u.is_active,
+            "avatar_id": u.avatar_id,
             "created_at": str(u.created_at),
         }
         for u in users
@@ -108,6 +122,7 @@ def create_user(
 ):
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
+    validate_avatar_id(data.avatar_id)
     existing = db.query(User).filter(User.username == data.username).first()
     if existing:
         raise HTTPException(status_code=400, detail="Username already exists")
@@ -116,11 +131,12 @@ def create_user(
         hashed_password=hash_password(data.password),
         role=data.role,
         is_active=True,
+        avatar_id=data.avatar_id,
     )
     db.add(user)
     db.commit()
     db.refresh(user)
-    return {"id": user.id, "username": user.username, "role": user.role, "is_active": user.is_active}
+    return {"id": user.id, "username": user.username, "role": user.role, "is_active": user.is_active, "avatar_id": user.avatar_id}
 
 
 @router.put("/users/{user_id}")
@@ -132,6 +148,8 @@ def update_user(
 ):
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
+    if field_was_set(data, "avatar_id"):
+        validate_avatar_id(data.avatar_id)
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -143,8 +161,10 @@ def update_user(
         user.role = data.role
     if data.is_active is not None:
         user.is_active = data.is_active
+    if field_was_set(data, "avatar_id"):
+        user.avatar_id = data.avatar_id
     db.commit()
-    return {"id": user.id, "username": user.username, "role": user.role, "is_active": user.is_active}
+    return {"id": user.id, "username": user.username, "role": user.role, "is_active": user.is_active, "avatar_id": user.avatar_id}
 
 
 @router.delete("/users/{user_id}")
@@ -176,3 +196,12 @@ def change_password(
     current_user.hashed_password = hash_password(data.new_password)
     db.commit()
     return {"message": "Password changed"}
+
+
+@router.put("/me/avatar")
+def change_avatar(data: dict, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    avatar_id = data.get("avatar_id")
+    validate_avatar_id(avatar_id)
+    current_user.avatar_id = avatar_id
+    db.commit()
+    return {"id": current_user.id, "username": current_user.username, "role": current_user.role, "avatar_id": current_user.avatar_id}
