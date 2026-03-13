@@ -161,7 +161,7 @@ function CollectionEditModal({ item, onClose }) {
   const [lang, setLang] = useState(item.lang || 'en')
   const [price, setPrice] = useState(item.purchase_price ? String(item.purchase_price) : '')
 
-  const cardImage = card?.images_large || card?.images_small || (card?.image ? `${card.image}/high.webp` : null)
+  const cardImage = resolveCardImageUrl(card, 'large')
 
   const updateMutation = useMutation({
     mutationFn: () => updateCollectionItem(item.id, {
@@ -629,7 +629,7 @@ export default function Collection() {
                       <div
                         className="aspect-[2.5/3.5] relative rounded-xl overflow-hidden flex-shrink-0"
                       >
-                        {card?.images_small
+                        {resolveCardImageUrl(card)
                           ? <img
                               src={resolveCardImageUrl(card)}
                               alt={card?.name}
@@ -749,7 +749,7 @@ export default function Collection() {
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-3">
                               <div className="w-8 h-10 flex-shrink-0 rounded overflow-hidden">
-                                {card?.images_small ? (
+                                {resolveCardImageUrl(card) ? (
                                   <img src={resolveCardImageUrl(card)} alt={card?.name} className="w-full h-full object-cover" />
                                 ) : (
                                   <div className="w-full h-full bg-border" />
@@ -857,7 +857,7 @@ export default function Collection() {
                   return (
                     <CardListItem
                       key={item.id}
-                      image={card?.images_small}
+                      image={resolveCardImageUrl(card)}
                       name={card?.name}
                       subtext={[card?.set_ref?.name, card?.number ? `#${card.number}` : null].filter(Boolean).join(' · ') || '-'}
                       badges={badges}

@@ -6,7 +6,7 @@ export default function Layout() {
   const isHome = location.pathname === '/'
 
   return (
-    <div className="min-h-dvh flex flex-col bg-bg">
+    <div className="min-h-dvh flex flex-col bg-bg overflow-x-hidden">
       {!isHome && <AppNav />}
       <main className={`flex-1 ${!isHome ? 'w-full px-4 pb-8' : ''}`}>
         <Outlet />
