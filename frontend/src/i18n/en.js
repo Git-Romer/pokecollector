@@ -599,6 +599,8 @@ const en = {
     avg1: '1-Day Avg',
     avg7: '7-Day Avg',
     avg30: '30-Day Avg',
+    history: 'Price History',
+    sinceTracking: 'since tracking',
     cardmarketTitle: 'Cardmarket Prices (EUR)',
   },
 
