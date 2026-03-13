@@ -76,7 +76,7 @@ function Toggle({ value, onChange }) {
 function SegmentedControl({ value, options, onChange }) {
   return (
     <div
-      className="flex rounded-lg overflow-hidden"
+      className="flex w-fit rounded-lg overflow-hidden"
       style={{ border: '1px solid rgba(255,255,255,0.1)' }}
     >
       {options.map((opt, i) => (
