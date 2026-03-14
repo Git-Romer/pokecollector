@@ -11,7 +11,7 @@ import datetime
 router = APIRouter()
 
 # Variants that use the Cardmarket holo price family
-HOLO_VARIANTS = {"Holo", "Holo Rare", "Holo V", "Holo VMAX", "Holo VSTAR", "Holo ex"}
+HOLO_VARIANTS = {"Holo", "Holo Rare", "Holo V", "Holo VMAX", "Holo VSTAR", "Holo ex", "Reverse Holo"}
 
 
 def _get_item_price(item):
@@ -19,7 +19,6 @@ def _get_item_price(item):
     card = item.card
     if not card:
         return 0
-    # Reverse Holo: uses standard non-holo CM price (reverse premium is TCGPlayer/USD only)
     if item.variant in HOLO_VARIANTS and card.price_market_holo is not None:
         return card.price_market_holo
     return card.price_market or 0
