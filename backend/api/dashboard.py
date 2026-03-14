@@ -12,7 +12,7 @@ router = APIRouter()
 VALID_PRICE_FIELDS = {"price_market", "price_trend", "price_avg1", "price_avg7", "price_avg30"}
 
 # Variants that use the Cardmarket holo price family
-HOLO_VARIANTS = {"Holo", "Holo Rare", "Holo V", "Holo VMAX", "Holo VSTAR", "Holo ex"}
+HOLO_VARIANTS = {"Holo", "Holo Rare", "Holo V", "Holo VMAX", "Holo VSTAR", "Holo ex", "Reverse Holo"}
 
 # Maps each standard price field to its holo equivalent
 HOLO_FIELD_MAP = {
