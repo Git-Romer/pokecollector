@@ -257,7 +257,7 @@ function CollectionEditModal({ item, onClose }) {
             <div>
               <label className="text-xs text-text-muted mb-1.5 block">🌐 {t('lang.selectLabel')}</label>
               <div className="flex gap-2">
-                {['de', 'en'].map(l => (
+                {['de', 'en', 'zh'].map(l => (
                   <button
                     key={l}
                     type="button"
@@ -267,11 +267,13 @@ function CollectionEditModal({ item, onClose }) {
                       lang === l
                         ? l === 'de'
                           ? 'bg-yellow/20 text-yellow border-yellow/50'
-                          : 'bg-blue/20 text-blue-400 border-blue-400/50'
+                          : l === 'en'
+                          ? 'bg-blue/20 text-blue-400 border-blue-400/50'
+                          : 'bg-red/20 text-red-400 border-red-400/50'
                         : 'bg-bg-surface text-text-muted border-border hover:border-text-muted'
                     )}
                   >
-                    {l === 'de' ? `🇩🇪 ${t('lang.de_full')}` : `🇬🇧 ${t('lang.en_full')}`}
+                    {l === 'de' ? `🇩🇪 ${t('lang.de_full')}` : l === 'en' ? `🇬🇧 ${t('lang.en_full')}` : `🇨🇳 ${t('lang.zh_full')}`}
                   </button>
                 ))}
               </div>

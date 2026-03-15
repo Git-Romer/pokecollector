@@ -599,6 +599,7 @@ export default function Settings() {
                   options={[
                     { value: 'de', label: '🇩🇪 DE' },
                     { value: 'en', label: '🇬🇧 EN' },
+                    { value: 'zh', label: '🇨🇳 中文' },
                   ]}
                   onChange={handleLanguageChange}
                 />
