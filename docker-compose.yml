@@ -36,8 +36,6 @@ services:
   frontend:
     build:
       context: ./frontend
-      args:
-        VITE_API_URL: ""
     container_name: pokemon-frontend
     restart: unless-stopped
     depends_on:
