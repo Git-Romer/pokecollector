@@ -21,7 +21,7 @@ React 18 SPA built with Vite. All source under `frontend/src/`.
 
 ### `CardItem` / `CardModal` (`components/CardItem.jsx`)
 - `CardItem` — grid tile showing card image, name, rarity, price. Click opens `CardModal`.
-- `CardModal` — full detail popup: large image, all price fields (Cardmarket non-holo, holo, TCGPlayer), add-to-collection form with quantity/condition/variant/grade/purchase price.
+- `CardModal` — full detail popup: large image, all price fields (Cardmarket non-holo, holo, TCGPlayer), add-to-collection form with quantity/condition/variant/purchase price.
 - `CustomCardModal` — form to manually create a card not in TCGdex.
 - Price display respects `pricePrimary` from `SettingsContext`.
 
