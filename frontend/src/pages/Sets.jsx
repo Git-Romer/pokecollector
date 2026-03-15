@@ -117,6 +117,7 @@ export default function Sets() {
             { value: 'all', label: t('lang.all') },
             { value: 'de', label: `🇩🇪 ${t('lang.de')}` },
             { value: 'en', label: `🇬🇧 ${t('lang.en')}` },
+            { value: 'zh', label: `🇨🇳 ${t('lang.zh')}` },
           ].map(opt => (
             <button
               key={opt.value}
@@ -127,7 +128,9 @@ export default function Sets() {
                     ? 'bg-yellow/20 text-yellow border border-yellow/50'
                     : opt.value === 'en'
                       ? 'bg-blue/20 text-blue-400 border border-blue-400/50'
-                      : 'bg-brand-red text-white'
+                      : opt.value === 'zh'
+                        ? 'bg-red/20 text-red-400 border border-red-400/50'
+                        : 'bg-brand-red text-white'
                   : 'bg-bg-card text-text-secondary hover:text-text-primary border border-border'
               }`}
             >
