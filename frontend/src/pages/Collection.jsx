@@ -44,7 +44,7 @@ const VARIANT_COLORS = {
 }
 
 
-const HOLO_VARIANTS = new Set(['Holo', 'Holo Rare', 'Holo V', 'Holo VMAX', 'Holo VSTAR', 'Holo ex'])
+const HOLO_VARIANTS = new Set(['Holo', 'Holo Rare', 'Holo V', 'Holo VMAX', 'Holo VSTAR', 'Holo ex', 'Reverse Holo'])
 const HOLO_FIELD_MAP = {
   price_market: 'price_market_holo',
   price_trend: 'price_trend_holo',
