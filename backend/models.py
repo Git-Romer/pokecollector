@@ -128,7 +128,6 @@ class CollectionItem(Base):
     variant = Column(String, nullable=True)  # Normal/Holo/Reverse Holo/Full Art/etc.
     purchase_price = Column(Float)
     lang = Column(String, default="en")  # "en" or "de" — fixed card language
-    grade = Column(String, default="raw")  # "raw", "PSA 9", "PSA 10", "BGS 9", etc.
     added_at = Column(DateTime, default=func.now())
 
     card = relationship("Card", back_populates="collection_items")
