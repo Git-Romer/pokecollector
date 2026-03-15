@@ -78,7 +78,7 @@ function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
             <div>
               <label className="text-xs text-text-muted mb-1.5 block font-medium">🌐 {t('lang.filter')}</label>
               <div className="flex gap-2">
-                {['de', 'en'].map(l => (
+                {['de', 'en', 'zh'].map(l => (
                   <button
                     key={l}
                     type="button"
@@ -88,11 +88,13 @@ function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
                       lang === l
                         ? l === 'de'
                           ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50'
-                          : 'bg-blue-500/20 text-blue-400 border-blue-500/50'
+                          : l === 'en'
+                          ? 'bg-blue-500/20 text-blue-400 border-blue-500/50'
+                          : 'bg-red-500/20 text-red-400 border-red-500/50'
                         : 'bg-white/5 text-text-muted border-white/10'
                     )}
                   >
-                    {l === 'de' ? `🇩🇪 ${t('lang.de_full')}` : `🇬🇧 ${t('lang.en_full')}`}
+                    {l === 'de' ? `🇩🇪 ${t('lang.de_full')}` : l === 'en' ? `🇬🇧 ${t('lang.en_full')}` : `🇨🇳 ${t('lang.zh_full')}`}
                   </button>
                 ))}
               </div>

@@ -1,8 +1,9 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import de from '../i18n/de'
 import en from '../i18n/en'
+import zh from '../i18n/zh'
 
-const translations = { de, en }
+const translations = { de, en, zh }
 
 const DEFAULT_SETTINGS = {
   language: 'de',
