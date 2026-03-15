@@ -5,7 +5,7 @@ import {
   getSyncStatus, triggerSync, triggerPriceSync, rescheduleFullSync, reschedulePriceSync,
   downloadBackup, restoreBackup, exportCSV,
   getSetting, setSetting, getTelegramStatus, saveSettings, setAuthMode,
-  getUsers, createUser, updateUser, deleteUser, changePassword, changeAvatar, changeUsername,
+  getUsers, createUser, updateUser, deleteUser, changePassword, changeAvatar, changeUsername, getContributors,
 } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../hooks/useTheme'
@@ -113,6 +113,54 @@ function SelectControl({ value, options, onChange }) {
         </option>
       ))}
     </select>
+  )
+}
+
+function ContributorsSection({ t }) {
+  const { data: contributors = [], isLoading } = useQuery({
+    queryKey: ['contributors'],
+    queryFn: () => getContributors(),
+    staleTime: 60 * 60 * 1000,
+  })
+
+  if (isLoading) {
+    return (
+      <SettingsCard>
+        <div className="p-4 flex justify-center">
+          <div className="skeleton h-8 w-48 rounded" />
+        </div>
+      </SettingsCard>
+    )
+  }
+
+  return (
+    <SettingsCard>
+      <div className="p-4">
+        <div className="flex flex-wrap gap-4 justify-center">
+          {contributors.map((c) => (
+            <a
+              key={c.login}
+              href={c.html_url}
+              target="_blank"
+              rel="noreferrer"
+              className="flex flex-col items-center gap-1.5 group"
+            >
+              <img
+                src={c.avatar_url}
+                alt={c.login}
+                className="w-12 h-12 rounded-full border-2 border-border group-hover:border-brand-red transition-colors"
+              />
+              <span className="text-[10px] font-semibold text-text-secondary group-hover:text-text-primary transition-colors">
+                {c.login}
+              </span>
+              <span className="text-[9px] text-text-muted">
+                {c.contributions} {t('settings.commits')}
+              </span>
+            </a>
+          ))}
+        </div>
+      </div>
+    </SettingsCard>
   )
 }
 
@@ -371,6 +419,7 @@ export default function Settings() {
           { key: 'general', label: t('settings.tabs.general') },
           { key: 'sync', label: t('settings.tabs.dataSync') },
           { key: 'notifications', label: t('settings.tabs.notifications') },
+          { key: 'community', label: t('settings.tabs.community') },
           ...(user?.role === 'admin' && multiUser ? [{ key: 'users', label: t('settings.tabs.users') }] : []),
         ].map((tab) => (
           <button
@@ -839,6 +888,35 @@ export default function Settings() {
                 </SettingsRow>
               )}
               {!priceAlertsEnabled && <div style={{ height: 0 }} />}
+            </SettingsCard>
+          </section>
+        </>
+      )}
+
+      {activeTab === 'community' && (
+        <>
+          <section className="space-y-1">
+            <SectionHeader title={t('settings.contributors')} />
+            <ContributorsSection t={t} />
+          </section>
+
+          <section className="space-y-1 mt-4">
+            <SectionHeader title={t('settings.sponsors')} />
+            <SettingsCard>
+              <div className="p-4 text-center space-y-3">
+                <p className="text-2xl">🐾</p>
+                <p className="text-sm text-text-secondary">
+                  {t('settings.sponsorMessage')}
+                </p>
+                <a
+                  href="https://github.com/sponsors/Git-Romer"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-brand-red text-white text-sm font-semibold hover:opacity-90 transition-opacity"
+                >
+                  ❤️ {t('settings.sponsorButton')}
+                </a>
+              </div>
             </SettingsCard>
           </section>
         </>

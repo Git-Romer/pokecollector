@@ -29,6 +29,7 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - [Documentation](#-documentation)
 - [Configuration Reference](#-configuration-reference)
 - [Updating](#-updating)
+- [Support](#️-support)
 - [License](#-license)
 
 ---
@@ -290,6 +291,14 @@ docker compose up -d --build
 ```
 
 Database migrations run automatically on startup — no manual steps needed.
+
+---
+
+## ❤️ Support
+
+All sponsorship earnings are donated to animal rescue organizations. 🐾
+
+If you enjoy PokéCollector, consider [sponsoring the project](https://github.com/sponsors/Git-Romer) — every contribution goes directly to helping animals in need.
 
 ---
 

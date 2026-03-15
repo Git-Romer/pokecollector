@@ -198,6 +198,8 @@ export const saveSettings = (data) => api.put('/settings/', data)
 export const getSetting = (key) => api.get(`/settings/${key}`).then(r => r.data)
 export const setSetting = (key, value) => api.post(`/settings/${key}`, { value }).then(r => r.data)
 export const getTelegramStatus = () => api.get('/settings/telegram_status').then(r => r.data)
+export const getContributors = () => api.get('/github/contributors').then(r => r.data)
+export const getSponsorsInfo = () => api.get('/github/sponsors').then(r => r.data)
 
 
 // Social
