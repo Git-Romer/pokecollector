@@ -37,7 +37,6 @@ FastAPI application. Entry point: `backend/main.py`.
 | GET | `/api/backup/download` | pg_dump SQL backup |
 | POST | `/api/backup/restore` | Restore from SQL file |
 | POST | `/api/recognize/` | AI card recognition from image (requires Gemini API key) |
-| GET | `/api/ebay/graded-price` | eBay completed sales price for graded card |
 
 ## Models (SQLAlchemy)
 
@@ -57,7 +56,7 @@ Stores TCGdex card data. Key fields:
 
 ### `CollectionItem`
 - `card_id` → FK to `Card.id`
-- `quantity`, `condition`, `variant`, `lang`, `grade`, `purchase_price`
+- `quantity`, `condition`, `variant`, `lang`, `purchase_price`
 
 ### `PriceHistory`
 - Daily price snapshot per card: `card_id`, `date`, `price_market`, `price_trend`, etc.

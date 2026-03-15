@@ -35,7 +35,6 @@ pokecollector/
 │   │   ├── backup.py         # /backup — pg_dump / restore
 │   │   ├── products.py       # /products — sealed product P&L
 │   │   ├── recognize.py      # /recognize — AI card recognition (Gemini)
-│   │   └── ebay.py           # /ebay — eBay graded card price lookup
 │   └── services/
 │       ├── pokemon_api.py    # TCGdex API client + data parsing
 │       ├── sync_service.py   # Full sync + price sync logic

@@ -132,7 +132,6 @@ def add_to_collection(
             variant=item.variant,
             purchase_price=item.purchase_price,
             lang=item_lang,
-            grade=item.grade if hasattr(item, 'grade') else 'raw',
             user_id=current_user.id,
             added_at=datetime.datetime.utcnow(),
         )

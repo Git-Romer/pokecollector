@@ -107,7 +107,6 @@ class CollectionItemCreate(BaseModel):
     variant: Optional[str] = None
     purchase_price: Optional[float] = None
     lang: str = "en"  # fixed language of this card item ("en" or "de")
-    grade: str = "raw"  # "raw", "PSA 9", "PSA 10", "BGS 9", "BGS 9.5", "CGC 9", "CGC 10"
 
 
 class CollectionItemUpdate(BaseModel):
@@ -115,7 +114,6 @@ class CollectionItemUpdate(BaseModel):
     condition: Optional[str] = None
     variant: Optional[str] = None
     purchase_price: Optional[float] = None
-    grade: Optional[str] = None
     lang: Optional[str] = None
 
 
@@ -127,7 +125,6 @@ class CollectionItemResponse(BaseModel):
     variant: Optional[str] = None
     purchase_price: Optional[float] = None
     lang: str = "en"
-    grade: str = "raw"
     added_at: Optional[datetime] = None
     card: Optional[CardWithSet] = None
 
