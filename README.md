@@ -262,6 +262,11 @@ All settings are persisted in the database and editable via the Settings page:
 
 ## 🔄 Updating
 
+> ⚠️ **Back up your database before updating!** You can do this either through the app (Settings → Backup) or via Docker:
+> ```bash
+> docker compose exec postgres pg_dump -U pokemon pokemon_tcg > backup_$(date +%Y%m%d).sql
+> ```
+
 To update to the latest version:
 
 ```bash

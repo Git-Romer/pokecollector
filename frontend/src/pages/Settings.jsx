@@ -590,7 +590,7 @@ export default function Settings() {
                   v38.0
                 </span>
               </SettingsRow>
-              <SettingsRow label={t('settings.dataSource')} description={t('settings.dataSourceDesc')} last>
+              <SettingsRow label={t('settings.dataSource')} description={t('settings.dataSourceDesc')}>
                 <a
                   href="https://tcgdex.dev"
                   target="_blank"
@@ -600,7 +600,22 @@ export default function Settings() {
                   TCGdex ↗
                 </a>
               </SettingsRow>
+              <SettingsRow label={t('settings.sourceCode')} description={t('settings.sourceCodeDesc')} last>
+                <a
+                  href="https://github.com/Git-Romer/pokecollector"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs font-semibold text-brand-red hover:opacity-80 transition-opacity"
+                >
+                  GitHub ↗
+                </a>
+              </SettingsRow>
             </SettingsCard>
+            <div className="text-center mt-4 mb-2">
+              <p className="text-[11px] text-text-muted">
+                {t('settings.madeWith')} <a href="https://de.linkedin.com/in/gilles-romer" target="_blank" rel="noreferrer" className="text-brand-red hover:opacity-80 transition-opacity font-semibold">Gilles Romer</a>
+              </p>
+            </div>
           </section>
         </>
       )}
