@@ -16,7 +16,16 @@ import { useRef, useCallback, useEffect } from 'react'
  * Callers must wire up all four handlers (onMouseEnter is new).
  */
 export function useTilt(maxTilt = 10, lerpFactor = 0.1) {
-  const ref       = useRef(null)
+  const ref = useRef(null)
+
+  // Disable tilt on touch devices; no visual benefit and worse scroll performance.
+  const isTouchDevice =
+    typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0)
+
+  if (isTouchDevice) {
+    return { ref, onMouseMove: () => {}, onMouseEnter: () => {}, onMouseLeave: () => {} }
+  }
+
   const rafRef    = useRef(null)
   const hovered   = useRef(false)
 
