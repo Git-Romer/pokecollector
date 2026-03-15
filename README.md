@@ -19,6 +19,20 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 ![WebApp Preview](preview-homescreen.png)
 ---
 
+## 📑 Table of Contents
+
+- [Features](#-features)
+- [Quick Start](#-quick-start)
+- [Environment Variables](#-environment-variables)
+- [Architecture](#️-architecture)
+- [Tech Stack](#️-tech-stack)
+- [Documentation](#-documentation)
+- [Configuration Reference](#-configuration-reference)
+- [Updating](#-updating)
+- [License](#-license)
+
+---
+
 ## ✨ Features
 
 ### 📦 Collection Management
@@ -261,6 +275,11 @@ All settings are persisted in the database and editable via the Settings page:
 ---
 
 ## 🔄 Updating
+
+> ⚠️ **Back up your database before updating!** You can do this either through the app (Settings → Backup) or via Docker:
+> ```bash
+> docker compose exec postgres pg_dump -U pokemon pokemon_tcg > backup_$(date +%Y%m%d).sql
+> ```
 
 To update to the latest version:
 
