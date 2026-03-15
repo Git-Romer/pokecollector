@@ -227,7 +227,7 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full deep-dive.
 | Frontend | React 18, Vite, Tailwind CSS, TanStack Query, Recharts, Lucide Icons |
 | Backend | Python 3.11, FastAPI, SQLAlchemy, APScheduler, Pydantic |
 | Database | PostgreSQL 15 |
-| Card Data | [TCGdex](https://tcgdex.net/) — free, no API key |
+| Card Data | [TCGdex](https://tcgdex.dev/) — free, no API key |
 | Prices | Cardmarket EUR + TCGPlayer USD (via TCGdex pricing) |
 | AI Scanner | Google Gemini 2.5 Flash (optional) |
 | Deploy | Docker + Docker Compose |

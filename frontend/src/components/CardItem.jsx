@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, memo } from 'react'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { Plus, Check, Heart, BookOpen, X, PenLine, Pencil,  Trash2 } from 'lucide-react'
@@ -103,7 +103,6 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
     onSuccess: (res) => {
       toast.success(t('settings.cardUpdated'))
       queryClient.invalidateQueries({ queryKey: ['collection'] })
-      queryClient.invalidateQueries({ queryKey: ['card-search'] })
       onCreated && onCreated(res)
       onClose()
     },
@@ -118,7 +117,6 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
     onSuccess: (res) => {
       toast.success(res?.data?.message || t('common.success'))
       queryClient.invalidateQueries({ queryKey: ['collection'] })
-      queryClient.invalidateQueries({ queryKey: ['card-search'] })
       queryClient.invalidateQueries({ queryKey: ['custom-cards'] })
       onClose()
     },
@@ -362,7 +360,7 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
   )
 }
 
-export function CardItem({ card, showActions = true, onAddToBinder = null, compact = false, lang = null }) {
+export const CardItem = memo(function CardItem({ card, showActions = true, onAddToBinder = null, compact = false, lang = null }) {
   const [showModal, setShowModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const { t, pricePrimary, formatPrice } = useSettings()
@@ -512,7 +510,7 @@ export function CardItem({ card, showActions = true, onAddToBinder = null, compa
       )}
     </>
   )
-}
+})
 
 const CARD_VARIANTS = [
   'Normal', 'Holo', 'Reverse Holo', 'First Edition', 'Double Rare',

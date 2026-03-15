@@ -424,6 +424,7 @@ export default function Settings() {
                       value={usernameInput}
                       onChange={(e) => setUsernameInput(e.target.value)}
                       className="w-32 rounded-lg border border-border bg-bg-primary px-2 py-1.5 text-xs text-text-primary outline-none focus:border-brand-red"
+                      style={{ WebkitTextFillColor: "var(--color-text-primary)", WebkitBoxShadow: "0 0 0px 1000px var(--color-bg) inset" }}
                       autoFocus
                       maxLength={32}
                     />

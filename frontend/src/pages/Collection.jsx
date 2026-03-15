@@ -411,7 +411,23 @@ export default function Collection() {
       if (filterMinPrice && marketPrice < parseFloat(filterMinPrice)) return false
       if (filterMaxPrice && marketPrice > parseFloat(filterMaxPrice)) return false
       if (filterDuplicates && item.quantity < 2) return false
-      if (searchText && !card?.name.toLowerCase().includes(searchText.toLowerCase())) return false
+      if (searchText) {
+        const q = searchText.toLowerCase().trim()
+        const nameMatch = card?.name?.toLowerCase().includes(q)
+        const setMatch = card?.set_name?.toLowerCase().includes(q) || card?.set?.name?.toLowerCase().includes(q)
+        const numberMatch = card?.number?.toString() === q || card?.localId?.toString() === q
+        // Support "SET NUMBER" shortcode (e.g. "SV1 001")
+        const codeMatch = /^([A-Za-z]+\d*)\s+(\d+)$/.exec(q)
+        let shortcodeMatch = false
+        if (codeMatch) {
+          const [, setCode, num] = codeMatch
+          const normalizedNum = String(parseInt(num, 10))
+          const cardSetId = (card?.set_id || card?.set?.id || "").toLowerCase()
+          const cardNum = (card?.number || card?.localId || "").toString().replace(/^0+/, "") || "0"
+          shortcodeMatch = cardSetId.includes(setCode) && cardNum === normalizedNum
+        }
+        if (!nameMatch && !setMatch && !numberMatch && !shortcodeMatch) return false
+      }
       return true
     })
 
