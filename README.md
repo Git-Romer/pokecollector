@@ -14,7 +14,7 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 
 > A self-hosted, full-stack Pokémon TCG collection management app — track your cards, monitor prices, manage binders, and analyse your portfolio.
 
-![Dark Theme](https://img.shields.io/badge/theme-dark-1a1a2e?style=flat-square) ![TCGdex](https://img.shields.io/badge/card%20data-TCGdex-e3000b?style=flat-square) ![Docker](https://img.shields.io/badge/deploy-Docker-2496ed?style=flat-square) ![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square) ![React](https://img.shields.io/badge/frontend-React%2018-61dafb?style=flat-square)
+![Dark Theme](https://img.shields.io/badge/theme-dark-1a1a2e?style=flat-square) ![TCGdex](https://img.shields.io/badge/card%20data-TCGdex-e3000b?style=flat-square) ![Docker](https://img.shields.io/badge/deploy-Docker-2496ed?style=flat-square) ![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square) ![React](https://img.shields.io/badge/frontend-React%2018-61dafb?style=flat-square) [![Ko-fi](https://img.shields.io/badge/support-Ko--fi-ff5e5b?style=flat-square&logo=ko-fi&logoColor=white)](https://ko-fi.com/gillesromer)
 
 ![WebApp Preview](preview-homescreen.png)
 ---
@@ -29,6 +29,7 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - [Documentation](#-documentation)
 - [Configuration Reference](#-configuration-reference)
 - [Updating](#-updating)
+- [Support](#️-support)
 - [License](#-license)
 
 ---
@@ -290,6 +291,16 @@ docker compose up -d --build
 ```
 
 Database migrations run automatically on startup — no manual steps needed.
+
+---
+
+## ❤️ Support
+
+All earnings are donated to animal rescue organizations. 🐾
+
+If you enjoy PokéCollector, consider supporting via [Ko-fi](https://ko-fi.com/gillesromer) — every contribution goes directly to helping animals in need.
+
+Mention your name or GitHub profile in the Ko-fi message to appear as a supporter in the app!
 
 ---
 

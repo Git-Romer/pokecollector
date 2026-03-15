@@ -199,6 +199,9 @@ export const getSetting = (key) => api.get(`/settings/${key}`).then(r => r.data)
 export const setSetting = (key, value) => api.post(`/settings/${key}`, { value }).then(r => r.data)
 export const getTelegramStatus = () => api.get('/settings/telegram_status').then(r => r.data)
 
+// GitHub / Community
+export const getContributors = () => api.get('/github/contributors').then(r => r.data)
+export const getSupporters = () => api.get('/github/supporters').then(r => r.data)
 
 // Social
 export const getLeaderboard = () => api.get('/social/leaderboard')
