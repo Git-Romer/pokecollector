@@ -35,26 +35,11 @@ const CONDITION_COLORS = {
   MP: 'badge-red',
   HP: 'badge-red',
 }
-const CARD_VARIANTS = [
-  'Normal', 'Holo', 'Reverse Holo', 'Full Art', 'Alt Art', 'Gold', 'Rainbow',
-  'Illustration Rare', 'Special Illustration Rare', 'Crown Rare', 'Promo',
-  'Art Rare', 'Ultra Rare', 'Secret Rare', 'Shiny',
-]
+const CARD_VARIANTS = ['Normal', 'Holo', 'Reverse Holo', 'First Edition']
 const VARIANT_COLORS = {
   'Holo': 'badge-purple',
   'Reverse Holo': 'badge-blue',
-  'Full Art': 'badge-yellow',
-  'Alt Art': 'badge-pink',
-  'Gold': 'badge-yellow',
-  'Rainbow': 'badge-purple',
-  'Illustration Rare': 'badge-blue',
-  'Special Illustration Rare': 'badge-purple',
-  'Crown Rare': 'badge-yellow',
-  'Promo': 'badge-green',
-  'Art Rare': 'badge-red',
-  'Ultra Rare': 'badge-yellow',
-  'Secret Rare': 'badge-red',
-  'Shiny': 'badge-blue',
+  'First Edition': 'badge-green',
   'Normal': 'badge-gray',
 }
 

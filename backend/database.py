@@ -1,7 +1,9 @@
-from sqlalchemy import create_engine
+import logging
+import os
+
+from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-import os
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
@@ -11,6 +13,7 @@ DATABASE_URL = os.getenv(
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=10, max_overflow=20)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+logger = logging.getLogger(__name__)
 
 
 def get_db():
@@ -31,7 +34,6 @@ DEFAULT_SETTINGS = {
 
 def _run_migrations(conn):
     """Apply any schema migrations that cannot be handled by create_all."""
-    from sqlalchemy import text
     migrations = [
         # Add abbreviation column to sets table (safe — PostgreSQL IF NOT EXISTS)
         "ALTER TABLE sets ADD COLUMN IF NOT EXISTS abbreviation VARCHAR",
@@ -173,6 +175,83 @@ def _run_migrations(conn):
             conn.rollback()
 
 
+def migrate_collection_variants():
+    """Move rarity-like values out of collection.variant without creating key collisions."""
+    rarity_values = (
+        "Double Rare", "Full Art", "Alt Art", "Gold", "Rainbow",
+        "Illustration Rare", "Special Illustration Rare", "Crown Rare",
+        "Promo", "Art Rare", "Ultra Rare", "Secret Rare", "Shiny",
+    )
+    placeholders = ",".join([f":v{i}" for i in range(len(rarity_values))])
+    params = {f"v{i}": value for i, value in enumerate(rarity_values)}
+
+    db = SessionLocal()
+    try:
+        rows = db.execute(text(f"""
+            SELECT
+                c.id,
+                c.card_id,
+                c.lang,
+                c.variant,
+                cards.variants_holo,
+                cards.variants_normal,
+                cards.variants_reverse
+            FROM collection c
+            LEFT JOIN cards ON cards.id = c.card_id
+            WHERE c.variant IN ({placeholders})
+            ORDER BY c.id
+        """), params).fetchall()
+
+        if not rows:
+            return
+
+        existing_targets = {
+            (row.card_id, row.lang, row.variant)
+            for row in db.execute(text(f"""
+                SELECT card_id, lang, variant
+                FROM collection
+                WHERE variant IS NOT NULL
+                  AND variant NOT IN ({placeholders})
+            """), params).fetchall()
+        }
+
+        migrated = 0
+        skipped = 0
+        reserved_targets = set()
+
+        for row in rows:
+            target_variant = None
+            if row.variants_normal:
+                target_variant = "Normal"
+            elif row.variants_holo and not row.variants_normal:
+                target_variant = "Holo"
+
+            if target_variant is not None:
+                target_key = (row.card_id, row.lang, target_variant)
+                if target_key in existing_targets or target_key in reserved_targets:
+                    skipped += 1
+                    continue
+                reserved_targets.add(target_key)
+
+            db.execute(
+                text("UPDATE collection SET variant = :variant WHERE id = :id"),
+                {"id": row.id, "variant": target_variant},
+            )
+            migrated += 1
+
+        db.commit()
+        logger.info(
+            "migrate_collection_variants: migrated %s row(s), skipped %s duplicate-conflicting row(s)",
+            migrated,
+            skipped,
+        )
+    except Exception as e:
+        db.rollback()
+        logger.warning("migrate_collection_variants: migration aborted: %s", e)
+    finally:
+        db.close()
+
+
 def migrate_card_ids():
     """Migrate card IDs from plain TCGdex format (e.g. 'sv1-1') to composite format (e.g. 'sv1-1_de').
 
@@ -276,6 +355,12 @@ def init_db():
     # Migrate card IDs to composite format (idempotent)
     try:
         migrate_card_ids()
+    except Exception:
+        pass  # Non-blocking
+
+    # Migrate old rarity-like variant values to physical variants (idempotent)
+    try:
+        migrate_collection_variants()
     except Exception:
         pass  # Non-blocking
 

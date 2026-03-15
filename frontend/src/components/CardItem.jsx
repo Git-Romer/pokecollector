@@ -512,18 +512,24 @@ export const CardItem = memo(function CardItem({ card, showActions = true, onAdd
   )
 })
 
-const CARD_VARIANTS = [
-  'Normal', 'Holo', 'Reverse Holo', 'First Edition', 'Double Rare',
-  'Full Art', 'Alt Art', 'Gold', 'Rainbow',
-  'Illustration Rare', 'Special Illustration Rare', 'Crown Rare', 'Promo',
-  'Art Rare', 'Ultra Rare', 'Secret Rare', 'Shiny',
-]
+const CARD_VARIANTS = ['Normal', 'Holo', 'Reverse Holo', 'First Edition']
 
 
 export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
   const [quantity, setQuantity] = useState(1)
   const [condition, setCondition] = useState('NM')
-  const [variant, setVariant] = useState('')
+  const [variant, setVariant] = useState(() => {
+    const hasNormal = card.variants_normal
+    const hasReverse = card.variants_reverse
+    const hasHolo = card.variants_holo
+    const hasFirst = card.variants_first_edition
+
+    const available = [hasNormal && 'Normal', hasReverse && 'Reverse Holo', hasHolo && 'Holo', hasFirst && 'First Edition'].filter(Boolean)
+
+    if (available.length === 1) return available[0]
+    if (hasHolo && !hasNormal && !hasReverse) return 'Holo'
+    return ''
+  })
   const [purchasePrice, setPurchasePrice] = useState('')
   const [modalPeriod, setModalPeriod] = useState('total')
   const [resolvedCardId, setResolvedCardId] = useState(card.id)
@@ -832,7 +838,28 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
                   <option value="">{t('variants.none')}</option>
                   {CARD_VARIANTS.map(v => <option key={v} value={v}>{v}</option>)}
                 </select>
+                {(() => {
+                  const available = [
+                    card.variants_normal && 'Normal',
+                    card.variants_reverse && 'Reverse Holo',
+                    card.variants_holo && 'Holo',
+                    card.variants_first_edition && 'First Edition',
+                  ].filter(Boolean)
+                  return available.length > 0 ? (
+                    <p className="text-[10px] text-text-muted mt-1">
+                      📋 {t('card.availableVariants')}: {available.join(', ')}
+                    </p>
+                  ) : null
+                })()}
               </div>
+              {card.rarity && (
+                <div>
+                  <label className="text-xs text-text-muted mb-1 block font-medium">💎 {t('card.rarity')}</label>
+                  <p className="text-sm text-text-primary font-medium px-3 py-1.5 rounded-lg bg-bg-card border border-border">
+                    {card.rarity}
+                  </p>
+                </div>
+              )}
               <div>
                 <label className="text-xs text-text-muted mb-1 block">{t('card.purchasePrice')}</label>
                 <input type="number" step="0.01" min="0" placeholder={t('card.purchasePricePlaceholder')}
