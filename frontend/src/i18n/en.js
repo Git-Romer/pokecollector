@@ -624,6 +624,7 @@ const en = {
   // Card modal
   card: {
     rarity: 'Rarity',
+    availableVariants: 'Available',
     type: 'Type',
     hp: 'HP',
     artist: 'Artist',
@@ -688,6 +689,7 @@ const en = {
     Normal: 'Normal',
     Holo: 'Holo',
     'Reverse Holo': 'Reverse Holo',
+    'First Edition': 'First Edition',
     'Full Art': 'Full Art',
     'Alt Art': 'Alt Art',
     Gold: 'Gold',

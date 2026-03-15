@@ -624,6 +624,7 @@ const de = {
   // Card modal
   card: {
     rarity: 'Seltenheit',
+    availableVariants: 'Verfügbar',
     type: 'Typ',
     hp: 'HP',
     artist: 'Illustrator',
@@ -688,6 +689,7 @@ const de = {
     Normal: 'Normal',
     Holo: 'Holo',
     'Reverse Holo': 'Reverse Holo',
+    'First Edition': 'First Edition',
     'Full Art': 'Full Art',
     'Alt Art': 'Alt Art',
     Gold: 'Gold',

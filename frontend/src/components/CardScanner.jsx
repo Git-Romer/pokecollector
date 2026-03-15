@@ -6,11 +6,7 @@ import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
 
-const CARD_VARIANTS = [
-  'Normal', 'Holo', 'Reverse Holo', 'Full Art', 'Alt Art', 'Gold', 'Rainbow',
-  'Illustration Rare', 'Special Illustration Rare', 'Crown Rare', 'Promo',
-  'Art Rare', 'Ultra Rare', 'Secret Rare', 'Shiny',
-]
+const CARD_VARIANTS = ['Normal', 'Holo', 'Reverse Holo', 'First Edition']
 
 // ─── Add-to-Collection Modal für Scan-Ergebnis ──────────────────────────────
 function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
@@ -124,7 +120,7 @@ function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
             <div>
               <label className="text-xs text-text-muted mb-1 block">✨ {t('card.variant')}</label>
               <select value={variant} onChange={e => setVariant(e.target.value)} className="select">
-                <option value="">{t('common.none')}</option>
+                <option value="">{t('variants.none')}</option>
                 {CARD_VARIANTS.map(v => <option key={v} value={v}>{v}</option>)}
               </select>
             </div>
