@@ -414,17 +414,19 @@ export default function Collection() {
       if (searchText) {
         const q = searchText.toLowerCase().trim()
         const nameMatch = card?.name?.toLowerCase().includes(q)
-        const setMatch = card?.set_name?.toLowerCase().includes(q) || card?.set?.name?.toLowerCase().includes(q)
+        const setMatch = card?.set_name?.toLowerCase().includes(q) || card?.set?.name?.toLowerCase().includes(q) || card?.set_ref?.name?.toLowerCase().includes(q)
         const numberMatch = card?.number?.toString() === q || card?.localId?.toString() === q
-        // Support "SET NUMBER" shortcode (e.g. "SV1 001")
+        // Support "SET NUMBER" shortcode (e.g. "PFL 001", "OBF 125")
         const codeMatch = /^([A-Za-z]+\d*)\s+(\d+)$/.exec(q)
         let shortcodeMatch = false
         if (codeMatch) {
           const [, setCode, num] = codeMatch
           const normalizedNum = String(parseInt(num, 10))
+          const cardAbbr = (card?.set_ref?.abbreviation || "").toLowerCase()
           const cardSetId = (card?.set_id || card?.set?.id || "").toLowerCase()
+          const cardTcgSetId = (card?.set_ref?.tcg_set_id || "").toLowerCase()
           const cardNum = (card?.number || card?.localId || "").toString().replace(/^0+/, "") || "0"
-          shortcodeMatch = cardSetId.includes(setCode) && cardNum === normalizedNum
+          shortcodeMatch = (cardAbbr === setCode || cardSetId.includes(setCode) || cardTcgSetId === setCode) && cardNum === normalizedNum
         }
         if (!nameMatch && !setMatch && !numberMatch && !shortcodeMatch) return false
       }
