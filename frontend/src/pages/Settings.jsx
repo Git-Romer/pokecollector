@@ -591,7 +591,7 @@ export default function Settings() {
               </SettingsRow>
               <SettingsRow label={t('settings.dataSource')} description={t('settings.dataSourceDesc')} last>
                 <a
-                  href="https://tcgdex.net"
+                  href="https://tcgdex.dev"
                   target="_blank"
                   rel="noreferrer"
                   className="text-xs font-semibold text-brand-red hover:opacity-80 transition-opacity"
