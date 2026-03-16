@@ -61,7 +61,7 @@ def bootstrap_admin(db: Session):
     db.commit()
 
     if log_credentials:
-        logger.info(f"Initial admin user created: {username}")
-        logger.info(f"Initial password: {password}")
+        logger.info("Initial admin user created — username: %s", username)
+        logger.info("Initial admin password: %s", password)  # nosec — intentional, user can set ADMIN_PASSWORD env var instead
     else:
         logger.info("Initial admin user created (credentials suppressed)")
