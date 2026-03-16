@@ -257,7 +257,7 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
         {/* LOADING */}
         {phase === 'loading' && (
           <div className="flex flex-col items-center gap-6 pt-8">
-            {preview && (
+            {preview && preview.startsWith("blob:") && (
               <img src={preview} className="w-40 aspect-[2.5/3.5] object-cover rounded-xl"
                 style={{ border: '1px solid rgba(255,255,255,0.1)' }} />
             )}

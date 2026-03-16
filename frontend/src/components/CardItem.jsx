@@ -274,7 +274,7 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
                 <label className="text-xs text-text-secondary mb-1 block">{t('cardSearch.imageUrl')}</label>
                 <input type="url" placeholder="https://..." value={imageUrl}
                   onChange={(e) => setImageUrl(e.target.value)} className="input" />
-                {imageUrl && (
+                {imageUrl && /^https?:\/\//i.test(imageUrl) && (
                   <div className="mt-2 w-20 h-28 rounded overflow-hidden border border-border">
                     <img src={imageUrl} alt="preview" className="w-full h-full object-cover" onError={(e) => e.target.style.display = 'none'} />
                   </div>
