@@ -690,6 +690,8 @@ const de = {
     selectHint: 'In welcher Sprache hast du diese Karte?',
     de_full: 'Deutsch',
     en_full: 'Englisch',
+    zh: 'ZH',
+    zh_full: 'Chinesisch',
     setLangFilter: 'Sets nach Sprache filtern',
     searchLangFilter: 'Suche nach Sprache filtern',
   },
