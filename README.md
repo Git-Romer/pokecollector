@@ -38,19 +38,19 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 
 ### 📦 Collection Management
 - Add cards with **quantity**, **condition** (Mint / NM / LP / MP / HP), **variant** (Holo, Reverse Holo, First Edition, Alt Art, etc.), and **purchase price**
-- Track **German and English** card versions separately
+- Track **German, English, and Chinese** card versions separately
 - Manually create custom cards not in TCGdex
 
 ### 🔍 Card Search
 - Search all cards cached in your local database by name, set, type, rarity, HP, artist
 - Short-code search: type `PFL 001` to find card #1 from Paldea Fates directly
-- Language filter: show DE only, EN only, or both
+- Language filter: show DE, EN, ZH, or all
 - Scan a card with your camera for AI-powered recognition (requires Google Gemini API key)
 
 ### 🗂️ Set Checklists
 - Browse all Pokémon TCG sets with logo, series, total cards, and your completion %
 - Per-set checklist: green = owned, red/grey = missing
-- Supports both German and English set versions
+- Supports German, English, and Chinese set versions
 
 ### 📈 Price Tracking & Portfolio
 - **Cardmarket EUR** prices (non-holo + holo variants): market, low, trend, avg1, avg7, avg30
@@ -104,7 +104,7 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - Works offline for previously viewed cards
 
 ### ⚙️ Settings & Utilities
-- **Language**: German / English UI
+- **Language**: German / English / Chinese UI
 - **Primary Price**: choose which Cardmarket price drives your portfolio value
 - **Currency**: EUR or USD (live exchange rate via Frankfurter API)
 - **Profile**: change username and avatar
@@ -265,7 +265,7 @@ All settings are persisted in the database and editable via the Settings page:
 
 | Setting | Default | Options |
 |---------|---------|---------|
-| Language | `de` | `de`, `en` |
+| Language | `de` | `de`, `en`, `zh` |
 | Primary Price | `trend` | `trend`, `avg1`, `avg7`, `avg30`, `low`, `market` |
 | Currency | `EUR` | `EUR`, `USD` |
 | Multi-User Mode | `off` | Toggle in Settings (admin only) |
