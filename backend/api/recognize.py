@@ -114,6 +114,20 @@ Respond ONLY with this exact JSON (no markdown, no explanation):
     if not card_name:
         raise HTTPException(status_code=422, detail="Kartenname konnte nicht erkannt werden.")
 
+    # Strip card suffixes for broader TCGdex search — exact variants differ between
+    # printed text ("EX") and TCGdex naming ("ex", "-ex"). The number ranking and
+    # visual verification will find the exact match from the broader result set.
+    _SUFFIXES = re.compile(
+        r"[\s-]+(?:EX|ex|GX|gx|V|VMAX|VSTAR|VStar|TAG\s*TEAM|BREAK|LV\.?\s*X)\s*$",
+        re.IGNORECASE,
+    )
+
+    def _simplify_name(name: str) -> str:
+        return _SUFFIXES.sub("", name).strip()
+
+    card_name_simple = _simplify_name(card_name)
+    card_name_en_simple = _simplify_name(card_name_en)
+
     # Use detected language for TCGdex search
     detected_lang = card_info.get("language", "en").lower().strip()
     # TCGdex supports: en, fr, es, it, pt, de, nl, pl, ru, ko, zh-hans, zh-hant, ja
@@ -121,10 +135,14 @@ Respond ONLY with this exact JSON (no markdown, no explanation):
     if detected_lang not in supported_langs:
         detected_lang = "en"
 
-    # Build (lang, search_name) pairs — use native name for native lang, English name for English fallback
-    search_pairs = [(detected_lang, card_name)]
+    # Build (lang, search_name) pairs — try simplified name first (broader), then original as fallback
+    search_pairs = [(detected_lang, card_name_simple)]
+    if card_name_simple != card_name:
+        search_pairs.append((detected_lang, card_name))
     if detected_lang != "en":
-        search_pairs.append(("en", card_name_en))
+        search_pairs.append(("en", card_name_en_simple))
+        if card_name_en_simple != card_name_en:
+            search_pairs.append(("en", card_name_en))
 
     # Collect all raw results first, setting _lang on each card
     all_results = []
