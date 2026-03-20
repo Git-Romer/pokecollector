@@ -173,6 +173,109 @@ Respond ONLY with this exact JSON (no markdown, no explanation):
         f"Recognize dedup: {len(all_results)} before -> {len(deduped)} after dedup by (card_id, _lang)"
     )
 
+    # Rank results: cards with matching number first
+    recognized_number = card_info.get("number")
+    number_match_count = 0
+    number_match_clear = False
+    if recognized_number:
+        # Normalize: "136/182" -> "136", "001" -> "1"
+        num_match = re.match(r"(\d+)", str(recognized_number).strip())
+        if num_match:
+            target_num = str(int(num_match.group(1)))  # strip leading zeros
+
+            def number_sort_key(card):
+                card_num = card.get("number", "")
+                if card_num:
+                    cn_match = re.match(r"(\d+)", str(card_num).strip())
+                    if cn_match and str(int(cn_match.group(1))) == target_num:
+                        return 0  # exact match first
+                return 1  # non-matches after
+
+            deduped.sort(key=number_sort_key)
+            number_match_count = sum(1 for card in deduped if number_sort_key(card) == 0)
+            number_match_clear = (
+                len(deduped) > 0 and number_sort_key(deduped[0]) == 0 and number_match_count == 1
+            )
+            logger.info(f"Ranked results by number match (target: {target_num})")
+
+    # Visual verification: ask Gemini to pick the best match from candidate images
+    top_candidates = deduped[:5]  # max 5 to keep costs low
+    if len(top_candidates) >= 2 and not number_match_clear:
+        try:
+            # Download candidate images
+            candidate_parts = [
+                {"text": "Here is the original card photo the user took:"},
+                {"inline_data": {"mime_type": mime_type, "data": image_b64}},
+                {
+                    "text": (
+                        "Below are candidate cards from our database. Which one matches the photo "
+                        "above? Look at the artwork, card name, and card number. Respond with ONLY "
+                        "the number (1, 2, 3...) of the best match, or 0 if none match.\n"
+                    )
+                },
+            ]
+
+            async with httpx.AsyncClient(timeout=20) as client:
+                for i, candidate in enumerate(top_candidates):
+                    img_url = candidate.get("image")
+                    if not img_url:
+                        candidate_parts.append({
+                            "text": f"\nCandidate {i + 1}: {candidate.get('name', '?')} (no image available)"
+                        })
+                        continue
+                    try:
+                        img_resp = await client.get(img_url, timeout=5)
+                        if img_resp.status_code == 200:
+                            img_b64 = base64.b64encode(img_resp.content).decode()
+                            candidate_parts.append({
+                                "text": (
+                                    f"\nCandidate {i + 1}: {candidate.get('name', '?')} "
+                                    f"#{candidate.get('number', '?')}"
+                                )
+                            })
+                            candidate_parts.append({
+                                "inline_data": {"mime_type": "image/webp", "data": img_b64}
+                            })
+                        else:
+                            candidate_parts.append({
+                                "text": (
+                                    f"\nCandidate {i + 1}: {candidate.get('name', '?')} "
+                                    "(image unavailable)"
+                                )
+                            })
+                    except Exception:
+                        candidate_parts.append({
+                            "text": (
+                                f"\nCandidate {i + 1}: {candidate.get('name', '?')} "
+                                "(image fetch failed)"
+                            )
+                        })
+
+                verify_resp = await client.post(gemini_url, json={
+                    "contents": [{"parts": candidate_parts}]
+                })
+
+            if verify_resp.status_code == 200:
+                verify_result = verify_resp.json()
+                verify_text = verify_result["candidates"][0]["content"]["parts"][0]["text"].strip()
+                # Extract the number from response
+                pick_match = re.search(r"(\d+)", verify_text)
+                if pick_match:
+                    pick = int(pick_match.group(1))
+                    if 1 <= pick <= len(top_candidates):
+                        # Move the picked candidate to the front
+                        winner = top_candidates[pick - 1]
+                        deduped.remove(winner)
+                        deduped.insert(0, winner)
+                        logger.info(
+                            f"Visual verification picked candidate {pick}: "
+                            f"{winner.get('name')} #{winner.get('number')}"
+                        )
+                    elif pick == 0:
+                        logger.info("Visual verification: no match found among candidates")
+        except Exception as e:
+            logger.warning(f"Visual verification failed (non-blocking): {e}")
+
     return {
         "recognized": card_info,
         "matches": deduped[:8],
