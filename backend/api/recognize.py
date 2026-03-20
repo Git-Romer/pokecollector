@@ -8,7 +8,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from sqlalchemy.orm import Session
 from api.auth import get_current_user
 from database import get_db
-from models import Setting, User
+from models import Setting, User, Set
 
 logger = logging.getLogger(__name__)
 
@@ -177,6 +177,24 @@ Respond ONLY with this exact JSON (no markdown, no explanation):
                         })
         except Exception:
             continue
+
+    # Enrich results with set name from local DB
+    for card in all_results:
+        tcg_card_id = card.get("tcg_card_id", "")
+        card_lang = card.get("_lang", "en")
+        # Extract set_id from card_id: "me02.5-022" -> "me02.5"
+        if "-" in tcg_card_id:
+            set_id = tcg_card_id.rsplit("-", 1)[0]
+            local_set = db.query(Set).filter(
+                Set.tcg_set_id == set_id, Set.lang == card_lang
+            ).first()
+            if not local_set:
+                # Fallback: try without language filter
+                local_set = db.query(Set).filter(Set.tcg_set_id == set_id).first()
+            if local_set:
+                card["set"] = local_set.name
+                if local_set.abbreviation:
+                    card["set_abbreviation"] = local_set.abbreviation
 
     # Dedup by (card_id, _lang) composite key — same card in different languages counts once per lang
     seen = set()
