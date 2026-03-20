@@ -64,8 +64,7 @@ function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
             )}
             <div className="flex-1 min-w-0">
               <p className="font-bold text-white text-base truncate">{match.name}</p>
-              <p className="text-xs text-text-muted truncate">{match.set_abbreviation ? `${match.set_abbreviation} · ${match.set}` : match.set}</p>
-              {match.number && <p className="text-[11px] text-text-muted">#{match.number}</p>}
+              <p className="text-xs font-mono text-brand-red/80 font-semibold">{`${(match.set_abbreviation || '').toUpperCase()} ${match.number || ''}`.trim()}</p>
               {match.rarity && <p className="text-[11px] text-text-muted">{match.rarity}</p>}
             </div>
             <button onClick={onClose} className="text-text-muted hover:text-text-primary p-1 flex-shrink-0">
@@ -296,7 +295,7 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
                   {results.matches.map(match => {
                     const matchLang = match.lang || match._lang || 'en'
                     // Format card ID as "SETCODE NUMBER", e.g. "OBF 125"
-                    const setCode = match.set?.id?.toUpperCase() || (match.id || '').split('-')[0].toUpperCase()
+                    const setCode = (match.set_abbreviation || match.set?.id || (match.id || '').split('-')[0]).toUpperCase()
                     const localNum = match.localId || match.number || ''
                     const cardIdLabel = `${setCode} ${localNum}`.trim()
                     return (
@@ -336,7 +335,6 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
                           {cardIdLabel && (
                             <p className="text-[9px] font-mono text-brand-red/80 font-semibold">{cardIdLabel}</p>
                           )}
-                          <p className="text-[9px] text-text-muted truncate">{match.set_abbreviation ? `${match.set_abbreviation} · ${match.set}` : match.set}</p>
                           {match.rarity && (
                             <p className="text-[9px] text-text-muted truncate">{match.rarity}</p>
                           )}
