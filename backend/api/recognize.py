@@ -8,15 +8,21 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from sqlalchemy.orm import Session
 from api.auth import get_current_user
 from database import get_db
-from models import Setting, User, Set
+from models import Setting, UserSetting, User, Set
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
-def get_gemini_key(db: Session) -> str:
-    """Read Gemini API key from DB settings, fallback to env var."""
+def get_gemini_key(db: Session, user_id: int = None) -> str:
+    """Read Gemini API key from user settings, fallback to global, fallback to env."""
+    if user_id is not None:
+        row = db.query(UserSetting).filter(
+            UserSetting.user_id == user_id, UserSetting.key == "gemini_api_key"
+        ).first()
+        if row and row.value:
+            return row.value
     row = db.query(Setting).filter(Setting.key == "gemini_api_key").first()
     if row and row.value:
         return row.value
@@ -34,7 +40,7 @@ async def recognize_card(
     including the card's language, then searches TCGdex in that language.
     Supports both German and English (and other) cards automatically.
     """
-    api_key = get_gemini_key(db)
+    api_key = get_gemini_key(db, user_id=current_user.id)
     if not api_key:
         raise HTTPException(
             status_code=400,

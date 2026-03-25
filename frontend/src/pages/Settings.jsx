@@ -724,21 +724,23 @@ export default function Settings() {
                   {isRunning ? t('settings.running') : t('settings.syncButton')}
                 </button>
               </SettingsRow>
-              <SettingsRow label={t('settings.interval')} description={t('settings.syncSetsCardsDesc')} last>
-                <SelectControl
-                  value={fullSyncIntervalDays}
-                  options={[
-                    { value: '1',  label: t('settings.day1') },
-                    { value: '2',  label: t('settings.days2') },
-                    { value: '3',  label: t('settings.days3') },
-                    { value: '5',  label: t('settings.days5') },
-                    { value: '7',  label: t('settings.days7') },
-                    { value: '14', label: t('settings.days14') },
-                    { value: '30', label: t('settings.days30') },
-                  ]}
-                  onChange={handleFullSyncIntervalChange}
-                />
-              </SettingsRow>
+              {user?.role === 'admin' && (
+                <SettingsRow label={t('settings.interval')} description={t('settings.syncSetsCardsDesc')} last>
+                  <SelectControl
+                    value={fullSyncIntervalDays}
+                    options={[
+                      { value: '1',  label: t('settings.day1') },
+                      { value: '2',  label: t('settings.days2') },
+                      { value: '3',  label: t('settings.days3') },
+                      { value: '5',  label: t('settings.days5') },
+                      { value: '7',  label: t('settings.days7') },
+                      { value: '14', label: t('settings.days14') },
+                      { value: '30', label: t('settings.days30') },
+                    ]}
+                    onChange={handleFullSyncIntervalChange}
+                  />
+                </SettingsRow>
+              )}
             </SettingsCard>
 
             {/* Card 2: Price Sync */}
@@ -754,20 +756,22 @@ export default function Settings() {
                   {isPriceSyncRunning ? t('settings.running') : t('settings.syncButton')}
                 </button>
               </SettingsRow>
-              <SettingsRow label={t('settings.priceInterval')} description={t('settings.syncPricesOnlyDesc')} last>
-                <SelectControl
-                  value={priceSyncIntervalMinutes}
-                  options={[
-                    { value: '60',   label: t('settings.min60') },
-                    { value: '120',  label: t('settings.min120') },
-                    { value: '180',  label: t('settings.min180') },
-                    { value: '360',  label: t('settings.min360') },
-                    { value: '720',  label: t('settings.min720') },
-                    { value: '1440', label: t('settings.min1440') },
-                  ]}
-                  onChange={handlePriceSyncIntervalChange}
-                />
-              </SettingsRow>
+              {user?.role === 'admin' && (
+                <SettingsRow label={t('settings.priceInterval')} description={t('settings.syncPricesOnlyDesc')} last>
+                  <SelectControl
+                    value={priceSyncIntervalMinutes}
+                    options={[
+                      { value: '60',   label: t('settings.min60') },
+                      { value: '120',  label: t('settings.min120') },
+                      { value: '180',  label: t('settings.min180') },
+                      { value: '360',  label: t('settings.min360') },
+                      { value: '720',  label: t('settings.min720') },
+                      { value: '1440', label: t('settings.min1440') },
+                    ]}
+                    onChange={handlePriceSyncIntervalChange}
+                  />
+                </SettingsRow>
+              )}
             </SettingsCard>
           </section>
 

@@ -342,7 +342,7 @@ def migrate_card_ids():
 
 def init_db():
     """Initialize the database: create tables, run migrations, seed settings."""
-    from models import Base as ModelBase, Setting
+    from models import Base as ModelBase, Setting, User
     ModelBase.metadata.create_all(bind=engine)
 
     # Run lightweight schema migrations (idempotent, PostgreSQL only)
@@ -374,6 +374,42 @@ def init_db():
         db.commit()
     except Exception:
         db.rollback()
+    # v42: Migrate per-user settings from global to admin user
+    try:
+        from models import UserSetting
+        admin = db.query(User).filter(User.role == "admin").first()
+        if admin:
+            per_user_keys = {
+                "language", "currency", "price_primary", "price_display",
+                "telegram_bot_token", "telegram_chat_id", "telegram_enabled",
+                "price_alerts_enabled", "price_alert_threshold",
+                "gemini_api_key", "trainer_name",
+            }
+            for key in per_user_keys:
+                existing_user_setting = db.query(UserSetting).filter(
+                    UserSetting.user_id == admin.id, UserSetting.key == key
+                ).first()
+                if existing_user_setting:
+                    continue
+                global_row = db.query(Setting).filter(Setting.key == key).first()
+                if global_row:
+                    db.add(UserSetting(user_id=admin.id, key=key, value=global_row.value))
+                elif key == "telegram_bot_token":
+                    val = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+                    if val:
+                        db.add(UserSetting(user_id=admin.id, key=key, value=val))
+                elif key == "telegram_chat_id":
+                    val = os.environ.get("TELEGRAM_CHAT_ID", "")
+                    if val:
+                        db.add(UserSetting(user_id=admin.id, key=key, value=val))
+                elif key == "gemini_api_key":
+                    val = os.environ.get("GEMINI_API_KEY", "")
+                    if val:
+                        db.add(UserSetting(user_id=admin.id, key=key, value=val))
+            db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.warning("User settings migration: %s", e)
     finally:
         db.close()
 

@@ -97,7 +97,9 @@ def check_wishlist_alerts(db: Session, updated_card_ids: list):
 
         if triggered:
             threshold = item.price_alert_above if alert_type == "above" else item.price_alert_below
-            telegram.send_price_alert(card.name, card.price_market, threshold, alert_type, db=db)
+            telegram.send_price_alert(
+                card.name, card.price_market, threshold, alert_type, db=db, user_id=item.user_id
+            )
             item.notified_at = now
 
     db.commit()
