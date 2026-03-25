@@ -37,8 +37,9 @@ def _get_user_settings(db: Session, user_id: int) -> dict:
     """Get all settings for a user: per-user from user_settings, global from settings."""
     result = {}
 
+    # Only load admin-only keys from global settings — per-user keys come from user_settings
     for row in db.query(Setting).all():
-        if row.key in ADMIN_ONLY_KEYS or row.key in PER_USER_KEYS:
+        if row.key in ADMIN_ONLY_KEYS:
             result[row.key] = row.value
 
     for row in db.query(UserSetting).filter(UserSetting.user_id == user_id).all():

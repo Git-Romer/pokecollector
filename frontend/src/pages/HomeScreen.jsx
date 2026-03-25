@@ -206,6 +206,7 @@ export default function HomeScreen() {
           ) : (
             <div />
           )}
+          {user?.role === 'admin' && (
           <button
             onClick={() => syncMutation.mutate()}
             disabled={isRunning}
@@ -219,6 +220,7 @@ export default function HomeScreen() {
             <RefreshCw size={12} className={isRunning ? 'animate-spin' : ''} />
             {isRunning ? t('home.syncing') : t('home.sync')}
           </button>
+          )}
         </div>
 
         {/* ── PORTFOLIO VALUE (large, prominent) ── */}
