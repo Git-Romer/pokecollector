@@ -241,6 +241,17 @@ class Setting(Base):
     value = Column(Text, nullable=False)
 
 
+class UserSetting(Base):
+    __tablename__ = "user_settings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    key = Column(String, nullable=False)
+    value = Column(Text, nullable=False)
+
+    __table_args__ = (UniqueConstraint("user_id", "key", name="uq_user_setting"),)
+
+
 class CustomCardMatch(Base):
     """Tracks custom cards that now have an equivalent API card on TCGdex."""
     __tablename__ = "custom_card_matches"
