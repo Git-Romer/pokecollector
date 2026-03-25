@@ -33,30 +33,38 @@ DEFAULT_SETTINGS = {
 }
 
 
+def _is_admin(db: Session, user_id: int) -> bool:
+    user = db.query(User).filter(User.id == user_id).first()
+    return user is not None and user.role == "admin"
+
+
 def _get_user_settings(db: Session, user_id: int) -> dict:
     """Get all settings for a user: per-user from user_settings, global from settings."""
     result = {}
 
-    # Only load admin-only keys from global settings — per-user keys come from user_settings
+    # Only load admin-only keys from global settings
     for row in db.query(Setting).all():
         if row.key in ADMIN_ONLY_KEYS:
             result[row.key] = row.value
 
+    # Load this user's own settings
     for row in db.query(UserSetting).filter(UserSetting.user_id == user_id).all():
         result[row.key] = row.value
 
-    if "telegram_bot_token" not in result:
-        env_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-        if env_token:
-            result["telegram_bot_token"] = env_token
-    if "telegram_chat_id" not in result:
-        env_chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
-        if env_chat_id:
-            result["telegram_chat_id"] = env_chat_id
-    if "gemini_api_key" not in result:
-        env_gemini = os.environ.get("GEMINI_API_KEY", "")
-        if env_gemini:
-            result["gemini_api_key"] = env_gemini
+    # Env var fallback ONLY for admin — other users get empty defaults
+    if _is_admin(db, user_id):
+        if "telegram_bot_token" not in result:
+            env_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+            if env_token:
+                result["telegram_bot_token"] = env_token
+        if "telegram_chat_id" not in result:
+            env_chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+            if env_chat_id:
+                result["telegram_chat_id"] = env_chat_id
+        if "gemini_api_key" not in result:
+            env_gemini = os.environ.get("GEMINI_API_KEY", "")
+            if env_gemini:
+                result["gemini_api_key"] = env_gemini
 
     for key, value in DEFAULT_SETTINGS.items():
         result.setdefault(key, value)

@@ -16,17 +16,15 @@ router = APIRouter()
 
 
 def get_gemini_key(db: Session, user_id: int = None) -> str:
-    """Read Gemini API key from user settings, fallback to global, fallback to env."""
+    """Read Gemini API key from user settings only. No cross-user fallback."""
     if user_id is not None:
         row = db.query(UserSetting).filter(
             UserSetting.user_id == user_id, UserSetting.key == "gemini_api_key"
         ).first()
         if row and row.value:
             return row.value
-    row = db.query(Setting).filter(Setting.key == "gemini_api_key").first()
-    if row and row.value:
-        return row.value
-    return os.environ.get("GEMINI_API_KEY", "")
+    # No global/env fallback — each user must configure their own key
+    return ""
 
 
 @router.post("/recognize")

@@ -24,22 +24,23 @@ def _get_telegram_credentials(db=None, user_id=None):
                 chat_id = chat_row.value
         except Exception:
             pass
-    if db is not None and not token:
-        try:
-            from models import Setting
-            token_row = db.query(Setting).filter(Setting.key == "telegram_bot_token").first()
-            chat_row = db.query(Setting).filter(Setting.key == "telegram_chat_id").first()
-            if token_row and token_row.value:
-                token = token_row.value
-            if chat_row and chat_row.value:
-                chat_id = chat_row.value
-        except Exception:
-            pass
-    # Fallback to environment variables
-    if not token:
-        token = os.getenv("TELEGRAM_BOT_TOKEN", "")
-    if not chat_id:
-        chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
+    # If no user_id provided (system-level notification), try global settings + env
+    if not token and user_id is None:
+        if db is not None:
+            try:
+                from models import Setting
+                token_row = db.query(Setting).filter(Setting.key == "telegram_bot_token").first()
+                chat_row = db.query(Setting).filter(Setting.key == "telegram_chat_id").first()
+                if token_row and token_row.value:
+                    token = token_row.value
+                if chat_row and chat_row.value:
+                    chat_id = chat_row.value
+            except Exception:
+                pass
+        if not token:
+            token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+        if not chat_id:
+            chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
     return token, chat_id
 
 
