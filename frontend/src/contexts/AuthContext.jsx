@@ -67,6 +67,9 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('token')
     localStorage.removeItem('user')
     setUser(null)
+    // Force full page reload to clear all cached data (React Query, etc.)
+    // Prevents settings/data from previous user session leaking
+    window.location.href = '/login'
   }
 
   return (
