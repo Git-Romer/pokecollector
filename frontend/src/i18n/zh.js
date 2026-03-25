@@ -568,6 +568,7 @@ const zh = {
       userCreated: '用户已创建',
       userUpdated: '用户已更新',
       userDeleted: '用户已删除',
+      forcePasswordChange: '用户必须在下次登录时更改密码',
       cannotDeleteSelf: '不能删除你自己',
       createdAt: '创建于',
     },

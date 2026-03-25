@@ -114,6 +114,7 @@ class User(Base):
     role = Column(String, default="trainer")  # "admin" or "trainer"
     is_active = Column(Boolean, default=True)
     avatar_id = Column(Integer, nullable=True)  # Pokemon number (1-151) for avatar sprite
+    must_change_password = Column(Boolean, default=False)
     created_at = Column(DateTime, default=func.now())
 
 
