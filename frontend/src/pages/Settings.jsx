@@ -452,7 +452,7 @@ export default function Settings() {
       <div className="flex border-b border-border overflow-x-auto scrollbar-none -mx-4 px-4" style={{WebkitOverflowScrolling:"touch"}}>
         {[
           { key: 'general', label: t('settings.tabs.general') },
-          { key: 'sync', label: t('settings.tabs.dataSync') },
+          ...(user?.role === 'admin' ? [{ key: 'sync', label: t('settings.tabs.dataSync') }] : []),
           { key: 'notifications', label: t('settings.tabs.notifications') },
           { key: 'community', label: t('settings.tabs.community') },
           ...(user?.role === 'admin' && multiUser ? [{ key: 'users', label: t('settings.tabs.users') }] : []),
