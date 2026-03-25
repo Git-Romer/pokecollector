@@ -23,6 +23,7 @@ class CreateUserRequest(BaseModel):
     password: str
     role: str = "trainer"
     avatar_id: int | None = None
+    must_change_password: bool = False
 
 
 class UpdateUserRequest(BaseModel):
@@ -35,6 +36,10 @@ class UpdateUserRequest(BaseModel):
 
 class ChangePasswordRequest(BaseModel):
     current_password: str
+    new_password: str
+
+
+class ForceChangePasswordRequest(BaseModel):
     new_password: str
 
 
@@ -95,13 +100,25 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     token = create_access_token({"sub": str(user.id), "role": user.role})
     return TokenResponse(
         access_token=token,
-        user={"id": user.id, "username": user.username, "role": user.role, "avatar_id": user.avatar_id},
+        user={
+            "id": user.id,
+            "username": user.username,
+            "role": user.role,
+            "avatar_id": user.avatar_id,
+            "must_change_password": user.must_change_password,
+        },
     )
 
 
 @router.get("/me")
 def get_me(current_user: User = Depends(get_current_user)):
-    return {"id": current_user.id, "username": current_user.username, "role": current_user.role, "avatar_id": current_user.avatar_id}
+    return {
+        "id": current_user.id,
+        "username": current_user.username,
+        "role": current_user.role,
+        "avatar_id": current_user.avatar_id,
+        "must_change_password": current_user.must_change_password,
+    }
 
 
 @router.get("/mode")
@@ -160,6 +177,7 @@ def create_user(
         role=data.role,
         is_active=True,
         avatar_id=data.avatar_id,
+        must_change_password=data.must_change_password,
     )
     db.add(user)
     db.commit()
@@ -222,6 +240,21 @@ def change_password(
     if not verify_password(data.current_password, current_user.hashed_password):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
     current_user.hashed_password = hash_password(data.new_password)
+    current_user.must_change_password = False
+    db.commit()
+    return {"message": "Password changed"}
+
+
+@router.put("/me/force-password")
+def force_change_password(
+    data: ForceChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not current_user.must_change_password:
+        raise HTTPException(status_code=400, detail="Password change is not required")
+    current_user.hashed_password = hash_password(data.new_password)
+    current_user.must_change_password = False
     db.commit()
     return {"message": "Password changed"}
 

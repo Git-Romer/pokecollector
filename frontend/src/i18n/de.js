@@ -567,6 +567,7 @@ const de = {
       userCreated: 'Benutzer erstellt',
       userUpdated: 'Benutzer aktualisiert',
       userDeleted: 'Benutzer gelöscht',
+      forcePasswordChange: 'Passwort muss beim nächsten Login geändert werden',
       cannotDeleteSelf: 'Du kannst dich nicht selbst löschen',
       createdAt: 'Erstellt am',
     },

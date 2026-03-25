@@ -990,6 +990,7 @@ function UsersTab({ t, queryClient }) {
   const [formUsername, setFormUsername] = useState('')
   const [formPassword, setFormPassword] = useState('')
   const [formRole, setFormRole] = useState('trainer')
+  const [formForceChange, setFormForceChange] = useState(false)
   const [currentPw, setCurrentPw] = useState('')
   const [newPw, setNewPw] = useState('')
   const { user: currentUser } = useAuth()
@@ -1017,7 +1018,14 @@ function UsersTab({ t, queryClient }) {
     onError: (e) => toast.error(e.response?.data?.detail || t('common.error')),
   })
 
-  const openCreate = () => { setEditingUser(null); setFormUsername(''); setFormPassword(''); setFormRole('trainer'); setShowModal(true) }
+  const openCreate = () => {
+    setEditingUser(null)
+    setFormUsername('')
+    setFormPassword('')
+    setFormRole('trainer')
+    setFormForceChange(false)
+    setShowModal(true)
+  }
   const openEdit = (u) => { setEditingUser(u); setFormUsername(u.username); setFormPassword(''); setFormRole(u.role); setShowModal(true) }
   const handleSubmit = (e) => {
     e.preventDefault()
@@ -1028,7 +1036,12 @@ function UsersTab({ t, queryClient }) {
       if (formRole !== editingUser.role) data.role = formRole
       updateMut.mutate({ id: editingUser.id, data })
     } else {
-      createMut.mutate({ username: formUsername, password: formPassword, role: formRole })
+      createMut.mutate({
+        username: formUsername,
+        password: formPassword,
+        role: formRole,
+        must_change_password: formForceChange,
+      })
     }
   }
 
@@ -1088,6 +1101,16 @@ function UsersTab({ t, queryClient }) {
               <option value="admin">{t('settings.users.admin')}</option>
             </select>
           </div>
+          {!editingUser && (
+            <label className="flex items-center gap-2 text-sm text-text-primary">
+              <input
+                type="checkbox"
+                checked={formForceChange}
+                onChange={(e) => setFormForceChange(e.target.checked)}
+              />
+              <span>{t('settings.users.forcePasswordChange')}</span>
+            </label>
+          )}
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={() => setShowModal(false)} className="btn-ghost flex-1">{t('common.cancel')}</button>
             <button type="submit" disabled={createMut.isPending || updateMut.isPending} className="btn-primary flex-1">

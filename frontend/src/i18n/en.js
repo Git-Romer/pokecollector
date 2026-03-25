@@ -567,6 +567,7 @@ const en = {
       userCreated: 'User created',
       userUpdated: 'User updated',
       userDeleted: 'User deleted',
+      forcePasswordChange: 'User must change password on next login',
       cannotDeleteSelf: 'Cannot delete yourself',
       createdAt: 'Created at',
     },

@@ -48,6 +48,7 @@ export const createUser = (data) => api.post('/auth/users', data).then(r => r.da
 export const updateUser = (id, data) => api.put(`/auth/users/${id}`, data).then(r => r.data)
 export const deleteUser = (id) => api.delete(`/auth/users/${id}`).then(r => r.data)
 export const changePassword = (data) => api.put('/auth/me/password', data).then(r => r.data)
+export const forceChangePassword = (newPassword) => api.put('/auth/me/force-password', { new_password: newPassword }).then(r => r.data)
 export const changeAvatar = (avatarId) => api.put('/auth/me/avatar', { avatar_id: avatarId }).then(r => r.data)
 export const changeUsername = (username) => api.put('/auth/me/username', { username }).then(r => r.data)
 
