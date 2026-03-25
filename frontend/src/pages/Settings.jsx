@@ -637,13 +637,16 @@ export default function Settings() {
               <SettingsRow label={t('settings.geminiApiKey')} description={t('settings.geminiApiKeyDesc')} last>
                 <div className="flex items-center gap-2 w-full mt-2">
                   <input
-                    type="password"
+                    type={geminiDirty ? "text" : "password"}
                     value={geminiKey}
                     onChange={e => { setGeminiKey(e.target.value); setGeminiDirty(true) }}
                     placeholder="AIza..."
                     className="input flex-1 text-xs font-mono"
                     style={{ minWidth: 0 }}
                   />
+                  {geminiKey && !geminiDirty && (
+                    <span className="text-xs text-green flex-shrink-0">✅</span>
+                  )}
                   {geminiDirty && (
                     <button
                       onClick={async () => {
@@ -855,6 +858,9 @@ export default function Settings() {
                     className="input text-xs font-mono"
                     style={{ minWidth: 0, width: 180 }}
                   />
+                  {telegramBotToken && !telegramBotTokenDirty && (
+                    <span className="text-xs text-green flex-shrink-0">✅</span>
+                  )}
                   {telegramBotTokenDirty && (
                     <button
                       onClick={async () => {
@@ -881,6 +887,9 @@ export default function Settings() {
                     className="input text-xs font-mono"
                     style={{ minWidth: 0, width: 140 }}
                   />
+                  {telegramChatId && !telegramChatIdDirty && (
+                    <span className="text-xs text-green flex-shrink-0">✅</span>
+                  )}
                   {telegramChatIdDirty && (
                     <button
                       onClick={async () => {
