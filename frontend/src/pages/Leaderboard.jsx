@@ -34,7 +34,7 @@ function TrainerAvatar({ avatarId, username }) {
 export default function Leaderboard() {
   const navigate = useNavigate()
   const { t, formatPrice } = useSettings()
-  const { multiUser } = useAuth()
+  const { multiUser, user: currentUser } = useAuth()
   const [sortBy, setSortBy] = useState('total_value')
   const SOCIAL_TABS = [
     { to: '/leaderboard', label: t('nav.leaderboard'), icon: Trophy },
@@ -101,11 +101,11 @@ export default function Leaderboard() {
             const pnl = Number(trainer.pnl ?? 0)
             const positive = pnl >= 0
             return (
-              <button
+              <div
                 key={trainer.user_id}
-                type="button"
-                onClick={() => navigate(`/leaderboard/compare/${trainer.user_id}`)}
-                className="w-full rounded-2xl border border-border bg-bg-card p-4 text-left transition-all hover:border-yellow/40 hover:bg-bg-elevated"
+                role={trainer.user_id !== currentUser?.id ? "button" : undefined}
+                onClick={() => trainer.user_id !== currentUser?.id && navigate(`/leaderboard/compare/${trainer.user_id}`)}
+                className={`w-full rounded-2xl border border-border bg-bg-card p-4 text-left transition-all ${trainer.user_id !== currentUser?.id ? 'hover:border-yellow/40 hover:bg-bg-elevated cursor-pointer' : ''}`}
               >
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div className="flex items-start gap-3">
@@ -161,7 +161,7 @@ export default function Leaderboard() {
                     </div>
                   </div>
                 </div>
-              </button>
+              </div>
             )
           })}
         </div>
