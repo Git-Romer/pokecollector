@@ -215,6 +215,7 @@ export default function Settings() {
 
   const [geminiKey, setGeminiKey] = useState('')
   const [geminiDirty, setGeminiDirty] = useState(false)
+  const [backupOptions, setBackupOptions] = useState(['full'])
 
   // Full sync interval (days) and price sync interval (minutes)
   const [fullSyncIntervalDays, setFullSyncIntervalDays] = useState('5')
@@ -792,13 +793,44 @@ export default function Settings() {
                 </button>
               </SettingsRow>
               <SettingsRow label={t('settings.backupDownload')} description={t('settings.backupDownloadDesc')}>
-                <button
-                  onClick={downloadBackup}
-                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity"
-                  style={{ background: 'rgba(255,255,255,0.07)', color: '#90a4ae', border: '1px solid rgba(255,255,255,0.1)' }}
-                >
-                  <Download size={13} /> {t('settings.backupButton')}
-                </button>
+                <div className="space-y-2 w-full">
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { key: 'full', label: t('settings.backupFull') },
+                      { key: 'collection', label: t('settings.backupCollection') },
+                      { key: 'users', label: t('settings.backupUsers') },
+                      { key: 'cards', label: t('settings.backupCards') },
+                      { key: 'products', label: t('settings.backupProducts') },
+                      { key: 'images', label: t('settings.backupImages') },
+                    ].map(opt => (
+                      <label key={opt.key} className="flex items-center gap-1.5 text-xs text-text-secondary cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={backupOptions.includes(opt.key)}
+                          onChange={(e) => {
+                            if (opt.key === 'full') {
+                              setBackupOptions(e.target.checked ? ['full'] : [])
+                            } else {
+                              setBackupOptions(prev => {
+                                const next = prev.filter(k => k !== 'full')
+                                return e.target.checked ? [...next, opt.key] : next.filter(k => k !== opt.key)
+                              })
+                            }
+                          }}
+                        />
+                        {opt.label}
+                      </label>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => downloadBackup(backupOptions.join(',') || 'full')}
+                    disabled={backupOptions.length === 0}
+                    className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity disabled:opacity-50"
+                    style={{ background: 'rgba(255,255,255,0.07)', color: '#90a4ae', border: '1px solid rgba(255,255,255,0.1)' }}
+                  >
+                    <Download size={13} /> {t('settings.backupButton')}
+                  </button>
+                </div>
               </SettingsRow>
               <SettingsRow label={t('settings.backupImport')} description={t('settings.backupImportDesc')} last>
                 <button
