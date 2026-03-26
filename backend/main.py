@@ -70,6 +70,33 @@ from api.github import router as github_router
 from api.recognize import router as recognize_router
 
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+
+# Strict rate limit on login: 5 attempts per minute per IP
+@app.middleware("http")
+async def login_rate_limit(request: Request, call_next):
+    if request.url.path == "/api/auth/login" and request.method == "POST":
+        client_ip = get_remote_address(request)
+        # Use in-memory counter
+        import time
+        now = time.time()
+        if not hasattr(app.state, "_login_attempts"):
+            app.state._login_attempts = {}
+        attempts = app.state._login_attempts
+        # Clean old entries
+        attempts = {k: v for k, v in attempts.items() if now - v[-1] < 60}
+        app.state._login_attempts = attempts
+        # Check this IP
+        ip_attempts = attempts.get(client_ip, [])
+        ip_attempts = [t for t in ip_attempts if now - t < 60]
+        if len(ip_attempts) >= 5:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Too many login attempts. Try again in 1 minute."},
+            )
+        ip_attempts.append(now)
+        attempts[client_ip] = ip_attempts
+    return await call_next(request)
 app.include_router(cards.router, prefix="/api/cards", tags=["cards"])
 app.include_router(recognize_router, prefix="/api/cards", tags=["recognize"])
 app.include_router(collection.router, prefix="/api/collection", tags=["collection"])
