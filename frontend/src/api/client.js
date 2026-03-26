@@ -168,10 +168,11 @@ export const exportPDF = () => {
 }
 
 // Backup
-export const downloadBackup = () => {
+export const downloadBackup = (include = 'full') => {
   const token = localStorage.getItem('token')
   const config = {
     responseType: 'blob',
+    params: { include },
   }
   if (token) {
     config.headers = { Authorization: `Bearer ${token}` }
@@ -180,7 +181,7 @@ export const downloadBackup = () => {
     const url = window.URL.createObjectURL(r.data)
     const a = document.createElement('a')
     a.href = url
-    a.download = 'backup.sql'
+    a.download = 'pokemon_tcg_backup.sql'
     a.click()
     window.URL.revokeObjectURL(url)
   })

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Query
 from fastapi.responses import FileResponse, StreamingResponse
 from api.auth import get_current_user
 from models import User
@@ -13,6 +13,14 @@ logger = logging.getLogger(__name__)
 
 BACKUP_DIR = "/app/backups"
 DATABASE_URL = os.getenv("DATABASE_URL", "")
+BACKUP_GROUPS = {
+    "collection": ["collection", "wishlist", "binders", "binder_cards"],
+    "users": ["users", "user_settings", "settings"],
+    "cards": ["cards", "sets", "price_history", "custom_card_matches"],
+    "products": ["product_purchases", "portfolio_snapshots"],
+    "system": ["sync_log"],
+    "images": ["image_cache"],
+}
 
 
 def get_db_params():
@@ -35,7 +43,13 @@ def get_db_params():
 
 
 @router.get("/download")
-def download_backup(current_user: User = Depends(get_current_user)):
+def download_backup(
+    include: str = Query(
+        default="full",
+        description="Comma-separated: full,collection,users,cards,products,images",
+    ),
+    current_user: User = Depends(get_current_user),
+):
     """Create and download a PostgreSQL dump."""
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
@@ -44,6 +58,7 @@ def download_backup(current_user: User = Depends(get_current_user)):
     if not params:
         raise HTTPException(status_code=500, detail="Database URL not configured")
 
+    groups = [group.strip() for group in include.split(",") if group.strip()]
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"pokemon_tcg_backup_{timestamp}.sql"
     filepath = os.path.join(BACKUP_DIR, filename)
@@ -51,22 +66,38 @@ def download_backup(current_user: User = Depends(get_current_user)):
     env = os.environ.copy()
     env["PGPASSWORD"] = params["password"]
 
+    cmd = [
+        "pg_dump",
+        "-h", params["host"],
+        "-p", params["port"],
+        "-U", params["user"],
+        "-d", params["dbname"],
+        "-f", filepath,
+        "--clean",
+        "--if-exists",
+    ]
+
+    if "full" in groups:
+        if "images" not in groups:
+            cmd.extend(["--exclude-table", "image_cache"])
+    else:
+        tables = []
+        for group in groups:
+            if group in BACKUP_GROUPS:
+                tables.extend(BACKUP_GROUPS[group])
+        tables = list(dict.fromkeys(tables))
+        if not tables:
+            raise HTTPException(status_code=400, detail="No valid backup groups selected")
+        for table in tables:
+            cmd.extend(["-t", table])
+
     try:
         result = subprocess.run(
-            [
-                "pg_dump",
-                "-h", params["host"],
-                "-p", params["port"],
-                "-U", params["user"],
-                "-d", params["dbname"],
-                "-f", filepath,
-                "--clean",
-                "--if-exists",
-            ],
+            cmd,
             env=env,
             capture_output=True,
             text=True,
-            timeout=60,
+            timeout=120,
         )
 
         if result.returncode != 0:
