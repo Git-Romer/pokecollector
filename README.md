@@ -113,6 +113,7 @@ ADMIN_PASSWORD=your_admin_password
 GEMINI_API_KEY=your_gemini_key
 TELEGRAM_BOT_TOKEN=your_bot_token
 TELEGRAM_CHAT_ID=your_chat_id
+PUBLIC_MODE=false
 ```
 
 ### 2. Start
@@ -164,6 +165,7 @@ On first launch, trigger a sync from the app to populate sets and cards from TCG
 | `TELEGRAM_BOT_TOKEN` | Initial Telegram bot token for the admin user | *(empty)* |
 | `TELEGRAM_CHAT_ID` | Initial Telegram chat ID for the admin user | *(empty)* |
 | `ADMIN_BOOTSTRAP_LOG` | Whether bootstrap credentials may be logged on first start | `true` |
+| `PUBLIC_MODE` | Enable SEO meta tags, Open Graph, and allow search engine indexing. Default blocks all crawlers. Requires rebuild. | `false` |
 
 ---
 
