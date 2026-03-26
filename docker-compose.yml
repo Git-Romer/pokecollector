@@ -29,6 +29,7 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
     depends_on:
       postgres:
         condition: service_healthy

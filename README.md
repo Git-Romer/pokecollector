@@ -114,6 +114,7 @@ GEMINI_API_KEY=your_gemini_key
 TELEGRAM_BOT_TOKEN=your_bot_token
 TELEGRAM_CHAT_ID=your_chat_id
 PUBLIC_MODE=false
+CORS_ORIGINS=https://yourdomain.com
 ```
 
 ### 2. Start
@@ -166,6 +167,7 @@ On first launch, trigger a sync from the app to populate sets and cards from TCG
 | `TELEGRAM_CHAT_ID` | Initial Telegram chat ID for the admin user | *(empty)* |
 | `ADMIN_BOOTSTRAP_LOG` | Whether bootstrap credentials may be logged on first start | `true` |
 | `PUBLIC_MODE` | Enable SEO meta tags, Open Graph, and allow search engine indexing. Default blocks all crawlers. Requires rebuild. | `false` |
+| `CORS_ORIGINS` | Comma-separated list of allowed origins for CORS. If empty, allows all origins. Set to your domain for production (e.g. `https://pokecollector.romerg.de`). | *(all)* |
 
 ---
 

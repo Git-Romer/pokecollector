@@ -322,7 +322,7 @@ def _load_user_stats(db: Session, user_ids: list[int] | None = None):
 
 
 @router.get("/leaderboard")
-def get_leaderboard(db: Session = Depends(get_db)):
+def get_leaderboard(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     stats = _load_user_stats(db)
     leaderboard = sorted(
         stats.values(),
@@ -426,7 +426,7 @@ def compare_users(
 
 
 @router.get("/achievements/{user_id}")
-def get_achievements(user_id: int, db: Session = Depends(get_db)):
+def get_achievements(user_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
