@@ -181,7 +181,8 @@ const en = {
   // Collection
   collection: {
     title: 'Collection',
-    empty: 'Your collection is empty',
+    userCollection: 'Collection',
+    empty: 'No cards in this collection',
     emptyHint: 'Search for cards and add them to start',
     addCustomCard: 'Add card manually',
     totalValue: 'total value',
@@ -783,6 +784,7 @@ const en = {
     setsCompleted: 'Sets Complete',
     sortBy: 'Sort by',
     compare: 'Compare trainers',
+    viewCollection: 'View Collection',
   },
 
   // Compare

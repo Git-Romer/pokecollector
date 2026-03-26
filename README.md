@@ -73,6 +73,7 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 
 ### 🏆 Social & Community
 - Leaderboard, trainer comparison, and achievements in multi-user mode
+- View other trainers' collections from the Leaderboard
 - Community section in Settings with GitHub contributors and Ko-fi supporters
 
 ### 🎨 UX & Localization

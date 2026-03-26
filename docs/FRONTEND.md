@@ -13,6 +13,7 @@ Routes are defined in `frontend/src/App.jsx`.
 | `/dashboard` | `pages/Dashboard.jsx` | Portfolio summary |
 | `/search` | `pages/CardSearch.jsx` | Card search and scanner entry |
 | `/collection` | `pages/Collection.jsx` | User collection |
+| `/collection/user/:userId` | `pages/UserCollection.jsx` | Read-only view of another user's collection |
 | `/sets` | `pages/Sets.jsx` | Set browser |
 | `/sets/:setId` | `pages/SetDetail.jsx` | Set checklist |
 | `/wishlist` | `pages/Wishlist.jsx` | Wishlist and alerts |

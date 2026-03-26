@@ -181,7 +181,8 @@ const de = {
   // Collection
   collection: {
     title: 'Kollektion',
-    empty: 'Deine Sammlung ist leer',
+    userCollection: 'Sammlung',
+    empty: 'Keine Karten in der Sammlung',
     emptyHint: 'Suche nach Karten und füge sie hinzu',
     addCustomCard: 'Karte manuell hinzufügen',
     totalValue: 'Gesamtwert',
@@ -787,6 +788,7 @@ const de = {
     setsCompleted: 'Sets komplett',
     sortBy: 'Sortieren nach',
     compare: 'Trainer vergleichen',
+    viewCollection: 'Sammlung ansehen',
   },
 
   // Compare
