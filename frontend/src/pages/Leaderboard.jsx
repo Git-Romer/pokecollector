@@ -116,6 +116,15 @@ export default function Leaderboard() {
                     <div>
                       <p className="text-lg font-semibold text-text-primary">{trainer.username}</p>
                       <p className="text-xs uppercase tracking-[0.2em] text-text-muted">{trainer.role}</p>
+                      <div className="flex gap-2 mt-1">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); navigate(`/collection/user/${trainer.user_id}`) }}
+                          className="text-[10px] text-brand-red hover:text-brand-red/80 font-semibold"
+                        >
+                          {t('leaderboard.viewCollection')}
+                        </button>
+                      </div>
                     </div>
                   </div>
 

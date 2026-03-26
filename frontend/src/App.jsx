@@ -23,6 +23,7 @@ import Login from './pages/Login'
 import Leaderboard from './pages/Leaderboard'
 import Compare from './pages/Compare'
 import Achievements from './pages/Achievements'
+import UserCollection from './pages/UserCollection'
 import { useSettings } from './contexts/SettingsContext'
 
 function ForcePasswordChangeScreen() {
@@ -126,6 +127,7 @@ function ProtectedRoutes() {
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="search" element={<CardSearch />} />
         <Route path="collection" element={<Collection />} />
+        <Route path="collection/user/:userId" element={<UserCollection />} />
         <Route path="sets" element={<Sets />} />
         <Route path="sets/:setId" element={<SetDetail />} />
         <Route path="wishlist" element={<Wishlist />} />

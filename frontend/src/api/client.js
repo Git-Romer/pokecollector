@@ -78,6 +78,7 @@ export const dismissCustomMatch = (matchId) => api.post(`/cards/custom/dismiss/$
 
 // Collection
 export const getCollection = (params) => api.get('/collection/', { params })
+export const getUserCollection = (userId) => api.get(`/collection/user/${userId}`).then(r => r.data)
 export const searchCollection = (params) => api.get('/collection/', { params })
 export const addToCollection = (data) => api.post('/collection/', data)
 export const updateCollectionItem = (id, data) => api.put(`/collection/${id}`, data)

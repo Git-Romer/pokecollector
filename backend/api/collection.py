@@ -60,6 +60,22 @@ def ensure_card_exists(db: Session, card_id: str, lang: str = "en") -> Card:
     return card
 
 
+@router.get("/user/{user_id}", response_model=List[CollectionItemResponse])
+def get_user_collection(
+    user_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """View another user's collection (read-only). Requires authentication."""
+    target_user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    query = db.query(CollectionItem).options(
+        joinedload(CollectionItem.card).joinedload(Card.set_ref)
+    ).filter(CollectionItem.user_id == user_id)
+    return query.all()
+
+
 @router.get("/", response_model=List[CollectionItemResponse])
 def get_collection(
     current_user: User = Depends(get_current_user),

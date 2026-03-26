@@ -181,7 +181,8 @@ const zh = {
   // Collection
   collection: {
     title: '我的收藏',
-    empty: '你的收藏为空',
+    userCollection: 'Collection',
+    empty: 'No cards in this collection',
     emptyHint: '搜索卡牌并添加开始',
     addCustomCard: '手动添加卡牌',
     totalValue: '总价值',
@@ -784,6 +785,7 @@ const zh = {
     setsCompleted: '已完成系列',
     sortBy: '排序方式',
     compare: '对比训练家',
+    viewCollection: 'View Collection',
   },
 
   // Compare
