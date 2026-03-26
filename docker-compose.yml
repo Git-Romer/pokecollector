@@ -40,6 +40,8 @@ services:
   frontend:
     build:
       context: ./frontend
+      args:
+        PUBLIC_MODE: ${PUBLIC_MODE:-false}
     container_name: pokemon-frontend
     restart: unless-stopped
     depends_on:
