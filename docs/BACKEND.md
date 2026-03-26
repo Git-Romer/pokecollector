@@ -43,6 +43,7 @@ FastAPI app entry point: `backend/main.py`.
 | Method | Path | Notes |
 |--------|------|-------|
 | GET | `/api/collection/` | User-scoped collection |
+| GET | `/api/collection/user/{user_id}` | View another user's collection (read-only, auth required) |
 | POST | `/api/collection/` | Add to collection |
 | PUT | `/api/collection/{item_id}` | Update collection item |
 | DELETE | `/api/collection/{item_id}` | Delete collection item |
