@@ -1,78 +1,241 @@
 # Backend Reference
 
-FastAPI application. Entry point: `backend/main.py`.
+FastAPI app entry point: `backend/main.py`.
 
 ## API Routes
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/sets/` | List all sets (optional `?lang=de\|en\|all&refresh=true`) |
-| GET | `/api/sets/{set_id}` | Single set by composite key (e.g. `sv1_de`) |
-| GET | `/api/sets/{set_id}/checklist` | All cards in a set with ownership status |
-| GET | `/api/cards/search` | Search cards (`name`, `set_id`, `type`, `rarity`, `lang`, `page`, `page_size`) |
-| GET | `/api/cards/{card_id}` | Single card detail |
-| POST | `/api/cards/custom` | Create a manual card |
-| PUT | `/api/cards/custom/{id}` | Update a manual card |
-| GET | `/api/collection/` | All owned cards |
-| POST | `/api/collection/` | Add card to collection |
-| PUT | `/api/collection/{id}` | Update collection item |
-| DELETE | `/api/collection/{id}` | Remove from collection |
-| GET | `/api/dashboard/` | Portfolio summary (value, P&L, top cards, recent additions) |
-| GET | `/api/analytics/duplicates` | Cards owned more than once |
-| GET | `/api/analytics/top-movers` | Biggest price changes |
-| GET | `/api/analytics/rarity-stats` | Collection breakdown by rarity |
-| GET | `/api/analytics/investment-tracker` | Daily portfolio value history |
-| GET | `/api/wishlist/` | Wishlist items |
-| POST | `/api/wishlist/` | Add to wishlist |
-| GET | `/api/binders/` | All binders |
-| POST | `/api/binders/` | Create binder |
-| GET | `/api/binders/{id}/cards` | Cards in a binder |
-| POST | `/api/sync/` | Trigger full sync |
-| POST | `/api/sync/prices` | Trigger price-only sync |
-| GET | `/api/sync/status` | Is a sync currently running? |
-| GET | `/api/settings/` | All settings |
-| PUT | `/api/settings/` | Update settings |
-| GET | `/api/export/csv` | Download collection as CSV |
-| GET | `/api/export/pdf` | Download collection as PDF |
-| GET | `/api/backup/download` | pg_dump SQL backup |
-| POST | `/api/backup/restore` | Restore from SQL file |
-| POST | `/api/recognize/` | AI card recognition from image (requires Gemini API key) |
+### Auth
 
-## Models (SQLAlchemy)
+| Method | Path | Notes |
+|--------|------|-------|
+| POST | `/api/auth/login` | Username/password login |
+| GET | `/api/auth/me` | Current authenticated user |
+| GET | `/api/auth/mode` | Returns `{ multi_user: boolean }` |
+| PUT | `/api/auth/mode` | Admin-only toggle for single-user vs multi-user mode |
+| GET | `/api/auth/users` | Admin-only user list |
+| POST | `/api/auth/users` | Admin-only user creation |
+| PUT | `/api/auth/users/{user_id}` | Admin-only user update |
+| DELETE | `/api/auth/users/{user_id}` | Admin-only user delete; cascades owned data cleanup |
+| PUT | `/api/auth/me/password` | Change password with current password |
+| PUT | `/api/auth/me/force-password` | Complete required first-login password change |
+| PUT | `/api/auth/me/avatar` | Update current user's avatar |
+| PUT | `/api/auth/me/username` | Update current user's profile name |
+
+### Cards
+
+| Method | Path | Notes |
+|--------|------|-------|
+| GET | `/api/cards/search` | Local card search |
+| GET | `/api/cards/custom` | List custom cards |
+| POST | `/api/cards/custom` | Create custom card |
+| PUT | `/api/cards/custom/{card_id}` | Update custom card |
+| DELETE | `/api/cards/custom/{card_id}` | Delete custom card |
+| GET | `/api/cards/custom/matches` | Pending custom-card migration matches |
+| POST | `/api/cards/custom/migrate/{match_id}` | Migrate custom card to API card |
+| POST | `/api/cards/custom/dismiss/{match_id}` | Dismiss match |
+| GET | `/api/cards/{card_id}/lang/{lang}` | Resolve equivalent card in another language |
+| GET | `/api/cards/{card_id}/price-history` | Price history |
+| GET | `/api/cards/{card_id}` | Card detail |
+| POST | `/api/cards/recognize` | Gemini-powered card recognition |
+
+### Collection, Sets, Wishlist, Binders
+
+| Method | Path | Notes |
+|--------|------|-------|
+| GET | `/api/collection/` | User-scoped collection |
+| POST | `/api/collection/` | Add to collection |
+| PUT | `/api/collection/{item_id}` | Update collection item |
+| DELETE | `/api/collection/{item_id}` | Delete collection item |
+| GET | `/api/collection/stats/summary` | Collection summary |
+| GET | `/api/sets/` | List sets |
+| GET | `/api/sets/new` | Newly detected sets |
+| POST | `/api/sets/mark-seen` | Mark new-set badges seen |
+| GET | `/api/sets/{set_id}` | Set detail |
+| GET | `/api/sets/{set_id}/checklist` | Set checklist |
+| GET | `/api/wishlist/` | Wishlist |
+| POST | `/api/wishlist/` | Add wishlist item |
+| PUT | `/api/wishlist/{item_id}` | Update price alerts |
+| DELETE | `/api/wishlist/{item_id}` | Remove wishlist item |
+| GET | `/api/binders/` | Binders |
+| POST | `/api/binders/` | Create binder |
+| PUT | `/api/binders/{binder_id}` | Update binder |
+| DELETE | `/api/binders/{binder_id}` | Delete binder |
+| GET | `/api/binders/{binder_id}/cards` | Binder cards |
+| POST | `/api/binders/{binder_id}/cards` | Add card to binder |
+| DELETE | `/api/binders/{binder_id}/cards/{card_id}` | Remove card from binder |
+
+### Dashboard, Analytics, Social, Community
+
+| Method | Path | Notes |
+|--------|------|-------|
+| GET | `/api/dashboard/` | Dashboard summary |
+| GET | `/api/analytics/duplicates` | Duplicate cards |
+| GET | `/api/analytics/top-movers` | Price movers |
+| GET | `/api/analytics/rarity-stats` | Rarity distribution |
+| GET | `/api/analytics/investment-tracker` | Portfolio history |
+| GET | `/api/analytics/new-sets` | Analytics new sets |
+| GET | `/api/social/leaderboard` | Multi-user leaderboard |
+| GET | `/api/social/compare/{user_id}` | Multi-user comparison |
+| GET | `/api/social/achievements/{user_id}` | Achievement progress |
+| GET | `/api/github/contributors` | Public GitHub contributors feed |
+| GET | `/api/github/supporters` | Supporters from `SUPPORTERS.csv` |
+
+### Products, Export, Backup, Sync, Settings
+
+| Method | Path | Notes |
+|--------|------|-------|
+| GET | `/api/products/types` | Product type suggestions |
+| GET | `/api/products/` | Product list |
+| POST | `/api/products/` | Create product |
+| PUT | `/api/products/{product_id}` | Update product |
+| DELETE | `/api/products/{product_id}` | Delete product |
+| GET | `/api/products/summary` | Product summary |
+| GET | `/api/export/csv` | CSV export |
+| GET | `/api/export/pdf` | PDF export |
+| GET | `/api/backup/download` | Admin-only SQL backup |
+| POST | `/api/backup/restore` | Admin-only SQL restore |
+| POST | `/api/sync/` | Admin-only full sync |
+| POST | `/api/sync/prices` | Admin-only price sync |
+| POST | `/api/sync/reschedule-full` | Reschedule full sync |
+| POST | `/api/sync/reschedule-prices` | Reschedule price sync |
+| GET | `/api/sync/status` | Sync status and history |
+| GET | `/api/settings/` | Effective settings for current user |
+| PUT | `/api/settings/` | Update settings |
+| GET | `/api/settings/telegram_status` | Whether Telegram is configured for current user |
+| GET | `/api/settings/{key}` | Get one setting |
+| POST | `/api/settings/{key}` | Set one setting |
+
+## Models
 
 ### `Card`
-Stores TCGdex card data. Key fields:
-- `id` — composite: `{tcg_id}_{lang}` e.g. `sv1-1_de`
-- `tcg_card_id` — original TCGdex ID e.g. `sv1-1`
-- `set_id` — original TCGdex **set** ID e.g. `sv1` (NOT composite)
-- `lang` — `en` or `de`
-- `is_custom` — True for manually created cards
-- Price fields: `price_market`, `price_low`, `price_trend`, `price_avg1`, `price_avg7`, `price_avg30`, plus holo and TCGPlayer variants
 
-### `Set`
-- `id` — composite: `{tcg_id}_{lang}` e.g. `sv1_de`
-- `tcg_set_id` — original TCGdex ID e.g. `sv1`
-- `lang` — `en` or `de`
+- Composite primary key: `{tcg_card_id}_{lang}`, for example `sv1-1_de`
+- `tcg_card_id` stores the original TCGdex card id
+- `set_id` stores the original TCGdex set id, not the composite set row id
+- `rarity` is read-only API data
+- Variant availability is represented by boolean flags:
+  - `variants_normal`
+  - `variants_reverse`
+  - `variants_holo`
+  - `variants_first_edition`
 
 ### `CollectionItem`
-- `card_id` → FK to `Card.id`
-- `quantity`, `condition`, `variant`, `lang`, `purchase_price`
 
-### `PriceHistory`
-- Daily price snapshot per card: `card_id`, `date`, `price_market`, `price_trend`, etc.
+- Stores user-owned copies of cards
+- Active fields: `card_id`, `user_id`, `quantity`, `condition`, `variant`, `purchase_price`, `lang`
+- Variant values are now the physical print variants only: `Normal`, `Holo`, `Reverse Holo`, `First Edition`
+- The old grading UI is gone; the database migration history still contains a legacy `grade` column, but it is not part of the current ORM model or API schema
+- Unique constraint in the ORM is `card_id + variant + lang`
 
-### `PortfolioSnapshot`
-- Daily portfolio total: `date`, `total_value`, `total_cost`
+### `User`
 
-## TCGdex API Integration (`services/pokemon_api.py`)
-- `get_all_sets(display_lang)` — fetches all sets in a given language
-- `get_set_cards(set_id, lang)` — fetches cards for a set
-- `get_card(card_id, lang)` — fetches a single card with full pricing
-- `parse_card_for_db(card_data, ...)` — normalises TCGdex response into DB-ready dict
-- `extract_prices(card_data)` — pulls all Cardmarket + TCGPlayer price fields
+- Fields include `role`, `avatar_id`, and `must_change_password`
+- `must_change_password` is returned by auth responses and enforced by the frontend after login
 
-## Important Quirks
-1. `cards.set_id` stores the **original** TCGdex set ID (`sv1`), not the composite DB set key (`sv1_de`). Joins must use `sets.tcg_set_id` when matching.
-2. Card composite IDs use underscore suffix: `sv1-1_de`. Original TCGdex IDs use hyphens: `sv1-1`.
-3. All migrations are idempotent SQL in `database._run_migrations()` — no Alembic.
-4. The scheduler (`services/scheduler.py`) uses APScheduler and is started in `main.py` on startup.
+### `Setting`
+
+- Global key/value table
+- Used for admin-only settings such as sync cadence and auth mode
+
+### `UserSetting`
+
+- Per-user key/value table
+- Used for isolated user preferences and secrets
+- Unique constraint: `user_id + key`
+
+### Other Core Models
+
+- `Set`
+- `WishlistItem`
+- `Binder` / `BinderCard`
+- `ProductPurchase`
+- `PriceHistory`
+- `PortfolioSnapshot`
+- `SyncLog`
+- `ImageCache`
+- `CustomCardMatch`
+
+## Settings Scope
+
+Current settings are split in `backend/api/settings.py`:
+
+- `PER_USER_KEYS`
+  - `language`
+  - `currency`
+  - `price_primary`
+  - `price_display`
+  - `telegram_bot_token`
+  - `telegram_chat_id`
+  - `telegram_enabled`
+  - `price_alerts_enabled`
+  - `price_alert_threshold`
+  - `gemini_api_key`
+  - `trainer_name`
+- `ADMIN_ONLY_KEYS`
+  - `full_sync_interval_days`
+  - `price_sync_interval_minutes`
+  - `multi_user_mode`
+
+Important behavior:
+
+- Each user only reads and writes their own `UserSetting` rows
+- Admin-only settings are stored globally in `settings`
+- Admin users can receive initial fallback values from env vars for Telegram and Gemini
+- `recognize.py` intentionally reads Gemini only from the current user's `UserSetting`; there is no cross-user fallback
+
+## Sync & Backup Behavior
+
+### Sync
+
+- `/api/sync/` and `/api/sync/prices` enforce admin access
+- Sync status returns current flags plus the last 10 sync log rows
+- Full sync and price sync can be rescheduled through dedicated endpoints
+
+### Selective Backup
+
+`GET /api/backup/download` accepts `include` as a comma-separated query param.
+
+Supported groups:
+
+- `full`
+- `collection`
+- `users`
+- `cards`
+- `products`
+- `system`
+- `images`
+
+Current table mapping:
+
+- `collection`: `collection`, `wishlist`, `binders`, `binder_cards`
+- `users`: `users`, `user_settings`, `settings`
+- `cards`: `cards`, `sets`, `price_history`, `custom_card_matches`
+- `products`: `product_purchases`, `portfolio_snapshots`
+- `system`: `sync_log`
+- `images`: `image_cache`
+
+If `include=full`, image cache is excluded unless `images` is also explicitly included.
+
+## Scanner Notes
+
+`backend/api/recognize.py` implements a two-step flow:
+
+1. Gemini extracts card metadata from the uploaded photo
+2. TCGdex candidate results are ranked by recognized card number
+3. If the number is not decisive, Gemini visually compares the top candidates and picks the best match
+
+Additional matching behavior:
+
+- Name suffixes like `EX`, `GX`, `V`, `VMAX`, `VSTAR`, `TAG TEAM`, `BREAK`, and `LV.X` are stripped before search
+- Search may fall back from detected card language to English
+- Result payload includes recognized metadata and candidate matches
+
+## Notifications
+
+`backend/services/telegram.py` now accepts `user_id` and reads Telegram credentials from that user's `UserSetting` rows first.
+
+## Migrations
+
+- Migrations are raw SQL statements in `backend/database.py`
+- They are idempotent and run on startup
+- Legacy migration comments still mention older columns like `grade` or removed integrations, but the current runtime model and routers do not include eBay functionality
