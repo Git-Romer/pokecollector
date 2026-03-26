@@ -516,6 +516,8 @@ const CARD_VARIANTS = ['Normal', 'Holo', 'Reverse Holo', 'First Edition']
 
 
 export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
+  if (!card || !card.id) return null
+
   const [quantity, setQuantity] = useState(1)
   const [condition, setCondition] = useState('NM')
   const [variant, setVariant] = useState(() => {
@@ -541,12 +543,17 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
   const { data: priceHistory = [] } = useQuery({
     queryKey: ['price-history', cardIdForHistory],
     queryFn: () => getPriceHistory(cardIdForHistory).then(r => r.data),
-    enabled: !!cardIdForHistory,
+    enabled: typeof cardIdForHistory === 'string' && cardIdForHistory.length > 0,
     staleTime: 5 * 60 * 1000,
+    retry: false,
   })
 
-
-  const cardImage = card.images?.large || resolveCardImageUrl(card, 'large') || (card.image ? `${card.image}/high.webp` : null) || card.images?.small || resolveCardImageUrl(card)
+  const safePriceHistory = Array.isArray(priceHistory) ? priceHistory : []
+  const cardImage = card?.images?.large
+    || resolveCardImageUrl(card, 'large')
+    || (card?.image ? `${card.image}/high.webp` : null)
+    || card?.images?.small
+    || resolveCardImageUrl(card)
   const setName = card.set?.name || card.set_ref?.name
 
   const addMutation = useMutation({
@@ -751,14 +758,14 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
 
 
             {/* Price History Chart */}
-            {priceHistory.length > 1 && (
+            {safePriceHistory && safePriceHistory.length > 0 && (
               <div className="bg-bg-card rounded-xl p-3 space-y-2">
                 <p className="text-xs text-text-muted font-medium uppercase tracking-wide">
                   {t('prices.history')}
                 </p>
                 <div className="h-[140px]">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={priceHistory} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                    <AreaChart data={safePriceHistory} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
                       <defs>
                         <linearGradient id="priceGrad" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="0%" stopColor="#22c55e" stopOpacity={0.3} />
@@ -804,8 +811,8 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
                   </ResponsiveContainer>
                 </div>
                 {(() => {
-                  const first = priceHistory[0]?.price_trend
-                  const last = priceHistory[priceHistory.length - 1]?.price_trend
+                  const first = safePriceHistory[0]?.price_trend
+                  const last = safePriceHistory[safePriceHistory.length - 1]?.price_trend
                   if (first && last && first > 0) {
                     const change = ((last - first) / first) * 100
                     return (

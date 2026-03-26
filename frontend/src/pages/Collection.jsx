@@ -257,7 +257,7 @@ function CollectionEditModal({ item, onClose }) {
             <div>
               <label className="text-xs text-text-muted mb-1.5 block">🌐 {t('lang.selectLabel')}</label>
               <div className="flex gap-2">
-                {['de', 'en', 'zh'].map(l => (
+                {['de', 'en'].map(l => (
                   <button
                     key={l}
                     type="button"
@@ -268,12 +268,12 @@ function CollectionEditModal({ item, onClose }) {
                         ? l === 'de'
                           ? 'bg-yellow/20 text-yellow border-yellow/50'
                           : l === 'en'
-                          ? 'bg-blue/20 text-blue-400 border-blue-400/50'
-                          : 'bg-red/20 text-red-400 border-red-400/50'
+                            ? 'bg-blue/20 text-blue-400 border-blue-400/50'
+                            : 'bg-bg-surface text-text-muted border-border hover:border-text-muted'
                         : 'bg-bg-surface text-text-muted border-border hover:border-text-muted'
                     )}
                   >
-                    {l === 'de' ? `🇩🇪 ${t('lang.de_full')}` : l === 'en' ? `🇬🇧 ${t('lang.en_full')}` : `🇨🇳 ${t('lang.zh_full')}`}
+                    {l === 'de' ? `🇩🇪 ${t('lang.de_full')}` : `🇬🇧 ${t('lang.en_full')}`}
                   </button>
                 ))}
               </div>
@@ -336,6 +336,7 @@ export default function Collection() {
   const [filterVariant, setFilterVariant] = useState('')
   const [filterSet, setFilterSet] = useState('')
   const [filterType, setFilterType] = useState('')
+  const [filterLang, setFilterLang] = useState('')
   const [filterMinPrice, setFilterMinPrice] = useState('')
   const [filterMaxPrice, setFilterMaxPrice] = useState('')
   const [filterDuplicates, setFilterDuplicates] = useState(false)
@@ -382,7 +383,7 @@ export default function Collection() {
     return [...all].sort()
   }, [items])
 
-  const hasActiveFilters = filterRarity || filterCondition || filterVariant || filterSet || filterType || filterMinPrice || filterMaxPrice || filterDuplicates || searchText
+  const hasActiveFilters = filterRarity || filterCondition || filterVariant || filterSet || filterType || filterLang || filterMinPrice || filterMaxPrice || filterDuplicates || searchText
 
   const filtered = useMemo(() => {
     let result = items.filter(item => {
@@ -395,6 +396,7 @@ export default function Collection() {
         if (item.card?.set_ref?.id !== filterSet) return false
       }
       if (filterType && !(card?.types || []).includes(filterType)) return false
+      if (filterLang && item.lang !== filterLang) return false
       if (filterMinPrice && marketPrice < parseFloat(filterMinPrice)) return false
       if (filterMaxPrice && marketPrice > parseFloat(filterMaxPrice)) return false
       if (filterDuplicates && item.quantity < 2) return false
@@ -438,14 +440,14 @@ export default function Collection() {
     })
 
     return result
-  }, [items, filterRarity, filterCondition, filterVariant, filterSet, filterType, filterMinPrice, filterMaxPrice, filterDuplicates, searchText, sortBy, sortOrder])
+  }, [items, filterRarity, filterCondition, filterVariant, filterSet, filterType, filterLang, filterMinPrice, filterMaxPrice, filterDuplicates, searchText, sortBy, sortOrder])
 
   const totalValue = filtered.reduce((sum, item) => sum + (getEffectivePrice(item.card, item.variant) * item.quantity), 0)
   const totalCards = filtered.reduce((sum, item) => sum + item.quantity, 0)
 
   const resetFilters = () => {
     setFilterRarity(''); setFilterCondition(''); setFilterVariant('')
-    setFilterSet(''); setFilterType(''); setFilterMinPrice('')
+    setFilterSet(''); setFilterType(''); setFilterLang(''); setFilterMinPrice('')
     setFilterMaxPrice(''); setFilterDuplicates(false); setSearchText('')
   }
 
@@ -539,7 +541,7 @@ export default function Collection() {
         </div>
 
         {showFilters && (
-          <div className="pt-3 border-t border-border grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
+          <div className="pt-3 border-t border-border grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-8 gap-3">
             <div>
               <label className="text-xs text-text-muted mb-1 block">{t('common.rarity')}</label>
               <select className="select py-1.5 text-sm" value={filterRarity} onChange={(e) => setFilterRarity(e.target.value)}>
@@ -573,6 +575,14 @@ export default function Collection() {
               <select className="select py-1.5 text-sm" value={filterType} onChange={(e) => setFilterType(e.target.value)}>
                 <option value="">{t('collection.allTypes')}</option>
                 {types.map(tp => <option key={tp} value={tp}>{tp}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-text-muted mb-1 block">{t('lang.filter')}</label>
+              <select className="select py-1.5 text-sm" value={filterLang} onChange={e => setFilterLang(e.target.value)}>
+                <option value="">{t('lang.all')}</option>
+                <option value="de">DE</option>
+                <option value="en">EN</option>
               </select>
             </div>
             <div>
