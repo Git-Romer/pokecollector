@@ -775,14 +775,14 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
                       <XAxis
                         dataKey="date"
                         tick={{ fontSize: 10, fill: '#606078' }}
-                        tickFormatter={(d) => new Date(d).toLocaleDateString('de-DE', { day: '2d', month: '2d' })}
+                        tickFormatter={(d) => { try { return new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) } catch { return '' } }}
                         axisLine={false}
                         tickLine={false}
                         minTickGap={30}
                       />
                       <YAxis
                         tick={{ fontSize: 10, fill: '#606078' }}
-                        tickFormatter={(v) => `${v.toFixed(0)}€`}
+                        tickFormatter={(v) => { try { return `${Number(v).toFixed(0)}€` } catch { return '' } }}
                         axisLine={false}
                         tickLine={false}
                         width={40}
@@ -796,7 +796,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
                           fontSize: '0.75rem',
                         }}
                         labelFormatter={(d) => new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: 'short', year: 'numeric' })}
-                        formatter={(val) => [`${val?.toFixed(2)}€`, t('prices.trend')]}
+                        formatter={(val) => { try { return [`${Number(val).toFixed(2)}€`, t('prices.trend')] } catch { return ['', ''] } }}
                       />
                       <Area
                         type="monotone"
