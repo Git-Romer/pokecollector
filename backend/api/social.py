@@ -10,6 +10,8 @@ from models import Card, CollectionItem, ProductPurchase, Set, User, WishlistIte
 
 router = APIRouter()
 
+HOLO_VARIANTS = {"Holo", "Holo Rare", "Holo V", "Holo VMAX", "Holo VSTAR", "Holo ex", "Reverse Holo"}
+
 
 ACHIEVEMENTS = [
     {
@@ -187,6 +189,13 @@ def _card_payload(card: Card | None):
 
 
 def _load_user_stats(db: Session, user_ids: list[int] | None = None):
+    def _get_price(row):
+        if hasattr(row, "variant") and row.variant in HOLO_VARIANTS:
+            holo = getattr(row, "price_market_holo", None)
+            if holo is not None:
+                return holo
+        return row.price_market or 0
+
     user_query = db.query(User).filter(User.is_active == True)
     if user_ids is not None:
         user_query = user_query.filter(User.id.in_(user_ids))
@@ -201,10 +210,12 @@ def _load_user_stats(db: Session, user_ids: list[int] | None = None):
         CollectionItem.card_id,
         CollectionItem.quantity,
         CollectionItem.purchase_price,
+        CollectionItem.variant,
         Card.id.label("card_db_id"),
         Card.name,
         Card.images_small,
         Card.price_market,
+        Card.price_market_holo,
         Card.set_id,
         Card.lang,
         Card.rarity,
@@ -262,7 +273,7 @@ def _load_user_stats(db: Session, user_ids: list[int] | None = None):
         rows = items_by_user.get(user.id, [])
         total_cards = sum(row.quantity or 0 for row in rows)
         unique_card_ids = {row.card_id for row in rows}
-        total_value = sum((row.price_market or 0) * (row.quantity or 0) for row in rows)
+        total_value = sum(_get_price(row) * (row.quantity or 0) for row in rows)
         total_invested = sum(
             (row.purchase_price or 0) * (row.quantity or 0)
             for row in rows
@@ -271,11 +282,11 @@ def _load_user_stats(db: Session, user_ids: list[int] | None = None):
 
         most_valuable = None
         if rows:
-            most_valuable_row = max(rows, key=lambda row: row.price_market or 0)
+            most_valuable_row = max(rows, key=lambda row: _get_price(row))
             most_valuable = {
                 "name": most_valuable_row.name,
                 "images_small": most_valuable_row.images_small,
-                "price_market": round(most_valuable_row.price_market or 0, 2),
+                "price_market": round(_get_price(most_valuable_row), 2),
                 "set_id": most_valuable_row.set_id,
             }
 
@@ -295,8 +306,20 @@ def _load_user_stats(db: Session, user_ids: list[int] | None = None):
             if total_in_set > 0 and len(owned_cards) >= total_in_set:
                 sets_completed += 1
 
-        pnl = total_value - total_invested
-        pnl_pct = ((total_value / total_invested) - 1) * 100 if total_invested > 0 else None
+        user_products = db.query(ProductPurchase).filter(
+            ProductPurchase.user_id == user.id
+        ).all()
+        unsold_products = [p for p in user_products if not (p.sold_price is not None and p.sold_price > 0)]
+        sold_products = [p for p in user_products if p.sold_price is not None and p.sold_price > 0]
+
+        products_cost = sum(p.purchase_price for p in unsold_products if p.purchase_price)
+        products_sold_cost = sum(p.purchase_price for p in sold_products if p.purchase_price)
+        products_sold_revenue = sum(p.sold_price for p in sold_products if p.sold_price)
+        products_realized_pnl = products_sold_revenue - products_sold_cost
+
+        total_cost = total_invested + products_cost
+        pnl = total_value - total_cost + products_realized_pnl
+        pnl_pct = ((total_value / total_cost) - 1) * 100 if total_cost > 0 else None
 
         stats[user.id] = {
             "user_id": user.id,
@@ -308,13 +331,13 @@ def _load_user_stats(db: Session, user_ids: list[int] | None = None):
             "total_value": round(total_value, 2),
             "most_valuable_card": most_valuable,
             "sets_completed": sets_completed,
-            "total_invested": round(total_invested, 2),
+            "total_invested": round(total_cost, 2),
             "pnl": round(pnl, 2),
             "pnl_pct": round(pnl_pct, 2) if pnl_pct is not None else None,
             "set_diversity": len(owned_set_ids),
             "wishlist_count": wishlist_counts.get(user.id, 0),
             "sold_products_count": sold_product_counts.get(user.id, 0),
-            "positive_pnl_flag": 1 if total_value > total_invested else 0,
+            "positive_pnl_flag": 1 if pnl > 0 else 0,
             "illustration_rare_flag": 1 if has_illustration_rare else 0,
         }
 
