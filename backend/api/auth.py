@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
+
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError
 from pydantic import BaseModel
@@ -9,6 +10,7 @@ from models import User
 from services.auth import create_access_token, decode_token, hash_password, verify_password
 
 router = APIRouter()
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
 
