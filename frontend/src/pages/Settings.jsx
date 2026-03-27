@@ -676,7 +676,7 @@ export default function Settings() {
               <SettingsRow label={t('settings.app')} description="Pokemon TCG Collection">
                 <span className="text-xs font-bold text-text-muted px-2 py-1 rounded-lg"
                   style={{ background: 'rgba(255,255,255,0.05)' }}>
-                  v38.0
+                  v1.0
                 </span>
               </SettingsRow>
               <SettingsRow label={t('settings.dataSource')} description={t('settings.dataSourceDesc')}>
@@ -783,6 +783,23 @@ export default function Settings() {
           <section className="space-y-1">
             <SectionHeader title={t('settings.sectionData')} />
             <SettingsCard>
+              <SettingsRow label="Image Cache leeren" description="Alle gecachten Kartenbilder löschen (nur Admin)">
+                <button
+                  onClick={async () => {
+                    if (!confirm('Bist du sicher? Alle gecachten Bilder werden gelöscht.')) return
+                    try {
+                      await fetch('/api/backup/clear-image-cache', { method: 'POST' })
+                      toast.success('Image Cache geleert')
+                    } catch {
+                      toast.error('Fehler beim Leeren des Cache')
+                    }
+                  }}
+                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity"
+                  style={{ background: 'rgba(239,68,68,0.12)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.25)' }}
+                >
+                  🗑️ Cache leeren
+                </button>
+              </SettingsRow>
               <SettingsRow label={t('settings.csvExport')} description={t('settings.csvExportDesc')}>
                 <button
                   onClick={exportCSV}
@@ -793,8 +810,8 @@ export default function Settings() {
                 </button>
               </SettingsRow>
               <SettingsRow label={t('settings.backupDownload')} description={t('settings.backupDownloadDesc')}>
-                <div className="space-y-2 w-full">
-                  <div className="flex flex-wrap gap-2">
+                <div className="flex flex-col gap-2 items-end">
+                  <div className="flex flex-wrap gap-1.5 justify-end">
                     {[
                       { key: 'full', label: t('settings.backupFull') },
                       { key: 'collection', label: t('settings.backupCollection') },
@@ -802,25 +819,31 @@ export default function Settings() {
                       { key: 'cards', label: t('settings.backupCards') },
                       { key: 'products', label: t('settings.backupProducts') },
                       { key: 'images', label: t('settings.backupImages') },
-                    ].map(opt => (
-                      <label key={opt.key} className="flex items-center gap-1.5 text-xs text-text-secondary cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={backupOptions.includes(opt.key)}
-                          onChange={(e) => {
+                    ].map(opt => {
+                      const active = backupOptions.includes(opt.key)
+                      return (
+                        <button
+                          key={opt.key}
+                          onClick={() => {
                             if (opt.key === 'full') {
-                              setBackupOptions(e.target.checked ? ['full'] : [])
+                              setBackupOptions(active ? [] : ['full'])
                             } else {
                               setBackupOptions(prev => {
                                 const next = prev.filter(k => k !== 'full')
-                                return e.target.checked ? [...next, opt.key] : next.filter(k => k !== opt.key)
+                                return active ? next.filter(k => k !== opt.key) : [...next, opt.key]
                               })
                             }
                           }}
-                        />
-                        {opt.label}
-                      </label>
-                    ))}
+                          className="text-[11px] font-semibold px-2.5 py-1 rounded-full transition-all"
+                          style={active
+                            ? { background: 'rgba(239,21,21,0.2)', color: '#EF1515', border: '1px solid rgba(239,21,21,0.4)' }
+                            : { background: 'rgba(255,255,255,0.05)', color: '#606078', border: '1px solid rgba(255,255,255,0.08)' }
+                          }
+                        >
+                          {opt.label}
+                        </button>
+                      )
+                    })}
                   </div>
                   <button
                     onClick={() => downloadBackup(backupOptions.join(',') || 'full')}

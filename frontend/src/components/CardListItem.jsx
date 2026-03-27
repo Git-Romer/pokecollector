@@ -59,7 +59,7 @@ export default function CardListItem({
       </div>
 
       {/* Content — flex-1 min-w-0 so it shrinks and wraps instead of overflowing */}
-      <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+      <div className="flex-1 min-w-0 flex flex-col gap-0.5 overflow-visible">
         {/* Card name — truncated single line */}
         {name && (
           <p className="text-sm font-semibold text-text-primary truncate leading-tight">
