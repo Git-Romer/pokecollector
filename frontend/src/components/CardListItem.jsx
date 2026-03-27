@@ -59,7 +59,7 @@ export default function CardListItem({
       </div>
 
       {/* Content — flex-1 min-w-0 so it shrinks and wraps instead of overflowing */}
-      <div className="flex-1 min-w-0 flex flex-col gap-0.5 overflow-visible">
+      <div className="flex-1 flex flex-col gap-0.5" style={{ minWidth: 0, overflow: "visible" }}>
         {/* Card name — truncated single line */}
         {name && (
           <p className="text-sm font-semibold text-text-primary truncate leading-tight">
@@ -81,7 +81,7 @@ export default function CardListItem({
               <span
                 key={i}
                 className={clsx(
-                  'inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium leading-none whitespace-nowrap flex-shrink-0',
+                  'inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium leading-none flex-shrink-0',
                   badgeVariantClass(badge.variant)
                 )}
               >

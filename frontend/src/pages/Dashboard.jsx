@@ -51,7 +51,7 @@ export default function Dashboard() {
           <div className="h-9 bg-brand-red/70" />
           <div className="p-4 space-y-3">
             <div className="flex gap-4">
-              <div className="skeleton w-28 h-[7.5rem] rounded-xl" />
+              <div className="skeleton w-36 h-[10rem] rounded-xl" />
               <div className="flex-1 space-y-2">
                 <div className="skeleton h-6 w-32 rounded" />
                 <div className="skeleton h-3 w-16 rounded" />
@@ -128,7 +128,7 @@ export default function Dashboard() {
           </div>
           <div className="flex gap-2.5 overflow-x-auto pb-2 no-scrollbar -mx-4 px-4">
             {data.recent_additions.slice(0, 12).map(card => (
-              <div key={card.id} className="flex-shrink-0 w-28 group cursor-pointer">
+              <div key={card.id} className="flex-shrink-0 w-36 group cursor-pointer">
                 <div className="aspect-[2.5/3.5] rounded-lg overflow-hidden shadow-lg ring-1 ring-white/5 group-hover:ring-brand-red/50 group-hover:scale-[1.03] transition-all duration-150 transform-gpu origin-center">
                   {card.images_small
                     ? <img src={card.images_small} alt={card.name} className="w-full h-full object-cover" loading="lazy" />
@@ -179,7 +179,7 @@ export default function Dashboard() {
           </div>
           <div className="flex gap-2.5 overflow-x-auto pb-2 no-scrollbar -mx-4 px-4">
             {data.top_cards.slice(0, 10).map((card, i) => (
-              <div key={card.id} className="flex-shrink-0 w-32 group cursor-pointer">
+              <div key={card.id} className="flex-shrink-0 w-40 group cursor-pointer">
                 <div className="relative">
                   <div className="aspect-[2.5/3.5] rounded-lg overflow-hidden shadow-lg ring-1 ring-white/5 group-hover:scale-[1.03] transition-all duration-150 group-hover:ring-gold/40 transform-gpu origin-center">
                     {card.images_small
