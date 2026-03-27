@@ -52,7 +52,7 @@ function CardThumb({ card, onClick }) {
   const img = resolveCardImageUrl(card)
   const { ref, onMouseMove, onMouseEnter, onMouseLeave } = useTilt(8)
   return (
-    <div ref={ref} className="flex-shrink-0 w-[72px] cursor-pointer group" onClick={onClick} onMouseMove={onMouseMove} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
+    <div ref={ref} className="flex-shrink-0 w-[110px] cursor-pointer group" onClick={onClick} onMouseMove={onMouseMove} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
       <div className="aspect-[2.5/3.5] rounded-xl overflow-hidden shadow-lg transition-all duration-150
         group-hover:shadow-brand-red/20"
         style={{ border: '1px solid rgba(255,255,255,0.07)', boxShadow: '0 4px 16px rgba(0,0,0,0.5)' }}>
@@ -445,7 +445,7 @@ export default function HomeScreen() {
             </div>
             <div className="flex gap-2.5 overflow-x-auto pb-1 no-scrollbar -mx-4 px-4">
               {topCards.map((card, i) => (
-                <div key={card.id} className="flex-shrink-0 w-[72px] cursor-pointer group"
+                <div key={card.id} className="flex-shrink-0 w-[110px] cursor-pointer group"
                   onClick={() => navigate('/collection')}>
                   <div className="relative">
                     <div className="aspect-[2.5/3.5] rounded-xl overflow-hidden shadow-lg transition-all duration-150
