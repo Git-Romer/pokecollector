@@ -5,16 +5,13 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Area, AreaChart
 } from 'recharts'
-import { TrendingUp, TrendingDown, BarChart3, ShoppingBag, LayoutDashboard } from 'lucide-react'
+import { TrendingUp, TrendingDown } from 'lucide-react'
 import { getDashboard } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
-import { useAuth } from '../contexts/AuthContext'
 import { format, parseISO } from 'date-fns'
 import PeriodSelector, { CARD_PERIODS, PERIOD_PRICE_FIELD } from '../components/PeriodSelector'
 import TrainerCard from '../components/TrainerCard'
 import PokeBallLoader from '../components/PokeBallLoader'
-import TabNav from '../components/TabNav'
-import { resolveCardImageUrl } from '../utils/imageUrl'
 
 const CustomTooltip = ({ active, payload, label }) => {
   const { formatPrice } = useSettings()
@@ -35,14 +32,8 @@ const CustomTooltip = ({ active, payload, label }) => {
 
 export default function Dashboard() {
   const { t, formatPrice } = useSettings()
-  const { user } = useAuth()
   const navigate = useNavigate()
   const [period, setPeriod] = useState('total')
-  const ANALYTICS_TABS = [
-    { to: '/analytics', label: t('nav.analytics'), icon: BarChart3 },
-    { to: '/products', label: t('nav.products'), icon: ShoppingBag },
-    { to: '/dashboard', label: t('nav.dashboard'), icon: LayoutDashboard },
-  ]
 
   const priceField = PERIOD_PRICE_FIELD[period] || 'price_trend'
 
@@ -55,13 +46,12 @@ export default function Dashboard() {
   if (isLoading) {
     return (
       <div className="space-y-5 animate-pulse pb-4">
-        <TabNav tabs={ANALYTICS_TABS} />
         {/* Trainer card skeleton */}
         <div className="rounded-2xl overflow-hidden border-2 border-gold/20" style={{ background: 'linear-gradient(135deg, #1a2040, #0d1530)' }}>
           <div className="h-9 bg-brand-red/70" />
           <div className="p-4 space-y-3">
             <div className="flex gap-4">
-              <div className="skeleton w-20 h-24 rounded-xl" />
+              <div className="skeleton w-28 h-[7.5rem] rounded-xl" />
               <div className="flex-1 space-y-2">
                 <div className="skeleton h-6 w-32 rounded" />
                 <div className="skeleton h-3 w-16 rounded" />
@@ -84,12 +74,9 @@ export default function Dashboard() {
 
   if (error) {
     return (
-      <div className="space-y-5 pb-2">
-        <TabNav tabs={ANALYTICS_TABS} />
-        <div className="card text-center py-12">
-          <PokeBallLoader size={48} className="mb-4 opacity-40" />
-          <p className="text-brand-red">{t('dashboard.backendError')}</p>
-        </div>
+      <div className="card text-center py-12">
+        <PokeBallLoader size={48} className="mb-4 opacity-40" />
+        <p className="text-brand-red">{t('dashboard.backendError')}</p>
       </div>
     )
   }
@@ -111,12 +98,11 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-5 pb-2">
-      <TabNav tabs={ANALYTICS_TABS} />
 
       {/* ─── 1. TRAINER CARD HERO ──────────────────────────────────── */}
       {data && (
         <TrainerCard
-          trainerName={user?.username || "Trainer"}
+          trainerName="Gilles"
           totalCards={totalCards}
           totalValue={totalValue}
           collectedSets={ownedSets}
@@ -142,10 +128,10 @@ export default function Dashboard() {
           </div>
           <div className="flex gap-2.5 overflow-x-auto pb-2 no-scrollbar -mx-4 px-4">
             {data.recent_additions.slice(0, 12).map(card => (
-              <div key={card.id} className="flex-shrink-0 w-20 group cursor-pointer">
+              <div key={card.id} className="flex-shrink-0 w-28 group cursor-pointer">
                 <div className="aspect-[2.5/3.5] rounded-lg overflow-hidden shadow-lg ring-1 ring-white/5 group-hover:ring-brand-red/50 group-hover:scale-[1.03] transition-all duration-150 transform-gpu origin-center">
-                  {resolveCardImageUrl(card)
-                    ? <img src={resolveCardImageUrl(card)} alt={card.name} className="w-full h-full object-cover" loading="lazy" />
+                  {card.images_small
+                    ? <img src={card.images_small} alt={card.name} className="w-full h-full object-cover" loading="lazy" />
                     : <div className="w-full h-full bg-bg-elevated flex items-center justify-center">
                         <span className="text-[9px] text-text-muted text-center p-1 leading-tight">{card.name}</span>
                       </div>
@@ -193,11 +179,11 @@ export default function Dashboard() {
           </div>
           <div className="flex gap-2.5 overflow-x-auto pb-2 no-scrollbar -mx-4 px-4">
             {data.top_cards.slice(0, 10).map((card, i) => (
-              <div key={card.id} className="flex-shrink-0 w-24 group cursor-pointer">
+              <div key={card.id} className="flex-shrink-0 w-32 group cursor-pointer">
                 <div className="relative">
                   <div className="aspect-[2.5/3.5] rounded-lg overflow-hidden shadow-lg ring-1 ring-white/5 group-hover:scale-[1.03] transition-all duration-150 group-hover:ring-gold/40 transform-gpu origin-center">
-                    {resolveCardImageUrl(card)
-                      ? <img src={resolveCardImageUrl(card)} alt={card.name} className="w-full h-full object-cover" loading="lazy" />
+                    {card.images_small
+                      ? <img src={card.images_small} alt={card.name} className="w-full h-full object-cover" loading="lazy" />
                       : <div className="w-full h-full bg-bg-elevated" />
                     }
                   </div>

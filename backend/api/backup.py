@@ -169,3 +169,16 @@ async def restore_backup(
         raise HTTPException(status_code=500, detail="Restore timed out")
     except FileNotFoundError:
         raise HTTPException(status_code=500, detail="psql not found")
+
+
+@router.post("/clear-image-cache")
+def clear_image_cache(current_user: User = Depends(get_current_user)):
+    """Clear the image cache directory (admin only)."""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    import shutil
+    images_dir = "/app/images"
+    if os.path.exists(images_dir):
+        shutil.rmtree(images_dir)
+        os.makedirs(images_dir, exist_ok=True)
+    return {"message": "Image cache cleared"}
