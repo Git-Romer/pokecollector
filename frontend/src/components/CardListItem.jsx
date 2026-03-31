@@ -1,3 +1,4 @@
+import CardImage from './CardImage'
 import clsx from 'clsx'
 
 /**
@@ -44,18 +45,7 @@ export default function CardListItem({
     >
       {/* Card thumbnail */}
       <div className="flex-shrink-0 w-12 h-[68px] rounded-lg overflow-hidden bg-bg-elevated shadow-lg ring-1 ring-white/5">
-        {image ? (
-          <img
-            src={image}
-            alt={name}
-            className="w-full h-full object-cover"
-            loading="lazy"
-          />
-        ) : (
-          <div className="w-full h-full relative">
-            <img src="https://upload.wikimedia.org/wikipedia/en/3/3b/Pokemon_Trading_Card_Game_cardback.jpg" alt="card back" className="w-full h-full object-cover opacity-80" />
-          </div>
-        )}
+        <CardImage src={image} alt={name} className="w-full h-full object-cover" />
       </div>
 
       {/* Content — flex-1 min-w-0 so it shrinks and wraps instead of overflowing */}
