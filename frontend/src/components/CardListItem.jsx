@@ -53,7 +53,7 @@ export default function CardListItem({
           />
         ) : (
           <div className="w-full h-full relative">
-            <img src="https://upload.wikimedia.org/wikipedia/en/a/a7/Pokemon_card_back.jpg" alt="card back" className="w-full h-full object-cover opacity-80" />
+            <img src="https://upload.wikimedia.org/wikipedia/en/3/3b/Pokemon_Trading_Card_Game_cardback.jpg" alt="card back" className="w-full h-full object-cover opacity-80" />
           </div>
         )}
       </div>
