@@ -15,6 +15,7 @@ import toast from 'react-hot-toast'
 import { format, parseISO } from 'date-fns'
 import { useTilt } from '../hooks/useTilt'
 import { resolveCardImageUrl } from '../utils/imageUrl'
+import CardImage from '../components/CardImage'
 
 // Compact number formatter for mobile (1.2k, 3.4M, etc.)
 function compactNum(n) {
@@ -56,15 +57,7 @@ function CardThumb({ card, onClick }) {
       <div className="aspect-[2.5/3.5] rounded-xl overflow-hidden shadow-lg transition-all duration-150
         group-hover:shadow-brand-red/20"
         style={{ border: '1px solid rgba(255,255,255,0.07)', boxShadow: '0 4px 16px rgba(0,0,0,0.5)' }}>
-        {img
-          ? <img src={img} alt={card.name} className="w-full h-full object-cover" loading="lazy" />
-          : <div className="w-full h-full relative">
-              <img src="https://upload.wikimedia.org/wikipedia/en/3/3b/Pokemon_Trading_Card_Game_cardback.jpg" alt="card back" className="w-full h-full object-cover opacity-80" />
-              <div className="absolute bottom-0 left-0 right-0 px-1 pb-1 pt-3" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%)' }}>
-                <span className="text-[8px] text-white font-semibold leading-tight block text-center truncate">{card.name}</span>
-              </div>
-            </div>
-        }
+        <CardImage src={img} alt={card.name} className="w-full h-full object-cover" />
       </div>
     </div>
   )
@@ -454,15 +447,7 @@ export default function HomeScreen() {
                     <div className="aspect-[2.5/3.5] rounded-xl overflow-hidden shadow-lg transition-all duration-150
                       group-hover:scale-[1.03]"
                       style={{ border:'1px solid rgba(245,200,66,0.2)', boxShadow:'0 4px 16px rgba(0,0,0,0.5)' }}>
-                      {resolveCardImageUrl(card)
-                        ? <img src={resolveCardImageUrl(card)} alt={card.name} className="w-full h-full object-cover" loading="lazy" />
-                        : <div className="w-full h-full relative">
-                            <img src="https://upload.wikimedia.org/wikipedia/en/3/3b/Pokemon_Trading_Card_Game_cardback.jpg" alt="card back" className="w-full h-full object-cover opacity-80" />
-                            <div className="absolute bottom-0 left-0 right-0 px-1 pb-1 pt-3" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%)' }}>
-                              <span className="text-[8px] text-white font-semibold leading-tight block text-center truncate">{card.name}</span>
-                            </div>
-                          </div>
-                      }
+                      <CardImage src={resolveCardImageUrl(card)} alt={card.name} className="w-full h-full object-cover" />
                     </div>
                     <span className="absolute top-1 left-1 text-[9px] font-black px-1 rounded leading-4"
                       style={{ background:'rgba(0,0,0,0.85)', color:'#f5c842' }}>#{i+1}</span>
