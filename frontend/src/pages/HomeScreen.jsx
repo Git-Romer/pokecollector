@@ -59,7 +59,7 @@ function CardThumb({ card, onClick }) {
         {img
           ? <img src={img} alt={card.name} className="w-full h-full object-cover" loading="lazy" />
           : <div className="w-full h-full relative">
-              <img src="https://upload.wikimedia.org/wikipedia/en/a/a7/Pokemon_card_back.jpg" alt="card back" className="w-full h-full object-cover opacity-80" />
+              <img src="https://upload.wikimedia.org/wikipedia/en/3/3b/Pokemon_Trading_Card_Game_cardback.jpg" alt="card back" className="w-full h-full object-cover opacity-80" />
               <div className="absolute bottom-0 left-0 right-0 px-1 pb-1 pt-3" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%)' }}>
                 <span className="text-[8px] text-white font-semibold leading-tight block text-center truncate">{card.name}</span>
               </div>
@@ -457,7 +457,7 @@ export default function HomeScreen() {
                       {resolveCardImageUrl(card)
                         ? <img src={resolveCardImageUrl(card)} alt={card.name} className="w-full h-full object-cover" loading="lazy" />
                         : <div className="w-full h-full relative">
-                            <img src="https://upload.wikimedia.org/wikipedia/en/a/a7/Pokemon_card_back.jpg" alt="card back" className="w-full h-full object-cover opacity-80" />
+                            <img src="https://upload.wikimedia.org/wikipedia/en/3/3b/Pokemon_Trading_Card_Game_cardback.jpg" alt="card back" className="w-full h-full object-cover opacity-80" />
                             <div className="absolute bottom-0 left-0 right-0 px-1 pb-1 pt-3" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%)' }}>
                               <span className="text-[8px] text-white font-semibold leading-tight block text-center truncate">{card.name}</span>
                             </div>
