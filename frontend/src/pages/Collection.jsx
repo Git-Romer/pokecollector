@@ -645,9 +645,7 @@ export default function Collection() {
                       <div
                         className="aspect-[2.5/3.5] relative rounded-xl overflow-hidden flex-shrink-0"
                       >
-                        {resolveCardImageUrl(card)
-                          <CardImage src={resolveCardImageUrl(card)} alt={card?.name} className="w-full h-full object-cover" />
-                        }
+                        <CardImage src={resolveCardImageUrl(card)} alt={card?.name} className="w-full h-full object-cover" />
                         <HoloOverlay variant={item.variant} />
                       </div>
                       {(() => {
