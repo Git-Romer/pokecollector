@@ -58,8 +58,11 @@ function CardThumb({ card, onClick }) {
         style={{ border: '1px solid rgba(255,255,255,0.07)', boxShadow: '0 4px 16px rgba(0,0,0,0.5)' }}>
         {img
           ? <img src={img} alt={card.name} className="w-full h-full object-cover" loading="lazy" />
-          : <div className="w-full h-full bg-bg-elevated flex items-center justify-center">
-              <span className="text-[8px] text-text-muted text-center p-1 leading-tight">{card.name}</span>
+          : <div className="w-full h-full relative">
+              <img src="https://upload.wikimedia.org/wikipedia/en/a/a7/Pokemon_card_back.jpg" alt="card back" className="w-full h-full object-cover opacity-80" />
+              <div className="absolute bottom-0 left-0 right-0 px-1 pb-1 pt-3" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%)' }}>
+                <span className="text-[8px] text-white font-semibold leading-tight block text-center truncate">{card.name}</span>
+              </div>
             </div>
         }
       </div>
@@ -453,7 +456,12 @@ export default function HomeScreen() {
                       style={{ border:'1px solid rgba(245,200,66,0.2)', boxShadow:'0 4px 16px rgba(0,0,0,0.5)' }}>
                       {resolveCardImageUrl(card)
                         ? <img src={resolveCardImageUrl(card)} alt={card.name} className="w-full h-full object-cover" loading="lazy" />
-                        : <div className="w-full h-full bg-bg-elevated" />
+                        : <div className="w-full h-full relative">
+                            <img src="https://upload.wikimedia.org/wikipedia/en/a/a7/Pokemon_card_back.jpg" alt="card back" className="w-full h-full object-cover opacity-80" />
+                            <div className="absolute bottom-0 left-0 right-0 px-1 pb-1 pt-3" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%)' }}>
+                              <span className="text-[8px] text-white font-semibold leading-tight block text-center truncate">{card.name}</span>
+                            </div>
+                          </div>
                       }
                     </div>
                     <span className="absolute top-1 left-1 text-[9px] font-black px-1 rounded leading-4"

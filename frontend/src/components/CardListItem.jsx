@@ -52,8 +52,8 @@ export default function CardListItem({
             loading="lazy"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <span className="text-text-muted text-lg">🃏</span>
+          <div className="w-full h-full relative">
+            <img src="https://upload.wikimedia.org/wikipedia/en/a/a7/Pokemon_card_back.jpg" alt="card back" className="w-full h-full object-cover opacity-80" />
           </div>
         )}
       </div>
