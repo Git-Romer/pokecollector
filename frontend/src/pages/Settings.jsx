@@ -8,6 +8,7 @@ import {
   getUsers, createUser, updateUser, deleteUser, changePassword, changeAvatar, changeUsername,
   getContributors, getSupporters,
 } from '../api/client'
+import api from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../hooks/useTheme'
 import { useSettings } from '../contexts/SettingsContext'
@@ -788,10 +789,10 @@ export default function Settings() {
                   onClick={async () => {
                     if (!confirm('Bist du sicher? Alle gecachten Bilder werden gelöscht.')) return
                     try {
-                      await fetch('/api/backup/clear-image-cache', { method: 'POST' })
-                      toast.success('Image Cache geleert')
+                      await api.post('/backup/clear-image-cache')
+                      toast.success('Image cache cleared')
                     } catch {
-                      toast.error('Fehler beim Leeren des Cache')
+                      toast.error('Failed to clear cache')
                     }
                   }}
                   className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity"
