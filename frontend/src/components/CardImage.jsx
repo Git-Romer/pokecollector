@@ -4,7 +4,7 @@
  *
  * Usage: <CardImage src={url} alt={card.name} className="w-full h-full object-cover" />
  */
-const CARD_BACK = 'https://upload.wikimedia.org/wikipedia/en/3/3b/Pokemon_Trading_Card_Game_cardback.jpg'
+const CARD_BACK = '/cardback.jpg'
 
 export default function CardImage({ src, alt, className, showName = false, style, loading = 'lazy' }) {
   const handleError = (e) => {
