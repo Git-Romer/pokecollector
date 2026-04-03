@@ -32,10 +32,10 @@ export default function CardImage({ src, alt, className, showName = false, style
       />
       {showOverlay && alt && (
         <div
-          className="absolute bottom-0 left-0 right-0 px-1 pb-1 pt-3"
+          className="absolute bottom-0 left-0 right-0 px-1 pb-2 pt-4"
           style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%)' }}
         >
-          <span className="text-[8px] text-white font-semibold leading-tight block text-center truncate">
+          <span className="text-sm text-white font-semibold leading-tight block text-center truncate">
             {alt}
           </span>
         </div>
