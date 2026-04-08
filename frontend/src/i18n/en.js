@@ -484,6 +484,8 @@ const en = {
     currencyDesc: 'Price display',
     priceType: 'Price Type',
     priceTypeDesc: 'Which price is displayed',
+    tcgdexSyncLanguages: 'TCGdex Sync Languages',
+    tcgdexSyncLanguagesDesc: 'Choose which languages full TCGdex set/card sync should fetch. Price sync is unaffected.',
     priceTrend: 'Trend',
     priceAvg1: 'Avg 1 Day',
     priceAvg7: 'Avg 7 Days',

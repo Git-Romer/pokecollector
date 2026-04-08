@@ -118,6 +118,51 @@ function SelectControl({ value, options, onChange }) {
   )
 }
 
+function TcgdexLanguageControl({ value, onChange, labels }) {
+  const selected = new Set(
+    String(value || 'en,de')
+      .split(',')
+      .map((part) => part.trim().toLowerCase())
+      .filter(Boolean)
+  )
+
+  const toggle = (lang) => {
+    const next = new Set(selected)
+    if (next.has(lang)) {
+      if (next.size === 1) return
+      next.delete(lang)
+    } else {
+      next.add(lang)
+    }
+    onChange(['en', 'de'].filter((item) => next.has(item)).join(','))
+  }
+
+  return (
+    <div
+      className="flex w-fit rounded-lg overflow-hidden"
+      style={{ border: '1px solid rgba(255,255,255,0.1)' }}
+    >
+      {[
+        { value: 'en', label: labels.en },
+        { value: 'de', label: labels.de },
+      ].map((opt, i) => (
+        <button
+          key={opt.value}
+          type="button"
+          onClick={() => toggle(opt.value)}
+          className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
+            selected.has(opt.value)
+              ? 'bg-brand-red text-white'
+              : 'text-text-muted hover:text-text-primary'
+          } ${i > 0 ? 'border-l border-border' : ''}`}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function ContributorsSection({ t }) {
   const { data: contributors = [], isLoading } = useQuery({
     queryKey: ['contributors'],
@@ -402,6 +447,15 @@ export default function Settings() {
     }
   }
 
+  const handleTcgdexSyncLanguagesChange = async (val) => {
+    try {
+      await updateSettings({ tcgdex_sync_languages: val })
+      toast.success(t('settings.saved'))
+    } catch {
+      toast.error(t('settings.saveFailed'))
+    }
+  }
+
   const handleRestoreUpload = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -426,6 +480,7 @@ export default function Settings() {
   const currentLang = settings.language || 'de'
   const currentCurrency = settings.currency || 'EUR'
   const currentPriceType = settings.price_primary || 'trend'
+  const currentTcgdexSyncLanguages = settings.tcgdex_sync_languages || 'en,de'
 
   const usernameMutation = useMutation({
     mutationFn: (username) => changeUsername(username),
@@ -729,6 +784,18 @@ export default function Settings() {
                   {isRunning ? t('settings.running') : t('settings.syncButton')}
                 </button>
               </SettingsRow>
+              {user?.role === 'admin' && (
+                <SettingsRow label={t('settings.tcgdexSyncLanguages')} description={t('settings.tcgdexSyncLanguagesDesc')}>
+                  <TcgdexLanguageControl
+                    value={currentTcgdexSyncLanguages}
+                    onChange={handleTcgdexSyncLanguagesChange}
+                    labels={{
+                      en: t('settings.languageEN'),
+                      de: t('settings.languageDE'),
+                    }}
+                  />
+                </SettingsRow>
+              )}
               {user?.role === 'admin' && (
                 <SettingsRow label={t('settings.interval')} description={t('settings.syncSetsCardsDesc')} last>
                   <SelectControl

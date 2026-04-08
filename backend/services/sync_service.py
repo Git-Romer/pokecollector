@@ -10,10 +10,12 @@ logger = logging.getLogger(__name__)
 MAX_CARDS_PER_SYNC = 500  # TCGdex has no published rate limit; be reasonable
 
 
-def _get_language(db: Session) -> str:
-    """Get display language from settings."""
-    row = db.query(Setting).filter(Setting.key == "language").first()
-    return row.value if row else "de"
+def _get_tcgdex_sync_languages(db: Session) -> list[str]:
+    """Get TCGdex sync languages from settings."""
+    row = db.query(Setting).filter(Setting.key == "tcgdex_sync_languages").first()
+    raw_parts = [part.strip().lower() for part in (row.value if row else "en,de").split(",")]
+    selected = [lang for lang in ("en", "de") if lang in raw_parts]
+    return selected or ["en", "de"]
 
 
 def upsert_set(db: Session, set_data: dict):
@@ -211,9 +213,9 @@ def perform_full_sync(db: Session) -> dict:
 
     try:
         # 1. Sync all sets first
-        lang = _get_language(db)
-        logger.info("Syncing sets...")
-        sets_data = pokemon_api.get_all_sets(display_lang=lang)
+        sync_languages = _get_tcgdex_sync_languages(db)
+        logger.info("Syncing sets for languages: %s", ", ".join(sync_languages))
+        sets_data = pokemon_api.get_all_sets(languages=sync_languages)
         known_set_ids = {s.id for s in db.query(Set.id).all()}
 
         for set_data in sets_data:
@@ -241,7 +243,7 @@ def perform_full_sync(db: Session) -> dict:
                 try:
                     # Use tcg_set_id for the TCGdex API call (not the composite DB key)
                     tcg_id = s.tcg_set_id or s.id
-                    set_lang = s.lang or lang
+                    set_lang = s.lang or "en"
                     detail = pokemon_api.get_set_detail(tcg_id, lang=set_lang)
                     if detail:
                         parsed = pokemon_api.parse_set_for_db(detail)
@@ -254,7 +256,7 @@ def perform_full_sync(db: Session) -> dict:
             logger.info("Set detail enrichment complete")
 
         # 2a. Sync all cards for all known sets (full catalogue)
-        sets_to_sync = db.query(Set).filter(Set.lang.is_not(None)).all()
+        sets_to_sync = db.query(Set).filter(Set.lang.in_(sync_languages)).all()
         logger.info(f"Syncing full card catalogue for {len(sets_to_sync)} sets...")
         for set_obj in sets_to_sync:
             tcg_id = set_obj.tcg_set_id or set_obj.id
@@ -354,8 +356,6 @@ def perform_price_sync(db: Session) -> dict:
     updated_card_ids = []
 
     try:
-        lang = _get_language(db)
-
         collection_card_ids = [
             item.card_id for item in db.query(CollectionItem.card_id).all()
         ]

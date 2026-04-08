@@ -23,7 +23,8 @@ def _refresh_sets(db: Session, display_lang: str):
     Each language version is stored as a separate row with a composite primary key
     (e.g. "sv1_de" and "sv1_en"). lang field is strictly "en" or "de".
     """
-    sets_data = pokemon_api.get_all_sets(display_lang=display_lang)
+    languages = [display_lang] if display_lang in ("en", "de") else ["en", "de"]
+    sets_data = pokemon_api.get_all_sets(languages=languages)
 
     for set_data in sets_data:
         parsed = pokemon_api.parse_set_for_db(set_data)

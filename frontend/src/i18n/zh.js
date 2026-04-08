@@ -485,6 +485,8 @@ const zh = {
     currencyDesc: '价格显示',
     priceType: '价格类型',
     priceTypeDesc: '显示哪种价格',
+    tcgdexSyncLanguages: 'TCGdex 同步语言',
+    tcgdexSyncLanguagesDesc: '选择完整 TCGdex 套装/卡牌同步要抓取的语言。价格同步不受影响。',
     priceTrend: '趋势',
     priceAvg1: '平均 1天',
     priceAvg7: '平均 7天',
