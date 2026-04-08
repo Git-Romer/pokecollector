@@ -507,23 +507,24 @@ def migrate_custom_card(
 
     # 2. Re-assign collection items
     try:
-        db.query(CollectionItem).filter(
-            CollectionItem.card_id == custom_card_id
-        ).update({"card_id": composite_api_card_id, "lang": custom_lang}, synchronize_session=False)
-        db.flush()
+        with db.begin_nested():
+            db.query(CollectionItem).filter(
+                CollectionItem.card_id == custom_card_id
+            ).update({"card_id": composite_api_card_id, "lang": custom_lang}, synchronize_session=False)
+            db.flush()
     except IntegrityError:
-        db.rollback()
         # If the API card already exists in collection with same variant/lang,
         # merge quantities onto the existing row and remove old custom rows.
         custom_items = db.query(CollectionItem).filter(
             CollectionItem.card_id == custom_card_id
         ).all()
+        existing_items = db.query(CollectionItem).filter(
+            CollectionItem.card_id == composite_api_card_id,
+            CollectionItem.lang == custom_lang,
+        ).all()
+        existing_by_variant = {item.variant: item for item in existing_items}
         for item in custom_items:
-            existing_item = db.query(CollectionItem).filter(
-                CollectionItem.card_id == composite_api_card_id,
-                CollectionItem.variant == item.variant,
-                CollectionItem.lang == custom_lang,
-            ).first()
+            existing_item = existing_by_variant.get(item.variant)
             if existing_item:
                 existing_item.quantity = (existing_item.quantity or 0) + (item.quantity or 0)
                 if existing_item.purchase_price is None:
@@ -536,12 +537,12 @@ def migrate_custom_card(
 
     # 3. Re-assign wishlist items
     try:
-        db.query(WishlistItem).filter(
-            WishlistItem.card_id == custom_card_id
-        ).update({"card_id": composite_api_card_id}, synchronize_session=False)
-        db.flush()
+        with db.begin_nested():
+            db.query(WishlistItem).filter(
+                WishlistItem.card_id == custom_card_id
+            ).update({"card_id": composite_api_card_id}, synchronize_session=False)
+            db.flush()
     except IntegrityError:
-        db.rollback()
         custom_wishlist = db.query(WishlistItem).filter(
             WishlistItem.card_id == custom_card_id
         ).first()
@@ -563,21 +564,27 @@ def migrate_custom_card(
 
     # 4. Re-assign binder cards
     try:
-        db.query(BinderCard).filter(
-            BinderCard.card_id == custom_card_id
-        ).update({"card_id": composite_api_card_id}, synchronize_session=False)
-        db.flush()
+        with db.begin_nested():
+            db.query(BinderCard).filter(
+                BinderCard.card_id == custom_card_id
+            ).update({"card_id": composite_api_card_id}, synchronize_session=False)
+            db.flush()
     except IntegrityError:
-        db.rollback()
         custom_binder_cards = db.query(BinderCard).filter(
             BinderCard.card_id == custom_card_id
         ).all()
+        binder_ids = {binder_card.binder_id for binder_card in custom_binder_cards}
+        existing_binder_ids = set()
+        if binder_ids:
+            existing_binder_ids = {
+                binder_id
+                for (binder_id,) in db.query(BinderCard.binder_id).filter(
+                    BinderCard.card_id == composite_api_card_id,
+                    BinderCard.binder_id.in_(binder_ids),
+                ).all()
+            }
         for binder_card in custom_binder_cards:
-            existing_binder_card = db.query(BinderCard).filter(
-                BinderCard.binder_id == binder_card.binder_id,
-                BinderCard.card_id == composite_api_card_id,
-            ).first()
-            if existing_binder_card:
+            if binder_card.binder_id in existing_binder_ids:
                 db.delete(binder_card)
             else:
                 binder_card.card_id = composite_api_card_id
