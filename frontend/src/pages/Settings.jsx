@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { RefreshCw, Download, Upload, Plus, Pencil, Trash2, User, UserCheck, UserX } from 'lucide-react'
+import { RefreshCw, Download, Upload, Plus, Pencil, Trash2, User, UserCheck, UserX, Zap } from 'lucide-react'
 import {
   getSyncStatus, triggerSync, triggerPriceSync, rescheduleFullSync, reschedulePriceSync,
   downloadBackup, restoreBackup, exportCSV,
   getSetting, setSetting, getTelegramStatus, saveSettings, setAuthMode,
   getUsers, createUser, updateUser, deleteUser, changePassword, changeAvatar, changeUsername,
-  getContributors, getSupporters,
+  getContributors, getSupporters, getCustomMatches,
 } from '../api/client'
 import api from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
@@ -254,6 +255,7 @@ export default function Settings() {
   const [editingUsername, setEditingUsername] = useState(false)
   const [usernameInput, setUsernameInput] = useState('')
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const { user, updateCurrentUser, multiUser } = useAuth()
   const { settings, updateSettings, t } = useSettings()
   const { theme, setTheme, themes } = useTheme()
@@ -323,6 +325,12 @@ export default function Settings() {
     queryKey: ['sync-status'],
     queryFn: () => getSyncStatus().then((r) => r.data),
     refetchInterval: 10000,
+  })
+
+  const { data: customMatches = [] } = useQuery({
+    queryKey: ['custom-matches'],
+    queryFn: () => getCustomMatches().then((r) => r.data),
+    refetchInterval: 60000,
   })
 
   // Sync fetched data → local state
@@ -794,6 +802,18 @@ export default function Settings() {
                       de: t('settings.languageDE'),
                     }}
                   />
+                </SettingsRow>
+              )}
+              {customMatches.length > 0 && (
+                <SettingsRow label={t('migration.title')} description={`${customMatches.length} ${t('migration.pendingMatches')}`}>
+                  <button
+                    onClick={() => navigate('/migration')}
+                    className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity"
+                    style={{ background: 'rgba(245,200,66,0.15)', color: '#f5c842', border: '1px solid rgba(245,200,66,0.35)' }}
+                  >
+                    <Zap size={13} />
+                    {t('migration.title')}
+                  </button>
                 </SettingsRow>
               )}
               {user?.role === 'admin' && (
