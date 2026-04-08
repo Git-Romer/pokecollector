@@ -134,6 +134,7 @@ The split is defined in `backend/api/settings.py`:
   - full sync interval
   - price sync interval
   - multi-user mode
+  - TCGdex sync languages
 
 Effectively:
 

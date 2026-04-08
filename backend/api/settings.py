@@ -16,6 +16,7 @@ PER_USER_KEYS = {
 
 ADMIN_ONLY_KEYS = {
     "full_sync_interval_days", "price_sync_interval_minutes", "multi_user_mode",
+    "tcgdex_sync_languages",
 }
 
 DEFAULT_SETTINGS = {
@@ -30,7 +31,26 @@ DEFAULT_SETTINGS = {
     "currency": "EUR",
     "price_primary": "trend",
     "price_display": '["trend", "avg1", "avg7", "avg30", "low"]',
+    "tcgdex_sync_languages": "en,de",
 }
+
+
+def _normalize_tcgdex_sync_languages(value) -> str:
+    allowed = ("en", "de")
+    raw_parts = [part.strip().lower() for part in str(value or "").split(",")]
+    selected = [lang for lang in allowed if lang in raw_parts]
+    if not selected:
+        raise HTTPException(
+            status_code=422,
+            detail="tcgdex_sync_languages must include at least one of: en, de",
+        )
+    return ",".join(selected)
+
+
+def _coerce_setting_value(key: str, value) -> str:
+    if key == "tcgdex_sync_languages":
+        return _normalize_tcgdex_sync_languages(value)
+    return str(value)
 
 
 def _is_admin(db: Session, user_id: int) -> bool:
@@ -80,22 +100,23 @@ def get_settings(db: Session = Depends(get_db), current_user: User = Depends(get
 @router.put("/")
 def update_settings(data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     for key, value in data.items():
+        coerced_value = _coerce_setting_value(key, value)
         if key in ADMIN_ONLY_KEYS:
             if current_user.role != "admin":
                 continue
             row = db.query(Setting).filter(Setting.key == key).first()
             if row:
-                row.value = str(value)
+                row.value = coerced_value
             else:
-                db.add(Setting(key=key, value=str(value)))
+                db.add(Setting(key=key, value=coerced_value))
         else:
             row = db.query(UserSetting).filter(
                 UserSetting.user_id == current_user.id, UserSetting.key == key
             ).first()
             if row:
-                row.value = str(value)
+                row.value = coerced_value
             else:
-                db.add(UserSetting(user_id=current_user.id, key=key, value=str(value)))
+                db.add(UserSetting(user_id=current_user.id, key=key, value=coerced_value))
     db.commit()
     return _get_user_settings(db, current_user.id)
 
@@ -122,7 +143,7 @@ def get_setting(key: str, db: Session = Depends(get_db), current_user: User = De
 
 @router.post("/{key}")
 def set_setting(key: str, body: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    value = str(body.get("value", ""))
+    value = _coerce_setting_value(key, body.get("value", ""))
     if key in ADMIN_ONLY_KEYS:
         if current_user.role != "admin":
             raise HTTPException(status_code=403, detail="Admin only")

@@ -176,11 +176,13 @@ Current settings are split in `backend/api/settings.py`:
   - `full_sync_interval_days`
   - `price_sync_interval_minutes`
   - `multi_user_mode`
+  - `tcgdex_sync_languages`
 
 Important behavior:
 
 - Each user only reads and writes their own `UserSetting` rows
 - Admin-only settings are stored globally in `settings`
+- `tcgdex_sync_languages` is seeded from `TCGDEX_SYNC_LANGUAGES` only when the row does not exist yet; afterward the DB value is authoritative
 - Admin users can receive initial fallback values from env vars for Telegram and Gemini
 - `recognize.py` intentionally reads Gemini only from the current user's `UserSetting`; there is no cross-user fallback
 

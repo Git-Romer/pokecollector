@@ -9,6 +9,7 @@ const DEFAULT_SETTINGS = {
   language: 'de',
   price_display: '["trend", "avg1", "avg7", "avg30", "low"]',
   price_primary: 'trend',
+  tcgdex_sync_languages: 'en,de',
 }
 
 const SettingsContext = createContext(null)

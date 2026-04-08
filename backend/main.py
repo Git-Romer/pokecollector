@@ -47,7 +47,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Pokemon TCG Collection API",
-    version="1.0.1",
+    version="1.0.2",
     description="Complete Pokemon TCG collection management system",
     lifespan=lifespan,
 )

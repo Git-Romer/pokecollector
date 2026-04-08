@@ -484,6 +484,8 @@ const de = {
     currencyDesc: 'Preisanzeige',
     priceType: 'Preistyp',
     priceTypeDesc: 'Welcher Preis wird angezeigt',
+    tcgdexSyncLanguages: 'TCGdex-Sync-Sprachen',
+    tcgdexSyncLanguagesDesc: 'Wähle, welche Sprachen der vollständige TCGdex Set-/Karten-Sync laden soll. Der Preissync bleibt unverändert.',
     priceTrend: 'Trend',
     priceAvg1: 'Ø 1 Tag',
     priceAvg7: 'Ø 7 Tage',

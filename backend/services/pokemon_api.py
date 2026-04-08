@@ -207,8 +207,8 @@ def get_card(card_id: str, lang: str = "en") -> Optional[Dict]:
         return response.json()
 
 
-def get_all_sets(display_lang: str = "en") -> List[Dict]:
-    """Get all sets from TCGdex API — fetches EN and DE separately.
+def get_all_sets(languages: Optional[List[str]] = None) -> List[Dict]:
+    """Get all sets from TCGdex API for the requested languages.
 
     Each language version of a set is returned as a SEPARATE entry.
     No merging/deduplication by set ID — "sv1" appears twice:
@@ -219,10 +219,19 @@ def get_all_sets(display_lang: str = "en") -> List[Dict]:
       "_db_key": composite DB primary key, e.g. "sv1_de"
       "_lang":   "de" or "en"
     """
+    requested_languages = []
+    for lang in (languages or ["en", "de"]):
+        normalized = (lang or "").strip().lower()
+        if normalized in ("en", "de") and normalized not in requested_languages:
+            requested_languages.append(normalized)
+
+    if not requested_languages:
+        requested_languages = ["en", "de"]
+
     with httpx.Client(timeout=60.0) as client:
         all_sets: List[Dict] = []
 
-        for lang in ["en", "de"]:
+        for lang in requested_languages:
             try:
                 url = get_base_url(lang)
                 response = client.get(f"{url}/sets")

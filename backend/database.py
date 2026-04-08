@@ -29,7 +29,26 @@ DEFAULT_SETTINGS = {
     "price_display": '["trend", "avg1", "avg7", "avg30", "low"]',
     "price_primary": "trend",
     "multi_user_mode": "false",
+    "tcgdex_sync_languages": "en,de",
 }
+
+
+def _normalize_tcgdex_sync_languages(value: str | None) -> str:
+    """Normalize configured TCGdex sync languages to a stable CSV string."""
+    allowed = ("en", "de")
+    raw_parts = []
+    if value:
+        raw_parts = [part.strip().lower() for part in str(value).split(",")]
+
+    selected = []
+    for lang in allowed:
+        if lang in raw_parts and lang not in selected:
+            selected.append(lang)
+
+    if not selected:
+        selected = list(allowed)
+
+    return ",".join(selected)
 
 
 def _run_migrations(conn):
@@ -371,6 +390,10 @@ def init_db():
         for key, value in DEFAULT_SETTINGS.items():
             existing = db.query(Setting).filter(Setting.key == key).first()
             if not existing:
+                if key == "tcgdex_sync_languages":
+                    value = _normalize_tcgdex_sync_languages(
+                        os.environ.get("TCGDEX_SYNC_LANGUAGES", value)
+                    )
                 db.add(Setting(key=key, value=str(value)))
         db.commit()
     except Exception:
