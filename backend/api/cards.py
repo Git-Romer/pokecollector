@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, cast, Integer
+from sqlalchemy.exc import IntegrityError
 from typing import Optional, List
 from api.auth import get_current_user
 from database import get_db
@@ -509,26 +510,78 @@ def migrate_custom_card(
         db.query(CollectionItem).filter(
             CollectionItem.card_id == custom_card_id
         ).update({"card_id": composite_api_card_id, "lang": custom_lang}, synchronize_session=False)
-    except Exception:
-        pass  # ignore unique constraint violations (duplicates)
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        # If the API card already exists in collection with same variant/lang,
+        # merge quantities onto the existing row and remove old custom rows.
+        custom_items = db.query(CollectionItem).filter(
+            CollectionItem.card_id == custom_card_id
+        ).all()
+        for item in custom_items:
+            existing_item = db.query(CollectionItem).filter(
+                CollectionItem.card_id == composite_api_card_id,
+                CollectionItem.variant == item.variant,
+                CollectionItem.lang == custom_lang,
+            ).first()
+            if existing_item:
+                existing_item.quantity = (existing_item.quantity or 0) + (item.quantity or 0)
+                if existing_item.purchase_price is None:
+                    existing_item.purchase_price = item.purchase_price
+                db.delete(item)
+            else:
+                item.card_id = composite_api_card_id
+                item.lang = custom_lang
+        db.flush()
 
     # 3. Re-assign wishlist items
     try:
         db.query(WishlistItem).filter(
             WishlistItem.card_id == custom_card_id
         ).update({"card_id": composite_api_card_id}, synchronize_session=False)
-    except Exception:
-        pass
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        custom_wishlist = db.query(WishlistItem).filter(
+            WishlistItem.card_id == custom_card_id
+        ).first()
+        existing_wishlist = db.query(WishlistItem).filter(
+            WishlistItem.card_id == composite_api_card_id
+        ).first()
+        if custom_wishlist:
+            if existing_wishlist:
+                if existing_wishlist.price_alert_above is None:
+                    existing_wishlist.price_alert_above = custom_wishlist.price_alert_above
+                if existing_wishlist.price_alert_below is None:
+                    existing_wishlist.price_alert_below = custom_wishlist.price_alert_below
+                if existing_wishlist.notified_at is None:
+                    existing_wishlist.notified_at = custom_wishlist.notified_at
+                db.delete(custom_wishlist)
+            else:
+                custom_wishlist.card_id = composite_api_card_id
+        db.flush()
 
     # 4. Re-assign binder cards
     try:
         db.query(BinderCard).filter(
             BinderCard.card_id == custom_card_id
         ).update({"card_id": composite_api_card_id}, synchronize_session=False)
-    except Exception:
-        pass
-
-    db.flush()
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        custom_binder_cards = db.query(BinderCard).filter(
+            BinderCard.card_id == custom_card_id
+        ).all()
+        for binder_card in custom_binder_cards:
+            existing_binder_card = db.query(BinderCard).filter(
+                BinderCard.binder_id == binder_card.binder_id,
+                BinderCard.card_id == composite_api_card_id,
+            ).first()
+            if existing_binder_card:
+                db.delete(binder_card)
+            else:
+                binder_card.card_id = composite_api_card_id
+        db.flush()
 
     # 5. Delete the old custom card
     old_card = db.query(Card).filter(Card.id == custom_card_id).first()
