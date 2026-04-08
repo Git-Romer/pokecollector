@@ -590,13 +590,15 @@ def migrate_custom_card(
                 binder_card.card_id = composite_api_card_id
         db.flush()
 
-    # 5. Delete the old custom card
+    # 5. Update the match before deleting the old custom card so the FK no longer points at it
+    match.custom_card_id = composite_api_card_id
+    match.api_card_id = api_card_id
+    match.status = "migrated"
+
+    # 6. Delete the old custom card
     old_card = db.query(Card).filter(Card.id == custom_card_id).first()
     if old_card:
         db.delete(old_card)
-
-    # 6. Mark match as migrated
-    match.status = "migrated"
 
     try:
         db.commit()
