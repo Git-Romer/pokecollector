@@ -4,7 +4,7 @@ from typing import List, Optional
 from api.auth import get_current_user
 from database import get_db
 from models import CollectionItem, Card, Set, User
-from schemas import CollectionItemCreate, CollectionItemUpdate, CollectionItemResponse
+from schemas import CollectionItemCreate, CollectionItemUpdate, CollectionItemResponse, BulkCollectionAddRequest, BulkCollectionAddResponse
 from services import pokemon_api
 import datetime
 
@@ -155,6 +155,74 @@ def add_to_collection(
         db.commit()
         db.refresh(db_item)
         return db_item
+
+
+@router.post("/bulk-add", response_model=BulkCollectionAddResponse)
+def bulk_add_to_collection(
+    request: BulkCollectionAddRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Add multiple cards to the collection in a single request. Items with identical
+    card_id+variant+lang+condition+purchase_price are merged into existing entries
+    (quantity incremented), matching single-add behavior."""
+    added = 0
+    updated = 0
+    failed = 0
+    errors: List[str] = []
+
+    for item in request.items:
+        try:
+            item_lang = item.lang or "en"
+
+            if item.card_id.startswith("custom-"):
+                effective_card_id = item.card_id
+                custom_card = db.query(Card).filter(Card.id == item.card_id).first()
+                if custom_card and custom_card.lang:
+                    item_lang = custom_card.lang
+            else:
+                tcg_card_id, _ = pokemon_api.strip_lang_suffix(item.card_id)
+                effective_card_id = f"{tcg_card_id}_{item_lang}"
+                ensure_card_exists(db, effective_card_id, lang=item_lang)
+
+            existing = db.query(CollectionItem).filter(
+                CollectionItem.card_id == effective_card_id,
+                CollectionItem.variant == item.variant,
+                CollectionItem.lang == item_lang,
+                CollectionItem.condition == item.condition,
+                CollectionItem.purchase_price == item.purchase_price,
+                CollectionItem.user_id == current_user.id,
+            ).first()
+
+            if existing:
+                existing.quantity += item.quantity or 1
+                updated += 1
+            else:
+                db.add(CollectionItem(
+                    card_id=effective_card_id,
+                    quantity=item.quantity,
+                    condition=item.condition,
+                    variant=item.variant,
+                    purchase_price=item.purchase_price,
+                    lang=item_lang,
+                    user_id=current_user.id,
+                    added_at=datetime.datetime.utcnow(),
+                ))
+                added += 1
+        except HTTPException as exc:
+            failed += 1
+            errors.append(f"{item.card_id}: {exc.detail}")
+        except Exception as exc:
+            failed += 1
+            errors.append(f"{item.card_id}: {str(exc)}")
+
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to save bulk add: {exc}")
+
+    return BulkCollectionAddResponse(added=added, updated=updated, failed=failed, errors=errors)
 
 
 @router.put("/{item_id}", response_model=CollectionItemResponse)

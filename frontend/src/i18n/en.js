@@ -176,6 +176,18 @@ const en = {
     createAndAdd: 'Create card & add',
     selectOrTypeSet: 'Select or enter a set',
     customSetFreetext: 'Enter other set ID...',
+    select: 'Select',
+    exitSelect: 'Done',
+    selected: 'selected',
+    selectPage: 'Select page',
+    selectAllMatching: 'Select all matching',
+    clearSelection: 'Clear',
+    addSelected: 'Add to collection',
+    bulkAddedNew: 'added',
+    bulkAddedExisting: 'updated',
+    bulkAddFailed: 'Bulk add failed',
+    bulkAddLoading: 'Loading matching cards...',
+    bulkAddFailedCount: 'failed',
   },
 
   // Collection

@@ -176,6 +176,18 @@ const de = {
     createAndAdd: 'Karte erstellen & hinzufügen',
     selectOrTypeSet: 'Set auswählen oder eingeben',
     customSetFreetext: 'Andere Set-ID eingeben...',
+    select: 'Auswählen',
+    exitSelect: 'Fertig',
+    selected: 'ausgewählt',
+    selectPage: 'Seite auswählen',
+    selectAllMatching: 'Alle Treffer auswählen',
+    clearSelection: 'Leeren',
+    addSelected: 'Zur Sammlung hinzufügen',
+    bulkAddedNew: 'hinzugefügt',
+    bulkAddedExisting: 'aktualisiert',
+    bulkAddFailed: 'Bulk-Hinzufügen fehlgeschlagen',
+    bulkAddLoading: 'Lade passende Karten...',
+    bulkAddFailedCount: 'fehlgeschlagen',
   },
 
   // Collection
