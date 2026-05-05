@@ -163,9 +163,13 @@ def bulk_add_to_collection(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Add multiple cards to the collection in a single request. Items with identical
-    card_id+variant+lang+condition+purchase_price are merged into existing entries
-    (quantity incremented), matching single-add behavior."""
+    """Add multiple cards to the collection in a single request.
+
+    Each item is committed independently so one invalid card does not roll back
+    the whole batch. Existing rows are matched by the database uniqueness model
+    (card_id+variant+lang) plus the current user where possible, then quantity
+    is incremented.
+    """
     added = 0
     updated = 0
     failed = 0
@@ -189,13 +193,12 @@ def bulk_add_to_collection(
                 CollectionItem.card_id == effective_card_id,
                 CollectionItem.variant == item.variant,
                 CollectionItem.lang == item_lang,
-                CollectionItem.condition == item.condition,
-                CollectionItem.purchase_price == item.purchase_price,
                 CollectionItem.user_id == current_user.id,
             ).first()
 
             if existing:
                 existing.quantity += item.quantity or 1
+                db.commit()
                 updated += 1
             else:
                 db.add(CollectionItem(
@@ -208,22 +211,18 @@ def bulk_add_to_collection(
                     user_id=current_user.id,
                     added_at=datetime.datetime.utcnow(),
                 ))
+                db.commit()
                 added += 1
         except HTTPException as exc:
+            db.rollback()
             failed += 1
             errors.append(f"{item.card_id}: {exc.detail}")
         except Exception as exc:
+            db.rollback()
             failed += 1
             errors.append(f"{item.card_id}: {str(exc)}")
 
-    try:
-        db.commit()
-    except Exception as exc:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to save bulk add: {exc}")
-
     return BulkCollectionAddResponse(added=added, updated=updated, failed=failed, errors=errors)
-
 
 @router.put("/{item_id}", response_model=CollectionItemResponse)
 def update_collection_item(
