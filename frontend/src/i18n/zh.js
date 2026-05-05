@@ -176,6 +176,18 @@ const zh = {
     createAndAdd: '创建并添加',
     selectOrTypeSet: '选择或输入系列',
     customSetFreetext: '输入其他系列ID...',
+    select: '选择',
+    exitSelect: '完成',
+    selected: '已选',
+    selectPage: '选择本页',
+    selectAllMatching: '选择全部匹配',
+    clearSelection: '清除',
+    addSelected: '加入收藏',
+    bulkAddedNew: '新增',
+    bulkAddedExisting: '更新',
+    bulkAddFailed: '批量添加失败',
+    bulkAddLoading: '加载匹配卡牌...',
+    bulkAddFailedCount: '失败',
   },
 
   // Collection

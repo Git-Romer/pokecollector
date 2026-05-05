@@ -4,7 +4,7 @@ from typing import List, Optional
 from api.auth import get_current_user
 from database import get_db
 from models import CollectionItem, Card, Set, User
-from schemas import CollectionItemCreate, CollectionItemUpdate, CollectionItemResponse
+from schemas import CollectionItemCreate, CollectionItemUpdate, CollectionItemResponse, BulkCollectionAddRequest, BulkCollectionAddResponse
 from services import pokemon_api
 import datetime
 
@@ -156,6 +156,73 @@ def add_to_collection(
         db.refresh(db_item)
         return db_item
 
+
+@router.post("/bulk-add", response_model=BulkCollectionAddResponse)
+def bulk_add_to_collection(
+    request: BulkCollectionAddRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Add multiple cards to the collection in a single request.
+
+    Each item is committed independently so one invalid card does not roll back
+    the whole batch. Existing rows are matched by the database uniqueness model
+    (card_id+variant+lang) plus the current user where possible, then quantity
+    is incremented.
+    """
+    added = 0
+    updated = 0
+    failed = 0
+    errors: List[str] = []
+
+    for item in request.items:
+        try:
+            item_lang = item.lang or "en"
+
+            if item.card_id.startswith("custom-"):
+                effective_card_id = item.card_id
+                custom_card = db.query(Card).filter(Card.id == item.card_id).first()
+                if custom_card and custom_card.lang:
+                    item_lang = custom_card.lang
+            else:
+                tcg_card_id, _ = pokemon_api.strip_lang_suffix(item.card_id)
+                effective_card_id = f"{tcg_card_id}_{item_lang}"
+                ensure_card_exists(db, effective_card_id, lang=item_lang)
+
+            existing = db.query(CollectionItem).filter(
+                CollectionItem.card_id == effective_card_id,
+                CollectionItem.variant == item.variant,
+                CollectionItem.lang == item_lang,
+                CollectionItem.user_id == current_user.id,
+            ).first()
+
+            if existing:
+                existing.quantity += item.quantity or 1
+                db.commit()
+                updated += 1
+            else:
+                db.add(CollectionItem(
+                    card_id=effective_card_id,
+                    quantity=item.quantity,
+                    condition=item.condition,
+                    variant=item.variant,
+                    purchase_price=item.purchase_price,
+                    lang=item_lang,
+                    user_id=current_user.id,
+                    added_at=datetime.datetime.utcnow(),
+                ))
+                db.commit()
+                added += 1
+        except HTTPException as exc:
+            db.rollback()
+            failed += 1
+            errors.append(f"{item.card_id}: {exc.detail}")
+        except Exception as exc:
+            db.rollback()
+            failed += 1
+            errors.append(f"{item.card_id}: {str(exc)}")
+
+    return BulkCollectionAddResponse(added=added, updated=updated, failed=failed, errors=errors)
 
 @router.put("/{item_id}", response_model=CollectionItemResponse)
 def update_collection_item(

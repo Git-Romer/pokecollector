@@ -117,6 +117,17 @@ class CollectionItemUpdate(BaseModel):
     lang: Optional[str] = None
 
 
+class BulkCollectionAddRequest(BaseModel):
+    items: List[CollectionItemCreate]
+
+
+class BulkCollectionAddResponse(BaseModel):
+    added: int
+    updated: int
+    failed: int
+    errors: List[str] = []
+
+
 class CollectionItemResponse(BaseModel):
     id: int
     card_id: str

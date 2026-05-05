@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Search, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, SortAsc, Hash, PenLine, SlidersHorizontal, Camera } from 'lucide-react'
-import { searchCards, getSets, getCustomCards } from '../api/client'
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
+import { Search, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, SortAsc, Hash, PenLine, SlidersHorizontal, Camera, CheckSquare, Plus, Check } from 'lucide-react'
+import toast from 'react-hot-toast'
+import { searchCards, getSets, getCustomCards, bulkAddToCollection } from '../api/client'
 import { CardItem, CustomCardModal, CardModal } from '../components/CardItem'
 import { useSettings } from '../contexts/SettingsContext'
 import Sheet from '../components/ui/Sheet'
@@ -123,6 +124,8 @@ export default function CardSearch() {
   const [showCustomModal, setShowCustomModal] = useState(false)
   const [showScanner, setShowScanner] = useState(false)
   const [selectedCard, setSelectedCard] = useState(null)
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedItems, setSelectedItems] = useState(new Map()) // card.id -> { card_id, lang }
   const pageSize = 20
 
   const { data: recentCustomCards = [] } = useQuery({
@@ -258,6 +261,79 @@ export default function CardSearch() {
 
   const filterFormProps = { filters, setFilter, allSeries, setsForSeries, toggleSortOrder, t }
 
+  const cardLang = (card) => card._lang || card.lang || (langFilter === 'all' ? 'en' : langFilter)
+
+  const toggleSelected = (card) => {
+    setSelectedItems(prev => {
+      const next = new Map(prev)
+      if (next.has(card.id)) next.delete(card.id)
+      else next.set(card.id, { card_id: card.id, lang: cardLang(card) })
+      return next
+    })
+  }
+
+  const selectAllOnPage = () => {
+    setSelectedItems(prev => {
+      const next = new Map(prev)
+      for (const card of (data?.data || [])) {
+        next.set(card.id, { card_id: card.id, lang: cardLang(card) })
+      }
+      return next
+    })
+  }
+
+  const clearSelection = () => setSelectedItems(new Map())
+
+  const exitSelectMode = () => {
+    setSelectMode(false)
+    setSelectedItems(new Map())
+  }
+
+  const selectAllMatchingMutation = useMutation({
+    mutationFn: async () => {
+      const total = data?.total_count || 0
+      if (total === 0) return []
+      const r = await searchCards({ ...queryParams, page: 1, page_size: total })
+      return r.data?.data || []
+    },
+    onSuccess: (cards) => {
+      setSelectedItems(prev => {
+        const next = new Map(prev)
+        for (const card of cards) {
+          next.set(card.id, { card_id: card.id, lang: cardLang(card) })
+        }
+        return next
+      })
+    },
+    onError: () => toast.error(t('cardSearch.searchFailed')),
+  })
+
+  const bulkAddMutation = useMutation({
+    mutationFn: () => {
+      const items = Array.from(selectedItems.values()).map(({ card_id, lang }) => ({
+        card_id,
+        quantity: 1,
+        condition: 'NM',
+        variant: null,
+        purchase_price: null,
+        lang,
+      }))
+      return bulkAddToCollection(items)
+    },
+    onSuccess: (result) => {
+      const parts = [
+        `${result.added} ${t('cardSearch.bulkAddedNew')}`,
+        `${result.updated} ${t('cardSearch.bulkAddedExisting')}`,
+      ]
+      if (result.failed > 0) parts.push(`${result.failed} ${t('cardSearch.bulkAddFailedCount')}`)
+      toast.success(parts.join(' · '))
+      queryClient.invalidateQueries({ queryKey: ['collection'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      exitSelectMode()
+    },
+    onError: () => toast.error(t('cardSearch.bulkAddFailed')),
+  })
+
   return (
     <div className="space-y-4 pb-2">
 
@@ -283,6 +359,15 @@ export default function CardSearch() {
             <PenLine size={14} />
             {t('cardSearch.createCustomCard')}
           </button>
+          {hasQuery && (
+            <button
+              onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+              className={`btn-ghost text-sm ${selectMode ? 'border-brand-red/50 text-brand-red bg-brand-red/10' : ''}`}
+            >
+              <CheckSquare size={14} />
+              {selectMode ? t('cardSearch.exitSelect') : t('cardSearch.select')}
+            </button>
+          )}
         </div>
       </div>
 
@@ -433,6 +518,46 @@ export default function CardSearch() {
 
       {data && !isLoading && (
         <>
+          {selectMode && (
+            <div className="card flex flex-wrap items-center gap-2 sticky top-2 z-20 bg-bg-elevated/95 backdrop-blur">
+              <span className="text-sm font-semibold text-brand-red">
+                {selectedItems.size} {t('cardSearch.selected')}
+              </span>
+              <div className="flex-1" />
+              <button
+                onClick={selectAllOnPage}
+                disabled={!data.data?.length}
+                className="btn-ghost text-sm disabled:opacity-50"
+              >
+                {t('cardSearch.selectPage')}
+              </button>
+              <button
+                onClick={() => selectAllMatchingMutation.mutate()}
+                disabled={!data.total_count || selectAllMatchingMutation.isPending}
+                className="btn-ghost text-sm disabled:opacity-50"
+              >
+                {selectAllMatchingMutation.isPending
+                  ? t('cardSearch.bulkAddLoading')
+                  : `${t('cardSearch.selectAllMatching')} (${data.total_count?.toLocaleString()})`}
+              </button>
+              <button
+                onClick={clearSelection}
+                disabled={selectedItems.size === 0}
+                className="btn-ghost text-sm disabled:opacity-50"
+              >
+                <X size={14} /> {t('cardSearch.clearSelection')}
+              </button>
+              <button
+                onClick={() => bulkAddMutation.mutate()}
+                disabled={selectedItems.size === 0 || bulkAddMutation.isPending}
+                className="btn-primary text-sm disabled:opacity-50"
+              >
+                <Plus size={14} />
+                {bulkAddMutation.isPending ? t('card.adding') : t('cardSearch.addSelected')}
+              </button>
+            </div>
+          )}
+
           <div className="flex items-center justify-between flex-wrap gap-2">
             <p className="text-sm text-text-secondary">
               {data.total_count?.toLocaleString()} {t('cardSearch.results')}
@@ -465,11 +590,12 @@ export default function CardSearch() {
                 const setObj = setMap[card.set_id] || null
                 const cardSetName = card.set?.name || setObj?.abbreviation || setObj?.name || card.set_id || ''
                 const cardDisplay = cardSetName + (card.number ? ` · #${card.number}` : '')
+                const isSelected = selectedItems.has(card.id)
                 return (
                   <TiltCardWrapper
                     key={card.id}
-                    className="card-3d group relative"
-                    onClick={() => setSelectedCard(card)}
+                    className={`card-3d group relative ${selectMode && isSelected ? 'ring-2 ring-brand-red rounded-xl' : ''}`}
+                    onClick={() => (selectMode ? toggleSelected(card) : setSelectedCard(card))}
                   >
                     <div className="aspect-[2.5/3.5] rounded-xl overflow-hidden bg-bg-elevated ring-1 ring-white/5 group-hover:ring-brand-red/40">
                       {imgSrc
@@ -481,6 +607,17 @@ export default function CardSearch() {
                     </div>
                     {card.rarity?.toLowerCase().includes('holo') && (
                       <div className="absolute inset-0 rounded-xl pointer-events-none card-holo" />
+                    )}
+                    {selectMode && (
+                      <div
+                        className={`absolute top-1.5 left-1.5 w-6 h-6 rounded-md flex items-center justify-center border-2 transition-colors pointer-events-none ${
+                          isSelected
+                            ? 'bg-brand-red border-brand-red text-white'
+                            : 'bg-bg-elevated/80 border-white/40 backdrop-blur'
+                        }`}
+                      >
+                        {isSelected && <Check size={14} strokeWidth={3} />}
+                      </div>
                     )}
                     <div className="mt-1.5 px-0.5">
                       <div className="flex items-center gap-1">
