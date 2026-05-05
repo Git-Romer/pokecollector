@@ -1,4 +1,5 @@
 import base64
+import asyncio
 import httpx
 import os
 import json
@@ -14,6 +15,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+GEMINI_TRANSIENT_STATUS_CODES = {502, 503, 504}
+
 
 def get_gemini_key(db: Session, user_id: int = None) -> str:
     """Read Gemini API key from user settings only. No cross-user fallback."""
@@ -25,6 +28,61 @@ def get_gemini_key(db: Session, user_id: int = None) -> str:
             return row.value
     # No global/env fallback — each user must configure their own key
     return ""
+
+
+async def post_gemini_generate(
+    client: httpx.AsyncClient,
+    gemini_url: str,
+    api_key: str,
+    payload: dict,
+    *,
+    max_attempts: int = 3,
+) -> httpx.Response:
+    """Call Gemini with small retries for transient capacity errors."""
+    last_error = None
+
+    for attempt in range(max_attempts):
+        try:
+            resp = await client.post(
+                gemini_url,
+                headers={"x-goog-api-key": api_key},
+                json=payload,
+            )
+
+            if resp.status_code == 429:
+                raise HTTPException(
+                    status_code=429,
+                    detail="Gemini Rate Limit erreicht – bitte kurz warten und nochmal versuchen.",
+                )
+            if resp.status_code in {400, 401, 403}:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Ungültiger Gemini API Key. Bitte in den Einstellungen prüfen.",
+                )
+            if resp.status_code in GEMINI_TRANSIENT_STATUS_CODES:
+                if attempt < max_attempts - 1:
+                    await asyncio.sleep(2 ** attempt)
+                    continue
+                raise HTTPException(
+                    status_code=503,
+                    detail="Gemini ist gerade temporär überlastet oder nicht verfügbar. Bitte gleich nochmal versuchen.",
+                )
+
+            resp.raise_for_status()
+            return resp
+        except HTTPException:
+            raise
+        except httpx.RequestError as e:
+            last_error = e
+            if attempt < max_attempts - 1:
+                await asyncio.sleep(2 ** attempt)
+                continue
+            raise HTTPException(
+                status_code=503,
+                detail="Gemini konnte gerade nicht erreicht werden. Bitte Verbindung prüfen oder später erneut versuchen.",
+            )
+
+    raise HTTPException(status_code=500, detail=f"Gemini Anfrage fehlgeschlagen: {last_error}")
 
 
 @router.post("/recognize")
@@ -51,10 +109,7 @@ async def recognize_card(
     mime_type = file.content_type or "image/jpeg"
 
     # Call Gemini Vision — ask for language detection too
-    gemini_url = (
-        f"https://generativelanguage.googleapis.com/v1beta/models/"
-        f"gemini-2.5-flash:generateContent?key={api_key}"
-    )
+    gemini_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 
     prompt = """Look at this Pokemon Trading Card Game card image. Extract the following:
 1. Card name (exactly as printed on the card, in the card's language)
@@ -78,7 +133,7 @@ Respond ONLY with this exact JSON (no markdown, no explanation):
 
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(gemini_url, json={
+            resp = await post_gemini_generate(client, gemini_url, api_key, {
                 "contents": [{
                     "parts": [
                         {"text": prompt},
@@ -86,18 +141,6 @@ Respond ONLY with this exact JSON (no markdown, no explanation):
                     ]
                 }]
             })
-
-        if resp.status_code == 429:
-            raise HTTPException(
-                status_code=429,
-                detail="Rate Limit erreicht – bitte 15 Minuten warten und nochmal versuchen."
-            )
-        if resp.status_code == 400:
-            raise HTTPException(
-                status_code=400,
-                detail="Ungültiger Gemini API Key. Bitte in den Einstellungen prüfen."
-            )
-        resp.raise_for_status()
 
         result = resp.json()
         text = result["candidates"][0]["content"]["parts"][0]["text"].strip()
@@ -238,8 +281,10 @@ Respond ONLY with this exact JSON (no markdown, no explanation):
             )
             logger.info(f"Ranked results by number match (target: {target_num})")
 
-    # Visual verification: ask Gemini to pick the best match from candidate images
-    top_candidates = deduped[:5]  # max 5 to keep costs low
+    # Visual verification: ask Gemini to pick the best match from candidate images.
+    # Skip this second Gemini call when number ranking is decisive or there
+    # are not enough candidate images to compare visually.
+    top_candidates = [card for card in deduped[:5] if card.get("image")]  # max 5 to keep costs low
     if len(top_candidates) >= 2 and not number_match_clear:
         try:
             # Download candidate images
@@ -291,9 +336,9 @@ Respond ONLY with this exact JSON (no markdown, no explanation):
                             )
                         })
 
-                verify_resp = await client.post(gemini_url, json={
+                verify_resp = await post_gemini_generate(client, gemini_url, api_key, {
                     "contents": [{"parts": candidate_parts}]
-                })
+                }, max_attempts=2)
 
             if verify_resp.status_code == 200:
                 verify_result = verify_resp.json()
