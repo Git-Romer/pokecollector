@@ -265,7 +265,7 @@ If you want to support the project, use Ko-fi:
 
 https://ko-fi.com/gillesromer
 
-Supporters listed through Ko-fi can appear in the in-app Community section.
+All donations go to an animal rescue organization. Supporters listed through Ko-fi can appear in the in-app Community section.
 
 ---
 
