@@ -30,6 +30,7 @@ DEFAULT_SETTINGS = {
     "price_primary": "trend",
     "multi_user_mode": "false",
     "tcgdex_sync_languages": "en,de",
+    "debug_mode": "false",
 }
 
 

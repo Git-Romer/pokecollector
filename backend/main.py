@@ -8,6 +8,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 import logging
 import os
+import time
 
 logging.basicConfig(
     level=logging.INFO,
@@ -31,6 +32,10 @@ async def lifespan(app: FastAPI):
     db = SessionLocal()
     try:
         bootstrap_admin(db)
+        from models import Setting
+        from services.debug_logging import configure_debug_logging
+        debug_setting = db.query(Setting).filter(Setting.key == "debug_mode").first()
+        configure_debug_logging(debug_setting is not None and debug_setting.value == "true")
     finally:
         db.close()
 
@@ -63,6 +68,32 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
+
+
+
+@app.middleware("http")
+async def debug_request_logging(request: Request, call_next):
+    from services.debug_logging import is_debug_logging_enabled
+
+    if not is_debug_logging_enabled():
+        return await call_next(request)
+
+    started = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        logger.exception("Request failed: %s %s", request.method, request.url.path)
+        raise
+
+    duration_ms = (time.perf_counter() - started) * 1000
+    logger.debug(
+        "Request: %s %s -> %s %.1fms",
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration_ms,
+    )
+    return response
 
 # Include routers
 from api import auth, cards, collection, sets, wishlist, binders, dashboard, analytics, sync, products, export, backup, settings, images, social

@@ -7,7 +7,7 @@ import {
   downloadBackup, restoreBackup, exportCSV,
   getSetting, setSetting, getTelegramStatus, saveSettings, setAuthMode,
   getUsers, createUser, updateUser, deleteUser, changePassword, changeAvatar, changeUsername,
-  getContributors, getSupporters, getCustomMatches,
+  getContributors, getSupporters, getCustomMatches, downloadDebugLog,
 } from '../api/client'
 import api from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
@@ -264,6 +264,7 @@ export default function Settings() {
   const [geminiKey, setGeminiKey] = useState('')
   const [geminiDirty, setGeminiDirty] = useState(false)
   const [backupOptions, setBackupOptions] = useState(['full'])
+  const [debugModeEnabled, setDebugModeEnabled] = useState(false)
 
   // Full sync interval (days) and price sync interval (minutes)
   const [fullSyncIntervalDays, setFullSyncIntervalDays] = useState('5')
@@ -353,6 +354,10 @@ export default function Settings() {
   useEffect(() => {
     if (geminiKeyData?.value !== undefined && !geminiDirty) setGeminiKey(geminiKeyData.value)
   }, [geminiKeyData])
+
+  useEffect(() => {
+    setDebugModeEnabled(settings.debug_mode === 'true')
+  }, [settings.debug_mode])
 
 
   useEffect(() => {
@@ -461,6 +466,26 @@ export default function Settings() {
       toast.success(t('settings.saved'))
     } catch {
       toast.error(t('settings.saveFailed'))
+    }
+  }
+
+  const handleDebugModeToggle = async (enabled) => {
+    setDebugModeEnabled(enabled)
+    try {
+      await setSetting('debug_mode', enabled ? 'true' : 'false')
+      queryClient.invalidateQueries({ queryKey: ['setting', 'debug_mode'] })
+      toast.success(t('settings.saved'))
+    } catch {
+      setDebugModeEnabled(!enabled)
+      toast.error(t('settings.saveFailed'))
+    }
+  }
+
+  const handleDownloadDebugLog = async () => {
+    try {
+      await downloadDebugLog()
+    } catch {
+      toast.error(t('settings.debugLogDownloadFailed'))
     }
   }
 
@@ -871,6 +896,20 @@ export default function Settings() {
           <section className="space-y-1">
             <SectionHeader title={t('settings.sectionData')} />
             <SettingsCard>
+              {user?.role === 'admin' && (
+                <SettingsRow label={t('settings.debugMode')} description={t('settings.debugModeDesc')}>
+                  <div className="flex items-center gap-2 justify-end">
+                    <button
+                      onClick={handleDownloadDebugLog}
+                      className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity"
+                      style={{ background: 'rgba(255,255,255,0.07)', color: '#90a4ae', border: '1px solid rgba(255,255,255,0.1)' }}
+                    >
+                      <Download size={13} /> {t('settings.debugLogDownload')}
+                    </button>
+                    <Toggle value={debugModeEnabled} onChange={handleDebugModeToggle} />
+                  </div>
+                </SettingsRow>
+              )}
               <SettingsRow label="Image Cache leeren" description="Alle gecachten Kartenbilder löschen (nur Admin)">
                 <button
                   onClick={async () => {

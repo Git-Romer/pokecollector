@@ -203,6 +203,24 @@ export const getSetting = (key) => api.get(`/settings/${key}`).then(r => r.data)
 export const setSetting = (key, value) => api.post(`/settings/${key}`, { value }).then(r => r.data)
 export const getTelegramStatus = () => api.get('/settings/telegram_status').then(r => r.data)
 
+export const downloadDebugLog = () => {
+  const token = localStorage.getItem('token')
+  const config = { responseType: 'blob' }
+  if (token) {
+    config.headers = { Authorization: `Bearer ${token}` }
+  }
+  return api.get('/settings/debug-log', config).then(r => {
+    const url = window.URL.createObjectURL(r.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'pokecollector-debug.log'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    setTimeout(() => window.URL.revokeObjectURL(url), 0)
+  })
+}
+
 // GitHub / Community
 export const getContributors = () => api.get('/github/contributors').then(r => r.data)
 export const getSupporters = () => api.get('/github/supporters').then(r => r.data)

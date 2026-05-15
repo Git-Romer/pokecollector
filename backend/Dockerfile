@@ -12,7 +12,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN mkdir -p /app/backups
+RUN mkdir -p /app/backups /app/debug
 
 EXPOSE 8000
 

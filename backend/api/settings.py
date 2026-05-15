@@ -1,11 +1,15 @@
+import logging
 import os
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 from api.auth import get_current_user
 from sqlalchemy.orm import Session
 from database import get_db
 from models import Setting, UserSetting, User
+from services.debug_logging import configure_debug_logging, get_debug_log_path
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 PER_USER_KEYS = {
     "language", "currency", "price_primary", "price_display",
@@ -16,7 +20,7 @@ PER_USER_KEYS = {
 
 ADMIN_ONLY_KEYS = {
     "full_sync_interval_days", "price_sync_interval_minutes", "multi_user_mode",
-    "tcgdex_sync_languages",
+    "tcgdex_sync_languages", "debug_mode",
 }
 
 DEFAULT_SETTINGS = {
@@ -32,6 +36,7 @@ DEFAULT_SETTINGS = {
     "price_primary": "trend",
     "price_display": '["trend", "avg1", "avg7", "avg30", "low"]',
     "tcgdex_sync_languages": "en,de",
+    "debug_mode": "false",
 }
 
 
@@ -50,7 +55,16 @@ def _normalize_tcgdex_sync_languages(value) -> str:
 def _coerce_setting_value(key: str, value) -> str:
     if key == "tcgdex_sync_languages":
         return _normalize_tcgdex_sync_languages(value)
+    if key == "debug_mode":
+        return "true" if str(value).lower() in {"true", "1", "yes", "on"} else "false"
     return str(value)
+
+
+def _apply_setting_side_effect(key: str, value: str) -> None:
+    if key == "debug_mode":
+        enabled = value == "true"
+        configure_debug_logging(enabled)
+        logger.info("Debug mode setting changed to %s", enabled)
 
 
 def _is_admin(db: Session, user_id: int) -> bool:
@@ -99,6 +113,7 @@ def get_settings(db: Session = Depends(get_db), current_user: User = Depends(get
 
 @router.put("/")
 def update_settings(data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    pending_side_effects = []
     for key, value in data.items():
         coerced_value = _coerce_setting_value(key, value)
         if key in ADMIN_ONLY_KEYS:
@@ -109,6 +124,7 @@ def update_settings(data: dict, db: Session = Depends(get_db), current_user: Use
                 row.value = coerced_value
             else:
                 db.add(Setting(key=key, value=coerced_value))
+            pending_side_effects.append((key, coerced_value))
         else:
             row = db.query(UserSetting).filter(
                 UserSetting.user_id == current_user.id, UserSetting.key == key
@@ -118,7 +134,26 @@ def update_settings(data: dict, db: Session = Depends(get_db), current_user: Use
             else:
                 db.add(UserSetting(user_id=current_user.id, key=key, value=coerced_value))
     db.commit()
+    for key, value in pending_side_effects:
+        _apply_setting_side_effect(key, value)
     return _get_user_settings(db, current_user.id)
+
+
+@router.get("/debug-log")
+def download_debug_log(current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    path = get_debug_log_path()
+    return FileResponse(
+        path,
+        filename="pokecollector-debug.log",
+        media_type="text/plain; charset=utf-8",
+        headers={
+            "Cache-Control": "no-store",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
 
 
 @router.get("/telegram_status")
@@ -152,6 +187,7 @@ def set_setting(key: str, body: dict, db: Session = Depends(get_db), current_use
             row.value = value
         else:
             db.add(Setting(key=key, value=value))
+        pending_side_effect = (key, value)
     else:
         row = db.query(UserSetting).filter(
             UserSetting.user_id == current_user.id, UserSetting.key == key
@@ -161,4 +197,6 @@ def set_setting(key: str, body: dict, db: Session = Depends(get_db), current_use
         else:
             db.add(UserSetting(user_id=current_user.id, key=key, value=value))
     db.commit()
+    if key in ADMIN_ONLY_KEYS:
+        _apply_setting_side_effect(*pending_side_effect)
     return {"key": key, "value": value}
