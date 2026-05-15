@@ -6,6 +6,8 @@ import { getUserCollection } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 import { CardModal } from '../components/CardItem'
+import CardImage from '../components/CardImage'
+import FallbackBadges from '../components/FallbackBadges'
 
 const HOLO_VARIANTS = new Set(['Holo', 'Holo Rare', 'Holo V', 'Holo VMAX', 'Holo VSTAR', 'Holo ex', 'Reverse Holo'])
 
@@ -185,7 +187,7 @@ export default function UserCollection() {
           {filtered.map((item) => {
             const card = item.card
             if (!card) return null
-            const imgSrc = card.images_small || resolveCardImageUrl(card) || (card.image ? `${card.image}/low.webp` : null)
+            const imgSrc = resolveCardImageUrl(card)
             const price = getPrice(card, item.variant)
             return (
               <div
@@ -194,16 +196,11 @@ export default function UserCollection() {
                 onClick={() => setSelectedCard(card)}
               >
                 <div className="aspect-[2.5/3.5] rounded-xl overflow-hidden ring-1 ring-white/5 group-hover:ring-brand-red/30 transition-all">
-                  {imgSrc ? (
-                    <img src={imgSrc} alt={card.name} className="w-full h-full object-cover" loading="lazy" />
-                  ) : (
-                    <div className="w-full h-full bg-bg-surface flex items-center justify-center text-[9px] text-text-muted p-1 text-center">
-                      {card.name}
-                    </div>
-                  )}
+                  <CardImage src={imgSrc} alt={card.name} className="w-full h-full object-cover" />
                 </div>
                 <div className="mt-1 px-0.5">
                   <p className="text-[10px] font-semibold text-text-primary truncate">{card.name}</p>
+                  <FallbackBadges card={card} compact />
                   <div className="flex items-center justify-between">
                     <span className="text-[9px] text-text-muted">{item.quantity}x · {item.variant || 'Normal'}</span>
                     {price > 0 && (

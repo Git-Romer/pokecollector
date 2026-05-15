@@ -481,6 +481,15 @@ export default function Settings() {
     }
   }
 
+  const handleCrossLanguageFallbackToggle = async (key, enabled) => {
+    try {
+      await updateSettings({ [key]: enabled ? 'true' : 'false' })
+      toast.success(t('settings.saved'))
+    } catch {
+      toast.error(t('settings.saveFailed'))
+    }
+  }
+
   const handleDownloadDebugLog = async () => {
     try {
       await downloadDebugLog()
@@ -514,6 +523,8 @@ export default function Settings() {
   const currentCurrency = settings.currency || 'EUR'
   const currentPriceType = settings.price_primary || 'trend'
   const currentTcgdexSyncLanguages = settings.tcgdex_sync_languages || 'en,de'
+  const crossLanguagePriceFallback = settings.cross_language_price_fallback !== 'false'
+  const crossLanguageImageFallback = settings.cross_language_image_fallback !== 'false'
 
   const usernameMutation = useMutation({
     mutationFn: (username) => changeUsername(username),
@@ -828,6 +839,22 @@ export default function Settings() {
                     }}
                   />
                 </SettingsRow>
+              )}
+              {user?.role === 'admin' && (
+                <>
+                  <SettingsRow label={t('settings.crossLanguagePriceFallback')} description={t('settings.crossLanguagePriceFallbackDesc')}>
+                    <Toggle
+                      value={crossLanguagePriceFallback}
+                      onChange={(val) => handleCrossLanguageFallbackToggle('cross_language_price_fallback', val)}
+                    />
+                  </SettingsRow>
+                  <SettingsRow label={t('settings.crossLanguageImageFallback')} description={t('settings.crossLanguageImageFallbackDesc')}>
+                    <Toggle
+                      value={crossLanguageImageFallback}
+                      onChange={(val) => handleCrossLanguageFallbackToggle('cross_language_image_fallback', val)}
+                    />
+                  </SettingsRow>
+                </>
               )}
               {customMatches.length > 0 && (
                 <SettingsRow label={t('migration.title')} description={`${customMatches.length} ${t('migration.pendingMatches')}`}>

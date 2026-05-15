@@ -30,6 +30,8 @@ DEFAULT_SETTINGS = {
     "price_primary": "trend",
     "multi_user_mode": "false",
     "tcgdex_sync_languages": "en,de",
+    "cross_language_price_fallback": "true",
+    "cross_language_image_fallback": "true",
     "debug_mode": "false",
 }
 
@@ -187,6 +189,9 @@ def _run_migrations(conn):
         "ALTER TABLE product_purchases ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id)",
         "ALTER TABLE portfolio_snapshots ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id)",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT false",
+        # v43: Track when card prices/images are copied from another language.
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS price_source_lang VARCHAR",
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS image_source_lang VARCHAR",
     ]
     for stmt in migrations:
         try:

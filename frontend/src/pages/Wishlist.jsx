@@ -7,6 +7,7 @@ import CardListItem from '../components/CardListItem'
 import TabNav from '../components/TabNav'
 import toast from 'react-hot-toast'
 import { resolveCardImageUrl } from '../utils/imageUrl'
+import FallbackBadges from '../components/FallbackBadges'
 
 function AlertEditor({ item, onDone }) {
   const [above, setAbove] = useState(item.price_alert_above || '')
@@ -262,6 +263,7 @@ export default function Wishlist() {
                               </div>
                               <div className="min-w-0">
                                 <p className="text-sm font-medium text-text-primary">{card?.name}</p>
+                                <FallbackBadges card={card} compact />
                                 {card?.rarity && <p className="text-xs text-text-muted">{card.rarity}</p>}
                               </div>
                             </div>
@@ -343,6 +345,8 @@ export default function Wishlist() {
                   if (item.price_alert_above) badges.push({ label: `↑ ${formatPrice(item.price_alert_above)}`, variant: 'yellow' })
                   if (item.price_alert_below) badges.push({ label: `↓ ${formatPrice(item.price_alert_below)}`, variant: 'blue' })
                   if (card?.rarity) badges.push({ label: card.rarity, variant: 'gray' })
+                  if (card?.price_source_lang) badges.push({ label: `${t('fallback.price')} ${card.price_source_lang.toUpperCase()}`, variant: 'yellow' })
+                  if (card?.image_source_lang) badges.push({ label: `${t('fallback.image')} ${card.image_source_lang.toUpperCase()}`, variant: 'blue' })
 
                   return (
                     <CardListItem

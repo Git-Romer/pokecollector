@@ -36,6 +36,7 @@ class CardBase(BaseModel):
     artist: Optional[str] = None
     images_small: Optional[str] = None
     images_large: Optional[str] = None
+    image_source_lang: Optional[str] = None
     is_custom: bool = False
     price_market: Optional[float] = None
     price_low: Optional[float] = None
@@ -63,6 +64,7 @@ class CardBase(BaseModel):
     price_tcg_holo_low: Optional[float] = None
     price_tcg_holo_mid: Optional[float] = None
     price_tcg_holo_market: Optional[float] = None
+    price_source_lang: Optional[str] = None
     # Variants
     variants_normal: Optional[bool] = None
     variants_reverse: Optional[bool] = None

@@ -6,22 +6,15 @@ from database import get_db
 from models import CollectionItem, Card, Set, User
 from schemas import CollectionItemCreate, CollectionItemUpdate, CollectionItemResponse, BulkCollectionAddRequest, BulkCollectionAddResponse
 from services import pokemon_api
+from services.card_fallbacks import apply_cross_language_fallbacks
+from services.card_values import effective_market_price
 import datetime
 
 router = APIRouter()
 
-# Variants that use the Cardmarket holo price family
-HOLO_VARIANTS = {"Holo", "Holo Rare", "Holo V", "Holo VMAX", "Holo VSTAR", "Holo ex", "Reverse Holo"}
-
-
 def _get_item_price(item):
     """Return the correct market price for a collection item, respecting holo variant."""
-    card = item.card
-    if not card:
-        return 0
-    if item.variant in HOLO_VARIANTS and card.price_market_holo is not None:
-        return card.price_market_holo
-    return card.price_market or 0
+    return effective_market_price(item.card, item.variant)
 
 
 def ensure_card_exists(db: Session, card_id: str, lang: str = "en") -> Card:
@@ -36,6 +29,7 @@ def ensure_card_exists(db: Session, card_id: str, lang: str = "en") -> Card:
                 detail=f"Card {card_id} not found in local database. Please run a Sync first."
             )
         parsed = pokemon_api.parse_card_for_db(card_data, lang=lang)
+        parsed = apply_cross_language_fallbacks(db, parsed)
         if parsed.get("set_id"):
             set_data = card_data.get("set", {})
             if set_data:

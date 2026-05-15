@@ -9,6 +9,8 @@ import toast from 'react-hot-toast'
 import clsx from 'clsx'
 import { useTilt } from '../hooks/useTilt'
 import { resolveCardImageUrl } from '../utils/imageUrl'
+import { CARD_VARIANTS, getAvailableVariants, getDefaultVariant, getDefaultVariantOrNull } from '../utils/cardVariants'
+import FallbackBadges from './FallbackBadges'
 
 const RARITY_COLORS = {
   'Common': 'text-text-secondary',
@@ -442,6 +444,7 @@ export const CardItem = memo(function CardItem({ card, showActions = true, onAdd
                 {lang.toUpperCase()}
               </span>
             )}
+            <FallbackBadges card={card} compact />
           </div>
           {setName && <p className="text-xs text-text-muted truncate">{setName}</p>}
 
@@ -471,7 +474,7 @@ export const CardItem = memo(function CardItem({ card, showActions = true, onAdd
               className="flex-1 bg-brand-red/20 hover:bg-brand-red/40 text-brand-red text-xs py-1.5 rounded-lg font-medium transition-all flex items-center justify-center gap-1"
               onClick={(e) => {
                 e.stopPropagation()
-                addMutation.mutate({ card_id: card.id, quantity: 1, condition: 'NM', lang: card.lang || 'en' })
+                addMutation.mutate({ card_id: card.id, quantity: 1, condition: 'NM', variant: getDefaultVariantOrNull(card), lang: card.lang || 'en' })
               }}>
               <Plus size={12} /> {t('common.add')}
             </button>
@@ -512,26 +515,12 @@ export const CardItem = memo(function CardItem({ card, showActions = true, onAdd
   )
 })
 
-const CARD_VARIANTS = ['Normal', 'Holo', 'Reverse Holo', 'First Edition']
-
-
 export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
   if (!card || !card.id) return null
 
   const [quantity, setQuantity] = useState(1)
   const [condition, setCondition] = useState('NM')
-  const [variant, setVariant] = useState(() => {
-    const hasNormal = card.variants_normal
-    const hasReverse = card.variants_reverse
-    const hasHolo = card.variants_holo
-    const hasFirst = card.variants_first_edition
-
-    const available = [hasNormal && 'Normal', hasReverse && 'Reverse Holo', hasHolo && 'Holo', hasFirst && 'First Edition'].filter(Boolean)
-
-    if (available.length === 1) return available[0]
-    if (hasHolo && !hasNormal && !hasReverse) return 'Holo'
-    return ''
-  })
+  const [variant, setVariant] = useState(() => getDefaultVariant(card))
   const [purchasePrice, setPurchasePrice] = useState('')
   const [modalPeriod, setModalPeriod] = useState('total')
   const [resolvedCardId, setResolvedCardId] = useState(card.id)
@@ -644,6 +633,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
                     {setName && <p className="text-xs text-text-secondary mt-0.5">
                       {setName}{card.number ? ` · #${card.number}` : ''}
                     </p>}
+                    <FallbackBadges card={card} className="mt-1" />
                     {card.rarity && (
                       <p className={`text-xs mt-0.5 ${(RARITY_COLORS[card.rarity] || 'text-text-secondary')}`}>
                         {card.rarity}
@@ -665,6 +655,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
                 {setName && <p className="text-sm text-text-secondary">
                   {setName}{card.number ? ` · #${card.number}` : ''}
                 </p>}
+                <FallbackBadges card={card} className="mt-1" />
               </div>
               <button onClick={onClose} className="text-text-muted hover:text-text-primary transition-colors flex-shrink-0">
                 <X size={20} />
@@ -846,12 +837,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
                   {CARD_VARIANTS.map(v => <option key={v} value={v}>{v}</option>)}
                 </select>
                 {(() => {
-                  const available = [
-                    card.variants_normal && 'Normal',
-                    card.variants_reverse && 'Reverse Holo',
-                    card.variants_holo && 'Holo',
-                    card.variants_first_edition && 'First Edition',
-                  ].filter(Boolean)
+                  const available = getAvailableVariants(card)
                   return available.length > 0 ? (
                     <p className="text-[10px] text-text-muted mt-1">
                       📋 {t('card.availableVariants')}: {available.join(', ')}

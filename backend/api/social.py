@@ -7,10 +7,9 @@ from sqlalchemy.orm import Session
 from api.auth import get_current_user
 from database import get_db
 from models import Card, CollectionItem, ProductPurchase, Set, User, WishlistItem
+from services.card_values import effective_market_price
 
 router = APIRouter()
-
-HOLO_VARIANTS = {"Holo", "Holo Rare", "Holo V", "Holo VMAX", "Holo VSTAR", "Holo ex", "Reverse Holo"}
 
 
 ACHIEVEMENTS = [
@@ -190,11 +189,7 @@ def _card_payload(card: Card | None):
 
 def _load_user_stats(db: Session, user_ids: list[int] | None = None):
     def _get_price(row):
-        if hasattr(row, "variant") and row.variant in HOLO_VARIANTS:
-            holo = getattr(row, "price_market_holo", None)
-            if holo is not None:
-                return holo
-        return row.price_market or 0
+        return effective_market_price(row, getattr(row, "variant", None))
 
     user_query = db.query(User).filter(User.is_active == True)
     if user_ids is not None:

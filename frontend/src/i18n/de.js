@@ -20,6 +20,12 @@ const de = {
   },
 
   // Common / General
+  fallback: {
+    image: 'Bild',
+    price: 'Preis',
+    imageFrom: 'Bild-Fallback aus {lang}',
+    priceFrom: 'Preis-Fallback aus {lang}',
+  },
   common: {
     back: 'Zurück',
     loading: 'Laden...',
@@ -502,6 +508,10 @@ const de = {
     debugModeDesc: 'Schreibt ein temporäres Backend-Debug-Log, das zur Fehlersuche heruntergeladen werden kann. Nur Admin.',
     debugLogDownload: 'Log herunterladen',
     debugLogDownloadFailed: 'Debug-Log konnte nicht heruntergeladen werden',
+    crossLanguagePriceFallback: 'Sprachübergreifender Preis-Fallback',
+    crossLanguagePriceFallbackDesc: 'Nutzt DE ↔ EN Preise, wenn die gewählte Sprache keine öffentlichen TCGdex-Preisdaten hat. Fallback-Preise werden markiert.',
+    crossLanguageImageFallback: 'Sprachübergreifender Bild-Fallback',
+    crossLanguageImageFallbackDesc: 'Nutzt DE ↔ EN Bilder, wenn die gewählte Sprache kein öffentliches TCGdex-Bild hat. Fallback-Bilder werden markiert.',
     priceTrend: 'Trend',
     priceAvg1: 'Ø 1 Tag',
     priceAvg7: 'Ø 7 Tage',

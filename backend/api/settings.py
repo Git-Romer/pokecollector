@@ -21,6 +21,7 @@ PER_USER_KEYS = {
 ADMIN_ONLY_KEYS = {
     "full_sync_interval_days", "price_sync_interval_minutes", "multi_user_mode",
     "tcgdex_sync_languages", "debug_mode",
+    "cross_language_price_fallback", "cross_language_image_fallback",
 }
 
 DEFAULT_SETTINGS = {
@@ -36,6 +37,8 @@ DEFAULT_SETTINGS = {
     "price_primary": "trend",
     "price_display": '["trend", "avg1", "avg7", "avg30", "low"]',
     "tcgdex_sync_languages": "en,de",
+    "cross_language_price_fallback": "true",
+    "cross_language_image_fallback": "true",
     "debug_mode": "false",
 }
 
@@ -55,7 +58,7 @@ def _normalize_tcgdex_sync_languages(value) -> str:
 def _coerce_setting_value(key: str, value) -> str:
     if key == "tcgdex_sync_languages":
         return _normalize_tcgdex_sync_languages(value)
-    if key == "debug_mode":
+    if key in {"debug_mode", "cross_language_price_fallback", "cross_language_image_fallback"}:
         return "true" if str(value).lower() in {"true", "1", "yes", "on"} else "false"
     return str(value)
 

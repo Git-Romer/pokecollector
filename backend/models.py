@@ -52,6 +52,7 @@ class Card(Base):
     artist = Column(String)
     images_small = Column(String)
     images_large = Column(String)
+    image_source_lang = Column(String, nullable=True)  # Set when images are copied from another TCGdex language
     is_custom = Column(Boolean, default=False)
     lang = Column(String, default="en")      # "en" or "de"
     # Cardmarket EUR prices
@@ -83,6 +84,7 @@ class Card(Base):
     price_tcg_holo_low = Column(Float)
     price_tcg_holo_mid = Column(Float)
     price_tcg_holo_market = Column(Float)
+    price_source_lang = Column(String, nullable=True)  # Set when prices are copied from another TCGdex language
     # Card variants from TCGdex
     variants_normal = Column(Boolean)
     variants_reverse = Column(Boolean)

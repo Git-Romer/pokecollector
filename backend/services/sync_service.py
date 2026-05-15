@@ -4,6 +4,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from models import Card, Set, CollectionItem, WishlistItem, PriceHistory, SyncLog, PortfolioSnapshot, CustomCardMatch, Setting, ProductPurchase, User
 from services import pokemon_api, telegram
+from services.card_fallbacks import apply_cross_language_fallbacks
+from services.card_values import effective_market_price
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +123,7 @@ def take_portfolio_snapshot(db: Session, user_id: int | None = None):
             CollectionItem.user_id == scoped_user_id
         ).all()
         total_value = sum(
-            (item.card.price_market or 0) * item.quantity
+            effective_market_price(item.card, item.variant) * item.quantity
             for item in collection_items
             if item.card
         )
@@ -275,6 +277,7 @@ def perform_full_sync(db: Session) -> dict:
                     set_obj.total = len(cards_data)
                 for card_data in cards_data:
                     parsed = pokemon_api.parse_card_for_db(card_data, default_set_id=tcg_id, lang=set_lang)
+                    parsed = apply_cross_language_fallbacks(db, parsed)
                     upsert_card(db, parsed)
                 db.commit()
             except Exception as e:
@@ -299,6 +302,7 @@ def perform_full_sync(db: Session) -> dict:
                 card_data = pokemon_api.get_card(tcg_id, lang=card_lang)
                 if card_data:
                     parsed = pokemon_api.parse_card_for_db(card_data, lang=card_lang)
+                    parsed = apply_cross_language_fallbacks(db, parsed)
                     # Ensure set exists (check by tcg_set_id since set IDs are now composite)
                     if parsed.get("set_id"):
                         set_exists = db.query(Set).filter(
@@ -372,6 +376,7 @@ def perform_price_sync(db: Session) -> dict:
                 card_data = pokemon_api.get_card(tcg_id, lang=card_lang)
                 if card_data:
                     parsed = pokemon_api.parse_card_for_db(card_data, lang=card_lang)
+                    parsed = apply_cross_language_fallbacks(db, parsed)
                     # Ensure set exists (check by tcg_set_id since set IDs are now composite)
                     if parsed.get("set_id"):
                         set_exists = db.query(Set).filter(

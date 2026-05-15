@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 from api.auth import get_current_user
 from database import get_db
+from services.card_values import effective_market_price
 from models import CollectionItem, Card, User
 import io
 import csv
@@ -38,7 +39,8 @@ def export_csv(
         if not card:
             continue
         set_name = card.set_ref.name if card.set_ref else ""
-        total_value = round((card.price_market or 0) * item.quantity, 2)
+        current_price = effective_market_price(card, item.variant)
+        total_value = round(current_price * item.quantity, 2)
 
         writer.writerow([
             card.id,
@@ -49,7 +51,7 @@ def export_csv(
             item.quantity,
             item.condition,
             item.purchase_price or "",
-            card.price_market or "",
+            current_price or "",
             total_value,
             item.added_at.strftime("%Y-%m-%d") if item.added_at else "",
         ])
@@ -118,7 +120,7 @@ def export_pdf(
             if not card:
                 continue
             set_name = (card.set_ref.name[:20] if card.set_ref else "")
-            val = round((card.price_market or 0) * item.quantity, 2)
+            val = round(effective_market_price(card, item.variant) * item.quantity, 2)
             total_value += val
 
             data.append([

@@ -7,6 +7,7 @@ import { CardItem, CustomCardModal, CardModal } from '../components/CardItem'
 import { useSettings } from '../contexts/SettingsContext'
 import Sheet from '../components/ui/Sheet'
 import CardScanner from '../components/CardScanner'
+import { getDefaultVariantOrNull } from '../utils/cardVariants'
 import { useTilt } from '../hooks/useTilt'
 
 function TiltCardWrapper({ children, className, onClick }) {
@@ -267,7 +268,7 @@ export default function CardSearch() {
     setSelectedItems(prev => {
       const next = new Map(prev)
       if (next.has(card.id)) next.delete(card.id)
-      else next.set(card.id, { card_id: card.id, lang: cardLang(card) })
+      else next.set(card.id, { card_id: card.id, lang: cardLang(card), variant: getDefaultVariantOrNull(card) })
       return next
     })
   }
@@ -276,7 +277,7 @@ export default function CardSearch() {
     setSelectedItems(prev => {
       const next = new Map(prev)
       for (const card of (data?.data || [])) {
-        next.set(card.id, { card_id: card.id, lang: cardLang(card) })
+        next.set(card.id, { card_id: card.id, lang: cardLang(card), variant: getDefaultVariantOrNull(card) })
       }
       return next
     })
@@ -300,7 +301,7 @@ export default function CardSearch() {
       setSelectedItems(prev => {
         const next = new Map(prev)
         for (const card of cards) {
-          next.set(card.id, { card_id: card.id, lang: cardLang(card) })
+          next.set(card.id, { card_id: card.id, lang: cardLang(card), variant: getDefaultVariantOrNull(card) })
         }
         return next
       })
@@ -310,11 +311,11 @@ export default function CardSearch() {
 
   const bulkAddMutation = useMutation({
     mutationFn: () => {
-      const items = Array.from(selectedItems.values()).map(({ card_id, lang }) => ({
+      const items = Array.from(selectedItems.values()).map(({ card_id, lang, variant }) => ({
         card_id,
         quantity: 1,
         condition: 'NM',
-        variant: null,
+        variant,
         purchase_price: null,
         lang,
       }))

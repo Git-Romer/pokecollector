@@ -5,15 +5,14 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
-
-const CARD_VARIANTS = ['Normal', 'Holo', 'Reverse Holo', 'First Edition']
+import { CARD_VARIANTS, getDefaultVariant } from '../utils/cardVariants'
 
 // ─── Add-to-Collection Modal für Scan-Ergebnis ──────────────────────────────
 function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
   const { t } = useSettings()
   const [quantity, setQuantity] = useState(1)
   const [condition, setCondition] = useState('NM')
-  const [variant, setVariant] = useState('')
+  const [variant, setVariant] = useState(() => getDefaultVariant(match))
   const [lang, setLang] = useState(match.lang || defaultLang || 'en')
   const [purchasePrice, setPurchasePrice] = useState('')
   const [adding, setAdding] = useState(false)

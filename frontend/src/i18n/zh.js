@@ -20,6 +20,12 @@ const zh = {
   },
 
   // Common / General
+  fallback: {
+    image: '图片',
+    price: '价格',
+    imageFrom: '图片回退来源：{lang}',
+    priceFrom: '价格回退来源：{lang}',
+  },
   common: {
     back: '返回',
     loading: '加载中...',
@@ -503,6 +509,10 @@ const zh = {
     debugModeDesc: '写入可下载的临时后端调试日志，用于排查问题。仅管理员。',
     debugLogDownload: '下载日志',
     debugLogDownloadFailed: '调试日志下载失败',
+    crossLanguagePriceFallback: '跨语言价格回退',
+    crossLanguagePriceFallbackDesc: '当所选语言没有公开 TCGdex 价格数据时使用 DE ↔ EN 价格，并显示回退标签。',
+    crossLanguageImageFallback: '跨语言图片回退',
+    crossLanguageImageFallbackDesc: '当所选语言没有公开 TCGdex 图片时使用 DE ↔ EN 图片，并显示回退标签。',
     priceTrend: '趋势',
     priceAvg1: '平均 1天',
     priceAvg7: '平均 7天',

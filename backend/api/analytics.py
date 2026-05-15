@@ -3,24 +3,16 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from api.auth import get_current_user
 from database import get_db
+from services.card_values import effective_market_price
 from models import CollectionItem, Card, PriceHistory, PortfolioSnapshot, Set, ProductPurchase, User
 from typing import Optional
 import datetime
 
 router = APIRouter()
 
-# Variants that use the Cardmarket holo price family
-HOLO_VARIANTS = {"Holo", "Holo Rare", "Holo V", "Holo VMAX", "Holo VSTAR", "Holo ex", "Reverse Holo"}
-
-
 def _get_item_price(item):
     """Return the correct market price for a collection item, respecting holo variant."""
-    card = item.card
-    if not card:
-        return 0
-    if item.variant in HOLO_VARIANTS and card.price_market_holo is not None:
-        return card.price_market_holo
-    return card.price_market or 0
+    return effective_market_price(item.card, item.variant)
 
 
 @router.get("/duplicates")
@@ -47,7 +39,7 @@ def get_duplicates(
                 "images_small": item.card.images_small,
                 "quantity": item.quantity,
                 "price_market": item.card.price_market,
-                "total_value": round((item.card.price_market or 0) * item.quantity, 2),
+                "total_value": round(_get_item_price(item) * item.quantity, 2),
                 "rarity": item.card.rarity,
             })
 
@@ -132,7 +124,7 @@ def get_rarity_stats(
             rarity = item.card.rarity or "Unknown"
             rarity_counts[rarity] = rarity_counts.get(rarity, 0) + item.quantity
             rarity_values[rarity] = rarity_values.get(rarity, 0) + (
-                (item.card.price_market or 0) * item.quantity
+                _get_item_price(item) * item.quantity
             )
 
     total = sum(rarity_counts.values())

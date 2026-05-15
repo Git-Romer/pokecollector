@@ -8,6 +8,7 @@ from database import get_db
 from models import Card, Set, PriceHistory, CustomCardMatch, CollectionItem, WishlistItem, BinderCard, Setting, User
 from schemas import CardBase, CardWithSet, PriceHistoryResponse, CardCustomCreate, CustomCardUpdate
 from services import pokemon_api
+from services.card_fallbacks import apply_cross_language_fallbacks
 import datetime
 import re
 from uuid import uuid4
@@ -42,6 +43,7 @@ def _card_to_dict(card: Card) -> dict:
         "artist": card.artist,
         "images_small": card.images_small,
         "images_large": card.images_large,
+        "image_source_lang": getattr(card, "image_source_lang", None),
         "is_custom": card.is_custom or False,
         "lang": card.lang or "en",
         "price_market": card.price_market,
@@ -61,6 +63,7 @@ def _card_to_dict(card: Card) -> dict:
         "price_tcg_normal_market": getattr(card, 'price_tcg_normal_market', None),
         "price_tcg_reverse_market": getattr(card, 'price_tcg_reverse_market', None),
         "price_tcg_holo_market": getattr(card, 'price_tcg_holo_market', None),
+        "price_source_lang": getattr(card, "price_source_lang", None),
     }
 
 
@@ -140,8 +143,13 @@ def _search_by_code_number(
                 set_data = pokemon_api.get_set_cards(tcg_set_id, lang=set_lang)
                 for card_data in set_data.get("cards", []):
                     parsed = pokemon_api.parse_card_for_db(card_data, default_set_id=tcg_set_id, lang=set_lang)
+                    parsed = apply_cross_language_fallbacks(db, parsed)
                     existing = db.query(Card).filter(Card.id == parsed["id"]).first()
-                    if not existing:
+                    if existing:
+                        for key, value in parsed.items():
+                            if key != "id":
+                                setattr(existing, key, value)
+                    else:
                         db.add(Card(**parsed))
                 db.commit()
             except Exception:
@@ -474,6 +482,7 @@ def migrate_custom_card(
         if not api_data:
             raise HTTPException(status_code=404, detail="API card not found on TCGdex")
         parsed = pokemon_api.parse_card_for_db(api_data, lang=fetch_lang)
+        parsed = apply_cross_language_fallbacks(db, parsed)
         composite_api_card_id = parsed["id"]  # e.g. "sv1-1_en"
 
         # Ensure set record exists
@@ -491,7 +500,7 @@ def migrate_custom_card(
         existing_api_card = db.query(Card).filter(Card.id == composite_api_card_id).first()
         if existing_api_card:
             for k, v in parsed.items():
-                if k != "id" and v is not None:
+                if k != "id":
                     setattr(existing_api_card, k, v)
             existing_api_card.is_custom = False
         else:
@@ -714,6 +723,7 @@ def get_card(
             raise HTTPException(status_code=404, detail="Card not found")
 
         parsed = pokemon_api.parse_card_for_db(card_data, lang=card_lang)
+        parsed = apply_cross_language_fallbacks(db, parsed)
 
         # Ensure set exists
         if parsed.get("set_id"):

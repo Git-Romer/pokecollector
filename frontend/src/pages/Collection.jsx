@@ -11,6 +11,7 @@ import toast from 'react-hot-toast'
 import clsx from 'clsx'
 import { useTilt } from '../hooks/useTilt'
 import { resolveCardImageUrl } from '../utils/imageUrl'
+import FallbackBadges from '../components/FallbackBadges'
 
 function TiltBinderCard({ className, onClick, children }) {
   const { ref, onMouseMove, onMouseEnter, onMouseLeave } = useTilt(10)
@@ -687,6 +688,7 @@ export default function Collection() {
                             {item.lang.toUpperCase()}
                           </span>
                         )}
+                        <FallbackBadges card={card} compact />
                       </div>
                     </TiltBinderCard>
                   )
@@ -767,6 +769,7 @@ export default function Collection() {
                                       {item.lang.toUpperCase()}
                                     </span>
                                   )}
+                                  <FallbackBadges card={card} compact />
                                 </div>
                                 {(() => {
                                   const abbr = card?.set_ref?.abbreviation

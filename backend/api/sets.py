@@ -7,6 +7,7 @@ from database import get_db
 from models import Set, Card, CollectionItem, Setting, User
 from schemas import SetBase
 from services import pokemon_api
+from services.card_fallbacks import apply_cross_language_fallbacks
 
 router = APIRouter()
 
@@ -190,13 +191,14 @@ def get_set_checklist(
             set_data = pokemon_api.get_set_cards(tcg_id, lang=set_lang)
             for card_data in set_data.get("cards", []):
                 parsed = pokemon_api.parse_card_for_db(card_data, default_set_id=tcg_id, lang=set_lang)
+                parsed = apply_cross_language_fallbacks(db, parsed)
                 existing = db.query(Card).filter(Card.id == parsed["id"]).first()
-                if not existing:
-                    db.add(Card(**parsed))
+                if existing:
+                    for key, value in parsed.items():
+                        if key != "id":
+                            setattr(existing, key, value)
                 else:
-                    # Update lang on existing card if it was NULL
-                    if not existing.lang:
-                        existing.lang = set_lang
+                    db.add(Card(**parsed))
             db.commit()
             cards = db.query(Card).filter(
                 Card.set_id == tcg_id,
@@ -237,6 +239,8 @@ def get_set_checklist(
             "rarity": card.rarity,
             "images_small": card.images_small,
             "images_large": card.images_large,
+            "image_source_lang": getattr(card, "image_source_lang", None),
+            "price_source_lang": getattr(card, "price_source_lang", None),
             "owned": owned,
             "quantity": qty,
             "price_market": card.price_market,

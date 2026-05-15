@@ -20,6 +20,12 @@ const en = {
   },
 
   // Common / General
+  fallback: {
+    image: 'Image',
+    price: 'Price',
+    imageFrom: 'Image fallback from {lang}',
+    priceFrom: 'Price fallback from {lang}',
+  },
   common: {
     back: 'Back',
     loading: 'Loading...',
@@ -502,6 +508,10 @@ const en = {
     debugModeDesc: 'Write a temporary backend debug log that can be downloaded for troubleshooting. Admin only.',
     debugLogDownload: 'Download Log',
     debugLogDownloadFailed: 'Debug log download failed',
+    crossLanguagePriceFallback: 'Cross-language price fallback',
+    crossLanguagePriceFallbackDesc: 'Use DE ↔ EN prices when the selected language has no public TCGdex price data. Fallback prices are tagged.',
+    crossLanguageImageFallback: 'Cross-language image fallback',
+    crossLanguageImageFallbackDesc: 'Use DE ↔ EN images when the selected language has no public TCGdex image. Fallback images are tagged.',
     priceTrend: 'Trend',
     priceAvg1: 'Avg 1 Day',
     priceAvg7: 'Avg 7 Days',

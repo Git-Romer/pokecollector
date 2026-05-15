@@ -7,6 +7,8 @@ import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
 import { resolveCardImageUrl, resolveSetImageUrl } from '../utils/imageUrl'
+import { getDefaultVariantOrNull } from '../utils/cardVariants'
+import FallbackBadges from '../components/FallbackBadges'
 
 export default function SetDetail() {
   const { setId } = useParams()
@@ -23,7 +25,13 @@ export default function SetDetail() {
   const setLang = data?.set?.lang || 'en'
 
   const addMutation = useMutation({
-    mutationFn: (cardId) => addToCollection({ card_id: cardId, quantity: 1, condition: 'NM', lang: setLang }),
+    mutationFn: (card) => addToCollection({
+      card_id: card.id,
+      quantity: 1,
+      condition: 'NM',
+      variant: getDefaultVariantOrNull(card),
+      lang: setLang,
+    }),
     onSuccess: () => {
       toast.success(t('card.addedToCollection'))
       queryClient.invalidateQueries({ queryKey: ['set-checklist', setId] })
@@ -141,8 +149,8 @@ export default function SetDetail() {
       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
         {filteredCards.map((card) => (
           <div key={card.id}
-            onClick={() => { if (!card.owned) addMutation.mutate(card.id) }}
-            onKeyDown={(e) => { if (!card.owned && (e.key === 'Enter' || e.key === ' ')) addMutation.mutate(card.id) }}
+            onClick={() => { if (!card.owned) addMutation.mutate(card) }}
+            onKeyDown={(e) => { if (!card.owned && (e.key === 'Enter' || e.key === ' ')) addMutation.mutate(card) }}
             role={card.owned ? undefined : 'button'}
             tabIndex={card.owned ? undefined : 0}
             className={clsx(
@@ -161,8 +169,9 @@ export default function SetDetail() {
 
             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex flex-col items-center justify-center gap-1 opacity-0 group-hover:opacity-100">
               <p className="text-white text-xs font-medium text-center px-1 line-clamp-2">{card.name}</p>
+              <FallbackBadges card={card} className="justify-center" compact />
               {!card.owned && (
-                <button onClick={(e) => { e.stopPropagation(); addMutation.mutate(card.id) }}
+                <button onClick={(e) => { e.stopPropagation(); addMutation.mutate(card) }}
                   className="bg-brand-red text-white rounded-full p-1">
                   <Plus size={12} />
                 </button>
