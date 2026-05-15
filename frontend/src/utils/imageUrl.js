@@ -1,5 +1,7 @@
+const IMAGE_PROXY_VERSION = 'cardback-fallback-v2'
+
 export const cardImageUrl = (cardId, size = 'small') =>
-  cardId ? `/api/images/card/${encodeURIComponent(cardId)}/${size}` : null
+  cardId ? `/api/images/card/${encodeURIComponent(cardId)}/${size}?v=${IMAGE_PROXY_VERSION}` : null
 
 export const setImageUrl = (setId, imageType) =>
   setId ? `/api/images/set/${encodeURIComponent(setId)}/${imageType}` : null
