@@ -190,7 +190,7 @@ function ContributorsSection({ t }) {
               <img src={c.avatar_url} alt={c.login} className="w-12 h-12 rounded-full border-2 border-border group-hover:border-brand-red transition-colors" />
               <span className="text-[10px] font-semibold text-text-secondary group-hover:text-text-primary transition-colors">{c.login}</span>
               <span className="text-[9px] text-text-muted">
-                {c.manual ? (c.note || t('settings.contributors')) : `${c.contributions} ${t('settings.commits')}`}
+                {c.manual ? (c.note || t('settings.manualContributor')) : `${c.contributions} ${t('settings.commits')}`}
               </span>
             </a>
           ))}

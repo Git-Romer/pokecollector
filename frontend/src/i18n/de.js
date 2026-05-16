@@ -566,6 +566,7 @@ const de = {
     sourceCode: 'Quellcode',
     sourceCodeDesc: 'Open Source auf GitHub',
     contributors: 'Mitwirkende',
+    manualContributor: 'Mitwirkende/r',
     supporters: 'Unterstützer',
     sponsors: 'Unterstützen',
     sponsorMessage: 'Dir gefällt PokéCollector? Alle Einnahmen werden an Tierschutzorganisationen gespendet. 🐾',

@@ -567,6 +567,7 @@ const zh = {
     sourceCode: '源代码',
     sourceCodeDesc: 'GitHub开源',
     contributors: '贡献者',
+    manualContributor: '贡献者',
     supporters: '支持者',
     sponsors: '支持',
     sponsorMessage: '喜欢PokéCollector吗？所有收益都捐赠给动物保护组织。🐾',

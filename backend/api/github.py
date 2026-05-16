@@ -2,6 +2,7 @@ from fastapi import APIRouter
 import csv
 import io
 import logging
+import os
 
 import httpx
 
@@ -12,7 +13,14 @@ REPO = "Git-Romer/pokecollector"
 GITHUB_API = "https://api.github.com"
 SUPPORTERS_CSV_URL = f"https://raw.githubusercontent.com/{REPO}/main/SUPPORTERS.csv"
 CONTRIBUTORS_CSV_URL = f"https://raw.githubusercontent.com/{REPO}/main/CONTRIBUTORS.csv"
-GITHUB_HEADERS = {"Accept": "application/vnd.github+json"}
+
+
+def _github_headers() -> dict[str, str]:
+    headers = {"Accept": "application/vnd.github+json"}
+    token = os.getenv("GITHUB_TOKEN") or os.getenv("GH_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
 
 
 def _github_avatar_url(login: str) -> str:
@@ -22,7 +30,7 @@ def _github_avatar_url(login: str) -> str:
 async def _fetch_repo_contributors(client: httpx.AsyncClient) -> list[dict]:
     resp = await client.get(
         f"{GITHUB_API}/repos/{REPO}/contributors",
-        headers=GITHUB_HEADERS,
+        headers=_github_headers(),
     )
     resp.raise_for_status()
     return [
@@ -54,26 +62,16 @@ async def _fetch_manual_contributors(client: httpx.AsyncClient) -> list[dict]:
             continue
 
         note = (row.get("note") or row.get("role") or "").strip() or None
-        contributor = {
-            "login": login,
-            "avatar_url": _github_avatar_url(login),
-            "html_url": f"https://github.com/{login}",
-            "contributions": 0,
-            "manual": True,
-            "note": note,
-        }
-
-        try:
-            user_resp = await client.get(f"{GITHUB_API}/users/{login}", headers=GITHUB_HEADERS)
-            user_resp.raise_for_status()
-            user_data = user_resp.json()
-            contributor["login"] = user_data.get("login") or login
-            contributor["avatar_url"] = user_data.get("avatar_url") or contributor["avatar_url"]
-            contributor["html_url"] = user_data.get("html_url") or contributor["html_url"]
-        except Exception as exc:
-            logger.warning("Failed to fetch manual contributor %s: %s", login, exc)
-
-        contributors.append(contributor)
+        contributors.append(
+            {
+                "login": login,
+                "avatar_url": _github_avatar_url(login),
+                "html_url": f"https://github.com/{login}",
+                "contributions": 0,
+                "manual": True,
+                "note": note,
+            }
+        )
 
     return contributors
 
