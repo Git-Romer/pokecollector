@@ -189,7 +189,9 @@ function ContributorsSection({ t }) {
             <a key={c.login} href={c.html_url} target="_blank" rel="noreferrer" className="flex flex-col items-center gap-1.5 group">
               <img src={c.avatar_url} alt={c.login} className="w-12 h-12 rounded-full border-2 border-border group-hover:border-brand-red transition-colors" />
               <span className="text-[10px] font-semibold text-text-secondary group-hover:text-text-primary transition-colors">{c.login}</span>
-              <span className="text-[9px] text-text-muted">{c.contributions} {t('settings.commits')}</span>
+              <span className="text-[9px] text-text-muted">
+                {c.manual ? (c.note || t('settings.contributors')) : `${c.contributions} ${t('settings.commits')}`}
+              </span>
             </a>
           ))}
         </div>
@@ -776,7 +778,7 @@ export default function Settings() {
               <SettingsRow label={t('settings.app')} description="Pokemon TCG Collection">
                 <span className="text-xs font-bold text-text-muted px-2 py-1 rounded-lg"
                   style={{ background: 'rgba(255,255,255,0.05)' }}>
-                  v1.8
+                  v1.9
                 </span>
               </SettingsRow>
               <SettingsRow label={t('settings.dataSource')} description={t('settings.dataSourceDesc')}>
