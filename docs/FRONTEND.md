@@ -145,6 +145,9 @@ Defined in `frontend/src/components/TabNav.jsx`.
 ### `pages/Settings.jsx`
 
 - Mixes per-user preferences and admin-only controls
+- Admin users can enable multi-user mode from Settings
+- When multi-user mode is enabled, admin users see a **Users** tab
+- The **Users** tab supports creating users, editing usernames/roles/passwords, activating/deactivating users, deleting other users, and forcing first-login password changes
 - Includes:
   - profile name editing
   - avatar picker

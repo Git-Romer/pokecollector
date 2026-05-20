@@ -26,6 +26,7 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 
 - [Features](#-features)
 - [Quick Start](#-quick-start)
+- [Managing Users](#-managing-users)
 - [Environment Variables](#-environment-variables)
 - [Architecture](#-architecture)
 - [Tech Stack](#-tech-stack)
@@ -146,6 +147,28 @@ On first launch, trigger a sync from the app to populate sets and cards from TCG
 - In single-user mode, login is skipped and the app auto-authenticates as admin
 - In multi-user mode, use the admin account created from `ADMIN_USERNAME` / `ADMIN_PASSWORD`
 - If `ADMIN_PASSWORD` is omitted, a random password may be logged during bootstrap
+
+---
+
+## 👥 Managing Users
+
+User management is available from the app UI when multi-user mode is enabled.
+
+1. Log in as an admin user.
+2. Go to **Settings**.
+3. Enable **Multi-User Mode** if it is not enabled yet.
+4. Open the **Users** tab in Settings.
+
+From the **Users** tab, admins can:
+
+- add new users
+- edit existing users
+- change user roles between `admin` and `trainer`
+- activate or deactivate users
+- delete other users
+- force new users to change their password on first login
+
+The **Users** tab is only visible to admin users and only while multi-user mode is enabled. In single-user mode, PokéCollector skips login and uses the bootstrap admin account automatically.
 
 ---
 
