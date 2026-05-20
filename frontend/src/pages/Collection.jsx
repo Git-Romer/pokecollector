@@ -538,8 +538,9 @@ export default function Collection() {
   }
 
   return (
-    <div className="space-y-4 pb-2">
-      <TabNav tabs={COLLECTION_TABS} />
+    <>
+      <div className="space-y-4 pb-2">
+        <TabNav tabs={COLLECTION_TABS} />
 
       {/* ─── Header ───────────────────────────────────────────────── */}
       <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
@@ -942,6 +943,8 @@ export default function Collection() {
         </>
       )}
 
+      </div>
+
       {/* ─── CollectionEditModal ──────────────────────────────────── */}
       {editingCollectionItem && (
         <CollectionEditModal
@@ -976,6 +979,6 @@ export default function Collection() {
           autoAddCollection={true}
         />
       )}
-    </div>
+    </>
   )
 }
