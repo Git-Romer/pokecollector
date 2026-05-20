@@ -83,6 +83,11 @@ export const getUserCollection = (userId) => api.get(`/collection/user/${userId}
 export const searchCollection = (params) => api.get('/collection/', { params })
 export const addToCollection = (data) => api.post('/collection/', data)
 export const bulkAddToCollection = (items) => api.post('/collection/bulk-add', { items }).then(r => r.data)
+export const importCollectionCsv = (file) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return api.post('/collection/import-csv', formData).then(r => r.data)
+}
 export const updateCollectionItem = (id, data) => api.put(`/collection/${id}`, data)
 export const removeFromCollection = (id) => api.delete(`/collection/${id}`)
 export const getCollectionStats = () => api.get('/collection/stats/summary')

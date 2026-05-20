@@ -1,7 +1,7 @@
-import { useState, useMemo, useId } from 'react'
+import { useState, useMemo, useId, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Trash2, Check, X, Filter, SortAsc, Download, ChevronUp, ChevronDown, Search, PenLine, Grid2X2, List, Library, BookOpen, Heart } from 'lucide-react'
-import { getCollection, updateCollectionItem, updateCardCustomImage, removeFromCollection, exportCSV, exportPDF, getSets } from '../api/client'
+import { Trash2, Check, X, Filter, SortAsc, Download, Upload, ChevronUp, ChevronDown, Search, PenLine, Grid2X2, List, Library, BookOpen, Heart } from 'lucide-react'
+import { getCollection, updateCollectionItem, updateCardCustomImage, removeFromCollection, importCollectionCsv, exportCSV, exportPDF, getSets } from '../api/client'
 import { CustomCardModal } from '../components/CardItem'
 import { useSettings } from '../contexts/SettingsContext'
 import CardImage from '../components/CardImage'
@@ -53,6 +53,21 @@ const HOLO_FIELD_MAP = {
   price_avg1: 'price_avg1_holo',
   price_avg7: 'price_avg7_holo',
   price_avg30: 'price_avg30_holo',
+}
+
+const CSV_IMPORT_HEADER = 'set_code,number,quantity,condition,variant,lang,purchase_price'
+const CSV_IMPORT_TEMPLATE = `${CSV_IMPORT_HEADER}\nASC,152,1,NM,,en,\n`
+
+const downloadCsvImportTemplate = () => {
+  const blob = new Blob([CSV_IMPORT_TEMPLATE], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = 'collection-import-template.csv'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
 }
 
 // ─── Holo shimmer overlay ──────────────────────────────────────────────────
@@ -418,6 +433,7 @@ export default function Collection() {
   const [filterDuplicates, setFilterDuplicates] = useState(false)
   const [searchText, setSearchText] = useState('')
   const [showFilters, setShowFilters] = useState(false)
+  const csvImportInputRef = useRef(null)
   const queryClient = useQueryClient()
 
   const { data: items = [], isLoading, error } = useQuery({
@@ -431,6 +447,37 @@ export default function Collection() {
     queryFn: () => getSets().then(r => r.data),
     staleTime: 5 * 60 * 1000,
   })
+
+  const csvImportMutation = useMutation({
+    mutationFn: (file) => importCollectionCsv(file),
+    onSuccess: (result) => {
+      const parts = [
+        `${result.added} ${t('collection.csvImportAdded')}`,
+        `${result.updated} ${t('collection.csvImportUpdated')}`,
+      ]
+      if (result.failed > 0) parts.push(`${result.failed} ${t('collection.csvImportFailedRows')}`)
+      const message = parts.join(' · ')
+      if (result.failed > 0 && result.errors?.length) {
+        toast.error(`${message}: ${result.errors.slice(0, 2).join('; ')}`)
+      } else {
+        toast.success(message)
+      }
+      queryClient.invalidateQueries({ queryKey: ['collection'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+    },
+    onError: (err) => {
+      const detail = err?.response?.data?.detail || t('collection.csvImportFailed')
+      toast.error(detail)
+    },
+    onSettled: () => {
+      if (csvImportInputRef.current) csvImportInputRef.current.value = ''
+    },
+  })
+
+  const handleCsvImport = (event) => {
+    const file = event.target.files?.[0]
+    if (file) csvImportMutation.mutate(file)
+  }
 
   function getEffectivePrice(card, variant, primaryField = 'price_market') {
     if (!card) return 0
@@ -574,9 +621,47 @@ export default function Collection() {
             className="btn-ghost text-sm py-1.5 border-yellow/30 text-yellow hover:bg-yellow/10">
             <PenLine size={14} /> {t('collection.addCustomCard')}
           </button>
+          <input
+            ref={csvImportInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={handleCsvImport}
+          />
+          <button
+            onClick={() => csvImportInputRef.current?.click()}
+            disabled={csvImportMutation.isPending}
+            title={t('collection.importCsvHint')}
+            className="btn-ghost text-sm py-1.5"
+          >
+            <Upload size={14} /> {csvImportMutation.isPending ? t('collection.importingCsv') : t('collection.importCsv')}
+          </button>
+          <button
+            onClick={downloadCsvImportTemplate}
+            title={t('collection.downloadCsvTemplateHint')}
+            className="btn-ghost text-sm py-1.5"
+          >
+            <Download size={14} /> {t('collection.downloadCsvTemplate')}
+          </button>
           <button onClick={exportCSV} className="btn-ghost text-sm py-1.5"><Download size={14} />CSV</button>
           <button onClick={exportPDF} className="btn-ghost text-sm py-1.5"><Download size={14} />PDF</button>
         </div>
+      </div>
+
+      <div className="rounded-xl border border-border/70 bg-bg-elevated/40 px-4 py-3 text-xs text-text-secondary space-y-2">
+        <p>
+          <span className="font-semibold text-text-primary">{t('collection.csvImportFormatTitle')}:</span>{' '}
+          {t('collection.csvImportFormatDescription')}
+        </p>
+        <code className="block rounded-lg bg-bg/80 border border-border/60 px-3 py-2 overflow-x-auto text-[11px] text-text-primary">
+          {CSV_IMPORT_HEADER}
+        </code>
+        <p>{t('collection.csvImportValueHelp')}</p>
+        <code className="block rounded-lg bg-bg/80 border border-border/60 px-3 py-2 overflow-x-auto text-[11px] text-text-primary">
+          ASC,152,2,NM,,en,
+        </code>
+        <p>{t('collection.csvImportAllowedValues')}</p>
+        <p>{t('collection.csvImportErrorBehavior')}</p>
       </div>
 
       {/* ─── Filter & Sort Bar ────────────────────────────────────── */}

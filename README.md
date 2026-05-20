@@ -89,9 +89,40 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 
 ### ⚙️ Utilities
 - CSV and PDF export
+- Strict CSV collection import with a downloadable template; required row values are `set_code` and `number`, while `quantity`, `condition`, `variant`, `lang`, and `purchase_price` may be blank
 - Admin-only sync endpoints and scheduler controls
 - Backup and restore, including selective backup groups for collection, users, cards, products, system data, and images
 - Backend image proxy/cache for cards and sets
+
+### CSV Collection Import
+
+The Collection page includes an **Import CSV** action and a downloadable template. CSV imports are intentionally strict: the header must be exactly:
+
+```csv
+set_code,number,quantity,condition,variant,lang,purchase_price
+```
+
+All columns must be present, but only `set_code` and `number` need values in each row. Use the card code shown in PokéCollector/card lists, for example `ASC 152`: `ASC` goes into `set_code`, and `152` goes into `number`.
+
+| Column | Required value? | Notes |
+| --- | --- | --- |
+| `set_code` | Yes | First part of the card code shown in the app, e.g. `ASC` from `ASC 152`. |
+| `number` | Yes | Second part of the card code shown in the app, e.g. `152` from `ASC 152`. |
+| `quantity` | No | Defaults to `1`; must be `1`-`999` when provided. |
+| `condition` | No | Defaults to `NM`; allowed: `Mint`, `NM`, `LP`, `MP`, `HP`. |
+| `variant` | No | Leave blank or use `Normal`, `Holo`, `Reverse Holo`, `First Edition`. |
+| `lang` | No | Defaults to `en`; allowed: `en`, `de`. |
+| `purchase_price` | No | Optional per-card purchase price. |
+
+Example:
+
+```csv
+set_code,number,quantity,condition,variant,lang,purchase_price
+ASC,152,2,NM,,en,
+PFL,001,1,LP,Reverse Holo,de,1.25
+```
+
+If any row contains a wrong value or an unknown card code, the import does not add any cards. The response shows the affected row number, so the CSV can be corrected and uploaded again.
 
 ---
 

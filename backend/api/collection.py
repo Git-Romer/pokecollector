@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from api.auth import get_current_user
@@ -9,8 +10,20 @@ from services import pokemon_api
 from services.card_fallbacks import apply_cross_language_fallbacks
 from services.card_values import effective_market_price
 import datetime
+import csv
+import io
+import logging
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+CSV_IMPORT_COLUMNS = ["set_code", "number", "quantity", "condition", "variant", "lang", "purchase_price"]
+CSV_IMPORT_MAX_BYTES = 256 * 1024
+CSV_IMPORT_MAX_ROWS = 1000
+ALLOWED_CONDITIONS = {"Mint", "NM", "LP", "MP", "HP"}
+ALLOWED_VARIANTS = {"", "Normal", "Holo", "Reverse Holo", "First Edition"}
+ALLOWED_LANGS = {"en", "de"}
+_SET_CODE_API_CACHE: Optional[dict[str, List[dict]]] = None
 
 def _get_item_price(item):
     """Return the correct market price for a collection item, respecting holo variant."""
@@ -52,6 +65,195 @@ def ensure_card_exists(db: Session, card_id: str, lang: str = "en") -> Card:
                     detail=f"Card {card_id} not found in local database. Please run a Sync first."
                 )
     return card
+
+
+def _add_collection_item(db: Session, current_user: User, item: CollectionItemCreate, commit: bool = True) -> str:
+    """Add one item and return "added" or "updated"."""
+    item_lang = item.lang or "en"
+
+    if item.card_id.startswith("custom-"):
+        effective_card_id = item.card_id
+        custom_card = db.query(Card).filter(Card.id == item.card_id).first()
+        if custom_card and custom_card.lang:
+            item_lang = custom_card.lang
+    else:
+        tcg_card_id, _ = pokemon_api.strip_lang_suffix(item.card_id)
+        effective_card_id = f"{tcg_card_id}_{item_lang}"
+        ensure_card_exists(db, effective_card_id, lang=item_lang)
+
+    existing = db.query(CollectionItem).filter(
+        CollectionItem.card_id == effective_card_id,
+        CollectionItem.variant == item.variant,
+        CollectionItem.lang == item_lang,
+        CollectionItem.condition == item.condition,
+        CollectionItem.purchase_price == item.purchase_price,
+        CollectionItem.user_id == current_user.id,
+    ).first()
+
+    if existing:
+        existing.quantity += item.quantity or 1
+        if commit:
+            db.commit()
+        return "updated"
+
+    db.add(CollectionItem(
+        card_id=effective_card_id,
+        quantity=item.quantity,
+        condition=item.condition,
+        variant=item.variant,
+        purchase_price=item.purchase_price,
+        lang=item_lang,
+        user_id=current_user.id,
+        added_at=datetime.datetime.utcnow(),
+    ))
+    if commit:
+        db.commit()
+    return "added"
+
+
+def _get_api_sets_by_code() -> dict[str, List[dict]]:
+    global _SET_CODE_API_CACHE
+    if _SET_CODE_API_CACHE is not None:
+        return _SET_CODE_API_CACHE
+
+    index: dict[str, List[dict]] = {}
+    for api_set in pokemon_api.get_all_sets():
+        abbr_obj = api_set.get("abbreviation") or {}
+        official = abbr_obj.get("official") if isinstance(abbr_obj, dict) else None
+        api_id = api_set.get("id")
+        for code in {str(v).upper() for v in (official, api_id) if v}:
+            index.setdefault(code, []).append(api_set)
+    _SET_CODE_API_CACHE = index
+    return index
+
+
+def _cache_set_by_code(db: Session, set_code_upper: str) -> None:
+    try:
+        for api_set in _get_api_sets_by_code().get(set_code_upper, []):
+            parsed_set = pokemon_api.parse_set_for_db(api_set)
+            parsed_set["lang"] = api_set.get("_lang", parsed_set.get("lang") or "en")
+            existing_set = db.query(Set).filter(Set.id == parsed_set["id"]).first()
+            if existing_set:
+                for key, value in parsed_set.items():
+                    if key != "id" and value is not None:
+                        setattr(existing_set, key, value)
+            else:
+                db.add(Set(**parsed_set))
+        db.commit()
+    except Exception:
+        logger.exception("Failed to cache set metadata for CSV import set_code=%s", set_code_upper)
+        db.rollback()
+
+
+def _matching_sets(db: Session, set_code: str) -> List[Set]:
+    set_code_upper = set_code.strip().upper()
+    set_objs = db.query(Set).filter(
+        (func.upper(Set.abbreviation) == set_code_upper) |
+        (func.upper(Set.id) == set_code_upper) |
+        (func.upper(Set.tcg_set_id) == set_code_upper)
+    ).all()
+    if not set_objs:
+        _cache_set_by_code(db, set_code_upper)
+        set_objs = db.query(Set).filter(
+            (func.upper(Set.abbreviation) == set_code_upper) |
+            (func.upper(Set.id) == set_code_upper) |
+            (func.upper(Set.tcg_set_id) == set_code_upper)
+        ).all()
+    return set_objs
+
+
+def _find_card_by_code(db: Session, set_code: str, card_number: str, lang: str) -> Card:
+    set_objs = _matching_sets(db, set_code)
+    if not set_objs:
+        raise ValueError(f"set_code '{set_code}' was not found")
+
+    tcg_set_ids = list({s.tcg_set_id or s.id for s in set_objs})
+
+    def query_card(number: str) -> Optional[Card]:
+        return db.query(Card).filter(
+            Card.set_id.in_(tcg_set_ids),
+            Card.number == number,
+            Card.lang == lang,
+            Card.is_custom.is_(False),
+        ).order_by(Card.id.asc()).first()
+
+    card = query_card(card_number)
+    stripped_number = card_number.lstrip("0") or "0"
+    if not card and stripped_number != card_number:
+        card = query_card(stripped_number)
+    if card:
+        return card
+
+    for tcg_set_id in tcg_set_ids:
+        try:
+            set_data = pokemon_api.get_set_cards(tcg_set_id, lang=lang)
+            for card_data in set_data.get("cards", []):
+                parsed = pokemon_api.parse_card_for_db(card_data, default_set_id=tcg_set_id, lang=lang)
+                parsed = apply_cross_language_fallbacks(db, parsed)
+                existing = db.query(Card).filter(Card.id == parsed["id"]).first()
+                if existing:
+                    for key, value in parsed.items():
+                        if key != "id":
+                            setattr(existing, key, value)
+                else:
+                    db.add(Card(**parsed))
+            db.commit()
+        except Exception:
+            logger.exception("Failed to cache cards for CSV import set_id=%s lang=%s", tcg_set_id, lang)
+            db.rollback()
+
+    card = query_card(card_number)
+    if not card and stripped_number != card_number:
+        card = query_card(stripped_number)
+    if not card:
+        raise ValueError(f"card '{set_code} {card_number}' was not found for lang '{lang}'")
+    return card
+
+
+def _parse_import_row(row: dict, row_number: int) -> CollectionItemCreate:
+    set_code = (row.get("set_code") or "").strip()
+    number = (row.get("number") or "").strip()
+    if not set_code or not number:
+        raise ValueError("set_code and number are required")
+
+    quantity_raw = (row.get("quantity") or "1").strip() or "1"
+    try:
+        quantity = int(quantity_raw)
+    except ValueError as exc:
+        raise ValueError("quantity must be a whole number") from exc
+    if quantity < 1 or quantity > 999:
+        raise ValueError("quantity must be between 1 and 999")
+
+    condition = (row.get("condition") or "NM").strip() or "NM"
+    if condition not in ALLOWED_CONDITIONS:
+        raise ValueError(f"condition must be one of: {', '.join(sorted(ALLOWED_CONDITIONS))}")
+
+    variant = (row.get("variant") or "").strip()
+    if variant not in ALLOWED_VARIANTS:
+        raise ValueError(f"variant must be blank or one of: {', '.join(v for v in sorted(ALLOWED_VARIANTS) if v)}")
+
+    lang = (row.get("lang") or "en").strip().lower() or "en"
+    if lang not in ALLOWED_LANGS:
+        raise ValueError("lang must be 'en' or 'de'")
+
+    purchase_price_raw = (row.get("purchase_price") or "").strip().replace(",", ".")
+    purchase_price = None
+    if purchase_price_raw:
+        try:
+            purchase_price = float(purchase_price_raw)
+        except ValueError as exc:
+            raise ValueError("purchase_price must be a number") from exc
+        if purchase_price < 0:
+            raise ValueError("purchase_price must not be negative")
+
+    return CollectionItemCreate(
+        card_id=f"{set_code} {number}",
+        quantity=quantity,
+        condition=condition,
+        variant=None if variant in ("", "Normal") else variant,
+        purchase_price=purchase_price,
+        lang=lang,
+    )
 
 
 @router.get("/user/{user_id}", response_model=List[CollectionItemResponse])
@@ -216,6 +418,99 @@ def bulk_add_to_collection(
             failed += 1
             errors.append(f"{item.card_id}: {str(exc)}")
 
+    return BulkCollectionAddResponse(added=added, updated=updated, failed=failed, errors=errors)
+
+
+@router.post("/import-csv", response_model=BulkCollectionAddResponse)
+async def import_collection_csv(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Import collection rows from a strict CSV format.
+
+    Required header, in this exact order:
+    set_code,number,quantity,condition,variant,lang,purchase_price
+    """
+    if not file.filename or not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=422, detail="Please upload a .csv file")
+
+    raw = await file.read(CSV_IMPORT_MAX_BYTES + 1)
+    if len(raw) > CSV_IMPORT_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="CSV file is too large")
+
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(status_code=422, detail="CSV file must be UTF-8 encoded") from exc
+
+    reader = csv.DictReader(io.StringIO(text), delimiter=",")
+    if reader.fieldnames != CSV_IMPORT_COLUMNS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"CSV header must exactly be: {','.join(CSV_IMPORT_COLUMNS)}",
+        )
+
+    added = 0
+    updated = 0
+    failed = 0
+    errors: List[str] = []
+    row_count = 0
+    validated_items: List[CollectionItemCreate] = []
+
+    for row_number, row in enumerate(reader, start=2):
+        if None in row:
+            failed += 1
+            errors.append(f"row {row_number}: too many columns")
+            continue
+        if not any(str(value or "").strip() for value in row.values()):
+            continue
+        row_count += 1
+        if row_count > CSV_IMPORT_MAX_ROWS:
+            raise HTTPException(status_code=413, detail=f"CSV import is limited to {CSV_IMPORT_MAX_ROWS} rows")
+
+        try:
+            item = _parse_import_row(row, row_number)
+            set_code, card_number = item.card_id.split(" ", 1)
+            card = _find_card_by_code(db, set_code, card_number, item.lang or "en")
+            validated_items.append(item.copy(update={"card_id": card.id}))
+        except ValueError as exc:
+            db.rollback()
+            failed += 1
+            errors.append(f"row {row_number}: {str(exc)}")
+        except HTTPException as exc:
+            db.rollback()
+            failed += 1
+            errors.append(f"row {row_number}: {exc.detail}")
+        except Exception:
+            logger.exception("Unexpected CSV import validation error at row %s", row_number)
+            db.rollback()
+            failed += 1
+            errors.append(f"row {row_number}: unexpected import error")
+
+    if failed:
+        return BulkCollectionAddResponse(added=0, updated=0, failed=failed, errors=errors)
+
+    for item in validated_items:
+        try:
+            status = _add_collection_item(db, current_user, item, commit=False)
+            if status == "added":
+                added += 1
+            else:
+                updated += 1
+        except HTTPException as exc:
+            db.rollback()
+            failed += 1
+            errors.append(f"{item.card_id}: {exc.detail}")
+            return BulkCollectionAddResponse(added=0, updated=0, failed=failed, errors=errors)
+        except Exception:
+            logger.exception("Unexpected CSV import write error for card_id=%s", item.card_id)
+            db.rollback()
+            failed += 1
+            errors.append(f"{item.card_id}: unexpected import error")
+            return BulkCollectionAddResponse(added=0, updated=0, failed=failed, errors=errors)
+
+    db.commit()
     return BulkCollectionAddResponse(added=added, updated=updated, failed=failed, errors=errors)
 
 @router.put("/{item_id}", response_model=CollectionItemResponse)
