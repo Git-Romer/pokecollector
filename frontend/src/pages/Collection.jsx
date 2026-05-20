@@ -213,22 +213,14 @@ function CollectionEditModal({ item, onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/60 md:flex md:items-center md:justify-center md:bg-black/80 md:backdrop-blur-sm"
+      className="fixed inset-0 z-50 bg-bg-surface"
       onClick={onClose}
     >
       <div
-        className={[
-          'fixed bottom-0 left-0 right-0 rounded-t-2xl max-h-[90dvh] overflow-y-auto',
-          'bg-bg-surface border-t border-border more-sheet-enter',
-          'md:static md:rounded-2xl md:border md:max-w-lg md:w-full md:max-h-[85vh] md:animate-none',
-        ].join(' ')}
+        className="fixed inset-0 h-[100dvh] overflow-y-auto bg-bg-surface"
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex justify-center pt-3 pb-1 md:hidden">
-          <div className="w-10 h-1 bg-border rounded-full" />
-        </div>
-
-        <div className="p-5">
+        <div className="p-5 md:max-w-lg md:mx-auto md:w-full">
           {/* Header */}
           <div className="flex items-start gap-4 mb-5">
             {cardImage && (
