@@ -71,6 +71,14 @@ const downloadCsvImportTemplate = () => {
 }
 
 function CsvImportModal({ t, onClose, onChooseFile, onDownloadTemplate, isImporting }) {
+  const optionalColumns = [
+    ['quantity', t('collection.csvImportColumnQuantity')],
+    ['condition', t('collection.csvImportColumnCondition')],
+    ['variant', t('collection.csvImportColumnVariant')],
+    ['lang', t('collection.csvImportColumnLang')],
+    ['purchase_price', t('collection.csvImportColumnPurchasePrice')],
+  ]
+
   return (
     <div
       className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm md:flex md:items-center md:justify-center md:bg-black/80"
@@ -99,25 +107,6 @@ function CsvImportModal({ t, onClose, onChooseFile, onDownloadTemplate, isImport
             </button>
           </div>
 
-          <div className="space-y-3 text-xs text-text-secondary">
-            <div>
-              <p className="font-semibold text-text-primary mb-1">{t('collection.csvImportHeaderLabel')}</p>
-              <code className="block rounded-lg bg-bg/80 border border-border/60 px-3 py-2 overflow-x-auto text-[11px] text-text-primary">
-                {CSV_IMPORT_HEADER}
-              </code>
-            </div>
-
-            <div>
-              <p className="mb-1">{t('collection.csvImportValueHelp')}</p>
-              <code className="block rounded-lg bg-bg/80 border border-border/60 px-3 py-2 overflow-x-auto text-[11px] text-text-primary">
-                ASC,152,2,NM,,en,
-              </code>
-            </div>
-
-            <p>{t('collection.csvImportAllowedValues')}</p>
-            <p>{t('collection.csvImportErrorBehavior')}</p>
-          </div>
-
           <div className="flex flex-col sm:flex-row gap-2 pt-1">
             <button
               type="button"
@@ -134,6 +123,56 @@ function CsvImportModal({ t, onClose, onChooseFile, onDownloadTemplate, isImport
             >
               <Download size={16} /> {t('collection.downloadCsvTemplate')}
             </button>
+          </div>
+
+          <div className="space-y-3 text-xs text-text-secondary">
+            <section className="rounded-xl border border-border/70 bg-bg/40 p-3 space-y-2">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-text-muted">{t('collection.csvImportSectionCardCode')}</p>
+              <p>{t('collection.csvImportValueHelp')}</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-lg bg-bg/80 border border-border/60 p-2">
+                  <code className="text-text-primary font-mono">ASC</code>
+                  <p className="mt-1 text-[11px] text-text-muted">set_code</p>
+                </div>
+                <div className="rounded-lg bg-bg/80 border border-border/60 p-2">
+                  <code className="text-text-primary font-mono">152</code>
+                  <p className="mt-1 text-[11px] text-text-muted">number</p>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-xl border border-border/70 bg-bg/40 p-3 space-y-2">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-text-muted">{t('collection.csvImportSectionColumns')}</p>
+              <code className="block rounded-lg bg-bg/80 border border-border/60 px-3 py-2 overflow-x-auto text-[11px] text-text-primary">
+                {CSV_IMPORT_HEADER}
+              </code>
+              <div className="flex flex-wrap gap-1.5">
+                <span className="rounded-full bg-brand-red/15 text-brand-red border border-brand-red/30 px-2 py-0.5 font-medium">set_code</span>
+                <span className="rounded-full bg-brand-red/15 text-brand-red border border-brand-red/30 px-2 py-0.5 font-medium">number</span>
+                {optionalColumns.map(([column, description]) => (
+                  <span key={column} className="rounded-full bg-bg-elevated border border-border px-2 py-0.5" title={description}>
+                    {column}
+                  </span>
+                ))}
+              </div>
+              <p>{t('collection.csvImportRequiredOptionalHint')}</p>
+            </section>
+
+            <section className="rounded-xl border border-border/70 bg-bg/40 p-3 space-y-2">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-text-muted">{t('collection.csvImportSectionValues')}</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {optionalColumns.map(([column, description]) => (
+                  <div key={column} className="rounded-lg bg-bg/60 border border-border/50 px-2 py-1.5">
+                    <p className="font-mono text-[11px] text-text-primary">{column}</p>
+                    <p className="text-[11px] text-text-muted mt-0.5">{description}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="rounded-xl border border-yellow/25 bg-yellow/10 px-3 py-2">
+              <p className="text-[11px] text-yellow">{t('collection.csvImportErrorBehavior')}</p>
+            </section>
           </div>
         </div>
       </div>
