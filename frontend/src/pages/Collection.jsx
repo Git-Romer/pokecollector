@@ -71,14 +71,6 @@ const downloadCsvImportTemplate = () => {
 }
 
 function CsvImportModal({ t, onClose, onChooseFile, onDownloadTemplate, isImporting }) {
-  const optionalColumns = [
-    ['quantity', t('collection.csvImportColumnQuantity')],
-    ['condition', t('collection.csvImportColumnCondition')],
-    ['variant', t('collection.csvImportColumnVariant')],
-    ['lang', t('collection.csvImportColumnLang')],
-    ['purchase_price', t('collection.csvImportColumnPurchasePrice')],
-  ]
-
   return (
     <div
       className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm md:flex md:items-center md:justify-center md:bg-black/80"
@@ -98,14 +90,9 @@ function CsvImportModal({ t, onClose, onChooseFile, onDownloadTemplate, isImport
 
         <div className="p-5 space-y-4">
           <div className="flex items-start justify-between gap-3">
-            <div className="flex items-start gap-3 min-w-0">
-              <div className="w-9 h-9 rounded-xl bg-brand-red/15 border border-brand-red/25 text-brand-red flex items-center justify-center flex-shrink-0">
-                <Upload size={18} />
-              </div>
-              <div className="min-w-0">
-                <h2 className="text-base font-bold text-text-primary">{t('collection.csvImportFormatTitle')}</h2>
-                <p className="text-xs text-text-secondary mt-1">{t('collection.csvImportFormatDescription')}</p>
-              </div>
+            <div className="min-w-0">
+              <h2 className="text-base font-bold text-text-primary">{t('collection.csvImportFormatTitle')}</h2>
+              <p className="text-xs text-text-secondary mt-1">{t('collection.csvImportFormatDescription')}</p>
             </div>
             <button onClick={onClose} className="text-text-muted hover:text-text-primary flex-shrink-0 p-1">
               <X size={18} />
@@ -130,53 +117,42 @@ function CsvImportModal({ t, onClose, onChooseFile, onDownloadTemplate, isImport
             </button>
           </div>
 
-          <div className="space-y-3 text-xs text-text-secondary">
-            <section className="rounded-xl border border-border/70 bg-bg-elevated/40 p-3 space-y-2">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-text-muted">{t('collection.csvImportSectionCardCode')}</p>
+          <div className="rounded-xl bg-bg-elevated/35 p-3 text-xs text-text-secondary space-y-3">
+            <div className="space-y-1">
+              <p className="font-semibold text-text-primary">{t('collection.csvImportSectionCardCode')}</p>
               <p>{t('collection.csvImportValueHelp')}</p>
-              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-                <div className="rounded-lg bg-bg/80 border border-border/60 px-3 py-2 text-center">
-                  <code className="text-text-primary font-mono font-semibold">ASC</code>
-                  <p className="mt-0.5 text-[10px] text-text-muted">set_code</p>
-                </div>
-                <span className="text-text-muted">+</span>
-                <div className="rounded-lg bg-bg/80 border border-border/60 px-3 py-2 text-center">
-                  <code className="text-text-primary font-mono font-semibold">152</code>
-                  <p className="mt-0.5 text-[10px] text-text-muted">number</p>
-                </div>
-              </div>
-            </section>
+              <p className="font-mono text-[11px] text-text-primary">
+                <span className="text-brand-red">ASC</span> → set_code · <span className="text-brand-red">152</span> → number
+              </p>
+            </div>
 
-            <section className="rounded-xl border border-border/70 bg-bg-elevated/40 p-3 space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-text-muted">{t('collection.csvImportSectionColumns')}</p>
-                <div className="flex gap-1">
-                  <span className="badge-red">{t('collection.csvImportRequired')}</span>
-                  <span className="badge-gray">{t('collection.csvImportOptional')}</span>
-                </div>
-              </div>
-              <code className="block rounded-lg bg-bg/80 border border-border/60 px-3 py-2 overflow-x-auto text-[11px] text-text-primary font-mono">
+            <div className="border-t border-white/5 pt-3 space-y-2">
+              <p className="font-semibold text-text-primary">{t('collection.csvImportSectionColumns')}</p>
+              <code className="block overflow-x-auto rounded-lg bg-bg/70 px-3 py-2 text-[11px] text-text-primary font-mono">
                 {CSV_IMPORT_HEADER}
               </code>
-              <p>{t('collection.csvImportRequiredOptionalHint')}</p>
-            </section>
+              <p className="rounded-lg bg-brand-red/10 px-3 py-2 text-[11px] text-text-secondary">
+                {t('collection.csvImportRequiredOptionalHint')}
+              </p>
+            </div>
 
-            <section className="rounded-xl border border-border/70 bg-bg-elevated/40 p-3 space-y-2">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-text-muted">{t('collection.csvImportSectionValues')}</p>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {optionalColumns.map(([column, description]) => (
-                  <div key={column} className="rounded-lg bg-bg/70 border border-border/50 px-2.5 py-2">
-                    <p className="font-mono text-[11px] text-text-primary">{column}</p>
-                    <p className="text-[11px] text-text-muted mt-0.5">{description}</p>
-                  </div>
-                ))}
+            <div className="border-t border-white/5 pt-3 space-y-2">
+              <p className="font-semibold text-text-primary">{t('collection.csvImportSectionValues')}</p>
+              <div className="rounded-lg bg-bg/60 px-3 py-2">
+                <p className="text-[11px] font-semibold text-text-primary mb-1">{t('collection.csvImportDefaultsTitle')}</p>
+                <div className="grid grid-cols-3 gap-2 text-[11px]">
+                  <div><span className="font-mono text-text-primary">quantity</span><br /><span className="text-text-muted">1</span></div>
+                  <div><span className="font-mono text-text-primary">condition</span><br /><span className="text-text-muted">NM</span></div>
+                  <div><span className="font-mono text-text-primary">lang</span><br /><span className="text-text-muted">en</span></div>
+                </div>
               </div>
-            </section>
-
-            <section className="rounded-xl border border-yellow/25 bg-yellow/10 px-3 py-2">
-              <p className="text-[11px] text-yellow">{t('collection.csvImportErrorBehavior')}</p>
-            </section>
+              <p>{t('collection.csvImportBlankOptionalHint')}</p>
+            </div>
           </div>
+
+          <p className="text-[11px] text-yellow/90 bg-yellow/10 rounded-lg px-3 py-2">
+            {t('collection.csvImportErrorBehavior')}
+          </p>
         </div>
       </div>
     </div>
