@@ -195,6 +195,8 @@ def _run_migrations(conn):
         # v44: Track price sync attempts independently from general card updates.
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS last_price_sync_attempt_at TIMESTAMP",
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS last_price_sync_success_at TIMESTAMP",
+        # v45: Manual temporary card image fallback while TCGdex has no image.
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS custom_image_url VARCHAR",
     ]
     for stmt in migrations:
         try:

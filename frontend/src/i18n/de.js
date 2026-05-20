@@ -25,6 +25,8 @@ const de = {
     price: 'Preis',
     imageFrom: 'Bild-Fallback aus {lang}',
     priceFrom: 'Preis-Fallback aus {lang}',
+    customImage: 'Eigenes Bild',
+    customImageDesc: 'Manueller Bild-Fallback, solange die API kein Bild liefert',
   },
   common: {
     back: 'Zurück',
@@ -690,6 +692,11 @@ const de = {
     addedToWishlist: 'zur Wunschliste hinzugefügt!',
     wishlistFailed: 'Fehler beim Hinzufügen zur Wunschliste',
     editCard: 'Karte bearbeiten',
+    customImageUrl: 'Eigene Bild-URL',
+    customImageUrlDesc: 'Wird nur verwendet, solange TCGDex kein offizielles Kartenbild liefert. Sobald ein API-Bild verfügbar ist, wird es ignoriert.',
+    saveCustomImage: 'Bild-URL speichern',
+    clearCustomImage: 'Bild-URL entfernen',
+    customImageSaved: 'Eigene Bild-URL gespeichert',
   },
 
 

@@ -6,7 +6,7 @@ from typing import Optional, List
 from api.auth import get_current_user
 from database import get_db
 from models import Card, Set, PriceHistory, CustomCardMatch, CollectionItem, WishlistItem, BinderCard, Setting, User
-from schemas import CardBase, CardWithSet, PriceHistoryResponse, CardCustomCreate, CustomCardUpdate
+from schemas import CardBase, CardWithSet, PriceHistoryResponse, CardCustomCreate, CustomCardUpdate, CardCustomImageUpdate
 from services import pokemon_api
 from services.card_fallbacks import apply_cross_language_fallbacks
 import datetime
@@ -44,6 +44,7 @@ def _card_to_dict(card: Card) -> dict:
         "images_small": card.images_small,
         "images_large": card.images_large,
         "image_source_lang": getattr(card, "image_source_lang", None),
+        "custom_image_url": getattr(card, "custom_image_url", None),
         "is_custom": card.is_custom or False,
         "lang": card.lang or "en",
         "price_market": card.price_market,
@@ -689,6 +690,36 @@ def get_price_history(
         .all()
     )
     return history
+
+
+@router.put("/{card_id}/custom-image", response_model=CardBase)
+def update_card_custom_image(
+    card_id: str,
+    update: CardCustomImageUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Set or clear a manual image URL for API cards that have no TCGdex image yet."""
+    card = db.query(Card).filter(Card.id == card_id).first()
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+    if card.is_custom:
+        raise HTTPException(status_code=400, detail="Use the custom card editor for manually created cards")
+    if card.images_small or card.images_large:
+        if card.custom_image_url:
+            card.custom_image_url = None
+            db.commit()
+            db.refresh(card)
+        return _card_to_dict(card)
+
+    image_url = (update.custom_image_url or "").strip()
+    if image_url and not re.match(r"^https?://", image_url, re.IGNORECASE):
+        raise HTTPException(status_code=422, detail="Image URL must start with http:// or https://")
+
+    card.custom_image_url = image_url or None
+    db.commit()
+    db.refresh(card)
+    return _card_to_dict(card)
 
 
 @router.get("/{card_id}", response_model=CardBase)

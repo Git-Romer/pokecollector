@@ -25,6 +25,8 @@ const zh = {
     price: '价格',
     imageFrom: '图片回退来源：{lang}',
     priceFrom: '价格回退来源：{lang}',
+    customImage: '自定义图片',
+    customImageDesc: 'API 暂无图片时使用的手动图片回退',
   },
   common: {
     back: '返回',
@@ -691,6 +693,11 @@ const zh = {
     addedToWishlist: '已添加到愿望清单！',
     wishlistFailed: '添加到愿望清单失败',
     editCard: '编辑卡牌',
+    customImageUrl: '自定义图片 URL',
+    customImageUrlDesc: '仅在 TCGDex 没有官方卡牌图片时使用。一旦 API 图片可用，将自动忽略它。',
+    saveCustomImage: '保存图片 URL',
+    clearCustomImage: '清除图片 URL',
+    customImageSaved: '自定义图片 URL 已保存',
   },
 
   // Card Scanner

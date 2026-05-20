@@ -53,6 +53,7 @@ class Card(Base):
     images_small = Column(String)
     images_large = Column(String)
     image_source_lang = Column(String, nullable=True)  # Set when images are copied from another TCGdex language
+    custom_image_url = Column(String, nullable=True)   # Manual temporary fallback while TCGdex has no image
     is_custom = Column(Boolean, default=False)
     lang = Column(String, default="en")      # "en" or "de"
     # Cardmarket EUR prices

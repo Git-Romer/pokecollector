@@ -25,6 +25,8 @@ const en = {
     price: 'Price',
     imageFrom: 'Image fallback from {lang}',
     priceFrom: 'Price fallback from {lang}',
+    customImage: 'Custom image',
+    customImageDesc: 'Manual image fallback while the API has no image',
   },
   common: {
     back: 'Back',
@@ -690,6 +692,11 @@ const en = {
     addedToWishlist: 'added to wishlist!',
     wishlistFailed: 'Failed to add to wishlist',
     editCard: 'Edit card',
+    customImageUrl: 'Custom image URL',
+    customImageUrlDesc: 'Used only while TCGDex has no official card image. It will be ignored once an API image becomes available.',
+    saveCustomImage: 'Save image URL',
+    clearCustomImage: 'Clear image URL',
+    customImageSaved: 'Custom image URL saved',
   },
 
 

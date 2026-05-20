@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import FileResponse, RedirectResponse
+import hashlib
 import httpx
 from pathlib import Path
 from sqlalchemy.orm import Session
@@ -81,12 +82,17 @@ def get_card_image(card_id: str, size: str, db: Session = Depends(get_db)):
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
 
-    url = card.images_small if size == "small" else card.images_large
+    requested_url = card.images_small if size == "small" else card.images_large
+    alternate_api_url = card.images_large if size == "small" else card.images_small
+    # Manual image URLs are temporary fallbacks only. If any API image is
+    # available, prefer that API image over the custom URL.
+    url = requested_url or alternate_api_url or card.custom_image_url
     if not url:
         return _card_back_response()
 
     try:
-        data, content_type = _get_or_fetch(db, f"card:{card_id}:{size}", url)
+        url_hash = hashlib.sha1(url.encode("utf-8")).hexdigest()
+        data, content_type = _get_or_fetch(db, f"card:{card_id}:{size}:{url_hash}", url)
     except HTTPException:
         return _card_back_response()
     return Response(

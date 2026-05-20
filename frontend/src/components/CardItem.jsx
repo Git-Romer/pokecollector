@@ -2,13 +2,13 @@ import { useState, useEffect, memo } from 'react'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { Plus, Check, Heart, BookOpen, X, PenLine, Pencil,  Trash2 } from 'lucide-react'
-import { addToCollection, addToWishlist, createCustomCard, updateCustomCard, deleteCustomCard, getSets, getPriceHistory } from '../api/client'
+import { addToCollection, addToWishlist, createCustomCard, updateCustomCard, updateCardCustomImage, deleteCustomCard, getSets, getPriceHistory } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import PeriodSelector, { CARD_PERIODS, PERIOD_PRICE_FIELD } from './PeriodSelector'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
 import { useTilt } from '../hooks/useTilt'
-import { resolveCardImageUrl } from '../utils/imageUrl'
+import { cardImageUrl, resolveCardImageUrl } from '../utils/imageUrl'
 import { CARD_VARIANTS, getAvailableVariants, getDefaultVariant, getDefaultVariantOrNull } from '../utils/cardVariants'
 import FallbackBadges from './FallbackBadges'
 
@@ -524,6 +524,9 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
   const [purchasePrice, setPurchasePrice] = useState('')
   const [modalPeriod, setModalPeriod] = useState('total')
   const [resolvedCardId, setResolvedCardId] = useState(card.id)
+  const [customImageUrl, setCustomImageUrl] = useState(card.custom_image_url || '')
+  const [savedCustomImageUrl, setSavedCustomImageUrl] = useState(card.custom_image_url || '')
+  const [customImageVersion, setCustomImageVersion] = useState(0)
   const { t, formatPrice } = useSettings()
   const queryClient = useQueryClient()
 
@@ -537,11 +540,26 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
     retry: false,
   })
 
+  useEffect(() => {
+    const nextUrl = card.custom_image_url || ''
+    setCustomImageUrl(nextUrl)
+    setSavedCustomImageUrl(nextUrl)
+  }, [card.id, card.custom_image_url])
+
   const safePriceHistory = Array.isArray(priceHistory) ? priceHistory : []
+  const hasApiImage = Boolean(card?.images?.large || card?.images_large || card?.images?.small || card?.images_small || card?.image)
+  const customImageCardId = card?.card_id || card?.id
+  const canEditCustomImage = !card.is_custom && !hasApiImage && typeof customImageCardId === 'string'
+  const customImageProxyUrl = canEditCustomImage && savedCustomImageUrl
+    ? `${cardImageUrl(customImageCardId, 'large')}?v=${customImageVersion}`
+    : null
   const cardImage = card?.images?.large
-    || resolveCardImageUrl(card, 'large')
+    || card?.images_large
     || (card?.image ? `${card.image}/high.webp` : null)
     || card?.images?.small
+    || card?.images_small
+    || customImageProxyUrl
+    || resolveCardImageUrl(card, 'large')
     || resolveCardImageUrl(card)
   const setName = card.set?.name || card.set_ref?.name
 
@@ -564,6 +582,22 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
       onClose()
     },
     onError: () => toast.error(t('card.wishlistFailed')),
+  })
+
+  const customImageMutation = useMutation({
+    mutationFn: (url) => updateCardCustomImage(card.card_id || card.id, { custom_image_url: url || null }),
+    onSuccess: (updatedCard) => {
+      const nextUrl = updatedCard?.custom_image_url || ''
+      setCustomImageUrl(nextUrl)
+      setSavedCustomImageUrl(nextUrl)
+      setCustomImageVersion((version) => version + 1)
+      toast.success(t('card.customImageSaved'))
+      queryClient.invalidateQueries()
+    },
+    onError: (err) => {
+      const detail = err?.response?.data?.detail || t('common.error')
+      toast.error(detail)
+    },
   })
 
   const ALL_PRICE_KEYS = ['trend', 'avg1', 'avg7', 'avg30', 'low']
@@ -743,6 +777,51 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
                       <span className="font-bold text-blue-400">${val.toFixed(2)}</span>
                     </div>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {canEditCustomImage && (
+              <div className="bg-bg-card rounded-xl p-3 space-y-2 border border-border">
+                <div>
+                  <p className="text-xs text-text-muted font-medium uppercase tracking-wide">
+                    {t('card.customImageUrl')}
+                  </p>
+                  <p className="text-xs text-text-secondary mt-1">
+                    {t('card.customImageUrlDesc')}
+                  </p>
+                </div>
+                <input
+                  type="url"
+                  placeholder="https://..."
+                  value={customImageUrl}
+                  onChange={(e) => setCustomImageUrl(e.target.value)}
+                  className="input w-full"
+                />
+                {customImageProxyUrl && (
+                  <div className="w-20 h-28 rounded overflow-hidden border border-border">
+                    <img src={customImageProxyUrl} alt="preview" className="w-full h-full object-cover" />
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => customImageMutation.mutate(customImageUrl.trim())}
+                    disabled={customImageMutation.isPending || customImageUrl.trim() === savedCustomImageUrl}
+                    className="btn-primary text-sm"
+                  >
+                    {customImageMutation.isPending ? t('common.saving') : t('card.saveCustomImage')}
+                  </button>
+                  {savedCustomImageUrl && (
+                    <button
+                      type="button"
+                      onClick={() => customImageMutation.mutate('')}
+                      disabled={customImageMutation.isPending}
+                      className="btn-ghost text-sm"
+                    >
+                      {t('card.clearCustomImage')}
+                    </button>
+                  )}
                 </div>
               </div>
             )}

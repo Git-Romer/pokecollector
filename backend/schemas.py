@@ -37,6 +37,7 @@ class CardBase(BaseModel):
     images_small: Optional[str] = None
     images_large: Optional[str] = None
     image_source_lang: Optional[str] = None
+    custom_image_url: Optional[str] = None
     is_custom: bool = False
     price_market: Optional[float] = None
     price_low: Optional[float] = None
@@ -96,6 +97,10 @@ class CustomCardUpdate(BaseModel):
     image_url: Optional[str] = None
     hp: Optional[str] = None
     lang: Optional[str] = None
+
+
+class CardCustomImageUpdate(BaseModel):
+    custom_image_url: Optional[str] = None
 
 
 class CardWithSet(CardBase):

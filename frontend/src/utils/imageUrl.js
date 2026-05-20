@@ -16,14 +16,16 @@ export const resolveCardImageUrl = (card, size = 'small') => {
       || (card?.image ? `${card.image}/high.webp` : null)
       || card?.images?.small
       || card?.images_small
+      || card?.custom_image_url
       || card?.image_url
       || null
   }
 
   return card?.images?.small
     || card?.images_small
-    || card?.image_url
     || (card?.image ? `${card.image}/low.webp` : null)
+    || card?.custom_image_url
+    || card?.image_url
     || null
 }
 

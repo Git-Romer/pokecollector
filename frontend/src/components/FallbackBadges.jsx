@@ -8,7 +8,8 @@ export default function FallbackBadges({ card, className = '', compact = false }
   if (!card) return null
   const priceLang = card.price_source_lang
   const imageLang = card.image_source_lang
-  if (!priceLang && !imageLang) return null
+  const hasCustomImage = Boolean(card.custom_image_url) && !(card.images_small || card.images_large || card.images?.small || card.images?.large || card.image)
+  if (!priceLang && !imageLang && !hasCustomImage) return null
 
   const baseClass = compact
     ? 'text-[9px] px-1 py-0.5 rounded leading-none'
@@ -30,6 +31,14 @@ export default function FallbackBadges({ card, className = '', compact = false }
           title={t('fallback.imageFrom').replace('{lang}', sourceLabel(imageLang))}
         >
           🖼 {sourceLabel(imageLang)}
+        </span>
+      )}
+      {hasCustomImage && (
+        <span
+          className={clsx(baseClass, 'font-bold bg-violet-500/15 text-violet-300 border border-violet-500/30')}
+          title={t('fallback.customImageDesc')}
+        >
+          🖼 {t('fallback.customImage')}
         </span>
       )}
     </div>
