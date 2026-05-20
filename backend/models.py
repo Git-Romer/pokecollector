@@ -85,6 +85,8 @@ class Card(Base):
     price_tcg_holo_mid = Column(Float)
     price_tcg_holo_market = Column(Float)
     price_source_lang = Column(String, nullable=True)  # Set when prices are copied from another TCGdex language
+    last_price_sync_attempt_at = Column(DateTime, nullable=True)
+    last_price_sync_success_at = Column(DateTime, nullable=True)
     # Card variants from TCGdex
     variants_normal = Column(Boolean)
     variants_reverse = Column(Boolean)

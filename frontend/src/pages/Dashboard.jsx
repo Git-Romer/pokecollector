@@ -8,6 +8,7 @@ import {
 import { TrendingUp, TrendingDown } from 'lucide-react'
 import { getDashboard } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
+import { useAuth } from '../contexts/AuthContext'
 import { format, parseISO } from 'date-fns'
 import PeriodSelector, { CARD_PERIODS, PERIOD_PRICE_FIELD } from '../components/PeriodSelector'
 import TrainerCard from '../components/TrainerCard'
@@ -31,7 +32,8 @@ const CustomTooltip = ({ active, payload, label }) => {
 }
 
 export default function Dashboard() {
-  const { t, formatPrice } = useSettings()
+  const { t, formatPrice, settings } = useSettings()
+  const { user } = useAuth()
   const navigate = useNavigate()
   const [period, setPeriod] = useState('total')
 
@@ -95,6 +97,7 @@ export default function Dashboard() {
   const uniqueCards = data?.unique_cards || 0
   const ownedSets = data?.owned_sets || 0
   const totalSets = data?.total_sets || 0
+  const trainerName = user?.username || settings?.trainer_name || 'Trainer'
 
   return (
     <div className="space-y-5 pb-2">
@@ -102,7 +105,7 @@ export default function Dashboard() {
       {/* ─── 1. TRAINER CARD HERO ──────────────────────────────────── */}
       {data && (
         <TrainerCard
-          trainerName="Gilles"
+          trainerName={trainerName}
           totalCards={totalCards}
           totalValue={totalValue}
           collectedSets={ownedSets}

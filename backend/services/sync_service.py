@@ -1,5 +1,6 @@
 import logging
 import datetime
+import math
 from sqlalchemy.orm import Session, load_only
 from sqlalchemy import func
 from models import Card, Set, CollectionItem, WishlistItem, PriceHistory, SyncLog, PortfolioSnapshot, CustomCardMatch, Setting, ProductPurchase, User
@@ -9,11 +10,18 @@ from services.card_values import effective_market_price
 
 logger = logging.getLogger(__name__)
 
-MAX_CARDS_PER_SYNC = 500  # TCGdex has no published rate limit; be reasonable
+MIN_CARDS_PER_SYNC = 500
+MAX_CARDS_PER_SYNC = 2000  # TCGdex has no published rate limit; keep a hard safety cap.
+PRICE_SYNC_COLLECTION_FRACTION = 0.5
+MISSING_PRICE_SYNC_RATIO = 0.7
+NO_PRICE_RETRY_COOLDOWN = datetime.timedelta(hours=24)
 PRICE_SYNC_DB_CHUNK_SIZE = 400  # Stay below SQLite's common 999-parameter limit.
 
-def _has_any_price(card: Card) -> bool:
-    return any(getattr(card, field, None) is not None for field in PRICE_FIELDS)
+def _has_any_price(card) -> bool:
+    return any(
+        (card.get(field) if isinstance(card, dict) else getattr(card, field, None)) is not None
+        for field in PRICE_FIELDS
+    )
 
 
 def _price_debug_snapshot(data) -> dict:
@@ -41,15 +49,49 @@ def _chunks(values, size: int):
         yield values[index:index + size]
 
 
-def _price_sync_priority_ids(db: Session) -> list[str]:
-    """Return collection/wishlist card IDs in a deterministic price-sync order.
+def _price_sync_collection_size(db: Session) -> int:
+    """Return the tracked collection size used to scale the price sync cap."""
+    collection_quantity = db.query(func.coalesce(func.sum(CollectionItem.quantity), 0)).scalar() or 0
+    wishlist_count = db.query(func.count(WishlistItem.id)).scalar() or 0
+    return int(collection_quantity) + int(wishlist_count)
+
+
+def _price_sync_limit(db: Session) -> int:
+    collection_size = _price_sync_collection_size(db)
+    scaled_limit = math.ceil(collection_size * PRICE_SYNC_COLLECTION_FRACTION)
+    return min(MAX_CARDS_PER_SYNC, max(MIN_CARDS_PER_SYNC, scaled_limit))
+
+
+def _empty_price_sync_plan(db: Session) -> dict:
+    sync_limit = _price_sync_limit(db)
+    return {
+        "ids": [],
+        "sync_limit": sync_limit,
+        "total_syncable": 0,
+        "selected_missing": 0,
+        "selected_priced": 0,
+        "eligible_missing": 0,
+        "cooldown_missing": 0,
+        "priced": 0,
+        "deferred": 0,
+        "deferred_ids": [],
+    }
+
+
+def _price_sync_plan(db: Session, *, now: datetime.datetime | None = None) -> dict:
+    """Return selected collection/wishlist card IDs with a fair price-sync split.
 
     The old implementation converted collection and wishlist IDs through a
     Python set and then sliced the first 500 entries. Set iteration order is not
     stable, so larger collections could leave some cards unsynced forever by
-    accident. Prioritize cards that still have no stored price, then rotate the
-    rest by oldest card update time.
+    accident.
+
+    The queue now scales with collection size, reserves capacity for both
+    missing-price and already-priced cards, and cools down no-price retries so
+    permanently unpriced upstream cards cannot monopolize every run.
     """
+    now = now or datetime.datetime.utcnow()
+    no_price_retry_before = now - NO_PRICE_RETRY_COOLDOWN
     latest_activity: dict[str, datetime.datetime] = {}
 
     collection_rows = db.query(
@@ -69,7 +111,7 @@ def _price_sync_priority_ids(db: Session) -> list[str]:
             latest_activity[card_id] = normalized_seen_at
 
     if not latest_activity:
-        return []
+        return _empty_price_sync_plan(db)
 
     syncable_cards = []
     price_columns = [getattr(Card, field) for field in PRICE_FIELDS]
@@ -78,6 +120,8 @@ def _price_sync_priority_ids(db: Session) -> list[str]:
             load_only(
                 Card.id,
                 Card.updated_at,
+                Card.last_price_sync_attempt_at,
+                Card.last_price_sync_success_at,
                 Card.is_custom,
                 Card.tcg_card_id,
                 *price_columns,
@@ -88,29 +132,93 @@ def _price_sync_priority_ids(db: Session) -> list[str]:
             if not getattr(card, "is_custom", False) and getattr(card, "tcg_card_id", None)
         )
 
-    def sort_key(card: Card):
-        updated_at = _as_utc_naive(card.updated_at)
+    sync_limit = _price_sync_limit(db)
+    missing_limit = math.ceil(sync_limit * MISSING_PRICE_SYNC_RATIO)
+    priced_limit = sync_limit - missing_limit
+
+    missing_cards = []
+    missing_cooldown_cards = []
+    priced_cards = []
+
+    for card in syncable_cards:
+        last_attempt = _as_utc_naive(card.last_price_sync_attempt_at)
+        if _has_any_price(card):
+            priced_cards.append(card)
+        elif last_attempt == datetime.datetime.min or last_attempt <= no_price_retry_before:
+            missing_cards.append(card)
+        else:
+            missing_cooldown_cards.append(card)
+
+    def missing_sort_key(card: Card):
+        last_attempt = _as_utc_naive(card.last_price_sync_attempt_at)
         activity = latest_activity.get(card.id) or datetime.datetime.min
-        # Missing-price cards first. For cards in the same bucket, prefer rows
-        # that have not been refreshed recently. If that ties, prefer recently
-        # added collection/wishlist cards so new no-price reports are picked up.
+        # Never-attempted and oldest-attempted missing-price cards first. If
+        # that ties, prefer recently added collection/wishlist cards so new
+        # no-price reports are picked up.
         return (
-            0 if not _has_any_price(card) else 1,
-            updated_at,
+            last_attempt,
             datetime.datetime.max - activity,
             card.id,
         )
 
-    sorted_cards = sorted(syncable_cards, key=sort_key)
-    missing_price_ids = [card.id for card in sorted_cards if not _has_any_price(card)]
-    if missing_price_ids:
+    def priced_sort_key(card: Card):
+        # Already-priced cards rotate by oldest explicit price-sync attempt. For
+        # rows from before this field existed, fall back to general updated_at.
+        last_attempt = _as_utc_naive(card.last_price_sync_attempt_at)
+        if last_attempt == datetime.datetime.min:
+            last_attempt = _as_utc_naive(card.updated_at)
+        return (last_attempt, card.id)
+
+    missing_cards = sorted(missing_cards, key=missing_sort_key)
+    priced_cards = sorted(priced_cards, key=priced_sort_key)
+
+    selected_missing = missing_cards[:missing_limit]
+    selected_priced = priced_cards[:priced_limit]
+
+    remaining_capacity = sync_limit - len(selected_missing) - len(selected_priced)
+    if remaining_capacity > 0:
+        if len(selected_missing) < missing_limit:
+            selected_priced.extend(priced_cards[priced_limit:priced_limit + remaining_capacity])
+        elif len(selected_priced) < priced_limit:
+            selected_missing.extend(missing_cards[missing_limit:missing_limit + remaining_capacity])
+
+    selected_cards = [*selected_missing, *selected_priced]
+    selected_ids = [card.id for card in selected_cards]
+    deferred_count = max(0, len(missing_cards) + len(priced_cards) - len(selected_cards))
+
+    if missing_cards:
         logger.debug(
-            "Price sync queue: %s cards currently have no stored price data; first missing-price ids=%s",
-            len(missing_price_ids),
-            missing_price_ids[:25],
+            "Price sync queue: %s missing-price cards are eligible; first missing-price ids=%s",
+            len(missing_cards),
+            [card.id for card in missing_cards[:25]],
+        )
+    if missing_cooldown_cards:
+        logger.debug(
+            "Price sync queue: %s missing-price cards are on retry cooldown; first cooldown ids=%s",
+            len(missing_cooldown_cards),
+            [card.id for card in missing_cooldown_cards[:25]],
         )
 
-    return [card.id for card in sorted_cards]
+    return {
+        "ids": selected_ids,
+        "sync_limit": sync_limit,
+        "total_syncable": len(syncable_cards),
+        "selected_missing": len(selected_missing),
+        "selected_priced": len(selected_priced),
+        "eligible_missing": len(missing_cards),
+        "cooldown_missing": len(missing_cooldown_cards),
+        "priced": len(priced_cards),
+        "deferred": deferred_count,
+        "deferred_ids": [card.id for card in [*missing_cards[len(selected_missing):], *priced_cards[len(selected_priced):]][:25]],
+    }
+
+
+def _mark_price_sync_attempt(card_data: dict, attempted_at: datetime.datetime) -> dict:
+    """Stamp parsed card data with price-sync attempt/success metadata."""
+    card_data["last_price_sync_attempt_at"] = attempted_at
+    if _has_any_price(card_data):
+        card_data["last_price_sync_success_at"] = attempted_at
+    return card_data
 
 
 def _get_tcgdex_sync_languages(db: Session) -> list[str]:
@@ -387,23 +495,31 @@ def perform_full_sync(db: Session) -> dict:
         logger.info("Full card catalogue sync complete")
 
         # 3. Update prices for collection + wishlist cards. Use the same
-        # deterministic priority queue as the price-only sync so a full sync
-        # cannot keep skipping missing-price cards when the 500-card cap applies.
-        priority_ids = _price_sync_priority_ids(db)
-        selected_ids = priority_ids[:MAX_CARDS_PER_SYNC]
-        skipped_count = max(0, len(priority_ids) - len(selected_ids))
+        # fair dynamic priority queue as the price-only sync so a full sync
+        # cannot keep skipping cards when the per-run cap applies.
+        price_plan = _price_sync_plan(db)
+        selected_ids = price_plan["ids"]
+        skipped_count = price_plan["deferred"]
         logger.info(
-            "Full sync: updating prices for %s of %s collection/wishlist cards%s...",
+            "Full sync: updating prices for %s of %s collection/wishlist cards "
+            "(limit=%s, missing=%s/%s, priced=%s/%s, cooldown_no_price=%s)%s...",
             len(selected_ids),
-            len(priority_ids),
+            price_plan["total_syncable"],
+            price_plan["sync_limit"],
+            price_plan["selected_missing"],
+            price_plan["eligible_missing"],
+            price_plan["selected_priced"],
+            price_plan["priced"],
+            price_plan["cooldown_missing"],
             f" ({skipped_count} deferred)" if skipped_count else "",
         )
 
         if skipped_count:
-            logger.debug("Full sync deferred price ids after cap: %s", priority_ids[MAX_CARDS_PER_SYNC:MAX_CARDS_PER_SYNC + 25])
+            logger.debug("Full sync deferred price ids after cap: %s", price_plan["deferred_ids"])
 
         for card_id in selected_ids:
             try:
+                attempted_at = datetime.datetime.utcnow()
                 tcg_id, card_lang = pokemon_api.strip_lang_suffix(card_id)
                 existing_card = db.query(Card).filter(Card.id == card_id).first()
                 logger.debug(
@@ -417,6 +533,8 @@ def perform_full_sync(db: Session) -> dict:
                 card_data = pokemon_api.get_card(tcg_id, lang=card_lang)
                 if not card_data:
                     logger.debug("Full sync price card no TCGdex data: card_id=%s tcg_id=%s lang=%s", card_id, tcg_id, card_lang)
+                    if existing_card:
+                        existing_card.last_price_sync_attempt_at = attempted_at
                     continue
 
                 parsed = pokemon_api.parse_card_for_db(card_data, lang=card_lang)
@@ -427,6 +545,7 @@ def perform_full_sync(db: Session) -> dict:
                     _price_debug_snapshot(parsed),
                 )
                 parsed = apply_cross_language_fallbacks(db, parsed)
+                parsed = _mark_price_sync_attempt(parsed, attempted_at)
                 logger.debug(
                     "Full sync price card after fallback: card_id=%s parsed_id=%s parsed_prices=%s price_source_lang=%s",
                     card_id,
@@ -503,21 +622,29 @@ def perform_price_sync(db: Session) -> dict:
     updated_card_ids = []
 
     try:
-        priority_ids = _price_sync_priority_ids(db)
-        selected_ids = priority_ids[:MAX_CARDS_PER_SYNC]
-        skipped_count = max(0, len(priority_ids) - len(selected_ids))
+        price_plan = _price_sync_plan(db)
+        selected_ids = price_plan["ids"]
+        skipped_count = price_plan["deferred"]
         logger.info(
-            "Price sync: updating prices for %s of %s collection/wishlist cards%s...",
+            "Price sync: updating prices for %s of %s collection/wishlist cards "
+            "(limit=%s, missing=%s/%s, priced=%s/%s, cooldown_no_price=%s)%s...",
             len(selected_ids),
-            len(priority_ids),
+            price_plan["total_syncable"],
+            price_plan["sync_limit"],
+            price_plan["selected_missing"],
+            price_plan["eligible_missing"],
+            price_plan["selected_priced"],
+            price_plan["priced"],
+            price_plan["cooldown_missing"],
             f" ({skipped_count} deferred)" if skipped_count else "",
         )
 
         if skipped_count:
-            logger.debug("Price sync deferred ids after cap: %s", priority_ids[MAX_CARDS_PER_SYNC:MAX_CARDS_PER_SYNC + 25])
+            logger.debug("Price sync deferred ids after cap: %s", price_plan["deferred_ids"])
 
         for card_id in selected_ids:
             try:
+                attempted_at = datetime.datetime.utcnow()
                 tcg_id, card_lang = pokemon_api.strip_lang_suffix(card_id)
                 existing_card = db.query(Card).filter(Card.id == card_id).first()
                 logger.debug(
@@ -531,6 +658,8 @@ def perform_price_sync(db: Session) -> dict:
                 card_data = pokemon_api.get_card(tcg_id, lang=card_lang)
                 if not card_data:
                     logger.debug("Price sync card no TCGdex data: card_id=%s tcg_id=%s lang=%s", card_id, tcg_id, card_lang)
+                    if existing_card:
+                        existing_card.last_price_sync_attempt_at = attempted_at
                     continue
 
                 parsed = pokemon_api.parse_card_for_db(card_data, lang=card_lang)
@@ -541,6 +670,7 @@ def perform_price_sync(db: Session) -> dict:
                     _price_debug_snapshot(parsed),
                 )
                 parsed = apply_cross_language_fallbacks(db, parsed)
+                parsed = _mark_price_sync_attempt(parsed, attempted_at)
                 logger.debug(
                     "Price sync card after fallback: card_id=%s parsed_id=%s parsed_prices=%s price_source_lang=%s",
                     card_id,

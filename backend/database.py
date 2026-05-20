@@ -192,6 +192,9 @@ def _run_migrations(conn):
         # v43: Track when card prices/images are copied from another language.
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS price_source_lang VARCHAR",
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS image_source_lang VARCHAR",
+        # v44: Track price sync attempts independently from general card updates.
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS last_price_sync_attempt_at TIMESTAMP",
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS last_price_sync_success_at TIMESTAMP",
     ]
     for stmt in migrations:
         try:
