@@ -87,35 +87,30 @@ function CsvImportModal({ t, onClose, onChooseFile, onDownloadTemplate, isImport
       <div
         className={[
           'fixed bottom-0 left-0 right-0 rounded-t-2xl max-h-[90dvh] overflow-y-auto',
-          'trainer-card p-0 border-t more-sheet-enter',
-          'md:static md:rounded-2xl md:max-w-xl md:w-full md:max-h-[85vh] md:animate-none',
+          'bg-bg-surface border-t border-border more-sheet-enter',
+          'md:static md:rounded-2xl md:border md:max-w-lg md:w-full md:max-h-[85vh] md:animate-none',
         ].join(' ')}
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex justify-center pt-3 pb-1 md:hidden relative z-10">
-          <div className="w-10 h-1 bg-white/20 rounded-full" />
+        <div className="flex justify-center pt-3 pb-1 md:hidden">
+          <div className="w-10 h-1 bg-border rounded-full" />
         </div>
 
-        <div className="pokeball-ring" style={{ width: 220, height: 220, top: 20, right: -80, borderWidth: 14 }} />
-        <div className="pokeball-ring" style={{ width: 140, height: 140, bottom: -40, left: -50, borderWidth: 10 }} />
-
-        <div className="relative z-10 bg-brand-red px-5 py-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-full bg-white/15 border border-white/20 flex items-center justify-center flex-shrink-0">
-              <img src="/pokeball.svg" className="w-6 h-6 opacity-90" alt="" />
+        <div className="p-5 space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3 min-w-0">
+              <div className="w-9 h-9 rounded-xl bg-brand-red/15 border border-brand-red/25 text-brand-red flex items-center justify-center flex-shrink-0">
+                <Upload size={18} />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-base font-bold text-text-primary">{t('collection.csvImportFormatTitle')}</h2>
+                <p className="text-xs text-text-secondary mt-1">{t('collection.csvImportFormatDescription')}</p>
+              </div>
             </div>
-            <div className="min-w-0">
-              <p className="text-white/60 text-[10px] font-black tracking-[0.2em] uppercase">CSV Import</p>
-              <h2 className="text-white text-base font-black truncate">{t('collection.csvImportFormatTitle')}</h2>
-            </div>
+            <button onClick={onClose} className="text-text-muted hover:text-text-primary flex-shrink-0 p-1">
+              <X size={18} />
+            </button>
           </div>
-          <button onClick={onClose} className="text-white/70 hover:text-white flex-shrink-0 p-1">
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="relative z-10 p-5 space-y-4">
-          <p className="text-sm text-text-secondary">{t('collection.csvImportFormatDescription')}</p>
 
           <div className="grid grid-cols-2 gap-2">
             <button
@@ -129,74 +124,59 @@ function CsvImportModal({ t, onClose, onChooseFile, onDownloadTemplate, isImport
             <button
               type="button"
               onClick={onDownloadTemplate}
-              className="btn-ghost justify-center border-yellow/30 text-yellow hover:bg-yellow/10"
+              className="btn-ghost justify-center"
             >
               <Download size={16} /> {t('collection.downloadCsvTemplate')}
             </button>
           </div>
 
-          <section className="card-surface p-3 border-brand-red/20 bg-bg/60">
-            <div className="flex items-start gap-3">
-              <div className="w-11 h-14 rounded-lg bg-gradient-to-br from-brand-red/25 to-yellow/10 border border-brand-red/30 flex items-center justify-center flex-shrink-0 shadow-glow">
-                <span className="text-xl">🎴</span>
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-red mb-1">{t('collection.csvImportSectionCardCode')}</p>
-                <p className="text-xs text-text-secondary mb-2">{t('collection.csvImportValueHelp')}</p>
-                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-                  <div className="rounded-xl bg-bg-elevated border border-brand-red/25 px-3 py-2 text-center">
-                    <code className="text-brand-red font-black text-sm">ASC</code>
-                    <p className="text-[10px] text-text-muted mt-0.5">set_code</p>
-                  </div>
-                  <span className="text-yellow font-black">+</span>
-                  <div className="rounded-xl bg-bg-elevated border border-yellow/25 px-3 py-2 text-center">
-                    <code className="text-yellow font-black text-sm">152</code>
-                    <p className="text-[10px] text-text-muted mt-0.5">number</p>
-                  </div>
+          <div className="space-y-3 text-xs text-text-secondary">
+            <section className="rounded-xl border border-border/70 bg-bg-elevated/40 p-3 space-y-2">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-text-muted">{t('collection.csvImportSectionCardCode')}</p>
+              <p>{t('collection.csvImportValueHelp')}</p>
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                <div className="rounded-lg bg-bg/80 border border-border/60 px-3 py-2 text-center">
+                  <code className="text-text-primary font-mono font-semibold">ASC</code>
+                  <p className="mt-0.5 text-[10px] text-text-muted">set_code</p>
+                </div>
+                <span className="text-text-muted">+</span>
+                <div className="rounded-lg bg-bg/80 border border-border/60 px-3 py-2 text-center">
+                  <code className="text-text-primary font-mono font-semibold">152</code>
+                  <p className="mt-0.5 text-[10px] text-text-muted">number</p>
                 </div>
               </div>
-            </div>
-          </section>
+            </section>
 
-          <section className="card-surface p-3 space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-text-muted">{t('collection.csvImportSectionColumns')}</p>
-              <div className="flex gap-1">
-                <span className="badge-red">{t('collection.csvImportRequired')}</span>
-                <span className="badge-gray">{t('collection.csvImportOptional')}</span>
-              </div>
-            </div>
-            <code className="block rounded-xl bg-black/30 border border-white/10 px-3 py-2 overflow-x-auto text-[11px] text-text-primary font-mono">
-              {CSV_IMPORT_HEADER}
-            </code>
-            <div className="flex flex-wrap gap-1.5 pt-1">
-              <span className="badge-red font-bold">set_code</span>
-              <span className="badge-red font-bold">number</span>
-              {optionalColumns.map(([column, description]) => (
-                <span key={column} className="badge-gray border border-white/5" title={description}>
-                  {column}
-                </span>
-              ))}
-            </div>
-            <p className="text-[11px] text-text-muted">{t('collection.csvImportRequiredOptionalHint')}</p>
-          </section>
-
-          <section className="card-surface p-3 space-y-2">
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-text-muted">{t('collection.csvImportSectionValues')}</p>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {optionalColumns.map(([column, description]) => (
-                <div key={column} className="rounded-xl bg-bg/70 border border-white/5 px-3 py-2">
-                  <p className="font-mono text-[11px] text-gold">{column}</p>
-                  <p className="text-[11px] text-text-muted mt-0.5">{description}</p>
+            <section className="rounded-xl border border-border/70 bg-bg-elevated/40 p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-text-muted">{t('collection.csvImportSectionColumns')}</p>
+                <div className="flex gap-1">
+                  <span className="badge-red">{t('collection.csvImportRequired')}</span>
+                  <span className="badge-gray">{t('collection.csvImportOptional')}</span>
                 </div>
-              ))}
-            </div>
-          </section>
+              </div>
+              <code className="block rounded-lg bg-bg/80 border border-border/60 px-3 py-2 overflow-x-auto text-[11px] text-text-primary font-mono">
+                {CSV_IMPORT_HEADER}
+              </code>
+              <p>{t('collection.csvImportRequiredOptionalHint')}</p>
+            </section>
 
-          <section className="rounded-xl border border-yellow/30 bg-yellow/10 px-3 py-2 flex items-start gap-2">
-            <span className="text-yellow mt-0.5">⚠️</span>
-            <p className="text-[11px] text-yellow/90">{t('collection.csvImportErrorBehavior')}</p>
-          </section>
+            <section className="rounded-xl border border-border/70 bg-bg-elevated/40 p-3 space-y-2">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-text-muted">{t('collection.csvImportSectionValues')}</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {optionalColumns.map(([column, description]) => (
+                  <div key={column} className="rounded-lg bg-bg/70 border border-border/50 px-2.5 py-2">
+                    <p className="font-mono text-[11px] text-text-primary">{column}</p>
+                    <p className="text-[11px] text-text-muted mt-0.5">{description}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="rounded-xl border border-yellow/25 bg-yellow/10 px-3 py-2">
+              <p className="text-[11px] text-yellow">{t('collection.csvImportErrorBehavior')}</p>
+            </section>
+          </div>
         </div>
       </div>
     </div>
