@@ -5,10 +5,11 @@ from sqlalchemy.exc import IntegrityError
 from typing import Optional, List
 from api.auth import get_current_user
 from database import get_db
-from models import Card, Set, PriceHistory, CustomCardMatch, CollectionItem, WishlistItem, BinderCard, Setting, User
+from models import Card, Set, PriceHistory, CustomCardMatch, CollectionItem, WishlistItem, BinderCard, Setting, User, ImageCache
 from schemas import CardBase, CardWithSet, PriceHistoryResponse, CardCustomCreate, CustomCardUpdate, CardCustomImageUpdate
 from services import pokemon_api
 from services.card_fallbacks import apply_cross_language_fallbacks
+from services.image_url_security import validate_public_https_image_url
 import datetime
 import re
 from uuid import uuid4
@@ -705,17 +706,28 @@ def update_card_custom_image(
         raise HTTPException(status_code=404, detail="Card not found")
     if card.is_custom:
         raise HTTPException(status_code=400, detail="Use the custom card editor for manually created cards")
+
+    custom_cache_keys = [
+        f"card:{card_id}:small:custom",
+        f"card:{card_id}:large:custom",
+    ]
     if card.images_small or card.images_large:
         if card.custom_image_url:
             card.custom_image_url = None
+            db.query(ImageCache).filter(ImageCache.image_key.in_(custom_cache_keys)).delete(synchronize_session=False)
             db.commit()
             db.refresh(card)
         return _card_to_dict(card)
 
     image_url = (update.custom_image_url or "").strip()
-    if image_url and not re.match(r"^https?://", image_url, re.IGNORECASE):
-        raise HTTPException(status_code=422, detail="Image URL must start with http:// or https://")
+    if image_url:
+        try:
+            image_url = validate_public_https_image_url(image_url)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    if card.custom_image_url != (image_url or None):
+        db.query(ImageCache).filter(ImageCache.image_key.in_(custom_cache_keys)).delete(synchronize_session=False)
     card.custom_image_url = image_url or None
     db.commit()
     db.refresh(card)

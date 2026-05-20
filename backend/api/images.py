@@ -3,15 +3,20 @@ from fastapi.responses import FileResponse, RedirectResponse
 import hashlib
 import httpx
 from pathlib import Path
+from urllib.parse import urljoin
 from sqlalchemy.orm import Session
 
 from database import get_db
 from models import Card, ImageCache, Set, Setting
+from services.image_url_security import validate_public_https_image_url
 
 router = APIRouter()
 
 _client = httpx.Client(timeout=15, follow_redirects=True)
+_custom_image_client = httpx.Client(timeout=10, follow_redirects=False)
 _SET_FALLBACK_IMAGE = Path(__file__).resolve().parents[1] / "static" / "pokemon-logo.svg"
+_MAX_CUSTOM_IMAGE_BYTES = 8 * 1024 * 1024
+_MAX_CUSTOM_IMAGE_REDIRECTS = 3
 
 
 def _setting_enabled(db: Session, key: str, default: bool = True) -> bool:
@@ -73,6 +78,59 @@ def _get_or_fetch(db: Session, key: str, url: str) -> tuple[bytes, str]:
     return resp.content, content_type
 
 
+def _get_or_fetch_custom_image(db: Session, key: str, url: str) -> tuple[bytes, str]:
+    cached = db.query(ImageCache).filter(ImageCache.image_key == key).first()
+    if cached:
+        return cached.data, cached.content_type
+
+    current_url = validate_public_https_image_url(url)
+    for _ in range(_MAX_CUSTOM_IMAGE_REDIRECTS + 1):
+        chunks: list[bytes] = []
+        total = 0
+        try:
+            with _custom_image_client.stream("GET", current_url) as resp:
+                if resp.is_redirect:
+                    location = resp.headers.get("location")
+                    if not location:
+                        raise HTTPException(status_code=502, detail="Invalid custom image redirect")
+                    current_url = validate_public_https_image_url(urljoin(current_url, location))
+                    continue
+
+                resp.raise_for_status()
+                content_type = resp.headers.get("content-type", "image/webp").split(";", 1)[0].strip().lower()
+                if not content_type.startswith("image/"):
+                    raise HTTPException(status_code=502, detail="Custom image URL did not return an image")
+
+                content_length = resp.headers.get("content-length")
+                if content_length and int(content_length) > _MAX_CUSTOM_IMAGE_BYTES:
+                    raise HTTPException(status_code=502, detail="Custom image is too large")
+
+                for chunk in resp.iter_bytes():
+                    total += len(chunk)
+                    if total > _MAX_CUSTOM_IMAGE_BYTES:
+                        raise HTTPException(status_code=502, detail="Custom image is too large")
+                    chunks.append(chunk)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail="Failed to fetch custom image") from exc
+
+        data = b"".join(chunks)
+        entry = ImageCache(image_key=key, data=data, content_type=content_type)
+        db.add(entry)
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            cached = db.query(ImageCache).filter(ImageCache.image_key == key).first()
+            if cached:
+                return cached.data, cached.content_type
+            raise
+        return data, content_type
+
+    raise HTTPException(status_code=502, detail="Custom image redirected too many times")
+
+
 @router.get("/card/{card_id}/{size}")
 def get_card_image(card_id: str, size: str, db: Session = Depends(get_db)):
     if size not in ("small", "large"):
@@ -91,9 +149,12 @@ def get_card_image(card_id: str, size: str, db: Session = Depends(get_db)):
         return _card_back_response()
 
     try:
-        url_hash = hashlib.sha1(url.encode("utf-8")).hexdigest()
-        data, content_type = _get_or_fetch(db, f"card:{card_id}:{size}:{url_hash}", url)
-    except HTTPException:
+        if card.custom_image_url and url == card.custom_image_url:
+            data, content_type = _get_or_fetch_custom_image(db, f"card:{card_id}:{size}:custom", url)
+        else:
+            url_hash = hashlib.sha1(url.encode("utf-8")).hexdigest()
+            data, content_type = _get_or_fetch(db, f"card:{card_id}:{size}:{url_hash}", url)
+    except (HTTPException, ValueError):
         return _card_back_response()
     return Response(
         content=data,

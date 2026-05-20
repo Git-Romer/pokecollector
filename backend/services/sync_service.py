@@ -4,7 +4,7 @@ import math
 from typing import Any, Mapping
 from sqlalchemy.orm import Session, load_only
 from sqlalchemy import func
-from models import Card, Set, CollectionItem, WishlistItem, PriceHistory, SyncLog, PortfolioSnapshot, CustomCardMatch, Setting, ProductPurchase, User
+from models import Card, Set, CollectionItem, WishlistItem, PriceHistory, SyncLog, PortfolioSnapshot, CustomCardMatch, Setting, ProductPurchase, User, ImageCache
 from services import pokemon_api, telegram
 from services.card_fallbacks import PRICE_FIELDS, apply_cross_language_fallbacks
 from services.card_values import effective_market_price
@@ -255,6 +255,10 @@ def upsert_card(db: Session, card_data: dict):
                 setattr(existing, key, value)
         if has_api_image:
             existing.custom_image_url = None
+            db.query(ImageCache).filter(ImageCache.image_key.in_([
+                f"card:{existing.id}:small:custom",
+                f"card:{existing.id}:large:custom",
+            ])).delete(synchronize_session=False)
     else:
         existing = Card(**card_data)
         db.add(existing)

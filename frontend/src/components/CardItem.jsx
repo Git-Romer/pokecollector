@@ -1,4 +1,4 @@
-import { useState, useEffect, memo } from 'react'
+import { useState, useEffect, useId, memo } from 'react'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { Plus, Check, Heart, BookOpen, X, PenLine, Pencil,  Trash2 } from 'lucide-react'
@@ -527,6 +527,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
   const [customImageUrl, setCustomImageUrl] = useState(card.custom_image_url || '')
   const [savedCustomImageUrl, setSavedCustomImageUrl] = useState(card.custom_image_url || '')
   const [customImageVersion, setCustomImageVersion] = useState(0)
+  const customImageInputId = useId()
   const { t, formatPrice } = useSettings()
   const queryClient = useQueryClient()
 
@@ -592,7 +593,10 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
       setSavedCustomImageUrl(nextUrl)
       setCustomImageVersion((version) => version + 1)
       toast.success(t('card.customImageSaved'))
-      queryClient.invalidateQueries()
+      queryClient.invalidateQueries({ queryKey: ['card-search'] })
+      queryClient.invalidateQueries({ queryKey: ['collection'] })
+      queryClient.invalidateQueries({ queryKey: ['wishlist'] })
+      queryClient.invalidateQueries({ queryKey: ['set-checklist'] })
     },
     onError: (err) => {
       const detail = err?.response?.data?.detail || t('common.error')
@@ -784,14 +788,15 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
             {canEditCustomImage && (
               <div className="bg-bg-card rounded-xl p-3 space-y-2 border border-border">
                 <div>
-                  <p className="text-xs text-text-muted font-medium uppercase tracking-wide">
+                  <label htmlFor={customImageInputId} className="text-xs text-text-muted font-medium uppercase tracking-wide block">
                     {t('card.customImageUrl')}
-                  </p>
+                  </label>
                   <p className="text-xs text-text-secondary mt-1">
                     {t('card.customImageUrlDesc')}
                   </p>
                 </div>
                 <input
+                  id={customImageInputId}
                   type="url"
                   placeholder="https://..."
                   value={customImageUrl}
@@ -800,7 +805,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
                 />
                 {customImageProxyUrl && (
                   <div className="w-20 h-28 rounded overflow-hidden border border-border">
-                    <img src={customImageProxyUrl} alt="preview" className="w-full h-full object-cover" />
+                    <img src={customImageProxyUrl} alt="" className="w-full h-full object-cover" />
                   </div>
                 )}
                 <div className="flex gap-2">
