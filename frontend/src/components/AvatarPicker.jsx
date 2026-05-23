@@ -18,10 +18,7 @@ export default function AvatarPicker({ isOpen, onClose, onSelect, currentAvatarI
     >
       <div className="space-y-4 p-4">
         <div className="max-h-[70vh] overflow-y-auto rounded-2xl border border-border bg-bg-primary p-3">
-          <div
-            className="grid justify-center gap-3"
-            style={{ gridTemplateColumns: 'repeat(auto-fill, 64px)' }}
-          >
+          <div className="grid grid-cols-[repeat(3,64px)] justify-center gap-3 sm:grid-cols-[repeat(4,64px)]">
             {POKEMON_IDS.map((pokemonId) => {
               const isSelected = currentAvatarId === pokemonId
 
