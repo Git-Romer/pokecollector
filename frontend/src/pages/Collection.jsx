@@ -588,9 +588,6 @@ function CollectionEditModal({ item, onClose }) {
               >
                 <Trash2 size={16} />
               </button>
-              <button onClick={onClose} className="btn-ghost px-3">
-                <X size={16} />
-              </button>
             </div>
           </div>
 
