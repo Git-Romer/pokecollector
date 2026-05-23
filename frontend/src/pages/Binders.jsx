@@ -73,23 +73,24 @@ function BinderForm({ initial = {}, onSubmit, onCancel, loading }) {
       <div>
         <label className="text-xs text-text-muted mb-2 block">{t('binders.icon')}</label>
         <div className="flex items-center gap-4 rounded-xl border border-border bg-bg-card p-3">
-          <div className="w-20 h-20 rounded-xl border border-border bg-bg-surface flex items-center justify-center flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => setShowIconPicker(true)}
+            className="w-20 h-20 rounded-xl border border-border bg-bg-surface flex items-center justify-center flex-shrink-0 hover:border-brand-red/50 transition-colors"
+            aria-label={t('binders.chooseIcon')}
+            title={t('binders.chooseIcon')}
+          >
             {iconPokemonId ? (
-              <img src={`${SPRITE_BASE_URL}/${iconPokemonId}.gif`} alt={`Pokemon ${iconPokemonId}`} className="max-h-16 max-w-16 object-contain pixelated" />
+              <img src={`${SPRITE_BASE_URL}/${iconPokemonId}.gif`} alt={`Pokemon ${iconPokemonId}`} className="h-16 w-16 object-contain pixelated" />
             ) : (
               <BookOpen size={28} style={{ color }} />
             )}
-          </div>
-          <div className="space-y-1.5 min-w-0">
-            <button type="button" onClick={() => setShowIconPicker(true)} className="btn-ghost text-sm py-1.5 px-0 justify-start">
-              {t('binders.chooseIcon')}
+          </button>
+          {iconPokemonId && (
+            <button type="button" onClick={() => setIconPokemonId(null)} className="text-xs text-text-muted hover:text-brand-red">
+              {t('binders.clearIcon')}
             </button>
-            {iconPokemonId && (
-              <button type="button" onClick={() => setIconPokemonId(null)} className="block text-xs text-text-muted hover:text-brand-red">
-                {t('binders.clearIcon')}
-              </button>
-            )}
-          </div>
+          )}
         </div>
       </div>
       <div className="flex gap-2">
