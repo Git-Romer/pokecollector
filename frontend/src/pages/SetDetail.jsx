@@ -41,7 +41,7 @@ function OwnedVersionRow({ item, onQuantityChange, onRemove, isUpdating, isRemov
         }}
         disabled={isUpdating || isRemoving}
         className="input text-center px-2 py-1.5"
-        style={{ width: '4.25rem' }}
+        style={{ width: '4.25rem', colorScheme: 'dark' }}
         aria-label={t('card.quantity')}
         title={t('card.quantity')}
       />
