@@ -18,7 +18,10 @@ export default function AvatarPicker({ isOpen, onClose, onSelect, currentAvatarI
     >
       <div className="space-y-4 p-4">
         <div className="max-h-[70vh] overflow-y-auto rounded-2xl border border-border bg-bg-primary p-3">
-          <div className="grid grid-cols-4 gap-3 sm:grid-cols-6">
+          <div
+            className="grid justify-center gap-3"
+            style={{ gridTemplateColumns: 'repeat(auto-fill, 64px)' }}
+          >
             {POKEMON_IDS.map((pokemonId) => {
               const isSelected = currentAvatarId === pokemonId
 
@@ -31,7 +34,7 @@ export default function AvatarPicker({ isOpen, onClose, onSelect, currentAvatarI
                     onClose()
                   }}
                   className={[
-                    'flex h-16 w-full items-center justify-center rounded-xl border bg-bg-card transition-transform duration-150 hover:scale-105',
+                    'flex h-16 w-16 items-center justify-center rounded-xl border bg-bg-card transition-transform duration-150 hover:scale-105',
                     isSelected ? 'border-brand-red ring-2 ring-brand-red/70' : 'border-border hover:border-brand-red/40',
                   ].join(' ')}
                   title={`#${pokemonId}`}
