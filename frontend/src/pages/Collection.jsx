@@ -258,6 +258,12 @@ function CollectionEditModal({ item, onClose }) {
   const [variant, setVariant] = useState(item.variant || '')
   const [lang, setLang] = useState(item.lang || 'en')
   const [price, setPrice] = useState(item.purchase_price ? String(item.purchase_price) : '')
+  const [showAddVersionForm, setShowAddVersionForm] = useState(false)
+  const [newVersionQuantity, setNewVersionQuantity] = useState(1)
+  const [newVersionCondition, setNewVersionCondition] = useState(item.condition || 'NM')
+  const [newVersionVariant, setNewVersionVariant] = useState(item.variant || '')
+  const [newVersionLang, setNewVersionLang] = useState(item.lang || 'en')
+  const [newVersionPrice, setNewVersionPrice] = useState('')
   const [customImageUrl, setCustomImageUrl] = useState(card?.custom_image_url || '')
   const [savedCustomImageUrl, setSavedCustomImageUrl] = useState(card?.custom_image_url || '')
   const [customImageVersion, setCustomImageVersion] = useState(0)
@@ -307,14 +313,14 @@ function CollectionEditModal({ item, onClose }) {
   const cloneMutation = useMutation({
     mutationFn: () => addToCollection({
       card_id: item.card_id,
-      quantity: 1,
-      condition,
-      variant: variant || null,
-      lang,
-      purchase_price: price ? parseFloat(price) : undefined,
+      quantity: Math.max(1, parseInt(newVersionQuantity, 10) || 1),
+      condition: newVersionCondition,
+      variant: newVersionVariant || null,
+      lang: newVersionLang,
+      purchase_price: newVersionPrice ? parseFloat(newVersionPrice) : undefined,
     }),
     onSuccess: () => {
-      toast.success(t('collection.cloned'))
+      toast.success(t('collection.versionAdded'))
       queryClient.invalidateQueries({ queryKey: ['collection'] })
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       onClose()
@@ -355,6 +361,29 @@ function CollectionEditModal({ item, onClose }) {
       deleteMutation.mutate()
     }
   }
+
+  const openAddVersionForm = () => {
+    setNewVersionQuantity(1)
+    setNewVersionCondition(condition)
+    setNewVersionVariant(variant)
+    setNewVersionLang(lang)
+    setNewVersionPrice('')
+    setShowAddVersionForm(true)
+  }
+
+  const binderSelect = (
+    <select
+      className="select text-sm"
+      value=""
+      onChange={(e) => {
+        if (e.target.value) addToBinderMutation.mutate(parseInt(e.target.value, 10))
+      }}
+      disabled={addToBinderMutation.isPending || collectionBinders.length === 0}
+    >
+      <option value="">{collectionBinders.length === 0 ? t('collection.noCollectionBinders') : t('collection.addToBinder')}</option>
+      {collectionBinders.map(binder => <option key={binder.id} value={binder.id}>{binder.name}</option>)}
+    </select>
+  )
 
   return (
     <div
@@ -511,27 +540,113 @@ function CollectionEditModal({ item, onClose }) {
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => cloneMutation.mutate()}
-                disabled={cloneMutation.isPending}
-                className="btn-ghost justify-center border-brand-red/30 text-brand-red hover:bg-brand-red/10"
-              >
-                <Copy size={14} /> {cloneMutation.isPending ? t('card.adding') : t('collection.addAnotherVersion')}
-              </button>
-              <select
-                className="select text-sm"
-                value=""
-                onChange={(e) => {
-                  if (e.target.value) addToBinderMutation.mutate(parseInt(e.target.value, 10))
+            {showAddVersionForm ? (
+              <form
+                className="bg-bg-card rounded-xl p-3 space-y-3 border border-brand-red/30"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  cloneMutation.mutate()
                 }}
-                disabled={addToBinderMutation.isPending || collectionBinders.length === 0}
               >
-                <option value="">{collectionBinders.length === 0 ? t('collection.noCollectionBinders') : t('collection.addToBinder')}</option>
-                {collectionBinders.map(binder => <option key={binder.id} value={binder.id}>{binder.name}</option>)}
-              </select>
-            </div>
+                <div>
+                  <h3 className="text-sm font-bold text-text-primary">{t('collection.newVersionDetails')}</h3>
+                  <p className="text-xs text-text-secondary mt-1">{t('collection.addAnotherVersionHelp')}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-text-muted mb-1 block">{t('card.quantity')}</label>
+                    <input
+                      type="number" min="1" value={newVersionQuantity}
+                      onChange={e => setNewVersionQuantity(parseInt(e.target.value, 10) || 1)}
+                      className="input"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-text-muted mb-1 block">{t('card.condition')}</label>
+                    <select value={newVersionCondition} onChange={e => setNewVersionCondition(e.target.value)} className="select">
+                      {CONDITIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-text-muted mb-1 block">✨ {t('card.variant')}</label>
+                  <select value={newVersionVariant} onChange={e => setNewVersionVariant(e.target.value)} className="select">
+                    <option value="">{t('variants.none')}</option>
+                    {CARD_VARIANTS.map(v => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs text-text-muted mb-1.5 block">🌐 {t('lang.selectLabel')}</label>
+                  <div className="flex gap-2">
+                    {['de', 'en'].map(l => (
+                      <button
+                        key={l}
+                        type="button"
+                        onClick={() => setNewVersionLang(l)}
+                        className={clsx(
+                          'flex-1 py-1.5 rounded-lg text-sm font-bold transition-all border',
+                          newVersionLang === l
+                            ? l === 'de'
+                              ? 'bg-yellow/20 text-yellow border-yellow/50'
+                              : 'bg-blue/20 text-blue-400 border-blue-400/50'
+                            : 'bg-bg-surface text-text-muted border-border hover:border-text-muted'
+                        )}
+                      >
+                        {l === 'de' ? `🇩🇪 ${t('lang.de_full')}` : `🇬🇧 ${t('lang.en_full')}`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-text-muted mb-1 block">{t('card.purchasePrice')}</label>
+                  <input
+                    type="number" step="0.01" min="0"
+                    placeholder={t('card.purchasePricePlaceholder')}
+                    value={newVersionPrice}
+                    onChange={e => setNewVersionPrice(e.target.value)}
+                    className="input"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    type="submit"
+                    disabled={cloneMutation.isPending}
+                    className="btn-primary justify-center"
+                  >
+                    <Copy size={14} /> {cloneMutation.isPending ? t('card.adding') : t('collection.addVersionToCollection')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddVersionForm(false)}
+                    disabled={cloneMutation.isPending}
+                    className="btn-ghost justify-center"
+                  >
+                    {t('common.cancel')}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={openAddVersionForm}
+                  className="btn-ghost justify-center border-brand-red/30 text-brand-red hover:bg-brand-red/10"
+                >
+                  <Copy size={14} /> {t('collection.addAnotherVersion')}
+                </button>
+                {binderSelect}
+              </div>
+            )}
+
+            {showAddVersionForm && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
+                {binderSelect}
+              </div>
+            )}
           </div>
 
           {/* Actions */}
