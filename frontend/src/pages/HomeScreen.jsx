@@ -69,7 +69,7 @@ export default function HomeScreen() {
   const queryClient = useQueryClient()
   const { formatPrice, t } = useSettings()
   const { user, logout, multiUser } = useAuth()
-  const [chartPeriod, setChartPeriod] = useState('1M')
+  const [chartPeriod, setChartPeriod] = useState('1W')
 
   const { data, isLoading } = useQuery({
     queryKey: ['dashboard'],

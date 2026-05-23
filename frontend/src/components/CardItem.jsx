@@ -1,4 +1,5 @@
 import { useState, useEffect, useId, memo } from 'react'
+import { createPortal } from 'react-dom'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { Plus, Check, Heart, BookOpen, X, PenLine, Pencil,  Trash2 } from 'lucide-react'
@@ -186,7 +187,7 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
     deleteMutation.mutate()
   }
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 bg-black/60 md:flex md:items-center md:justify-center md:bg-black/80 md:backdrop-blur-sm"
       onClick={onClose}>
       <div className={[
@@ -358,7 +359,8 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -515,7 +517,7 @@ export const CardItem = memo(function CardItem({ card, showActions = true, onAdd
   )
 })
 
-export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
+export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItems = null }) {
   if (!card || !card.id) return null
 
   const [quantity, setQuantity] = useState(1)
@@ -563,6 +565,8 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
     || resolveCardImageUrl(card, 'large')
     || resolveCardImageUrl(card)
   const setName = card.set?.name || card.set_ref?.name
+  const modalOwnedItems = ownedItems || card.owned_items || []
+  const ownedQuantity = card.owned_quantity ?? modalOwnedItems.reduce((sum, item) => sum + (item.quantity || 0), 0)
 
   const addMutation = useMutation({
     mutationFn: (data) => addToCollection(data),
@@ -639,7 +643,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
   const periodPriceKey = PERIOD_PRICE_FIELD[modalPeriod]?.replace('price_', '') || 'trend'
   const selectedPeriodPrice = getPriceValue(card, periodPriceKey)
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 bg-black/60 md:flex md:items-center md:justify-center md:bg-black/80 md:backdrop-blur-sm"
       onClick={onClose}>
       <div className={[
@@ -901,6 +905,20 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
               </div>
             )}
             <div className="space-y-3">
+              {ownedQuantity > 0 && (
+                <div className="rounded-xl border border-green/30 bg-green/10 p-3">
+                  <p className="text-sm font-semibold text-green">✓ {t('cardSearch.alreadyOwned')} · {ownedQuantity}x</p>
+                  {modalOwnedItems.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {modalOwnedItems.map(item => (
+                        <span key={item.id} className="text-[10px] px-2 py-1 rounded-full bg-bg-elevated text-text-secondary border border-border">
+                          {[item.variant || 'Normal', item.condition, `${item.quantity}x`].filter(Boolean).join(' · ')}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-text-muted mb-1 block">{t('card.quantity')}</label>
@@ -969,7 +987,8 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en' }) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 

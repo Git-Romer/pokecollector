@@ -1,7 +1,8 @@
 import { useState, useMemo, useId, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Trash2, Check, X, Filter, SortAsc, Download, Upload, ChevronUp, ChevronDown, Search, PenLine, Grid2X2, List, Library, BookOpen, Heart } from 'lucide-react'
-import { getCollection, updateCollectionItem, updateCardCustomImage, removeFromCollection, importCollectionCsv, exportCSV, exportPDF, getSets } from '../api/client'
+import { Trash2, Check, X, Filter, SortAsc, Download, Upload, ChevronUp, ChevronDown, Search, PenLine, Grid2X2, List, Library, BookOpen, Heart, Copy, ArrowLeft } from 'lucide-react'
+import { getCollection, updateCollectionItem, updateCardCustomImage, removeFromCollection, importCollectionCsv, exportCSV, exportPDF, getSets, addToCollection, getBinders, addCollectionItemToBinder } from '../api/client'
 import { CustomCardModal } from '../components/CardItem'
 import { useSettings } from '../contexts/SettingsContext'
 import CardImage from '../components/CardImage'
@@ -58,6 +59,14 @@ const HOLO_FIELD_MAP = {
 const CSV_IMPORT_HEADER = 'set_code,number,quantity,condition,variant,lang,purchase_price'
 const CSV_IMPORT_TEMPLATE = `${CSV_IMPORT_HEADER}\nASC,152,1,NM,,en,\n`
 
+const naturalCardNumberKey = (number) => String(number || '').trim().split(/(\d+)/).map(part => /^\d+$/.test(part) ? part.padStart(8, '0') : part.toLowerCase()).join('')
+
+const collectionCardIdKey = (item) => {
+  const card = item.card || {}
+  const setKey = (card.set_ref?.abbreviation || card.set_id || '').toLowerCase()
+  return `${setKey}|${naturalCardNumberKey(card.number)}|${card.name || ''}`
+}
+
 const downloadCsvImportTemplate = () => {
   const blob = new Blob([CSV_IMPORT_TEMPLATE], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)
@@ -71,7 +80,7 @@ const downloadCsvImportTemplate = () => {
 }
 
 function CsvImportModal({ t, onClose, onChooseFile, onDownloadTemplate, isImporting }) {
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm md:flex md:items-center md:justify-center md:bg-black/80"
       onClick={onClose}
@@ -155,7 +164,8 @@ function CsvImportModal({ t, onClose, onChooseFile, onDownloadTemplate, isImport
           </p>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -250,10 +260,22 @@ function CollectionEditModal({ item, onClose }) {
   const [variant, setVariant] = useState(item.variant || '')
   const [lang, setLang] = useState(item.lang || 'en')
   const [price, setPrice] = useState(item.purchase_price ? String(item.purchase_price) : '')
+  const [showAddVersionForm, setShowAddVersionForm] = useState(false)
+  const [newVersionQuantity, setNewVersionQuantity] = useState(1)
+  const [newVersionCondition, setNewVersionCondition] = useState(item.condition || 'NM')
+  const [newVersionVariant, setNewVersionVariant] = useState(item.variant || '')
+  const [newVersionLang, setNewVersionLang] = useState(item.lang || 'en')
+  const [newVersionPrice, setNewVersionPrice] = useState('')
   const [customImageUrl, setCustomImageUrl] = useState(card?.custom_image_url || '')
   const [savedCustomImageUrl, setSavedCustomImageUrl] = useState(card?.custom_image_url || '')
   const [customImageVersion, setCustomImageVersion] = useState(0)
   const customImageInputId = useId()
+
+  const { data: binders = [] } = useQuery({
+    queryKey: ['binders'],
+    queryFn: () => getBinders().then(r => r.data),
+  })
+  const collectionBinders = binders.filter(binder => (binder.binder_type || 'collection') === 'collection')
 
   const hasApiImage = Boolean(card?.images?.large || card?.images_large || card?.images?.small || card?.images_small || card?.image)
   const canEditCustomImage = card && !card.is_custom && !hasApiImage && typeof item.card_id === 'string'
@@ -290,6 +312,33 @@ function CollectionEditModal({ item, onClose }) {
     onError: () => toast.error(t('collection.removeFailed')),
   })
 
+  const cloneMutation = useMutation({
+    mutationFn: () => addToCollection({
+      card_id: item.card_id,
+      quantity: Math.max(1, parseInt(newVersionQuantity, 10) || 1),
+      condition: newVersionCondition,
+      variant: newVersionVariant || null,
+      lang: newVersionLang,
+      purchase_price: newVersionPrice ? parseFloat(newVersionPrice) : undefined,
+    }),
+    onSuccess: () => {
+      toast.success(t('collection.versionAdded'))
+      queryClient.invalidateQueries({ queryKey: ['collection'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      onClose()
+    },
+    onError: () => toast.error(t('card.addFailed')),
+  })
+
+  const addToBinderMutation = useMutation({
+    mutationFn: (binderId) => addCollectionItemToBinder(binderId, item.id),
+    onSuccess: () => {
+      toast.success(t('collection.addedToBinder'))
+      queryClient.invalidateQueries({ queryKey: ['binders'] })
+    },
+    onError: (err) => toast.error(err?.response?.data?.detail || t('card.addFailed')),
+  })
+
   const customImageMutation = useMutation({
     mutationFn: (url) => updateCardCustomImage(item.card_id, { custom_image_url: url || null }),
     onSuccess: (updatedCard) => {
@@ -315,7 +364,63 @@ function CollectionEditModal({ item, onClose }) {
     }
   }
 
-  return (
+  const openAddVersionForm = () => {
+    setNewVersionQuantity(1)
+    setNewVersionCondition(condition)
+    setNewVersionVariant(variant)
+    setNewVersionLang(lang)
+    setNewVersionPrice('')
+    setShowAddVersionForm(true)
+  }
+
+  const binderSelect = (
+    collectionBinders.length === 0 ? (
+      <div className="select text-sm flex items-center justify-center text-center text-text-muted cursor-not-allowed">
+        {t('collection.noCollectionBinders')}
+      </div>
+    ) : (
+      <select
+        className="select text-sm text-center [text-align-last:center] font-medium"
+        value=""
+        onChange={(e) => {
+          if (e.target.value) addToBinderMutation.mutate(parseInt(e.target.value, 10))
+        }}
+        disabled={addToBinderMutation.isPending}
+      >
+        <option value="">{t('collection.addToBinder')}</option>
+        {collectionBinders.map(binder => <option key={binder.id} value={binder.id}>{binder.name}</option>)}
+      </select>
+    )
+  )
+
+  const renderCardHeader = () => (
+    <div className="flex items-start gap-4 mb-5">
+      {cardImage && (
+        <img src={cardImage} alt={card?.name} className="w-20 rounded-xl shadow-lg flex-shrink-0" />
+      )}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <h2 className="text-base font-bold text-text-primary break-words">{card?.name}</h2>
+            {card?.set_ref?.name && (
+              <p className="text-xs text-text-secondary mt-0.5">
+                {card.set_ref.name}{card?.number ? ` · #${card.number}` : ''}
+              </p>
+            )}
+            {card?.rarity && <p className="text-xs text-text-muted mt-0.5">{card.rarity}</p>}
+            {card?.price_market && (
+              <p className="text-sm font-bold text-green mt-1">{formatPrice(card.price_market)}</p>
+            )}
+          </div>
+          <button onClick={onClose} className="text-text-muted hover:text-text-primary flex-shrink-0 p-1">
+            <X size={18} />
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+
+  return createPortal(
     <div
       className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm md:flex md:items-center md:justify-center md:bg-black/80"
       onClick={onClose}
@@ -332,169 +437,262 @@ function CollectionEditModal({ item, onClose }) {
           <div className="w-10 h-1 bg-border rounded-full" />
         </div>
 
-        <div className="p-5">
-          {/* Header */}
-          <div className="flex items-start gap-4 mb-5">
-            {cardImage && (
-              <img src={cardImage} alt={card?.name} className="w-20 rounded-xl shadow-lg flex-shrink-0" />
+        <div className="grid overflow-hidden [perspective:1200px]">
+          <div
+            aria-hidden={showAddVersionForm}
+            className={clsx(
+              'col-start-1 row-start-1 p-5 transition-all duration-300 ease-out transform-gpu',
+              showAddVersionForm
+                ? '-translate-x-10 -rotate-2 scale-[0.97] opacity-0 pointer-events-none'
+                : 'translate-x-0 rotate-0 scale-100 opacity-100'
             )}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <h2 className="text-base font-bold text-text-primary break-words">{card?.name}</h2>
-                  {card?.set_ref?.name && (
-                    <p className="text-xs text-text-secondary mt-0.5">
-                      {card.set_ref.name}{card?.number ? ` · #${card.number}` : ''}
-                    </p>
-                  )}
-                  {card?.rarity && <p className="text-xs text-text-muted mt-0.5">{card.rarity}</p>}
-                  {card?.price_market && (
-                    <p className="text-sm font-bold text-green mt-1">{formatPrice(card.price_market)}</p>
-                  )}
-                </div>
-                <button onClick={onClose} className="text-text-muted hover:text-text-primary flex-shrink-0 p-1">
-                  <X size={18} />
-                </button>
-              </div>
-            </div>
-          </div>
+          >
+            {renderCardHeader()}
 
-          {/* Edit Form */}
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+            {/* Edit Form */}
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-text-muted mb-1 block">{t('card.quantity')}</label>
+                  <input
+                    type="number" min="1" value={quantity}
+                    onChange={e => setQuantity(parseInt(e.target.value) || 1)}
+                    className="input"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-text-muted mb-1 block">{t('card.condition')}</label>
+                  <select value={condition} onChange={e => setCondition(e.target.value)} className="select">
+                    {CONDITIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+
               <div>
-                <label className="text-xs text-text-muted mb-1 block">{t('card.quantity')}</label>
+                <label className="text-xs text-text-muted mb-1 block">✨ {t('card.variant')}</label>
+                <select value={variant} onChange={e => setVariant(e.target.value)} className="select">
+                  <option value="">{t('variants.none')}</option>
+                  {CARD_VARIANTS.map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs text-text-muted mb-1.5 block">🌐 {t('lang.selectLabel')}</label>
+                <div className="flex gap-2">
+                  {['de', 'en'].map(l => (
+                    <button
+                      key={l}
+                      type="button"
+                      onClick={() => setLang(l)}
+                      className={clsx(
+                        'flex-1 py-1.5 rounded-lg text-sm font-bold transition-all border',
+                        lang === l
+                          ? l === 'de'
+                            ? 'bg-yellow/20 text-yellow border-yellow/50'
+                            : l === 'en'
+                              ? 'bg-blue/20 text-blue-400 border-blue-400/50'
+                              : 'bg-bg-surface text-text-muted border-border hover:border-text-muted'
+                          : 'bg-bg-surface text-text-muted border-border hover:border-text-muted'
+                      )}
+                    >
+                      {l === 'de' ? `🇩🇪 ${t('lang.de_full')}` : `🇬🇧 ${t('lang.en_full')}`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-text-muted mb-1 block">{t('card.purchasePrice')}</label>
                 <input
-                  type="number" min="1" value={quantity}
-                  onChange={e => setQuantity(parseInt(e.target.value) || 1)}
+                  type="number" step="0.01" min="0"
+                  placeholder={t('card.purchasePricePlaceholder')}
+                  value={price}
+                  onChange={e => setPrice(e.target.value)}
                   className="input"
                 />
               </div>
-              <div>
-                <label className="text-xs text-text-muted mb-1 block">{t('card.condition')}</label>
-                <select value={condition} onChange={e => setCondition(e.target.value)} className="select">
-                  {CONDITIONS.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-            </div>
 
-            <div>
-              <label className="text-xs text-text-muted mb-1 block">✨ {t('card.variant')}</label>
-              <select value={variant} onChange={e => setVariant(e.target.value)} className="select">
-                <option value="">{t('variants.none')}</option>
-                {CARD_VARIANTS.map(v => <option key={v} value={v}>{v}</option>)}
-              </select>
-            </div>
-
-            
-
-            <div>
-              <label className="text-xs text-text-muted mb-1.5 block">🌐 {t('lang.selectLabel')}</label>
-              <div className="flex gap-2">
-                {['de', 'en'].map(l => (
-                  <button
-                    key={l}
-                    type="button"
-                    onClick={() => setLang(l)}
-                    className={clsx(
-                      'flex-1 py-1.5 rounded-lg text-sm font-bold transition-all border',
-                      lang === l
-                        ? l === 'de'
-                          ? 'bg-yellow/20 text-yellow border-yellow/50'
-                          : l === 'en'
-                            ? 'bg-blue/20 text-blue-400 border-blue-400/50'
-                            : 'bg-bg-surface text-text-muted border-border hover:border-text-muted'
-                        : 'bg-bg-surface text-text-muted border-border hover:border-text-muted'
-                    )}
-                  >
-                    {l === 'de' ? `🇩🇪 ${t('lang.de_full')}` : `🇬🇧 ${t('lang.en_full')}`}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs text-text-muted mb-1 block">{t('card.purchasePrice')}</label>
-              <input
-                type="number" step="0.01" min="0"
-                placeholder={t('card.purchasePricePlaceholder')}
-                value={price}
-                onChange={e => setPrice(e.target.value)}
-                className="input"
-              />
-            </div>
-
-            {canEditCustomImage && (
-              <div className="bg-bg-card rounded-xl p-3 space-y-2 border border-border">
-                <div>
-                  <label htmlFor={customImageInputId} className="text-xs text-text-muted font-medium uppercase tracking-wide block">
-                    {t('card.customImageUrl')}
-                  </label>
-                  <p className="text-xs text-text-secondary mt-1">
-                    {t('card.customImageUrlDesc')}
-                  </p>
-                </div>
-                <input
-                  id={customImageInputId}
-                  type="url"
-                  placeholder="https://..."
-                  value={customImageUrl}
-                  onChange={(e) => setCustomImageUrl(e.target.value)}
-                  className="input w-full"
-                />
-                {customImageProxyUrl && (
-                  <div className="w-20 h-28 rounded overflow-hidden border border-border">
-                    <img src={customImageProxyUrl} alt="" className="w-full h-full object-cover" />
+              {canEditCustomImage && (
+                <div className="bg-bg-card rounded-xl p-3 space-y-2 border border-border">
+                  <div>
+                    <label htmlFor={customImageInputId} className="text-xs text-text-muted font-medium uppercase tracking-wide block">
+                      {t('card.customImageUrl')}
+                    </label>
+                    <p className="text-xs text-text-secondary mt-1">
+                      {t('card.customImageUrlDesc')}
+                    </p>
                   </div>
-                )}
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => customImageMutation.mutate(customImageUrl.trim())}
-                    disabled={customImageMutation.isPending || customImageUrl.trim() === savedCustomImageUrl}
-                    className="btn-primary text-sm"
-                  >
-                    {customImageMutation.isPending ? t('common.saving') : t('card.saveCustomImage')}
-                  </button>
-                  {savedCustomImageUrl && (
+                  <input
+                    id={customImageInputId}
+                    type="url"
+                    placeholder="https://..."
+                    value={customImageUrl}
+                    onChange={(e) => setCustomImageUrl(e.target.value)}
+                    className="input w-full"
+                  />
+                  {customImageProxyUrl && (
+                    <div className="w-20 h-28 rounded overflow-hidden border border-border">
+                      <img src={customImageProxyUrl} alt="" className="w-full h-full object-cover" />
+                    </div>
+                  )}
+                  <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => customImageMutation.mutate('')}
-                      disabled={customImageMutation.isPending}
-                      className="btn-ghost text-sm"
+                      onClick={() => customImageMutation.mutate(customImageUrl.trim())}
+                      disabled={customImageMutation.isPending || customImageUrl.trim() === savedCustomImageUrl}
+                      className="btn-primary text-sm"
                     >
-                      {t('card.clearCustomImage')}
+                      {customImageMutation.isPending ? t('common.saving') : t('card.saveCustomImage')}
                     </button>
-                  )}
+                    {savedCustomImageUrl && (
+                      <button
+                        type="button"
+                        onClick={() => customImageMutation.mutate('')}
+                        disabled={customImageMutation.isPending}
+                        className="btn-ghost text-sm"
+                      >
+                        {t('card.clearCustomImage')}
+                      </button>
+                    )}
+                  </div>
                 </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={openAddVersionForm}
+                  className="btn-ghost justify-center border-brand-red/30 text-brand-red hover:bg-brand-red/10"
+                >
+                  <Copy size={14} /> {t('collection.addAnotherVersion')}
+                </button>
+                {binderSelect}
               </div>
-            )}
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-2 mt-5">
+              <button
+                onClick={() => updateMutation.mutate()}
+                disabled={updateMutation.isPending}
+                className="btn-primary flex-1"
+              >
+                <Check size={16} /> {updateMutation.isPending ? t('common.saving') : t('common.save')}
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleteMutation.isPending}
+                className="btn-ghost text-brand-red border-brand-red/30 hover:bg-brand-red/10 px-3"
+                title={t('collection.remove')}
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
           </div>
 
-          {/* Actions */}
-          <div className="flex gap-2 mt-5">
-            <button
-              onClick={() => updateMutation.mutate()}
-              disabled={updateMutation.isPending}
-              className="btn-primary flex-1"
-            >
-              <Check size={16} /> {updateMutation.isPending ? t('common.saving') : t('common.save')}
-            </button>
-            <button
-              onClick={handleDelete}
-              disabled={deleteMutation.isPending}
-              className="btn-ghost text-brand-red border-brand-red/30 hover:bg-brand-red/10 px-3"
-              title={t('collection.remove')}
-            >
-              <Trash2 size={16} />
-            </button>
-            <button onClick={onClose} className="btn-ghost px-3">
-              <X size={16} />
-            </button>
-          </div>
+          <form
+            aria-hidden={!showAddVersionForm}
+            className={clsx(
+              'col-start-1 row-start-1 p-5 transition-all duration-300 ease-out transform-gpu',
+              showAddVersionForm
+                ? 'translate-x-0 rotate-0 scale-100 opacity-100'
+                : 'translate-x-[115%] rotate-6 scale-[0.96] opacity-0 pointer-events-none'
+            )}
+            onSubmit={(e) => {
+              e.preventDefault()
+              cloneMutation.mutate()
+            }}
+          >
+            {renderCardHeader()}
+
+            <div className="space-y-3">
+              <div className="bg-bg-card rounded-xl p-3 border border-brand-red/30 shadow-lg shadow-black/10">
+                <h3 className="text-sm font-bold text-text-primary">{t('collection.newVersionDetails')}</h3>
+                <p className="text-xs text-text-secondary mt-1">{t('collection.addAnotherVersionHelp')}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-text-muted mb-1 block">{t('card.quantity')}</label>
+                  <input
+                    type="number" min="1" value={newVersionQuantity}
+                    onChange={e => setNewVersionQuantity(parseInt(e.target.value, 10) || 1)}
+                    className="input"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-text-muted mb-1 block">{t('card.condition')}</label>
+                  <select value={newVersionCondition} onChange={e => setNewVersionCondition(e.target.value)} className="select">
+                    {CONDITIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-text-muted mb-1 block">✨ {t('card.variant')}</label>
+                <select value={newVersionVariant} onChange={e => setNewVersionVariant(e.target.value)} className="select">
+                  <option value="">{t('variants.none')}</option>
+                  {CARD_VARIANTS.map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs text-text-muted mb-1.5 block">🌐 {t('lang.selectLabel')}</label>
+                <div className="flex gap-2">
+                  {['de', 'en'].map(l => (
+                    <button
+                      key={l}
+                      type="button"
+                      onClick={() => setNewVersionLang(l)}
+                      className={clsx(
+                        'flex-1 py-1.5 rounded-lg text-sm font-bold transition-all border',
+                        newVersionLang === l
+                          ? l === 'de'
+                            ? 'bg-yellow/20 text-yellow border-yellow/50'
+                            : 'bg-blue/20 text-blue-400 border-blue-400/50'
+                          : 'bg-bg-surface text-text-muted border-border hover:border-text-muted'
+                      )}
+                    >
+                      {l === 'de' ? `🇩🇪 ${t('lang.de_full')}` : `🇬🇧 ${t('lang.en_full')}`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-text-muted mb-1 block">{t('card.purchasePrice')}</label>
+                <input
+                  type="number" step="0.01" min="0"
+                  placeholder={t('card.purchasePricePlaceholder')}
+                  value={newVersionPrice}
+                  onChange={e => setNewVersionPrice(e.target.value)}
+                  className="input"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
+                <button
+                  type="submit"
+                  disabled={cloneMutation.isPending}
+                  className="btn-primary justify-center"
+                >
+                  <Copy size={14} /> {cloneMutation.isPending ? t('card.adding') : t('collection.addVersionToCollection')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAddVersionForm(false)}
+                  disabled={cloneMutation.isPending}
+                  className="btn-ghost justify-center"
+                >
+                  <ArrowLeft size={14} /> {t('common.back')}
+                </button>
+              </div>
+            </div>
+          </form>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -647,6 +845,7 @@ export default function Collection() {
         case 'market_price': valA = getEffectivePrice(a.card, a.variant); valB = getEffectivePrice(b.card, b.variant); break
         case 'price_trend': valA = getEffectivePrice(a.card, a.variant, 'price_trend'); valB = getEffectivePrice(b.card, b.variant, 'price_trend'); break
         case 'set': valA = a.card?.set_ref?.name || ''; valB = b.card?.set_ref?.name || ''; break
+        case 'card_id': valA = collectionCardIdKey(a); valB = collectionCardIdKey(b); break
         case 'name': valA = a.card?.name?.toLowerCase() || ''; valB = b.card?.name?.toLowerCase() || ''; break
         default: return 0
       }
@@ -747,6 +946,7 @@ export default function Collection() {
               <option value="market_price">{t('collection.sortMarketPrice')}</option>
               <option value="price_trend">{t('collection.sortTrend')}</option>
               <option value="set">{t('collection.sortSet')}</option>
+              <option value="card_id">{t('collection.sortCardId')}</option>
             </select>
             <button onClick={() => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')} className="btn-ghost py-1.5 px-2">
               {sortOrder === 'asc' ? <ChevronUp size={16} /> : <ChevronDown size={16} />}

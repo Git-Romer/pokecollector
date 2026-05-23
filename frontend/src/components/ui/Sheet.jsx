@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 
 /**
@@ -24,7 +25,7 @@ export default function Sheet({ isOpen, onClose, title, children, className = ''
 
   if (!isOpen) return null
 
-  return (
+  return createPortal(
     <>
       {/* Backdrop */}
       <div
@@ -70,6 +71,7 @@ export default function Sheet({ isOpen, onClose, title, children, className = ''
           {children}
         </div>
       </div>
-    </>
+    </>,
+    document.body
   )
 }

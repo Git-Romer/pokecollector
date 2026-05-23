@@ -236,14 +236,16 @@ def get_set_checklist(
 
     cards.sort(key=lambda card: _natural_card_number_key(card.number))
 
-    # Get owned card IDs
-    owned_card_ids = {
-        item.card_id
-        for item in db.query(CollectionItem.card_id).filter(
-            CollectionItem.user_id == current_user.id,
-            CollectionItem.card_id.in_([c.id for c in cards])
-        ).all()
-    }
+    # Get exact owned collection rows so the UI can safely remove/decrement the
+    # right variant/condition instead of treating ownership as a single boolean.
+    collection_items = db.query(CollectionItem).filter(
+        CollectionItem.user_id == current_user.id,
+        CollectionItem.card_id.in_([c.id for c in cards])
+    ).all()
+    owned_by_card: dict[str, list[CollectionItem]] = {}
+    for item in collection_items:
+        owned_by_card.setdefault(item.card_id, []).append(item)
+    owned_card_ids = set(owned_by_card.keys())
 
     owned_count = len(owned_card_ids)
     total_count = len(cards)
@@ -251,12 +253,8 @@ def get_set_checklist(
     checklist = []
     for card in cards:
         owned = card.id in owned_card_ids
-        qty = 0
-        if owned:
-            item = db.query(CollectionItem).filter(
-                CollectionItem.card_id == card.id
-            ).first()
-            qty = item.quantity if item else 0
+        owned_items = owned_by_card.get(card.id, [])
+        qty = sum(item.quantity or 0 for item in owned_items)
 
         checklist.append({
             "id": card.id,
@@ -269,6 +267,17 @@ def get_set_checklist(
             "price_source_lang": getattr(card, "price_source_lang", None),
             "owned": owned,
             "quantity": qty,
+            "owned_items": [
+                {
+                    "id": item.id,
+                    "quantity": item.quantity,
+                    "condition": item.condition,
+                    "variant": item.variant,
+                    "lang": item.lang,
+                    "purchase_price": item.purchase_price,
+                }
+                for item in owned_items
+            ],
             "price_market": card.price_market,
         })
 

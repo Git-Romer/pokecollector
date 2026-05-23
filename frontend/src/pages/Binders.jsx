@@ -5,7 +5,10 @@ import { Plus, Trash2, Edit2, BookOpen, Star, Package, Check, X, Library, Heart 
 import { getBinders, createBinder, updateBinder, deleteBinder } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import TabNav from '../components/TabNav'
+import AvatarPicker from '../components/AvatarPicker'
 import toast from 'react-hot-toast'
+
+const SPRITE_BASE_URL = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated'
 
 const BINDER_COLORS = [
   '#EF1515', '#3b82f6', '#22c55e', '#eab308', '#8b5cf6',
@@ -18,6 +21,8 @@ function BinderForm({ initial = {}, onSubmit, onCancel, loading }) {
   const [desc, setDesc] = useState(initial.description || '')
   const [color, setColor] = useState(initial.color || '#EF1515')
   const [binderType, setBinderType] = useState(initial.binder_type || 'collection')
+  const [iconPokemonId, setIconPokemonId] = useState(initial.icon_pokemon_id || null)
+  const [showIconPicker, setShowIconPicker] = useState(false)
 
   return (
     <div className="space-y-3">
@@ -64,8 +69,38 @@ function BinderForm({ initial = {}, onSubmit, onCancel, loading }) {
           ))}
         </div>
       </div>
+
+      <div>
+        <label className="text-xs text-text-muted mb-2 block">{t('binders.icon')}</label>
+        <div className="rounded-xl border border-border bg-bg-card p-4">
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={() => setShowIconPicker(true)}
+              className="w-24 h-24 rounded-2xl border border-border bg-bg-surface flex items-center justify-center flex-shrink-0 hover:border-brand-red/50 transition-colors"
+              aria-label={t('binders.chooseIcon')}
+              title={t('binders.chooseIcon')}
+            >
+              {iconPokemonId ? (
+                <img src={`${SPRITE_BASE_URL}/${iconPokemonId}.gif`} alt={`Pokemon ${iconPokemonId}`} className="max-h-20 max-w-full object-contain pixelated" />
+              ) : (
+                <BookOpen size={32} style={{ color }} />
+              )}
+            </button>
+            <div className="min-w-0 space-y-1">
+              <p className="text-sm font-medium text-text-primary">{t('binders.chooseIcon')}</p>
+              <p className="text-xs text-text-muted">{t('binders.iconHint')}</p>
+              {iconPokemonId && (
+                <button type="button" onClick={() => setIconPokemonId(null)} className="text-xs text-text-muted hover:text-brand-red">
+                  {t('binders.clearIcon')}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
       <div className="flex gap-2">
-        <button onClick={() => onSubmit({ name, description: desc, color, binder_type: binderType })}
+        <button onClick={() => onSubmit({ name, description: desc, color, binder_type: binderType, icon_pokemon_id: iconPokemonId })}
           disabled={!name || loading} className="btn-primary flex-1">
           <Check size={14} /> {loading ? t('common.saving') : t('common.save')}
         </button>
@@ -73,6 +108,13 @@ function BinderForm({ initial = {}, onSubmit, onCancel, loading }) {
           <X size={14} /> {t('common.cancel')}
         </button>
       </div>
+      <AvatarPicker
+        isOpen={showIconPicker}
+        onClose={() => setShowIconPicker(false)}
+        onSelect={(pokemonId) => setIconPokemonId(pokemonId)}
+        currentAvatarId={iconPokemonId}
+        title={t('binders.chooseIcon')}
+      />
     </div>
   )
 }
@@ -173,7 +215,9 @@ export default function Binders() {
                     onClick={() => navigate(`/binders/${binder.id}`)}>
                     <div className="absolute top-0 left-0 right-0 h-1 rounded-t-xl" style={{ backgroundColor: binder.color }} />
                     <div className="pt-2">
-                      {isWishlist ? (
+                      {binder.icon_pokemon_id ? (
+                        <img src={`${SPRITE_BASE_URL}/${binder.icon_pokemon_id}.gif`} alt="" className="max-h-10 max-w-10 object-contain mb-2 pixelated" loading="lazy" />
+                      ) : isWishlist ? (
                         <Star size={32} className="mb-3" style={{ color: binder.color }} />
                       ) : (
                         <BookOpen size={32} className="mb-3" style={{ color: binder.color }} />

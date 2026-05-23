@@ -69,8 +69,40 @@ def _card_to_dict(card: Card) -> dict:
     }
 
 
+def _with_collection_summary(db: Session, current_user: User, card_dicts: List[dict]) -> List[dict]:
+    """Attach exact ownership info for the current user to search results."""
+    if not card_dicts:
+        return card_dicts
+
+    card_ids = [card["id"] for card in card_dicts if card.get("id")]
+    items = db.query(CollectionItem).filter(
+        CollectionItem.user_id == current_user.id,
+        CollectionItem.card_id.in_(card_ids),
+    ).all()
+    by_card: dict[str, list[CollectionItem]] = {}
+    for item in items:
+        by_card.setdefault(item.card_id, []).append(item)
+
+    for card in card_dicts:
+        owned_items = by_card.get(card.get("id"), [])
+        card["owned"] = bool(owned_items)
+        card["owned_quantity"] = sum(item.quantity or 0 for item in owned_items)
+        card["owned_items"] = [
+            {
+                "id": item.id,
+                "quantity": item.quantity,
+                "condition": item.condition,
+                "variant": item.variant,
+                "lang": item.lang,
+                "purchase_price": item.purchase_price,
+            }
+            for item in owned_items
+        ]
+    return card_dicts
+
+
 def _search_by_code_number(
-    db: Session, set_code: str, card_number: str, page: int, page_size: int, lang: str = "all"
+    db: Session, current_user: User, set_code: str, card_number: str, page: int, page_size: int, lang: str = "all"
 ) -> dict:
     """Search for a card by set abbreviation/id + card number (localId).
     Returns cards for ALL languages unless lang is specified.
@@ -174,8 +206,9 @@ def _search_by_code_number(
 
     start = (page - 1) * page_size
     page_cards = cards[start:start + page_size]
+    card_dicts = _with_collection_summary(db, current_user, [_card_to_dict(c) for c in page_cards])
     return {
-        "data": [_card_to_dict(c) for c in page_cards],
+        "data": card_dicts,
         "total_count": len(cards),
         "page": page,
         "page_size": page_size,
@@ -341,7 +374,7 @@ def search_cards(
             if m:
                 set_code = m.group(1)
                 card_number = m.group(2)
-                return _search_by_code_number(db, set_code, card_number, page, page_size, lang=search_lang)
+                return _search_by_code_number(db, current_user, set_code, card_number, page, page_size, lang=search_lang)
 
         # ── Pure DB search ────────────────────────────────────────────────────
         query = db.query(Card).filter(Card.is_custom == False)
@@ -393,9 +426,10 @@ def search_cards(
 
         total_count = query.count()
         cards = query.offset((page - 1) * page_size).limit(page_size).all()
+        card_dicts = _with_collection_summary(db, current_user, [_card_to_dict(c) for c in cards])
 
         return {
-            "data": [_card_to_dict(c) for c in cards],
+            "data": card_dicts,
             "total_count": total_count,
             "page": page,
             "page_size": page_size,

@@ -197,6 +197,19 @@ def _run_migrations(conn):
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS last_price_sync_success_at TIMESTAMP",
         # v45: Manual temporary card image fallback while TCGdex has no image.
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS custom_image_url VARCHAR",
+        # v46: Binder icons and exact collection-item binder entries.
+        "ALTER TABLE binders ADD COLUMN IF NOT EXISTS icon_pokemon_id INTEGER",
+        "ALTER TABLE binder_cards ADD COLUMN IF NOT EXISTS collection_item_id INTEGER REFERENCES collection(id)",
+        "ALTER TABLE binder_cards DROP CONSTRAINT IF EXISTS uq_binder_card",
+        """DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'uq_binder_collection_item'
+            ) THEN
+                ALTER TABLE binder_cards ADD CONSTRAINT uq_binder_collection_item UNIQUE (binder_id, collection_item_id);
+            END IF;
+        END$$""",
     ]
     for stmt in migrations:
         try:

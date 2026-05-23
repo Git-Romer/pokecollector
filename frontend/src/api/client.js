@@ -112,7 +112,9 @@ export const updateBinder = (id, data) => api.put(`/binders/${id}`, data)
 export const deleteBinder = (id) => api.delete(`/binders/${id}`)
 export const getBinderCards = (id) => api.get(`/binders/${id}/cards`)
 export const addCardToBinder = (binderId, cardId) => api.post(`/binders/${binderId}/cards?card_id=${cardId}`)
+export const addCollectionItemToBinder = (binderId, collectionItemId) => api.post(`/binders/${binderId}/collection-items?collection_item_id=${collectionItemId}`)
 export const removeCardFromBinder = (binderId, cardId) => api.delete(`/binders/${binderId}/cards/${cardId}`)
+export const removeBinderEntry = (binderId, binderCardId) => api.delete(`/binders/${binderId}/entries/${binderCardId}`)
 
 // Dashboard
 export const getDashboard = (params) => api.get('/dashboard/', { params })

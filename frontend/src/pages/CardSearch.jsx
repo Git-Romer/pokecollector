@@ -620,6 +620,11 @@ export default function CardSearch() {
                         {isSelected && <Check size={14} strokeWidth={3} />}
                       </div>
                     )}
+                    {card.owned_quantity > 0 && (
+                      <div className="absolute top-1.5 right-1.5 rounded-full bg-green/90 text-white text-[10px] font-bold px-1.5 py-0.5 shadow">
+                        ✓ {card.owned_quantity}x
+                      </div>
+                    )}
                     <div className="mt-1.5 px-0.5">
                       <div className="flex items-center gap-1">
                         <p className="text-[11px] font-semibold text-text-primary truncate leading-tight flex-1">{card.name}</p>
@@ -657,6 +662,7 @@ export default function CardSearch() {
           card={selectedCard}
           onClose={() => setSelectedCard(null)}
           defaultLang={selectedCard._lang || (langFilter === 'all' ? 'en' : langFilter)}
+          ownedItems={selectedCard.owned_items || []}
         />
       )}
 

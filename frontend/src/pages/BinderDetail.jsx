@@ -2,11 +2,14 @@ import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Plus, Trash2, Search, Package, Star } from 'lucide-react'
-import { getBinderCards, removeCardFromBinder, addCardToBinder, searchCards, getCollection } from '../api/client'
+import { getBinderCards, removeCardFromBinder, removeBinderEntry, addCardToBinder, addCollectionItemToBinder, searchCards, getCollection } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
 import { useTilt } from '../hooks/useTilt'
 import { resolveCardImageUrl } from '../utils/imageUrl'
+
+const SPRITE_BASE_URL = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated'
+const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
 
 function TiltBinderCard({ className, onClick, children }) {
   const { ref, onMouseMove, onMouseEnter, onMouseLeave } = useTilt(10)
@@ -31,6 +34,9 @@ export default function BinderDetail() {
   const queryClient = useQueryClient()
   const [showSearch, setShowSearch] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [filterSet, setFilterSet] = useState('')
+  const [filterVariant, setFilterVariant] = useState('')
+  const [filterCondition, setFilterCondition] = useState('')
 
   const { data, isLoading } = useQuery({
     queryKey: ['binder-cards', binderId],
@@ -55,11 +61,46 @@ export default function BinderDetail() {
 
   const collectionSearchResults = useMemo(() => {
     if (!collectionData || isWishlist) return []
-    if (!searchQuery || searchQuery.length < 2) return []
+    const q = searchQuery.toLowerCase().trim()
     return collectionData.filter(item =>
-      item.card?.name?.toLowerCase().includes(searchQuery.toLowerCase())
+      {
+        const card = item.card
+        if (!card) return false
+        if (filterSet && card.set_ref?.id !== filterSet) return false
+        if (filterVariant && (item.variant || '') !== filterVariant) return false
+        if (filterCondition && item.condition !== filterCondition) return false
+        if (!q) return true
+        const nameMatch = card.name?.toLowerCase().includes(q)
+        const setMatch = card.set_ref?.name?.toLowerCase().includes(q)
+        const numberMatch = card.number?.toString() === q
+        const codeMatch = /^([A-Za-z]+\d*)\s+(\d+)$/.exec(q)
+        let shortcodeMatch = false
+        if (codeMatch) {
+          const [, setCode, num] = codeMatch
+          const normalizedNum = String(parseInt(num, 10))
+          const cardNum = (card.number || '').toString().replace(/^0+/, '') || '0'
+          shortcodeMatch = [card.set_ref?.abbreviation, card.set_id, card.set_ref?.tcg_set_id]
+            .some(value => value?.toLowerCase() === setCode) && cardNum === normalizedNum
+        }
+        return nameMatch || setMatch || numberMatch || shortcodeMatch
+      }
     ).slice(0, 24)
-  }, [collectionData, searchQuery, isWishlist])
+  }, [collectionData, searchQuery, isWishlist, filterSet, filterVariant, filterCondition])
+
+  const collectionSets = useMemo(() => {
+    const map = new Map()
+    ;(collectionData || []).forEach(item => {
+      const s = item.card?.set_ref
+      if (s?.id) map.set(s.id, s.name)
+    })
+    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]))
+  }, [collectionData])
+
+  const collectionVariants = useMemo(() => {
+    const variants = new Set()
+    ;(collectionData || []).forEach(item => { if (item.variant) variants.add(item.variant) })
+    return [...variants].sort()
+  }, [collectionData])
 
   const addMutation = useMutation({
     mutationFn: (cardId) => addCardToBinder(parseInt(binderId), cardId),
@@ -71,8 +112,20 @@ export default function BinderDetail() {
     onError: (e) => toast.error(e.response?.data?.detail || t('card.addFailed')),
   })
 
+  const addCollectionItemMutation = useMutation({
+    mutationFn: (collectionItemId) => addCollectionItemToBinder(parseInt(binderId), collectionItemId),
+    onSuccess: () => {
+      toast.success(t('common.add') + ' ✓')
+      queryClient.invalidateQueries({ queryKey: ['binder-cards', binderId] })
+      queryClient.invalidateQueries({ queryKey: ['binders'] })
+    },
+    onError: (e) => toast.error(e.response?.data?.detail || t('card.addFailed')),
+  })
+
   const removeMutation = useMutation({
-    mutationFn: (cardId) => removeCardFromBinder(parseInt(binderId), cardId),
+    mutationFn: ({ cardId, binderCardId }) => binderCardId
+      ? removeBinderEntry(parseInt(binderId), binderCardId)
+      : removeCardFromBinder(parseInt(binderId), cardId),
     onSuccess: () => {
       toast.success(t('common.remove') + ' ✓')
       queryClient.invalidateQueries({ queryKey: ['binder-cards', binderId] })
@@ -97,7 +150,9 @@ export default function BinderDetail() {
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: binder?.color }} />
-            {isWishlist ? (
+            {binder?.icon_pokemon_id ? (
+              <img src={`${SPRITE_BASE_URL}/${binder.icon_pokemon_id}.gif`} alt="" className="h-8 w-8 pixelated flex-shrink-0" loading="lazy" />
+            ) : isWishlist ? (
               <Star size={20} className="flex-shrink-0" style={{ color: binder?.color }} />
             ) : (
               <Package size={20} className="flex-shrink-0" style={{ color: binder?.color }} />
@@ -147,6 +202,23 @@ export default function BinderDetail() {
             value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
             className="input mb-4" autoFocus />
 
+          {!isWishlist && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
+              <select className="select text-sm py-1.5" value={filterSet} onChange={(e) => setFilterSet(e.target.value)}>
+                <option value="">{t('common.all')} {t('common.set')}</option>
+                {collectionSets.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+              </select>
+              <select className="select text-sm py-1.5" value={filterVariant} onChange={(e) => setFilterVariant(e.target.value)}>
+                <option value="">{t('variants.allVariants')}</option>
+                {collectionVariants.map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
+              <select className="select text-sm py-1.5" value={filterCondition} onChange={(e) => setFilterCondition(e.target.value)}>
+                <option value="">{t('common.allConditions')}</option>
+                {CONDITIONS.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+          )}
+
           {isWishlist && (
             <>
               {searching && <p className="text-text-muted text-sm text-center py-4">{t('common.loading')}</p>}
@@ -189,11 +261,11 @@ export default function BinderDetail() {
                   {collectionSearchResults.map((item) => {
                     const card = item.card
                     if (!card) return null
-                    const alreadyAdded = cards.some(c => c.id === card.id)
+                    const alreadyAdded = cards.some(c => c.collection_item_id === item.id)
                     return (
                       <div key={`${card.id}-${item.id}`}
                         className={`relative rounded-lg overflow-hidden cursor-pointer group ${alreadyAdded ? 'opacity-40' : ''}`}
-                        onClick={() => !alreadyAdded && addMutation.mutate(card.id)}
+                        onClick={() => !alreadyAdded && addCollectionItemMutation.mutate(item.id)}
                         title={`${card.name}${item.variant ? ` (${item.variant})` : ''} · ${item.quantity}x`}>
                         {resolveCardImageUrl(card) ? (
                           <img src={resolveCardImageUrl(card)} alt={card.name} className="w-full aspect-[2.5/3.5] object-cover" loading="lazy" />
@@ -203,6 +275,11 @@ export default function BinderDetail() {
                           </div>
                         )}
                         <div className="absolute top-0.5 left-0.5 bg-bg/80 text-text-primary text-xs rounded px-1">{item.quantity}x</div>
+                        {(item.variant || item.condition) && (
+                          <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-[9px] text-center truncate px-1">
+                            {[item.variant || 'Normal', item.condition].filter(Boolean).join(' · ')}
+                          </div>
+                        )}
                         {!alreadyAdded && (
                           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
                             <Plus size={20} className="text-white" />
@@ -253,7 +330,7 @@ export default function BinderDetail() {
                   {card.price_market && <p className="text-xs text-green">€{card.price_market.toFixed(2)}</p>}
                 </div>
 
-                <button onClick={() => removeMutation.mutate(card.id)}
+                <button onClick={() => removeMutation.mutate({ cardId: card.id, binderCardId: card.binder_card_id })}
                   className="absolute top-1 right-1 bg-bg/80 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity text-brand-red hover:text-brand-red-light">
                   <Trash2 size={10} />
                 </button>
