@@ -1,4 +1,5 @@
 import { useState, useMemo, useId, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Trash2, Check, X, Filter, SortAsc, Download, Upload, ChevronUp, ChevronDown, Search, PenLine, Grid2X2, List, Library, BookOpen, Heart, Copy, ArrowLeft } from 'lucide-react'
 import { getCollection, updateCollectionItem, updateCardCustomImage, removeFromCollection, importCollectionCsv, exportCSV, exportPDF, getSets, addToCollection, getBinders, addCollectionItemToBinder } from '../api/client'
@@ -79,7 +80,7 @@ const downloadCsvImportTemplate = () => {
 }
 
 function CsvImportModal({ t, onClose, onChooseFile, onDownloadTemplate, isImporting }) {
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm md:flex md:items-center md:justify-center md:bg-black/80"
       onClick={onClose}
@@ -163,7 +164,8 @@ function CsvImportModal({ t, onClose, onChooseFile, onDownloadTemplate, isImport
           </p>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -418,7 +420,7 @@ function CollectionEditModal({ item, onClose }) {
     </div>
   )
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm md:flex md:items-center md:justify-center md:bg-black/80"
       onClick={onClose}
@@ -689,7 +691,8 @@ function CollectionEditModal({ item, onClose }) {
           </form>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 

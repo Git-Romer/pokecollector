@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend,
@@ -78,7 +79,7 @@ function AddExpenseModal({ onClose, onSuccess }) {
     })
   }
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 bg-black/60 flex items-end md:items-center justify-center md:bg-black/80 md:backdrop-blur-sm"
       onClick={onClose}>
       <div className={[
@@ -150,7 +151,8 @@ function AddExpenseModal({ onClose, onSuccess }) {
           </form>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 

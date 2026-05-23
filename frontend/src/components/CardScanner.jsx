@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { Camera, Upload, X, Check, Loader2, RefreshCw, Plus } from 'lucide-react'
 import { recognizeCard, addToCollection } from '../api/client'
 import { useQueryClient } from '@tanstack/react-query'
@@ -42,7 +43,7 @@ function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
     }
   }
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-[300] bg-black/80 flex items-end md:items-center justify-center"
       onClick={onClose}
@@ -155,7 +156,8 @@ function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -194,7 +196,7 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
 
   const detectedLang = results?.recognized?.language || 'en'
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[200] flex flex-col"
       style={{ background: 'rgba(0,0,0,0.95)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}>
 
@@ -368,6 +370,7 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
           onAdded={() => setAddModal(null)}
         />
       )}
-    </div>
+    </div>,
+    document.body
   )
 }

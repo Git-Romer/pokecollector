@@ -1,4 +1,5 @@
 import { useState, useEffect, useId, memo } from 'react'
+import { createPortal } from 'react-dom'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { Plus, Check, Heart, BookOpen, X, PenLine, Pencil,  Trash2 } from 'lucide-react'
@@ -186,7 +187,7 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
     deleteMutation.mutate()
   }
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 bg-black/60 md:flex md:items-center md:justify-center md:bg-black/80 md:backdrop-blur-sm"
       onClick={onClose}>
       <div className={[
@@ -358,7 +359,8 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -641,7 +643,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
   const periodPriceKey = PERIOD_PRICE_FIELD[modalPeriod]?.replace('price_', '') || 'trend'
   const selectedPeriodPrice = getPriceValue(card, periodPriceKey)
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 bg-black/60 md:flex md:items-center md:justify-center md:bg-black/80 md:backdrop-blur-sm"
       onClick={onClose}>
       <div className={[
@@ -985,7 +987,8 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 

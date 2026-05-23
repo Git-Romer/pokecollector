@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -90,7 +91,7 @@ export default function BottomNav() {
       </nav>
 
       {/* ── More Sheet (slides up from bottom) ── */}
-      {showMore && (
+      {showMore && createPortal(
         <>
           {/* Backdrop */}
           <div
@@ -147,7 +148,8 @@ export default function BottomNav() {
               </button>
             </div>
           </div>
-        </>
+        </>,
+        document.body
       )}
     </>
   )

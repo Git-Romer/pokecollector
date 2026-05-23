@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import Sheet from './Sheet'
 
@@ -94,7 +95,7 @@ export default function Modal({
 function DesktopModal({ isOpen, onClose, title, children, sizeClass, className = '' }) {
   if (!isOpen) return null
 
-  return (
+  return createPortal(
     <>
       {/* Backdrop */}
       <div
@@ -135,6 +136,7 @@ function DesktopModal({ isOpen, onClose, title, children, sizeClass, className =
           </div>
         </div>
       </div>
-    </>
+    </>,
+    document.body
   )
 }
