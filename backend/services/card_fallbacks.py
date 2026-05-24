@@ -317,8 +317,9 @@ def build_missing_language_cards_for_set(
     if not missing_language_fallback_enabled(db, price_enabled=price_enabled, image_enabled=image_enabled):
         return []
 
-    existing_target_ids = {
-        card_id for (card_id,) in db.query(Card.id).filter(
+    existing_target_sources = {
+        card_id: data_source_lang
+        for card_id, data_source_lang in db.query(Card.id, Card.data_source_lang).filter(
             Card.set_id == tcg_set_id,
             Card.lang == target_lang,
             Card.is_custom == False,
@@ -362,7 +363,10 @@ def build_missing_language_cards_for_set(
             if not source_tcg_id:
                 continue
             source_tcg_id = pokemon_api.strip_lang_suffix(source_tcg_id)[0]
-        if source_tcg_id and f"{source_tcg_id}_{target_lang}" in existing_target_ids:
+        target_id = f"{source_tcg_id}_{target_lang}" if source_tcg_id else None
+        if target_id in existing_target_sources and not existing_target_sources[target_id]:
+            # Native target-language data is present. Never overwrite it with a
+            # sibling-language fallback row.
             continue
         parsed = clone_card_for_missing_language(
             db,

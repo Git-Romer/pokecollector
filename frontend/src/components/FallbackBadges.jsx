@@ -39,7 +39,7 @@ export default function FallbackBadges({ card, className = '', compact = false }
           className={clsx(baseClass, 'font-bold bg-sky-500/15 text-sky-300 border border-sky-500/30')}
           title={t('fallback.imageFrom').replace('{lang}', sourceLabel(imageLang))}
         >
-          🖼 {sourceLabel(imageLang)}
+          {t('fallback.image')} {sourceLabel(imageLang)}
         </span>
       )}
       {hasCustomImage && (
