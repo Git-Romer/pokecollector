@@ -522,7 +522,7 @@ const de = {
     telegramInfo: 'Telegram-Benachrichtigungen über Umgebungsvariablen konfigurieren:',
     telegramNote: 'Benachrichtigungen werden gesendet wenn Wunschlisten-Preise Alarmschwellen überschreiten. Maximal eine Benachrichtigung pro Karte alle 23 Stunden.',
     about: 'Über',
-    aboutDesc1: 'Pokémon TCG Sammlungs-Manager v1.14',
+    aboutDesc1: 'Pokémon TCG Sammlungs-Manager v1.15',
     aboutDesc2: 'Erstellt mit FastAPI + React + PostgreSQL',
     aboutDesc3: 'Daten von',
     aboutDesc4: 'Preise von Cardmarket (EUR)',

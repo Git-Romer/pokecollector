@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, load_only
 from sqlalchemy import func, or_
 from models import Card, Set, CollectionItem, WishlistItem, PriceHistory, SyncLog, PortfolioSnapshot, CustomCardMatch, Setting, ProductPurchase, User
 from services import pokemon_api, telegram
-from services.card_fallbacks import PRICE_FIELDS, apply_cross_language_fallbacks
+from services.card_fallbacks import PRICE_FIELDS, apply_cross_language_fallbacks, build_missing_language_cards_for_set
 from services.card_upsert import upsert_card
 from services.card_values import effective_market_price
 
@@ -486,10 +486,22 @@ def perform_full_sync(db: Session) -> dict:
                     parsed = pokemon_api.parse_card_for_db(card_data, default_set_id=tcg_id, lang=set_lang)
                     parsed = apply_cross_language_fallbacks(db, parsed)
                     upsert_card(db, parsed)
+                if set_total and len(cards_data) < set_total:
+                    for parsed in build_missing_language_cards_for_set(db, tcg_id, set_lang, expected_total=set_total):
+                        upsert_card(db, parsed)
                 db.commit()
             except Exception as e:
                 logger.warning(f"Failed to sync cards for set {set_obj.id}: {e}")
                 db.rollback()
+                try:
+                    fallback_cards = build_missing_language_cards_for_set(db, tcg_id, set_lang, expected_total=set_total)
+                    if fallback_cards:
+                        for parsed in fallback_cards:
+                            upsert_card(db, parsed)
+                        db.commit()
+                except Exception as fallback_error:
+                    logger.warning(f"Failed to create fallback cards for set {set_obj.id}: {fallback_error}")
+                    db.rollback()
         logger.info("Full card catalogue sync complete")
 
         # 3. Update prices for collection + wishlist cards. Use the same

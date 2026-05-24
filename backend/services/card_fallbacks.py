@@ -126,6 +126,35 @@ def _fallback_settings(db: Session, price_enabled: Optional[bool], image_enabled
     return price_enabled, image_enabled
 
 
+def missing_language_fallback_enabled(
+    db: Session,
+    *,
+    price_enabled: Optional[bool] = None,
+    image_enabled: Optional[bool] = None,
+) -> bool:
+    """Return whether whole-card missing-language fallback rows may be created."""
+    price_enabled, image_enabled = _fallback_settings(db, price_enabled, image_enabled)
+    return bool(price_enabled or image_enabled)
+
+
+def _number_sort_key(value) -> tuple:
+    value = "" if value is None else str(value)
+    digits = ""
+    prefix = ""
+    for index, char in enumerate(value):
+        if char.isdigit():
+            prefix = value[:index]
+            digits = value[index:]
+            break
+    else:
+        prefix = value
+    try:
+        number = int(digits) if digits else 999999
+    except ValueError:
+        number = 999999
+    return (prefix.casefold(), number, value)
+
+
 def _load_sibling_data(db: Session, tcg_card_id: str, lang: str) -> Optional[dict]:
     sibling = db.query(Card).filter(
         Card.tcg_card_id == tcg_card_id,
@@ -184,6 +213,8 @@ def clone_card_for_missing_language(
         return None
 
     price_enabled, image_enabled = _fallback_settings(db, price_enabled, image_enabled)
+    if not (price_enabled or image_enabled):
+        return None
 
     tcg_card_id = parsed.get("tcg_card_id") or pokemon_api.strip_lang_suffix(parsed.get("id", ""))[0]
     if not tcg_card_id:
@@ -229,6 +260,9 @@ def build_missing_language_card(
     if not tcg_card_id or not fallback_lang:
         return None
 
+    if not missing_language_fallback_enabled(db, price_enabled=price_enabled, image_enabled=image_enabled):
+        return None
+
     sibling = db.query(Card).filter(
         Card.tcg_card_id == tcg_card_id,
         Card.lang == fallback_lang,
@@ -263,6 +297,85 @@ def build_missing_language_card(
         price_enabled=price_enabled,
         image_enabled=image_enabled,
     )
+
+
+def build_missing_language_cards_for_set(
+    db: Session,
+    tcg_set_id: str,
+    target_lang: str,
+    *,
+    max_cards: Optional[int] = None,
+    expected_total: Optional[int] = None,
+    price_enabled: Optional[bool] = None,
+    image_enabled: Optional[bool] = None,
+) -> list[dict]:
+    """Clone sibling-language set cards into missing target-language rows."""
+    fallback_lang = _other_lang(target_lang)
+    if not tcg_set_id or not fallback_lang:
+        return []
+
+    if not missing_language_fallback_enabled(db, price_enabled=price_enabled, image_enabled=image_enabled):
+        return []
+
+    existing_target_ids = {
+        card_id for (card_id,) in db.query(Card.id).filter(
+            Card.set_id == tcg_set_id,
+            Card.lang == target_lang,
+            Card.is_custom == False,
+        ).all()
+    }
+
+    source_cards = db.query(Card).filter(
+        Card.set_id == tcg_set_id,
+        Card.lang == fallback_lang,
+        Card.is_custom == False,
+    ).all()
+    source_cards.sort(key=lambda card: _number_sort_key(card.number))
+
+    sources: list[Card | dict] = source_cards
+    if not sources or (expected_total and len(sources) < expected_total):
+        try:
+            set_data = pokemon_api.get_set_cards(tcg_set_id, lang=fallback_lang)
+        except Exception as exc:
+            logger.debug("Failed to fetch set %s in %s for missing-language fallback: %s", tcg_set_id, fallback_lang, exc)
+            # Prefer partial cached sibling data over an empty checklist when the
+            # public sibling API is temporarily unreachable. Existing target
+            # rows are skipped below, so this only fills still-missing cards.
+            if not sources:
+                return []
+        else:
+            fetched_sources = sorted(
+                set_data.get("cards", []),
+                key=lambda card: _number_sort_key(card.get("localId")),
+            )
+            if len(fetched_sources) > len(sources):
+                sources = fetched_sources
+
+    parsed_cards = []
+    for source in sources:
+        if max_cards and len(parsed_cards) >= max_cards:
+            break
+        if isinstance(source, Card):
+            source_tcg_id = source.tcg_card_id or pokemon_api.strip_lang_suffix(source.id or "")[0]
+        else:
+            source_tcg_id = source.get("id") or source.get("tcg_card_id")
+            if not source_tcg_id:
+                continue
+            source_tcg_id = pokemon_api.strip_lang_suffix(source_tcg_id)[0]
+        if source_tcg_id and f"{source_tcg_id}_{target_lang}" in existing_target_ids:
+            continue
+        parsed = clone_card_for_missing_language(
+            db,
+            source,
+            target_lang=target_lang,
+            source_lang=fallback_lang,
+            default_set_id=tcg_set_id,
+            price_enabled=price_enabled,
+            image_enabled=image_enabled,
+        )
+        if parsed:
+            parsed_cards.append(parsed)
+    return parsed_cards
 
 
 def apply_cross_language_fallbacks(
