@@ -194,6 +194,7 @@ class BinderCreate(BaseModel):
     description: Optional[str] = None
     color: str = "#EE1515"
     binder_type: str = "collection"
+    format: Optional[str] = None
     icon_pokemon_id: Optional[int] = None
 
 
@@ -202,7 +203,12 @@ class BinderUpdate(BaseModel):
     description: Optional[str] = None
     color: Optional[str] = None
     binder_type: Optional[str] = None
+    format: Optional[str] = None
     icon_pokemon_id: Optional[int] = None
+
+
+class BinderCardUpdate(BaseModel):
+    required_quantity: int
 
 
 class BinderResponse(BaseModel):
@@ -211,6 +217,7 @@ class BinderResponse(BaseModel):
     description: Optional[str] = None
     color: str
     binder_type: str = "collection"
+    format: Optional[str] = None
     icon_pokemon_id: Optional[int] = None
     created_at: Optional[datetime] = None
     card_count: int = 0

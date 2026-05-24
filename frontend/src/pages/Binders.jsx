@@ -14,6 +14,7 @@ const BINDER_COLORS = [
   '#EF1515', '#3b82f6', '#22c55e', '#eab308', '#8b5cf6',
   '#ec4899', '#06b6d4', '#84cc16',
 ]
+const FORMAT_OPTIONS = ['Standard', 'Expanded', 'Unlimited', 'Casual']
 
 function BinderForm({ initial = {}, onSubmit, onCancel, loading }) {
   const { t } = useSettings()
@@ -21,6 +22,7 @@ function BinderForm({ initial = {}, onSubmit, onCancel, loading }) {
   const [desc, setDesc] = useState(initial.description || '')
   const [color, setColor] = useState(initial.color || '#EF1515')
   const [binderType, setBinderType] = useState(initial.binder_type || 'collection')
+  const [format, setFormat] = useState(initial.format || '')
   const [iconPokemonId, setIconPokemonId] = useState(initial.icon_pokemon_id || null)
   const [showIconPicker, setShowIconPicker] = useState(false)
 
@@ -54,6 +56,15 @@ function BinderForm({ initial = {}, onSubmit, onCancel, loading }) {
         <p className="text-xs text-text-muted mt-1.5">
           {binderType === 'collection' ? t('binderTypes.collectionDesc') : t('binderTypes.wishlistDesc')}
         </p>
+      </div>
+
+      <div>
+        <label className="text-xs text-text-muted mb-2 block">{t('binderTypes.format')}</label>
+        <select value={format} onChange={(e) => setFormat(e.target.value)} className="select">
+          <option value="">{t('binderTypes.noFormat')}</option>
+          {FORMAT_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
+        </select>
+        <p className="text-xs text-text-muted mt-1.5">{t('binderTypes.formatHint')}</p>
       </div>
 
       <div>
@@ -100,7 +111,7 @@ function BinderForm({ initial = {}, onSubmit, onCancel, loading }) {
         </div>
       </div>
       <div className="flex gap-2">
-        <button onClick={() => onSubmit({ name, description: desc, color, binder_type: binderType, icon_pokemon_id: iconPokemonId })}
+        <button onClick={() => onSubmit({ name, description: desc, color, binder_type: binderType, format: format || null, icon_pokemon_id: iconPokemonId })}
           disabled={!name || loading} className="btn-primary flex-1">
           <Check size={14} /> {loading ? t('common.saving') : t('common.save')}
         </button>
@@ -236,6 +247,9 @@ export default function Binders() {
                       <p className="text-xs text-text-muted mt-1">
                         {isWishlist ? t('binderTypes.wishlist') : t('binderTypes.collection')}
                       </p>
+                      {binder.format && (
+                        <p className="text-xs text-yellow mt-1">{binder.format}</p>
+                      )}
                       <p className="text-sm text-text-secondary mt-2">
                         {binder.card_count} {binder.card_count === 1 ? t('binders.card') : t('binders.cards')}
                       </p>

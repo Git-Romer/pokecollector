@@ -1,8 +1,8 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Plus, Trash2, Search, Package, Star } from 'lucide-react'
-import { getBinderCards, removeCardFromBinder, removeBinderEntry, addCardToBinder, addCollectionItemToBinder, searchCards, getCollection } from '../api/client'
+import { ArrowLeft, Plus, Trash2, Package, Star, Download, Upload, X, Heart, Minus } from 'lucide-react'
+import { getBinderCards, removeCardFromBinder, removeBinderEntry, addCardToBinder, addCollectionItemToBinder, searchCards, getCollection, updateBinderEntry, addBinderEntryToWishlist, importBinderCsv, exportBinderCsv } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
 import { useTilt } from '../hooks/useTilt'
@@ -37,6 +37,11 @@ export default function BinderDetail() {
   const [filterSet, setFilterSet] = useState('')
   const [filterVariant, setFilterVariant] = useState('')
   const [filterCondition, setFilterCondition] = useState('')
+  const [binderFilterSet, setBinderFilterSet] = useState('')
+  const [binderFilterStatus, setBinderFilterStatus] = useState('')
+  const [binderFilterQuery, setBinderFilterQuery] = useState('')
+  const [selectedCard, setSelectedCard] = useState(null)
+  const fileInputRef = useRef(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['binder-cards', binderId],
@@ -62,29 +67,27 @@ export default function BinderDetail() {
   const collectionSearchResults = useMemo(() => {
     if (!collectionData || isWishlist) return []
     const q = searchQuery.toLowerCase().trim()
-    return collectionData.filter(item =>
-      {
-        const card = item.card
-        if (!card) return false
-        if (filterSet && card.set_ref?.id !== filterSet) return false
-        if (filterVariant && (item.variant || '') !== filterVariant) return false
-        if (filterCondition && item.condition !== filterCondition) return false
-        if (!q) return true
-        const nameMatch = card.name?.toLowerCase().includes(q)
-        const setMatch = card.set_ref?.name?.toLowerCase().includes(q)
-        const numberMatch = card.number?.toString() === q
-        const codeMatch = /^([A-Za-z]+\d*)\s+(\d+)$/.exec(q)
-        let shortcodeMatch = false
-        if (codeMatch) {
-          const [, setCode, num] = codeMatch
-          const normalizedNum = String(parseInt(num, 10))
-          const cardNum = (card.number || '').toString().replace(/^0+/, '') || '0'
-          shortcodeMatch = [card.set_ref?.abbreviation, card.set_id, card.set_ref?.tcg_set_id]
-            .some(value => value?.toLowerCase() === setCode) && cardNum === normalizedNum
-        }
-        return nameMatch || setMatch || numberMatch || shortcodeMatch
+    return collectionData.filter(item => {
+      const card = item.card
+      if (!card) return false
+      if (filterSet && card.set_ref?.id !== filterSet) return false
+      if (filterVariant && (item.variant || '') !== filterVariant) return false
+      if (filterCondition && item.condition !== filterCondition) return false
+      if (!q) return true
+      const nameMatch = card.name?.toLowerCase().includes(q)
+      const setMatch = card.set_ref?.name?.toLowerCase().includes(q)
+      const numberMatch = card.number?.toString() === q
+      const codeMatch = /^([A-Za-z]+\d*)\s+(\d+)$/.exec(q)
+      let shortcodeMatch = false
+      if (codeMatch) {
+        const [, setCode, num] = codeMatch
+        const normalizedNum = String(parseInt(num, 10))
+        const cardNum = (card.number || '').toString().replace(/^0+/, '') || '0'
+        shortcodeMatch = [card.set_ref?.abbreviation, card.set_id, card.set_ref?.tcg_set_id]
+          .some(value => value?.toLowerCase() === setCode) && cardNum === normalizedNum
       }
-    ).slice(0, 24)
+      return nameMatch || setMatch || numberMatch || shortcodeMatch
+    }).slice(0, 24)
   }, [collectionData, searchQuery, isWishlist, filterSet, filterVariant, filterCondition])
 
   const collectionSets = useMemo(() => {
@@ -133,12 +136,70 @@ export default function BinderDetail() {
     },
   })
 
+  const updateEntryMutation = useMutation({
+    mutationFn: ({ binderCardId, requiredQuantity }) => updateBinderEntry(parseInt(binderId), binderCardId, { required_quantity: requiredQuantity }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['binder-cards', binderId] })
+      queryClient.invalidateQueries({ queryKey: ['binders'] })
+    },
+    onError: (e) => toast.error(e.response?.data?.detail || 'Update failed'),
+  })
+
+  const wishlistMutation = useMutation({
+    mutationFn: (binderCardId) => addBinderEntryToWishlist(parseInt(binderId), binderCardId),
+    onSuccess: () => {
+      toast.success(t('binderTypes.addToWishlist') + ' ✓')
+      queryClient.invalidateQueries({ queryKey: ['wishlist'] })
+    },
+    onError: (e) => toast.error(e.response?.data?.detail || t('card.addFailed')),
+  })
+
+  const importMutation = useMutation({
+    mutationFn: (file) => importBinderCsv(parseInt(binderId), file),
+    onSuccess: (result) => {
+      toast.success(`CSV: ${result.added} added, ${result.updated} updated${result.failed ? `, ${result.failed} failed` : ''}`)
+      if (result.errors?.length) console.warn('Binder CSV import errors', result.errors)
+      queryClient.invalidateQueries({ queryKey: ['binder-cards', binderId] })
+      queryClient.invalidateQueries({ queryKey: ['binders'] })
+    },
+    onError: (e) => toast.error(e.response?.data?.detail || 'CSV import failed'),
+  })
+
+  const exportMutation = useMutation({
+    mutationFn: () => exportBinderCsv(parseInt(binderId)),
+    onError: () => toast.error('CSV export failed'),
+  })
+
   if (isLoading) return <div className="skeleton h-64 rounded-xl" />
 
   const cards = data?.cards || []
-  const ownedCount = data?.owned_count ?? cards.filter(c => c.owned).length
-  const totalCount = data?.total_count ?? cards.length
+  const ownedCount = data?.owned_count ?? cards.reduce((sum, c) => sum + Math.min(c.owned_quantity || 0, c.required_quantity || 1), 0)
+  const totalCount = data?.total_required_count ?? data?.total_count ?? cards.length
+  const missingCount = data?.missing_count ?? cards.reduce((sum, c) => sum + (c.missing_quantity || 0), 0)
+  const binderValue = data?.binder_value ?? cards.reduce((sum, c) => sum + ((c.price_market || 0) * (isWishlist ? (c.required_quantity || 1) : (c.quantity || 0))), 0)
+  const costToComplete = data?.cost_to_complete ?? cards.reduce((sum, c) => sum + ((c.price_market || 0) * (c.missing_quantity || 0)), 0)
   const progressPct = totalCount > 0 ? Math.round((ownedCount / totalCount) * 100) : 0
+  const binderSets = [...new Set(cards.map(c => c.set_name || c.set_id).filter(Boolean))].sort()
+  const visibleCards = cards.filter(card => {
+    const query = binderFilterQuery.trim().toLowerCase()
+    if (query && ![card.name, card.set_name, card.set_id, card.number].some(value => String(value || '').toLowerCase().includes(query))) return false
+    if (binderFilterSet && (card.set_name || card.set_id) !== binderFilterSet) return false
+    if (binderFilterStatus === 'owned' && (card.missing_quantity || 0) > 0) return false
+    if (binderFilterStatus === 'missing' && (card.missing_quantity || 0) === 0) return false
+    return true
+  })
+
+  const changeRequiredQuantity = (card, delta) => {
+    const next = Math.max(1, Math.min(99, (card.required_quantity || 1) + delta))
+    updateEntryMutation.mutate({ binderCardId: card.binder_card_id, requiredQuantity: next })
+    setSelectedCard({ ...card, required_quantity: next, missing_quantity: Math.max(next - (card.owned_quantity || 0), 0) })
+  }
+
+  const handleImportFile = (event) => {
+    const file = event.target.files?.[0]
+    if (file) importMutation.mutate(file)
+    event.target.value = ''
+  }
 
   return (
     <div className="space-y-4 pb-2">
@@ -167,12 +228,39 @@ export default function BinderDetail() {
           {binder?.description && <p className="text-sm text-text-secondary mt-1">{binder.description}</p>}
           <p className="text-xs text-text-muted mt-1">{cards.length} {t('binderTypes.cards')}</p>
         </div>
-        <button onClick={() => setShowSearch(!showSearch)} className="btn-primary flex-shrink-0">
-          <Plus size={16} /> {t('common.add')} {t('nav.cards')}
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={() => setShowSearch(!showSearch)} className="btn-primary flex-shrink-0">
+            <Plus size={16} /> {t('common.add')} {t('nav.cards')}
+          </button>
+          {isWishlist && (
+            <button onClick={() => fileInputRef.current?.click()} className="btn-ghost flex-shrink-0" disabled={importMutation.isPending}>
+              <Upload size={16} /> CSV
+            </button>
+          )}
+          <button onClick={() => exportMutation.mutate()} className="btn-ghost flex-shrink-0" disabled={exportMutation.isPending || cards.length === 0}>
+            <Download size={16} /> CSV
+          </button>
+          <input ref={fileInputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleImportFile} />
+        </div>
       </div>
 
-      {/* Wishlist progress bar */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <div className="card p-3"><p className="text-xs text-text-muted">{t('binderTypes.required')}</p><p className="text-lg font-bold text-text-primary">{totalCount}</p></div>
+        <div className="card p-3"><p className="text-xs text-text-muted">{t('binderTypes.owned')}</p><p className="text-lg font-bold text-green">{ownedCount}</p></div>
+        <div className="card p-3"><p className="text-xs text-text-muted">{t('binderTypes.missing')}</p><p className="text-lg font-bold text-brand-red">{missingCount}</p></div>
+        <div className="card p-3"><p className="text-xs text-text-muted">{isWishlist ? t('binderTypes.costToComplete') : t('binderTypes.binderValue')}</p><p className="text-lg font-bold text-yellow">€{(isWishlist ? costToComplete : binderValue).toFixed(2)}</p></div>
+      </div>
+
+      {(binder?.format || isWishlist) && (
+        <div className="card p-3 flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <p className="text-sm font-medium text-text-primary">{t('binderTypes.deckStyleBinder')}</p>
+            <p className="text-xs text-text-muted">{t('binderTypes.formatMetadataHelp')}</p>
+          </div>
+          {binder?.format && <span className="text-xs px-2 py-1 rounded-full bg-yellow/15 text-yellow font-semibold">{binder.format}</span>}
+        </div>
+      )}
+
       {isWishlist && cards.length > 0 && (
         <div className="card">
           <div className="flex items-center justify-between mb-2">
@@ -186,12 +274,11 @@ export default function BinderDetail() {
           </div>
           <div className="flex justify-between text-xs text-text-muted mt-1">
             <span className="text-green">{ownedCount} {t('binderTypes.owned')}</span>
-            <span className="text-brand-red">{totalCount - ownedCount} {t('binderTypes.missing')}</span>
+            <span className="text-brand-red">{missingCount} {t('binderTypes.missing')}</span>
           </div>
         </div>
       )}
 
-      {/* Card Search to Add */}
       {showSearch && (
         <div className="card border-brand-red/20">
           <h3 className="text-base font-semibold text-text-primary mb-3">
@@ -298,7 +385,27 @@ export default function BinderDetail() {
         </div>
       )}
 
-      {/* Cards Grid */}
+      {cards.length > 0 && (
+        <div className="card p-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <input
+            type="text"
+            value={binderFilterQuery}
+            onChange={(e) => setBinderFilterQuery(e.target.value)}
+            placeholder={t('binderTypes.filterBinderCards')}
+            className="input text-sm py-2"
+          />
+          <select className="select text-sm py-2" value={binderFilterSet} onChange={(e) => setBinderFilterSet(e.target.value)}>
+            <option value="">{t('binderTypes.allSets')}</option>
+            {binderSets.map(setName => <option key={setName} value={setName}>{setName}</option>)}
+          </select>
+          <select className="select text-sm py-2" value={binderFilterStatus} onChange={(e) => setBinderFilterStatus(e.target.value)}>
+            <option value="">{t('binderTypes.allStatuses')}</option>
+            <option value="owned">{t('binderTypes.ownedComplete')}</option>
+            <option value="missing">{t('binderTypes.missingCards')}</option>
+          </select>
+        </div>
+      )}
+
       {cards.length === 0 ? (
         <div className="card text-center py-20">
           <p className="text-text-muted">
@@ -308,14 +415,16 @@ export default function BinderDetail() {
             {isWishlist ? t('binderTypes.addAnyCard') : t('binderTypes.addFromCollection')}
           </p>
         </div>
+      ) : visibleCards.length === 0 ? (
+        <div className="card text-center py-12 text-text-muted">{t('common.noResults')}</div>
       ) : (
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 sm:gap-3">
-          {cards.map((card) => {
-            const isOwned = card.owned || card.in_collection
-            const isMissing = isWishlist && !isOwned
+          {visibleCards.map((card) => {
+            const isComplete = (card.missing_quantity || 0) === 0
+            const isMissing = isWishlist && (card.missing_quantity || 0) > 0
 
             return (
-              <TiltBinderCard key={card.id} className="relative group rounded-xl overflow-hidden card p-0">
+              <TiltBinderCard key={card.binder_card_id || card.id} className="relative group rounded-xl overflow-hidden card p-0 cursor-pointer" onClick={() => setSelectedCard(card)}>
                 {resolveCardImageUrl(card) ? (
                   <img src={resolveCardImageUrl(card)} alt={card.name}
                     className={`w-full aspect-[2.5/3.5] object-cover transition-all ${isMissing ? 'grayscale opacity-60' : ''}`}
@@ -330,16 +439,16 @@ export default function BinderDetail() {
                   {card.price_market && <p className="text-xs text-green">€{card.price_market.toFixed(2)}</p>}
                 </div>
 
-                <button onClick={() => removeMutation.mutate({ cardId: card.id, binderCardId: card.binder_card_id })}
+                <button onClick={(e) => { e.stopPropagation(); removeMutation.mutate({ cardId: card.id, binderCardId: card.binder_card_id }) }}
                   className="absolute top-1 right-1 bg-bg/80 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity text-brand-red hover:text-brand-red-light">
                   <Trash2 size={10} />
                 </button>
 
                 {isWishlist && (
                   <div className={`absolute top-1 left-1 rounded-full text-white text-xs px-1.5 py-0.5 font-medium ${
-                    isOwned ? 'bg-green/90' : 'bg-bg-elevated/90 text-text-secondary'
+                    isComplete ? 'bg-green/90' : 'bg-bg-elevated/90 text-text-secondary'
                   }`}>
-                    {isOwned ? `✓ ${t('binderTypes.owned')}` : `✗ ${t('binderTypes.missing')}`}
+                    {(card.owned_quantity || 0) >= (card.required_quantity || 1) ? `✓ ${card.owned_quantity || 0}/${card.required_quantity || 1}` : `${card.owned_quantity || 0}/${card.required_quantity || 1}`}
                   </div>
                 )}
 
@@ -351,6 +460,56 @@ export default function BinderDetail() {
               </TiltBinderCard>
             )
           })}
+        </div>
+      )}
+
+      {selectedCard && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setSelectedCard(null)}>
+          <div className="bg-bg-surface border border-border rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="text-lg font-bold text-text-primary truncate">{selectedCard.name}</h2>
+                  <p className="text-xs text-text-muted">{selectedCard.set_name || selectedCard.set_id} #{selectedCard.number}</p>
+                </div>
+                <button onClick={() => setSelectedCard(null)} className="text-text-muted hover:text-text-primary p-1"><X size={18} /></button>
+              </div>
+
+              <div className="grid grid-cols-[120px_1fr] gap-4">
+                {resolveCardImageUrl(selectedCard) ? (
+                  <img src={resolveCardImageUrl(selectedCard)} alt={selectedCard.name} className="w-full rounded-xl" />
+                ) : (
+                  <div className="aspect-[2.5/3.5] rounded-xl bg-bg-card flex items-center justify-center text-xs text-text-muted text-center p-2">{selectedCard.name}</div>
+                )}
+                <div className="space-y-3 text-sm">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded-lg bg-bg-card p-2"><p className="text-xs text-text-muted">{t('binderTypes.owned')}</p><p className="font-bold text-green">{selectedCard.owned_quantity || 0}</p></div>
+                    <div className="rounded-lg bg-bg-card p-2"><p className="text-xs text-text-muted">{t('binderTypes.missing')}</p><p className="font-bold text-brand-red">{selectedCard.missing_quantity || 0}</p></div>
+                  </div>
+                  <div>
+                    <p className="text-xs text-text-muted mb-1">{t('binderTypes.requiredInBinder')}</p>
+                    <div className="flex items-center gap-2">
+                      <button className="btn-ghost px-2" onClick={() => changeRequiredQuantity(selectedCard, -1)} disabled={updateEntryMutation.isPending || (selectedCard.required_quantity || 1) <= 1}><Minus size={14} /></button>
+                      <span className="text-lg font-bold text-text-primary min-w-8 text-center">{selectedCard.required_quantity || 1}</span>
+                      <button className="btn-ghost px-2" onClick={() => changeRequiredQuantity(selectedCard, 1)} disabled={updateEntryMutation.isPending}><Plus size={14} /></button>
+                    </div>
+                  </div>
+                  {selectedCard.price_market && <p className="text-xs text-text-muted">{t('binderTypes.marketPrice')}: <span className="text-green font-semibold">€{selectedCard.price_market.toFixed(2)}</span></p>}
+                  {(selectedCard.variant || selectedCard.condition) && <p className="text-xs text-text-muted">{[selectedCard.variant, selectedCard.condition].filter(Boolean).join(' · ')}</p>}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <button className="btn-ghost justify-center" onClick={() => wishlistMutation.mutate(selectedCard.binder_card_id)}>
+                  <Heart size={16} /> {t('binderTypes.addToWishlist')}
+                </button>
+                <button className="btn-ghost justify-center text-brand-red" onClick={() => { removeMutation.mutate({ cardId: selectedCard.id, binderCardId: selectedCard.binder_card_id }); setSelectedCard(null) }}>
+                  <Trash2 size={16} /> {t('common.remove')}
+                </button>
+                <button className="btn-primary justify-center" onClick={() => setSelectedCard(null)}>{t('binderTypes.done')}</button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

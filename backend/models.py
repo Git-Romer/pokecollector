@@ -182,6 +182,7 @@ class Binder(Base):
     description = Column(Text)
     color = Column(String, default="#EE1515")
     binder_type = Column(String, default="collection")  # "collection" or "wishlist"
+    format = Column(String, nullable=True)  # "Standard", "Expanded", "Unlimited", "Casual"
     icon_pokemon_id = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=func.now())
 
@@ -195,6 +196,7 @@ class BinderCard(Base):
     binder_id = Column(Integer, ForeignKey("binders.id"), nullable=False)
     card_id = Column(String, ForeignKey("cards.id"), nullable=False)
     collection_item_id = Column(Integer, ForeignKey("collection.id"), nullable=True)
+    required_quantity = Column(Integer, default=1)
     added_at = Column(DateTime, default=func.now())
 
     binder = relationship("Binder", back_populates="binder_cards")

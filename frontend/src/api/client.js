@@ -113,8 +113,28 @@ export const deleteBinder = (id) => api.delete(`/binders/${id}`)
 export const getBinderCards = (id) => api.get(`/binders/${id}/cards`)
 export const addCardToBinder = (binderId, cardId) => api.post(`/binders/${binderId}/cards?card_id=${cardId}`)
 export const addCollectionItemToBinder = (binderId, collectionItemId) => api.post(`/binders/${binderId}/collection-items?collection_item_id=${collectionItemId}`)
+export const updateBinderEntry = (binderId, binderCardId, data) => api.put(`/binders/${binderId}/entries/${binderCardId}`, data)
+export const addBinderEntryToWishlist = (binderId, binderCardId) => api.post(`/binders/${binderId}/entries/${binderCardId}/wishlist`)
 export const removeCardFromBinder = (binderId, cardId) => api.delete(`/binders/${binderId}/cards/${cardId}`)
 export const removeBinderEntry = (binderId, binderCardId) => api.delete(`/binders/${binderId}/entries/${binderCardId}`)
+export const importBinderCsv = (binderId, file) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return api.post(`/binders/${binderId}/import-csv`, formData).then(r => r.data)
+}
+export const exportBinderCsv = (binderId) => {
+  const token = localStorage.getItem('token')
+  const config = { responseType: 'blob' }
+  if (token) config.headers = { Authorization: `Bearer ${token}` }
+  return api.get(`/binders/${binderId}/export-csv`, config).then(r => {
+    const url = window.URL.createObjectURL(r.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `binder-${binderId}.csv`
+    a.click()
+    window.URL.revokeObjectURL(url)
+  })
+}
 
 // Dashboard
 export const getDashboard = (params) => api.get('/dashboard/', { params })

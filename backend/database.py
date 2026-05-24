@@ -201,6 +201,9 @@ def _run_migrations(conn):
         # v46: Binder icons and exact collection-item binder entries.
         "ALTER TABLE binders ADD COLUMN IF NOT EXISTS icon_pokemon_id INTEGER",
         "ALTER TABLE binder_cards ADD COLUMN IF NOT EXISTS collection_item_id INTEGER REFERENCES collection(id)",
+        "ALTER TABLE binders ADD COLUMN IF NOT EXISTS format VARCHAR",
+        "ALTER TABLE binder_cards ADD COLUMN IF NOT EXISTS required_quantity INTEGER DEFAULT 1",
+        "UPDATE binder_cards SET required_quantity = 1 WHERE required_quantity IS NULL",
         "ALTER TABLE binder_cards DROP CONSTRAINT IF EXISTS uq_binder_card",
         """DO $$
         BEGIN
