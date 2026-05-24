@@ -1105,7 +1105,7 @@ export default function Collection() {
                           </span>
                         )}
                         {item.variant && item.variant !== 'Normal' && (
-                          <span className="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-yellow/15 text-yellow border border-yellow/30 truncate max-w-[80px]">
+                          <span className="inline-flex max-w-full min-w-0 items-center justify-center text-center text-[10px] font-semibold leading-tight px-1.5 py-0.5 rounded-full bg-yellow/15 text-yellow border border-yellow/30 whitespace-normal break-words">
                             ✨ {item.variant}
                           </span>
                         )}
@@ -1224,7 +1224,7 @@ export default function Collection() {
                           </td>
                           <td className="px-4 py-3 text-left">
                             {item.variant ? (
-                              <span className={clsx('badge text-xs', VARIANT_COLORS[item.variant] || 'badge-gray')}>{item.variant}</span>
+                              <span className={clsx('badge text-xs max-w-[150px] justify-center whitespace-normal break-words text-center leading-tight', VARIANT_COLORS[item.variant] || 'badge-gray')}>{item.variant}</span>
                             ) : (
                               <span className="text-text-muted text-xs">—</span>
                             )}

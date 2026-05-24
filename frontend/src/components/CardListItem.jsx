@@ -71,7 +71,7 @@ export default function CardListItem({
               <span
                 key={i}
                 className={clsx(
-                  'inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium leading-none flex-shrink-0',
+                  'inline-flex min-w-0 max-w-full items-center justify-center px-1.5 py-0.5 rounded-full text-center text-[10px] font-medium leading-tight whitespace-normal break-words',
                   badgeVariantClass(badge.variant)
                 )}
               >
