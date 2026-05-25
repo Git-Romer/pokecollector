@@ -878,35 +878,39 @@ export default function BinderDetail() {
 
                   {(equivalentPrintsData?.equivalents || []).length > 0 && (
                     <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                      {equivalentPrintsData.equivalents.map((print) => (
-                        <div key={print.collection_item_id || print.id} className={`flex items-center gap-3 rounded-lg border p-2 ${print.is_current ? 'border-yellow/40 bg-yellow/5' : 'border-border bg-bg/40'}`}>
-                          {resolveCardImageUrl(print) ? (
-                            <img src={resolveCardImageUrl(print)} alt={print.name} className="w-10 aspect-[2.5/3.5] object-cover rounded" loading="lazy" />
-                          ) : (
-                            <div className="w-10 aspect-[2.5/3.5] rounded bg-bg-elevated flex items-center justify-center text-[9px] text-text-muted text-center px-1">{print.name}</div>
-                          )}
-                          <div className="min-w-0 flex-1">
-                            <p className="text-xs font-semibold text-text-primary truncate">{print.set_name || print.set_id} #{print.number}</p>
-                            <div className="flex items-center gap-2 flex-wrap text-[11px] text-text-muted">
-                              {print.rarity && <span>{print.rarity}</span>}
-                              <span>{print.price_market > 0 ? `€${print.price_market.toFixed(2)}` : t('binderTypes.noPriceDataShort')}</span>
-                              {print.variant && <span>{print.variant}</span>}
-                              {print.condition && <span>{print.condition}</span>}
-                              {print.owned && <span className="text-green font-semibold">{t('binderTypes.owned')} {print.owned_quantity}x</span>}
-                              {isCollection && !print.is_current && print.available_quantity === 0 && <span className="text-yellow font-semibold">{t('binderTypes.alreadyUsed')}</span>}
-                              {print.is_current && <span className="text-yellow font-semibold">{t('binderTypes.currentPrint')}</span>}
+                      {equivalentPrintsData.equivalents.map((print) => {
+                        const imageUrl = resolveCardImageUrl(print)
+                        return (
+                          <div key={print.collection_item_id || print.id} className={`flex items-center gap-3 rounded-lg border p-2 ${print.is_current ? 'border-yellow/40 bg-yellow/5' : 'border-border bg-bg/40'}`}>
+                            {imageUrl ? (
+                              <img src={imageUrl} alt={print.name} className="w-10 aspect-[2.5/3.5] object-cover rounded" loading="lazy" />
+                            ) : (
+                              <div className="w-10 aspect-[2.5/3.5] rounded bg-bg-elevated flex items-center justify-center text-[9px] text-text-muted text-center px-1">{print.name}</div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-semibold text-text-primary truncate">{print.set_name || print.set_id} #{print.number}</p>
+                              <div className="flex items-center gap-2 flex-wrap text-[11px] text-text-muted">
+                                {print.lang && <span>{print.lang.toUpperCase()}</span>}
+                                {print.rarity && <span>{print.rarity}</span>}
+                                <span>{print.price_market > 0 ? `€${print.price_market.toFixed(2)}` : t('binderTypes.noPriceDataShort')}</span>
+                                {print.variant && <span>{print.variant}</span>}
+                                {print.condition && <span>{print.condition}</span>}
+                                {print.owned && <span className="text-green font-semibold">{t('binderTypes.owned')} {print.owned_quantity}x</span>}
+                                {isCollection && !print.is_current && print.available_quantity === 0 && <span className="text-yellow font-semibold">{t('binderTypes.alreadyUsed')}</span>}
+                                {print.is_current && <span className="text-yellow font-semibold">{t('binderTypes.currentPrint')}</span>}
+                              </div>
                             </div>
+                            <button
+                              type="button"
+                              className="btn-ghost px-2 py-1 text-xs flex-shrink-0"
+                              disabled={print.is_current || switchPrintMutation.isPending || (isCollection && print.available_quantity === 0)}
+                              onClick={() => switchPrintMutation.mutate({ binderCardId: selectedCard.binder_card_id, cardId: print.id, collectionItemId: print.collection_item_id })}
+                            >
+                              {print.is_current ? t('binderTypes.currentPrint') : t('binderTypes.switchPrint')}
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            className="btn-ghost px-2 py-1 text-xs flex-shrink-0"
-                            disabled={print.is_current || switchPrintMutation.isPending || (isCollection && print.available_quantity === 0)}
-                            onClick={() => switchPrintMutation.mutate({ binderCardId: selectedCard.binder_card_id, cardId: print.id, collectionItemId: print.collection_item_id })}
-                          >
-                            {print.is_current ? t('binderTypes.currentPrint') : t('binderTypes.switchPrint')}
-                          </button>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   )}
                 </div>

@@ -112,7 +112,7 @@ def _cache_same_name_cards_for_equivalents(db: Session, source_card: Card) -> No
             name=source_card.name,
             lang=source_card.lang,
             page=1,
-            page_size=50000,
+            page_size=500,
         ).get("data", [])
     except Exception:
         logger.exception("Failed to search TCGdex same-name cards for %s", source_card.name)
@@ -120,6 +120,7 @@ def _cache_same_name_cards_for_equivalents(db: Session, source_card: Card) -> No
 
     exact_name = source_card.name.strip().lower()
     fetched = 0
+    pending_writes = 0
     for candidate in results:
         if (candidate.get("name") or "").strip().lower() != exact_name:
             continue
@@ -137,13 +138,19 @@ def _cache_same_name_cards_for_equivalents(db: Session, source_card: Card) -> No
             parsed = pokemon_api.parse_card_for_db(detail, lang=source_card.lang)
             parsed = apply_cross_language_fallbacks(db, parsed)
             upsert_card(db, parsed)
-            db.commit()
+            pending_writes += 1
             fetched += 1
+            if pending_writes >= 20:
+                db.commit()
+                pending_writes = 0
             if fetched >= 80:
                 break
         except Exception:
             logger.exception("Failed to cache equivalent-print candidate %s", tcg_card_id)
             db.rollback()
+            pending_writes = 0
+    if pending_writes:
+        db.commit()
 
 
 def _binder_card_summary(
