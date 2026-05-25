@@ -655,11 +655,25 @@ async def import_binder_csv(
             number = (row.get("number") or "").strip()
             lang = (row.get("lang") or "en").strip().lower()
             if lang not in {"en", "de"}:
-                raise ValueError("lang must be en or de")
+                failed += 1
+                errors.append(f"row {row_number}: lang must be en or de")
+                continue
             if not set_code or not number:
-                raise ValueError("set_code and number are required")
-            required_quantity = _safe_required_quantity(row.get("required_quantity"))
-            card = _find_card_by_code(db, set_code, number, lang)
+                failed += 1
+                errors.append(f"row {row_number}: set_code and number are required")
+                continue
+            try:
+                required_quantity = _safe_required_quantity(row.get("required_quantity"))
+            except HTTPException:
+                failed += 1
+                errors.append(f"row {row_number}: required_quantity must be a number between 1 and 99")
+                continue
+            try:
+                card = _find_card_by_code(db, set_code, number, lang)
+            except ValueError:
+                failed += 1
+                errors.append(f"row {row_number}: card was not found")
+                continue
 
             if binder_type == "collection":
                 owned_items = db.query(CollectionItem).filter(
@@ -698,14 +712,6 @@ async def import_binder_csv(
                     continue
                 planned_card_ids.add(card.id)
                 validated_rows.append({"action": "add_card", "card": card, "required_quantity": required_quantity})
-        except HTTPException as exc:
-            db.rollback()
-            failed += 1
-            errors.append(f"row {row_number}: {exc.detail}")
-        except ValueError as exc:
-            db.rollback()
-            failed += 1
-            errors.append(f"row {row_number}: {exc}")
         except Exception:
             db.rollback()
             failed += 1
