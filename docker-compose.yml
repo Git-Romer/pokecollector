@@ -18,7 +18,9 @@ services:
       retries: 5
 
   backend:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: pokemon-backend
     restart: unless-stopped
     environment:
@@ -41,7 +43,8 @@ services:
 
   frontend:
     build:
-      context: ./frontend
+      context: .
+      dockerfile: frontend/Dockerfile
       args:
         PUBLIC_MODE: ${PUBLIC_MODE:-false}
     container_name: pokemon-frontend

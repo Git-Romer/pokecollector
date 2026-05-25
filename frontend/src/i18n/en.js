@@ -534,7 +534,7 @@ const en = {
     telegramInfo: 'Configure Telegram notifications via environment variables in your .env file:',
     telegramNote: 'Notifications are sent when wishlist card prices cross your alert thresholds during sync. Maximum one notification per card per 23 hours.',
     about: 'About',
-    aboutDesc1: 'Pokemon TCG Collection Manager v1.16',
+    aboutDesc1: 'Pokemon TCG Collection Manager',
     aboutDesc2: 'Built with FastAPI + React + PostgreSQL',
     aboutDesc3: 'Data from',
     aboutDesc4: 'Prices from Cardmarket (EUR)',
