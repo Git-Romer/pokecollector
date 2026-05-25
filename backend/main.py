@@ -9,6 +9,7 @@ from slowapi.errors import RateLimitExceeded
 import logging
 import os
 import time
+from pathlib import Path
 
 logging.basicConfig(
     level=logging.INFO,
@@ -18,6 +19,26 @@ logger = logging.getLogger(__name__)
 
 # Rate limiter: uses client IP, default 60 requests/minute
 limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
+
+
+def read_app_version() -> str:
+    """Read the release version from the repository VERSION file."""
+    env_version = os.environ.get("APP_VERSION")
+    if env_version:
+        return env_version
+
+    for candidate in (
+        Path(__file__).resolve().parent.parent / "VERSION",
+        Path(__file__).resolve().parent / "VERSION",
+        Path("/app/VERSION"),
+    ):
+        try:
+            version = candidate.read_text(encoding="utf-8").strip()
+            if version:
+                return version
+        except OSError:
+            continue
+    return "0.0.0"
 
 
 @asynccontextmanager
@@ -52,7 +73,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Pokemon TCG Collection API",
-    version="1.17",
+    version=read_app_version(),
     description="Complete Pokemon TCG collection management system",
     lifespan=lifespan,
 )

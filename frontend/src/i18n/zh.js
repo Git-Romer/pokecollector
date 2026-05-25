@@ -534,7 +534,7 @@ const zh = {
     telegramInfo: '通过环境变量配置Telegram通知在你的 .env 文件中:',
     telegramNote: '同步时当愿望清单价格越过你的提醒阈值会发送通知。每张卡牌每23小时最多发送一次通知。',
     about: '关于',
-    aboutDesc1: '宝可梦TCG收藏管理器 v1.16',
+    aboutDesc1: '宝可梦TCG收藏管理器',
     aboutDesc2: '使用 FastAPI + React + PostgreSQL 构建',
     aboutDesc3: '数据来自',
     aboutDesc4: '价格来自 Cardmarket (EUR)',
