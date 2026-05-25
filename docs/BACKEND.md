@@ -220,6 +220,27 @@ Current table mapping:
 
 If `include=full`, image cache is excluded unless `images` is also explicitly included.
 
+### Automatic Pre-upgrade Backup
+
+`backend/services/pre_upgrade_backup.py` runs before `init_db()` startup migrations.
+
+Behavior:
+
+- Reads the current app version from `VERSION` through `backend/main.py`.
+- Reads `settings.last_successful_app_version` from the existing database.
+- Skips fresh installs where the `settings` table does not exist yet.
+- Creates a full SQL dump in `/app/backups` when an existing install starts on a new version.
+- Uses filenames like `pre_upgrade_1.17.0_to_1.18.0_20260526_010500.sql`.
+- Records `last_successful_app_version` only after startup initialization succeeds.
+- Retains the newest `PRE_UPGRADE_BACKUP_KEEP` automatic backups, default `10`, minimum `1`.
+- Writes dumps to a temporary filename first, then atomically renames after a successful non-empty `pg_dump` so partial files are not treated as valid backups.
+
+Environment controls:
+
+- `PRE_UPGRADE_BACKUP_ENABLED`, default `true`
+- `PRE_UPGRADE_BACKUP_REQUIRED`, default `true`; when true, startup fails before migrations if `pg_dump` fails
+- `PRE_UPGRADE_BACKUP_KEEP`, default `10`, minimum `1`
+
 ## Scanner Notes
 
 `backend/api/recognize.py` implements a two-step flow:
@@ -261,4 +282,5 @@ Each item is committed independently, so one invalid or unavailable card does no
 
 - Migrations are raw SQL statements in `backend/database.py`
 - They are idempotent and run on startup
+- Automatic pre-upgrade backups run before `init_db()` migrations on existing installs when the app version changes
 - Legacy migration comments still mention older columns like `grade` or removed integrations, but the current runtime model and routers do not include eBay functionality

@@ -45,8 +45,11 @@ def read_app_version() -> str:
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting Pokemon TCG Collection API...")
-    from database import SessionLocal, init_db
+    current_version = read_app_version()
+    from database import DATABASE_URL, SessionLocal, engine, init_db
     from services.auth import bootstrap_admin
+    from services.pre_upgrade_backup import maybe_create_pre_upgrade_backup, record_successful_app_version
+    maybe_create_pre_upgrade_backup(engine, DATABASE_URL, current_version)
     init_db()
     logger.info("Database initialized")
 
@@ -57,6 +60,7 @@ async def lifespan(app: FastAPI):
         from services.debug_logging import configure_debug_logging
         debug_setting = db.query(Setting).filter(Setting.key == "debug_mode").first()
         configure_debug_logging(debug_setting is not None and debug_setting.value == "true")
+        record_successful_app_version(engine, current_version)
     finally:
         db.close()
 
