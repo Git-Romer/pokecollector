@@ -63,19 +63,10 @@ def _run_migrations(conn):
         "ALTER TABLE collection ADD COLUMN IF NOT EXISTS variant VARCHAR",
         # Add binder_type column to binders table
         "ALTER TABLE binders ADD COLUMN IF NOT EXISTS binder_type VARCHAR DEFAULT 'collection'",
-        # Drop old unique constraint on card_id alone (if exists) and add new one
-        # These are safe to fail if constraint doesn't exist / already dropped
+        # Drop old collection uniqueness constraints that did not include user,
+        # condition, or purchase price and treated NULL variants specially.
         "ALTER TABLE collection DROP CONSTRAINT IF EXISTS uq_collection_card_id",
-        # Add new unique constraint on (card_id, variant) — may fail if already exists
-        """DO $$
-        BEGIN
-            IF NOT EXISTS (
-                SELECT 1 FROM pg_constraint
-                WHERE conname = 'uq_collection_card_variant'
-            ) THEN
-                ALTER TABLE collection ADD CONSTRAINT uq_collection_card_variant UNIQUE (card_id, variant);
-            END IF;
-        END$$""",
+        "ALTER TABLE collection DROP CONSTRAINT IF EXISTS uq_collection_card_variant",
         # Add is_custom column to cards table
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS is_custom BOOLEAN DEFAULT FALSE",
         # Create custom_card_matches table if it doesn't exist (handled by create_all, belt+suspenders)
@@ -98,18 +89,15 @@ def _run_migrations(conn):
         "ALTER TABLE collection ADD COLUMN IF NOT EXISTS lang VARCHAR DEFAULT 'en'",
         # v31: Add lang column to sets table (tracks which language APIs have this set)
         "ALTER TABLE sets ADD COLUMN IF NOT EXISTS lang VARCHAR DEFAULT 'en'",
-        # v31: Drop old (card_id, variant) constraint and replace with (card_id, variant, lang)
-        # This allows the same card to be collected in both DE and EN with the same variant
+        # v31/v48: Drop old broad (card_id, variant, lang) uniqueness. Collection
+        # grouping now also depends on user, condition, and purchase price, so a
+        # broad DB constraint would block valid separate collection rows.
         "ALTER TABLE collection DROP CONSTRAINT IF EXISTS uq_collection_card_variant",
-        """DO $$
-        BEGIN
-            IF NOT EXISTS (
-                SELECT 1 FROM pg_constraint
-                WHERE conname = 'uq_collection_card_variant_lang'
-            ) THEN
-                ALTER TABLE collection ADD CONSTRAINT uq_collection_card_variant_lang UNIQUE (card_id, variant, lang);
-            END IF;
-        END$$""",
+        "ALTER TABLE collection DROP CONSTRAINT IF EXISTS uq_collection_card_variant_lang",
+        # v48: Normalize missing/base prints and trim existing variant labels.
+        "UPDATE collection SET variant = COALESCE(NULLIF(btrim(variant), ''), 'Normal')",
+        "ALTER TABLE collection ALTER COLUMN variant SET DEFAULT 'Normal'",
+        "ALTER TABLE collection ALTER COLUMN variant SET NOT NULL",
         # v32: Add grade column to collection table (PSA/BGS/CGC grade)
         "ALTER TABLE collection ADD COLUMN IF NOT EXISTS grade VARCHAR DEFAULT 'raw'",
         # v32: Add ebay_app_id to settings table
@@ -184,6 +172,7 @@ def _run_migrations(conn):
             created_at TIMESTAMP DEFAULT NOW()
         )""",
         "ALTER TABLE collection ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id)",
+        "CREATE INDEX IF NOT EXISTS idx_collection_grouping ON collection (user_id, card_id, variant, lang, condition, purchase_price)",
         "ALTER TABLE wishlist ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id)",
         "ALTER TABLE wishlist DROP CONSTRAINT IF EXISTS wishlist_card_id_key",
         "ALTER TABLE wishlist DROP CONSTRAINT IF EXISTS uq_wishlist_card_id",
@@ -256,7 +245,7 @@ def _run_migrations(conn):
 
 
 def migrate_collection_variants():
-    """Move rarity-like values out of collection.variant without creating key collisions."""
+    """Move rarity-like values out of collection.variant into explicit physical variants."""
     rarity_values = (
         "Double Rare", "Full Art", "Alt Art", "Gold", "Rainbow",
         "Illustration Rare", "Special Illustration Rare", "Crown Rare",
@@ -285,33 +274,12 @@ def migrate_collection_variants():
         if not rows:
             return
 
-        existing_targets = {
-            (row.card_id, row.lang, row.variant)
-            for row in db.execute(text(f"""
-                SELECT card_id, lang, variant
-                FROM collection
-                WHERE variant IS NOT NULL
-                  AND variant NOT IN ({placeholders})
-            """), params).fetchall()
-        }
-
         migrated = 0
-        skipped = 0
-        reserved_targets = set()
 
         for row in rows:
-            target_variant = None
-            if row.variants_normal:
-                target_variant = "Normal"
-            elif row.variants_holo and not row.variants_normal:
+            target_variant = "Normal"
+            if row.variants_holo and not row.variants_normal:
                 target_variant = "Holo"
-
-            if target_variant is not None:
-                target_key = (row.card_id, row.lang, target_variant)
-                if target_key in existing_targets or target_key in reserved_targets:
-                    skipped += 1
-                    continue
-                reserved_targets.add(target_key)
 
             db.execute(
                 text("UPDATE collection SET variant = :variant WHERE id = :id"),
@@ -320,11 +288,7 @@ def migrate_collection_variants():
             migrated += 1
 
         db.commit()
-        logger.info(
-            "migrate_collection_variants: migrated %s row(s), skipped %s duplicate-conflicting row(s)",
-            migrated,
-            skipped,
-        )
+        logger.info("migrate_collection_variants: migrated %s row(s)", migrated)
     except Exception as e:
         db.rollback()
         logger.warning("migrate_collection_variants: migration aborted: %s", e)

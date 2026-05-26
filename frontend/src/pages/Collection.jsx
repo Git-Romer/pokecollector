@@ -57,7 +57,7 @@ const HOLO_FIELD_MAP = {
 }
 
 const CSV_IMPORT_HEADER = 'set_code,number,quantity,condition,variant,lang,purchase_price'
-const CSV_IMPORT_TEMPLATE = `${CSV_IMPORT_HEADER}\nASC,152,1,NM,,en,\n`
+const CSV_IMPORT_TEMPLATE = `${CSV_IMPORT_HEADER}\nASC,152,1,NM,Normal,en,\n`
 
 const naturalCardNumberKey = (number) => String(number || '').trim().split(/(\d+)/).map(part => /^\d+$/.test(part) ? part.padStart(8, '0') : part.toLowerCase()).join('')
 
@@ -257,13 +257,13 @@ function CollectionEditModal({ item, onClose }) {
 
   const [quantity, setQuantity] = useState(item.quantity)
   const [condition, setCondition] = useState(item.condition || 'NM')
-  const [variant, setVariant] = useState(item.variant || '')
+  const [variant, setVariant] = useState(item.variant || 'Normal')
   const [lang, setLang] = useState(item.lang || 'en')
   const [price, setPrice] = useState(item.purchase_price ? String(item.purchase_price) : '')
   const [showAddVersionForm, setShowAddVersionForm] = useState(false)
   const [newVersionQuantity, setNewVersionQuantity] = useState(1)
   const [newVersionCondition, setNewVersionCondition] = useState(item.condition || 'NM')
-  const [newVersionVariant, setNewVersionVariant] = useState(item.variant || '')
+  const [newVersionVariant, setNewVersionVariant] = useState(item.variant || 'Normal')
   const [newVersionLang, setNewVersionLang] = useState(item.lang || 'en')
   const [newVersionPrice, setNewVersionPrice] = useState('')
   const [customImageUrl, setCustomImageUrl] = useState(card?.custom_image_url || '')
@@ -288,7 +288,7 @@ function CollectionEditModal({ item, onClose }) {
     mutationFn: () => updateCollectionItem(item.id, {
       quantity,
       condition,
-      variant: variant || null,
+      variant,
       lang,
       purchase_price: price ? parseFloat(price) : null,
     }),
@@ -317,7 +317,7 @@ function CollectionEditModal({ item, onClose }) {
       card_id: item.card_id,
       quantity: Math.max(1, parseInt(newVersionQuantity, 10) || 1),
       condition: newVersionCondition,
-      variant: newVersionVariant || null,
+      variant: newVersionVariant,
       lang: newVersionLang,
       purchase_price: newVersionPrice ? parseFloat(newVersionPrice) : undefined,
     }),
@@ -471,7 +471,6 @@ function CollectionEditModal({ item, onClose }) {
               <div>
                 <label className="text-xs text-text-muted mb-1 block">✨ {t('card.variant')}</label>
                 <select value={variant} onChange={e => setVariant(e.target.value)} className="select">
-                  <option value="">{t('variants.none')}</option>
                   {CARD_VARIANTS.map(v => <option key={v} value={v}>{v}</option>)}
                 </select>
               </div>
@@ -631,7 +630,6 @@ function CollectionEditModal({ item, onClose }) {
               <div>
                 <label className="text-xs text-text-muted mb-1 block">✨ {t('card.variant')}</label>
                 <select value={newVersionVariant} onChange={e => setNewVersionVariant(e.target.value)} className="select">
-                  <option value="">{t('variants.none')}</option>
                   {CARD_VARIANTS.map(v => <option key={v} value={v}>{v}</option>)}
                 </select>
               </div>

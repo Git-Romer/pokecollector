@@ -63,7 +63,7 @@ function OwnedVersionRow({ item, onQuantityChange, onRemove, isUpdating, isRemov
 function SetCardActionModal({ card, setLang, onClose, onAdd, onQuantityChange, onRemove, isAdding, isUpdatingQuantity, isRemoving, t }) {
   const [addQuantity, setAddQuantity] = useState(1)
   const [addCondition, setAddCondition] = useState('NM')
-  const [addVariant, setAddVariant] = useState('')
+  const [addVariant, setAddVariant] = useState('Normal')
   const [addLang, setAddLang] = useState(setLang)
   const [addPrice, setAddPrice] = useState('')
 
@@ -71,7 +71,7 @@ function SetCardActionModal({ card, setLang, onClose, onAdd, onQuantityChange, o
     if (!card) return
     setAddQuantity(1)
     setAddCondition('NM')
-    setAddVariant(getDefaultVariantOrNull(card) || '')
+    setAddVariant(getDefaultVariantOrNull(card))
     setAddLang(setLang)
     setAddPrice('')
   }, [card, setLang])
@@ -87,7 +87,7 @@ function SetCardActionModal({ card, setLang, onClose, onAdd, onQuantityChange, o
       card,
       quantity: Math.max(1, parseInt(addQuantity, 10) || 1),
       condition: addCondition,
-      variant: addVariant || null,
+      variant: addVariant,
       lang: addLang,
       purchase_price: addPrice ? parseFloat(addPrice) : undefined,
     })
@@ -144,7 +144,7 @@ function SetCardActionModal({ card, setLang, onClose, onAdd, onQuantityChange, o
               <div>
                 <label className="text-xs text-text-muted mb-1 block">✨ {t('card.variant')}</label>
                 <select value={addVariant} onChange={(e) => setAddVariant(e.target.value)} className="select">
-                  {variants.map(variant => <option key={variant} value={variant === 'Normal' ? '' : variant}>{variant}</option>)}
+                  {variants.map(variant => <option key={variant} value={variant}>{variant}</option>)}
                 </select>
               </div>
 

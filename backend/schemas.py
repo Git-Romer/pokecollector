@@ -125,7 +125,7 @@ class CollectionItemCreate(BaseModel):
     card_id: str
     quantity: int = 1
     condition: str = "NM"
-    variant: Optional[str] = None
+    variant: Optional[str] = "Normal"
     purchase_price: Optional[float] = None
     lang: str = "en"  # fixed language of this card item ("en" or "de")
 
@@ -154,7 +154,7 @@ class CollectionItemResponse(BaseModel):
     card_id: str
     quantity: int
     condition: str
-    variant: Optional[str] = None
+    variant: str = "Normal"
     purchase_price: Optional[float] = None
     lang: str = "en"
     added_at: Optional[datetime] = None

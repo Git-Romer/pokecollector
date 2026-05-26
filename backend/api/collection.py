@@ -21,8 +21,14 @@ CSV_IMPORT_COLUMNS = ["set_code", "number", "quantity", "condition", "variant", 
 CSV_IMPORT_MAX_BYTES = 256 * 1024
 CSV_IMPORT_MAX_ROWS = 1000
 ALLOWED_CONDITIONS = {"Mint", "NM", "LP", "MP", "HP"}
-ALLOWED_VARIANTS = {"", "Normal", "Holo", "Reverse Holo", "First Edition"}
+ALLOWED_VARIANTS = {"Normal", "Holo", "Reverse Holo", "First Edition"}
 ALLOWED_LANGS = {"en", "de"}
+
+
+def _normalize_collection_variant(variant: Optional[str]) -> str:
+    value = (variant or "").strip()
+    return value or "Normal"
+
 _SET_CODE_API_CACHE: Optional[dict[str, List[dict]]] = None
 
 def _get_item_price(item):
@@ -91,6 +97,7 @@ def _add_collection_item(db: Session, current_user: User, item: CollectionItemCr
     """Add one item and return "added" or "updated"."""
     _, detected_lang = pokemon_api.strip_lang_suffix(item.card_id)
     item_lang = item.lang or detected_lang or "en"
+    item_variant = _normalize_collection_variant(item.variant)
 
     if item.card_id.startswith("custom-"):
         effective_card_id = item.card_id
@@ -104,7 +111,7 @@ def _add_collection_item(db: Session, current_user: User, item: CollectionItemCr
 
     existing = db.query(CollectionItem).filter(
         CollectionItem.card_id == effective_card_id,
-        CollectionItem.variant == item.variant,
+        CollectionItem.variant == item_variant,
         CollectionItem.lang == item_lang,
         CollectionItem.condition == item.condition,
         CollectionItem.purchase_price == item.purchase_price,
@@ -121,7 +128,7 @@ def _add_collection_item(db: Session, current_user: User, item: CollectionItemCr
         card_id=effective_card_id,
         quantity=item.quantity,
         condition=item.condition,
-        variant=item.variant,
+        variant=item_variant,
         purchase_price=item.purchase_price,
         lang=item_lang,
         user_id=current_user.id,
@@ -249,9 +256,9 @@ def _parse_import_row(row: dict, row_number: int) -> CollectionItemCreate:
     if condition not in ALLOWED_CONDITIONS:
         raise ValueError(f"condition must be one of: {', '.join(sorted(ALLOWED_CONDITIONS))}")
 
-    variant = (row.get("variant") or "").strip()
+    variant = _normalize_collection_variant(row.get("variant"))
     if variant not in ALLOWED_VARIANTS:
-        raise ValueError(f"variant must be blank or one of: {', '.join(v for v in sorted(ALLOWED_VARIANTS) if v)}")
+        raise ValueError(f"variant must be blank or one of: {', '.join(sorted(ALLOWED_VARIANTS))}")
 
     lang = (row.get("lang") or "en").strip().lower() or "en"
     if lang not in ALLOWED_LANGS:
@@ -271,7 +278,7 @@ def _parse_import_row(row: dict, row_number: int) -> CollectionItemCreate:
         card_id=f"{set_code} {number}",
         quantity=quantity,
         condition=condition,
-        variant=None if variant in ("", "Normal") else variant,
+        variant=variant,
         purchase_price=purchase_price,
         lang=lang,
     )
@@ -329,6 +336,7 @@ def add_to_collection(
     """Add a card to the collection. Cards with identical card_id+variant+lang+condition+purchase_price are grouped."""
     _, detected_lang = pokemon_api.strip_lang_suffix(item.card_id)
     item_lang = item.lang or detected_lang or "en"
+    item_variant = _normalize_collection_variant(item.variant)
 
     # Resolve the correct language-variant card_id
     if item.card_id.startswith("custom-"):
@@ -346,7 +354,7 @@ def add_to_collection(
     # Find existing entry for same card + variant + lang + condition + purchase_price combination
     existing = db.query(CollectionItem).filter(
         CollectionItem.card_id == effective_card_id,
-        CollectionItem.variant == item.variant,
+        CollectionItem.variant == item_variant,
         CollectionItem.lang == item_lang,
         CollectionItem.condition == item.condition,
         CollectionItem.purchase_price == item.purchase_price,
@@ -363,7 +371,7 @@ def add_to_collection(
             card_id=effective_card_id,
             quantity=item.quantity,
             condition=item.condition,
-            variant=item.variant,
+            variant=item_variant,
             purchase_price=item.purchase_price,
             lang=item_lang,
             user_id=current_user.id,
@@ -384,9 +392,9 @@ def bulk_add_to_collection(
     """Add multiple cards to the collection in a single request.
 
     Each item is committed independently so one invalid card does not roll back
-    the whole batch. Existing rows are matched by the database uniqueness model
-    (card_id+variant+lang) plus the current user where possible, then quantity
-    is incremented.
+    the whole batch. Existing rows are matched by card, normalized variant,
+    language, condition, purchase price, and current user, then quantity is
+    incremented.
     """
     added = 0
     updated = 0
@@ -397,6 +405,7 @@ def bulk_add_to_collection(
         try:
             _, detected_lang = pokemon_api.strip_lang_suffix(item.card_id)
             item_lang = item.lang or detected_lang or "en"
+            item_variant = _normalize_collection_variant(item.variant)
 
             if item.card_id.startswith("custom-"):
                 effective_card_id = item.card_id
@@ -410,8 +419,10 @@ def bulk_add_to_collection(
 
             existing = db.query(CollectionItem).filter(
                 CollectionItem.card_id == effective_card_id,
-                CollectionItem.variant == item.variant,
+                CollectionItem.variant == item_variant,
                 CollectionItem.lang == item_lang,
+                CollectionItem.condition == item.condition,
+                CollectionItem.purchase_price == item.purchase_price,
                 CollectionItem.user_id == current_user.id,
             ).first()
 
@@ -424,7 +435,7 @@ def bulk_add_to_collection(
                     card_id=effective_card_id,
                     quantity=item.quantity,
                     condition=item.condition,
-                    variant=item.variant,
+                    variant=item_variant,
                     purchase_price=item.purchase_price,
                     lang=item_lang,
                     user_id=current_user.id,
@@ -552,8 +563,10 @@ def update_collection_item(
         raise HTTPException(status_code=404, detail="Collection item not found")
 
     # Use exclude_unset so only fields explicitly sent in the request are updated.
-    # This allows null values (e.g. clearing variant or purchase_price) to be saved.
+    # Null/blank variants are normalized to Normal; purchase_price may still be cleared with null.
     update_data = update.model_dump(exclude_unset=True)
+    if "variant" in update_data:
+        update_data["variant"] = _normalize_collection_variant(update_data.get("variant"))
 
     # If lang is being changed, also update card_id to the correct language variant
     new_lang = update_data.get("lang")

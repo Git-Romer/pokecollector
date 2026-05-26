@@ -26,7 +26,7 @@ function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
         card_id: match.id,
         quantity,
         condition,
-        variant: variant || null,
+        variant,
         lang,
         purchase_price: purchasePrice ? parseFloat(purchasePrice) : undefined,
       })
@@ -121,7 +121,6 @@ function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
             <div>
               <label className="text-xs text-text-muted mb-1 block">✨ {t('card.variant')}</label>
               <select value={variant} onChange={e => setVariant(e.target.value)} className="select">
-                <option value="">{t('variants.none')}</option>
                 {CARD_VARIANTS.map(v => <option key={v} value={v}>{v}</option>)}
               </select>
             </div>

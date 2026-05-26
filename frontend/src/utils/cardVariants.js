@@ -9,12 +9,12 @@ export const getAvailableVariants = (card) => [
 
 export const getDefaultVariant = (card) => {
   // Normal availability means the safest default is the plain/non-holo card.
-  // Only auto-select a variant when there is no normal print and exactly one
-  // special variant exists, e.g. holo-only promos.
-  if (card?.variants_normal) return ''
+  if (card?.variants_normal) return 'Normal'
   const available = getAvailableVariants(card)
-  if (available.length === 1) return available[0]
-  return ''
+  // If there is no Normal print, default to a real advertised variant instead
+  // of creating an impossible Normal collection row.
+  if (available.length > 0) return available[0]
+  return 'Normal'
 }
 
-export const getDefaultVariantOrNull = (card) => getDefaultVariant(card) || null
+export const getDefaultVariantOrNull = (card) => getDefaultVariant(card)

@@ -60,7 +60,7 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
   const [createdCard, setCreatedCard] = useState(null)
   const [quantity, setQuantity] = useState(1)
   const [condition, setCondition] = useState('NM')
-  const [variant, setVariant] = useState('')
+  const [variant, setVariant] = useState('Normal')
   const [purchasePrice, setPurchasePrice] = useState('')
   const queryClient = useQueryClient()
 
@@ -171,7 +171,7 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
       card_id: createdCard.id,
       quantity,
       condition,
-      variant: variant || null,
+      variant,
       purchase_price: purchasePrice ? parseFloat(purchasePrice) : undefined,
       lang: createdCard.lang || 'en',
     })
@@ -340,7 +340,6 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
               <div>
                 <label className="text-xs text-text-muted mb-1 block">✨ {t('card.variant')}</label>
                 <select value={variant} onChange={(e) => setVariant(e.target.value)} className="select">
-                  <option value="">{t('variants.none')}</option>
                   {CARD_VARIANTS.map(v => <option key={v} value={v}>{v}</option>)}
                 </select>
               </div>
@@ -935,7 +934,6 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
               <div>
                 <label className="text-xs text-text-muted mb-1 block font-medium">✨ {t('card.variant')}</label>
                 <select value={variant} onChange={(e) => setVariant(e.target.value)} className="select">
-                  <option value="">{t('variants.none')}</option>
                   {CARD_VARIANTS.map(v => <option key={v} value={v}>{v}</option>)}
                 </select>
                 {(() => {
@@ -964,7 +962,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
               <div className="flex gap-2 pb-safe">
                 <button className="btn-primary flex-1" onClick={() => addMutation.mutate({
                   card_id: resolvedCardId, quantity, condition,
-                  variant: variant || null,
+                  variant,
                   purchase_price: purchasePrice ? parseFloat(purchasePrice) : undefined,
                   lang: card.lang || 'en',
                 })} disabled={addMutation.isPending}>

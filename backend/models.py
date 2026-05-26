@@ -145,14 +145,12 @@ class CollectionItem(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     quantity = Column(Integer, default=1)
     condition = Column(String, default="NM")  # Mint/NM/LP/MP/HP
-    variant = Column(String, nullable=True)  # Normal/Holo/Reverse Holo/Full Art/etc.
+    variant = Column(String, nullable=False, default="Normal")  # Normal/Holo/Reverse Holo/First Edition
     purchase_price = Column(Float)
     lang = Column(String, default="en")  # "en" or "de" — fixed card language
     added_at = Column(DateTime, default=func.now())
 
     card = relationship("Card", back_populates="collection_items")
-
-    __table_args__ = (UniqueConstraint("card_id", "variant", "lang", name="uq_collection_card_variant_lang"),)
 
 
 class WishlistItem(Base):
