@@ -321,7 +321,9 @@ git pull
 ./scripts/upgrade-postgres-15-to-18.sh
 ```
 
-The script stops the app services to prevent writes during the dump, creates a SQL dump from the still-running PostgreSQL 15 container, keeps a rollback copy of the old PostgreSQL 15 Docker volume, initializes a fresh PostgreSQL 18 volume using the PostgreSQL 18 Docker image layout, restores the dump, and rebuilds/starts the stack again. It asks for confirmation before changing volumes.
+The script stops the app services to prevent writes during the dump, creates a SQL dump from PostgreSQL 15, keeps a rollback copy of the old PostgreSQL 15 Docker volume, initializes a fresh PostgreSQL 18 volume using the PostgreSQL 18 Docker image layout, restores the dump, and rebuilds/starts the stack again. It asks for confirmation before changing volumes.
+
+If you accidentally run `docker compose up -d --build` before the script, the PostgreSQL 18 container refuses to start when it detects old PostgreSQL data in the existing volume. Do not delete the volume. Run `./scripts/upgrade-postgres-15-to-18.sh`; if the original PostgreSQL 15 container was already stopped, the script can dump from the existing volume through a temporary PostgreSQL 15 container.
 
 Fresh installs do not need this step. Existing installs only use the normal app update command below after this one-time PostgreSQL upgrade has completed.
 

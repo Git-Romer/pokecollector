@@ -9,6 +9,22 @@ services:
       POSTGRES_DB: pokemon_tcg
     volumes:
       - postgres_data:/var/lib/postgresql
+    command:
+      - sh
+      - -c
+      - |
+        for legacy_pg_version_file in /var/lib/postgresql/PG_VERSION /var/lib/postgresql/data/PG_VERSION; do
+          if [ -s "$${legacy_pg_version_file}" ]; then
+            legacy_pg_version="$$(cat "$${legacy_pg_version_file}")"
+            if [ "$${legacy_pg_version}" != "18" ]; then
+              echo >&2 "ERROR: Found PostgreSQL $${legacy_pg_version} data in the postgres_data volume."
+              echo >&2 "Run ./scripts/upgrade-postgres-15-to-18.sh before starting PostgreSQL 18."
+              echo >&2 "Do not delete the volume; it is needed for the upgrade/rollback path."
+              exit 1
+            fi
+          fi
+        done
+        exec docker-entrypoint.sh postgres
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U pokemon -d pokemon_tcg"]
       interval: 10s
