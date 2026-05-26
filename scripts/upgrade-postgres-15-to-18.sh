@@ -153,7 +153,7 @@ if [[ -z "${container_id}" ]]; then
   if [[ -z "${stopped_container_id}" ]]; then
     volume_name="$(find_legacy_postgres_volume)"
     if [[ -z "${volume_name}" ]]; then
-      fail "${DB_SERVICE} is not running and no PostgreSQL 15 Docker volume was found. Start the existing PostgreSQL 15 stack before running this upgrade script."
+      fail "${DB_SERVICE} is not running and no PostgreSQL 15 Docker volume was found. Start the existing PostgreSQL 15 stack before running this upgrade script. If you ran 'docker compose down -v' or removed Docker volumes, restore from your manual backup."
     fi
   else
     if ! docker inspect "${stopped_container_id}" >/dev/null 2>&1; then

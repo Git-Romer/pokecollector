@@ -314,7 +314,7 @@ Create or verify a manual backup first while your current PostgreSQL 15 stack is
 docker compose exec postgres pg_dump -U pokemon pokemon_tcg > backup_$(date +%Y%m%d).sql
 ```
 
-Then pull the updated project files, but do not run the normal `docker compose up -d --build` command yet:
+Then pull the updated project files, but do not run the normal `docker compose up -d --build` command yet. Also do not run `docker compose down -v` or remove Docker volumes before the upgrade script finishes; that deletes the old database volume and leaves only your manual backup as the recovery path.
 
 ```bash
 git pull
