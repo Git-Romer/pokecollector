@@ -793,7 +793,7 @@ export default function Settings() {
                   TCGdex ↗
                 </a>
               </SettingsRow>
-              <SettingsRow label={t('settings.sourceCode')} description={t('settings.sourceCodeDesc')} last>
+              <SettingsRow label={t('settings.sourceCode')} description={t('settings.sourceCodeDesc')}>
                 <a
                   href="https://github.com/Git-Romer/pokecollector"
                   target="_blank"
@@ -803,10 +803,28 @@ export default function Settings() {
                   GitHub ↗
                 </a>
               </SettingsRow>
+              <SettingsRow label={t('settings.creatorWebsite')} description={t('settings.creatorWebsiteDesc')}>
+                <a
+                  href="https://romerg.de/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs font-semibold text-brand-red hover:opacity-80 transition-opacity"
+                >
+                  romerg.de ↗
+                </a>
+              </SettingsRow>
+              <SettingsRow label={t('settings.contact')} description={t('settings.contactDesc')} last>
+                <a
+                  href="mailto:info@romerg.de"
+                  className="text-xs font-semibold text-brand-red hover:opacity-80 transition-opacity"
+                >
+                  info@romerg.de
+                </a>
+              </SettingsRow>
             </SettingsCard>
             <div className="text-center mt-4 mb-2">
               <p className="text-[11px] text-text-muted">
-                {t('settings.madeWith')} <a href="https://de.linkedin.com/in/gilles-romer" target="_blank" rel="noreferrer" className="text-brand-red hover:opacity-80 transition-opacity font-semibold">Gilles Romer</a>
+                {t('settings.madeWith')} <a href="https://romerg.de/" target="_blank" rel="noreferrer" className="text-brand-red hover:opacity-80 transition-opacity font-semibold">Gilles Romer</a>
               </p>
             </div>
           </section>
