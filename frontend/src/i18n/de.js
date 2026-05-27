@@ -369,6 +369,8 @@ const de = {
     clearIcon: 'Icon entfernen',
     card: 'Karte',
     cards: 'Karten',
+    uniqueCard: 'einzigartige Karte',
+    uniqueCards: 'einzigartige Karten',
     created: 'Binder erstellt!',
     updated: 'Binder aktualisiert!',
     deleted: 'Binder gelöscht!',

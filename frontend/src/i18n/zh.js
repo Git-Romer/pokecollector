@@ -369,6 +369,8 @@ const zh = {
     clearIcon: '清除图标',
     card: '张卡牌',
     cards: '张卡牌',
+    uniqueCard: '种不同卡牌',
+    uniqueCards: '种不同卡牌',
     created: '活页夹创建成功！',
     updated: '活页夹更新成功！',
     deleted: '活页夹删除成功！',
