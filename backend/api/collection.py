@@ -8,6 +8,7 @@ from models import CollectionItem, Card, Set, User
 from schemas import CollectionItemCreate, CollectionItemUpdate, CollectionItemResponse, BulkCollectionAddRequest, BulkCollectionAddResponse
 from services import pokemon_api
 from services.card_fallbacks import apply_cross_language_fallbacks, build_missing_language_card
+from services.card_numbers import card_number_matches
 from services.card_values import effective_market_price, normalize_price_field
 import datetime
 import csv
@@ -197,18 +198,15 @@ def _find_card_by_code(db: Session, set_code: str, card_number: str, lang: str) 
 
     tcg_set_ids = list({s.tcg_set_id or s.id for s in set_objs})
 
-    def query_card(number: str) -> Optional[Card]:
-        return db.query(Card).filter(
+    def query_card() -> Optional[Card]:
+        candidates = db.query(Card).filter(
             Card.set_id.in_(tcg_set_ids),
-            Card.number == number,
             Card.lang == lang,
             Card.is_custom.is_(False),
-        ).order_by(Card.id.asc()).first()
+        ).order_by(Card.id.asc()).all()
+        return next((card for card in candidates if card_number_matches(card.number, card_number)), None)
 
-    card = query_card(card_number)
-    stripped_number = card_number.lstrip("0") or "0"
-    if not card and stripped_number != card_number:
-        card = query_card(stripped_number)
+    card = query_card()
     if card:
         return card
 
@@ -230,9 +228,7 @@ def _find_card_by_code(db: Session, set_code: str, card_number: str, lang: str) 
             logger.exception("Failed to cache cards for CSV import set_id=%s lang=%s", tcg_set_id, lang)
             db.rollback()
 
-    card = query_card(card_number)
-    if not card and stripped_number != card_number:
-        card = query_card(stripped_number)
+    card = query_card()
     if not card:
         raise ValueError(f"card '{set_code} {card_number}' was not found for lang '{lang}'")
     return card

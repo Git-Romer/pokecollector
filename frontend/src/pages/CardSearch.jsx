@@ -8,6 +8,7 @@ import { useSettings } from '../contexts/SettingsContext'
 import Sheet from '../components/ui/Sheet'
 import CardScanner from '../components/CardScanner'
 import { getDefaultVariantOrNull } from '../utils/cardVariants'
+import { cardNumberMatches } from '../utils/cardNumbers'
 import { useTilt } from '../hooks/useTilt'
 
 function TiltCardWrapper({ children, className, onClick }) {
@@ -250,13 +251,7 @@ export default function CardSearch() {
         matchingSet?.tcg_set_id,
         matchingSet?.id,
       ].some((value) => value?.toLowerCase() === normalizedSetCode)
-      const cardNumber = card.number ?? ''
-      const numberMatches = (
-        cardNumber === rawNumber ||
-        (cardNumber.replace(/^0+/, '') || '0') === normalizedNumber
-      )
-
-      return setMatches && numberMatches
+      return setMatches && cardNumberMatches(card.number, normalizedNumber)
     })
   }, [allSets, filters.name, recentCustomCards])
 

@@ -7,6 +7,7 @@ import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
 import { useTilt } from '../hooks/useTilt'
 import { resolveCardImageUrl } from '../utils/imageUrl'
+import { cardNumberMatches } from '../utils/cardNumbers'
 
 const SPRITE_BASE_URL = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated'
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
@@ -168,15 +169,14 @@ export default function BinderDetail() {
       if (!q) return true
       const nameMatch = card.name?.toLowerCase().includes(q)
       const setMatch = card.set_ref?.name?.toLowerCase().includes(q)
-      const numberMatch = card.number?.toString() === q
+      const numberMatch = cardNumberMatches(card.number, q)
       const codeMatch = /^([A-Za-z]+\d*)\s+(\d+)$/.exec(q)
       let shortcodeMatch = false
       if (codeMatch) {
         const [, setCode, num] = codeMatch
         const normalizedNum = String(parseInt(num, 10))
-        const cardNum = (card.number || '').toString().replace(/^0+/, '') || '0'
         shortcodeMatch = [card.set_ref?.abbreviation, card.set_id, card.set_ref?.tcg_set_id]
-          .some(value => value?.toLowerCase() === setCode) && cardNum === normalizedNum
+          .some(value => value?.toLowerCase() === setCode) && cardNumberMatches(card.number, normalizedNum)
       }
       return nameMatch || setMatch || numberMatch || shortcodeMatch
     }).slice(0, 24)

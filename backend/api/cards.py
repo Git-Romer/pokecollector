@@ -16,6 +16,7 @@ from services.card_fallbacks import (
 )
 from services.card_upsert import upsert_card
 from services.image_url_security import validate_public_https_image_url
+from services.card_numbers import card_number_matches
 import datetime
 import re
 from uuid import uuid4
@@ -173,20 +174,16 @@ def _search_by_code_number(
     # Collect unique TCGdex set IDs
     tcg_set_ids = list({s.tcg_set_id or s.id for s in set_objs})
 
-    # 2. Look for cards in DB matching any of those set IDs and the given number
-    lang_filters = [Card.set_id.in_(tcg_set_ids), Card.number == card_number]
-    if lang != "all":
-        lang_filters.append(Card.lang == lang)
-    cards = db.query(Card).filter(*lang_filters).all()
+    def query_matching_cards() -> list[Card]:
+        filters = [Card.set_id.in_(tcg_set_ids)]
+        if lang != "all":
+            filters.append(Card.lang == lang)
+        candidates = db.query(Card).filter(*filters).order_by(Card.id.asc()).all()
+        return [card for card in candidates if card_number_matches(card.number, card_number)]
 
-    # Also try without leading zeros (e.g. "022" → "22")
-    if not cards:
-        card_number_stripped = card_number.lstrip("0") or "0"
-        if card_number_stripped != card_number:
-            stripped_filters = [Card.set_id.in_(tcg_set_ids), Card.number == card_number_stripped]
-            if lang != "all":
-                stripped_filters.append(Card.lang == lang)
-            cards = db.query(Card).filter(*stripped_filters).all()
+    # 2. Look for cards in DB matching any of those set IDs and the given number.
+    # Numeric card numbers are compared without leading zeros so 44 and 044 match.
+    cards = query_matching_cards()
 
     # 3. Card not in DB — fetch from TCGdex and cache. If the requested
     # language has only set metadata but no cards yet, create target-language
@@ -225,17 +222,7 @@ def _search_by_code_number(
                     except Exception:
                         db.rollback()
 
-        lang_filters = [Card.set_id.in_(tcg_set_ids), Card.number == card_number]
-        if lang != "all":
-            lang_filters.append(Card.lang == lang)
-        cards = db.query(Card).filter(*lang_filters).all()
-        if not cards:
-            card_number_stripped = card_number.lstrip("0") or "0"
-            if card_number_stripped != card_number:
-                stripped_filters = [Card.set_id.in_(tcg_set_ids), Card.number == card_number_stripped]
-                if lang != "all":
-                    stripped_filters.append(Card.lang == lang)
-                cards = db.query(Card).filter(*stripped_filters).all()
+        cards = query_matching_cards()
 
     if not cards:
         return {"data": [], "total_count": 0, "page": page, "page_size": page_size}
