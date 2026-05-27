@@ -369,6 +369,8 @@ const en = {
     clearIcon: 'Clear icon',
     card: 'card',
     cards: 'cards',
+    uniqueCard: 'unique card',
+    uniqueCards: 'unique cards',
     created: 'Binder created!',
     updated: 'Binder updated!',
     deleted: 'Binder deleted!',

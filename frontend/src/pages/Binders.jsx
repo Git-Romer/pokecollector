@@ -212,6 +212,9 @@ export default function Binders() {
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {binders.map((binder) => {
             const isWishlist = binder.binder_type === 'wishlist'
+            const totalCount = binder.card_count || 0
+            const uniqueCount = binder.unique_card_count || 0
+            const showUniqueCount = uniqueCount > 0 && uniqueCount !== totalCount
             return (
               <div key={binder.id}>
                 {editingId === binder.id ? (
@@ -251,8 +254,13 @@ export default function Binders() {
                         <p className="text-xs text-yellow mt-1">{binder.format}</p>
                       )}
                       <p className="text-sm text-text-secondary mt-2">
-                        {binder.card_count} {binder.card_count === 1 ? t('binders.card') : t('binders.cards')}
+                        {totalCount} {totalCount === 1 ? t('binders.card') : t('binders.cards')}
                       </p>
+                      {showUniqueCount && (
+                        <p className="text-xs text-text-muted mt-0.5">
+                          {uniqueCount} {uniqueCount === 1 ? t('binders.uniqueCard') : t('binders.uniqueCards')}
+                        </p>
+                      )}
                     </div>
 
                     <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

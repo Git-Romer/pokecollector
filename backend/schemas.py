@@ -243,6 +243,7 @@ class BinderResponse(BaseModel):
     icon_pokemon_id: Optional[int] = None
     created_at: Optional[datetime] = None
     card_count: int = 0
+    unique_card_count: int = 0
 
     class Config:
         from_attributes = True

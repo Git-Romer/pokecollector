@@ -410,7 +410,7 @@ export default function BinderDetail() {
             </span>
           </div>
           {binder?.description && <p className="text-sm text-text-secondary mt-1">{binder.description}</p>}
-          <p className="text-xs text-text-muted mt-1">{cards.length} {t('binderTypes.cards')}</p>
+          <p className="text-xs text-text-muted mt-1">{totalCount} {t('binderTypes.cards')}</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button onClick={() => setShowSearch(!showSearch)} className="btn-primary flex-shrink-0">

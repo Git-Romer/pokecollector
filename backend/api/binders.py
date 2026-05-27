@@ -67,7 +67,18 @@ def _collection_binder_usage_counts(db: Session, current_user: User) -> dict[int
     )
 
 
-def _binder_response(binder: Binder, card_count: int = 0) -> BinderResponse:
+def _binder_counts(db: Session, binder: Binder) -> tuple[int, int]:
+    binder_type = binder.binder_type or "collection"
+    base_query = db.query(BinderCard).filter(BinderCard.binder_id == binder.id)
+    unique_count = base_query.with_entities(func.count(func.distinct(BinderCard.card_id))).scalar() or 0
+    if binder_type == "collection":
+        total_count = base_query.with_entities(func.count(BinderCard.id)).scalar() or 0
+    else:
+        total_count = base_query.with_entities(func.coalesce(func.sum(func.coalesce(BinderCard.required_quantity, 1)), 0)).scalar() or 0
+    return int(total_count), int(unique_count)
+
+
+def _binder_response(binder: Binder, card_count: int = 0, unique_card_count: int = 0) -> BinderResponse:
     return BinderResponse(
         id=binder.id,
         name=binder.name,
@@ -78,6 +89,7 @@ def _binder_response(binder: Binder, card_count: int = 0) -> BinderResponse:
         icon_pokemon_id=binder.icon_pokemon_id,
         created_at=binder.created_at,
         card_count=card_count,
+        unique_card_count=unique_card_count,
     )
 
 
@@ -365,8 +377,8 @@ def get_binders(
     ).order_by(Binder.created_at.desc()).all()
     result = []
     for binder in binders:
-        count = db.query(BinderCard).filter(BinderCard.binder_id == binder.id).count()
-        result.append(_binder_response(binder, count))
+        total_count, unique_count = _binder_counts(db, binder)
+        result.append(_binder_response(binder, total_count, unique_count))
     return result
 
 
@@ -429,8 +441,8 @@ def update_binder(
 
     db.commit()
     db.refresh(binder)
-    count = db.query(BinderCard).filter(BinderCard.binder_id == binder_id).count()
-    return _binder_response(binder, count)
+    total_count, unique_count = _binder_counts(db, binder)
+    return _binder_response(binder, total_count, unique_count)
 
 
 @router.delete("/{binder_id}")
