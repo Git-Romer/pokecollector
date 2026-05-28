@@ -52,6 +52,33 @@ export const forceChangePassword = (newPassword) => api.put('/auth/me/force-pass
 export const changeAvatar = (avatarId) => api.put('/auth/me/avatar', { avatar_id: avatarId }).then(r => r.data)
 export const changeUsername = (username) => api.put('/auth/me/username', { username }).then(r => r.data)
 
+
+const formatApiErrorDetail = (detail) => {
+  if (!detail) return ''
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    return detail.map(formatApiErrorDetail).filter(Boolean).join('; ')
+  }
+  if (typeof detail === 'object') {
+    const message = detail.msg || detail.message || detail.detail
+    const loc = Array.isArray(detail.loc)
+      ? detail.loc.filter(part => part !== 'body').join('.')
+      : ''
+    if (message) return loc ? `${loc}: ${formatApiErrorDetail(message)}` : formatApiErrorDetail(message)
+    try {
+      return JSON.stringify(detail)
+    } catch {
+      return ''
+    }
+  }
+  return String(detail)
+}
+
+export const getApiErrorMessage = (error, fallback = 'Request failed') => {
+  const detail = error?.response?.data?.detail ?? error?.response?.data?.message ?? error?.message
+  return formatApiErrorDetail(detail) || fallback
+}
+
 // Cards
 export const searchCards = (params) => api.get('/cards/search', { params })
 export const getCard = (id) => api.get(`/cards/${id}`)
@@ -86,7 +113,9 @@ export const bulkAddToCollection = (items) => api.post('/collection/bulk-add', {
 export const importCollectionCsv = (file) => {
   const formData = new FormData()
   formData.append('file', file)
-  return api.post('/collection/import-csv', formData).then(r => r.data)
+  return api.post('/collection/import-csv', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }).then(r => r.data)
 }
 export const updateCollectionItem = (id, data) => api.put(`/collection/${id}`, data)
 export const removeFromCollection = (id) => api.delete(`/collection/${id}`)
@@ -125,7 +154,9 @@ export const removeBinderEntry = (binderId, binderCardId) => api.delete(`/binder
 export const importBinderCsv = (binderId, file) => {
   const formData = new FormData()
   formData.append('file', file)
-  return api.post(`/binders/${binderId}/import-csv`, formData).then(r => r.data)
+  return api.post(`/binders/${binderId}/import-csv`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }).then(r => r.data)
 }
 export const exportBinderCsv = (binderId) => {
   const token = localStorage.getItem('token')

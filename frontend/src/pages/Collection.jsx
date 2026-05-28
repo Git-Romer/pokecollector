@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Trash2, Check, X, Filter, SortAsc, Download, Upload, ChevronUp, ChevronDown, Search, PenLine, Grid2X2, List, Library, BookOpen, Heart, Copy, ArrowLeft } from 'lucide-react'
-import { getCollection, updateCollectionItem, updateCardCustomImage, removeFromCollection, importCollectionCsv, exportCSV, exportPDF, getSets, addToCollection, getBinders, addCollectionItemToBinder } from '../api/client'
+import { getCollection, updateCollectionItem, updateCardCustomImage, removeFromCollection, importCollectionCsv, exportCSV, exportPDF, getSets, addToCollection, getBinders, addCollectionItemToBinder, getApiErrorMessage } from '../api/client'
 import { CustomCardModal } from '../components/CardItem'
 import { useSettings } from '../contexts/SettingsContext'
 import CardImage from '../components/CardImage'
@@ -777,8 +777,7 @@ export default function Collection() {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
     },
     onError: (err) => {
-      const detail = err?.response?.data?.detail || t('collection.csvImportFailed')
-      toast.error(detail)
+      toast.error(getApiErrorMessage(err, t('collection.csvImportFailed')))
     },
     onSettled: () => {
       if (csvImportInputRef.current) csvImportInputRef.current.value = ''

@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Plus, Trash2, Package, Star, Download, Upload, X, Heart, Minus } from 'lucide-react'
-import { getBinderCards, removeCardFromBinder, removeBinderEntry, addCardToBinder, addCollectionItemToBinder, searchCards, getCollection, updateBinderEntry, getBinderEntryEquivalentPrints, getBinderPrintOptimization, applyBinderPrintOptimization, switchBinderEntryCard, addBinderEntryToWishlist, addBinderCardsToWishlist, importBinderCsv, exportBinderCsv } from '../api/client'
+import { getBinderCards, removeCardFromBinder, removeBinderEntry, addCardToBinder, addCollectionItemToBinder, searchCards, getCollection, updateBinderEntry, getBinderEntryEquivalentPrints, getBinderPrintOptimization, applyBinderPrintOptimization, switchBinderEntryCard, addBinderEntryToWishlist, addBinderCardsToWishlist, importBinderCsv, exportBinderCsv, getApiErrorMessage } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
 import { useTilt } from '../hooks/useTilt'
@@ -282,7 +282,7 @@ export default function BinderDetail() {
       queryClient.invalidateQueries({ queryKey: ['binders'] })
       setShowCsvImportModal(false)
     },
-    onError: (e) => toast.error(e.response?.data?.detail || 'CSV import failed'),
+    onError: (e) => toast.error(getApiErrorMessage(e, 'CSV import failed')),
   })
 
   const exportMutation = useMutation({
