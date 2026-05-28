@@ -276,8 +276,12 @@ export default function BinderDetail() {
   const importMutation = useMutation({
     mutationFn: (file) => importBinderCsv(parseInt(binderId), file),
     onSuccess: (result) => {
-      toast.success(`CSV: ${result.added} added, ${result.updated} updated${result.skipped ? `, ${result.skipped} skipped` : ''}${result.failed ? `, ${result.failed} failed` : ''}`)
-      if (result.errors?.length) console.warn('Binder CSV import errors', result.errors)
+      const message = `CSV: ${result.added} added, ${result.updated} updated${result.skipped ? `, ${result.skipped} skipped` : ''}${result.failed ? `, ${result.failed} failed` : ''}`
+      if (result.failed > 0 && result.errors?.length) {
+        toast.error(`${message}: ${result.errors.slice(0, 2).join('; ')}`)
+      } else {
+        toast.success(message)
+      }
       queryClient.invalidateQueries({ queryKey: ['binder-cards', binderId] })
       queryClient.invalidateQueries({ queryKey: ['binders'] })
       setShowCsvImportModal(false)
