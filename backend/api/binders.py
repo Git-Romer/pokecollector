@@ -13,6 +13,7 @@ from services import pokemon_api
 from services.card_fallbacks import apply_cross_language_fallbacks
 from services.card_upsert import upsert_card
 from services.card_values import effective_market_price, normalize_price_field
+from services.binder_csv import combine_binder_required_quantity
 import datetime
 import csv
 import io
@@ -1256,7 +1257,7 @@ async def import_binder_csv(
     row_count = 0
     binder_type = binder.binder_type or "collection"
     validated_rows = []
-    planned_card_ids = set()
+    planned_card_rows: dict[str, dict] = {}
     collection_item_usage_counts = _collection_binder_usage_counts(db, current_user)
     current_binder_collection_item_ids = {
         item_id for (item_id,) in db.query(BinderCard.collection_item_id)
@@ -1327,19 +1328,29 @@ async def import_binder_csv(
                 validated_rows.append({"action": "add_collection_item", "item": item_to_add})
                 continue
 
+            planned_row = planned_card_rows.get(card.id)
+            if planned_row:
+                try:
+                    planned_row["required_quantity"] = combine_binder_required_quantity(
+                        planned_row["required_quantity"],
+                        required_quantity,
+                    )
+                except ValueError as exc:
+                    failed += 1
+                    errors.append(f"row {row_number}: {str(exc)}")
+                continue
+
             existing = db.query(BinderCard).filter(
                 BinderCard.binder_id == binder_id,
                 BinderCard.card_id == card.id,
                 BinderCard.collection_item_id.is_(None),
             ).first()
             if existing:
-                validated_rows.append({"action": "update", "entry": existing, "required_quantity": required_quantity})
+                planned_row = {"action": "update", "entry": existing, "required_quantity": required_quantity}
             else:
-                if card.id in planned_card_ids:
-                    skipped += 1
-                    continue
-                planned_card_ids.add(card.id)
-                validated_rows.append({"action": "add_card", "card": card, "required_quantity": required_quantity})
+                planned_row = {"action": "add_card", "card": card, "required_quantity": required_quantity}
+            planned_card_rows[card.id] = planned_row
+            validated_rows.append(planned_row)
         except Exception:
             db.rollback()
             failed += 1
