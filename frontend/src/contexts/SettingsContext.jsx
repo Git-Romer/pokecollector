@@ -41,22 +41,37 @@ export function SettingsProvider({ children }) {
       })
   }, [])
 
-  // Fetch exchange rates for selected-currency display. Most app prices are
-  // stored in EUR; TCGPlayer prices are stored in USD and need the inverse path.
+  // Fetch exchange rates through the backend to avoid browser CORS/redirect issues.
+  // Most app prices are stored in EUR; TCGPlayer prices are stored in USD and need the inverse path.
   useEffect(() => {
+    const fetchExchangeRate = async (from, to, fallback) => {
+      const token = localStorage.getItem('token')
+      if (!token) return fallback
+      try {
+        const response = await fetch(`/api/settings/exchange-rate?from=${from}&to=${to}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (!response.ok) throw new Error('Exchange rate lookup failed')
+        const data = await response.json()
+        return Number(data.rate) || fallback
+      } catch {
+        return fallback
+      }
+    }
+
     const curr = settings.currency || 'EUR'
+    let cancelled = false
     if (curr === 'USD') {
-      fetch('https://api.frankfurter.app/latest?from=EUR&to=USD')
-        .then(r => r.json())
-        .then(data => setExchangeRate(data.rates?.USD || 1.1))
-        .catch(() => setExchangeRate(1.1))
+      fetchExchangeRate('EUR', 'USD', 1.1).then(rate => {
+        if (!cancelled) setExchangeRate(rate)
+      })
     } else {
       setExchangeRate(1.0)
-      fetch('https://api.frankfurter.app/latest?from=USD&to=EUR')
-        .then(r => r.json())
-        .then(data => setUsdToEurRate(data.rates?.EUR || 0.91))
-        .catch(() => setUsdToEurRate(0.91))
+      fetchExchangeRate('USD', 'EUR', 0.91).then(rate => {
+        if (!cancelled) setUsdToEurRate(rate)
+      })
     }
+    return () => { cancelled = true }
   }, [settings.currency])
 
   // Update one or more settings

@@ -1,12 +1,20 @@
 import logging
 import os
-from fastapi import APIRouter, Depends, HTTPException
+
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from api.auth import get_current_user
 from sqlalchemy.orm import Session
 from database import get_db
 from models import Setting, UserSetting, User
 from services.debug_logging import configure_debug_logging, get_debug_log_path
+from services.exchange_rates import (
+    ExchangeRateError,
+    fallback_exchange_rate,
+    normalize_currency_pair,
+    parse_frankfurter_rate,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -165,6 +173,36 @@ def get_telegram_status(db: Session = Depends(get_db), current_user: User = Depe
     token = settings.get("telegram_bot_token", "")
     chat_id = settings.get("telegram_chat_id", "")
     return {"configured": bool(token and chat_id)}
+
+
+@router.get("/exchange-rate")
+def get_exchange_rate(
+    from_currency: str = Query(alias="from"),
+    to_currency: str = Query(alias="to"),
+    _current_user: User = Depends(get_current_user),
+):
+    try:
+        source, target = normalize_currency_pair(from_currency, to_currency)
+    except ExchangeRateError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+
+    fallback_rate = fallback_exchange_rate(source, target)
+    if source == target:
+        return {"from": source, "to": target, "rate": fallback_rate, "fallback": False}
+
+    try:
+        response = httpx.get(
+            "https://api.frankfurter.dev/v1/latest",
+            params={"from": source, "to": target},
+            timeout=8,
+            follow_redirects=True,
+        )
+        response.raise_for_status()
+        rate = parse_frankfurter_rate(response.json(), target)
+        return {"from": source, "to": target, "rate": rate, "fallback": False}
+    except Exception as exc:
+        logger.warning("Failed to fetch exchange rate %s to %s: %s", source, target, exc)
+        return {"from": source, "to": target, "rate": fallback_rate, "fallback": True}
 
 
 @router.get("/{key}")
