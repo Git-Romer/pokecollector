@@ -704,6 +704,7 @@ export default function Settings() {
                     { value: 'de', label: '🇩🇪 DE' },
                     { value: 'en', label: '🇬🇧 EN' },
                     { value: 'zh', label: '🇨🇳 中文' },
+                    { value: 'sv', label: '🇸🇪 SV' },
                   ]}
                   onChange={handleLanguageChange}
                 />

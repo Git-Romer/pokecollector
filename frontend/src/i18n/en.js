@@ -501,6 +501,7 @@ const en = {
     languageDE: 'Deutsch',
     languageEN: 'English',
     languageZH: 'Simplified Chinese',
+    languageSV: 'Swedish',
     priceDisplay: 'Price Display',
     priceDisplayLabel: 'Displayed Cardmarket Prices',
     pricePrimary: 'Primary Price (for value calculation)',

@@ -2,9 +2,10 @@ import { createContext, useContext, useState, useEffect, useCallback } from 'rea
 import de from '../i18n/de'
 import en from '../i18n/en'
 import zh from '../i18n/zh'
+import sv from '../i18n/sv'
 import { priceFieldFromPrimary } from '../utils/prices'
 
-const translations = { de, en, zh }
+const translations = { de, en, zh, sv }
 
 const DEFAULT_SETTINGS = {
   language: 'de',
