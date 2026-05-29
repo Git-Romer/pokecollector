@@ -22,36 +22,11 @@ from sqlalchemy.orm import Session
 
 from models import Card, Setting
 from services import pokemon_api
+from services.price_utils import PRICE_FIELDS, has_valid_price, is_valid_price
 
 logger = logging.getLogger(__name__)
 
 SUPPORTED_LANGS = {"en", "de"}
-PRICE_FIELDS = (
-    "price_market",
-    "price_low",
-    "price_mid",
-    "price_high",
-    "price_trend",
-    "price_avg1",
-    "price_avg7",
-    "price_avg30",
-    "price_market_holo",
-    "price_low_holo",
-    "price_trend_holo",
-    "price_avg1_holo",
-    "price_avg7_holo",
-    "price_avg30_holo",
-    "price_tcg_normal_low",
-    "price_tcg_normal_mid",
-    "price_tcg_normal_high",
-    "price_tcg_normal_market",
-    "price_tcg_reverse_low",
-    "price_tcg_reverse_mid",
-    "price_tcg_reverse_market",
-    "price_tcg_holo_low",
-    "price_tcg_holo_mid",
-    "price_tcg_holo_market",
-)
 IMAGE_FIELDS = ("images_small", "images_large")
 CARD_COPY_FIELDS = (
     "tcg_card_id",
@@ -105,7 +80,7 @@ def other_supported_lang(lang: Optional[str]) -> Optional[str]:
 
 
 def _has_price(data: dict) -> bool:
-    return any(data.get(field) is not None for field in PRICE_FIELDS)
+    return has_valid_price(data)
 
 
 def _has_image(data: dict) -> bool:
@@ -114,6 +89,9 @@ def _has_image(data: dict) -> bool:
 
 def _card_to_data(card: Card) -> dict:
     data = {field: getattr(card, field, None) for field in (*PRICE_FIELDS, *IMAGE_FIELDS)}
+    for field in PRICE_FIELDS:
+        if not is_valid_price(data.get(field)):
+            data[field] = None
     # Do not cascade fallback data. A card may only borrow native data from its
     # sibling language, never data that was itself borrowed from somewhere else.
     if getattr(card, "price_source_lang", None):

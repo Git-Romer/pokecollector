@@ -1,7 +1,7 @@
 {
   "name": "pokemon-tcg-collection",
   "private": true,
-  "version": "1.20.11",
+  "version": "1.20.12",
   "type": "module",
   "scripts": {
     "dev": "vite",

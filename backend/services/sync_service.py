@@ -6,9 +6,10 @@ from sqlalchemy.orm import Session, load_only
 from sqlalchemy import func, or_
 from models import Card, Set, CollectionItem, WishlistItem, BinderCard, PriceHistory, SyncLog, PortfolioSnapshot, CustomCardMatch, Setting, ProductPurchase, User, UserSetting
 from services import pokemon_api, telegram
-from services.card_fallbacks import PRICE_FIELDS, apply_cross_language_fallbacks, build_missing_language_cards_for_set
+from services.card_fallbacks import apply_cross_language_fallbacks, build_missing_language_cards_for_set
 from services.card_upsert import upsert_card
 from services.card_values import effective_market_price, normalize_price_field
+from services.price_utils import PRICE_FIELDS, has_valid_price
 
 logger = logging.getLogger(__name__)
 
@@ -31,12 +32,7 @@ def _user_price_field(db: Session, user_id: int | None) -> str:
 
 
 def _has_any_price(card: Card | Mapping[str, Any]) -> bool:
-    if isinstance(card, Mapping):
-        return any(card.get(field) is not None for field in PRICE_FIELDS)
-    return any(
-        getattr(card, field, None) is not None
-        for field in PRICE_FIELDS
-    )
+    return has_valid_price(card)
 
 
 def _price_debug_snapshot(data) -> dict:
