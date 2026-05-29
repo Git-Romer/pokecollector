@@ -6,7 +6,7 @@ import os
 
 import httpx
 
-from services.supporters import parse_supporters_csv
+from services.supporters import parse_rescue_donations_csv, parse_supporters_csv
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 REPO = "Git-Romer/pokecollector"
 GITHUB_API = "https://api.github.com"
 SUPPORTERS_CSV_URL = f"https://raw.githubusercontent.com/{REPO}/main/SUPPORTERS.csv"
+RESCUE_DONATIONS_CSV_URL = f"https://raw.githubusercontent.com/{REPO}/main/RESCUE_DONATIONS.csv"
 CONTRIBUTORS_CSV_URL = f"https://raw.githubusercontent.com/{REPO}/main/CONTRIBUTORS.csv"
 
 
@@ -114,3 +115,16 @@ async def get_supporters():
     except Exception as exc:
         logger.warning("Failed to fetch supporters: %s", exc)
         return []
+
+
+@router.get("/rescue-donations")
+async def get_rescue_donations():
+    """Fetch actual animal rescue donation batches from RESCUE_DONATIONS.csv."""
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(RESCUE_DONATIONS_CSV_URL)
+            resp.raise_for_status()
+            return parse_rescue_donations_csv(resp.text)
+    except Exception as exc:
+        logger.warning("Failed to fetch rescue donations: %s", exc)
+        return parse_rescue_donations_csv("")

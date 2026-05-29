@@ -402,6 +402,12 @@ https://ko-fi.com/gillesromer
 
 All donations go to an animal rescue organization. Supporters listed through Ko-fi can appear in the in-app Community section.
 
+<!-- rescue-donation-total:start -->
+**Animal rescue donations sent so far:** €0.00
+<!-- rescue-donation-total:end -->
+
+Actual transfers to rescue organizations are tracked separately from supporter tips in `RESCUE_DONATIONS.csv`, because donations are sent in batches. After updating that CSV, run `node scripts/update-rescue-donation-total.mjs` to refresh this README total.
+
 ---
 
 ## 📝 License

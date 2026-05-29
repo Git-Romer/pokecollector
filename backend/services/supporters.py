@@ -36,6 +36,48 @@ def _supporter_url_key(url: str | None) -> str | None:
     return cleaned or None
 
 
+def parse_rescue_donations_csv(text: str) -> dict:
+    """Parse actual animal rescue donation batches and return public totals."""
+    reader = csv.DictReader(io.StringIO(text))
+    total_amount = Decimal("0")
+    donation_count = 0
+    currency = "EUR"
+    donations = []
+
+    for row in reader:
+        amount = _parse_supporter_amount(row.get("amount"))
+        if amount <= 0:
+            continue
+
+        row_currency = (row.get("currency") or "EUR").strip().upper() or "EUR"
+        donation = {
+            "date": _clean_supporter_date(row.get("date")),
+            "amount": float(amount),
+            "currency": row_currency,
+            "organization": (row.get("organization") or "").strip() or None,
+            "url": (row.get("url") or "").strip() or None,
+            "note": (row.get("note") or "").strip() or None,
+        }
+        total_amount += amount
+        donation_count += 1
+        donations.append(donation)
+        if donation_count == 1:
+            currency = row_currency
+        elif currency != row_currency:
+            currency = "MIXED"
+
+    donations.sort(key=lambda donation: donation["date"] or "", reverse=True)
+    dated_donations = [donation["date"] for donation in donations if donation["date"]]
+
+    return {
+        "total_amount": float(total_amount),
+        "currency": currency,
+        "donation_count": donation_count,
+        "latest_donation_at": max(dated_donations) if dated_donations else None,
+        "donations": donations,
+    }
+
+
 def parse_supporters_csv(text: str) -> list[dict]:
     """Parse timeline donation rows and return supporter leaderboard entries."""
     reader = csv.DictReader(io.StringIO(text))

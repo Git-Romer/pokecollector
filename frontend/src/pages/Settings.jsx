@@ -7,7 +7,7 @@ import {
   downloadBackup, restoreBackup, exportCSV,
   getSetting, setSetting, getTelegramStatus, saveSettings, setAuthMode,
   getUsers, createUser, updateUser, deleteUser, changePassword, changeAvatar, changeUsername,
-  getContributors, getSupporters, getCustomMatches, downloadDebugLog,
+  getContributors, getSupporters, getRescueDonations, getCustomMatches, downloadDebugLog,
 } from '../api/client'
 import api from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
@@ -256,6 +256,26 @@ function SupporterCard({ supporter, t }) {
   return <div className="min-w-[180px] flex-1 max-w-xs">{content}</div>
 }
 
+function RescueDonationTotal({ t }) {
+  const { data: rescueDonations, isLoading } = useQuery({
+    queryKey: ['rescue-donations'],
+    queryFn: () => getRescueDonations(),
+    staleTime: 60 * 60 * 1000,
+  })
+
+  if (isLoading) {
+    return <div className="skeleton h-14 w-full max-w-xs mx-auto rounded-xl" />
+  }
+
+  return (
+    <div className="inline-flex flex-col items-center gap-1 px-4 py-2 rounded-xl bg-bg-elevated border border-border">
+      <span className="text-[10px] font-black uppercase tracking-[0.18em] text-text-muted">{t('settings.rescueDonationTotal')}</span>
+      <span className="text-lg font-black text-text-primary">{formatSupporterAmount(rescueDonations?.total_amount || 0, rescueDonations?.currency || 'EUR')}</span>
+      <span className="text-[10px] text-text-muted">{t('settings.rescueDonationBatchHint')}</span>
+    </div>
+  )
+}
+
 function SupportersSection({ t }) {
   const { data: supporters = [], isLoading } = useQuery({
     queryKey: ['supporters'],
@@ -295,6 +315,7 @@ function SupportersSection({ t }) {
     </SettingsCard>
   )
 }
+
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
@@ -1242,6 +1263,7 @@ export default function Settings() {
                 <p className="text-sm text-text-secondary">
                   {t('settings.sponsorMessage')}
                 </p>
+                <RescueDonationTotal t={t} />
                 <p className="text-xs text-text-muted">
                   {t('settings.kofiHint')}
                 </p>
