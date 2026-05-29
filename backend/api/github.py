@@ -6,6 +6,8 @@ import os
 
 import httpx
 
+from services.supporters import parse_supporters_csv
+
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
@@ -103,23 +105,12 @@ async def get_contributors():
 
 @router.get("/supporters")
 async def get_supporters():
-    """Fetch supporters list from SUPPORTERS.csv in the repo."""
+    """Fetch supporter donation timeline from SUPPORTERS.csv in the repo."""
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(SUPPORTERS_CSV_URL)
             resp.raise_for_status()
-            reader = csv.DictReader(io.StringIO(resp.text))
-            supporters = []
-            for row in reader:
-                name = (row.get("name") or "").strip()
-                if name:
-                    supporters.append(
-                        {
-                            "name": name,
-                            "url": (row.get("url") or "").strip() or None,
-                        }
-                    )
-            return supporters
+            return parse_supporters_csv(resp.text)
     except Exception as exc:
         logger.warning("Failed to fetch supporters: %s", exc)
         return []

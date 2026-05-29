@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { RefreshCw, Download, Upload, Plus, Pencil, Trash2, User, UserCheck, UserX, Zap } from 'lucide-react'
+import { Crown, RefreshCw, Download, Upload, Plus, Pencil, Trash2, User, UserCheck, UserX, Zap } from 'lucide-react'
 import {
   getSyncStatus, triggerSync, triggerPriceSync, rescheduleFullSync, reschedulePriceSync,
   downloadBackup, restoreBackup, exportCSV,
@@ -200,6 +200,62 @@ function ContributorsSection({ t }) {
   )
 }
 
+const SUPPORTER_CROWN_COLORS = {
+  gold: '#facc15',
+  silver: '#d1d5db',
+  bronze: '#fb923c',
+}
+
+const CURRENCY_SYMBOLS = {
+  EUR: '€',
+  USD: '$',
+  GBP: '£',
+}
+
+function formatSupporterAmount(amount, currency = 'EUR') {
+  const numericAmount = Number(amount || 0)
+  const safeCurrency = currency || 'EUR'
+  const formattedAmount = Number.isFinite(numericAmount) ? numericAmount.toFixed(2) : '0.00'
+  const symbol = CURRENCY_SYMBOLS[safeCurrency]
+  if (symbol) return `${symbol}${formattedAmount}`
+  return `${formattedAmount} ${safeCurrency}`
+}
+
+function SupporterCard({ supporter, t }) {
+  const content = (
+    <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-bg-elevated border border-border text-left transition-colors hover:border-brand-red/50">
+      {supporter.crown && (
+        <Crown
+          size={18}
+          fill="currentColor"
+          style={{ color: SUPPORTER_CROWN_COLORS[supporter.crown] || SUPPORTER_CROWN_COLORS.gold }}
+          aria-label={supporter.crown}
+          className="flex-shrink-0"
+        />
+      )}
+      <div className="min-w-0">
+        <p className="text-xs font-semibold text-text-primary truncate">{supporter.name}</p>
+        <p className="text-[11px] text-text-secondary">
+          {formatSupporterAmount(supporter.total_amount, supporter.currency)} · {supporter.donation_count || 0} {supporter.donation_count === 1 ? t('settings.supporterDonation') : t('settings.supporterDonations')}
+        </p>
+        {supporter.latest_supported_at && (
+          <p className="text-[10px] text-text-muted">{t('settings.latestSupport')}: {supporter.latest_supported_at}</p>
+        )}
+      </div>
+    </div>
+  )
+
+  if (supporter.url) {
+    return (
+      <a href={supporter.url} target="_blank" rel="noreferrer" className="block min-w-[180px] flex-1 max-w-xs">
+        {content}
+      </a>
+    )
+  }
+
+  return <div className="min-w-[180px] flex-1 max-w-xs">{content}</div>
+}
+
 function SupportersSection({ t }) {
   const { data: supporters = [], isLoading } = useQuery({
     queryKey: ['supporters'],
@@ -231,16 +287,8 @@ function SupportersSection({ t }) {
     <SettingsCard>
       <div className="p-4">
         <div className="flex flex-wrap gap-3 justify-center">
-          {supporters.map((s, i) => (
-            s.url ? (
-              <a key={i} href={s.url} target="_blank" rel="noreferrer" className="px-3 py-1.5 rounded-full bg-bg-elevated border border-border text-xs font-semibold text-text-secondary hover:text-brand-red hover:border-brand-red/50 transition-colors">
-                {s.name}
-              </a>
-            ) : (
-              <span key={i} className="px-3 py-1.5 rounded-full bg-bg-elevated border border-border text-xs font-semibold text-text-secondary">
-                {s.name}
-              </span>
-            )
+          {supporters.map((supporter, index) => (
+            <SupporterCard key={`${supporter.name}-${supporter.url || index}`} supporter={supporter} t={t} />
           ))}
         </div>
       </div>
