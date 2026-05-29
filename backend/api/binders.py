@@ -14,6 +14,7 @@ from services.card_fallbacks import apply_cross_language_fallbacks
 from services.card_upsert import upsert_card
 from services.card_values import effective_market_price, normalize_price_field
 from services.binder_csv import combine_binder_required_quantity
+from services.wishlist_missing import plan_missing_wishlist_additions
 import datetime
 import csv
 import io
@@ -92,6 +93,20 @@ def _binder_response(binder: Binder, card_count: int = 0, unique_card_count: int
         card_count=card_count,
         unique_card_count=unique_card_count,
     )
+
+
+def _user_collection_quantities(db: Session, current_user: User, card_ids: list[str] | None = None) -> dict[str, int]:
+    query = db.query(CollectionItem.card_id, func.coalesce(func.sum(CollectionItem.quantity), 0)).filter(
+        CollectionItem.user_id == current_user.id
+    )
+    if card_ids is not None:
+        if not card_ids:
+            return {}
+        query = query.filter(CollectionItem.card_id.in_(card_ids))
+    return {
+        card_id: int(quantity or 0)
+        for card_id, quantity in query.group_by(CollectionItem.card_id).all()
+    }
 
 
 def _ensure_card_gameplay_data(db: Session, card: Card | None) -> Card | None:
@@ -1062,7 +1077,7 @@ def add_binder_entry_to_wishlist(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Add a binder card to the user's global wishlist."""
+    """Add a binder card to the user's global wishlist if the user still needs copies."""
     binder = db.query(Binder).filter(
         Binder.id == binder_id,
         Binder.user_id == current_user.id,
@@ -1077,12 +1092,48 @@ def add_binder_entry_to_wishlist(
     if not bc:
         raise HTTPException(status_code=404, detail="Binder entry not found")
 
-    existing = db.query(WishlistItem).filter(
-        WishlistItem.card_id == bc.card_id,
-        WishlistItem.user_id == current_user.id,
-    ).first()
-    if existing:
-        return {"message": "Card already in wishlist"}
+    plan = None
+    if (binder.binder_type or "collection") == "wishlist":
+        required_quantity = _safe_required_quantity(bc.required_quantity)
+        owned_quantities = _user_collection_quantities(db, current_user, [bc.card_id])
+        existing_ids = {
+            card_id for (card_id,) in db.query(WishlistItem.card_id).filter(
+                WishlistItem.user_id == current_user.id,
+                WishlistItem.card_id == bc.card_id,
+            ).all()
+        }
+        plan = plan_missing_wishlist_additions(
+            [(bc.card_id, required_quantity)],
+            owned_quantities,
+            existing_ids,
+        )
+
+        if not plan.card_ids_to_add:
+            message = "Card already in wishlist" if plan.skipped_existing else "Card already complete in collection"
+            return {
+                "message": message,
+                "added": 0,
+                "skipped": plan.skipped,
+                "skipped_complete": plan.skipped_complete,
+                "skipped_existing": plan.skipped_existing,
+                "missing_copies": plan.missing_copies,
+            }
+    else:
+        existing = db.query(WishlistItem).filter(
+            WishlistItem.card_id == bc.card_id,
+            WishlistItem.user_id == current_user.id,
+        ).first()
+        if existing:
+            return {
+                "message": "Card already in wishlist",
+                "added": 0,
+                "skipped": 1,
+                "skipped_complete": 0,
+                "skipped_existing": 1,
+                "missing_copies": 0,
+            }
+
+    missing_copies = plan.missing_copies if plan else 0
 
     try:
         db.add(WishlistItem(
@@ -1093,8 +1144,22 @@ def add_binder_entry_to_wishlist(
         db.commit()
     except IntegrityError:
         db.rollback()
-        return {"message": "Card already in wishlist"}
-    return {"message": "Card added to wishlist"}
+        return {
+            "message": "Card already in wishlist",
+            "added": 0,
+            "skipped": 1,
+            "skipped_complete": 0,
+            "skipped_existing": 1,
+            "missing_copies": missing_copies,
+        }
+    return {
+        "message": "Card added to wishlist",
+        "added": 1,
+        "skipped": 0,
+        "skipped_complete": 0,
+        "skipped_existing": 0,
+        "missing_copies": missing_copies,
+    }
 
 
 @router.post("/{binder_id}/wishlist")
@@ -1103,7 +1168,7 @@ def add_binder_cards_to_wishlist(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Add all cards from a binder to the user's global wishlist."""
+    """Add only missing cards from a wishlist binder to the user's global wishlist."""
     binder = db.query(Binder).filter(
         Binder.id == binder_id,
         Binder.user_id == current_user.id,
@@ -1113,29 +1178,33 @@ def add_binder_cards_to_wishlist(
     if (binder.binder_type or "collection") != "wishlist":
         raise HTTPException(status_code=400, detail="Bulk wishlist add is only available for wishlist binders")
 
-    binder_cards = db.query(BinderCard.card_id).filter(BinderCard.binder_id == binder_id).all()
+    binder_cards = db.query(BinderCard.card_id, BinderCard.required_quantity).filter(BinderCard.binder_id == binder_id).all()
+    entries = []
     card_ids = []
     seen = set()
-    for (card_id,) in binder_cards:
-        if card_id and card_id not in seen:
+    for card_id, required_quantity in binder_cards:
+        if not card_id:
+            continue
+        entries.append((card_id, _safe_required_quantity(required_quantity)))
+        if card_id not in seen:
             seen.add(card_id)
             card_ids.append(card_id)
 
     if not card_ids:
-        return {"added": 0, "skipped": 0}
+        return {"added": 0, "skipped": 0, "skipped_complete": 0, "skipped_existing": 0, "missing_copies": 0, "checked": 0}
 
+    owned_quantities = _user_collection_quantities(db, current_user, card_ids)
     existing_ids = {
         card_id for (card_id,) in db.query(WishlistItem.card_id).filter(
             WishlistItem.user_id == current_user.id,
             WishlistItem.card_id.in_(card_ids),
         ).all()
     }
+    plan = plan_missing_wishlist_additions(entries, owned_quantities, existing_ids)
 
     added = 0
     try:
-        for card_id in card_ids:
-            if card_id in existing_ids:
-                continue
+        for card_id in plan.card_ids_to_add:
             db.add(WishlistItem(
                 card_id=card_id,
                 user_id=current_user.id,
@@ -1151,10 +1220,9 @@ def add_binder_cards_to_wishlist(
                 WishlistItem.card_id.in_(card_ids),
             ).all()
         }
+        plan = plan_missing_wishlist_additions(entries, owned_quantities, existing_ids)
         added = 0
-        for card_id in card_ids:
-            if card_id in existing_ids:
-                continue
+        for card_id in plan.card_ids_to_add:
             db.add(WishlistItem(
                 card_id=card_id,
                 user_id=current_user.id,
@@ -1162,7 +1230,14 @@ def add_binder_cards_to_wishlist(
             ))
             added += 1
         db.commit()
-    return {"added": added, "skipped": len(card_ids) - added}
+    return {
+        "added": added,
+        "skipped": plan.skipped,
+        "skipped_complete": plan.skipped_complete,
+        "skipped_existing": plan.skipped_existing,
+        "missing_copies": plan.missing_copies,
+        "checked": plan.checked,
+    }
 
 
 @router.get("/{binder_id}/export-csv")

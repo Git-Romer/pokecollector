@@ -257,8 +257,14 @@ export default function BinderDetail() {
 
   const wishlistMutation = useMutation({
     mutationFn: (binderCardId) => addBinderEntryToWishlist(parseInt(binderId), binderCardId),
-    onSuccess: () => {
-      toast.success(t('binderTypes.addToWishlist') + ' ✓')
+    onSuccess: (result) => {
+      if (result?.added > 0) {
+        toast.success((isWishlist ? t('binderTypes.addMissingToWishlist') : t('binderTypes.addToWishlist')) + ' ✓')
+      } else if (result?.skipped_complete > 0) {
+        toast(t('binderTypes.alreadyCompleteInCollection'))
+      } else {
+        toast(t('binderTypes.alreadyInWishlist'))
+      }
       queryClient.invalidateQueries({ queryKey: ['wishlist'] })
     },
     onError: (e) => toast.error(e.response?.data?.detail || t('card.addFailed')),
@@ -267,7 +273,14 @@ export default function BinderDetail() {
   const bulkWishlistMutation = useMutation({
     mutationFn: () => addBinderCardsToWishlist(parseInt(binderId)),
     onSuccess: (result) => {
-      toast.success(`${t('binderTypes.addAllToWishlist')} ✓ (${result.added} ${t('binderTypes.added')}, ${result.skipped} ${t('binderTypes.skipped')})`)
+      const summary = `${result.added} ${t('binderTypes.added')}, ${result.missing_copies || 0} ${t('binderTypes.missingCopies')}, ${result.skipped} ${t('binderTypes.skipped')}`
+      if (result.added > 0) {
+        toast.success(`${t('binderTypes.addMissingToWishlist')} ✓ (${summary})`)
+      } else if (result.skipped_complete > 0 && result.skipped_existing === 0) {
+        toast(`${t('binderTypes.alreadyCompleteInCollection')} (${summary})`)
+      } else {
+        toast(`${t('binderTypes.alreadyInWishlist')} (${summary})`)
+      }
       queryClient.invalidateQueries({ queryKey: ['wishlist'] })
     },
     onError: (e) => toast.error(e.response?.data?.detail || t('card.addFailed')),
@@ -434,10 +447,10 @@ export default function BinderDetail() {
               onClick={() => bulkWishlistMutation.mutate()}
               className="btn-ghost flex-shrink-0 px-2"
               disabled={bulkWishlistMutation.isPending || cards.length === 0}
-              title={t('binderTypes.addAllToWishlist')}
-              aria-label={t('binderTypes.addAllToWishlist')}
+              title={t('binderTypes.addMissingToWishlist')}
+              aria-label={t('binderTypes.addMissingToWishlist')}
             >
-              <Heart size={16} /> {t('binderTypes.addAllShort')}
+              <Heart size={16} /> {t('binderTypes.addMissingShort')}
             </button>
           )}
           <button
@@ -922,7 +935,7 @@ export default function BinderDetail() {
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <button className="btn-ghost justify-center" onClick={() => wishlistMutation.mutate(selectedCard.binder_card_id)}>
-                  <Heart size={16} /> {t('binderTypes.addToWishlist')}
+                  <Heart size={16} /> {isWishlist ? t('binderTypes.addMissingToWishlist') : t('binderTypes.addToWishlist')}
                 </button>
                 <button className="btn-ghost justify-center text-brand-red" onClick={() => { removeMutation.mutate({ cardId: selectedCard.id, binderCardId: selectedCard.binder_card_id }); setSelectedCard(null) }}>
                   <Trash2 size={16} /> {t('common.remove')}

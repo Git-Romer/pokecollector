@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Trash2, Edit2, BookOpen, Star, Package, Check, X, Library, Heart } from 'lucide-react'
-import { getBinders, createBinder, updateBinder, deleteBinder } from '../api/client'
+import { getBinders, createBinder, updateBinder, deleteBinder, getWishlist } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import TabNav from '../components/TabNav'
 import AvatarPicker from '../components/AvatarPicker'
@@ -136,16 +136,22 @@ export default function Binders() {
   const queryClient = useQueryClient()
   const [creating, setCreating] = useState(false)
   const [editingId, setEditingId] = useState(null)
-  const COLLECTION_TABS = [
-    { to: '/collection', label: t('nav.collection'), icon: Library },
-    { to: '/binders', label: t('nav.binders'), icon: BookOpen },
-    { to: '/wishlist', label: t('nav.wishlist'), icon: Heart },
-  ]
-
   const { data: binders = [], isLoading } = useQuery({
     queryKey: ['binders'],
     queryFn: () => getBinders().then(r => r.data),
   })
+
+  const { data: wishlistItems = [] } = useQuery({
+    queryKey: ['wishlist'],
+    queryFn: () => getWishlist().then(r => r.data),
+    staleTime: 60000,
+  })
+
+  const COLLECTION_TABS = [
+    { to: '/collection', label: t('nav.collection'), icon: Library },
+    { to: '/binders', label: t('nav.binders'), icon: BookOpen },
+    { to: '/wishlist', label: t('nav.wishlist'), icon: Heart, badge: wishlistItems.length },
+  ]
 
   const createMutation = useMutation({
     mutationFn: createBinder,

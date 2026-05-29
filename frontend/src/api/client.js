@@ -147,7 +147,7 @@ export const getBinderEntryEquivalentPrints = (binderId, binderCardId, params = 
 export const getBinderPrintOptimization = (binderId, params = {}) => api.get(`/binders/${binderId}/optimize-prints`, { params }).then(r => r.data)
 export const applyBinderPrintOptimization = (binderId, selectedBinderCardIds = null, params = {}) => api.post(`/binders/${binderId}/optimize-prints`, selectedBinderCardIds ? { selected_binder_card_ids: selectedBinderCardIds } : {}, { params }).then(r => r.data)
 export const switchBinderEntryCard = (binderId, binderCardId, cardId, collectionItemId = null) => api.put(`/binders/${binderId}/entries/${binderCardId}/card`, { card_id: cardId, collection_item_id: collectionItemId }).then(r => r.data)
-export const addBinderEntryToWishlist = (binderId, binderCardId) => api.post(`/binders/${binderId}/entries/${binderCardId}/wishlist`)
+export const addBinderEntryToWishlist = (binderId, binderCardId) => api.post(`/binders/${binderId}/entries/${binderCardId}/wishlist`).then(r => r.data)
 export const addBinderCardsToWishlist = (binderId) => api.post(`/binders/${binderId}/wishlist`).then(r => r.data)
 export const removeCardFromBinder = (binderId, cardId) => api.delete(`/binders/${binderId}/cards/${cardId}`)
 export const removeBinderEntry = (binderId, binderCardId) => api.delete(`/binders/${binderId}/entries/${binderCardId}`)

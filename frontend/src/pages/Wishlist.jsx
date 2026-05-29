@@ -64,16 +64,17 @@ export default function Wishlist() {
   const [filterHasAlert, setFilterHasAlert] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
   const queryClient = useQueryClient()
-  const COLLECTION_TABS = [
-    { to: '/collection', label: t('nav.collection'), icon: Library },
-    { to: '/binders', label: t('nav.binders'), icon: BookOpen },
-    { to: '/wishlist', label: t('nav.wishlist'), icon: Heart },
-  ]
 
   const { data: items = [], isLoading } = useQuery({
     queryKey: ['wishlist'],
     queryFn: () => getWishlist().then(r => r.data),
   })
+
+  const COLLECTION_TABS = [
+    { to: '/collection', label: t('nav.collection'), icon: Library },
+    { to: '/binders', label: t('nav.binders'), icon: BookOpen },
+    { to: '/wishlist', label: t('nav.wishlist'), icon: Heart, badge: items.length },
+  ]
 
   const removeMutation = useMutation({
     mutationFn: (id) => removeFromWishlist(id),
