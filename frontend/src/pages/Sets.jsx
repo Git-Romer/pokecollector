@@ -117,6 +117,7 @@ export default function Sets() {
             { value: 'all', label: t('lang.all') },
             { value: 'de', label: `🇩🇪 ${t('lang.de')}` },
             { value: 'en', label: `🇬🇧 ${t('lang.en')}` },
+            { value: 'fr', label: `🇫🇷 ${t('lang.fr')}` },
           ].map(opt => (
             <button
               key={opt.value}
@@ -127,14 +128,15 @@ export default function Sets() {
                     ? 'bg-yellow/20 text-yellow border border-yellow/50'
                     : opt.value === 'en'
                       ? 'bg-blue/20 text-blue-400 border border-blue-400/50'
-                      : 'bg-brand-red text-white'
+                      : opt.value === 'fr'
+                        ? 'bg-purple/20 text-purple-400 border border-purple-400/50'
+                        : 'bg-brand-red text-white'
                   : 'bg-bg-card text-text-secondary hover:text-text-primary border border-border'
               }`}
             >
               {opt.label}
             </button>
-          ))}
-        </div>
+          ))}        </div>
 
         <div className="flex flex-wrap gap-3">
           <div className="relative flex-1 min-w-0" style={{ flexBasis: '160px' }}>
@@ -306,12 +308,14 @@ export default function Sets() {
                 <div className="p-3">
                   <div className="flex items-start gap-1.5 mb-0.5">
                     <p className="font-bold text-text-primary text-sm leading-tight truncate flex-1">{set.name}</p>
-                    {/* Language badge — always "de" or "en", never "both" */}
+                    {/* Language badge — always "de", "en", or "fr" */}
                     {set.lang && (
                       <span className={`flex-shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded leading-none ${
                         set.lang === 'de'
                           ? 'bg-yellow/20 text-yellow border border-yellow/30'
-                          : 'bg-blue/20 text-blue-400 border border-blue-400/30'
+                          : set.lang === 'en'
+                            ? 'bg-blue/20 text-blue-400 border border-blue-400/30'
+                            : 'bg-purple/20 text-purple-400 border border-purple-400/30'
                       }`}>
                         {set.lang.toUpperCase()}
                       </span>

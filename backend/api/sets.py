@@ -53,7 +53,7 @@ def _refresh_sets(db: Session, display_lang: str):
     Each language version is stored as a separate row with a composite primary key
     (e.g. "sv1_de", "sv1_en", or "sv1_fr"). lang field is strictly "en", "de", or "fr".
     """
-    languages = [display_lang] if display_lang in ("en", "de", "fr") else ["en", "de"]
+    languages = [display_lang] if display_lang in ("en", "de", "fr") else ["en", "de", "fr"]
     sets_data = pokemon_api.get_all_sets(languages=languages)
 
     for set_data in sets_data:
@@ -112,7 +112,7 @@ def get_sets(
     sets = query.order_by(text("release_date DESC NULLS LAST")).all()
 
     # If filter returns no results for a specific lang, force a refresh
-    if not sets and lang_filter in ("de", "en"):
+    if not sets and lang_filter in ("de", "en", "fr"):
         try:
             _refresh_sets(db, display_lang)
             query = db.query(Set)
