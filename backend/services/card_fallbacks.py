@@ -26,7 +26,7 @@ from services.price_utils import PRICE_FIELDS, has_valid_price, is_valid_price
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_LANGS = {"en", "de"}
+SUPPORTED_LANGS = {"en", "de", "fr"}
 IMAGE_FIELDS = ("images_small", "images_large")
 CARD_COPY_FIELDS = (
     "tcg_card_id",
@@ -66,17 +66,19 @@ def _setting_enabled(db: Session, key: str, default: bool = True) -> bool:
     return str(row.value).lower() in {"true", "1", "yes", "on"}
 
 
-def _other_lang(lang: Optional[str]) -> Optional[str]:
+def _other_langs(lang: Optional[str]) -> list[str]:
     if lang == "de":
-        return "en"
+        return ["en", "fr"]
     if lang == "en":
-        return "de"
-    return None
+        return ["de", "fr"]
+    if lang == "fr":
+        return ["en", "de"]
+    return []
 
 
 def other_supported_lang(lang: Optional[str]) -> Optional[str]:
     """Return the supported sibling language for public callers."""
-    return _other_lang(lang)
+    return _other_langs(lang)[0] if _other_langs(lang) else None
 
 
 def _has_price(data: dict) -> bool:
@@ -247,47 +249,52 @@ def build_missing_language_card(
     image_enabled: Optional[bool] = None,
 ) -> Optional[dict]:
     """Fetch sibling card data and clone it into the requested language."""
-    fallback_lang = _other_lang(target_lang)
-    if not tcg_card_id or not fallback_lang:
+    fallback_langs = _other_langs(target_lang)
+    if not tcg_card_id or not fallback_langs:
         return None
 
     if not missing_language_fallback_enabled(db, price_enabled=price_enabled, image_enabled=image_enabled):
         return None
 
-    sibling = db.query(Card).filter(
-        Card.tcg_card_id == tcg_card_id,
-        Card.lang == fallback_lang,
-        Card.is_custom == False,
-    ).first()
-    if sibling:
-        return clone_card_for_missing_language(
+    for fallback_lang in fallback_langs:
+        sibling = db.query(Card).filter(
+            Card.tcg_card_id == tcg_card_id,
+            Card.lang == fallback_lang,
+            Card.is_custom == False,
+        ).first()
+        if sibling:
+            return clone_card_for_missing_language(
+                db,
+                sibling,
+                target_lang=target_lang,
+                source_lang=fallback_lang,
+                default_set_id=default_set_id,
+                price_enabled=price_enabled,
+                image_enabled=image_enabled,
+            )
+
+        try:
+            card_data = pokemon_api.get_card(tcg_card_id, lang=fallback_lang)
+        except Exception as exc:
+            logger.debug("Failed to fetch %s in %s for missing-language fallback: %s", tcg_card_id, fallback_lang, exc)
+            continue
+
+        if not card_data:
+            continue
+
+        parsed = clone_card_for_missing_language(
             db,
-            sibling,
+            card_data,
             target_lang=target_lang,
             source_lang=fallback_lang,
             default_set_id=default_set_id,
             price_enabled=price_enabled,
             image_enabled=image_enabled,
         )
+        if parsed:
+            return parsed
 
-    try:
-        card_data = pokemon_api.get_card(tcg_card_id, lang=fallback_lang)
-    except Exception as exc:
-        logger.debug("Failed to fetch %s in %s for missing-language fallback: %s", tcg_card_id, fallback_lang, exc)
-        return None
-
-    if not card_data:
-        return None
-
-    return clone_card_for_missing_language(
-        db,
-        card_data,
-        target_lang=target_lang,
-        source_lang=fallback_lang,
-        default_set_id=default_set_id,
-        price_enabled=price_enabled,
-        image_enabled=image_enabled,
-    )
+    return None
 
 
 def build_missing_language_cards_for_set(
@@ -301,8 +308,8 @@ def build_missing_language_cards_for_set(
     image_enabled: Optional[bool] = None,
 ) -> list[dict]:
     """Clone sibling-language set cards into missing target-language rows."""
-    fallback_lang = _other_lang(target_lang)
-    if not tcg_set_id or not fallback_lang:
+    fallback_langs = _other_langs(target_lang)
+    if not tcg_set_id or not fallback_langs:
         return []
 
     if not missing_language_fallback_enabled(db, price_enabled=price_enabled, image_enabled=image_enabled):
@@ -317,34 +324,46 @@ def build_missing_language_cards_for_set(
         ).all()
     }
 
-    source_cards = db.query(Card).filter(
-        Card.set_id == tcg_set_id,
-        Card.lang == fallback_lang,
-        Card.is_custom == False,
-    ).all()
-    source_cards.sort(key=lambda card: _number_sort_key(card.number))
+    sources: list[Card | dict] = []
+    seen_tcg_ids = set()
+    for fallback_lang in fallback_langs:
+        source_cards = db.query(Card).filter(
+            Card.set_id == tcg_set_id,
+            Card.lang == fallback_lang,
+            Card.is_custom == False,
+        ).all()
+        source_cards.sort(key=lambda card: _number_sort_key(card.number))
+        for source in source_cards:
+            source_tcg_id = source.tcg_card_id or pokemon_api.strip_lang_suffix(source.id or "")[0]
+            if source_tcg_id and source_tcg_id not in seen_tcg_ids:
+                seen_tcg_ids.add(source_tcg_id)
+                sources.append((fallback_lang, source))
 
-    sources: list[Card | dict] = source_cards
-    if not sources or (expected_total and len(sources) < expected_total):
-        try:
-            set_data = pokemon_api.get_set_cards(tcg_set_id, lang=fallback_lang)
-        except Exception as exc:
-            logger.debug("Failed to fetch set %s in %s for missing-language fallback: %s", tcg_set_id, fallback_lang, exc)
-            # Prefer partial cached sibling data over an empty checklist when the
-            # public sibling API is temporarily unreachable. Existing target
-            # rows are skipped below, so this only fills still-missing cards.
-            if not sources:
-                return []
-        else:
+    if (not sources or (expected_total and len(sources) < expected_total)) and len(sources) < (expected_total or 0):
+        for fallback_lang in fallback_langs:
+            try:
+                set_data = pokemon_api.get_set_cards(tcg_set_id, lang=fallback_lang)
+            except Exception as exc:
+                logger.debug("Failed to fetch set %s in %s for missing-language fallback: %s", tcg_set_id, fallback_lang, exc)
+                continue
             fetched_sources = sorted(
                 set_data.get("cards", []),
                 key=lambda card: _number_sort_key(card.get("localId")),
             )
-            if len(fetched_sources) > len(sources):
-                sources = fetched_sources
+            for source in fetched_sources:
+                source_tcg_id = source.get("id") or source.get("tcg_card_id")
+                if not source_tcg_id:
+                    continue
+                source_tcg_id = pokemon_api.strip_lang_suffix(source_tcg_id)[0]
+                if source_tcg_id and source_tcg_id not in seen_tcg_ids:
+                    seen_tcg_ids.add(source_tcg_id)
+                    sources.append((fallback_lang, source))
+            if expected_total and len(sources) >= expected_total:
+                break
 
     parsed_cards = []
-    for source in sources:
+    processed_target_ids = set()
+    for fallback_lang, source in sources:
         if max_cards and len(parsed_cards) >= max_cards:
             break
         if isinstance(source, Card):
@@ -354,7 +373,14 @@ def build_missing_language_cards_for_set(
             if not source_tcg_id:
                 continue
             source_tcg_id = pokemon_api.strip_lang_suffix(source_tcg_id)[0]
+        if source_tcg_id:
+            source_tcg_id = str(source_tcg_id).strip()
         target_id = f"{source_tcg_id}_{target_lang}" if source_tcg_id else None
+        if target_id:
+            target_id = str(target_id).strip()
+        if not target_id or target_id in processed_target_ids:
+            continue
+        processed_target_ids.add(target_id)
         if target_id in existing_target_sources and not existing_target_sources[target_id]:
             # Native target-language data is present. Never overwrite it with a
             # sibling-language fallback row.
@@ -392,8 +418,8 @@ def apply_cross_language_fallbacks(
     parsed["image_source_lang"] = None
     parsed["data_source_lang"] = None
 
-    fallback_lang = _other_lang(lang)
-    if not tcg_card_id or not fallback_lang or lang not in SUPPORTED_LANGS:
+    fallback_langs = _other_langs(lang)
+    if not tcg_card_id or not fallback_langs or lang not in SUPPORTED_LANGS:
         return parsed
 
     need_price = not _has_price(parsed)
@@ -404,18 +430,24 @@ def apply_cross_language_fallbacks(
     if not ((need_price and price_enabled) or (need_image and image_enabled)):
         return parsed
 
-    sibling_data = _load_sibling_data(db, tcg_card_id, fallback_lang)
-    if not sibling_data:
-        return parsed
+    for fallback_lang in fallback_langs:
+        if not ((need_price and price_enabled) or (need_image and image_enabled)):
+            break
 
-    if need_price and price_enabled and _has_price(sibling_data):
-        for field in PRICE_FIELDS:
-            parsed[field] = sibling_data.get(field)
-        parsed["price_source_lang"] = fallback_lang
+        sibling_data = _load_sibling_data(db, tcg_card_id, fallback_lang)
+        if not sibling_data:
+            continue
 
-    if need_image and image_enabled and _has_image(sibling_data):
-        for field in IMAGE_FIELDS:
-            parsed[field] = sibling_data.get(field)
-        parsed["image_source_lang"] = fallback_lang
+        if need_price and price_enabled and _has_price(sibling_data):
+            for field in PRICE_FIELDS:
+                parsed[field] = sibling_data.get(field)
+            parsed["price_source_lang"] = fallback_lang
+            need_price = False
+
+        if need_image and image_enabled and _has_image(sibling_data):
+            for field in IMAGE_FIELDS:
+                parsed[field] = sibling_data.get(field)
+            parsed["image_source_lang"] = fallback_lang
+            need_image = False
 
     return parsed

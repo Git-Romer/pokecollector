@@ -38,7 +38,7 @@ DEFAULT_SETTINGS = {
 
 def _normalize_tcgdex_sync_languages(value: str | None) -> str:
     """Normalize configured TCGdex sync languages to a stable CSV string."""
-    allowed = ("en", "de")
+    allowed = ("en", "de", "fr")
     raw_parts = []
     if value:
         raw_parts = [part.strip().lower() for part in str(value).split(",")]
@@ -363,7 +363,7 @@ def migrate_card_ids():
         rows = db.execute(sql_text(
             "SELECT id, lang FROM cards "
             "WHERE (is_custom IS NULL OR is_custom = FALSE) "
-            "AND id NOT LIKE '%\\_en' AND id NOT LIKE '%\\_de'"
+            "AND id NOT LIKE '%\\_en' AND id NOT LIKE '%\\_de' AND id NOT LIKE '%\\_fr'"
         )).fetchall()
 
         if rows:
@@ -373,8 +373,12 @@ def migrate_card_ids():
             old_id = row[0]
             lang = row[1] or "en"
             new_id = f"{old_id}_{lang}"
+            target_exists = db.execute(sql_text(
+                "SELECT 1 FROM cards WHERE id = :new_id"
+            ), {"new_id": new_id}).fetchone() is not None
             try:
-                # Update all FK references atomically, then the card itself
+                # Update all FK references atomically, then either rename or collapse
+                # the old-format row into an existing composite target.
                 db.execute(sql_text(
                     "UPDATE collection SET card_id = :new_id WHERE card_id = :old_id"
                 ), {"new_id": new_id, "old_id": old_id})
@@ -390,9 +394,14 @@ def migrate_card_ids():
                 db.execute(sql_text(
                     "UPDATE custom_card_matches SET custom_card_id = :new_id WHERE custom_card_id = :old_id"
                 ), {"new_id": new_id, "old_id": old_id})
-                db.execute(sql_text(
-                    "UPDATE cards SET id = :new_id, tcg_card_id = :old_id WHERE id = :old_id"
-                ), {"new_id": new_id, "old_id": old_id})
+                if target_exists:
+                    db.execute(sql_text(
+                        "DELETE FROM cards WHERE id = :old_id"
+                    ), {"old_id": old_id})
+                else:
+                    db.execute(sql_text(
+                        "UPDATE cards SET id = :new_id, tcg_card_id = :old_id WHERE id = :old_id"
+                    ), {"new_id": new_id, "old_id": old_id})
                 db.commit()
             except Exception as e:
                 db.rollback()
@@ -403,13 +412,13 @@ def migrate_card_ids():
             "SELECT id FROM cards "
             "WHERE tcg_card_id IS NULL "
             "AND (is_custom IS NULL OR is_custom = FALSE) "
-            "AND (id LIKE '%\\_en' OR id LIKE '%\\_de')"
+            "AND (id LIKE '%\\_en' OR id LIKE '%\\_de' OR id LIKE '%\\_fr')"
         )).fetchall()
 
         for row in composite_rows:
             composite_id = row[0]
-            # Strip _en or _de suffix
-            for suffix in ("_en", "_de"):
+            # Strip _en, _de or _fr suffix
+            for suffix in ("_en", "_de", "_fr"):
                 if composite_id.endswith(suffix):
                     tcg_card_id = composite_id[:-len(suffix)]
                     break

@@ -859,6 +859,8 @@ const de = {
     selectHint: 'In welcher Sprache hast du diese Karte?',
     de_full: 'Deutsch',
     en_full: 'Englisch',
+    fr: 'FR',
+    fr_full: 'Französisch',
     zh: 'ZH',
     zh_full: 'Chinesisch',
     germanCard: 'Deutsche Karte',

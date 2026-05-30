@@ -856,6 +856,8 @@ const nl = {
     selectHint: 'Welke taal is deze kaart?',
     de_full: 'Duits',
     en_full: 'Engels',
+    fr: 'FR',
+    fr_full: 'Frans',
     zh: 'ZH',
     zh_full: 'Chinees',
     germanCard: 'Duitse kaart',

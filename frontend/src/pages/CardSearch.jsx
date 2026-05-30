@@ -400,6 +400,7 @@ export default function CardSearch() {
           { value: 'all', label: t('lang.all') },
           { value: 'de', label: `🇩🇪 ${t('lang.de')}` },
           { value: 'en', label: `🇬🇧 ${t('lang.en')}` },
+          { value: 'fr', label: `🇫🇷 ${t('lang.fr')}` },
         ].map(opt => (
           <button
             key={opt.value}
@@ -410,7 +411,9 @@ export default function CardSearch() {
                   ? 'bg-yellow/20 text-yellow border border-yellow/50'
                   : opt.value === 'en'
                     ? 'bg-blue/20 text-blue-400 border border-blue-400/50'
-                    : 'bg-brand-red text-white'
+                    : opt.value === 'fr'
+                      ? 'bg-rose/20 text-rose-400 border border-rose-400/50'
+                      : 'bg-brand-red text-white'
                 : 'bg-bg-card text-text-secondary hover:text-text-primary border border-border'
             }`}
           >
@@ -653,7 +656,9 @@ export default function CardSearch() {
                           <span className={`flex-shrink-0 text-[9px] font-black px-1 py-0.5 rounded leading-none ${
                             card._lang === 'de'
                               ? 'bg-yellow/20 text-yellow'
-                              : 'bg-blue/20 text-blue-400'
+                              : card._lang === 'fr'
+                                ? 'bg-rose/20 text-rose-400'
+                                : 'bg-blue/20 text-blue-400'
                           }`}>
                             {card._lang.toUpperCase()}
                           </span>

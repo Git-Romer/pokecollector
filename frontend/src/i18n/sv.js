@@ -849,6 +849,8 @@ const sv = {
     selectHint: 'Vilket språk är det här kortet på?',
     de_full: 'Tyska',
     en_full: 'Engelska',
+    fr: 'FR',
+    fr_full: 'Franska',
     zh: 'ZH',
     zh_full: 'Kinesiska',
     germanCard: 'Tyskt kort',

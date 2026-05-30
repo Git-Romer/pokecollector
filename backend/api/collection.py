@@ -24,7 +24,7 @@ CSV_IMPORT_MAX_BYTES = 256 * 1024
 CSV_IMPORT_MAX_ROWS = 1000
 ALLOWED_CONDITIONS = {"Mint", "NM", "LP", "MP", "HP"}
 ALLOWED_VARIANTS = {"Normal", "Holo", "Reverse Holo", "First Edition"}
-ALLOWED_LANGS = {"en", "de"}
+ALLOWED_LANGS = {"en", "de", "fr"}
 
 
 def _normalize_collection_variant(variant: Optional[str]) -> str:
@@ -60,7 +60,7 @@ def _ensure_set_exists_for_card(db: Session, parsed: dict, lang: str, card_data:
     if set_data:
         set_parsed = pokemon_api.parse_set_for_db(set_data)
         set_parsed["lang"] = set_data.get("_lang", lang)
-        if not set_parsed["id"].endswith(("_de", "_en")):
+        if not set_parsed["id"].endswith(("_de", "_en", "_fr")):
             set_parsed["id"] = f"{set_id}_{lang}"
         set_parsed["tcg_set_id"] = set_id
         db.add(Set(**set_parsed))

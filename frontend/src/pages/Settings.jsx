@@ -135,7 +135,7 @@ function TcgdexLanguageControl({ value, onChange, labels }) {
     } else {
       next.add(lang)
     }
-    onChange(['en', 'de'].filter((item) => next.has(item)).join(','))
+    onChange(['en', 'de', 'fr'].filter((item) => next.has(item)).join(','))
   }
 
   return (
@@ -146,6 +146,7 @@ function TcgdexLanguageControl({ value, onChange, labels }) {
       {[
         { value: 'en', label: labels.en },
         { value: 'de', label: labels.de },
+        { value: 'fr', label: labels.fr },
       ].map((opt, i) => (
         <button
           key={opt.value}
@@ -930,6 +931,7 @@ export default function Settings() {
                     labels={{
                       en: t('settings.languageEN'),
                       de: t('settings.languageDE'),
+                      fr: t('settings.languageFR'),
                     }}
                   />
                 </SettingsRow>

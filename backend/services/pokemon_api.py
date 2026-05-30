@@ -212,18 +212,19 @@ def get_all_sets(languages: Optional[List[str]] = None) -> List[Dict]:
     """Get all sets from TCGdex API for the requested languages.
 
     Each language version of a set is returned as a SEPARATE entry.
-    No merging/deduplication by set ID — "sv1" appears twice:
+    No merging/deduplication by set ID — "sv1" appears multiple times:
       - once as "sv1_de" (German TCGdex) with lang="de"
       - once as "sv1_en" (English TCGdex) with lang="en"
+      - once as "sv1_fr" (French TCGdex) with lang="fr"
 
     Each entry has:
       "_db_key": composite DB primary key, e.g. "sv1_de"
-      "_lang":   "de" or "en"
+      "_lang":   "de", "en", or "fr"
     """
     requested_languages = []
     for lang in (languages or ["en", "de"]):
         normalized = (lang or "").strip().lower()
-        if normalized in ("en", "de") and normalized not in requested_languages:
+        if normalized in ("en", "de", "fr") and normalized not in requested_languages:
             requested_languages.append(normalized)
 
     if not requested_languages:
@@ -312,7 +313,8 @@ def get_set_cards(set_id: str, lang: str = "en") -> Dict:
 
 def strip_lang_suffix(card_db_id: str) -> tuple:
     """Return (tcg_card_id, lang) from a composite DB card ID like 'sv1-1_de'."""
-    for suffix in ("_de", "_en"):
+    card_db_id = (card_db_id or "").strip()
+    for suffix in ("_de", "_en", "_fr"):
         if card_db_id.endswith(suffix):
             return card_db_id[:-len(suffix)], suffix[1:]
     return card_db_id, "en"  # fallback for custom/legacy
@@ -340,8 +342,13 @@ def parse_card_for_db(card_data: Dict, default_set_id: Optional[str] = None, lan
     hp_raw = card_data.get("hp")
     hp = str(hp_raw) if hp_raw is not None else None
 
-    card_lang = card_data.get("_lang") or lang or "en"
-    tcgdex_id = card_data.get("id", "")
+    card_lang = str(card_data.get("_lang") or lang or "en").strip().lower()
+    tcgdex_id = card_data.get("id") or card_data.get("tcg_card_id") or ""
+    if isinstance(tcgdex_id, int):
+        tcgdex_id = str(tcgdex_id)
+    tcgdex_id = str(tcgdex_id).strip()
+    if not tcgdex_id:
+        raise ValueError("Missing TCGdex card id")
     db_id = f"{tcgdex_id}_{card_lang}"
 
     variants = card_data.get("variants") or {}

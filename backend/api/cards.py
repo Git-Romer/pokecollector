@@ -378,7 +378,7 @@ def search_cards(
     sort_order: Optional[str] = "asc",
     page: int = 1,
     page_size: int = 20,
-    lang: Optional[str] = Query("all", description="Language filter: 'de', 'en', or 'all'"),
+    lang: Optional[str] = Query("all", description="Language filter: 'de', 'en', 'fr', or 'all'"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -809,7 +809,7 @@ def get_card(
     # An explicit suffix in the DB id wins over the query default. Requesting
     # me04-001_de should create/return a German row, even if it temporarily uses
     # English fallback data.
-    card_lang = detected_lang if card_id.endswith(("_de", "_en")) else (lang or detected_lang)
+    card_lang = detected_lang if card_id.endswith(("_de", "_en", "_fr")) else (lang or detected_lang)
     try:
         card_data = pokemon_api.get_card(tcg_card_id, lang=card_lang)
         if card_data:

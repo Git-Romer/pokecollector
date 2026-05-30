@@ -240,7 +240,7 @@ def _get_tcgdex_sync_languages(db: Session) -> list[str]:
     """Get TCGdex sync languages from settings."""
     row = db.query(Setting).filter(Setting.key == "tcgdex_sync_languages").first()
     raw_parts = [part.strip().lower() for part in (row.value if row else "en,de").split(",")]
-    selected = [lang for lang in ("en", "de") if lang in raw_parts]
+    selected = [lang for lang in ("en", "de", "fr") if lang in raw_parts]
     return selected or ["en", "de"]
 
 
@@ -497,8 +497,19 @@ def perform_full_sync(db: Session) -> dict:
                 # Update set total if needed
                 if cards_data and not set_obj.total:
                     set_obj.total = len(cards_data)
+                seen_card_ids = set()
                 for card_data in cards_data:
-                    parsed = pokemon_api.parse_card_for_db(card_data, default_set_id=tcg_id, lang=set_lang)
+                    try:
+                        parsed = pokemon_api.parse_card_for_db(card_data, default_set_id=tcg_id, lang=set_lang)
+                    except ValueError:
+                        logger.warning("Skipping malformed card data during set sync for set %s lang %s", tcg_id, set_lang)
+                        continue
+                    parsed_id = str(parsed["id"]).strip()
+                    if parsed_id in seen_card_ids:
+                        logger.warning("Skipping duplicate card entry during set sync: %s", parsed_id)
+                        continue
+                    seen_card_ids.add(parsed_id)
+                    parsed["id"] = parsed_id
                     parsed = apply_cross_language_fallbacks(db, parsed)
                     upsert_card(db, parsed)
                 if set_total and len(cards_data) < set_total:

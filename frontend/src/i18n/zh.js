@@ -859,6 +859,8 @@ const zh = {
     selectHint: '这张卡牌是哪种语言？',
     de_full: '德语',
     en_full: '英语',
+    fr: 'FR',
+    fr_full: '法语',
     zh_full: '中文',
     germanCard: '德语卡牌',
     englishCard: '英语卡牌',

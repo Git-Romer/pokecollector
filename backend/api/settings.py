@@ -52,13 +52,13 @@ DEFAULT_SETTINGS = {
 
 
 def _normalize_tcgdex_sync_languages(value) -> str:
-    allowed = ("en", "de")
+    allowed = ("en", "de", "fr")
     raw_parts = [part.strip().lower() for part in str(value or "").split(",")]
     selected = [lang for lang in allowed if lang in raw_parts]
     if not selected:
         raise HTTPException(
             status_code=422,
-            detail="tcgdex_sync_languages must include at least one of: en, de",
+            detail="tcgdex_sync_languages must include at least one of: en, de, fr",
         )
     return ",".join(selected)
 
