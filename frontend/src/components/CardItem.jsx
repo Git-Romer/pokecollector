@@ -135,6 +135,7 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
       toast.success(`${createdCard.name} ${t('card.addedToCollection')}`)
       queryClient.invalidateQueries({ queryKey: ['collection'] })
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'card-search' })
       onCreated && onCreated(createdCard)
       onClose()
     },
@@ -375,6 +376,7 @@ export const CardItem = memo(function CardItem({ card, showActions = true, onAdd
       toast.success(`${card.name} ${t('card.addedToCollection')}`)
       queryClient.invalidateQueries({ queryKey: ['collection'] })
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'card-search' })
     },
     onError: () => toast.error(t('card.addFailed')),
   })
@@ -575,6 +577,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
       toast.success(`${t('common.add')} ${quantity}x ${card.name}!`)
       queryClient.invalidateQueries({ queryKey: ['collection'] })
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'card-search' })
       onClose()
     },
     onError: () => toast.error(t('card.addFailed')),
