@@ -186,8 +186,8 @@ export default function Analytics() {
   })
 
   const { data: products = [] } = useQuery({
-    queryKey: ['products'],
-    queryFn: () => getProducts().then(r => r.data),
+    queryKey: ['products', pricePrimaryField],
+    queryFn: () => getProducts({ price_field: pricePrimaryField }).then(r => r.data),
   })
 
   const { data: newSets = [] } = useQuery({
@@ -216,7 +216,8 @@ export default function Analytics() {
   const totalProductsCost = unsoldProducts.reduce((sum, p) => sum + (p.purchase_price || 0), 0)
   const totalSoldRevenue = soldProducts.reduce((sum, p) => sum + (p.sold_price || 0), 0)
   const totalSoldCost = soldProducts.reduce((sum, p) => sum + (p.purchase_price || 0), 0)
-  const realizedPnl = totalSoldRevenue - totalSoldCost
+  const productCardRealizedGains = products.reduce((sum, p) => sum + (p.realized_gains || 0), 0)
+  const realizedPnl = totalSoldRevenue - totalSoldCost + productCardRealizedGains
   const unrealizedPnl = (latestSnapshot?.value ?? 0) - (latestSnapshot?.cost ?? 0)
 
   return (
@@ -548,9 +549,10 @@ export default function Analytics() {
                     </button>
                   </div>
                   <div className="space-y-2 max-h-60 overflow-y-auto">
-                    {products.sort((a,b) => new Date(b.purchase_date) - new Date(a.purchase_date)).map(p => {
+                    {[...products].sort((a,b) => new Date(b.purchase_date) - new Date(a.purchase_date)).map(p => {
                       const isSold = p.sold_price != null
-                      const pnl = isSold ? (p.sold_price - p.purchase_price) : ((p.current_value || 0) - p.purchase_price)
+                      const currentValue = p.computed_current_value ?? p.current_value ?? 0
+                      const pnl = isSold ? (p.sold_price - p.purchase_price) : (currentValue - p.purchase_price)
                       const pnlPositive = pnl >= 0
 
                       return (
@@ -570,7 +572,7 @@ export default function Analytics() {
                             {isSold ? (
                               <span className="text-sm text-text-secondary">{t('analytics.soldFor')} {formatPrice(p.sold_price)}</span>
                             ) : (
-                              <span className="text-sm text-text-secondary">{t('products.currentValueLabel')} {formatPrice(p.current_value || 0)}</span>
+                              <span className="text-sm text-text-secondary">{t('products.currentValueLabel')} {formatPrice(currentValue)}</span>
                             )}
                             {pnl != 0 && (
                               <span className={clsx(

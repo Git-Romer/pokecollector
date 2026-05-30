@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, desc
 from api.auth import get_current_user
 from database import get_db
-from models import CollectionItem, Card, Set, PortfolioSnapshot, SyncLog, ProductPurchase, User
+from models import CollectionItem, Card, Set, PortfolioSnapshot, SyncLog, ProductLedgerEntry, ProductPurchase, User
 from services.card_values import effective_market_price, normalize_price_field
 import datetime
 
@@ -44,9 +44,9 @@ def get_dashboard(
     all_products = db.query(ProductPurchase).filter(
         ProductPurchase.user_id == current_user.id
     ).all()
-    # A product is "sold" when sold_price is set AND > 0
-    unsold_products = [p for p in all_products if not (p.sold_price is not None and p.sold_price > 0)]
-    sold_products = [p for p in all_products if p.sold_price is not None and p.sold_price > 0]
+    # A product is "sold" when sold_price is explicitly set, including zero-value write-offs.
+    unsold_products = [p for p in all_products if p.sold_price is None]
+    sold_products = [p for p in all_products if p.sold_price is not None]
 
     products_cost = sum(
         p.purchase_price for p in unsold_products
@@ -60,7 +60,11 @@ def get_dashboard(
         p.sold_price for p in sold_products
         if p.sold_price is not None
     )
-    products_realized_pnl = products_sold_revenue - products_sold_cost
+    product_card_realized_gains = db.query(func.coalesce(func.sum(ProductLedgerEntry.amount), 0)).filter(
+        ProductLedgerEntry.user_id == current_user.id,
+        ProductLedgerEntry.entry_type.in_(["card_sale", "flat_gain"]),
+    ).scalar() or 0
+    products_realized_pnl = products_sold_revenue - products_sold_cost + product_card_realized_gains
 
     total_cost = cards_cost + products_cost
     # P&L = (current card value - card costs) + (sold product revenue - sold product costs) - unsold product costs

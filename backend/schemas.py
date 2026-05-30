@@ -271,6 +271,73 @@ class ProductPurchaseUpdate(BaseModel):
     notes: Optional[str] = None
 
 
+class ProductCardLinkCreate(BaseModel):
+    collection_item_id: int
+    quantity: int = Field(default=1, ge=1, le=999)
+    notes: Optional[str] = None
+
+
+class ProductCardSaleCreate(BaseModel):
+    quantity: int = Field(default=1, ge=1, le=999)
+    sold_price: float = Field(ge=0)
+    sold_date: date
+    notes: Optional[str] = None
+
+
+class ProductLedgerEntryCreate(BaseModel):
+    entry_type: str = "flat_gain"
+    amount: float = Field(ge=0)
+    event_date: date
+    notes: Optional[str] = None
+
+
+class ProductLedgerEntryResponse(BaseModel):
+    id: int
+    product_card_id: Optional[int] = None
+    product_id: int
+    entry_type: str
+    card_id: Optional[str] = None
+    original_collection_item_id: Optional[int] = None
+    quantity: int
+    amount: float
+    event_date: date
+    product_name: Optional[str] = None
+    card_name: Optional[str] = None
+    set_id: Optional[str] = None
+    card_number: Optional[str] = None
+    variant: Optional[str] = None
+    condition: Optional[str] = None
+    lang: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: Optional[datetime] = None
+    card: Optional[CardWithSet] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ProductCardResponse(BaseModel):
+    id: int
+    product_id: int
+    card_id: str
+    collection_item_id: Optional[int] = None
+    initial_quantity: int
+    active_quantity: int
+    sold_quantity: int
+    condition: Optional[str] = None
+    variant: str = "Normal"
+    lang: str = "en"
+    purchase_price: Optional[float] = None
+    linked_at: Optional[datetime] = None
+    live_value: float = 0
+    realized_gains: float = 0
+    card: Optional[CardWithSet] = None
+    ledger_entries: List[ProductLedgerEntryResponse] = Field(default_factory=list)
+
+    class Config:
+        from_attributes = True
+
+
 class ProductPurchaseResponse(BaseModel):
     id: int
     product_name: str
@@ -284,6 +351,15 @@ class ProductPurchaseResponse(BaseModel):
     created_at: Optional[datetime] = None
     pnl: Optional[float] = None
     pnl_percent: Optional[float] = None
+    value_source: Optional[str] = None
+    linked_live_value: float = 0
+    realized_gains: float = 0
+    computed_current_value: Optional[float] = None
+    linked_cards_count: int = 0
+    active_linked_cards_count: int = 0
+    sold_linked_cards_count: int = 0
+    product_cards: List[ProductCardResponse] = Field(default_factory=list)
+    ledger_entries: List[ProductLedgerEntryResponse] = Field(default_factory=list)
 
     class Config:
         from_attributes = True

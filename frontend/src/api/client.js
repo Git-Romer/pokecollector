@@ -194,12 +194,16 @@ export const rescheduleFullSync = (intervalDays) => api.post('/sync/reschedule-f
 export const reschedulePriceSync = (intervalMinutes) => api.post('/sync/reschedule-prices', { interval_minutes: intervalMinutes })
 
 // Products
-export const getProducts = () => api.get('/products/')
+export const getProducts = (params = {}) => api.get('/products/', { params })
 export const getProductTypes = () => api.get('/products/types')
 export const createProduct = (data) => api.post('/products/', data)
 export const updateProduct = (id, data) => api.put(`/products/${id}`, data)
 export const deleteProduct = (id) => api.delete(`/products/${id}`)
-export const getProductsSummary = () => api.get('/products/summary')
+export const getProductsSummary = (params = {}) => api.get('/products/summary', { params })
+export const linkProductCard = (productId, data) => api.post(`/products/${productId}/cards`, data).then(r => r.data)
+export const unlinkProductCard = (productId, productCardId) => api.delete(`/products/${productId}/cards/${productCardId}`).then(r => r.data)
+export const sellProductCard = (productId, productCardId, data) => api.post(`/products/${productId}/cards/${productCardId}/sell`, data).then(r => r.data)
+export const addProductLedgerEntry = (productId, data) => api.post(`/products/${productId}/ledger`, data).then(r => r.data)
 
 // Export
 export const exportCSV = (params = {}) => {

@@ -1,11 +1,11 @@
-import { useState, useMemo } from 'react'
+import { Fragment, useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell
 } from 'recharts'
-import { Plus, Trash2, Edit2, TrendingUp, TrendingDown, Package, Check, X, SortAsc, Filter, ChevronUp, ChevronDown, BarChart3, ShoppingBag, LayoutDashboard } from 'lucide-react'
-import { getProducts, createProduct, updateProduct, deleteProduct, getProductsSummary } from '../api/client'
+import { Plus, Trash2, Edit2, TrendingUp, TrendingDown, Package, Check, X, SortAsc, Filter, ChevronUp, ChevronDown, BarChart3, ShoppingBag, LayoutDashboard, Link2, DollarSign, History, Eye } from 'lucide-react'
+import { getProducts, createProduct, updateProduct, deleteProduct, getProductsSummary, getCollection, linkProductCard, unlinkProductCard, sellProductCard, addProductLedgerEntry, getApiErrorMessage } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import CardListItem from '../components/CardListItem'
 import PeriodSelector, { PRODUCT_PERIODS, getPeriodCutoff } from '../components/PeriodSelector'
@@ -21,15 +21,24 @@ function ProductForm({ initial = {}, onSubmit, onCancel, loading }) {
   const [form, setForm] = useState({
     product_name: initial.product_name || '',
     product_type: initial.product_type || 'Booster Pack',
-    purchase_price: initial.purchase_price || '',
-    current_value: initial.current_value || '',
-    sold_price: initial.sold_price || '',
+    purchase_price: initial.purchase_price ?? '',
+    current_value: initial.current_value ?? '',
+    sold_price: initial.sold_price ?? '',
     purchase_date: initial.purchase_date || today,
     sold_date: initial.sold_date || '',
     notes: initial.notes || '',
   })
 
   const set = (key, val) => setForm(p => ({ ...p, [key]: val }))
+  const purchasePriceNumber = Number(form.purchase_price)
+  const currentValueNumber = Number(form.current_value)
+  const soldPriceNumber = Number(form.sold_price)
+  const canSubmit = form.product_name.trim()
+    && form.purchase_price !== ''
+    && Number.isFinite(purchasePriceNumber)
+    && purchasePriceNumber >= 0
+    && (form.current_value === '' || (Number.isFinite(currentValueNumber) && currentValueNumber >= 0))
+    && (form.sold_price === '' || (Number.isFinite(soldPriceNumber) && soldPriceNumber >= 0))
 
   return (
     <div className="grid grid-cols-2 gap-3">
@@ -50,17 +59,17 @@ function ProductForm({ initial = {}, onSubmit, onCancel, loading }) {
       </div>
       <div>
         <label className="text-xs text-text-muted mb-1 block">{t('products.purchasePrice')}</label>
-        <input type="number" step="0.01" placeholder="0.00" value={form.purchase_price}
+        <input type="number" min="0" step="0.01" placeholder="0.00" value={form.purchase_price}
           onChange={(e) => set('purchase_price', e.target.value)} className="input" />
       </div>
       <div>
         <label className="text-xs text-text-muted mb-1 block">{t('products.currentValueLabel')}</label>
-        <input type="number" step="0.01" placeholder="0.00" value={form.current_value}
+        <input type="number" min="0" step="0.01" placeholder="0.00" value={form.current_value}
           onChange={(e) => set('current_value', e.target.value)} className="input" />
       </div>
       <div>
         <label className="text-xs text-text-muted mb-1 block">{t('products.soldPrice')}</label>
-        <input type="number" step="0.01" placeholder={t('products.soldPriceHint')} value={form.sold_price}
+        <input type="number" min="0" step="0.01" placeholder={t('products.soldPriceHint')} value={form.sold_price}
           onChange={(e) => set('sold_price', e.target.value)} className="input" />
       </div>
       <div>
@@ -75,11 +84,11 @@ function ProductForm({ initial = {}, onSubmit, onCancel, loading }) {
       <div className="col-span-2 flex gap-2">
         <button onClick={() => onSubmit({
           ...form,
-          purchase_price: parseFloat(form.purchase_price),
-          current_value: form.current_value ? parseFloat(form.current_value) : null,
-          sold_price: form.sold_price ? parseFloat(form.sold_price) : null,
+          purchase_price: purchasePriceNumber,
+          current_value: form.current_value === '' ? null : currentValueNumber,
+          sold_price: form.sold_price === '' ? null : soldPriceNumber,
           sold_date: form.sold_date || null,
-        })} disabled={!form.product_name || !form.purchase_price || loading} className="btn-primary flex-1">
+        })} disabled={!canSubmit || loading} className="btn-primary flex-1">
           <Check size={14} /> {loading ? t('common.saving') : t('common.save')}
         </button>
         <button onClick={onCancel} className="btn-ghost">
@@ -90,10 +99,233 @@ function ProductForm({ initial = {}, onSubmit, onCancel, loading }) {
   )
 }
 
+const getProductValue = (product) => {
+  if (product?.computed_current_value != null) return product.computed_current_value
+  if (product?.sold_price != null) return product.sold_price
+  if (product?.current_value != null) return product.current_value
+  return product?.purchase_price ?? 0
+}
+
+function collectionItemLabel(item, formatPrice) {
+  const card = item.card || {}
+  const setName = card.set_ref?.name || card.set_id || '-'
+  const price = item.purchase_price != null ? ` · ${formatPrice(item.purchase_price)}` : ''
+  return `${card.name || item.card_id} · ${setName} #${card.number || '?'} · ${item.variant || 'Normal'} · ${item.condition || 'NM'} · ${item.lang || 'en'} · owned ${item.quantity}${price}`
+}
+
+function linkedActiveQuantityByCollectionItem(products) {
+  const totals = new Map()
+  products.forEach(product => {
+    ;(product.product_cards || []).forEach(entry => {
+      if (!entry.collection_item_id) return
+      totals.set(entry.collection_item_id, (totals.get(entry.collection_item_id) || 0) + (entry.active_quantity || 0))
+    })
+  })
+  return totals
+}
+
+function ProductLedgerPanel({ product, products, collectionItems, formatPrice, t, onLink, onUnlink, onSell, onFlatGain, loading }) {
+  const today = new Date().toISOString().split('T')[0]
+  const [collectionItemId, setCollectionItemId] = useState('')
+  const [linkQuantity, setLinkQuantity] = useState(1)
+  const [saleForms, setSaleForms] = useState({})
+  const [flatGain, setFlatGain] = useState({ amount: '', event_date: today, notes: '' })
+  const linkedByItem = useMemo(() => linkedActiveQuantityByCollectionItem(products), [products])
+  const availableCollectionItems = collectionItems
+    .map(item => ({ item, available: Math.max((item.quantity || 0) - (linkedByItem.get(item.id) || 0), 0) }))
+    .filter(({ available }) => available > 0)
+  const selectedAvailable = availableCollectionItems.find(({ item }) => item.id === Number(collectionItemId))?.available || 0
+  const normalizedLinkQuantity = Number(linkQuantity)
+  const canLink = Boolean(collectionItemId)
+    && Number.isInteger(normalizedLinkQuantity)
+    && normalizedLinkQuantity >= 1
+    && normalizedLinkQuantity <= selectedAvailable
+  const flatGainAmount = Number(flatGain.amount)
+  const canAddFlatGain = flatGain.amount !== '' && Number.isFinite(flatGainAmount) && flatGainAmount >= 0
+
+  const updateSaleForm = (entryId, key, value) => {
+    setSaleForms(prev => ({
+      ...prev,
+      [entryId]: {
+        quantity: 1,
+        sold_price: '',
+        sold_date: today,
+        notes: '',
+        ...(prev[entryId] || {}),
+        [key]: value,
+      },
+    }))
+  }
+
+  const resetSaleForm = (entryId) => {
+    setSaleForms(prev => {
+      const copy = { ...prev }
+      delete copy[entryId]
+      return copy
+    })
+  }
+
+  const submitLink = () => {
+    if (!canLink) return
+    onLink(product.id, {
+      collection_item_id: Number(collectionItemId),
+      quantity: normalizedLinkQuantity,
+    }).then(() => {
+      setCollectionItemId('')
+      setLinkQuantity(1)
+    })
+  }
+
+  const submitSale = (entry) => {
+    const form = saleForms[entry.id] || { quantity: 1, sold_price: '', sold_date: today, notes: '' }
+    const saleQuantity = Number(form.quantity)
+    const salePrice = Number(form.sold_price)
+    if (!Number.isInteger(saleQuantity) || saleQuantity < 1 || saleQuantity > entry.active_quantity || !Number.isFinite(salePrice) || salePrice < 0) return
+    return onSell(product.id, entry.id, {
+      quantity: saleQuantity,
+      sold_price: salePrice,
+      sold_date: form.sold_date || today,
+      notes: form.notes || null,
+    }).then(() => resetSaleForm(entry.id))
+  }
+
+  const submitFlatGain = () => {
+    if (!canAddFlatGain) return
+    onFlatGain(product.id, {
+      entry_type: 'flat_gain',
+      amount: flatGainAmount,
+      event_date: flatGain.event_date || today,
+      notes: flatGain.notes || null,
+    }).then(() => setFlatGain({ amount: '', event_date: today, notes: '' }))
+  }
+
+  return (
+    <div className="bg-bg-elevated/40 border border-border rounded-xl p-4 space-y-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="stat-card p-3">
+          <p className="stat-label">{t('products.liveCardsValue')}</p>
+          <p className="text-base font-bold text-text-primary">{formatPrice(product.linked_live_value || 0)}</p>
+        </div>
+        <div className="stat-card p-3">
+          <p className="stat-label">{t('products.realizedGains')}</p>
+          <p className="text-base font-bold text-green">{formatPrice(product.realized_gains || 0)}</p>
+        </div>
+        <div className="stat-card p-3">
+          <p className="stat-label">{t('products.activeLinkedCards')}</p>
+          <p className="text-base font-bold text-text-primary">{product.active_linked_cards_count || 0}</p>
+        </div>
+        <div className="stat-card p-3">
+          <p className="stat-label">{t('products.soldLinkedCards')}</p>
+          <p className="text-base font-bold text-text-primary">{product.sold_linked_cards_count || 0}</p>
+        </div>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-[1.5fr_0.6fr_auto]">
+        <div>
+          <label className="text-xs text-text-muted mb-1 block">{t('products.linkOwnedCard')}</label>
+          <select className="select" value={collectionItemId} onChange={(e) => setCollectionItemId(e.target.value)}>
+            <option value="">{availableCollectionItems.length ? t('products.chooseCollectionCard') : t('products.noUnlinkedCards')}</option>
+            {availableCollectionItems.map(({ item, available }) => (
+              <option key={item.id} value={item.id}>{collectionItemLabel(item, formatPrice)} · {t('products.available')}: {available}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs text-text-muted mb-1 block">{t('common.quantity')}</label>
+          <input type="number" min="1" max={selectedAvailable || 999} step="1" className="input" value={linkQuantity} onChange={(e) => setLinkQuantity(e.target.value)} />
+        </div>
+        <div className="flex items-end">
+          <button disabled={!canLink || loading} onClick={submitLink} className="btn-primary w-full lg:w-auto">
+            <Link2 size={14} /> {t('products.linkCard')}
+          </button>
+        </div>
+      </div>
+
+      {(product.product_cards || []).length > 0 ? (
+        <div className="space-y-3">
+          {(product.product_cards || []).map(entry => {
+            const form = saleForms[entry.id] || { quantity: 1, sold_price: '', sold_date: today, notes: '' }
+            const saleQuantity = Number(form.quantity)
+            const salePrice = Number(form.sold_price)
+            const canSell = Number.isInteger(saleQuantity)
+              && saleQuantity >= 1
+              && saleQuantity <= entry.active_quantity
+              && form.sold_price !== ''
+              && Number.isFinite(salePrice)
+              && salePrice >= 0
+            return (
+              <div key={entry.id} className="bg-bg-card border border-border rounded-lg p-3 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-text-primary truncate">{entry.card?.name || entry.card_id}</p>
+                    <p className="text-xs text-text-muted">
+                      {entry.card?.set_ref?.name || entry.card?.set_id || '-'} #{entry.card?.number || '?'} · {entry.variant} · {entry.condition} · {entry.lang}
+                    </p>
+                    <p className="text-xs text-text-secondary mt-1">
+                      {t('products.active')}: {entry.active_quantity} · {t('common.sold')}: {entry.sold_quantity} · {t('products.live')}: {formatPrice(entry.live_value || 0)} · {t('products.realized')}: {formatPrice(entry.realized_gains || 0)}
+                    </p>
+                  </div>
+                  <button disabled={loading || entry.sold_quantity > 0} onClick={() => onUnlink(product.id, entry.id)} className="btn-ghost text-xs py-1.5">
+                    <X size={12} /> {t('products.unlink')}
+                  </button>
+                </div>
+
+                {entry.active_quantity > 0 && (
+                  <div className="grid gap-2 md:grid-cols-[0.5fr_0.8fr_0.8fr_1fr_auto]">
+                    <input type="number" min="1" max={entry.active_quantity} step="1" className="input text-sm py-1.5" value={form.quantity} onChange={(e) => updateSaleForm(entry.id, 'quantity', e.target.value)} aria-label={t('common.quantity')} />
+                    <input type="number" min="0" step="0.01" className="input text-sm py-1.5" placeholder={t('products.saleTotal')} value={form.sold_price} onChange={(e) => updateSaleForm(entry.id, 'sold_price', e.target.value)} />
+                    <input type="date" className="input text-sm py-1.5" value={form.sold_date} onChange={(e) => updateSaleForm(entry.id, 'sold_date', e.target.value)} />
+                    <input type="text" className="input text-sm py-1.5" placeholder={t('products.saleNotes')} value={form.notes} onChange={(e) => updateSaleForm(entry.id, 'notes', e.target.value)} />
+                    <button disabled={loading || !canSell} onClick={() => submitSale(entry)} className="btn-primary text-sm py-1.5">
+                      <DollarSign size={13} /> {t('products.markSold')}
+                    </button>
+                  </div>
+                )}
+
+                {(entry.ledger_entries || []).length > 0 && (
+                  <div className="pt-2 border-t border-border/70 space-y-1">
+                    {(entry.ledger_entries || []).map(ledger => (
+                      <p key={ledger.id} className="text-xs text-text-muted flex items-center gap-1">
+                        <History size={12} /> {ledger.event_date}: {ledger.quantity} × {entry.card?.name || entry.card_id} · {formatPrice(ledger.amount)}{ledger.notes ? ` · ${ledger.notes}` : ''}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <p className="text-sm text-text-muted">{t('products.noLinkedCards')}</p>
+      )}
+
+      <div className="grid gap-2 md:grid-cols-[0.8fr_0.8fr_1fr_auto] pt-3 border-t border-border">
+        <input type="number" min="0" step="0.01" className="input text-sm py-1.5" placeholder={t('products.flatGainAmount')} value={flatGain.amount} onChange={(e) => setFlatGain(prev => ({ ...prev, amount: e.target.value }))} />
+        <input type="date" className="input text-sm py-1.5" value={flatGain.event_date} onChange={(e) => setFlatGain(prev => ({ ...prev, event_date: e.target.value }))} />
+        <input type="text" className="input text-sm py-1.5" placeholder={t('products.flatGainNotes')} value={flatGain.notes} onChange={(e) => setFlatGain(prev => ({ ...prev, notes: e.target.value }))} />
+        <button disabled={loading || !canAddFlatGain} onClick={submitFlatGain} className="btn-ghost text-sm py-1.5">
+          <Plus size={13} /> {t('products.addFlatGain')}
+        </button>
+      </div>
+
+      {(product.ledger_entries || []).length > 0 && (
+        <div className="space-y-1">
+          {(product.ledger_entries || []).map(entry => (
+            <p key={entry.id} className="text-xs text-text-muted flex items-center gap-1">
+              <History size={12} /> {entry.event_date}: {t('products.flatGain')} · {formatPrice(entry.amount)}{entry.notes ? ` · ${entry.notes}` : ''}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Products() {
-  const { t, formatPrice } = useSettings()
+  const { t, formatPrice, pricePrimaryField } = useSettings()
   const [creating, setCreating] = useState(false)
   const [editingId, setEditingId] = useState(null)
+  const [expandedProductId, setExpandedProductId] = useState(null)
   const [period, setPeriod] = useState('total')
   const [sortBy, setSortBy] = useState('purchase_date')
   const [sortOrder, setSortOrder] = useState('desc')
@@ -110,21 +342,33 @@ export default function Products() {
   ]
 
   const { data: products = [], isLoading } = useQuery({
-    queryKey: ['products'],
-    queryFn: () => getProducts().then(r => r.data),
+    queryKey: ['products', pricePrimaryField],
+    queryFn: () => getProducts({ price_field: pricePrimaryField }).then(r => r.data),
   })
 
   const { data: summary } = useQuery({
-    queryKey: ['products-summary'],
-    queryFn: () => getProductsSummary().then(r => r.data),
+    queryKey: ['products-summary', pricePrimaryField],
+    queryFn: () => getProductsSummary({ price_field: pricePrimaryField }).then(r => r.data),
   })
+
+  const { data: collectionItems = [] } = useQuery({
+    queryKey: ['collection', 'products-linking'],
+    queryFn: () => getCollection().then(r => r.data),
+    enabled: products.length > 0,
+  })
+
+  const invalidateProducts = () => {
+    queryClient.invalidateQueries({ queryKey: ['products'] })
+    queryClient.invalidateQueries({ queryKey: ['products-summary'] })
+    queryClient.invalidateQueries({ queryKey: ['collection'] })
+    queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+  }
 
   const createMutation = useMutation({
     mutationFn: createProduct,
     onSuccess: () => {
       toast.success(t('products.added'))
-      queryClient.invalidateQueries({ queryKey: ['products'] })
-      queryClient.invalidateQueries({ queryKey: ['products-summary'] })
+      invalidateProducts()
       setCreating(false)
     },
     onError: () => toast.error(t('products.addFailed')),
@@ -134,8 +378,7 @@ export default function Products() {
     mutationFn: ({ id, data }) => updateProduct(id, data),
     onSuccess: () => {
       toast.success(t('products.updated'))
-      queryClient.invalidateQueries({ queryKey: ['products'] })
-      queryClient.invalidateQueries({ queryKey: ['products-summary'] })
+      invalidateProducts()
       setEditingId(null)
     },
   })
@@ -144,9 +387,45 @@ export default function Products() {
     mutationFn: deleteProduct,
     onSuccess: () => {
       toast.success(t('products.deleted'))
-      queryClient.invalidateQueries({ queryKey: ['products'] })
-      queryClient.invalidateQueries({ queryKey: ['products-summary'] })
+      invalidateProducts()
     },
+    onError: (error) => toast.error(getApiErrorMessage(error, t('products.deleteFailed'))),
+  })
+
+  const linkCardMutation = useMutation({
+    mutationFn: ({ productId, data }) => linkProductCard(productId, data),
+    onSuccess: () => {
+      toast.success(t('products.cardLinked'))
+      invalidateProducts()
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error, t('products.cardLinkFailed'))),
+  })
+
+  const unlinkCardMutation = useMutation({
+    mutationFn: ({ productId, productCardId }) => unlinkProductCard(productId, productCardId),
+    onSuccess: () => {
+      toast.success(t('products.cardUnlinked'))
+      invalidateProducts()
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error, t('products.cardUnlinkFailed'))),
+  })
+
+  const sellCardMutation = useMutation({
+    mutationFn: ({ productId, productCardId, data }) => sellProductCard(productId, productCardId, data),
+    onSuccess: () => {
+      toast.success(t('products.cardSold'))
+      invalidateProducts()
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error, t('products.cardSellFailed'))),
+  })
+
+  const flatGainMutation = useMutation({
+    mutationFn: ({ productId, data }) => addProductLedgerEntry(productId, data),
+    onSuccess: () => {
+      toast.success(t('products.flatGainAdded'))
+      invalidateProducts()
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error, t('products.flatGainFailed'))),
   })
 
   const hasActiveFilters = filterType || filterDateFrom || filterDateTo || filterPnl !== 'all'
@@ -159,10 +438,7 @@ export default function Products() {
       return true
     })
     const totalInvested = periodProducts.reduce((s, p) => s + (p.purchase_price || 0), 0)
-    const totalValue = periodProducts.reduce((s, p) => {
-      const v = p.sold_price ?? p.current_value ?? p.purchase_price ?? 0
-      return s + v
-    }, 0)
+    const totalValue = periodProducts.reduce((s, p) => s + getProductValue(p), 0)
     const totalPnl = totalValue - totalInvested
     const pnlPct = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0
     return { totalInvested, totalValue, totalPnl, pnlPct, count: periodProducts.length }
@@ -380,7 +656,8 @@ export default function Products() {
               </thead>
               <tbody>
                 {filteredAndSorted.map((p) => (
-                  <tr key={p.id} className="border-b border-border/50 hover:bg-bg-elevated/50">
+                  <Fragment key={p.id}>
+                  <tr className="border-b border-border/50 hover:bg-bg-elevated/50">
                     {editingId === p.id ? (
                       <td colSpan={8} className="px-4 py-4">
                         <ProductForm initial={p} onSubmit={(data) => updateMutation.mutate({ id: p.id, data })}
@@ -397,7 +674,8 @@ export default function Products() {
                         <td className="px-4 py-3 text-text-secondary text-xs">{p.purchase_date}</td>
                         <td className="px-4 py-3 text-right font-medium text-text-primary">{formatPrice(p.purchase_price)}</td>
                         <td className="px-4 py-3 text-right text-text-primary">
-                          {p.sold_price ? formatPrice(p.sold_price) : p.current_value ? formatPrice(p.current_value) : '-'}
+                          {p.computed_current_value != null ? formatPrice(p.computed_current_value) : '-'}
+                          {p.value_source === 'linked_cards' && <p className="text-[10px] text-text-muted">{t('products.dynamic')}</p>}
                         </td>
                         <td className="px-4 py-3 text-right font-medium">
                           {p.pnl !== null ? (
@@ -415,6 +693,9 @@ export default function Products() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1 justify-end">
+                            <button onClick={() => setExpandedProductId(id => id === p.id ? null : p.id)} className="text-text-muted hover:text-text-primary p-1 transition-colors">
+                              <Eye size={14} />
+                            </button>
                             <button onClick={() => setEditingId(p.id)} className="text-text-muted hover:text-text-primary p-1 transition-colors">
                               <Edit2 size={14} />
                             </button>
@@ -428,6 +709,25 @@ export default function Products() {
                       </>
                     )}
                   </tr>
+                  {expandedProductId === p.id && editingId !== p.id && (
+                    <tr className="border-b border-border/50">
+                      <td colSpan={8} className="px-4 py-4">
+                        <ProductLedgerPanel
+                          product={p}
+                          products={products}
+                          collectionItems={collectionItems}
+                          formatPrice={formatPrice}
+                          t={t}
+                          loading={linkCardMutation.isPending || unlinkCardMutation.isPending || sellCardMutation.isPending || flatGainMutation.isPending}
+                          onLink={(productId, data) => linkCardMutation.mutateAsync({ productId, data })}
+                          onUnlink={(productId, productCardId) => unlinkCardMutation.mutateAsync({ productId, productCardId })}
+                          onSell={(productId, productCardId, data) => sellCardMutation.mutateAsync({ productId, productCardId, data })}
+                          onFlatGain={(productId, data) => flatGainMutation.mutateAsync({ productId, data })}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -451,28 +751,47 @@ export default function Products() {
               if (p.sold_date) badges.push({ label: t('common.sold'), variant: 'green' })
 
               return (
-                <CardListItem
-                  key={p.id}
-                  name={p.product_name}
-                  subtext={`${p.purchase_date} · ${formatPrice(p.purchase_price)}`}
-                  badges={badges}
-                  value={p.pnl !== null ? `${p.pnl >= 0 ? '+' : ''}${formatPrice(p.pnl)}` : '-'}
-                  valueSecondary={p.pnl_percent !== null ? `${p.pnl_percent >= 0 ? '+' : ''}${p.pnl_percent?.toFixed(1)}%` : undefined}
-                  rightAction={
-                    <div className="flex flex-col gap-1">
-                      <button onClick={(e) => { e.stopPropagation(); setEditingId(p.id) }}
-                        className="text-text-muted hover:text-text-primary p-1 transition-colors">
-                        <Edit2 size={12} />
-                      </button>
-                      <button onClick={(e) => {
-                        e.stopPropagation()
-                        if (confirm(`${t('products.deleteConfirm')} "${p.product_name}"?`)) deleteMutation.mutate(p.id)
-                      }} className="text-text-muted hover:text-brand-red p-1 transition-colors">
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
-                  }
-                />
+                <Fragment key={p.id}>
+                  <CardListItem
+                    name={p.product_name}
+                    subtext={`${p.purchase_date} · ${formatPrice(p.purchase_price)} · ${t('products.valueLabel')}: ${p.computed_current_value != null ? formatPrice(p.computed_current_value) : '-'}`}
+                    badges={badges}
+                    value={p.pnl !== null ? `${p.pnl >= 0 ? '+' : ''}${formatPrice(p.pnl)}` : '-'}
+                    valueSecondary={p.pnl_percent !== null ? `${p.pnl_percent >= 0 ? '+' : ''}${p.pnl_percent?.toFixed(1)}%` : undefined}
+                    rightAction={
+                      <div className="flex flex-col gap-1">
+                        <button onClick={(e) => { e.stopPropagation(); setExpandedProductId(id => id === p.id ? null : p.id) }}
+                          className="text-text-muted hover:text-text-primary p-1 transition-colors">
+                          <Eye size={12} />
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); setEditingId(p.id) }}
+                          className="text-text-muted hover:text-text-primary p-1 transition-colors">
+                          <Edit2 size={12} />
+                        </button>
+                        <button onClick={(e) => {
+                          e.stopPropagation()
+                          if (confirm(`${t('products.deleteConfirm')} "${p.product_name}"?`)) deleteMutation.mutate(p.id)
+                        }} className="text-text-muted hover:text-brand-red p-1 transition-colors">
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    }
+                  />
+                  {expandedProductId === p.id && (
+                    <ProductLedgerPanel
+                      product={p}
+                      products={products}
+                      collectionItems={collectionItems}
+                      formatPrice={formatPrice}
+                      t={t}
+                      loading={linkCardMutation.isPending || unlinkCardMutation.isPending || sellCardMutation.isPending || flatGainMutation.isPending}
+                      onLink={(productId, data) => linkCardMutation.mutateAsync({ productId, data })}
+                      onUnlink={(productId, productCardId) => unlinkCardMutation.mutateAsync({ productId, productCardId })}
+                      onSell={(productId, productCardId, data) => sellCardMutation.mutateAsync({ productId, productCardId, data })}
+                      onFlatGain={(productId, data) => flatGainMutation.mutateAsync({ productId, data })}
+                    />
+                  )}
+                </Fragment>
               )
             })}
           </div>

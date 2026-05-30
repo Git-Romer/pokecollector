@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from api.auth import get_current_user
 from database import get_db
-from models import Card, CollectionItem, ProductPurchase, Set, User, WishlistItem
+from models import Card, CollectionItem, ProductLedgerEntry, ProductPurchase, Set, User, WishlistItem
 from services.card_values import effective_market_price, normalize_price_field
 
 router = APIRouter()
@@ -265,7 +265,6 @@ def _load_user_stats(db: Session, user_ids: list[int] | None = None, price_field
         ).filter(
             ProductPurchase.user_id.in_(active_user_ids),
             ProductPurchase.sold_price.isnot(None),
-            ProductPurchase.sold_price > 0,
         ).group_by(
             ProductPurchase.user_id
         ).all()
@@ -316,13 +315,17 @@ def _load_user_stats(db: Session, user_ids: list[int] | None = None, price_field
         user_products = db.query(ProductPurchase).filter(
             ProductPurchase.user_id == user.id
         ).all()
-        unsold_products = [p for p in user_products if not (p.sold_price is not None and p.sold_price > 0)]
-        sold_products = [p for p in user_products if p.sold_price is not None and p.sold_price > 0]
+        unsold_products = [p for p in user_products if p.sold_price is None]
+        sold_products = [p for p in user_products if p.sold_price is not None]
 
-        products_cost = sum(p.purchase_price for p in unsold_products if p.purchase_price)
-        products_sold_cost = sum(p.purchase_price for p in sold_products if p.purchase_price)
-        products_sold_revenue = sum(p.sold_price for p in sold_products if p.sold_price)
-        products_realized_pnl = products_sold_revenue - products_sold_cost
+        products_cost = sum(p.purchase_price for p in unsold_products if p.purchase_price is not None)
+        products_sold_cost = sum(p.purchase_price for p in sold_products if p.purchase_price is not None)
+        products_sold_revenue = sum(p.sold_price for p in sold_products if p.sold_price is not None)
+        product_card_realized_gains = db.query(func.coalesce(func.sum(ProductLedgerEntry.amount), 0)).filter(
+            ProductLedgerEntry.user_id == user.id,
+            ProductLedgerEntry.entry_type.in_(["card_sale", "flat_gain"]),
+        ).scalar() or 0
+        products_realized_pnl = products_sold_revenue - products_sold_cost + product_card_realized_gains
 
         total_cost = total_invested + products_cost
         pnl = total_value - total_cost + products_realized_pnl

@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, String, Integer, Float, DateTime, Date, Boolean,
-    ForeignKey, Text, JSON, UniqueConstraint, LargeBinary
+    CheckConstraint, ForeignKey, Text, JSON, UniqueConstraint, LargeBinary
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -233,6 +233,75 @@ class ProductPurchase(Base):
     sold_date = Column(Date)
     notes = Column(Text)
     created_at = Column(DateTime, default=func.now())
+
+
+class ProductCard(Base):
+    __tablename__ = "product_cards"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    product_id = Column(Integer, ForeignKey("product_purchases.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    card_id = Column(String, ForeignKey("cards.id"), nullable=False)
+    # Historical source row only. Intentionally not a FK so sold-card history
+    # survives when the active collection row is reduced/deleted after sale.
+    collection_item_id = Column(Integer, nullable=True)
+    initial_quantity = Column(Integer, default=1, nullable=False)
+    active_quantity = Column(Integer, default=1, nullable=False)
+    sold_quantity = Column(Integer, default=0, nullable=False)
+    condition = Column(String, default="NM")
+    variant = Column(String, nullable=False, default="Normal")
+    lang = Column(String, default="en")
+    purchase_price = Column(Float)
+    linked_at = Column(DateTime, default=func.now())
+
+    product = relationship("ProductPurchase")
+    card = relationship("Card")
+    ledger_entries = relationship(
+        "ProductLedgerEntry",
+        back_populates="product_card",
+        order_by="ProductLedgerEntry.event_date.asc(), ProductLedgerEntry.id.asc()",
+    )
+
+    __table_args__ = (
+        CheckConstraint("initial_quantity >= 1", name="ck_product_cards_initial_quantity_positive"),
+        CheckConstraint("active_quantity >= 0", name="ck_product_cards_active_quantity_non_negative"),
+        CheckConstraint("sold_quantity >= 0", name="ck_product_cards_sold_quantity_non_negative"),
+        CheckConstraint("active_quantity + sold_quantity <= initial_quantity", name="ck_product_cards_quantities_within_initial"),
+    )
+
+
+class ProductLedgerEntry(Base):
+    __tablename__ = "product_ledger_entries"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    product_card_id = Column(Integer, ForeignKey("product_cards.id", ondelete="SET NULL"), nullable=True)
+    product_id = Column(Integer, ForeignKey("product_purchases.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    entry_type = Column(String, nullable=False, default="card_sale")  # card_sale / flat_gain / adjustment
+    card_id = Column(String, ForeignKey("cards.id"), nullable=True)
+    original_collection_item_id = Column(Integer, nullable=True)
+    quantity = Column(Integer, default=1, nullable=False)
+    amount = Column(Float, nullable=False)  # Flat total for this ledger event
+    event_date = Column(Date, nullable=False)
+    product_name = Column(String, nullable=True)
+    card_name = Column(String, nullable=True)
+    set_id = Column(String, nullable=True)
+    card_number = Column(String, nullable=True)
+    variant = Column(String, nullable=True)
+    condition = Column(String, nullable=True)
+    lang = Column(String, nullable=True)
+    notes = Column(Text)
+    created_at = Column(DateTime, default=func.now())
+
+    product_card = relationship("ProductCard", back_populates="ledger_entries")
+    product = relationship("ProductPurchase")
+    card = relationship("Card")
+
+    __table_args__ = (
+        CheckConstraint("quantity >= 1", name="ck_product_ledger_quantity_positive"),
+        CheckConstraint("amount >= 0", name="ck_product_ledger_amount_non_negative"),
+        CheckConstraint("entry_type IN ('card_sale', 'flat_gain', 'adjustment')", name="ck_product_ledger_entry_type"),
+    )
 
 
 class SyncLog(Base):

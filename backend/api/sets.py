@@ -298,6 +298,17 @@ def get_set_checklist(
                 for item in owned_items
             ],
             "price_market": card.price_market,
+            "price_low": card.price_low,
+            "price_trend": card.price_trend,
+            "price_avg1": card.price_avg1,
+            "price_avg7": card.price_avg7,
+            "price_avg30": card.price_avg30,
+            "price_market_holo": card.price_market_holo,
+            "price_low_holo": card.price_low_holo,
+            "price_trend_holo": card.price_trend_holo,
+            "price_avg1_holo": card.price_avg1_holo,
+            "price_avg7_holo": card.price_avg7_holo,
+            "price_avg30_holo": card.price_avg30_holo,
         })
 
     return {

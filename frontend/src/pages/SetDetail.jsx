@@ -10,8 +10,73 @@ import clsx from 'clsx'
 import { resolveCardImageUrl, resolveSetImageUrl } from '../utils/imageUrl'
 import { CARD_VARIANTS, getAvailableVariants, getDefaultVariantOrNull } from '../utils/cardVariants'
 import FallbackBadges from '../components/FallbackBadges'
+import { HOLO_FIELD_MAP } from '../utils/prices'
 
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
+
+const SET_SORT_OPTIONS = [
+  'number',
+  'price_desc',
+  'price_asc',
+  'name_asc',
+  'name_desc',
+]
+
+function numberSortKey(value) {
+  const text = value == null ? '' : String(value)
+  const match = text.match(/^(\D*)(\d+)(.*)$/)
+  if (!match) return [text.toLowerCase(), Number.MAX_SAFE_INTEGER, '']
+  return [match[1].toLowerCase(), Number(match[2]), match[3].toLowerCase()]
+}
+
+function compareNumberLike(a, b) {
+  const left = numberSortKey(a)
+  const right = numberSortKey(b)
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] < right[index]) return -1
+    if (left[index] > right[index]) return 1
+  }
+  return String(a || '').localeCompare(String(b || ''), undefined, { numeric: true, sensitivity: 'base' })
+}
+
+function positivePrice(value) {
+  if (value == null) return null
+  const price = Number(value)
+  return Number.isFinite(price) && price > 0 ? price : null
+}
+
+function setSortPrice(card, pricePrimaryField) {
+  const holoField = HOLO_FIELD_MAP[pricePrimaryField]
+  const candidates = [
+    card?.[pricePrimaryField],
+    holoField ? card?.[holoField] : null,
+    card?.price_market_holo,
+    card?.price_market,
+  ]
+    .map(positivePrice)
+    .filter(price => price != null)
+  return candidates.length ? Math.max(...candidates) : 0
+}
+
+function sortSetCards(cards, sortBy, pricePrimaryField) {
+  const sorted = [...cards]
+  sorted.sort((a, b) => {
+    if (sortBy === 'price_desc' || sortBy === 'price_asc') {
+      const priceA = setSortPrice(a, pricePrimaryField)
+      const priceB = setSortPrice(b, pricePrimaryField)
+      const priceCompare = sortBy === 'price_desc' ? priceB - priceA : priceA - priceB
+      if (priceCompare !== 0) return priceCompare
+      return compareNumberLike(a.number, b.number)
+    }
+    if (sortBy === 'name_asc' || sortBy === 'name_desc') {
+      const nameCompare = String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' })
+      if (nameCompare !== 0) return sortBy === 'name_asc' ? nameCompare : -nameCompare
+      return compareNumberLike(a.number, b.number)
+    }
+    return compareNumberLike(a.number, b.number)
+  })
+  return sorted
+}
 
 function OwnedVersionRow({ item, onQuantityChange, onRemove, isUpdating, isRemoving, t }) {
   const [quantity, setQuantity] = useState(item.quantity || 1)
@@ -218,9 +283,11 @@ function SetCardActionModal({ card, setLang, onClose, onAdd, onQuantityChange, o
 export default function SetDetail() {
   const { setId } = useParams()
   const navigate = useNavigate()
-  const { t } = useSettings()
+  const { t, pricePrimaryField } = useSettings()
   const queryClient = useQueryClient()
   const [filter, setFilter] = useState('all')
+  const [sortBy, setSortBy] = useState('number')
+  const [rarityFilter, setRarityFilter] = useState('all')
   const [selectedCard, setSelectedCard] = useState(null)
 
   const { data, isLoading, error } = useQuery({
@@ -294,11 +361,15 @@ export default function SetDetail() {
 
   const { set, cards = [], owned_count, total_count, progress } = data || {}
 
-  const filteredCards = cards.filter(card => {
-    if (filter === 'owned') return card.owned
-    if (filter === 'missing') return !card.owned
+  const rarityOptions = [...new Set(cards.map(card => card.rarity).filter(Boolean))]
+    .sort((a, b) => String(a).localeCompare(String(b), undefined, { sensitivity: 'base' }))
+
+  const filteredCards = sortSetCards(cards.filter(card => {
+    if (filter === 'owned' && !card.owned) return false
+    if (filter === 'missing' && card.owned) return false
+    if (rarityFilter !== 'all' && card.rarity !== rarityFilter) return false
     return true
-  })
+  }), sortBy, pricePrimaryField)
 
   return (
     <div className="space-y-4 pb-2">
@@ -356,7 +427,7 @@ export default function SetDetail() {
       </div>
 
       {/* Filter Tabs */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 overflow-x-auto pb-1">
         {[
           { key: 'all', label: `${t('setDetail.all')} (${cards.length})` },
           { key: 'owned', label: `${t('setDetail.owned')} (${owned_count})` },
@@ -364,7 +435,7 @@ export default function SetDetail() {
         ].map(({ key, label }) => (
           <button key={key} onClick={() => setFilter(key)}
             className={clsx(
-              'px-4 py-2 rounded-lg text-sm font-medium transition-all',
+              'px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap',
               filter === key
                 ? 'bg-brand-red/20 text-brand-red border border-brand-red/30'
                 : 'text-text-secondary hover:text-text-primary hover:bg-bg-elevated'
@@ -372,6 +443,34 @@ export default function SetDetail() {
             {label}
           </button>
         ))}
+      </div>
+
+      {/* Sort and rarity controls */}
+      <div className="card p-3">
+        <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+          <label className="block">
+            <span className="text-xs text-text-muted mb-1 block">{t('setDetail.sortBy')}</span>
+            <select value={sortBy} onChange={(event) => setSortBy(event.target.value)} className="select">
+              {SET_SORT_OPTIONS.map(option => (
+                <option key={option} value={option}>{t(`setDetail.sort.${option}`)}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="text-xs text-text-muted mb-1 block">{t('setDetail.rarityFilter')}</span>
+            <select value={rarityFilter} onChange={(event) => setRarityFilter(event.target.value)} className="select">
+              <option value="all">{t('setDetail.allRarities')}</option>
+              {rarityOptions.map(rarity => (
+                <option key={rarity} value={rarity}>{rarity}</option>
+              ))}
+            </select>
+          </label>
+
+          <div className="text-xs text-text-muted md:text-right">
+            {t('setDetail.showingCards').replace('{count}', filteredCards.length).replace('{total}', cards.length)}
+          </div>
+        </div>
       </div>
 
       {/* Card Grid */}

@@ -17,7 +17,7 @@ BACKUP_GROUPS = {
     "collection": ["collection", "wishlist", "binders", "binder_cards"],
     "users": ["users", "user_settings", "settings"],
     "cards": ["cards", "sets", "price_history", "custom_card_matches"],
-    "products": ["product_purchases", "portfolio_snapshots"],
+    "products": ["product_purchases", "product_cards", "product_ledger_entries", "portfolio_snapshots"],
     "system": ["sync_log"],
     "images": ["image_cache"],
 }

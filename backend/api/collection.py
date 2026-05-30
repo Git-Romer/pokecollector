@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from api.auth import get_current_user
 from database import get_db
-from models import CollectionItem, Card, Set, User
+from models import CollectionItem, Card, ProductCard, Set, User
 from schemas import CollectionItemCreate, CollectionItemUpdate, CollectionItemResponse, BulkCollectionAddRequest, BulkCollectionAddResponse
 from services import pokemon_api
 from services.card_fallbacks import apply_cross_language_fallbacks, build_missing_language_card
@@ -35,6 +35,13 @@ _SET_CODE_API_CACHE: Optional[dict[str, List[dict]]] = None
 def _get_item_price(item, price_field="price_trend"):
     """Return the selected market price for a collection item, respecting holo variant."""
     return effective_market_price(item.card, item.variant, price_field)
+
+
+def _active_product_link_quantity(db: Session, current_user: User, collection_item_id: int) -> int:
+    return int(db.query(func.coalesce(func.sum(ProductCard.active_quantity), 0)).filter(
+        ProductCard.user_id == current_user.id,
+        ProductCard.collection_item_id == collection_item_id,
+    ).scalar() or 0)
 
 
 def _ensure_set_exists_for_card(db: Session, parsed: dict, lang: str, card_data: Optional[dict] = None) -> None:
@@ -571,6 +578,24 @@ def update_collection_item(
     update_data = update.model_dump(exclude_unset=True)
     if "variant" in update_data:
         update_data["variant"] = _normalize_collection_variant(update_data.get("variant"))
+    active_linked_quantity = _active_product_link_quantity(db, current_user, item.id)
+    if "quantity" in update_data and update_data["quantity"] is not None:
+        if update_data["quantity"] < active_linked_quantity:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Collection quantity cannot be lower than {active_linked_quantity} active product-linked copie(s). Sell or unlink those product cards first.",
+            )
+
+    protected_changes = {
+        field: update_data[field]
+        for field in ("condition", "variant", "lang", "purchase_price")
+        if field in update_data and update_data[field] != getattr(item, field)
+    }
+    if active_linked_quantity > 0 and protected_changes:
+        raise HTTPException(
+            status_code=409,
+            detail="This exact collection row is linked to a product. Unlink or sell the product-linked copies before changing variant, condition, language, or purchase price.",
+        )
 
     # If lang is being changed, also update card_id to the correct language variant
     new_lang = update_data.get("lang")
@@ -603,6 +628,13 @@ def remove_from_collection(
     ).first()
     if not item:
         raise HTTPException(status_code=404, detail="Collection item not found")
+
+    active_linked_quantity = _active_product_link_quantity(db, current_user, item.id)
+    if active_linked_quantity > 0:
+        raise HTTPException(
+            status_code=409,
+            detail="This collection item is linked to a product. Sell or unlink the product card before removing it from the active collection.",
+        )
 
     db.delete(item)
     db.commit()

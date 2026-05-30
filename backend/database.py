@@ -235,6 +235,57 @@ def _run_migrations(conn):
                 ALTER TABLE binder_cards ADD CONSTRAINT uq_binder_collection_item UNIQUE (binder_id, collection_item_id);
             END IF;
         END$$""",
+        # v50: Product card ledger for dynamic product valuation and durable sold-card history.
+        """CREATE TABLE IF NOT EXISTS product_cards (
+            id SERIAL PRIMARY KEY,
+            product_id INTEGER NOT NULL REFERENCES product_purchases(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            card_id VARCHAR NOT NULL REFERENCES cards(id),
+            collection_item_id INTEGER,
+            initial_quantity INTEGER NOT NULL DEFAULT 1,
+            active_quantity INTEGER NOT NULL DEFAULT 1,
+            sold_quantity INTEGER NOT NULL DEFAULT 0,
+            condition VARCHAR DEFAULT 'NM',
+            variant VARCHAR NOT NULL DEFAULT 'Normal',
+            lang VARCHAR DEFAULT 'en',
+            purchase_price FLOAT,
+            linked_at TIMESTAMP DEFAULT NOW(),
+            CHECK (initial_quantity >= 1),
+            CHECK (active_quantity >= 0),
+            CHECK (sold_quantity >= 0),
+            CHECK (active_quantity + sold_quantity <= initial_quantity)
+        )""",
+        """CREATE TABLE IF NOT EXISTS product_ledger_entries (
+            id SERIAL PRIMARY KEY,
+            product_card_id INTEGER REFERENCES product_cards(id) ON DELETE SET NULL,
+            product_id INTEGER NOT NULL REFERENCES product_purchases(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            entry_type VARCHAR NOT NULL DEFAULT 'card_sale',
+            card_id VARCHAR REFERENCES cards(id),
+            original_collection_item_id INTEGER,
+            quantity INTEGER NOT NULL DEFAULT 1,
+            amount FLOAT NOT NULL,
+            event_date DATE NOT NULL,
+            product_name VARCHAR,
+            card_name VARCHAR,
+            set_id VARCHAR,
+            card_number VARCHAR,
+            variant VARCHAR,
+            condition VARCHAR,
+            lang VARCHAR,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT NOW(),
+            CHECK (quantity >= 1),
+            CHECK (amount >= 0),
+            CHECK (entry_type IN ('card_sale', 'flat_gain', 'adjustment'))
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_product_cards_product_user ON product_cards(product_id, user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_product_cards_collection_item ON product_cards(collection_item_id)",
+        "CREATE INDEX IF NOT EXISTS idx_product_ledger_product_user ON product_ledger_entries(product_id, user_id)",
+        "ALTER TABLE product_ledger_entries ADD COLUMN IF NOT EXISTS product_name VARCHAR",
+        "ALTER TABLE product_ledger_entries ADD COLUMN IF NOT EXISTS card_name VARCHAR",
+        "ALTER TABLE product_ledger_entries ADD COLUMN IF NOT EXISTS set_id VARCHAR",
+        "ALTER TABLE product_ledger_entries ADD COLUMN IF NOT EXISTS card_number VARCHAR",
     ]
     for stmt in migrations:
         try:
