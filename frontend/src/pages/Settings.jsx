@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Crown, RefreshCw, Download, Upload, Plus, Pencil, Trash2, User, UserCheck, UserX, Zap } from 'lucide-react'
 import {
-  getSyncStatus, triggerSync, triggerPriceSync, rescheduleFullSync, reschedulePriceSync,
+  getSyncStatus, triggerSync, triggerAllPriceSync, rescheduleFullSync, reschedulePriceSync,
   downloadBackup, restoreBackup, exportCSV,
   getSetting, setSetting, getTelegramStatus, saveSettings, setAuthMode,
   getUsers, createUser, updateUser, deleteUser, changePassword, changeAvatar, changeUsername,
@@ -337,7 +337,7 @@ export default function Settings() {
   const [backupOptions, setBackupOptions] = useState(['full'])
   const [debugModeEnabled, setDebugModeEnabled] = useState(false)
 
-  // Full sync interval (days) and price sync interval (minutes)
+  // Recurring automatic full sync interval (days) and small price sync interval (minutes).
   const [fullSyncIntervalDays, setFullSyncIntervalDays] = useState('5')
   const [priceSyncIntervalMinutes, setPriceSyncIntervalMinutes] = useState('30')
 
@@ -449,12 +449,12 @@ export default function Settings() {
     onError: () => toast.error(t('settings.syncFailed')),
   })
 
-  // Price sync mutation
-  const priceSyncMutation = useMutation({
-    mutationFn: triggerPriceSync,
+  // Forced price sync mutation (all tracked collection/wishlist/binder cards)
+  const allPriceSyncMutation = useMutation({
+    mutationFn: triggerAllPriceSync,
     onSuccess: () => {
       toast.success(t('settings.syncStarted'))
-      setTimeout(() => queryClient.invalidateQueries(), 3000)
+      setTimeout(() => queryClient.invalidateQueries(), 5000)
     },
     onError: () => toast.error(t('settings.syncFailed')),
   })
@@ -469,8 +469,7 @@ export default function Settings() {
     onError: (err) => toast.error(err.response?.data?.detail || t('common.error')),
   })
 
-  const isRunning = syncStatus?.is_running || syncMutation.isPending
-  const isPriceSyncRunning = syncStatus?.is_price_sync_running || priceSyncMutation.isPending
+  const isRunning = syncStatus?.is_running || syncStatus?.is_price_sync_running || syncMutation.isPending || allPriceSyncMutation.isPending
 
   // Save helper
   const saveSetting = async (key, value) => {
@@ -483,16 +482,16 @@ export default function Settings() {
     }
   }
 
-  const handleFullSyncIntervalChange = async (val) => {
-    setFullSyncIntervalDays(val)
-    await saveSetting('full_sync_interval_days', val)
-    try { await rescheduleFullSync(parseInt(val)) } catch {}
-  }
-
   const handlePriceSyncIntervalChange = async (val) => {
     setPriceSyncIntervalMinutes(val)
     await saveSetting('price_sync_interval_minutes', val)
     try { await reschedulePriceSync(parseInt(val)) } catch {}
+  }
+
+  const handleFullSyncIntervalChange = async (val) => {
+    setFullSyncIntervalDays(val)
+    await saveSetting('full_sync_interval_days', val)
+    try { await rescheduleFullSync(parseInt(val)) } catch {}
   }
 
   const handlePriceAlertsToggle = async (val) => {
@@ -612,8 +611,8 @@ export default function Settings() {
     avatarMutation.mutate(avatarId)
   }
 
-  const lastSyncText = syncStatus?.last_sync?.finished_at
-    ? formatDistanceToNow(new Date(syncStatus.last_sync.finished_at), { addSuffix: true })
+  const lastFullSyncText = syncStatus?.last_full_sync?.finished_at
+    ? formatDistanceToNow(new Date(syncStatus.last_full_sync.finished_at), { addSuffix: true })
     : t('settings.neverSynced')
 
   return (
@@ -911,7 +910,7 @@ export default function Settings() {
 
             {/* Card 1: Full Sync */}
             <SettingsCard>
-              <SettingsRow label={t('settings.syncSetsCards')} description={lastSyncText}>
+              <SettingsRow label={t('settings.syncSetsCards')} description={lastFullSyncText}>
                 <button
                   onClick={() => syncMutation.mutate()}
                   disabled={isRunning}
@@ -983,19 +982,19 @@ export default function Settings() {
 
             {/* Card 2: Price Sync */}
             <SettingsCard>
-              <SettingsRow label={t('settings.syncPricesOnly')} description={lastSyncText}>
+              <SettingsRow label={t('settings.syncPricesOnly')} description={t('settings.syncPricesOnlyDesc')}>
                 <button
-                  onClick={() => priceSyncMutation.mutate()}
-                  disabled={isPriceSyncRunning}
+                  onClick={() => allPriceSyncMutation.mutate()}
+                  disabled={isRunning}
                   className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity disabled:opacity-50"
                   style={{ background: 'rgba(227,0,11,0.15)', color: '#e3000b', border: '1px solid rgba(227,0,11,0.3)' }}
                 >
-                  <RefreshCw size={13} className={isPriceSyncRunning ? 'animate-spin' : ''} />
-                  {isPriceSyncRunning ? t('settings.running') : t('settings.syncButton')}
+                  <RefreshCw size={13} className={isRunning ? 'animate-spin' : ''} />
+                  {isRunning ? t('settings.running') : t('settings.syncButton')}
                 </button>
               </SettingsRow>
               {user?.role === 'admin' && (
-                <SettingsRow label={t('settings.priceInterval')} description={t('settings.syncPricesOnlyDesc')} last>
+                <SettingsRow label={t('settings.priceInterval')} description={t('settings.autoSmallSyncDesc')} last>
                   <SelectControl
                     value={priceSyncIntervalMinutes}
                     options={[

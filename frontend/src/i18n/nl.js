@@ -724,8 +724,9 @@ const nl = {
     interval: 'Interval',
     syncSetsCardsDesc: 'Sets & Kaarten',
     syncPricesOnly: 'Alleen Prijzen Synchroniseren',
-    priceInterval: 'Prijs Interval',
-    syncPricesOnlyDesc: 'Alleen Prijzen',
+    priceInterval: 'Interval voor Automatische Kleine Sync',
+    syncPricesOnlyDesc: 'Vernieuwt prijzen voor alle gevolgde kaarten in collectie, wishlist en binders zonder limiet of cooldown van de kleine sync.',
+    autoSmallSyncDesc: 'De automatische achtergrondsync voert de kleine prijssync uit.',
     // Sync interval options (days)
     day1: '1 dag',
     days2: '2 dagen',

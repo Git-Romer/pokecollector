@@ -726,8 +726,9 @@ const en = {
     interval: 'Interval',
     syncSetsCardsDesc: 'Sets & Cards',
     syncPricesOnly: 'Sync Prices Only',
-    priceInterval: 'Price Interval',
-    syncPricesOnlyDesc: 'Prices Only',
+    priceInterval: 'Automatic Small Sync Interval',
+    syncPricesOnlyDesc: 'Refresh prices for all tracked collection, wishlist, and binder cards without the small-sync cap or cooldown.',
+    autoSmallSyncDesc: 'Automatic background sync runs the small price sync.',
     // Sync interval options (days)
     day1: '1 day',
     days2: '2 days',

@@ -89,7 +89,7 @@ def _empty_price_sync_plan(sync_limit: int) -> dict:
     }
 
 
-def _price_sync_plan(db: Session, *, now: datetime.datetime | None = None) -> dict:
+def _price_sync_plan(db: Session, *, now: datetime.datetime | None = None, force: bool = False) -> dict:
     """Return selected collection/wishlist/binder card IDs with a fair price-sync split.
 
     The old implementation converted collection and wishlist IDs through a
@@ -159,7 +159,7 @@ def _price_sync_plan(db: Session, *, now: datetime.datetime | None = None) -> di
         last_attempt = _as_utc_naive(card.last_price_sync_attempt_at)
         if _has_any_price(card):
             priced_cards.append(card)
-        elif last_attempt == datetime.datetime.min or last_attempt <= no_price_retry_before:
+        elif force or last_attempt == datetime.datetime.min or last_attempt <= no_price_retry_before:
             missing_cards.append(card)
         else:
             missing_cooldown_cards.append(card)
@@ -187,8 +187,13 @@ def _price_sync_plan(db: Session, *, now: datetime.datetime | None = None) -> di
     missing_cards = sorted(missing_cards, key=missing_sort_key)
     priced_cards = sorted(priced_cards, key=priced_sort_key)
 
-    selected_missing = missing_cards[:missing_limit]
-    selected_priced = priced_cards[:priced_limit]
+    if force:
+        selected_missing = missing_cards
+        selected_priced = priced_cards
+        sync_limit = len(selected_missing) + len(selected_priced)
+    else:
+        selected_missing = missing_cards[:missing_limit]
+        selected_priced = priced_cards[:priced_limit]
 
     remaining_capacity = sync_limit - len(selected_missing) - len(selected_priced)
     if remaining_capacity > 0:
@@ -522,7 +527,7 @@ def perform_full_sync(db: Session) -> dict:
         # 3. Update prices for collection, wishlist, and binder cards. Use the same
         # fair dynamic priority queue as the price-only sync so a full sync
         # cannot keep skipping cards when the per-run cap applies.
-        price_plan = _price_sync_plan(db)
+        price_plan = _price_sync_plan(db, force=True)
         selected_ids = price_plan["ids"]
         skipped_count = price_plan["deferred"]
         logger.info(
@@ -637,8 +642,13 @@ def perform_full_sync(db: Session) -> dict:
         raise
 
 
-def perform_price_sync(db: Session) -> dict:
-    """Perform a price-only sync: update prices for collection, wishlist, and binder cards."""
+def perform_price_sync(db: Session, *, force: bool = False) -> dict:
+    """Perform a price sync for collection, wishlist, and binder cards.
+
+    The regular small sync uses the fair queue, cap, and no-price cooldown.
+    A forced price sync refreshes all tracked cards and bypasses the no-price
+    cooldown so manual Settings price syncs can repair previously zeroed prices.
+    """
     log = SyncLog(started_at=datetime.datetime.utcnow(), status="running", sync_type="price")
     db.add(log)
     db.commit()
@@ -647,12 +657,13 @@ def perform_price_sync(db: Session) -> dict:
     updated_card_ids = []
 
     try:
-        price_plan = _price_sync_plan(db)
+        price_plan = _price_sync_plan(db, force=force)
         selected_ids = price_plan["ids"]
         skipped_count = price_plan["deferred"]
         logger.info(
-            "Price sync: updating prices for %s of %s collection/wishlist/binder cards "
+            "%s price sync: updating prices for %s of %s collection/wishlist/binder cards "
             "(limit=%s, missing=%s/%s, priced=%s/%s, cooldown_no_price=%s)%s...",
+            "Forced" if force else "Small",
             len(selected_ids),
             price_plan["total_syncable"],
             price_plan["sync_limit"],

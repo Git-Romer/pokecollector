@@ -24,6 +24,19 @@ def _ensure_utc_z(dt) -> str:
     return utc_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
 
 
+def _sync_log_payload(sync_log: SyncLog | None):
+    if not sync_log:
+        return None
+    return {
+        "status": sync_log.status,
+        "started_at": _ensure_utc_z(sync_log.started_at),
+        "finished_at": _ensure_utc_z(sync_log.finished_at),
+        "cards_updated": sync_log.cards_updated,
+        "sets_updated": sync_log.sets_updated,
+        "sync_type": sync_log.sync_type,
+    }
+
+
 @router.post("/")
 def trigger_sync(
     background_tasks: BackgroundTasks,
@@ -84,6 +97,36 @@ def trigger_price_sync(
     return {"message": "Price sync started", "status": "started"}
 
 
+@router.post("/prices/all")
+def trigger_all_price_sync(
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    """Trigger a forced price sync for all tracked cards."""
+    global _price_sync_running
+    if _price_sync_running:
+        return {"message": "Price sync already running", "status": "running"}
+
+    def run_all_price_sync():
+        global _price_sync_running
+        _price_sync_running = True
+        from database import SessionLocal
+        sync_db = SessionLocal()
+        try:
+            perform_price_sync(sync_db, force=True)
+        except Exception as e:
+            pass
+        finally:
+            _price_sync_running = False
+            sync_db.close()
+
+    background_tasks.add_task(run_all_price_sync)
+    return {"message": "Full price sync started", "status": "started"}
+
+
 @router.post("/reschedule-full")
 def reschedule_full_sync(
     body: dict,
@@ -91,18 +134,18 @@ def reschedule_full_sync(
     current_user: User = Depends(get_current_user),
 ):
     """Reschedule the full sync job. Body: {"interval_days": 5}"""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
     from models import Setting
     from services.scheduler import reschedule_full_sync as _reschedule_full
 
     interval_days = int(body.get("interval_days", 5))
-    # Save setting
     row = db.query(Setting).filter(Setting.key == "full_sync_interval_days").first()
     if row:
         row.value = str(interval_days)
     else:
         db.add(Setting(key="full_sync_interval_days", value=str(interval_days)))
     db.commit()
-    # Reschedule
     try:
         _reschedule_full(interval_days)
     except Exception as e:
@@ -145,6 +188,8 @@ def get_sync_status(
     global _sync_running, _price_sync_running
 
     last_sync = db.query(SyncLog).order_by(SyncLog.started_at.desc()).first()
+    last_full_sync = db.query(SyncLog).filter(SyncLog.sync_type == "full").order_by(SyncLog.started_at.desc()).first()
+    last_price_sync = db.query(SyncLog).filter(SyncLog.sync_type == "price").order_by(SyncLog.started_at.desc()).first()
     recent_syncs = db.query(SyncLog).order_by(SyncLog.started_at.desc()).limit(10).all()
 
     history = [
@@ -164,12 +209,8 @@ def get_sync_status(
     return {
         "is_running": _sync_running,
         "is_price_sync_running": _price_sync_running,
-        "last_sync": {
-            "status": last_sync.status if last_sync else None,
-            "started_at": _ensure_utc_z(last_sync.started_at) if last_sync else None,
-            "finished_at": _ensure_utc_z(last_sync.finished_at) if last_sync else None,
-            "cards_updated": last_sync.cards_updated if last_sync else 0,
-            "sync_type": last_sync.sync_type if last_sync else None,
-        } if last_sync else None,
+        "last_sync": _sync_log_payload(last_sync),
+        "last_full_sync": _sync_log_payload(last_full_sync),
+        "last_price_sync": _sync_log_payload(last_price_sync),
         "history": history,
     }

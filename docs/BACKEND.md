@@ -97,7 +97,8 @@ FastAPI app entry point: `backend/main.py`.
 | GET | `/api/backup/download` | Admin-only SQL backup |
 | POST | `/api/backup/restore` | Admin-only SQL restore |
 | POST | `/api/sync/` | Admin-only full sync |
-| POST | `/api/sync/prices` | Admin-only price sync |
+| POST | `/api/sync/prices` | Admin-only small price sync |
+| POST | `/api/sync/prices/all` | Admin-only forced price sync for all tracked cards |
 | POST | `/api/sync/reschedule-full` | Reschedule full sync |
 | POST | `/api/sync/reschedule-prices` | Reschedule price sync |
 | GET | `/api/sync/status` | Sync status and history |
@@ -183,6 +184,7 @@ Important behavior:
 
 - Each user only reads and writes their own `UserSetting` rows
 - Admin-only settings are stored globally in `settings`
+- Recurring automatic syncs include a full sync cadence and a separate small price sync cadence
 - `tcgdex_sync_languages` is seeded from `TCGDEX_SYNC_LANGUAGES` only when the row does not exist yet; afterward the DB value is authoritative
 - Admin users can receive initial fallback values from env vars for Telegram and Gemini
 - `recognize.py` intentionally reads Gemini only from the current user's `UserSetting`; there is no cross-user fallback

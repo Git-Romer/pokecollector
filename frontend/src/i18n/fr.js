@@ -724,8 +724,9 @@ const fr = {
     interval: 'Intervalle',
     syncSetsCardsDesc: 'Sets & Cartes',
     syncPricesOnly: 'Synchroniser uniquement les prix',
-    priceInterval: 'Intervalle des prix',
-    syncPricesOnlyDesc: 'Uniquement les prix',
+    priceInterval: 'Intervalle de petite synchro automatique',
+    syncPricesOnlyDesc: 'Actualise les prix de toutes les cartes suivies dans la collection, la liste de souhaits et les classeurs, sans limite ni délai de la petite synchro.',
+    autoSmallSyncDesc: 'La synchronisation automatique en arrière-plan lance la petite synchronisation des prix.',
     // Sync interval options (days)
     day1: '1 jour',
     days2: '2 jours',

@@ -726,8 +726,9 @@ const zh = {
     interval: '间隔',
     syncSetsCardsDesc: '系列 & 卡牌',
     syncPricesOnly: '仅同步价格',
-    priceInterval: '价格间隔',
-    syncPricesOnlyDesc: '仅价格',
+    priceInterval: '自动小同步间隔',
+    syncPricesOnlyDesc: '刷新收藏、愿望单和卡册中所有已跟踪卡牌的价格，不受小同步的限制或冷却影响。',
+    autoSmallSyncDesc: '后台自动同步会运行小型价格同步。',
     // Sync interval options (days)
     day1: '1天',
     days2: '2天',

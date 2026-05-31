@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler()
 
 _DEFAULT_FULL_SYNC_DAYS = 5
-_DEFAULT_PRICE_SYNC_MINUTES = 60
+_DEFAULT_PRICE_SYNC_MINUTES = 30
 
 
 def _get_full_sync_interval_days() -> int:
@@ -77,7 +77,7 @@ def run_sync():
 
 
 def start_scheduler():
-    """Start the background scheduler with two jobs."""
+    """Start the background scheduler with separate full and small price sync jobs."""
     if not scheduler.running:
         now_utc = datetime.datetime.now(datetime.timezone.utc)
 
@@ -90,7 +90,7 @@ def start_scheduler():
         full_interval_days = _get_full_sync_interval_days()
         price_interval_minutes = _get_price_sync_interval_minutes()
 
-        # Job 1: Full sync (sets + cards + prices)
+        # Job 1: Full sync (sets + cards + tracked prices)
         full_next_run = now_utc if needs_initial_sync else now_utc + datetime.timedelta(days=full_interval_days)
         scheduler.add_job(
             run_full_sync,
@@ -101,7 +101,7 @@ def start_scheduler():
             next_run_time=full_next_run,
         )
 
-        # Job 2: Price-only sync
+        # Recurring auto sync: small price sync.
         scheduler.add_job(
             run_price_sync,
             trigger=IntervalTrigger(minutes=price_interval_minutes),
@@ -115,7 +115,7 @@ def start_scheduler():
         logger.info(
             f"Scheduler started — full sync every {full_interval_days} days "
             f"({'immediately' if needs_initial_sync else f'in {full_interval_days} days'}), "
-            f"price sync every {price_interval_minutes} minutes"
+            f"small price sync every {price_interval_minutes} minutes"
         )
     else:
         logger.info("Scheduler already running")
