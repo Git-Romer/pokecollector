@@ -51,13 +51,17 @@ def _refresh_sets(db: Session, display_lang: str):
     """Refresh sets from TCGdex API and store in DB.
 
     Each language version is stored as a separate row with a composite primary key
-    (e.g. "sv1_de", "sv1_en", or "sv1_fr"). lang field is strictly "en", "de", or "fr".
+    (e.g. "sv1_de", "sv1_en", "sv1_fr", or "sv1_ja"). lang field is strictly "en", "de", "fr", or "ja".
     """
-    languages = [display_lang] if display_lang in ("en", "de", "fr") else ["en", "de", "fr"]
+    languages = [display_lang] if display_lang in ("en", "de", "fr", "ja") else ["en", "de", "fr", "ja"]
     sets_data = pokemon_api.get_all_sets(languages=languages)
+    processed_set_ids: set[str] = set()
 
     for set_data in sets_data:
         parsed = pokemon_api.parse_set_for_db(set_data)
+        if parsed["id"] in processed_set_ids:
+            continue
+        processed_set_ids.add(parsed["id"])
         set_lang = set_data.get("_lang", "en")
         parsed["lang"] = set_lang
 
@@ -76,17 +80,17 @@ def get_sets(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     refresh: bool = False,
-    lang: Optional[str] = Query("all", description="Language filter: 'de', 'en', 'fr', or 'all'"),
+    lang: Optional[str] = Query("all", description="Language filter: 'de', 'en', 'fr', 'ja', or 'all'"),
 ):
     """Get all sets, optionally refresh from TCGdex API.
 
-    lang: filter by set language — 'de', 'en', or 'fr' (single-language only), or 'all'.
+    lang: filter by set language — 'de', 'en', 'fr', or 'ja' (single-language only), or 'all'.
     Sets are stored separately per language — no 'both' entries.
     """
     lang_filter = lang or "all"
 
     # Determine display language for API calls
-    if lang_filter in ("en", "de", "fr"):
+    if lang_filter in ("en", "de", "fr", "ja"):
         display_lang = lang_filter
     else:
         display_lang = _get_language(db)
@@ -107,12 +111,14 @@ def get_sets(
         query = query.filter(Set.lang == "en")
     elif lang_filter == "fr":
         query = query.filter(Set.lang == "fr")
+    elif lang_filter == "ja":
+        query = query.filter(Set.lang == "ja")
     # else "all" → no filter
 
     sets = query.order_by(text("release_date DESC NULLS LAST")).all()
 
     # If filter returns no results for a specific lang, force a refresh
-    if not sets and lang_filter in ("de", "en", "fr"):
+    if not sets and lang_filter in ("de", "en", "fr", "ja"):
         try:
             _refresh_sets(db, display_lang)
             query = db.query(Set)

@@ -240,7 +240,7 @@ def _get_tcgdex_sync_languages(db: Session) -> list[str]:
     """Get TCGdex sync languages from settings."""
     row = db.query(Setting).filter(Setting.key == "tcgdex_sync_languages").first()
     raw_parts = [part.strip().lower() for part in (row.value if row else "en,de").split(",")]
-    selected = [lang for lang in ("en", "de", "fr") if lang in raw_parts]
+    selected = [lang for lang in ("en", "de", "fr", "ja") if lang in raw_parts]
     return selected or ["en", "de"]
 
 
@@ -432,9 +432,13 @@ def perform_full_sync(db: Session) -> dict:
         logger.info("Syncing sets for languages: %s", ", ".join(sync_languages))
         sets_data = pokemon_api.get_all_sets(languages=sync_languages)
         known_set_ids = {s.id for s in db.query(Set.id).all()}
+        processed_set_ids: set[str] = set()
 
         for set_data in sets_data:
             parsed = pokemon_api.parse_set_for_db(set_data)
+            if parsed["id"] in processed_set_ids:
+                continue
+            processed_set_ids.add(parsed["id"])
             # Inject lang from the _lang field (required for composite key format)
             parsed["lang"] = set_data.get("_lang", "en")
             is_new = parsed["id"] not in known_set_ids

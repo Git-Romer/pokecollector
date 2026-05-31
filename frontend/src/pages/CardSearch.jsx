@@ -120,7 +120,7 @@ export default function CardSearch() {
     name: '', type: '', rarity: '', set_id: '', series: '', artist: '',
     hp_min: '', hp_max: '', sort_by: '', sort_order: 'asc',
   })
-  const [langFilter, setLangFilter] = useState('all') // 'de' | 'en' | 'all'
+  const [langFilter, setLangFilter] = useState('all') // 'de' | 'en' | 'fr' | 'ja' | 'all'
   const [page, setPage] = useState(1)
   const [showFilters, setShowFilters] = useState(false)
   const [showCustomModal, setShowCustomModal] = useState(false)
@@ -401,6 +401,7 @@ export default function CardSearch() {
           { value: 'de', label: `🇩🇪 ${t('lang.de')}` },
           { value: 'en', label: `🇬🇧 ${t('lang.en')}` },
           { value: 'fr', label: `🇫🇷 ${t('lang.fr')}` },
+          { value: 'ja', label: `🇯🇵 ${t('lang.ja')}` },
         ].map(opt => (
           <button
             key={opt.value}
@@ -413,7 +414,9 @@ export default function CardSearch() {
                     ? 'bg-blue/20 text-blue-400 border border-blue-400/50'
                     : opt.value === 'fr'
                       ? 'bg-rose/20 text-rose-400 border border-rose-400/50'
-                      : 'bg-brand-red text-white'
+                      : opt.value === 'ja'
+                        ? 'bg-purple/20 text-purple-400 border border-purple-400/50'
+                        : 'bg-brand-red text-white'
                 : 'bg-bg-card text-text-secondary hover:text-text-primary border border-border'
             }`}
           >

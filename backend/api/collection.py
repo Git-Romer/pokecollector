@@ -24,7 +24,7 @@ CSV_IMPORT_MAX_BYTES = 256 * 1024
 CSV_IMPORT_MAX_ROWS = 1000
 ALLOWED_CONDITIONS = {"Mint", "NM", "LP", "MP", "HP"}
 ALLOWED_VARIANTS = {"Normal", "Holo", "Reverse Holo", "First Edition"}
-ALLOWED_LANGS = {"en", "de", "fr"}
+ALLOWED_LANGS = {"en", "de", "fr", "ja"}
 
 
 def _normalize_collection_variant(variant: Optional[str]) -> str:
@@ -265,7 +265,7 @@ def _parse_import_row(row: dict, row_number: int) -> CollectionItemCreate:
 
     lang = (row.get("lang") or "en").strip().lower() or "en"
     if lang not in ALLOWED_LANGS:
-        raise ValueError("lang must be 'en' or 'de'")
+        raise ValueError("lang must be 'en', 'de', 'fr', or 'ja'")
 
     purchase_price_raw = (row.get("purchase_price") or "").strip().replace(",", ".")
     purchase_price = None

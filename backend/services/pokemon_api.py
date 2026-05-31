@@ -219,12 +219,12 @@ def get_all_sets(languages: Optional[List[str]] = None) -> List[Dict]:
 
     Each entry has:
       "_db_key": composite DB primary key, e.g. "sv1_de"
-      "_lang":   "de", "en", or "fr"
+      "_lang":   "de", "en", "fr", or "ja"
     """
     requested_languages = []
     for lang in (languages or ["en", "de"]):
         normalized = (lang or "").strip().lower()
-        if normalized in ("en", "de", "fr") and normalized not in requested_languages:
+        if normalized in ("en", "de", "fr", "ja") and normalized not in requested_languages:
             requested_languages.append(normalized)
 
     if not requested_languages:
@@ -232,6 +232,7 @@ def get_all_sets(languages: Optional[List[str]] = None) -> List[Dict]:
 
     with httpx.Client(timeout=60.0) as client:
         all_sets: List[Dict] = []
+        seen_db_keys: set[str] = set()
 
         for lang in requested_languages:
             try:
@@ -264,6 +265,10 @@ def get_all_sets(languages: Optional[List[str]] = None) -> List[Dict]:
                     sid = s.get("id")
                     if not sid:
                         continue
+                    db_key = f"{sid}_{lang}"
+                    if db_key in seen_db_keys:
+                        continue
+                    seen_db_keys.add(db_key)
                     # Fetch full detail to populate abbreviation and other fields
                     try:
                         detail = client.get(f"{url}/sets/{sid}", timeout=30.0)
@@ -271,7 +276,7 @@ def get_all_sets(languages: Optional[List[str]] = None) -> List[Dict]:
                     except Exception:
                         entry = dict(s)
                     entry["_lang"] = lang
-                    entry["_db_key"] = f"{sid}_{lang}"
+                    entry["_db_key"] = db_key
                     entry["_series_name"] = set_to_series.get(sid)
                     all_sets.append(entry)
 

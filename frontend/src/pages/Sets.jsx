@@ -15,7 +15,7 @@ export default function Sets() {
   const [sortBy, setSortBy] = useState('release_date')
   const [sortOrder, setSortOrder] = useState('desc')
   const [progressFilter, setProgressFilter] = useState('all')
-  const [langFilter, setLangFilter] = useState('all') // 'de' | 'en' | 'all'
+  const [langFilter, setLangFilter] = useState('all') // 'de' | 'en' | 'fr' | 'ja' | 'all'
   const queryClient = useQueryClient()
 
   const { data: sets = [], isLoading } = useQuery({
@@ -118,6 +118,7 @@ export default function Sets() {
             { value: 'de', label: `🇩🇪 ${t('lang.de')}` },
             { value: 'en', label: `🇬🇧 ${t('lang.en')}` },
             { value: 'fr', label: `🇫🇷 ${t('lang.fr')}` },
+            { value: 'ja', label: `🇯🇵 ${t('lang.ja')}` },
           ].map(opt => (
             <button
               key={opt.value}
@@ -129,8 +130,10 @@ export default function Sets() {
                     : opt.value === 'en'
                       ? 'bg-blue/20 text-blue-400 border border-blue-400/50'
                       : opt.value === 'fr'
-                        ? 'bg-purple/20 text-purple-400 border border-purple-400/50'
-                        : 'bg-brand-red text-white'
+                        ? 'bg-red/20 text-red-400 border border-red-400/50'
+                        : opt.value === 'ja'
+                          ? 'bg-purple/20 text-purple-400 border border-purple-400/50'
+                          : 'bg-brand-red text-white'
                   : 'bg-bg-card text-text-secondary hover:text-text-primary border border-border'
               }`}
             >

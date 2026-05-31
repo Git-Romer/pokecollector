@@ -472,7 +472,7 @@ function CollectionEditModal({ item, onClose }) {
               <div>
                 <label className="text-xs text-text-muted mb-1.5 block">🌐 {t('lang.selectLabel')}</label>
                 <div className="flex gap-2">
-                  {['de', 'en', 'fr'].map(l => (
+                  {['de', 'en', 'fr', 'ja'].map(l => (
                     <button
                       key={l}
                       type="button"
@@ -481,14 +481,22 @@ function CollectionEditModal({ item, onClose }) {
                         'flex-1 py-1.5 rounded-lg text-sm font-bold transition-all border',
                         lang === l
                           ? l === 'de'
-                            ? 'bg-yellow/20 text-yellow border-yellow/50'
+                            ? 'bg-yellow/20 text-yellow border-yellow-50'
                             : l === 'en'
                               ? 'bg-blue/20 text-blue-400 border-blue-400/50'
-                              : 'bg-red/20 text-red-400 border-red-400/50'
+                              : l === 'fr'
+                                ? 'bg-red/20 text-red-400 border-red-400/50'
+                                : 'bg-purple/20 text-purple-400 border-purple-400/50'
                           : 'bg-bg-surface text-text-muted border-border hover:border-text-muted'
                       )}
                     >
-                      {l === 'de' ? `🇩🇪 ${t('lang.de_full')}` : l === 'en' ? `🇬🇧 ${t('lang.en_full')}` : `🇫🇷 ${t('lang.fr_full')}`}
+                      {l === 'de'
+                        ? `🇩🇪 ${t('lang.de_full')}`
+                        : l === 'en'
+                          ? `🇬🇧 ${t('lang.en_full')}`
+                          : l === 'fr'
+                            ? `🇫🇷 ${t('lang.fr_full')}`
+                            : `🇯🇵 ${t('lang.ja_full')}`}
                     </button>
                   ))}
                 </div>
@@ -631,7 +639,7 @@ function CollectionEditModal({ item, onClose }) {
               <div>
                 <label className="text-xs text-text-muted mb-1.5 block">🌐 {t('lang.selectLabel')}</label>
                 <div className="flex gap-2">
-                  {['de', 'en', 'fr'].map(l => (
+                  {['de', 'en', 'fr', 'ja'].map(l => (
                     <button
                       key={l}
                       type="button"
@@ -640,14 +648,22 @@ function CollectionEditModal({ item, onClose }) {
                         'flex-1 py-1.5 rounded-lg text-sm font-bold transition-all border',
                         newVersionLang === l
                           ? l === 'de'
-                            ? 'bg-yellow/20 text-yellow border-yellow/50'
+                            ? 'bg-yellow/20 text-yellow border-yellow-50'
                             : l === 'en'
                               ? 'bg-blue/20 text-blue-400 border-blue-400/50'
-                              : 'bg-red/20 text-red-400 border-red-400/50'
+                              : l === 'fr'
+                                ? 'bg-red/20 text-red-400 border-red-400/50'
+                                : 'bg-purple/20 text-purple-400 border-purple-400/50'
                           : 'bg-bg-surface text-text-muted border-border hover:border-text-muted'
                       )}
                     >
-                      {l === 'de' ? `🇩🇪 ${t('lang.de_full')}` : l === 'en' ? `🇬🇧 ${t('lang.en_full')}` : `🇫🇷 ${t('lang.fr_full')}`}
+                      {l === 'de'
+                        ? `🇩🇪 ${t('lang.de_full')}`
+                        : l === 'en'
+                          ? `🇬🇧 ${t('lang.en_full')}`
+                          : l === 'fr'
+                            ? `🇫🇷 ${t('lang.fr_full')}`
+                            : `🇯🇵 ${t('lang.ja_full')}`}
                     </button>
                   ))}
                 </div>
@@ -1296,7 +1312,7 @@ export default function Collection() {
                   const pnl = item.purchase_price ? totalVal - buyTotal : null
 
                   const badges = []
-                  if (item.lang) badges.push({ label: item.lang.toUpperCase(), variant: item.lang === 'de' ? 'yellow' : item.lang === 'fr' ? 'red' : 'blue' })
+                  if (item.lang) badges.push({ label: item.lang.toUpperCase(), variant: item.lang === 'de' ? 'yellow' : item.lang === 'fr' ? 'red' : item.lang === 'ja' ? 'purple' : 'blue' })
                   if (item.variant) badges.push({ label: item.variant, variant: 'purple' })
                   if (item.condition) badges.push({ label: item.condition, variant: item.condition === 'Mint' ? 'green' : item.condition === 'NM' ? 'blue' : 'yellow' })
                   if (item.quantity > 1) badges.push({ label: `×${item.quantity}`, variant: 'red' })

@@ -530,6 +530,7 @@ const sv = {
     languageZH: 'Förenklad kinesiska',
     languageSV: 'Svenska',
     languageFR: 'Franska',
+    languageJA: 'Japanska',
     languageNL: 'Nederländska',
     priceDisplay: 'Prisvisning',
     priceDisplayLabel: 'Visade Cardmarket-priser',

@@ -445,8 +445,12 @@ export const CardItem = memo(function CardItem({ card, showActions = true, onAdd
                 'flex-shrink-0 text-[10px] font-black px-1 py-0.5 rounded leading-none',
                 lang === 'de'
                   ? 'bg-yellow/20 text-yellow border border-yellow/30'
-                  : 'bg-blue/20 text-blue-400 border border-blue-400/30'
-              )} title={lang === 'de' ? t('lang.germanCard') : t('lang.englishCard')}>
+                  : lang === 'fr'
+                    ? 'bg-red/20 text-red-400 border border-red-400/30'
+                    : lang === 'ja'
+                      ? 'bg-purple/20 text-purple-400 border border-purple-400/30'
+                      : 'bg-blue/20 text-blue-400 border border-blue-400/30'
+              )} title={lang.toUpperCase()}>
                 {lang.toUpperCase()}
               </span>
             )}

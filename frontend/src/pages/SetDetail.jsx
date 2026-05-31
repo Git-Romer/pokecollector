@@ -216,7 +216,7 @@ function SetCardActionModal({ card, setLang, onClose, onAdd, onQuantityChange, o
               <div>
                 <label className="text-xs text-text-muted mb-1.5 block">🌐 {t('lang.selectLabel')}</label>
                 <div className="flex gap-2">
-                  {['de', 'en'].map(lang => (
+                  {['de', 'en', 'fr', 'ja'].map(lang => (
                     <button
                       key={lang}
                       type="button"
@@ -226,11 +226,21 @@ function SetCardActionModal({ card, setLang, onClose, onAdd, onQuantityChange, o
                         addLang === lang
                           ? lang === 'de'
                             ? 'bg-yellow/20 text-yellow border-yellow/50'
-                            : 'bg-blue/20 text-blue-400 border-blue-400/50'
+                            : lang === 'en'
+                              ? 'bg-blue/20 text-blue-400 border-blue-400/50'
+                              : lang === 'fr'
+                                ? 'bg-red/20 text-red-400 border-red-400/50'
+                                : 'bg-purple/20 text-purple-400 border-purple-400/50'
                           : 'bg-bg-surface text-text-muted border-border hover:border-text-muted'
                       )}
                     >
-                      {lang === 'de' ? `🇩🇪 ${t('lang.de_full')}` : `🇬🇧 ${t('lang.en_full')}`}
+                      {lang === 'de'
+                        ? `🇩🇪 ${t('lang.de_full')}`
+                        : lang === 'en'
+                          ? `🇬🇧 ${t('lang.en_full')}`
+                          : lang === 'fr'
+                            ? `🇫🇷 ${t('lang.fr_full')}`
+                            : `🇯🇵 ${t('lang.ja_full')}`}
                     </button>
                   ))}
                 </div>

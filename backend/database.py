@@ -38,7 +38,7 @@ DEFAULT_SETTINGS = {
 
 def _normalize_tcgdex_sync_languages(value: str | None) -> str:
     """Normalize configured TCGdex sync languages to a stable CSV string."""
-    allowed = ("en", "de", "fr")
+    allowed = ("en", "de", "fr", "ja")
     raw_parts = []
     if value:
         raw_parts = [part.strip().lower() for part in str(value).split(",")]
