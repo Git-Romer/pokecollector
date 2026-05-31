@@ -292,14 +292,19 @@ def get_user_collection(
     user_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    lang: Optional[str] = Query("all", description="Language filter: 'de', 'en', 'fr', 'ja', or 'all'"),
 ):
-    """View another user's collection (read-only). Requires authentication."""
+    """View another user's collection (read-only). Requires authentication. Optionally filter by card language."""
     target_user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
     if not target_user:
         raise HTTPException(status_code=404, detail="User not found")
     query = db.query(CollectionItem).options(
         joinedload(CollectionItem.card).joinedload(Card.set_ref)
     ).filter(CollectionItem.user_id == user_id)
+    
+    if lang and lang != "all":
+        query = query.filter(CollectionItem.lang == lang)
+    
     return query.all()
 
 
@@ -309,11 +314,15 @@ def get_collection(
     db: Session = Depends(get_db),
     sort_by: Optional[str] = "added_at",
     order: Optional[str] = "desc",
+    lang: Optional[str] = Query("all", description="Language filter: 'de', 'en', 'fr', 'ja', or 'all'"),
 ):
-    """Get all collection items."""
+    """Get all collection items. Optionally filter by card language."""
     query = db.query(CollectionItem).options(
         joinedload(CollectionItem.card).joinedload(Card.set_ref)
     ).filter(CollectionItem.user_id == current_user.id)
+
+    if lang and lang != "all":
+        query = query.filter(CollectionItem.lang == lang)
 
     sort_col = {
         "added_at": CollectionItem.added_at,
@@ -646,11 +655,17 @@ def get_collection_stats(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
     price_field: str = Query(default="price_trend", description="Price field to use for value calculation"),
+    lang: Optional[str] = Query("all", description="Language filter: 'de', 'en', 'fr', 'ja', or 'all'"),
 ):
-    """Get collection statistics."""
-    items = db.query(CollectionItem).options(
+    """Get collection statistics. Optionally filter by card language."""
+    query = db.query(CollectionItem).options(
         joinedload(CollectionItem.card)
-    ).filter(CollectionItem.user_id == current_user.id).all()
+    ).filter(CollectionItem.user_id == current_user.id)
+
+    if lang and lang != "all":
+        query = query.filter(CollectionItem.lang == lang)
+
+    items = query.all()
 
     total_cards = sum(item.quantity for item in items)
     unique_cards = len(set(item.card_id for item in items))
