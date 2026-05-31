@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { Search, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, SortAsc, Hash, PenLine, SlidersHorizontal, Camera, CheckSquare, Plus, Check } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -217,6 +217,32 @@ export default function CardSearch() {
   const hasActiveFilters = !!(filters.type || filters.rarity || filters.set_id || filters.series || filters.artist || filters.hp_min || filters.hp_max || filters.sort_by)
   const activeFilterCount = [filters.type, filters.rarity, filters.set_id, filters.series, filters.artist, filters.hp_min, filters.hp_max, filters.sort_by].filter(Boolean).length
   const totalPages = data ? Math.ceil(data.total_count / pageSize) : 0
+  const hasOpenOverlay = Boolean(selectedCard || showFilters || showCustomModal || showScanner)
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.defaultPrevented || hasOpenOverlay || event.altKey || event.ctrlKey || event.metaKey) return
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+
+      const target = event.target
+      const tagName = target?.tagName?.toLowerCase?.()
+      if (tagName === 'input' || tagName === 'textarea' || tagName === 'select' || target?.isContentEditable) {
+        return
+      }
+
+      if (event.key === 'ArrowLeft' && page > 1) {
+        setPage((current) => Math.max(1, current - 1))
+        event.preventDefault()
+      }
+      if (event.key === 'ArrowRight' && totalPages > 0 && page < totalPages) {
+        setPage((current) => Math.min(totalPages, current + 1))
+        event.preventDefault()
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [hasOpenOverlay, page, totalPages])
 
   const handleCustomCreated = () => {
     queryClient.invalidateQueries({ queryKey: ['custom-cards'] })
