@@ -126,7 +126,7 @@ def _search_by_code_number(
     db: Session, current_user: User, set_code: str, card_number: str, page: int, page_size: int, lang: str = "all"
 ) -> dict:
     """Search for a card by set abbreviation/id + card number (localId).
-    Returns cards for ALL languages unless lang is specified.
+    Returns cards for ALL languages unless lang is specified as 'de', 'en', 'fr', or 'ja'.
     """
     set_code_upper = set_code.upper()
 
@@ -378,7 +378,7 @@ def search_cards(
     sort_order: Optional[str] = "asc",
     page: int = 1,
     page_size: int = 20,
-    lang: Optional[str] = Query("all", description="Language filter: 'de', 'en', 'fr', or 'all'"),
+    lang: Optional[str] = Query("all", description="Language filter: 'de', 'en', 'fr', 'ja', or 'all'"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -386,7 +386,7 @@ def search_cards(
 
     Special patterns supported:
     - "MEP 022" or "sv08 032" → set abbreviation/id + card number search
-    - lang: "de" → German cards only, "en" → English cards only, "all" → all languages
+    - lang: "de" → German cards only, "en" → English cards only, "fr" → French cards only, "ja" → Japanese cards only, "all" → all languages
     """
     search_lang = lang or "all"
 
