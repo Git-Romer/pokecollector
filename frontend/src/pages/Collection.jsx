@@ -267,6 +267,63 @@ function CollectionEditModal({ item, onClose }) {
   const [customImageVersion, setCustomImageVersion] = useState(0)
   const customImageInputId = useId()
 
+  const prevItemRef = useRef({
+    id: item.id,
+    quantity: item.quantity,
+    condition: item.condition || 'NM',
+    variant: item.variant || 'Normal',
+    lang: item.lang || 'en',
+    price: item.purchase_price ? String(item.purchase_price) : '',
+    customImageUrl: card?.custom_image_url || '',
+  })
+
+  useEffect(() => {
+    const nextItem = {
+      id: item.id,
+      quantity: item.quantity,
+      condition: item.condition || 'NM',
+      variant: item.variant || 'Normal',
+      lang: item.lang || 'en',
+      price: item.purchase_price ? String(item.purchase_price) : '',
+      customImageUrl: card?.custom_image_url || '',
+    }
+
+    const prevItem = prevItemRef.current
+    const isNewItem = nextItem.id !== prevItem.id
+
+    if (isNewItem) {
+      setQuantity(nextItem.quantity)
+      setCondition(nextItem.condition)
+      setVariant(nextItem.variant)
+      setLang(nextItem.lang)
+      setPrice(nextItem.price)
+      setCustomImageUrl(nextItem.customImageUrl)
+      setSavedCustomImageUrl(nextItem.customImageUrl)
+    } else {
+      if (quantity === prevItem.quantity && nextItem.quantity !== prevItem.quantity) {
+        setQuantity(nextItem.quantity)
+      }
+      if (condition === prevItem.condition && nextItem.condition !== prevItem.condition) {
+        setCondition(nextItem.condition)
+      }
+      if (variant === prevItem.variant && nextItem.variant !== prevItem.variant) {
+        setVariant(nextItem.variant)
+      }
+      if (lang === prevItem.lang && nextItem.lang !== prevItem.lang) {
+        setLang(nextItem.lang)
+      }
+      if (price === prevItem.price && nextItem.price !== prevItem.price) {
+        setPrice(nextItem.price)
+      }
+      if (customImageUrl === prevItem.customImageUrl && nextItem.customImageUrl !== prevItem.customImageUrl) {
+        setCustomImageUrl(nextItem.customImageUrl)
+        setSavedCustomImageUrl(nextItem.customImageUrl)
+      }
+    }
+
+    prevItemRef.current = nextItem
+  }, [item.id, item.quantity, item.condition, item.variant, item.lang, item.purchase_price, card?.custom_image_url])
+
   const { data: binders = [] } = useQuery({
     queryKey: ['binders'],
     queryFn: () => getBinders().then(r => r.data),
@@ -292,6 +349,7 @@ function CollectionEditModal({ item, onClose }) {
       toast.success(t('collection.updated'))
       queryClient.invalidateQueries({ queryKey: ['collection'] })
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'card-search' })
       onClose()
     },
     onError: () => toast.error(t('collection.updateFailed')),
@@ -303,6 +361,7 @@ function CollectionEditModal({ item, onClose }) {
       toast.success(t('collection.removed'))
       queryClient.invalidateQueries({ queryKey: ['collection'] })
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'card-search' })
       onClose()
     },
     onError: () => toast.error(t('collection.removeFailed')),
@@ -321,6 +380,7 @@ function CollectionEditModal({ item, onClose }) {
       toast.success(t('collection.versionAdded'))
       queryClient.invalidateQueries({ queryKey: ['collection'] })
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'card-search' })
       onClose()
     },
     onError: () => toast.error(t('card.addFailed')),
@@ -724,6 +784,15 @@ export default function Collection() {
     if (targetItem) setEditingCollectionItem(targetItem)
     else clearTargetParams()
   }, [isLoading, items, editingCollectionItem, targetItemId, targetCardId])
+
+  useEffect(() => {
+    if (!editingCollectionItem) return
+
+    const freshItem = items.find(item => String(item.id) === String(editingCollectionItem.id))
+    if (freshItem && freshItem !== editingCollectionItem) {
+      setEditingCollectionItem(freshItem)
+    }
+  }, [items, editingCollectionItem])
 
   const closeCollectionItemModal = () => {
     setEditingCollectionItem(null)

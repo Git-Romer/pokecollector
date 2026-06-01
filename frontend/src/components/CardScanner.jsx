@@ -32,6 +32,7 @@ function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
       })
       queryClient.invalidateQueries({ queryKey: ['collection'] })
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'card-search' })
       toast.success(`${match.name} ${t('scanner.addedToCollection')}!`)
       onAdded && onAdded()
       onClose()

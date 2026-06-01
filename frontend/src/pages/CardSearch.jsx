@@ -353,6 +353,7 @@ export default function CardSearch() {
       toast.success(parts.join(' · '))
       queryClient.invalidateQueries({ queryKey: ['collection'] })
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'card-search' })
       exitSelectMode()
     },
     onError: () => toast.error(t('cardSearch.bulkAddFailed')),

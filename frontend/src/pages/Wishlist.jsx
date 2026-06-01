@@ -100,6 +100,8 @@ export default function Wishlist() {
     onSuccess: () => {
       toast.success(t('wishlist.addedToCollection'))
       queryClient.invalidateQueries({ queryKey: ['collection'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'card-search' })
     },
   })
 
