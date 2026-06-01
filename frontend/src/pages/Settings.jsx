@@ -83,11 +83,7 @@ function SelectControl({ value, options, onChange }) {
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="w-full max-w-full sm:w-auto text-xs font-semibold text-text-primary rounded-lg px-2 py-1.5 outline-none cursor-pointer"
-      style={{
-        background: 'rgba(255,255,255,0.07)',
-        border: '1px solid rgba(255,255,255,0.1)',
-      }}
+      className="select w-full max-w-full sm:w-auto text-xs font-semibold"
     >
       {options.map((opt) => (
         <option key={opt.value} value={opt.value}>
@@ -1378,9 +1374,9 @@ function UsersTab({ t, queryClient }) {
           </div>
           <div>
             <label className="text-xs text-text-secondary mb-1 block">{t('settings.users.role')}</label>
-            <select value={formRole} onChange={(e) => setFormRole(e.target.value)} className="input w-full">
-              <option value="trainer">{t('settings.users.trainer')}</option>
-              <option value="admin">{t('settings.users.admin')}</option>
+            <select value={formRole} onChange={(e) => setFormRole(e.target.value)} className="input w-full" style={{ appearance: 'none' }}>
+              <option value="trainer" style={{ background: 'var(--color-card)', color: 'var(--color-text-primary)' }}>{t('settings.users.trainer')}</option>
+              <option value="admin" style={{ background: 'var(--color-card)', color: 'var(--color-text-primary)' }}>{t('settings.users.admin')}</option>
             </select>
           </div>
           {!editingUser && (
