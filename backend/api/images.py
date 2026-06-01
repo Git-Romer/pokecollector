@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from models import Card, ImageCache, Set, Setting
+from services.card_visibility import get_configured_sync_languages, get_pinned_set_language_pairs
 from services.image_url_security import validate_public_https_image_url
 from services.tcgdex_languages import english_fallback_languages, strip_lang_suffix
 
@@ -48,6 +49,23 @@ def _set_fallback_response():
         media_type="image/svg+xml",
         headers={"Cache-Control": "public, max-age=86400"},
     )
+
+
+def _is_globally_visible_card_image(db: Session, card: Card) -> bool:
+    if getattr(card, "is_custom", False):
+        return True
+    card_lang = card.lang or "en"
+    if card_lang in set(get_configured_sync_languages(db)):
+        return True
+    return (card.set_id, card_lang) in get_pinned_set_language_pairs(db)
+
+
+def _is_globally_visible_set_image(db: Session, card_set: Set) -> bool:
+    set_lang = card_set.lang or "en"
+    if set_lang in set(get_configured_sync_languages(db)):
+        return True
+    tcg_set_id = card_set.tcg_set_id or strip_lang_suffix(card_set.id)[0]
+    return (tcg_set_id, set_lang) in get_pinned_set_language_pairs(db)
 
 
 def _get_or_fetch(db: Session, key: str, url: str) -> tuple[bytes, str]:
@@ -137,6 +155,8 @@ def get_card_image(card_id: str, size: str, db: Session = Depends(get_db)):
     card = db.query(Card).filter(Card.id == card_id).first()
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
+    if not _is_globally_visible_card_image(db, card):
+        raise HTTPException(status_code=404, detail="Card not found")
 
     requested_url = card.images_small if size == "small" else card.images_large
     alternate_api_url = card.images_large if size == "small" else card.images_small
@@ -168,6 +188,8 @@ def get_set_image(set_id: str, image_type: str, db: Session = Depends(get_db)):
 
     card_set = db.query(Set).filter(Set.id == set_id).first()
     if not card_set:
+        raise HTTPException(status_code=404, detail="Set not found")
+    if not _is_globally_visible_set_image(db, card_set):
         raise HTTPException(status_code=404, detail="Set not found")
 
     url = card_set.images_logo if image_type == "logo" else card_set.images_symbol

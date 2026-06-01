@@ -15,6 +15,7 @@ from services.card_fallbacks import (
     missing_language_fallback_enabled,
 )
 from services.card_upsert import upsert_card
+from services.card_visibility import get_configured_sync_languages, visible_set_filter
 from services.tcgdex_languages import DEFAULT_TCGDEX_SYNC_LANGUAGES, has_lang_suffix, is_supported_tcgdex_language, normalize_tcgdex_language
 
 router = APIRouter()
@@ -99,20 +100,18 @@ def get_sets(
             if db.query(Set).count() == 0:
                 raise HTTPException(status_code=500, detail=str(e))
 
-    # Build query with optional lang filter
-    query = db.query(Set)
-    if lang_filter != "all":
-        query = query.filter(Set.lang == lang_filter)
-    # else "all" -> no filter
-
+    # Build query with optional lang filter. Globally disabled languages are
+    # hidden unless this user has a collection/wishlist/binder card pinning that
+    # localized set.
+    query = db.query(Set).filter(visible_set_filter(db, current_user.id, lang_filter))
     sets = query.order_by(text("release_date DESC NULLS LAST")).all()
 
-    # If filter returns no results for a specific lang, force a refresh
-    if not sets and lang_filter != "all":
+    # If an enabled language has no local rows yet, force a refresh. Disabled
+    # languages should not be repopulated just because their filter was opened.
+    if not sets and lang_filter != "all" and lang_filter in set(get_configured_sync_languages(db)):
         try:
             _refresh_sets(db, display_lang)
-            query = db.query(Set)
-            query = query.filter(Set.lang == lang_filter)
+            query = db.query(Set).filter(visible_set_filter(db, current_user.id, lang_filter))
             sets = query.order_by(text("release_date DESC NULLS LAST")).all()
         except Exception:
             pass
@@ -125,6 +124,7 @@ def get_sets(
             func.count(func.distinct(CollectionItem.card_id)).label('cnt')
         )
         .join(CollectionItem, CollectionItem.card_id == Card.id)
+        .filter(CollectionItem.user_id == current_user.id)
         .group_by(Card.set_id, CollectionItem.lang)
         .all()
     )
@@ -143,7 +143,7 @@ def get_new_sets(
     current_user: User = Depends(get_current_user),
 ):
     """Get newly detected sets."""
-    new_sets = db.query(Set).filter(Set.is_new == True).all()
+    new_sets = db.query(Set).filter(Set.is_new == True, visible_set_filter(db, current_user.id, "all")).all()
     return new_sets
 
 
@@ -165,7 +165,7 @@ def get_set(
     current_user: User = Depends(get_current_user),
 ):
     """Get a single set by composite DB key, such as 'sv1_en' or 'sv1_zh-tw'."""
-    set_obj = db.query(Set).filter(Set.id == set_id).first()
+    set_obj = db.query(Set).filter(Set.id == set_id, visible_set_filter(db, current_user.id, "all")).first()
     if not set_obj:
         raise HTTPException(status_code=404, detail="Set not found")
     return set_obj
@@ -183,7 +183,7 @@ def get_set_checklist(
     Missing local cards are fetched from TCGdex and may use sibling-language
     fallback rows until native language data exists.
     """
-    set_obj = db.query(Set).filter(Set.id == set_id).first()
+    set_obj = db.query(Set).filter(Set.id == set_id, visible_set_filter(db, current_user.id, "all")).first()
     if not set_obj:
         raise HTTPException(status_code=404, detail="Set not found")
 
