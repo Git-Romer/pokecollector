@@ -12,6 +12,7 @@ import { cardImageUrl, resolveCardImageUrl } from '../utils/imageUrl'
 import { CARD_VARIANTS, getAvailableVariants, getDefaultVariant, getDefaultVariantOrNull } from '../utils/cardVariants'
 import FallbackBadges from './FallbackBadges'
 import { getEffectiveCardPrice } from '../utils/prices'
+import { tcgdexLanguageBadgeClass, tcgdexLanguageLabel, getTcgdexLanguage } from '../utils/tcgdexLanguages'
 
 function askWishlistQuantity(t, defaultQuantity = 1) {
   const initialQuantity = Math.max(1, Math.min(99, parseInt(defaultQuantity, 10) || 1))
@@ -457,11 +458,9 @@ export const CardItem = memo(function CardItem({ card, showActions = true, onAdd
             {lang && (
               <span className={clsx(
                 'flex-shrink-0 text-[10px] font-black px-1 py-0.5 rounded leading-none',
-                lang === 'de'
-                  ? 'bg-yellow/20 text-yellow border border-yellow/30'
-                  : 'bg-blue/20 text-blue-400 border border-blue-400/30'
-              )} title={lang === 'de' ? t('lang.germanCard') : t('lang.englishCard')}>
-                {lang.toUpperCase()}
+                tcgdexLanguageBadgeClass(lang)
+              )} title={getTcgdexLanguage(lang).name}>
+                {tcgdexLanguageLabel(lang)}
               </span>
             )}
             <FallbackBadges card={card} compact />

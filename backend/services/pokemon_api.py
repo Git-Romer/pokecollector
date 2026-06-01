@@ -1,6 +1,13 @@
 import httpx
 from typing import Optional, Dict, Any, List
 from services.card_gameplay import playable_fingerprint
+from services.tcgdex_languages import (
+    DEFAULT_TCGDEX_SYNC_LANGUAGES,
+    is_supported_tcgdex_language,
+    normalize_tcgdex_language,
+    normalize_tcgdex_sync_languages,
+    strip_lang_suffix as _strip_lang_suffix,
+)
 
 TCGDEX_BASE = "https://api.tcgdex.net/v2"
 
@@ -33,7 +40,10 @@ def _sort_number(val) -> tuple:
 
 def get_base_url(lang: str = "en") -> str:
     """Get the TCGdex base URL for the given language."""
-    return f"{TCGDEX_BASE}/{lang}"
+    normalized_lang = normalize_tcgdex_language(lang)
+    if not is_supported_tcgdex_language(normalized_lang):
+        normalized_lang = "en"
+    return f"{TCGDEX_BASE}/{normalized_lang}"
 
 
 def extract_prices(card_data: Dict) -> Dict[str, Optional[float]]:
@@ -218,16 +228,10 @@ def get_all_sets(languages: Optional[List[str]] = None) -> List[Dict]:
 
     Each entry has:
       "_db_key": composite DB primary key, e.g. "sv1_de"
-      "_lang":   "de" or "en"
+      "_lang":   TCGdex language code, e.g. "de" or "zh-tw"
     """
-    requested_languages = []
-    for lang in (languages or ["en", "de"]):
-        normalized = (lang or "").strip().lower()
-        if normalized in ("en", "de") and normalized not in requested_languages:
-            requested_languages.append(normalized)
-
-    if not requested_languages:
-        requested_languages = ["en", "de"]
+    normalized_csv = normalize_tcgdex_sync_languages(languages or DEFAULT_TCGDEX_SYNC_LANGUAGES)
+    requested_languages = normalized_csv.split(",") if normalized_csv else list(DEFAULT_TCGDEX_SYNC_LANGUAGES)
 
     with httpx.Client(timeout=60.0) as client:
         all_sets: List[Dict] = []
@@ -312,10 +316,7 @@ def get_set_cards(set_id: str, lang: str = "en") -> Dict:
 
 def strip_lang_suffix(card_db_id: str) -> tuple:
     """Return (tcg_card_id, lang) from a composite DB card ID like 'sv1-1_de'."""
-    for suffix in ("_de", "_en"):
-        if card_db_id.endswith(suffix):
-            return card_db_id[:-len(suffix)], suffix[1:]
-    return card_db_id, "en"  # fallback for custom/legacy
+    return _strip_lang_suffix(card_db_id)
 
 
 def parse_card_for_db(card_data: Dict, default_set_id: Optional[str] = None, lang: Optional[str] = None) -> Dict:
@@ -328,8 +329,8 @@ def parse_card_for_db(card_data: Dict, default_set_id: Optional[str] = None, lan
     Works with both brief card data (id/localId/name/image) returned by /cards
     and full card detail returned by /cards/{id}.
 
-    lang: optional language tag ("en" or "de") to store on the card record.
-          Defaults to "en" if not provided.
+    lang: optional TCGdex language tag to store on the card record.
+          Defaults to "en" if not provided or unsupported.
     """
     prices = extract_prices(card_data)
     set_data = card_data.get("set") or {}
@@ -340,7 +341,9 @@ def parse_card_for_db(card_data: Dict, default_set_id: Optional[str] = None, lan
     hp_raw = card_data.get("hp")
     hp = str(hp_raw) if hp_raw is not None else None
 
-    card_lang = card_data.get("_lang") or lang or "en"
+    card_lang = normalize_tcgdex_language(card_data.get("_lang") or lang or "en")
+    if not is_supported_tcgdex_language(card_lang):
+        card_lang = "en"
     tcgdex_id = card_data.get("id", "")
     db_id = f"{tcgdex_id}_{card_lang}"
 

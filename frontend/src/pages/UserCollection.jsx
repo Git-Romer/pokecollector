@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Search, SlidersHorizontal, X } from 'lucide-react'
 import { getUserCollection } from '../api/client'
+import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
 import { useSettings } from '../contexts/SettingsContext'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 import { CardModal } from '../components/CardItem'
@@ -141,11 +142,14 @@ export default function UserCollection() {
             </div>
             <div>
               <label className="text-xs text-text-muted mb-1 block">{t('lang.filter')}</label>
-              <select className="select py-1.5 text-sm" value={filterLang} onChange={e => setFilterLang(e.target.value)}>
-                <option value="">{t('lang.all')}</option>
-                <option value="de">DE</option>
-                <option value="en">EN</option>
-              </select>
+              <TcgdexLanguageSelect
+                value={filterLang || 'all'}
+                includeAll
+                allLabel={t('lang.all')}
+                compact
+                onChange={(value) => setFilterLang(value === 'all' ? '' : value)}
+                className="select py-1.5 text-sm"
+              />
             </div>
             <div>
               <label className="text-xs text-text-muted mb-1 block">{t('cardSearch.sortBy')}</label>

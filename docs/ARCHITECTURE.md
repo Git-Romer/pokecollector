@@ -1,6 +1,6 @@
 # Architecture Overview
 
-This document reflects the current code layout under `/tmp/pokecollector`.
+This document reflects the current code layout at the repository root.
 
 ## Stack
 
@@ -40,9 +40,12 @@ pokecollector/
 │   │   └── wishlist.py
 │   └── services/
 │       ├── auth.py
+│       ├── card_fallbacks.py
 │       ├── pokemon_api.py
+│       ├── pre_upgrade_backup.py
 │       ├── scheduler.py
 │       ├── sync_service.py
+│       ├── tcgdex_languages.py
 │       └── telegram.py
 ├── frontend/
 │   ├── src/
@@ -58,10 +61,8 @@ pokecollector/
 │   │   │   └── SettingsContext.jsx
 │   │   ├── hooks/
 │   │   │   └── useTheme.js
-│   │   ├── i18n/
-│   │   │   ├── de.js
-│   │   │   ├── en.js
-│   │   │   └── zh.js
+│   │   ├── i18n/        # App translation bundles
+│   │   ├── utils/       # Shared frontend helpers, including language registries
 │   │   └── pages/
 │   └── index.html
 ├── docs/
@@ -86,6 +87,8 @@ Important modules added since the older docs:
 
 - `api/auth.py`
 - `api/github.py`
+- `api/images.py`
+- `api/products.py`
 
 ### Data Model
 
@@ -108,9 +111,11 @@ Key ORM models in `backend/models.py`:
 
 Notable current model rules:
 
-- `Set.id` and `Card.id` are composite ids with language suffixes
+- `Set.id` and `Card.id` are composite ids with TCGdex language suffixes, including multi-part codes such as `zh-tw` and `pt-br`
 - `Card.rarity` comes from TCGdex and is treated as read-only metadata
+- Card data, image, and price fallback source languages are tagged when English exact-ID fallback data is used
 - Collection variants are limited to physical print variants
+- Wishlist items store requested quantity from `1` to `99`
 - `User.must_change_password` drives the forced password change flow
 - `UserSetting` stores per-user preferences and secrets
 
@@ -141,6 +146,9 @@ Effectively:
 - normal users can only change their own per-user settings
 - admins can also change global operational settings
 - per-user settings isolation is enforced in the API layer
+- `tcgdex_sync_languages` controls which TCGdex set/card languages full sync fetches. It defaults to `en,de`; extra languages are optional because they increase sync time, API calls, and database size.
+- Invalid or empty `TCGDEX_SYNC_LANGUAGES` env values fall back safely to `en,de` during first bootstrap; the env value `all` expands to every supported TCGdex language
+- App UI language selection is separate from TCGdex sync-language selection. The UI selector includes all supported TCGdex language codes plus Swedish.
 
 ## Authentication Architecture
 
@@ -201,6 +209,9 @@ Current frontend state layers:
 - Set and card source of truth
 - Variant availability flags come from TCGdex
 - Rarity is read from TCGdex and shown read-only
+- Supported sync languages are centralized in `backend/services/tcgdex_languages.py`
+- English is the preferred fallback for missing data, images, and prices only when the same exact TCGdex card or set ID exists in English
+- Regional-only cards are not guessed by translated name
 
 ### Gemini
 

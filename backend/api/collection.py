@@ -10,6 +10,7 @@ from services import pokemon_api
 from services.card_fallbacks import apply_cross_language_fallbacks, build_missing_language_card
 from services.card_numbers import card_number_matches
 from services.card_values import effective_market_price, normalize_price_field
+from services.tcgdex_languages import SUPPORTED_TCGDEX_LANGUAGES, has_lang_suffix, is_supported_tcgdex_language, normalize_tcgdex_language
 from services.collection_csv import collection_import_key, is_valid_collection_purchase_price, merge_collection_import_item, normalize_collection_variant
 import datetime
 import csv
@@ -24,7 +25,7 @@ CSV_IMPORT_MAX_BYTES = 256 * 1024
 CSV_IMPORT_MAX_ROWS = 1000
 ALLOWED_CONDITIONS = {"Mint", "NM", "LP", "MP", "HP"}
 ALLOWED_VARIANTS = {"Normal", "Holo", "Reverse Holo", "First Edition"}
-ALLOWED_LANGS = {"en", "de"}
+ALLOWED_LANGS = set(SUPPORTED_TCGDEX_LANGUAGES)
 
 
 def _normalize_collection_variant(variant: Optional[str]) -> str:
@@ -60,7 +61,7 @@ def _ensure_set_exists_for_card(db: Session, parsed: dict, lang: str, card_data:
     if set_data:
         set_parsed = pokemon_api.parse_set_for_db(set_data)
         set_parsed["lang"] = set_data.get("_lang", lang)
-        if not set_parsed["id"].endswith(("_de", "_en")):
+        if not has_lang_suffix(set_parsed["id"]):
             set_parsed["id"] = f"{set_id}_{lang}"
         set_parsed["tcg_set_id"] = set_id
         db.add(Set(**set_parsed))
@@ -68,11 +69,22 @@ def _ensure_set_exists_for_card(db: Session, parsed: dict, lang: str, card_data:
         db.add(Set(id=f"{set_id}_{lang}", tcg_set_id=set_id, name=set_id, total=0, lang=lang))
 
 
+def _normalize_request_lang(lang: Optional[str]) -> str:
+    normalized = normalize_tcgdex_language(lang or "en")
+    if not is_supported_tcgdex_language(normalized):
+        raise HTTPException(
+            status_code=422,
+            detail=f"lang must be one of: {', '.join(SUPPORTED_TCGDEX_LANGUAGES)}",
+        )
+    return normalized
+
+
 def ensure_card_exists(db: Session, card_id: str, lang: str = "en") -> Card:
     """Ensure card exists in DB. If not found locally, try to fetch from TCGdex."""
+    tcg_card_id, detected_lang = pokemon_api.strip_lang_suffix(card_id)
+    lang = _normalize_request_lang(detected_lang if has_lang_suffix(card_id) else lang)
     card = db.query(Card).filter(Card.id == card_id).first()
     if not card:
-        tcg_card_id, _ = pokemon_api.strip_lang_suffix(card_id)
         card_data = pokemon_api.get_card(tcg_card_id, lang=lang)
         if card_data:
             parsed = pokemon_api.parse_card_for_db(card_data, lang=lang)
@@ -104,7 +116,7 @@ def ensure_card_exists(db: Session, card_id: str, lang: str = "en") -> Card:
 def _add_collection_item(db: Session, current_user: User, item: CollectionItemCreate, commit: bool = True) -> str:
     """Add one item and return "added" or "updated"."""
     _, detected_lang = pokemon_api.strip_lang_suffix(item.card_id)
-    item_lang = item.lang or detected_lang or "en"
+    item_lang = _normalize_request_lang(item.lang or detected_lang or "en")
     item_variant = _normalize_collection_variant(item.variant)
 
     if item.card_id.startswith("custom-"):
@@ -264,8 +276,9 @@ def _parse_import_row(row: dict, row_number: int) -> CollectionItemCreate:
         raise ValueError(f"variant must be blank or one of: {', '.join(sorted(ALLOWED_VARIANTS))}")
 
     lang = (row.get("lang") or "en").strip().lower() or "en"
-    if lang not in ALLOWED_LANGS:
-        raise ValueError("lang must be 'en' or 'de'")
+    lang = normalize_tcgdex_language(lang)
+    if not is_supported_tcgdex_language(lang):
+        raise ValueError(f"lang must be one of: {', '.join(SUPPORTED_TCGDEX_LANGUAGES)}")
 
     purchase_price_raw = (row.get("purchase_price") or "").strip().replace(",", ".")
     purchase_price = None
@@ -338,7 +351,7 @@ def add_to_collection(
 ):
     """Add a card to the collection. Cards with identical card_id+variant+lang+condition+purchase_price are grouped."""
     _, detected_lang = pokemon_api.strip_lang_suffix(item.card_id)
-    item_lang = item.lang or detected_lang or "en"
+    item_lang = _normalize_request_lang(item.lang or detected_lang or "en")
     item_variant = _normalize_collection_variant(item.variant)
 
     # Resolve the correct language-variant card_id
@@ -407,7 +420,7 @@ def bulk_add_to_collection(
     for item in request.items:
         try:
             _, detected_lang = pokemon_api.strip_lang_suffix(item.card_id)
-            item_lang = item.lang or detected_lang or "en"
+            item_lang = _normalize_request_lang(item.lang or detected_lang or "en")
             item_variant = _normalize_collection_variant(item.variant)
 
             if item.card_id.startswith("custom-"):

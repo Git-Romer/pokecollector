@@ -15,6 +15,7 @@ from services.card_upsert import upsert_card
 from services.card_values import effective_market_price, normalize_price_field
 from services.binder_csv import BINDER_CSV_DUPLICATE_QUANTITY_ERROR, combine_binder_required_quantity
 from services.wishlist_missing import plan_missing_wishlist_additions
+from services.tcgdex_languages import SUPPORTED_TCGDEX_LANGUAGES, is_supported_tcgdex_language, normalize_tcgdex_language
 import datetime
 import csv
 import io
@@ -1408,10 +1409,10 @@ async def import_binder_csv(
         try:
             set_code = (row.get("set_code") or "").strip()
             number = (row.get("number") or "").strip()
-            lang = (row.get("lang") or "en").strip().lower()
-            if lang not in {"en", "de"}:
+            lang = normalize_tcgdex_language(row.get("lang") or "en")
+            if not is_supported_tcgdex_language(lang):
                 failed += 1
-                errors.append(f"row {row_number}: lang must be en or de")
+                errors.append(f"row {row_number}: lang must be one of: {', '.join(SUPPORTED_TCGDEX_LANGUAGES)}")
                 continue
             if not set_code or not number:
                 failed += 1

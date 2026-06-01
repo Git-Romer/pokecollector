@@ -11,6 +11,7 @@ import { resolveCardImageUrl, resolveSetImageUrl } from '../utils/imageUrl'
 import { CARD_VARIANTS, getAvailableVariants, getDefaultVariantOrNull } from '../utils/cardVariants'
 import FallbackBadges from '../components/FallbackBadges'
 import { HOLO_FIELD_MAP } from '../utils/prices'
+import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
 
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
 
@@ -215,25 +216,7 @@ function SetCardActionModal({ card, setLang, onClose, onAdd, onAddWishlist, onQu
 
               <div>
                 <label className="text-xs text-text-muted mb-1.5 block">🌐 {t('lang.selectLabel')}</label>
-                <div className="flex gap-2">
-                  {['de', 'en'].map(lang => (
-                    <button
-                      key={lang}
-                      type="button"
-                      onClick={() => setAddLang(lang)}
-                      className={clsx(
-                        'flex-1 py-1.5 rounded-lg text-sm font-bold transition-all border',
-                        addLang === lang
-                          ? lang === 'de'
-                            ? 'bg-yellow/20 text-yellow border-yellow/50'
-                            : 'bg-blue/20 text-blue-400 border-blue-400/50'
-                          : 'bg-bg-surface text-text-muted border-border hover:border-text-muted'
-                      )}
-                    >
-                      {lang === 'de' ? `🇩🇪 ${t('lang.de_full')}` : `🇬🇧 ${t('lang.en_full')}`}
-                    </button>
-                  ))}
-                </div>
+                <TcgdexLanguageSelect value={addLang} onChange={setAddLang} className="select w-full" />
               </div>
 
               <div>

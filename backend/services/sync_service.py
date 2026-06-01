@@ -4,12 +4,14 @@ import math
 from typing import Any, Mapping
 from sqlalchemy.orm import Session, load_only
 from sqlalchemy import func, or_
-from models import Card, Set, CollectionItem, WishlistItem, BinderCard, PriceHistory, SyncLog, PortfolioSnapshot, CustomCardMatch, Setting, ProductPurchase, User, UserSetting
+from models import Card, Set, CollectionItem, WishlistItem, BinderCard, PriceHistory, SyncLog, PortfolioSnapshot, CustomCardMatch, ProductPurchase, User, UserSetting
 from services import pokemon_api, telegram
 from services.card_fallbacks import apply_cross_language_fallbacks, build_missing_language_cards_for_set
 from services.card_upsert import upsert_card
+from services.card_visibility import card_pair_filter, get_configured_sync_languages, get_pinned_set_language_pairs, sync_set_filter
 from services.card_values import effective_market_price, normalize_price_field
 from services.price_utils import PRICE_FIELDS, has_valid_price
+from services.tcgdex_languages import with_lang_suffix
 
 logger = logging.getLogger(__name__)
 
@@ -89,8 +91,19 @@ def _empty_price_sync_plan(sync_limit: int) -> dict:
     }
 
 
-def _price_sync_plan(db: Session, *, now: datetime.datetime | None = None, force: bool = False) -> dict:
-    """Return selected collection/wishlist/binder card IDs with a fair price-sync split.
+def _price_sync_plan(
+    db: Session,
+    *,
+    now: datetime.datetime | None = None,
+    force: bool = False,
+    include_pinned_sets: bool = False,
+) -> dict:
+    """Return selected card IDs with a fair price-sync split.
+
+    By default, the queue covers exact collection/wishlist/binder cards. Full
+    catalogue sync can also include every cached card in pinned localized sets
+    so deselected-but-tracked set/language pairs continue to receive prices for
+    the whole set, not just the card that created the pin.
 
     The old implementation converted collection and wishlist IDs through a
     Python set and then sliced the first 500 entries. Set iteration order is not
@@ -124,6 +137,18 @@ def _price_sync_plan(db: Session, *, now: datetime.datetime | None = None, force
         normalized_seen_at = _as_utc_naive(seen_at)
         if card_id not in latest_activity or normalized_seen_at > latest_activity[card_id]:
             latest_activity[card_id] = normalized_seen_at
+
+    if include_pinned_sets:
+        pinned_pairs = get_pinned_set_language_pairs(db)
+        if pinned_pairs:
+            pinned_card_ids = [
+                card_id
+                for (card_id,) in db.query(Card.id)
+                .filter(card_pair_filter(pinned_pairs), Card.is_custom == False)
+                .all()
+            ]
+            for card_id in pinned_card_ids:
+                latest_activity.setdefault(card_id, datetime.datetime.min)
 
     if not latest_activity:
         return _empty_price_sync_plan(_price_sync_limit(db))
@@ -242,11 +267,48 @@ def _mark_price_sync_attempt(card_data: dict, attempted_at: datetime.datetime) -
 
 
 def _get_tcgdex_sync_languages(db: Session) -> list[str]:
-    """Get TCGdex sync languages from settings."""
-    row = db.query(Setting).filter(Setting.key == "tcgdex_sync_languages").first()
-    raw_parts = [part.strip().lower() for part in (row.value if row else "en,de").split(",")]
-    selected = [lang for lang in ("en", "de") if lang in raw_parts]
-    return selected or ["en", "de"]
+    """Get normalized TCGdex sync languages from settings."""
+    return get_configured_sync_languages(db)
+
+
+def _ensure_pinned_set_rows(db: Session, pinned_pairs: set[tuple[str, str]]) -> int:
+    """Ensure tracked inactive-language set rows exist and refresh metadata.
+
+    Full catalogue sync only fetches the global set list for enabled languages.
+    If a tracked card pins a disabled language/set pair, keep that set row alive
+    and reasonably fresh so the card's set page remains reachable.
+    """
+    updated = 0
+    for tcg_id, set_lang in sorted(pinned_pairs):
+        existing = db.query(Set).filter(
+            Set.lang == set_lang,
+            or_(Set.tcg_set_id == tcg_id, Set.id == tcg_id, Set.id == with_lang_suffix(tcg_id, set_lang)),
+        ).first()
+        try:
+            detail = pokemon_api.get_set_detail(tcg_id, lang=set_lang)
+        except Exception as exc:
+            logger.debug("Failed to refresh pinned set %s_%s: %s", tcg_id, set_lang, exc)
+            detail = None
+
+        if detail:
+            parsed = pokemon_api.parse_set_for_db(detail)
+            parsed["id"] = with_lang_suffix(tcg_id, set_lang)
+            parsed["tcg_set_id"] = tcg_id
+            parsed["lang"] = set_lang
+            upsert_set(db, parsed)
+            updated += 1
+        elif not existing:
+            db.add(Set(
+                id=with_lang_suffix(tcg_id, set_lang),
+                tcg_set_id=tcg_id,
+                name=tcg_id,
+                total=0,
+                lang=set_lang,
+            ))
+            updated += 1
+    if updated:
+        db.commit()
+    return updated
 
 
 def upsert_set(db: Session, set_data: dict):
@@ -434,6 +496,7 @@ def perform_full_sync(db: Session) -> dict:
     try:
         # 1. Sync all sets first
         sync_languages = _get_tcgdex_sync_languages(db)
+        pinned_set_pairs = get_pinned_set_language_pairs(db)
         logger.info("Syncing sets for languages: %s", ", ".join(sync_languages))
         sets_data = pokemon_api.get_all_sets(languages=sync_languages)
         known_set_ids = {s.id for s in db.query(Set.id).all()}
@@ -454,9 +517,16 @@ def perform_full_sync(db: Session) -> dict:
         db.commit()
         logger.info(f"Synced {sets_updated} sets")
 
+        pinned_sets_updated = _ensure_pinned_set_rows(db, pinned_set_pairs)
+        if pinned_sets_updated:
+            logger.info("Refreshed %s pinned set-language rows", pinned_sets_updated)
+
         # 1b. Enrich sets that are missing release_date, logo or abbreviation
         #     Uses individual /sets/{id} calls (one-time cost ~140 calls on first sync)
-        sets_needing_detail = db.query(Set).filter(Set.release_date == None).all()
+        sets_needing_detail = db.query(Set).filter(
+            Set.release_date == None,
+            sync_set_filter(db),
+        ).all()
         if sets_needing_detail:
             logger.info(f"Fetching detail for {len(sets_needing_detail)} sets missing release_date...")
             for s in sets_needing_detail:
@@ -475,9 +545,16 @@ def perform_full_sync(db: Session) -> dict:
             db.commit()
             logger.info("Set detail enrichment complete")
 
-        # 2a. Sync all cards for all known sets (full catalogue)
-        sets_to_sync = db.query(Set).filter(Set.lang.in_(sync_languages)).all()
-        logger.info(f"Syncing full card catalogue for {len(sets_to_sync)} sets...")
+        # 2a. Sync all cards for all globally enabled languages plus any
+        # disabled-language set that is pinned by collection, wishlist, or binder
+        # cards. This keeps tracked localized sets complete without making the
+        # entire disabled language visible again.
+        sets_to_sync = db.query(Set).filter(sync_set_filter(db)).all()
+        logger.info(
+            "Syncing full card catalogue for %s sets (%s pinned set-language pairs)...",
+            len(sets_to_sync),
+            len(pinned_set_pairs),
+        )
         for set_obj in sets_to_sync:
             tcg_id = set_obj.tcg_set_id or set_obj.id
             set_lang = set_obj.lang or "en"
@@ -524,14 +601,15 @@ def perform_full_sync(db: Session) -> dict:
                     db.rollback()
         logger.info("Full card catalogue sync complete")
 
-        # 3. Update prices for collection, wishlist, and binder cards. Use the same
-        # fair dynamic priority queue as the price-only sync so a full sync
-        # cannot keep skipping cards when the per-run cap applies.
-        price_plan = _price_sync_plan(db, force=True)
+        # 3. Update prices for collection, wishlist, binder cards, and every
+        # cached card in pinned disabled-language sets. Use the same fair dynamic
+        # priority queue as the price-only sync so a full sync cannot keep
+        # skipping cards when the per-run cap applies.
+        price_plan = _price_sync_plan(db, force=True, include_pinned_sets=True)
         selected_ids = price_plan["ids"]
         skipped_count = price_plan["deferred"]
         logger.info(
-            "Full sync: updating prices for %s of %s collection/wishlist/binder cards "
+            "Full sync: updating prices for %s of %s collection/wishlist/binder/pinned-set cards "
             "(limit=%s, missing=%s/%s, priced=%s/%s, cooldown_no_price=%s)%s...",
             len(selected_ids),
             price_plan["total_syncable"],

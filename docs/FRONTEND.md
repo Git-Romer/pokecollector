@@ -73,15 +73,19 @@ Provides:
 - `language`
 - `priceDisplay`
 - `pricePrimary`
+- `pricePrimaryField`
 - `currency`
 - `currencySymbol`
+- `exchangeRate`
 - `formatPrice(eurAmount)`
+- `formatUsdPrice(usdAmount)`
 
 Notes:
 
-- Translation bundles are loaded from `i18n/de.js`, `i18n/en.js`, `i18n/zh.js`, and `i18n/sv.js`
-- UI languages are now `DE`, `EN`, `ZH`, and `SV`
-- USD display uses Frankfurter exchange rates client-side
+- Translation bundles are loaded from `frontend/src/i18n/` and wired in `SettingsContext`
+- UI languages include all supported TCGdex language codes, plus Swedish. Regional variants such as `es-mx`, `pt-br`, `pt-pt`, `zh-tw`, and `zh-cn` are selectable from a compact dropdown in Settings.
+- Legacy stored `zh` settings are normalized in the frontend to `zh-cn` for display
+- USD display uses exchange rates from the backend Frankfurter endpoint
 
 ### `useTheme`
 
@@ -152,7 +156,8 @@ Defined in `frontend/src/components/TabNav.jsx`.
   - profile name editing
   - avatar picker
   - theme picker
-  - language and currency controls
+  - app language dropdown and currency controls
+  - TCGdex sync-language selection for admins
   - Telegram and Gemini keys
   - sync controls
   - auth mode toggle
@@ -197,7 +202,7 @@ Defined in `frontend/src/components/CardScanner.jsx`.
 - Displays recognized matches, including rarity
 - Shows clearer scanner errors returned by the backend for Gemini rate limits, invalid keys, and temporary capacity outages
 - Lets the user add a matched card to the collection
-- Supports language selection in the add modal: `de`, `en`, `zh`
+- Supports language selection in the add modal through the shared TCGdex language selector
 
 ## API Layer
 

@@ -6,6 +6,8 @@ import { getSets, markSetsSeen } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
 import { resolveSetImageUrl } from '../utils/imageUrl'
+import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
+import { tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 
 export default function Sets() {
   const navigate = useNavigate()
@@ -15,7 +17,7 @@ export default function Sets() {
   const [sortBy, setSortBy] = useState('release_date')
   const [sortOrder, setSortOrder] = useState('desc')
   const [progressFilter, setProgressFilter] = useState('all')
-  const [langFilter, setLangFilter] = useState('all') // 'de' | 'en' | 'all'
+  const [langFilter, setLangFilter] = useState('all')
   const queryClient = useQueryClient()
 
   const { data: sets = [], isLoading } = useQuery({
@@ -113,27 +115,14 @@ export default function Sets() {
         {/* Language filter */}
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs text-text-muted">{t('lang.filter')}:</span>
-          {[
-            { value: 'all', label: t('lang.all') },
-            { value: 'de', label: `🇩🇪 ${t('lang.de')}` },
-            { value: 'en', label: `🇬🇧 ${t('lang.en')}` },
-          ].map(opt => (
-            <button
-              key={opt.value}
-              onClick={() => setLangFilter(opt.value)}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
-                langFilter === opt.value
-                  ? opt.value === 'de'
-                    ? 'bg-yellow/20 text-yellow border border-yellow/50'
-                    : opt.value === 'en'
-                      ? 'bg-blue/20 text-blue-400 border border-blue-400/50'
-                      : 'bg-brand-red text-white'
-                  : 'bg-bg-card text-text-secondary hover:text-text-primary border border-border'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
+          <TcgdexLanguageSelect
+            value={langFilter}
+            includeAll
+            allLabel={t('lang.all')}
+            compact
+            onChange={setLangFilter}
+            className="select w-full sm:w-52 text-xs py-1.5"
+          />
         </div>
 
         <div className="flex flex-wrap gap-3">
@@ -306,14 +295,10 @@ export default function Sets() {
                 <div className="p-3">
                   <div className="flex items-start gap-1.5 mb-0.5">
                     <p className="font-bold text-text-primary text-sm leading-tight truncate flex-1">{set.name}</p>
-                    {/* Language badge — always "de" or "en", never "both" */}
+                    {/* Language badge - supported TCGdex language, never "both" */}
                     {set.lang && (
-                      <span className={`flex-shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded leading-none ${
-                        set.lang === 'de'
-                          ? 'bg-yellow/20 text-yellow border border-yellow/30'
-                          : 'bg-blue/20 text-blue-400 border border-blue-400/30'
-                      }`}>
-                        {set.lang.toUpperCase()}
+                      <span className={`flex-shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded leading-none ${tcgdexLanguageBadgeClass(set.lang)}`}>
+                        {tcgdexLanguageLabel(set.lang)}
                       </span>
                     )}
                   </div>

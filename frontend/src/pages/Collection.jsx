@@ -16,6 +16,8 @@ import { cardImageUrl, resolveCardImageUrl } from '../utils/imageUrl'
 import { cardNumberMatches } from '../utils/cardNumbers'
 import FallbackBadges from '../components/FallbackBadges'
 import { getEffectiveCardPrice } from '../utils/prices'
+import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
+import { tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 
 function TiltBinderCard({ className, onClick, children }) {
   const { ref, onMouseMove, onMouseEnter, onMouseLeave } = useTilt(10)
@@ -531,27 +533,7 @@ function CollectionEditModal({ item, onClose }) {
 
               <div>
                 <label className="text-xs text-text-muted mb-1.5 block">🌐 {t('lang.selectLabel')}</label>
-                <div className="flex gap-2">
-                  {['de', 'en'].map(l => (
-                    <button
-                      key={l}
-                      type="button"
-                      onClick={() => setLang(l)}
-                      className={clsx(
-                        'flex-1 py-1.5 rounded-lg text-sm font-bold transition-all border',
-                        lang === l
-                          ? l === 'de'
-                            ? 'bg-yellow/20 text-yellow border-yellow/50'
-                            : l === 'en'
-                              ? 'bg-blue/20 text-blue-400 border-blue-400/50'
-                              : 'bg-bg-surface text-text-muted border-border hover:border-text-muted'
-                          : 'bg-bg-surface text-text-muted border-border hover:border-text-muted'
-                      )}
-                    >
-                      {l === 'de' ? `🇩🇪 ${t('lang.de_full')}` : `🇬🇧 ${t('lang.en_full')}`}
-                    </button>
-                  ))}
-                </div>
+                <TcgdexLanguageSelect value={lang} onChange={setLang} className="select w-full" />
               </div>
 
               <div>
@@ -690,25 +672,7 @@ function CollectionEditModal({ item, onClose }) {
 
               <div>
                 <label className="text-xs text-text-muted mb-1.5 block">🌐 {t('lang.selectLabel')}</label>
-                <div className="flex gap-2">
-                  {['de', 'en'].map(l => (
-                    <button
-                      key={l}
-                      type="button"
-                      onClick={() => setNewVersionLang(l)}
-                      className={clsx(
-                        'flex-1 py-1.5 rounded-lg text-sm font-bold transition-all border',
-                        newVersionLang === l
-                          ? l === 'de'
-                            ? 'bg-yellow/20 text-yellow border-yellow/50'
-                            : 'bg-blue/20 text-blue-400 border-blue-400/50'
-                          : 'bg-bg-surface text-text-muted border-border hover:border-text-muted'
-                      )}
-                    >
-                      {l === 'de' ? `🇩🇪 ${t('lang.de_full')}` : `🇬🇧 ${t('lang.en_full')}`}
-                    </button>
-                  ))}
-                </div>
+                <TcgdexLanguageSelect value={newVersionLang} onChange={setNewVersionLang} className="select w-full" />
               </div>
 
               <div>
@@ -1201,12 +1165,8 @@ export default function Collection() {
                           </span>
                         )}
                         {item.lang && (
-                          <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${
-                            item.lang === 'de'
-                              ? 'bg-yellow/20 text-yellow border border-yellow/30'
-                              : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                          }`}>
-                            {item.lang.toUpperCase()}
+                          <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${tcgdexLanguageBadgeClass(item.lang)}`}>
+                            {tcgdexLanguageLabel(item.lang)}
                           </span>
                         )}
                         <FallbackBadges card={card} compact />
@@ -1282,12 +1242,8 @@ export default function Collection() {
                                     <span className="text-xs bg-yellow/20 text-yellow px-1 rounded" title={t('migration.custom')}>✏️</span>
                                   )}
                                   {item.lang && (
-                                    <span className={`text-[9px] font-black px-1 py-0.5 rounded leading-none ${
-                                      item.lang === 'de'
-                                        ? 'bg-yellow/20 text-yellow'
-                                        : 'bg-blue/20 text-blue-400'
-                                    }`}>
-                                      {item.lang.toUpperCase()}
+                                    <span className={`text-[9px] font-black px-1 py-0.5 rounded leading-none ${tcgdexLanguageBadgeClass(item.lang)}`}>
+                                      {tcgdexLanguageLabel(item.lang)}
                                     </span>
                                   )}
                                   <FallbackBadges card={card} compact />
@@ -1360,7 +1316,7 @@ export default function Collection() {
                   const pnl = item.purchase_price ? totalVal - buyTotal : null
 
                   const badges = []
-                  if (item.lang) badges.push({ label: item.lang.toUpperCase(), variant: item.lang === 'de' ? 'yellow' : 'blue' })
+                  if (item.lang) badges.push({ label: tcgdexLanguageLabel(item.lang), variant: 'blue' })
                   if (item.variant) badges.push({ label: item.variant, variant: 'purple' })
                   if (item.condition) badges.push({ label: item.condition, variant: item.condition === 'Mint' ? 'green' : item.condition === 'NM' ? 'blue' : 'yellow' })
                   if (item.quantity > 1) badges.push({ label: `×${item.quantity}`, variant: 'red' })

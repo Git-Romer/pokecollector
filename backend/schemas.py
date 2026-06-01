@@ -4,7 +4,7 @@ from datetime import datetime, date
 
 
 class SetBase(BaseModel):
-    id: str                             # Composite DB key: "sv1_de" / "sv1_en"
+    id: str                             # Composite DB key: "sv1_en" / "sv1_zh-tw"
     tcg_set_id: Optional[str] = None   # Original TCGdex set ID: "sv1"
     name: str
     series: Optional[str] = None
@@ -15,7 +15,7 @@ class SetBase(BaseModel):
     images_logo: Optional[str] = None
     abbreviation: Optional[str] = None
     is_new: bool = False
-    lang: str = "en"                    # "en" or "de" — never "both"
+    lang: str = "en"                    # TCGdex language code, never "both"
     owned_count: int = 0
 
     class Config:
@@ -127,7 +127,7 @@ class CollectionItemCreate(BaseModel):
     condition: str = "NM"
     variant: Optional[str] = "Normal"
     purchase_price: Optional[float] = None
-    lang: str = "en"  # fixed language of this card item ("en" or "de")
+    lang: str = "en"  # fixed TCGdex language of this card item
 
 
 class CollectionItemUpdate(BaseModel):

@@ -15,6 +15,11 @@ from services.exchange_rates import (
     normalize_currency_pair,
     parse_frankfurter_v2_rate,
 )
+from services.tcgdex_languages import (
+    DEFAULT_TCGDEX_SYNC_LANGUAGES,
+    supported_tcgdex_language_payload,
+    validate_tcgdex_sync_languages,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -52,15 +57,10 @@ DEFAULT_SETTINGS = {
 
 
 def _normalize_tcgdex_sync_languages(value) -> str:
-    allowed = ("en", "de")
-    raw_parts = [part.strip().lower() for part in str(value or "").split(",")]
-    selected = [lang for lang in allowed if lang in raw_parts]
-    if not selected:
-        raise HTTPException(
-            status_code=422,
-            detail="tcgdex_sync_languages must include at least one of: en, de",
-        )
-    return ",".join(selected)
+    try:
+        return validate_tcgdex_sync_languages(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 def _coerce_setting_value(key: str, value) -> str:
@@ -120,6 +120,15 @@ def _get_user_settings(db: Session, user_id: int) -> dict:
 @router.get("/")
 def get_settings(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return _get_user_settings(db, current_user.id)
+
+
+@router.get("/tcgdex-languages")
+def get_tcgdex_languages(current_user: User = Depends(get_current_user)):
+    return {
+        "languages": supported_tcgdex_language_payload(),
+        "default": list(DEFAULT_TCGDEX_SYNC_LANGUAGES),
+        "english_fallback": "en",
+    }
 
 
 @router.put("/")

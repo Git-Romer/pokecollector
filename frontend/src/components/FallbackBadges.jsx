@@ -1,7 +1,8 @@
 import clsx from 'clsx'
 import { useSettings } from '../contexts/SettingsContext'
+import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 
-const sourceLabel = (lang) => (lang ? lang.toUpperCase() : '')
+const sourceLabel = (lang) => (lang ? tcgdexLanguageLabel(lang) : '')
 
 export default function FallbackBadges({ card, className = '', compact = false, variant = 'default' }) {
   const { t } = useSettings()

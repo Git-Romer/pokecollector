@@ -8,6 +8,7 @@ import toast from 'react-hot-toast'
 import { useTilt } from '../hooks/useTilt'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 import { cardNumberMatches } from '../utils/cardNumbers'
+import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 
 const SPRITE_BASE_URL = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated'
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
@@ -925,7 +926,7 @@ export default function BinderDetail() {
                             <div className="min-w-0 flex-1">
                               <p className="text-xs font-semibold text-text-primary truncate">{print.set_name || print.set_id} #{print.number}</p>
                               <div className="flex items-center gap-2 flex-wrap text-[11px] text-text-muted">
-                                {print.lang && <span>{print.lang.toUpperCase()}</span>}
+                                {print.lang && <span>{tcgdexLanguageLabel(print.lang)}</span>}
                                 {print.rarity && <span>{print.rarity}</span>}
                                 <span>{print.price_market > 0 ? formatPrice(print.price_market) : t('binderTypes.noPriceDataShort')}</span>
                                 {print.variant && <span>{print.variant}</span>}

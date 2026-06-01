@@ -23,10 +23,16 @@ from sqlalchemy.orm import Session
 from models import Card, Setting
 from services import pokemon_api
 from services.price_utils import PRICE_FIELDS, has_valid_price, is_valid_price
+from services.tcgdex_languages import (
+    SUPPORTED_TCGDEX_LANGUAGES,
+    english_fallback_languages,
+    is_supported_tcgdex_language,
+    normalize_tcgdex_language,
+)
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_LANGS = {"en", "de"}
+SUPPORTED_LANGS = set(SUPPORTED_TCGDEX_LANGUAGES)
 IMAGE_FIELDS = ("images_small", "images_large")
 CARD_COPY_FIELDS = (
     "tcg_card_id",
@@ -67,15 +73,12 @@ def _setting_enabled(db: Session, key: str, default: bool = True) -> bool:
 
 
 def _other_lang(lang: Optional[str]) -> Optional[str]:
-    if lang == "de":
-        return "en"
-    if lang == "en":
-        return "de"
-    return None
+    fallback_order = english_fallback_languages(lang)
+    return fallback_order[0] if fallback_order else None
 
 
 def other_supported_lang(lang: Optional[str]) -> Optional[str]:
-    """Return the supported sibling language for public callers."""
+    """Return the preferred fallback language for public callers."""
     return _other_lang(lang)
 
 
@@ -183,9 +186,9 @@ def clone_card_for_missing_language(
     language id (``<tcg_id>_<target_lang>``) so collection entries can already be
     stored as German/English and later native syncs replace the fallback data.
     """
-    target_lang = (target_lang or "").lower()
-    source_lang = (source_lang or "").lower() or None
-    if target_lang not in SUPPORTED_LANGS:
+    target_lang = normalize_tcgdex_language(target_lang)
+    source_lang = normalize_tcgdex_language(source_lang) or None
+    if not is_supported_tcgdex_language(target_lang):
         return None
 
     if isinstance(source, Card):
@@ -199,8 +202,8 @@ def clone_card_for_missing_language(
         source_lang = source_lang or source.get("_lang") or source.get("lang")
         parsed = pokemon_api.parse_card_for_db(source, default_set_id=default_set_id, lang=source_lang)
 
-    source_lang = (source_lang or parsed.get("lang") or "").lower()
-    if source_lang not in SUPPORTED_LANGS or source_lang == target_lang:
+    source_lang = normalize_tcgdex_language(source_lang or parsed.get("lang") or "")
+    if not is_supported_tcgdex_language(source_lang) or source_lang == target_lang:
         return None
 
     price_enabled, image_enabled = _fallback_settings(db, price_enabled, image_enabled)
@@ -247,6 +250,7 @@ def build_missing_language_card(
     image_enabled: Optional[bool] = None,
 ) -> Optional[dict]:
     """Fetch sibling card data and clone it into the requested language."""
+    target_lang = normalize_tcgdex_language(target_lang)
     fallback_lang = _other_lang(target_lang)
     if not tcg_card_id or not fallback_lang:
         return None
@@ -301,6 +305,7 @@ def build_missing_language_cards_for_set(
     image_enabled: Optional[bool] = None,
 ) -> list[dict]:
     """Clone sibling-language set cards into missing target-language rows."""
+    target_lang = normalize_tcgdex_language(target_lang)
     fallback_lang = _other_lang(target_lang)
     if not tcg_set_id or not fallback_lang:
         return []
@@ -380,12 +385,12 @@ def apply_cross_language_fallbacks(
     price_enabled: Optional[bool] = None,
     image_enabled: Optional[bool] = None,
 ) -> dict:
-    """Fill missing image/price fields from the DE/EN sibling card when allowed.
+    """Fill missing image/price fields from the preferred fallback card when allowed.
 
     Native data always wins. That means a later sync that receives native prices
     or images clears the fallback source tag automatically.
     """
-    lang = parsed.get("lang")
+    lang = normalize_tcgdex_language(parsed.get("lang"))
     tcg_card_id = parsed.get("tcg_card_id") or pokemon_api.strip_lang_suffix(parsed.get("id", ""))[0]
 
     parsed["price_source_lang"] = None
@@ -393,7 +398,7 @@ def apply_cross_language_fallbacks(
     parsed["data_source_lang"] = None
 
     fallback_lang = _other_lang(lang)
-    if not tcg_card_id or not fallback_lang or lang not in SUPPORTED_LANGS:
+    if not tcg_card_id or not fallback_lang or not is_supported_tcgdex_language(lang):
         return parsed
 
     need_price = not _has_price(parsed)

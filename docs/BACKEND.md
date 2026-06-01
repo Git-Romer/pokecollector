@@ -35,6 +35,7 @@ FastAPI app entry point: `backend/main.py`.
 | POST | `/api/cards/custom/dismiss/{match_id}` | Dismiss match |
 | GET | `/api/cards/{card_id}/lang/{lang}` | Resolve equivalent card in another language |
 | GET | `/api/cards/{card_id}/price-history` | Price history |
+| PUT | `/api/cards/{card_id}/custom-image` | Set temporary custom image URL |
 | GET | `/api/cards/{card_id}` | Card detail |
 | POST | `/api/cards/recognize` | Gemini-powered card recognition |
 
@@ -46,6 +47,7 @@ FastAPI app entry point: `backend/main.py`.
 | GET | `/api/collection/user/{user_id}` | View another user's collection (read-only, auth required) |
 | POST | `/api/collection/` | Add to collection |
 | POST | `/api/collection/bulk-add` | Bulk-add selected cards; commits each item independently and reports added/updated/failed counts |
+| POST | `/api/collection/import-csv` | Strict CSV collection import with all-or-nothing validation |
 | PUT | `/api/collection/{item_id}` | Update collection item |
 | DELETE | `/api/collection/{item_id}` | Delete collection item |
 | GET | `/api/collection/stats/summary` | Collection summary |
@@ -63,7 +65,18 @@ FastAPI app entry point: `backend/main.py`.
 | PUT | `/api/binders/{binder_id}` | Update binder |
 | DELETE | `/api/binders/{binder_id}` | Delete binder |
 | GET | `/api/binders/{binder_id}/cards` | Binder cards |
+| GET | `/api/binders/{binder_id}/optimize-prints` | Equivalent-print optimization preview |
+| POST | `/api/binders/{binder_id}/optimize-prints` | Apply equivalent-print optimization |
 | POST | `/api/binders/{binder_id}/cards` | Add card to binder |
+| POST | `/api/binders/{binder_id}/collection-items` | Add owned collection item to binder |
+| PUT | `/api/binders/{binder_id}/entries/{binder_card_id}` | Update binder entry quantity |
+| GET | `/api/binders/{binder_id}/entries/{binder_card_id}/equivalent-prints` | List equivalent prints for an entry |
+| PUT | `/api/binders/{binder_id}/entries/{binder_card_id}/card` | Switch an entry to an equivalent print |
+| POST | `/api/binders/{binder_id}/entries/{binder_card_id}/wishlist` | Move binder entry to wishlist |
+| POST | `/api/binders/{binder_id}/wishlist` | Add wishlist card to binder |
+| GET | `/api/binders/{binder_id}/export-csv` | Binder CSV export |
+| POST | `/api/binders/{binder_id}/import-csv` | Binder CSV import |
+| DELETE | `/api/binders/{binder_id}/entries/{binder_card_id}` | Remove binder entry |
 | DELETE | `/api/binders/{binder_id}/cards/{card_id}` | Remove card from binder |
 
 ### Dashboard, Analytics, Social, Community
@@ -81,6 +94,7 @@ FastAPI app entry point: `backend/main.py`.
 | GET | `/api/social/achievements/{user_id}` | Achievement progress |
 | GET | `/api/github/contributors` | Public GitHub contributors feed |
 | GET | `/api/github/supporters` | Supporters from `SUPPORTERS.csv` |
+| GET | `/api/github/rescue-donations` | Rescue donation total from `RESCUE_DONATIONS.csv` |
 
 ### Products, Export, Backup, Sync, Settings
 
@@ -92,19 +106,30 @@ FastAPI app entry point: `backend/main.py`.
 | PUT | `/api/products/{product_id}` | Update product |
 | DELETE | `/api/products/{product_id}` | Delete product |
 | GET | `/api/products/summary` | Product summary |
+| GET | `/api/products/{product_id}` | Product detail |
+| POST | `/api/products/{product_id}/cards` | Link collection cards to product |
+| DELETE | `/api/products/{product_id}/cards/{product_card_id}` | Unlink product card |
+| POST | `/api/products/{product_id}/cards/{product_card_id}/sell` | Record product-card sale |
+| POST | `/api/products/{product_id}/ledger` | Add product ledger entry |
 | GET | `/api/export/csv` | CSV export |
 | GET | `/api/export/pdf` | PDF export |
 | GET | `/api/backup/download` | Admin-only SQL backup |
 | POST | `/api/backup/restore` | Admin-only SQL restore |
+| POST | `/api/backup/clear-image-cache` | Admin-only image cache clear |
 | POST | `/api/sync/` | Admin-only full sync |
 | POST | `/api/sync/prices` | Admin-only small price sync |
 | POST | `/api/sync/prices/all` | Admin-only forced price sync for all tracked cards |
 | POST | `/api/sync/reschedule-full` | Reschedule full sync |
 | POST | `/api/sync/reschedule-prices` | Reschedule price sync |
 | GET | `/api/sync/status` | Sync status and history |
+| GET | `/api/images/card/{card_id}/{size}` | Card image proxy/cache |
+| GET | `/api/images/set/{set_id}/{image_type}` | Set logo/symbol proxy/cache |
 | GET | `/api/settings/` | Effective settings for current user |
+| GET | `/api/settings/tcgdex-languages` | Supported TCGdex language metadata |
 | PUT | `/api/settings/` | Update settings |
+| GET | `/api/settings/debug-log` | Admin-only debug log download |
 | GET | `/api/settings/telegram_status` | Whether Telegram is configured for current user |
+| GET | `/api/settings/exchange-rate` | Exchange-rate lookup for display currency |
 | GET | `/api/settings/{key}` | Get one setting |
 | POST | `/api/settings/{key}` | Set one setting |
 
@@ -128,7 +153,7 @@ FastAPI app entry point: `backend/main.py`.
 - Active fields: `card_id`, `user_id`, `quantity`, `condition`, `variant`, `purchase_price`, `lang`
 - Variant values are now the physical print variants only: `Normal`, `Holo`, `Reverse Holo`, `First Edition`
 - The old grading UI is gone; the database migration history still contains a legacy `grade` column, but it is not part of the current ORM model or API schema
-- Unique constraint in the ORM is `card_id + variant + lang`
+- Existing rows are grouped by user, card, variant, language, condition, and purchase price when cards are added through the API
 
 ### `User`
 
@@ -179,13 +204,18 @@ Current settings are split in `backend/api/settings.py`:
   - `price_sync_interval_minutes`
   - `multi_user_mode`
   - `tcgdex_sync_languages`
+  - `debug_mode`
+  - `cross_language_price_fallback`
+  - `cross_language_image_fallback`
 
 Important behavior:
 
 - Each user only reads and writes their own `UserSetting` rows
 - Admin-only settings are stored globally in `settings`
 - Recurring automatic syncs include a full sync cadence and a separate small price sync cadence
-- `tcgdex_sync_languages` is seeded from `TCGDEX_SYNC_LANGUAGES` only when the row does not exist yet; afterward the DB value is authoritative
+- `tcgdex_sync_languages` is seeded from `TCGDEX_SYNC_LANGUAGES` only when the row does not exist yet; afterward the DB value is authoritative. Empty or invalid env values safely fall back to `en,de`. The env value `all` expands to every supported TCGdex language during first bootstrap.
+- Supported TCGdex sync language codes are centralized in `services/tcgdex_languages.py`. Optional extra languages are `fr`, `es`, `es-mx`, `it`, `pt`, `pt-br`, `pt-pt`, `nl`, `pl`, `ru`, `ja`, `ko`, `zh-tw`, `id`, `th`, and `zh-cn` in addition to the default `en,de`.
+- English is the preferred cross-language fallback source for missing data, images, and prices by exact TCGdex ID. The backend does not guess English replacements by card name for regional-only cards.
 - Admin users can receive initial fallback values from env vars for Telegram and Gemini
 - `recognize.py` intentionally reads Gemini only from the current user's `UserSetting`; there is no cross-user fallback
 
@@ -193,7 +223,10 @@ Important behavior:
 
 ### Sync
 
-- `/api/sync/` and `/api/sync/prices` enforce admin access
+- `/api/sync/`, `/api/sync/prices`, and `/api/sync/prices/all` enforce admin access
+- `/api/sync/` runs the full TCGdex set/card sync using the configured `tcgdex_sync_languages`
+- `/api/sync/prices` runs the small tracked-card price sync
+- `/api/sync/prices/all` force-refreshes prices for all tracked cards
 - Sync status returns current flags plus the last 10 sync log rows
 - Full sync and price sync can be rescheduled through dedicated endpoints
 

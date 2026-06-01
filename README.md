@@ -49,7 +49,7 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - Add cards with quantity, condition, variant, and purchase price
 - Variants are now limited to `Normal`, `Holo`, `Reverse Holo`, and `First Edition`
 - Card rarity is read-only from TCGdex and displayed separately from variant
-- Track German, English, and Chinese cards separately
+- Track localized TCGdex card rows separately by language code, including all supported TCGdex languages
 - Manually create custom cards not present in TCGdex
 
 ### 🔍 Search & Scanning
@@ -88,7 +88,7 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 
 ### 🎨 UX & Localization
 - Compact portal navigation with 6 primary home items and grouped tab navigation
-- German, English, Chinese, Swedish, French and Dutch UI
+- App UI translations for all supported TCGdex languages, plus Swedish
 - 9 Pokemon-type color themes: Default, Fire, Water, Grass, Electric, Psychic, Dragon, Dark, Fairy
 
 ### ⚙️ Utilities
@@ -115,7 +115,7 @@ All columns must be present, but only `set_code` and `number` need values in eac
 | `quantity` | No | Defaults to `1`; must be `1`-`999` when provided. |
 | `condition` | No | Defaults to `NM`; allowed: `Mint`, `NM`, `LP`, `MP`, `HP`. |
 | `variant` | No | Leave blank or use `Normal`, `Holo`, `Reverse Holo`, `First Edition`. |
-| `lang` | No | Defaults to `en`; allowed: `en`, `de`. |
+| `lang` | No | Defaults to `en`; accepts any supported TCGdex language code. |
 | `purchase_price` | No | Optional per-card purchase price. |
 
 Example:
@@ -230,13 +230,19 @@ The **Users** tab is only visible to admin users and only while multi-user mode 
 | `GEMINI_API_KEY` | Initial Gemini key for the admin user; other users configure their own key in Settings | *(empty)* |
 | `TELEGRAM_BOT_TOKEN` | Initial Telegram bot token for the admin user | *(empty)* |
 | `TELEGRAM_CHAT_ID` | Initial Telegram chat ID for the admin user | *(empty)* |
-| `TCGDEX_SYNC_LANGUAGES` | Initial admin default for TCGdex set/card sync languages on first launch only. After bootstrap, the DB setting in Settings is authoritative. Allowed values: `en`, `de`, `en,de` | `en,de` |
+| `TCGDEX_SYNC_LANGUAGES` | Initial admin default for TCGdex set/card sync languages on first launch only. After bootstrap, the DB setting in Settings is authoritative. Comma-separated TCGdex language codes, or `all` to enable every supported TCGdex language. Empty or invalid values safely fall back to `en,de`. Extra languages increase sync time, API calls, and database size. | `en,de` |
 | `ADMIN_BOOTSTRAP_LOG` | Whether bootstrap credentials may be logged on first start | `true` |
 | `PUBLIC_MODE` | Enable SEO meta tags, Open Graph, and allow search engine indexing. Default blocks all crawlers. Requires rebuild. | `false` |
 | `CORS_ORIGINS` | Comma-separated list of allowed origins for CORS. If empty, allows all origins. Set to your domain for production (e.g. `https://pokecollector.romerg.de`). | *(all)* |
 | `PRE_UPGRADE_BACKUP_ENABLED` | Create an automatic SQL backup before startup migrations when an existing install starts on a new app version | `true` |
 | `PRE_UPGRADE_BACKUP_REQUIRED` | Stop startup if the automatic pre-upgrade backup fails. Set to `false` only if you have another verified backup process. | `true` |
 | `PRE_UPGRADE_BACKUP_KEEP` | Number of automatic pre-upgrade backups to retain in `/app/backups`; minimum `1` | `10` |
+
+Supported `TCGDEX_SYNC_LANGUAGES` codes: `en`, `fr`, `es`, `es-mx`, `it`, `pt`, `pt-br`, `pt-pt`, `de`, `nl`, `pl`, `ru`, `ja`, `ko`, `zh-tw`, `id`, `th`, `zh-cn`. The env value `all` expands to the full supported language list during first bootstrap.
+
+English is used as the preferred fallback source for missing synced data, images, and prices when the same TCGdex card or set ID exists in English. Regional-only cards that do not exist in English are kept in their native language data instead of being guessed by name.
+
+The app UI language selector includes the supported TCGdex language set plus Swedish. The TCGdex sync-language selector controls card/set data sync only; changing the app UI language does not automatically sync additional card languages.
 
 ---
 
@@ -294,10 +300,14 @@ All settings are persisted in the database and edited in the Settings UI.
 
 | Setting | Default | Notes |
 |---------|---------|-------|
-| Language | `de` | `de`, `en`, `zh`, `sv`, `fr`, `nl` |
+| Language | `de` | App UI language. Options include `en`, `fr`, `es`, `es-mx`, `it`, `pt`, `pt-br`, `pt-pt`, `de`, `nl`, `pl`, `ru`, `ja`, `ko`, `zh-tw`, `id`, `th`, `zh-cn`, and `sv`. |
 | Currency | `EUR` | Per-user |
 | Primary Price | `trend` | Per-user. Options: `trend`, `avg`, `avg1`, `avg7`, `avg30`, `low` |
 | Multi-User Mode | `false` | Admin-only toggle |
+| TCGdex Sync Languages | `en,de` | Admin-only. Controls which TCGdex set/card languages full sync fetches. Extra languages increase sync time, API calls, and database size. |
+| Cross-language Price Fallback | `true` | Admin-only. Uses English exact-ID price data when the selected card language has no native public price data. |
+| Cross-language Image Fallback | `true` | Admin-only. Uses English exact-ID images when the selected card language has no native public image data. |
+| Debug Mode | `false` | Admin-only. Enables downloadable backend debug logging. |
 | Theme | `default` | Stored in browser local storage |
 | Price Sync Interval | `30` minutes | Admin-only |
 | Full Sync Interval | `5` days | Admin-only |

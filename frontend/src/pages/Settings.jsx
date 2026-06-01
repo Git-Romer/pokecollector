@@ -17,6 +17,8 @@ import Modal from '../components/ui/Modal'
 import AvatarPicker from '../components/AvatarPicker'
 import { formatDistanceToNow } from 'date-fns'
 import toast from 'react-hot-toast'
+import { TCGDEX_LANGUAGES, normalizeTcgdexLanguageCsv, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
+import { APP_LANGUAGES } from '../utils/appLanguages'
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -76,35 +78,12 @@ function Toggle({ value, onChange }) {
   )
 }
 
-function SegmentedControl({ value, options, onChange }) {
-  return (
-    <div
-      className="flex w-fit rounded-lg overflow-hidden"
-      style={{ border: '1px solid rgba(255,255,255,0.1)' }}
-    >
-      {options.map((opt, i) => (
-        <button
-          key={opt.value}
-          onClick={() => onChange(opt.value)}
-          className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
-            value === opt.value
-              ? 'bg-brand-red text-white'
-              : 'text-text-muted hover:text-text-primary'
-          } ${i > 0 ? 'border-l border-border' : ''}`}
-        >
-          {opt.label}
-        </button>
-      ))}
-    </div>
-  )
-}
-
 function SelectControl({ value, options, onChange }) {
   return (
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="text-xs font-semibold text-text-primary rounded-lg px-2 py-1.5 outline-none cursor-pointer"
+      className="w-full max-w-full sm:w-auto text-xs font-semibold text-text-primary rounded-lg px-2 py-1.5 outline-none cursor-pointer"
       style={{
         background: 'rgba(255,255,255,0.07)',
         border: '1px solid rgba(255,255,255,0.1)',
@@ -119,13 +98,8 @@ function SelectControl({ value, options, onChange }) {
   )
 }
 
-function TcgdexLanguageControl({ value, onChange, labels }) {
-  const selected = new Set(
-    String(value || 'en,de')
-      .split(',')
-      .map((part) => part.trim().toLowerCase())
-      .filter(Boolean)
-  )
+function TcgdexLanguageControl({ value, onChange, selectedLabel, fallbackNote }) {
+  const selected = new Set(normalizeTcgdexLanguageCsv(value).split(','))
 
   const toggle = (lang) => {
     const next = new Set(selected)
@@ -135,31 +109,35 @@ function TcgdexLanguageControl({ value, onChange, labels }) {
     } else {
       next.add(lang)
     }
-    onChange(['en', 'de'].filter((item) => next.has(item)).join(','))
+    const normalized = TCGDEX_LANGUAGES
+      .map((language) => language.code)
+      .filter((code) => next.has(code))
+      .join(',')
+    onChange(normalized || 'en,de')
   }
 
   return (
-    <div
-      className="flex w-fit rounded-lg overflow-hidden"
-      style={{ border: '1px solid rgba(255,255,255,0.1)' }}
-    >
-      {[
-        { value: 'en', label: labels.en },
-        { value: 'de', label: labels.de },
-      ].map((opt, i) => (
-        <button
-          key={opt.value}
-          type="button"
-          onClick={() => toggle(opt.value)}
-          className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
-            selected.has(opt.value)
-              ? 'bg-brand-red text-white'
-              : 'text-text-muted hover:text-text-primary'
-          } ${i > 0 ? 'border-l border-border' : ''}`}
-        >
-          {opt.label}
-        </button>
-      ))}
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+        {TCGDEX_LANGUAGES.map((language) => (
+          <button
+            key={language.code}
+            type="button"
+            onClick={() => toggle(language.code)}
+            className={`px-2 py-1.5 rounded-lg text-xs font-semibold text-left transition-colors border ${
+              selected.has(language.code)
+                ? 'bg-brand-red text-white border-brand-red'
+                : 'bg-bg-card text-text-muted border-border hover:text-text-primary'
+            }`}
+            title={language.name}
+          >
+            {tcgdexLanguageLabel(language.code)}
+          </button>
+        ))}
+      </div>
+      <p className="text-[11px] text-text-muted leading-relaxed">
+        {selected.size} {selectedLabel}. {fallbackNote}
+      </p>
     </div>
   )
 }
@@ -532,7 +510,7 @@ export default function Settings() {
 
   const handleTcgdexSyncLanguagesChange = async (val) => {
     try {
-      await updateSettings({ tcgdex_sync_languages: val })
+      await updateSettings({ tcgdex_sync_languages: normalizeTcgdexLanguageCsv(val) })
       toast.success(t('settings.saved'))
     } catch {
       toast.error(t('settings.saveFailed'))
@@ -590,10 +568,11 @@ export default function Settings() {
   }
 
   const currentLang = settings.language || 'de'
+  const currentAppLang = currentLang === 'zh' ? 'zh-cn' : currentLang
   const currentCurrency = settings.currency || 'EUR'
   const currentPriceType = settings.price_primary || 'trend'
   const exportParams = { price_field: pricePrimaryField, currency: currentCurrency, exchange_rate: exchangeRate }
-  const currentTcgdexSyncLanguages = settings.tcgdex_sync_languages || 'en,de'
+  const currentTcgdexSyncLanguages = normalizeTcgdexLanguageCsv(settings.tcgdex_sync_languages || 'en,de')
   const crossLanguagePriceFallback = settings.cross_language_price_fallback !== 'false'
   const crossLanguageImageFallback = settings.cross_language_image_fallback !== 'false'
 
@@ -766,16 +745,9 @@ export default function Settings() {
             <SectionHeader title={t('settings.sectionAppearance')} />
             <SettingsCard>
               <SettingsRow label={t('settings.language')} description={t('settings.languageDesc')}>
-                <SegmentedControl
-                  value={currentLang}
-                  options={[
-                    { value: 'de', label: '🇩🇪 DE' },
-                    { value: 'en', label: '🇬🇧 EN' },
-                    { value: 'zh', label: '🇨🇳 中文' },
-                    { value: 'sv', label: '🇸🇪 SV' },
-                    { value: 'fr', label: '🇫🇷 FR' },
-                    { value: 'nl', label: '🇳🇱 NL' },
-                  ]}
+                <SelectControl
+                  value={currentAppLang}
+                  options={APP_LANGUAGES}
                   onChange={handleLanguageChange}
                 />
               </SettingsRow>
@@ -926,10 +898,8 @@ export default function Settings() {
                   <TcgdexLanguageControl
                     value={currentTcgdexSyncLanguages}
                     onChange={handleTcgdexSyncLanguagesChange}
-                    labels={{
-                      en: t('settings.languageEN'),
-                      de: t('settings.languageDE'),
-                    }}
+                    selectedLabel={t('settings.tcgdexSyncLanguagesSelected')}
+                    fallbackNote={t('settings.tcgdexSyncLanguagesFallbackNote')}
                   />
                 </SettingsRow>
               )}

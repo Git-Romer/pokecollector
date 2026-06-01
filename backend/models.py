@@ -10,7 +10,7 @@ from database import Base
 class Set(Base):
     __tablename__ = "sets"
 
-    id = Column(String, primary_key=True)    # Composite DB key: "sv1_de" / "sv1_en"
+    id = Column(String, primary_key=True)    # Composite DB key: "sv1_en" / "sv1_zh-tw"
     tcg_set_id = Column(String)              # Original TCGdex set ID: "sv1"
     name = Column(String, nullable=False)
     series = Column(String)
@@ -21,7 +21,7 @@ class Set(Base):
     images_logo = Column(String)
     abbreviation = Column(String, nullable=True)
     is_new = Column(Boolean, default=False)
-    lang = Column(String, default="en")      # "en" or "de" — NEVER "both"
+    lang = Column(String, default="en")      # TCGdex language code, NEVER "both"
     updated_at = Column(DateTime, default=func.now())
 
     # Relationship to cards via tcg_set_id (no DB-level FK, joined in Python)
@@ -39,7 +39,7 @@ class Set(Base):
 class Card(Base):
     __tablename__ = "cards"
 
-    id = Column(String, primary_key=True)          # Composite DB key: "sv1-1_de" / "sv1-1_en"
+    id = Column(String, primary_key=True)          # Composite DB key: "sv1-1_en" / "sv1-1_zh-tw"
     tcg_card_id = Column(String, nullable=True)    # Original TCGdex ID "sv1-1"; NULL for custom cards
     name = Column(String, nullable=False)
     set_id = Column(String, nullable=True)   # Original TCGdex set ID (no FK constraint)
@@ -69,7 +69,7 @@ class Card(Base):
     data_source_lang = Column(String, nullable=True)   # Set when metadata is copied from another TCGdex language
     custom_image_url = Column(String, nullable=True)   # Manual temporary fallback while TCGdex has no image
     is_custom = Column(Boolean, default=False)
-    lang = Column(String, default="en")      # "en" or "de"
+    lang = Column(String, default="en")      # TCGdex language code
     # Cardmarket EUR prices
     price_market = Column(Float)
     price_low = Column(Float)
@@ -147,7 +147,7 @@ class CollectionItem(Base):
     condition = Column(String, default="NM")  # Mint/NM/LP/MP/HP
     variant = Column(String, nullable=False, default="Normal")  # Normal/Holo/Reverse Holo/First Edition
     purchase_price = Column(Float)
-    lang = Column(String, default="en")  # "en" or "de" — fixed card language
+    lang = Column(String, default="en")  # fixed TCGdex card language
     added_at = Column(DateTime, default=func.now())
 
     card = relationship("Card", back_populates="collection_items")

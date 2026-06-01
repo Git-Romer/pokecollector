@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func, cast, Integer
+from sqlalchemy import func, cast, Integer, or_
 from sqlalchemy.exc import IntegrityError
 from typing import Optional, List
 from api.auth import get_current_user
@@ -15,8 +15,10 @@ from services.card_fallbacks import (
     other_supported_lang,
 )
 from services.card_upsert import upsert_card
+from services.card_visibility import get_configured_sync_languages, visible_card_filter, visible_set_filter
 from services.image_url_security import validate_public_https_image_url
 from services.card_numbers import card_number_matches
+from services.tcgdex_languages import english_fallback_languages, has_lang_suffix, is_supported_tcgdex_language, normalize_tcgdex_language
 import datetime
 import re
 from uuid import uuid4
@@ -130,17 +132,28 @@ def _search_by_code_number(
     """
     set_code_upper = set_code.upper()
 
-    # 1. Find all matching set objects (may have sv1_de AND sv1_en)
-    set_objs = db.query(Set).filter(
-        (func.upper(Set.abbreviation) == set_code_upper) |
-        (func.upper(Set.id) == set_code_upper) |
-        (func.upper(Set.tcg_set_id) == set_code_upper)
-    ).all()
+    def query_matching_sets() -> list[Set]:
+        filters = [
+            (func.upper(Set.abbreviation) == set_code_upper) |
+            (func.upper(Set.id) == set_code_upper) |
+            (func.upper(Set.tcg_set_id) == set_code_upper),
+            visible_set_filter(db, current_user.id, lang),
+        ]
+        return db.query(Set).filter(*filters).all()
+
+    # 1. Find all matching set objects across synced languages, or the requested language.
+    set_objs = query_matching_sets()
 
     if not set_objs:
-        # Fall back to live TCGdex API to find the set by abbreviation
+        # Fall back to live TCGdex API to find the set by abbreviation. When a
+        # specific language is requested, only fetch that language so a local EN
+        # or DE set does not prevent FR/JA/etc. code-number lookup from working.
         try:
-            api_sets = pokemon_api.get_all_sets()
+            active_languages = get_configured_sync_languages(db)
+            if lang != "all" and lang not in set(active_languages):
+                return {"data": [], "total_count": 0, "page": page, "page_size": page_size}
+            api_languages = [lang] if lang != "all" else active_languages
+            api_sets = pokemon_api.get_all_sets(languages=api_languages)
             for api_set in api_sets:
                 abbr_obj = api_set.get("abbreviation") or {}
                 official = (
@@ -160,11 +173,7 @@ def _search_by_code_number(
                         db.add(set_obj)
                     db.commit()
                     db.refresh(set_obj)
-            set_objs = db.query(Set).filter(
-                (func.upper(Set.abbreviation) == set_code_upper) |
-                (func.upper(Set.id) == set_code_upper) |
-                (func.upper(Set.tcg_set_id) == set_code_upper)
-            ).all()
+            set_objs = query_matching_sets()
         except Exception:
             pass
 
@@ -175,9 +184,10 @@ def _search_by_code_number(
     tcg_set_ids = list({s.tcg_set_id or s.id for s in set_objs})
 
     def query_matching_cards() -> list[Card]:
-        filters = [Card.set_id.in_(tcg_set_ids)]
-        if lang != "all":
-            filters.append(Card.lang == lang)
+        filters = [
+            Card.set_id.in_(tcg_set_ids),
+            visible_card_filter(db, current_user.id, lang),
+        ]
         candidates = db.query(Card).filter(*filters).order_by(Card.id.asc()).all()
         return [card for card in candidates if card_number_matches(card.number, card_number)]
 
@@ -378,7 +388,7 @@ def search_cards(
     sort_order: Optional[str] = "asc",
     page: int = 1,
     page_size: int = 20,
-    lang: Optional[str] = Query("all", description="Language filter: 'de', 'en', or 'all'"),
+    lang: Optional[str] = Query("all", description="Language filter: supported TCGdex language code or 'all'"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -386,9 +396,10 @@ def search_cards(
 
     Special patterns supported:
     - "MEP 022" or "sv08 032" → set abbreviation/id + card number search
-    - lang: "de" → German cards only, "en" → English cards only, "all" → all languages
+    - lang: supported TCGdex language code or "all" for all languages
     """
-    search_lang = lang or "all"
+    requested_lang = normalize_tcgdex_language(lang or "all")
+    search_lang = requested_lang if is_supported_tcgdex_language(requested_lang) else "all"
 
     try:
         # ── Code + number pattern: "MEP 022", "SSP 136", "sv08 032" ──────────
@@ -400,7 +411,7 @@ def search_cards(
                 return _search_by_code_number(db, current_user, set_code, card_number, page, page_size, lang=search_lang)
 
         # ── Pure DB search ────────────────────────────────────────────────────
-        query = db.query(Card).filter(Card.is_custom == False)
+        query = db.query(Card).filter(Card.is_custom == False, visible_card_filter(db, current_user.id, search_lang))
 
         if name:
             query = query.filter(Card.name.ilike(f"%{name}%"))
@@ -408,15 +419,15 @@ def search_cards(
         if set_id:
             # set_id may be composite DB key (sv1_en) or original tcg id (sv1)
             set_obj = db.query(Set).filter(
-                (Set.id == set_id) | (Set.tcg_set_id == set_id)
+                ((Set.id == set_id) | (Set.tcg_set_id == set_id)),
+                visible_set_filter(db, current_user.id, search_lang),
             ).first()
             if set_obj:
                 query = query.filter(Card.set_id == (set_obj.tcg_set_id or set_obj.id))
+            elif has_lang_suffix(set_id):
+                query = query.filter(False)
             else:
                 query = query.filter(Card.set_id == set_id)
-
-        if search_lang != "all":
-            query = query.filter(Card.lang == search_lang)
 
         if type_filter:
             query = query.filter(Card.types.contains([type_filter]))
@@ -528,16 +539,20 @@ def migrate_custom_card(
 
     # Determine the language of the custom card for language-aware migration
     custom_card_obj = db.query(Card).filter(Card.id == custom_card_id).first()
-    custom_lang = (custom_card_obj.lang or "en") if custom_card_obj else "en"
+    custom_lang = normalize_tcgdex_language((custom_card_obj.lang or "en") if custom_card_obj else "en")
+    if not is_supported_tcgdex_language(custom_lang):
+        custom_lang = "en"
 
     # 1. Fetch API card and upsert in DB
     try:
         api_data = pokemon_api.get_card(api_card_id, lang=custom_lang)
         fetch_lang = custom_lang
         if not api_data:
-            fallback_lang = "de" if custom_lang == "en" else "en"
-            api_data = pokemon_api.get_card(api_card_id, lang=fallback_lang)
-            fetch_lang = fallback_lang
+            for fallback_lang in english_fallback_languages(custom_lang):
+                api_data = pokemon_api.get_card(api_card_id, lang=fallback_lang)
+                if api_data:
+                    fetch_lang = fallback_lang
+                    break
         if not api_data:
             raise HTTPException(status_code=404, detail="API card not found on TCGdex")
         parsed = pokemon_api.parse_card_for_db(api_data, lang=fetch_lang)
@@ -546,14 +561,17 @@ def migrate_custom_card(
 
         # Ensure set record exists
         if parsed.get("set_id"):
-            set_obj = db.query(Set).filter(Set.id == parsed["set_id"]).first()
+            set_db_id = f"{parsed['set_id']}_{fetch_lang}"
+            set_obj = db.query(Set).filter(Set.id == set_db_id).first()
             if not set_obj:
                 set_data = api_data.get("set") or {}
                 if set_data:
+                    set_data = {**set_data, "_lang": fetch_lang, "_db_key": set_db_id}
                     set_parsed = pokemon_api.parse_set_for_db(set_data)
+                    set_parsed["lang"] = fetch_lang
                     db.add(Set(**set_parsed))
                 else:
-                    db.add(Set(id=parsed["set_id"], name=parsed["set_id"], total=0))
+                    db.add(Set(id=set_db_id, tcg_set_id=parsed["set_id"], name=parsed["set_id"], total=0, lang=fetch_lang))
 
         # Upsert API card using composite ID
         existing_api_card = db.query(Card).filter(Card.id == composite_api_card_id).first()
@@ -711,7 +729,10 @@ def get_card_in_lang(
     3. Query for a card with the same set_id + number but lang = requested lang.
     4. If found, return it. If not, return the original card (fallback).
     """
-    source = db.query(Card).filter(Card.id == card_id).first()
+    source = db.query(Card).filter(
+        Card.id == card_id,
+        or_(Card.is_custom == True, visible_card_filter(db, current_user.id, "all")),
+    ).first()
     if not source:
         raise HTTPException(status_code=404, detail="Card not found")
 
@@ -721,6 +742,7 @@ def get_card_in_lang(
         Card.number == source.number,
         Card.lang == lang,
         Card.is_custom == False,
+        visible_card_filter(db, current_user.id, lang),
     ).first()
 
     if sibling:
@@ -737,6 +759,13 @@ def get_price_history(
     current_user: User = Depends(get_current_user),
 ):
     """Get price history for a specific card."""
+    card = db.query(Card.id).filter(
+        Card.id == card_id,
+        or_(Card.is_custom == True, visible_card_filter(db, current_user.id, "all")),
+    ).first()
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+
     history = (
         db.query(PriceHistory)
         .filter(PriceHistory.card_id == card_id)
@@ -754,7 +783,10 @@ def update_card_custom_image(
     current_user: User = Depends(get_current_user),
 ):
     """Set or clear a manual image URL for API cards that have no TCGdex image yet."""
-    card = db.query(Card).filter(Card.id == card_id).first()
+    card = db.query(Card).filter(
+        Card.id == card_id,
+        visible_card_filter(db, current_user.id, "all"),
+    ).first()
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
     if card.is_custom:
@@ -799,7 +831,10 @@ def get_card(
     lang: the language to fetch from (defaults to "en"). The card's stored language
     is always used if available; this parameter only affects new fetches.
     """
-    card = db.query(Card).filter(Card.id == card_id).first()
+    card = db.query(Card).filter(
+        Card.id == card_id,
+        or_(Card.is_custom == True, visible_card_filter(db, current_user.id, "all")),
+    ).first()
     if card:
         return card
 
@@ -809,7 +844,13 @@ def get_card(
     # An explicit suffix in the DB id wins over the query default. Requesting
     # me04-001_de should create/return a German row, even if it temporarily uses
     # English fallback data.
-    card_lang = detected_lang if card_id.endswith(("_de", "_en")) else (lang or detected_lang)
+    requested_lang = normalize_tcgdex_language(lang or detected_lang)
+    if not is_supported_tcgdex_language(requested_lang):
+        requested_lang = detected_lang
+    card_lang = detected_lang if has_lang_suffix(card_id) else requested_lang
+    if card_lang not in set(get_configured_sync_languages(db)):
+        raise HTTPException(status_code=404, detail="Card not found")
+
     try:
         card_data = pokemon_api.get_card(tcg_card_id, lang=card_lang)
         if card_data:
@@ -822,15 +863,18 @@ def get_card(
 
         # Ensure set exists
         if parsed.get("set_id"):
-            set_obj = db.query(Set).filter(Set.id == parsed["set_id"]).first()
+            set_db_id = f"{parsed['set_id']}_{card_lang}"
+            set_obj = db.query(Set).filter(Set.id == set_db_id).first()
             if not set_obj:
                 # Create minimal set record
                 set_data = card_data.get("set") if card_data else None
                 if set_data:
+                    set_data = {**set_data, "_lang": card_lang, "_db_key": set_db_id}
                     set_parsed = pokemon_api.parse_set_for_db(set_data)
+                    set_parsed["lang"] = card_lang
                     db.add(Set(**set_parsed))
                 else:
-                    db.add(Set(id=parsed["set_id"], name=parsed["set_id"], total=0))
+                    db.add(Set(id=set_db_id, tcg_set_id=parsed["set_id"], name=parsed["set_id"], total=0, lang=card_lang))
 
         card = upsert_card(db, parsed)
         db.commit()

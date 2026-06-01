@@ -10,6 +10,8 @@ import CardScanner from '../components/CardScanner'
 import { getDefaultVariantOrNull } from '../utils/cardVariants'
 import { cardNumberMatches } from '../utils/cardNumbers'
 import { useTilt } from '../hooks/useTilt'
+import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
+import { tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 
 function TiltCardWrapper({ children, className, onClick }) {
   const { ref, onMouseMove, onMouseEnter, onMouseLeave } = useTilt(12)
@@ -397,27 +399,14 @@ export default function CardSearch() {
       {/* ─── Language Filter ──────────────────────────────────────── */}
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-xs text-text-muted">{t('lang.filter')}:</span>
-        {[
-          { value: 'all', label: t('lang.all') },
-          { value: 'de', label: `🇩🇪 ${t('lang.de')}` },
-          { value: 'en', label: `🇬🇧 ${t('lang.en')}` },
-        ].map(opt => (
-          <button
-            key={opt.value}
-            onClick={() => { setLangFilter(opt.value); setPage(1) }}
-            className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
-              langFilter === opt.value
-                ? opt.value === 'de'
-                  ? 'bg-yellow/20 text-yellow border border-yellow/50'
-                  : opt.value === 'en'
-                    ? 'bg-blue/20 text-blue-400 border border-blue-400/50'
-                    : 'bg-brand-red text-white'
-                : 'bg-bg-card text-text-secondary hover:text-text-primary border border-border'
-            }`}
-          >
-            {opt.label}
-          </button>
-        ))}
+        <TcgdexLanguageSelect
+          value={langFilter}
+          includeAll
+          allLabel={t('lang.all')}
+          compact
+          onChange={(value) => { setLangFilter(value); setPage(1) }}
+          className="select w-full sm:w-52 text-xs py-1.5"
+        />
       </div>
 
       {/* ─── Search Bar + Filter Button ───────────────────────────── */}
@@ -651,12 +640,8 @@ export default function CardSearch() {
                       <div className="flex items-center gap-1">
                         <p className="text-[11px] font-semibold text-text-primary truncate leading-tight flex-1">{card.name}</p>
                         {card._lang && langFilter === 'all' && (
-                          <span className={`flex-shrink-0 text-[9px] font-black px-1 py-0.5 rounded leading-none ${
-                            card._lang === 'de'
-                              ? 'bg-yellow/20 text-yellow'
-                              : 'bg-blue/20 text-blue-400'
-                          }`}>
-                            {card._lang.toUpperCase()}
+                          <span className={`flex-shrink-0 text-[9px] font-black px-1 py-0.5 rounded leading-none ${tcgdexLanguageBadgeClass(card._lang)}`}>
+                            {tcgdexLanguageLabel(card._lang)}
                           </span>
                         )}
                       </div>

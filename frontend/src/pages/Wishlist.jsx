@@ -9,6 +9,7 @@ import toast from 'react-hot-toast'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 import FallbackBadges from '../components/FallbackBadges'
 import { getEffectiveCardPrice } from '../utils/prices'
+import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 
 function WishlistItemEditor({ item, onDone }) {
   const [quantity, setQuantity] = useState(item.quantity || 1)
@@ -392,9 +393,9 @@ export default function Wishlist() {
                   if (item.price_alert_above) badges.push({ label: `↑ ${formatPrice(item.price_alert_above)}`, variant: 'yellow' })
                   if (item.price_alert_below) badges.push({ label: `↓ ${formatPrice(item.price_alert_below)}`, variant: 'blue' })
                   if (card?.rarity) badges.push({ label: card.rarity, variant: 'gray' })
-                  if (card?.data_source_lang) badges.push({ label: `${t('fallback.data')} ${card.data_source_lang.toUpperCase()}`, variant: 'purple' })
-                  if (card?.price_source_lang) badges.push({ label: `${t('fallback.price')} ${card.price_source_lang.toUpperCase()}`, variant: 'yellow' })
-                  if (card?.image_source_lang) badges.push({ label: `${t('fallback.image')} ${card.image_source_lang.toUpperCase()}`, variant: 'blue' })
+                  if (card?.data_source_lang) badges.push({ label: `${t('fallback.data')} ${tcgdexLanguageLabel(card.data_source_lang)}`, variant: 'purple' })
+                  if (card?.price_source_lang) badges.push({ label: `${t('fallback.price')} ${tcgdexLanguageLabel(card.price_source_lang)}`, variant: 'yellow' })
+                  if (card?.image_source_lang) badges.push({ label: `${t('fallback.image')} ${tcgdexLanguageLabel(card.image_source_lang)}`, variant: 'blue' })
 
                   return (
                     <CardListItem

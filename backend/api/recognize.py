@@ -4,6 +4,7 @@ import httpx
 import os
 import json
 import re
+from services.tcgdex_languages import is_supported_tcgdex_language, normalize_tcgdex_language
 import logging
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from sqlalchemy.orm import Session
@@ -94,7 +95,7 @@ async def recognize_card(
     """
     Accepts a card image, uses Gemini Vision to extract card details
     including the card's language, then searches TCGdex in that language.
-    Supports both German and English (and other) cards automatically.
+    Supports configured TCGdex card languages automatically.
     """
     api_key = get_gemini_key(db, user_id=current_user.id)
     if not api_key:
@@ -113,7 +114,7 @@ async def recognize_card(
 
     prompt = """Look at this Pokemon Trading Card Game card image. Extract the following:
 1. Card name (exactly as printed on the card, in the card's language)
-2. Card name in English (if the card is German, give the English name; if already English, same as above)
+2. Card name in English (if the card is not English, give the English name; if already English, same as above)
 3. Card number (e.g. "136/182" — printed at the bottom)
 4. Set name or abbreviation if visible
 5. Card type (Pokemon, Trainer, or Energy)
@@ -175,11 +176,9 @@ Respond ONLY with this exact JSON (no markdown, no explanation):
     card_name_simple = _simplify_name(card_name)
     card_name_en_simple = _simplify_name(card_name_en)
 
-    # Use detected language for TCGdex search
-    detected_lang = card_info.get("language", "en").lower().strip()
-    # TCGdex supports: en, fr, es, it, pt, de, nl, pl, ru, ko, zh-hans, zh-hant, ja
-    supported_langs = {"en", "de", "fr", "es", "it", "pt", "nl", "pl", "ru", "ko", "ja"}
-    if detected_lang not in supported_langs:
+    # Use detected language for TCGdex search.
+    detected_lang = normalize_tcgdex_language(card_info.get("language", "en"))
+    if not is_supported_tcgdex_language(detected_lang):
         detected_lang = "en"
 
     # Build (lang, search_name) pairs — try simplified name first (broader), then original as fallback

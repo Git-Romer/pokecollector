@@ -4,6 +4,12 @@ import os
 from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from services.tcgdex_languages import (
+    SUPPORTED_TCGDEX_LANGUAGES,
+    has_lang_suffix,
+    normalize_tcgdex_sync_languages,
+    strip_lang_suffix,
+)
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
@@ -38,20 +44,12 @@ DEFAULT_SETTINGS = {
 
 def _normalize_tcgdex_sync_languages(value: str | None) -> str:
     """Normalize configured TCGdex sync languages to a stable CSV string."""
-    allowed = ("en", "de")
-    raw_parts = []
-    if value:
-        raw_parts = [part.strip().lower() for part in str(value).split(",")]
+    return normalize_tcgdex_sync_languages(value)
 
-    selected = []
-    for lang in allowed:
-        if lang in raw_parts and lang not in selected:
-            selected.append(lang)
 
-    if not selected:
-        selected = list(allowed)
-
-    return ",".join(selected)
+def _lang_suffix_regex(column: str = "id") -> str:
+    pattern = "_(" + "|".join(lang.replace("-", "\\-") for lang in SUPPORTED_TCGDEX_LANGUAGES) + ")$"
+    return f"{column} ~ '{pattern}'"
 
 
 def _run_migrations(conn):
@@ -107,20 +105,19 @@ def _run_migrations(conn):
         # v36: Add tcg_set_id column to sets (original TCGdex ID, separate from composite DB key)
         "ALTER TABLE sets ADD COLUMN IF NOT EXISTS tcg_set_id VARCHAR",
         # v36: Populate tcg_set_id for old-format rows (id has no lang suffix)
-        """UPDATE sets SET tcg_set_id = id
+        f"""UPDATE sets SET tcg_set_id = id
            WHERE tcg_set_id IS NULL
-             AND id NOT LIKE '%_de'
-             AND id NOT LIKE '%_en'""",
+             AND NOT ({_lang_suffix_regex('id')})""",
         # v36: Drop FK constraint on cards.set_id so sets can use composite key format
         "ALTER TABLE cards DROP CONSTRAINT IF EXISTS cards_set_id_fkey",
         # v36: Delete old merged sets (lang='both') and old single-lang sets without
         #      composite-key format so they get re-fetched in the new format.
         #      Only delete if no composite-key sets exist yet (first migration run).
-        """DO $$
+        f"""DO $$
         BEGIN
             IF NOT EXISTS (
                 SELECT 1 FROM sets
-                WHERE id LIKE '%_de' OR id LIKE '%_en'
+                WHERE {_lang_suffix_regex('id')}
                 LIMIT 1
             ) THEN
                 DELETE FROM sets;
@@ -128,7 +125,7 @@ def _run_migrations(conn):
                 -- Remove old non-composite sets (lang='both' or plain ID format)
                 DELETE FROM sets
                 WHERE lang = 'both'
-                   OR (id NOT LIKE '%_de' AND id NOT LIKE '%_en');
+                   OR NOT ({_lang_suffix_regex('id')});
             END IF;
         END$$""",
         # v38: Add release_date column to sets table
@@ -366,12 +363,14 @@ def migrate_card_ids():
 
     db = SessionLocal()
     try:
-        # Step 1: Find non-custom cards with old-format IDs (not ending in _en or _de)
-        rows = db.execute(sql_text(
-            "SELECT id, lang FROM cards "
-            "WHERE (is_custom IS NULL OR is_custom = FALSE) "
-            "AND id NOT LIKE '%\\_en' AND id NOT LIKE '%\\_de'"
-        )).fetchall()
+        # Step 1: Find non-custom cards with old-format IDs (no supported language suffix)
+        rows = [
+            row for row in db.execute(sql_text(
+                "SELECT id, lang FROM cards "
+                "WHERE (is_custom IS NULL OR is_custom = FALSE)"
+            )).fetchall()
+            if not has_lang_suffix(row[0])
+        ]
 
         if rows:
             logger.info(f"migrate_card_ids: migrating {len(rows)} card(s) to composite IDs...")
@@ -406,22 +405,18 @@ def migrate_card_ids():
                 logger.warning(f"migrate_card_ids: failed to migrate card '{old_id}': {e}")
 
         # Step 2: Backfill tcg_card_id for already-composite cards that have NULL tcg_card_id
-        composite_rows = db.execute(sql_text(
-            "SELECT id FROM cards "
-            "WHERE tcg_card_id IS NULL "
-            "AND (is_custom IS NULL OR is_custom = FALSE) "
-            "AND (id LIKE '%\\_en' OR id LIKE '%\\_de')"
-        )).fetchall()
+        composite_rows = [
+            row for row in db.execute(sql_text(
+                "SELECT id FROM cards "
+                "WHERE tcg_card_id IS NULL "
+                "AND (is_custom IS NULL OR is_custom = FALSE)"
+            )).fetchall()
+            if has_lang_suffix(row[0])
+        ]
 
         for row in composite_rows:
             composite_id = row[0]
-            # Strip _en or _de suffix
-            for suffix in ("_en", "_de"):
-                if composite_id.endswith(suffix):
-                    tcg_card_id = composite_id[:-len(suffix)]
-                    break
-            else:
-                continue
+            tcg_card_id, _ = strip_lang_suffix(composite_id)
             try:
                 db.execute(sql_text(
                     "UPDATE cards SET tcg_card_id = :tcg_id WHERE id = :id"

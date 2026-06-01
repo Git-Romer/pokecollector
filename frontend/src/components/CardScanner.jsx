@@ -5,8 +5,8 @@ import { recognizeCard, addToCollection } from '../api/client'
 import { useQueryClient } from '@tanstack/react-query'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
-import clsx from 'clsx'
 import { CARD_VARIANTS, getDefaultVariant } from '../utils/cardVariants'
+import TcgdexLanguageSelect from './TcgdexLanguageSelect'
 
 // ─── Add-to-Collection Modal für Scan-Ergebnis ──────────────────────────────
 function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
@@ -77,27 +77,7 @@ function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
             {/* Language */}
             <div>
               <label className="text-xs text-text-muted mb-1.5 block font-medium">🌐 {t('lang.filter')}</label>
-              <div className="flex gap-2">
-                {['de', 'en'].map(l => (
-                  <button
-                    key={l}
-                    type="button"
-                    onClick={() => setLang(l)}
-                    className={clsx(
-                      'flex-1 py-1.5 rounded-lg text-sm font-bold transition-all border',
-                      lang === l
-                        ? l === 'de'
-                          ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50'
-                          : l === 'en'
-                            ? 'bg-blue-500/20 text-blue-400 border-blue-500/50'
-                            : 'bg-white/5 text-text-muted border-white/10'
-                        : 'bg-white/5 text-text-muted border-white/10'
-                    )}
-                  >
-                    {l === 'de' ? `🇩🇪 ${t('lang.de_full')}` : `🇬🇧 ${t('lang.en_full')}`}
-                  </button>
-                ))}
-              </div>
+              <TcgdexLanguageSelect value={lang} onChange={setLang} className="select w-full" />
             </div>
 
             {/* Quantity + Condition */}
