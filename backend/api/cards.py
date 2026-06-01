@@ -19,6 +19,7 @@ from services.card_visibility import get_configured_sync_languages, visible_card
 from services.image_url_security import validate_public_https_image_url
 from services.card_numbers import card_number_matches
 from services.tcgdex_languages import english_fallback_languages, has_lang_suffix, is_supported_tcgdex_language, normalize_tcgdex_language
+from services.text_search import accent_insensitive_contains
 import datetime
 import re
 from uuid import uuid4
@@ -414,7 +415,7 @@ def search_cards(
         query = db.query(Card).filter(Card.is_custom == False, visible_card_filter(db, current_user.id, search_lang))
 
         if name:
-            query = query.filter(Card.name.ilike(f"%{name}%"))
+            query = query.filter(accent_insensitive_contains(db, Card.name, name))
 
         if set_id:
             # set_id may be composite DB key (sv1_en) or original tcg id (sv1)
@@ -433,10 +434,10 @@ def search_cards(
             query = query.filter(Card.types.contains([type_filter]))
 
         if rarity:
-            query = query.filter(Card.rarity.ilike(f"%{rarity}%"))
+            query = query.filter(accent_insensitive_contains(db, Card.rarity, rarity))
 
         if artist:
-            query = query.filter(Card.artist.ilike(f"%{artist}%"))
+            query = query.filter(accent_insensitive_contains(db, Card.artist, artist))
 
         if hp_min is not None:
             query = query.filter(cast(Card.hp, Integer) >= hp_min)

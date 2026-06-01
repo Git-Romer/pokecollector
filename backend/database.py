@@ -55,6 +55,10 @@ def _lang_suffix_regex(column: str = "id") -> str:
 def _run_migrations(conn):
     """Apply any schema migrations that cannot be handled by create_all."""
     migrations = [
+        # Enable accent-insensitive text search on PostgreSQL when permissions allow it.
+        # If this fails (for example on restricted hosted DBs), search falls back to
+        # portable application-defined normalization in services/text_search.py.
+        "CREATE EXTENSION IF NOT EXISTS unaccent",
         # Add abbreviation column to sets table (safe — PostgreSQL IF NOT EXISTS)
         "ALTER TABLE sets ADD COLUMN IF NOT EXISTS abbreviation VARCHAR",
         # Add variant column to collection table
