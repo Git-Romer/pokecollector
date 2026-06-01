@@ -18,6 +18,7 @@ import AvatarPicker from '../components/AvatarPicker'
 import { formatDistanceToNow } from 'date-fns'
 import toast from 'react-hot-toast'
 import { TCGDEX_LANGUAGES, normalizeTcgdexLanguageCsv, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
+import { APP_LANGUAGES } from '../utils/appLanguages'
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -77,35 +78,12 @@ function Toggle({ value, onChange }) {
   )
 }
 
-function SegmentedControl({ value, options, onChange }) {
-  return (
-    <div
-      className="flex w-fit rounded-lg overflow-hidden"
-      style={{ border: '1px solid rgba(255,255,255,0.1)' }}
-    >
-      {options.map((opt, i) => (
-        <button
-          key={opt.value}
-          onClick={() => onChange(opt.value)}
-          className={`px-3 py-1.5 text-xs font-semibold transition-colors ${
-            value === opt.value
-              ? 'bg-brand-red text-white'
-              : 'text-text-muted hover:text-text-primary'
-          } ${i > 0 ? 'border-l border-border' : ''}`}
-        >
-          {opt.label}
-        </button>
-      ))}
-    </div>
-  )
-}
-
 function SelectControl({ value, options, onChange }) {
   return (
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="text-xs font-semibold text-text-primary rounded-lg px-2 py-1.5 outline-none cursor-pointer"
+      className="w-full max-w-full sm:w-auto text-xs font-semibold text-text-primary rounded-lg px-2 py-1.5 outline-none cursor-pointer"
       style={{
         background: 'rgba(255,255,255,0.07)',
         border: '1px solid rgba(255,255,255,0.1)',
@@ -590,6 +568,7 @@ export default function Settings() {
   }
 
   const currentLang = settings.language || 'de'
+  const currentAppLang = currentLang === 'zh' ? 'zh-cn' : currentLang
   const currentCurrency = settings.currency || 'EUR'
   const currentPriceType = settings.price_primary || 'trend'
   const exportParams = { price_field: pricePrimaryField, currency: currentCurrency, exchange_rate: exchangeRate }
@@ -766,16 +745,9 @@ export default function Settings() {
             <SectionHeader title={t('settings.sectionAppearance')} />
             <SettingsCard>
               <SettingsRow label={t('settings.language')} description={t('settings.languageDesc')}>
-                <SegmentedControl
-                  value={currentLang}
-                  options={[
-                    { value: 'de', label: '🇩🇪 DE' },
-                    { value: 'en', label: '🇬🇧 EN' },
-                    { value: 'zh', label: '🇨🇳 中文' },
-                    { value: 'sv', label: '🇸🇪 SV' },
-                    { value: 'fr', label: '🇫🇷 FR' },
-                    { value: 'nl', label: '🇳🇱 NL' },
-                  ]}
+                <SelectControl
+                  value={currentAppLang}
+                  options={APP_LANGUAGES}
                   onChange={handleLanguageChange}
                 />
               </SettingsRow>

@@ -2,13 +2,48 @@ import { createContext, useContext, useState, useEffect, useCallback } from 'rea
 import de from '../i18n/de'
 import en from '../i18n/en'
 import zh from '../i18n/zh'
+import zhCn from '../i18n/zhCn'
 import sv from '../i18n/sv'
 import fr from '../i18n/fr'
 import nl from '../i18n/nl'
+import es from '../i18n/es'
+import esMx from '../i18n/esMx'
+import it from '../i18n/it'
+import pt from '../i18n/pt'
+import ptBr from '../i18n/ptBr'
+import ptPt from '../i18n/ptPt'
+import pl from '../i18n/pl'
+import ru from '../i18n/ru'
+import ja from '../i18n/ja'
+import ko from '../i18n/ko'
+import id from '../i18n/id'
+import th from '../i18n/th'
+import zhTw from '../i18n/zhTw'
 import { priceFieldFromPrimary } from '../utils/prices'
 import { normalizeTcgdexLanguageCsv } from '../utils/tcgdexLanguages'
 
-const translations = { de, en, zh, sv, fr, nl }
+const translations = {
+  de,
+  en,
+  zh,
+  'zh-cn': zhCn,
+  sv,
+  fr,
+  nl,
+  es,
+  'es-mx': esMx,
+  it,
+  pt,
+  'pt-br': ptBr,
+  'pt-pt': ptPt,
+  pl,
+  ru,
+  ja,
+  ko,
+  id,
+  th,
+  'zh-tw': zhTw,
+}
 
 const DEFAULT_SETTINGS = {
   language: 'de',
@@ -38,6 +73,7 @@ export function SettingsProvider({ children }) {
         setSettings(prev => ({
           ...prev,
           ...data,
+          language: data.language === 'zh' ? 'zh-cn' : (data.language || prev.language),
           tcgdex_sync_languages: normalizeTcgdexLanguageCsv(data.tcgdex_sync_languages || prev.tcgdex_sync_languages),
         }))
         setLoaded(true)
@@ -97,7 +133,11 @@ export function SettingsProvider({ children }) {
       })
       if (!resp.ok) throw new Error('Save failed')
       const saved = await resp.json()
-      setSettings(prev => ({ ...prev, ...saved }))
+      setSettings(prev => ({
+        ...prev,
+        ...saved,
+        language: saved.language === 'zh' ? 'zh-cn' : (saved.language || prev.language),
+      }))
     } catch (err) {
       setSettings(settings)
       console.error('Failed to save settings:', err)
