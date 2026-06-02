@@ -15,6 +15,7 @@ from services.exchange_rates import (
     normalize_currency_pair,
     parse_frankfurter_v2_rate,
 )
+from services.card_visibility import get_visible_filter_languages
 from services.tcgdex_languages import (
     DEFAULT_TCGDEX_SYNC_LANGUAGES,
     supported_tcgdex_language_payload,
@@ -128,6 +129,17 @@ def get_tcgdex_languages(current_user: User = Depends(get_current_user)):
         "languages": supported_tcgdex_language_payload(),
         "default": list(DEFAULT_TCGDEX_SYNC_LANGUAGES),
         "english_fallback": "en",
+    }
+
+
+@router.get("/tcgdex-filter-languages")
+def get_tcgdex_filter_languages(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    visible_codes = set(get_visible_filter_languages(db, current_user.id))
+    return {
+        "languages": [
+            language for language in supported_tcgdex_language_payload()
+            if language["code"] in visible_codes
+        ],
     }
 
 

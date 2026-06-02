@@ -12,6 +12,7 @@ import { CARD_VARIANTS, getAvailableVariants, getDefaultVariantOrNull } from '..
 import FallbackBadges from '../components/FallbackBadges'
 import { HOLO_FIELD_MAP } from '../utils/prices'
 import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
+import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
 
@@ -306,6 +307,7 @@ export default function SetDetail() {
       toast.success(t('card.addedToCollection'))
       queryClient.invalidateQueries({ queryKey: ['set-checklist', setId] })
       queryClient.invalidateQueries({ queryKey: ['collection'] })
+      invalidateTcgdexFilterLanguages(queryClient)
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'card-search' })
       setSelectedCard(null)
@@ -321,6 +323,7 @@ export default function SetDetail() {
     onSuccess: () => {
       toast.success(t('card.addedToWishlist'))
       queryClient.invalidateQueries({ queryKey: ['wishlist'] })
+      invalidateTcgdexFilterLanguages(queryClient)
       setSelectedCard(null)
     },
     onError: () => toast.error(t('card.wishlistFailed')),
@@ -332,6 +335,7 @@ export default function SetDetail() {
       toast.success(t('collection.removed'))
       queryClient.invalidateQueries({ queryKey: ['set-checklist', setId] })
       queryClient.invalidateQueries({ queryKey: ['collection'] })
+      invalidateTcgdexFilterLanguages(queryClient)
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'card-search' })
       setSelectedCard(null)
@@ -345,6 +349,7 @@ export default function SetDetail() {
       toast.success(t('collection.updated'))
       queryClient.invalidateQueries({ queryKey: ['set-checklist', setId] })
       queryClient.invalidateQueries({ queryKey: ['collection'] })
+      invalidateTcgdexFilterLanguages(queryClient)
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'card-search' })
     },

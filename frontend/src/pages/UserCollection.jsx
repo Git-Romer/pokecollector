@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Search, SlidersHorizontal, X } from 'lucide-react'
@@ -10,6 +10,7 @@ import { CardModal } from '../components/CardItem'
 import CardImage from '../components/CardImage'
 import FallbackBadges from '../components/FallbackBadges'
 import { getEffectiveCardPrice } from '../utils/prices'
+import { TCGDEX_LANGUAGES } from '../utils/tcgdexLanguages'
 
 export default function UserCollection() {
   const { userId } = useParams()
@@ -34,6 +35,19 @@ export default function UserCollection() {
     items.forEach(item => { if (item.card?.rarity) all.add(item.card.rarity) })
     return [...all].sort()
   }, [items])
+
+  const visibleLanguages = useMemo(() => {
+    const codes = new Set(items.map(item => item.lang || item.card?.lang).filter(Boolean))
+    return TCGDEX_LANGUAGES.filter(language => codes.has(language.code))
+  }, [items])
+
+  const visibleLanguageCodes = useMemo(() => visibleLanguages.map(language => language.code), [visibleLanguages])
+
+  useEffect(() => {
+    if (filterLang && !visibleLanguageCodes.includes(filterLang)) {
+      setFilterLang('')
+    }
+  }, [filterLang, visibleLanguageCodes])
 
   const variants = useMemo(() => {
     const all = new Set()
@@ -147,6 +161,7 @@ export default function UserCollection() {
                 includeAll
                 allLabel={t('lang.all')}
                 compact
+                languages={visibleLanguages}
                 onChange={(value) => setFilterLang(value === 'all' ? '' : value)}
                 className="select py-1.5 text-sm"
               />

@@ -9,6 +9,7 @@ import { useTilt } from '../hooks/useTilt'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 import { cardNumberMatches } from '../utils/cardNumbers'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
+import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 
 const SPRITE_BASE_URL = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated'
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
@@ -215,6 +216,7 @@ export default function BinderDetail() {
     onSuccess: () => {
       toast.success(t('common.add') + ' ✓')
       queryClient.invalidateQueries({ queryKey: ['binder-cards', binderId] })
+      invalidateTcgdexFilterLanguages(queryClient)
       queryClient.invalidateQueries({ queryKey: ['binders'] })
     },
     onError: (e) => toast.error(e.response?.data?.detail || t('card.addFailed')),
@@ -225,6 +227,7 @@ export default function BinderDetail() {
     onSuccess: () => {
       toast.success(t('common.add') + ' ✓')
       queryClient.invalidateQueries({ queryKey: ['binder-cards', binderId] })
+      invalidateTcgdexFilterLanguages(queryClient)
       queryClient.invalidateQueries({ queryKey: ['binders'] })
     },
     onError: (e) => toast.error(e.response?.data?.detail || t('card.addFailed')),
@@ -237,6 +240,7 @@ export default function BinderDetail() {
     onSuccess: () => {
       toast.success(t('common.remove') + ' ✓')
       queryClient.invalidateQueries({ queryKey: ['binder-cards', binderId] })
+      invalidateTcgdexFilterLanguages(queryClient)
       queryClient.invalidateQueries({ queryKey: ['binders'] })
     },
   })
@@ -253,6 +257,7 @@ export default function BinderDetail() {
         }
       })
       queryClient.invalidateQueries({ queryKey: ['binder-cards', binderId] })
+      invalidateTcgdexFilterLanguages(queryClient)
       queryClient.invalidateQueries({ queryKey: ['binders'] })
     },
     onError: (e) => toast.error(e.response?.data?.detail || 'Update failed'),
@@ -311,6 +316,7 @@ export default function BinderDetail() {
         toast.success(message)
       }
       queryClient.invalidateQueries({ queryKey: ['binder-cards', binderId] })
+      invalidateTcgdexFilterLanguages(queryClient)
       queryClient.invalidateQueries({ queryKey: ['binders'] })
       setShowCsvImportModal(false)
     },
@@ -333,6 +339,7 @@ export default function BinderDetail() {
     onSuccess: () => {
       toast.success(t('binderTypes.printSwitched') + ' ✓')
       queryClient.invalidateQueries({ queryKey: ['binder-cards', binderId] })
+      invalidateTcgdexFilterLanguages(queryClient)
       queryClient.invalidateQueries({ queryKey: ['binders'] })
       setSelectedCard(null)
     },
@@ -356,6 +363,7 @@ export default function BinderDetail() {
     onSuccess: (result) => {
       toast.success(`${t('binderTypes.optimizePrintsApplied')} ✓ (${result.applied} ${t('binderTypes.updated')}, ${result.skipped} ${t('binderTypes.skipped')}, ${formatPrice(result.total_savings || 0)})`)
       queryClient.invalidateQueries({ queryKey: ['binder-cards', binderId] })
+      invalidateTcgdexFilterLanguages(queryClient)
       queryClient.invalidateQueries({ queryKey: ['binders'] })
       queryClient.invalidateQueries({ queryKey: ['binder-print-optimization', binderId] })
       setShowPrintOptimizer(false)

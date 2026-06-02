@@ -12,7 +12,7 @@ from sqlalchemy import and_, false, or_
 from sqlalchemy.orm import Session
 
 from models import Binder, BinderCard, Card, CollectionItem, Set, Setting, WishlistItem
-from services.tcgdex_languages import normalize_tcgdex_language, normalize_tcgdex_sync_languages, with_lang_suffix
+from services.tcgdex_languages import SUPPORTED_TCGDEX_LANGUAGES, normalize_tcgdex_language, normalize_tcgdex_sync_languages, with_lang_suffix
 
 SetLangPair = tuple[str, str]
 
@@ -77,6 +77,18 @@ def get_pinned_set_language_pairs(db: Session, user_id: int | None = None) -> se
     _add_pairs(binder_query.distinct().all(), pairs)
 
     return pairs
+
+
+def get_visible_filter_languages(db: Session, user_id: int) -> list[str]:
+    """Return language codes that should appear in user-facing filters.
+
+    Normal browsing filters should offer globally enabled catalogue languages plus
+    any disabled languages still pinned by this user's collection, wishlist, or
+    binder cards. Settings still use the full supported language list.
+    """
+    visible = set(get_configured_sync_languages(db))
+    visible.update(lang for _set_id, lang in get_pinned_set_language_pairs(db, user_id=user_id))
+    return [lang for lang in SUPPORTED_TCGDEX_LANGUAGES if lang in visible]
 
 
 def set_pair_filter(pairs: set[SetLangPair] | list[SetLangPair] | tuple[SetLangPair, ...]):

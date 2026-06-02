@@ -14,6 +14,7 @@ try:
         get_pinned_set_language_pairs,
         sync_set_filter,
         visible_card_filter,
+        get_visible_filter_languages,
         visible_set_filter,
     )
     from services.sync_service import _price_sync_plan
@@ -78,6 +79,10 @@ class CardVisibilityTests(unittest.TestCase):
             get_pinned_set_language_pairs(self.db, user_id=self.user.id),
             {("sv2", "fr"), ("sv3", "ja"), ("sv4", "nl")},
         )
+
+    def test_visible_filter_languages_include_active_languages_and_current_user_pins_only(self):
+        self.assertEqual(get_visible_filter_languages(self.db, self.user.id), ["en", "fr", "de", "nl", "ja"])
+        self.assertEqual(get_visible_filter_languages(self.db, self.other_user.id), ["en", "de"])
 
     def test_all_sets_show_active_languages_and_current_user_pins_only(self):
         visible_ids = {

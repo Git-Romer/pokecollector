@@ -7,6 +7,7 @@ import { useSettings } from '../contexts/SettingsContext'
 import TabNav from '../components/TabNav'
 import AvatarPicker from '../components/AvatarPicker'
 import toast from 'react-hot-toast'
+import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 
 const SPRITE_BASE_URL = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated'
 
@@ -158,6 +159,7 @@ export default function Binders() {
     onSuccess: () => {
       toast.success(t('binders.created'))
       queryClient.invalidateQueries({ queryKey: ['binders'] })
+      invalidateTcgdexFilterLanguages(queryClient)
       setCreating(false)
     },
     onError: () => toast.error(t('binders.createFailed')),
@@ -168,6 +170,7 @@ export default function Binders() {
     onSuccess: () => {
       toast.success(t('binders.updated'))
       queryClient.invalidateQueries({ queryKey: ['binders'] })
+      invalidateTcgdexFilterLanguages(queryClient)
       setEditingId(null)
     },
     onError: () => toast.error(t('binders.updateFailed')),
@@ -178,6 +181,7 @@ export default function Binders() {
     onSuccess: () => {
       toast.success(t('binders.deleted'))
       queryClient.invalidateQueries({ queryKey: ['binders'] })
+      invalidateTcgdexFilterLanguages(queryClient)
     },
   })
 

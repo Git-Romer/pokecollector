@@ -19,6 +19,7 @@ import { formatDistanceToNow } from 'date-fns'
 import toast from 'react-hot-toast'
 import { TCGDEX_LANGUAGES, normalizeTcgdexLanguageCsv, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { APP_LANGUAGES } from '../utils/appLanguages'
+import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -507,6 +508,7 @@ export default function Settings() {
   const handleTcgdexSyncLanguagesChange = async (val) => {
     try {
       await updateSettings({ tcgdex_sync_languages: normalizeTcgdexLanguageCsv(val) })
+      invalidateTcgdexFilterLanguages(queryClient)
       toast.success(t('settings.saved'))
     } catch {
       toast.error(t('settings.saveFailed'))

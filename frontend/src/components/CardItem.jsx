@@ -13,6 +13,7 @@ import { CARD_VARIANTS, getAvailableVariants, getDefaultVariant, getDefaultVaria
 import FallbackBadges from './FallbackBadges'
 import { getEffectiveCardPrice } from '../utils/prices'
 import { tcgdexLanguageBadgeClass, tcgdexLanguageLabel, getTcgdexLanguage } from '../utils/tcgdexLanguages'
+import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 
 function askWishlistQuantity(t, defaultQuantity = 1) {
   const initialQuantity = Math.max(1, Math.min(99, parseInt(defaultQuantity, 10) || 1))
@@ -119,6 +120,7 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
     onSuccess: (res) => {
       toast.success(t('settings.cardUpdated'))
       queryClient.invalidateQueries({ queryKey: ['collection'] })
+      invalidateTcgdexFilterLanguages(queryClient)
       onCreated && onCreated(res)
       onClose()
     },
@@ -133,6 +135,7 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
     onSuccess: (res) => {
       toast.success(res?.data?.message || t('common.success'))
       queryClient.invalidateQueries({ queryKey: ['collection'] })
+      invalidateTcgdexFilterLanguages(queryClient)
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       queryClient.invalidateQueries({ queryKey: ['custom-cards'] })
       queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'card-search' })
@@ -149,6 +152,7 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
     onSuccess: () => {
       toast.success(`${createdCard.name} ${t('card.addedToCollection')}`)
       queryClient.invalidateQueries({ queryKey: ['collection'] })
+      invalidateTcgdexFilterLanguages(queryClient)
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'card-search' })
       onCreated && onCreated(createdCard)
@@ -390,6 +394,7 @@ export const CardItem = memo(function CardItem({ card, showActions = true, onAdd
     onSuccess: () => {
       toast.success(`${card.name} ${t('card.addedToCollection')}`)
       queryClient.invalidateQueries({ queryKey: ['collection'] })
+      invalidateTcgdexFilterLanguages(queryClient)
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'card-search' })
     },
@@ -401,6 +406,7 @@ export const CardItem = memo(function CardItem({ card, showActions = true, onAdd
     onSuccess: () => {
       toast.success(`${card.name} ${t('card.addedToWishlist')}`)
       queryClient.invalidateQueries({ queryKey: ['wishlist'] })
+      invalidateTcgdexFilterLanguages(queryClient)
     },
     onError: () => toast.error(t('card.wishlistFailed')),
   })
@@ -530,6 +536,7 @@ export const CardItem = memo(function CardItem({ card, showActions = true, onAdd
           onClose={() => setShowEditModal(false)}
           onCreated={() => {
             queryClient.invalidateQueries({ queryKey: ['collection'] })
+            invalidateTcgdexFilterLanguages(queryClient)
           }}
           sets={[]}
         />
@@ -593,6 +600,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
     onSuccess: () => {
       toast.success(`${t('common.add')} ${quantity}x ${card.name}!`)
       queryClient.invalidateQueries({ queryKey: ['collection'] })
+      invalidateTcgdexFilterLanguages(queryClient)
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'card-search' })
       onClose()
@@ -605,6 +613,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
     onSuccess: () => {
       toast.success(`${card.name} ${t('card.addedToWishlist')}`)
       queryClient.invalidateQueries({ queryKey: ['wishlist'] })
+      invalidateTcgdexFilterLanguages(queryClient)
       onClose()
     },
     onError: () => toast.error(t('card.wishlistFailed')),
@@ -620,6 +629,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
       toast.success(t('card.customImageSaved'))
       queryClient.invalidateQueries({ queryKey: ['card-search'] })
       queryClient.invalidateQueries({ queryKey: ['collection'] })
+      invalidateTcgdexFilterLanguages(queryClient)
       queryClient.invalidateQueries({ queryKey: ['wishlist'] })
       queryClient.invalidateQueries({ queryKey: ['set-checklist'] })
     },

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Search, Bell, BellOff, SortAsc, Filter, ChevronUp, ChevronDown } from 'lucide-react'
@@ -7,11 +7,13 @@ import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
 import { resolveSetImageUrl } from '../utils/imageUrl'
 import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
+import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import { tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 
 export default function Sets() {
   const navigate = useNavigate()
   const { t } = useSettings()
+  const visibleLanguages = useVisibleTcgdexLanguages()
   const [search, setSearch] = useState('')
   const [series, setSeries] = useState('')
   const [sortBy, setSortBy] = useState('release_date')
@@ -33,6 +35,14 @@ export default function Sets() {
       toast.success(t('sets.markedSeen'))
     },
   })
+
+  const visibleLanguageCodes = useMemo(() => visibleLanguages.map(language => language.code), [visibleLanguages])
+
+  useEffect(() => {
+    if (!visibleLanguages.isLoading && langFilter !== 'all' && !visibleLanguageCodes.includes(langFilter)) {
+      setLangFilter('all')
+    }
+  }, [langFilter, visibleLanguageCodes, visibleLanguages.isLoading])
 
   const newSets = sets.filter(s => s.is_new)
   const allSeries = [...new Set(sets.map(s => s.series).filter(Boolean))].sort()
@@ -120,6 +130,7 @@ export default function Sets() {
             includeAll
             allLabel={t('lang.all')}
             compact
+            languages={visibleLanguages}
             onChange={setLangFilter}
             className="select w-full sm:w-52 text-xs py-1.5"
           />

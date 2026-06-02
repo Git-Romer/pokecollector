@@ -10,6 +10,7 @@ import { resolveCardImageUrl } from '../utils/imageUrl'
 import FallbackBadges from '../components/FallbackBadges'
 import { getEffectiveCardPrice } from '../utils/prices'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
+import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 
 function WishlistItemEditor({ item, onDone }) {
   const [quantity, setQuantity] = useState(item.quantity || 1)
@@ -29,6 +30,7 @@ function WishlistItemEditor({ item, onDone }) {
     onSuccess: () => {
       toast.success(t('wishlist.updated'))
       queryClient.invalidateQueries({ queryKey: ['wishlist'] })
+      invalidateTcgdexFilterLanguages(queryClient)
       onDone()
     },
   })
@@ -92,6 +94,7 @@ export default function Wishlist() {
     onSuccess: () => {
       toast.success(t('wishlist.removed'))
       queryClient.invalidateQueries({ queryKey: ['wishlist'] })
+      invalidateTcgdexFilterLanguages(queryClient)
     },
   })
 
@@ -100,6 +103,7 @@ export default function Wishlist() {
     onSuccess: () => {
       toast.success(t('wishlist.addedToCollection'))
       queryClient.invalidateQueries({ queryKey: ['collection'] })
+      invalidateTcgdexFilterLanguages(queryClient)
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'card-search' })
     },
@@ -110,6 +114,7 @@ export default function Wishlist() {
     onSuccess: () => {
       toast.success(t('wishlist.updated'))
       queryClient.invalidateQueries({ queryKey: ['wishlist'] })
+      invalidateTcgdexFilterLanguages(queryClient)
     },
   })
 

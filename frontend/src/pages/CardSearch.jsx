@@ -10,8 +10,10 @@ import CardScanner from '../components/CardScanner'
 import { getDefaultVariantOrNull } from '../utils/cardVariants'
 import { cardNumberMatches } from '../utils/cardNumbers'
 import { useTilt } from '../hooks/useTilt'
+import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
 import { tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
+import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 
 function TiltCardWrapper({ children, className, onClick }) {
   const { ref, onMouseMove, onMouseEnter, onMouseLeave } = useTilt(12)
@@ -116,13 +118,14 @@ function FilterForm({ filters, setFilter, allSeries, setsForSeries, toggleSortOr
 
 export default function CardSearch() {
   const { t } = useSettings()
+  const visibleLanguages = useVisibleTcgdexLanguages()
   const queryClient = useQueryClient()
   const [searchInput, setSearchInput] = useState('')
   const [filters, setFilters] = useState({
     name: '', type: '', rarity: '', set_id: '', series: '', artist: '',
     hp_min: '', hp_max: '', sort_by: '', sort_order: 'asc',
   })
-  const [langFilter, setLangFilter] = useState('all') // 'de' | 'en' | 'all'
+  const [langFilter, setLangFilter] = useState('all')
   const [page, setPage] = useState(1)
   const [showFilters, setShowFilters] = useState(false)
   const [showCustomModal, setShowCustomModal] = useState(false)
@@ -144,6 +147,7 @@ export default function CardSearch() {
   })
 
   const allSeries = useMemo(() => [...new Set(allSets.map(s => s.series).filter(Boolean))].sort(), [allSets])
+  const visibleLanguageCodes = useMemo(() => visibleLanguages.map(language => language.code), [visibleLanguages])
   const setsForSeries = useMemo(() => {
     if (!filters.series) return allSets
     return allSets.filter(s => s.series === filters.series)
@@ -220,6 +224,13 @@ export default function CardSearch() {
   const activeFilterCount = [filters.type, filters.rarity, filters.set_id, filters.series, filters.artist, filters.hp_min, filters.hp_max, filters.sort_by].filter(Boolean).length
   const totalPages = data ? Math.ceil(data.total_count / pageSize) : 0
   const hasOpenOverlay = Boolean(selectedCard || showFilters || showCustomModal || showScanner)
+
+  useEffect(() => {
+    if (!visibleLanguages.isLoading && langFilter !== 'all' && !visibleLanguageCodes.includes(langFilter)) {
+      setLangFilter('all')
+      setPage(1)
+    }
+  }, [langFilter, visibleLanguageCodes, visibleLanguages.isLoading])
 
   useEffect(() => {
     const handleKeyDown = (event) => {
@@ -352,6 +363,7 @@ export default function CardSearch() {
       if (result.failed > 0) parts.push(`${result.failed} ${t('cardSearch.bulkAddFailedCount')}`)
       toast.success(parts.join(' · '))
       queryClient.invalidateQueries({ queryKey: ['collection'] })
+      invalidateTcgdexFilterLanguages(queryClient)
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'card-search' })
       exitSelectMode()
@@ -404,6 +416,7 @@ export default function CardSearch() {
           includeAll
           allLabel={t('lang.all')}
           compact
+          languages={visibleLanguages}
           onChange={(value) => { setLangFilter(value); setPage(1) }}
           className="select w-full sm:w-52 text-xs py-1.5"
         />

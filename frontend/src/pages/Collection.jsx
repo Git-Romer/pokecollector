@@ -18,6 +18,8 @@ import FallbackBadges from '../components/FallbackBadges'
 import { getEffectiveCardPrice } from '../utils/prices'
 import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
 import { tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
+import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
+import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 
 function TiltBinderCard({ className, onClick, children }) {
   const { ref, onMouseMove, onMouseEnter, onMouseLeave } = useTilt(10)
@@ -348,6 +350,7 @@ function CollectionEditModal({ item, onClose }) {
     onSuccess: () => {
       toast.success(t('collection.updated'))
       queryClient.invalidateQueries({ queryKey: ['collection'] })
+      invalidateTcgdexFilterLanguages(queryClient)
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'card-search' })
       onClose()
@@ -360,6 +363,7 @@ function CollectionEditModal({ item, onClose }) {
     onSuccess: () => {
       toast.success(t('collection.removed'))
       queryClient.invalidateQueries({ queryKey: ['collection'] })
+      invalidateTcgdexFilterLanguages(queryClient)
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'card-search' })
       onClose()
@@ -379,6 +383,7 @@ function CollectionEditModal({ item, onClose }) {
     onSuccess: () => {
       toast.success(t('collection.versionAdded'))
       queryClient.invalidateQueries({ queryKey: ['collection'] })
+      invalidateTcgdexFilterLanguages(queryClient)
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'card-search' })
       onClose()
@@ -391,6 +396,7 @@ function CollectionEditModal({ item, onClose }) {
     onSuccess: () => {
       toast.success(t('collection.addedToBinder'))
       queryClient.invalidateQueries({ queryKey: ['binders'] })
+      invalidateTcgdexFilterLanguages(queryClient)
     },
     onError: (err) => toast.error(err?.response?.data?.detail || t('card.addFailed')),
   })
@@ -404,6 +410,7 @@ function CollectionEditModal({ item, onClose }) {
       setCustomImageVersion((version) => version + 1)
       toast.success(t('card.customImageSaved'))
       queryClient.invalidateQueries({ queryKey: ['collection'] })
+      invalidateTcgdexFilterLanguages(queryClient)
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       queryClient.invalidateQueries({ queryKey: ['wishlist'] })
       queryClient.invalidateQueries({ queryKey: ['set-checklist'] })
@@ -714,6 +721,7 @@ function CollectionEditModal({ item, onClose }) {
 
 export default function Collection() {
   const { t, formatPrice, pricePrimaryField, currency, exchangeRate } = useSettings()
+  const visibleLanguages = useVisibleTcgdexLanguages()
   const [viewMode, setViewMode] = useState('grid')
   const [editingCollectionItem, setEditingCollectionItem] = useState(null) // for CollectionEditModal
   const [showCustomModal, setShowCustomModal] = useState(false)
@@ -814,6 +822,7 @@ export default function Collection() {
         toast.success(message)
       }
       queryClient.invalidateQueries({ queryKey: ['collection'] })
+      invalidateTcgdexFilterLanguages(queryClient)
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
     },
     onError: (err) => {
@@ -1066,11 +1075,15 @@ export default function Collection() {
             </div>
             <div>
               <label className="text-xs text-text-muted mb-1 block">{t('lang.filter')}</label>
-              <select className="select py-1.5 text-sm" value={filterLang} onChange={e => setFilterLang(e.target.value)}>
-                <option value="">{t('lang.all')}</option>
-                <option value="de">DE</option>
-                <option value="en">EN</option>
-              </select>
+              <TcgdexLanguageSelect
+                value={filterLang || 'all'}
+                includeAll
+                allLabel={t('lang.all')}
+                compact
+                languages={visibleLanguages}
+                onChange={(value) => setFilterLang(value === 'all' ? '' : value)}
+                className="select py-1.5 text-sm"
+              />
             </div>
             <div>
               <label className="text-xs text-text-muted mb-1 block">{t('collection.filterMinPrice')}</label>
@@ -1372,6 +1385,7 @@ export default function Collection() {
           onCreated={() => {
             setEditCard(null)
             queryClient.invalidateQueries({ queryKey: ['collection'] })
+            invalidateTcgdexFilterLanguages(queryClient)
             queryClient.invalidateQueries({ queryKey: ['dashboard'] })
           }}
           sets={allSets}

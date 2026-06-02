@@ -79,6 +79,9 @@ export const getApiErrorMessage = (error, fallback = 'Request failed') => {
   return formatApiErrorDetail(detail) || fallback
 }
 
+// Settings
+export const getTcgdexFilterLanguages = () => api.get('/settings/tcgdex-filter-languages').then(r => r.data)
+
 // Cards
 export const searchCards = (params) => api.get('/cards/search', { params })
 export const getCard = (id) => api.get(`/cards/${id}`)

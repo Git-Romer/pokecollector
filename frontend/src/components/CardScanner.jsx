@@ -7,6 +7,7 @@ import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
 import { CARD_VARIANTS, getDefaultVariant } from '../utils/cardVariants'
 import TcgdexLanguageSelect from './TcgdexLanguageSelect'
+import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 
 // ─── Add-to-Collection Modal für Scan-Ergebnis ──────────────────────────────
 function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
@@ -31,6 +32,7 @@ function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
         purchase_price: purchasePrice ? parseFloat(purchasePrice) : undefined,
       })
       queryClient.invalidateQueries({ queryKey: ['collection'] })
+      invalidateTcgdexFilterLanguages(queryClient)
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'card-search' })
       toast.success(`${match.name} ${t('scanner.addedToCollection')}!`)

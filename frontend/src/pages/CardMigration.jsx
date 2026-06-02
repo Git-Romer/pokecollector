@@ -6,6 +6,7 @@ import { useSettings } from '../contexts/SettingsContext'
 import { format, parseISO } from 'date-fns'
 import toast from 'react-hot-toast'
 import { resolveCardImageUrl } from '../utils/imageUrl'
+import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 
 function CardPreview({ card, label }) {
   const { t } = useSettings()
@@ -109,6 +110,7 @@ export default function CardMigration() {
       queryClient.invalidateQueries({ queryKey: ['custom-matches'] })
       queryClient.invalidateQueries({ queryKey: ['collection'] })
       queryClient.invalidateQueries({ queryKey: ['wishlist'] })
+      invalidateTcgdexFilterLanguages(queryClient)
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       setActionId(null); setActionType(null)
     },
