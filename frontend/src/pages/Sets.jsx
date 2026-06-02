@@ -9,6 +9,7 @@ import { resolveSetImageUrl } from '../utils/imageUrl'
 import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
 import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import { tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
+import { textIncludes } from '../utils/textSearch'
 
 export default function Sets() {
   const navigate = useNavigate()
@@ -49,7 +50,7 @@ export default function Sets() {
 
   const filtered = useMemo(() => {
     let result = sets.filter(s => {
-      if (search && !s.name.toLowerCase().includes(search.toLowerCase())) return false
+      if (search && !textIncludes(s.name, search)) return false
       if (series && s.series !== series) return false
       const owned = s.owned_count ?? 0
       const total = s.total ?? 0

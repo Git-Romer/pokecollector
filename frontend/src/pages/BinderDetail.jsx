@@ -8,6 +8,7 @@ import toast from 'react-hot-toast'
 import { useTilt } from '../hooks/useTilt'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 import { cardNumberMatches } from '../utils/cardNumbers'
+import { normalizeSearchText, textIncludes } from '../utils/textSearch'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 
@@ -173,7 +174,7 @@ export default function BinderDetail() {
 
   const collectionSearchResults = useMemo(() => {
     if (!collectionData || isWishlist) return []
-    const q = searchQuery.toLowerCase().trim()
+    const q = normalizeSearchText(searchQuery)
     return collectionData.filter(item => {
       const card = item.card
       if (!card) return false
@@ -181,8 +182,8 @@ export default function BinderDetail() {
       if (filterVariant && (item.variant || '') !== filterVariant) return false
       if (filterCondition && item.condition !== filterCondition) return false
       if (!q) return true
-      const nameMatch = card.name?.toLowerCase().includes(q)
-      const setMatch = card.set_ref?.name?.toLowerCase().includes(q)
+      const nameMatch = textIncludes(card.name, q)
+      const setMatch = textIncludes(card.set_ref?.name, q)
       const numberMatch = cardNumberMatches(card.number, q)
       const codeMatch = /^([A-Za-z]+\d*)\s+(\d+)$/.exec(q)
       let shortcodeMatch = false
@@ -190,7 +191,7 @@ export default function BinderDetail() {
         const [, setCode, num] = codeMatch
         const normalizedNum = String(parseInt(num, 10))
         shortcodeMatch = [card.set_ref?.abbreviation, card.set_id, card.set_ref?.tcg_set_id]
-          .some(value => value?.toLowerCase() === setCode) && cardNumberMatches(card.number, normalizedNum)
+          .some(value => normalizeSearchText(value) === setCode) && cardNumberMatches(card.number, normalizedNum)
       }
       return nameMatch || setMatch || numberMatch || shortcodeMatch
     }).slice(0, 24)
@@ -395,8 +396,8 @@ export default function BinderDetail() {
   )
   const allPrintOptimizationsSelected = printOptimizationRecommendations.length > 0 && selectedPrintOptimizationCount === printOptimizationRecommendations.length
   const visibleCards = cards.filter(card => {
-    const query = binderFilterQuery.trim().toLowerCase()
-    if (query && ![card.name, card.set_name, card.set_id, card.number].some(value => String(value || '').toLowerCase().includes(query))) return false
+    const query = normalizeSearchText(binderFilterQuery)
+    if (query && ![card.name, card.set_name, card.set_id, card.number].some(value => textIncludes(value, query))) return false
     if (binderFilterSet && (card.set_name || card.set_id) !== binderFilterSet) return false
     if (binderFilterStatus === 'owned' && (card.missing_quantity || 0) > 0) return false
     if (binderFilterStatus === 'missing' && (card.missing_quantity || 0) === 0) return false

@@ -11,6 +11,7 @@ import CardImage from '../components/CardImage'
 import FallbackBadges from '../components/FallbackBadges'
 import { getEffectiveCardPrice } from '../utils/prices'
 import { TCGDEX_LANGUAGES } from '../utils/tcgdexLanguages'
+import { textIncludes } from '../utils/textSearch'
 
 export default function UserCollection() {
   const { userId } = useParams()
@@ -61,7 +62,7 @@ export default function UserCollection() {
     let result = items.filter(item => {
       const card = item.card
       if (!card) return false
-      if (searchText && !card.name?.toLowerCase().includes(searchText.toLowerCase())) return false
+      if (searchText && !textIncludes(card.name, searchText)) return false
       if (filterRarity && card.rarity !== filterRarity) return false
       if (filterVariant && item.variant !== filterVariant) return false
       if (filterLang && item.lang !== filterLang) return false

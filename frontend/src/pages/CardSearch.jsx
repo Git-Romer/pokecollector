@@ -9,6 +9,7 @@ import Sheet from '../components/ui/Sheet'
 import CardScanner from '../components/CardScanner'
 import { getDefaultVariantOrNull } from '../utils/cardVariants'
 import { cardNumberMatches } from '../utils/cardNumbers'
+import { normalizeSearchText, textIncludes } from '../utils/textSearch'
 import { useTilt } from '../hooks/useTilt'
 import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
@@ -265,11 +266,11 @@ export default function CardSearch() {
     const searchTerm = filters.name.trim()
     if (!searchTerm) return []
 
-    const lowerSearchTerm = searchTerm.toLowerCase()
+    const normalizedSearchTerm = normalizeSearchText(searchTerm)
     const codeMatch = CODE_NUMBER_RE.exec(searchTerm)
 
     return recentCustomCards.filter((card) => {
-      if (card.name.toLowerCase().includes(lowerSearchTerm)) {
+      if (textIncludes(card.name, normalizedSearchTerm)) {
         return true
       }
 
@@ -278,18 +279,18 @@ export default function CardSearch() {
       }
 
       const [, rawSetCode, rawNumber] = codeMatch
-      const normalizedSetCode = rawSetCode.toLowerCase()
+      const normalizedSetCode = normalizeSearchText(rawSetCode)
       const normalizedNumber = String(parseInt(rawNumber, 10))
       const matchingSet = allSets.find((set) => (
-        set.tcg_set_id?.toLowerCase() === card.set_id?.toLowerCase() ||
-        set.id?.toLowerCase() === card.set_id?.toLowerCase()
+        normalizeSearchText(set.tcg_set_id) === normalizeSearchText(card.set_id) ||
+        normalizeSearchText(set.id) === normalizeSearchText(card.set_id)
       ))
       const setMatches = [
         card.set_id,
         matchingSet?.abbreviation,
         matchingSet?.tcg_set_id,
         matchingSet?.id,
-      ].some((value) => value?.toLowerCase() === normalizedSetCode)
+      ].some((value) => normalizeSearchText(value) === normalizedSetCode)
       return setMatches && cardNumberMatches(card.number, normalizedNumber)
     })
   }, [allSets, filters.name, recentCustomCards])

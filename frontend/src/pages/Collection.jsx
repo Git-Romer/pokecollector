@@ -14,6 +14,7 @@ import clsx from 'clsx'
 import { useTilt } from '../hooks/useTilt'
 import { cardImageUrl, resolveCardImageUrl } from '../utils/imageUrl'
 import { cardNumberMatches } from '../utils/cardNumbers'
+import { normalizeSearchText, textIncludes } from '../utils/textSearch'
 import FallbackBadges from '../components/FallbackBadges'
 import { getEffectiveCardPrice } from '../utils/prices'
 import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
@@ -878,9 +879,9 @@ export default function Collection() {
       if (filterMaxPrice && marketPrice > parseFloat(filterMaxPrice)) return false
       if (filterDuplicates && item.quantity < 2) return false
       if (searchText) {
-        const q = searchText.toLowerCase().trim()
-        const nameMatch = card?.name?.toLowerCase().includes(q)
-        const setMatch = card?.set_name?.toLowerCase().includes(q) || card?.set?.name?.toLowerCase().includes(q) || card?.set_ref?.name?.toLowerCase().includes(q)
+        const q = normalizeSearchText(searchText)
+        const nameMatch = textIncludes(card?.name, q)
+        const setMatch = textIncludes(card?.set_name, q) || textIncludes(card?.set?.name, q) || textIncludes(card?.set_ref?.name, q)
         const numberMatch = cardNumberMatches(card?.number, q) || cardNumberMatches(card?.localId, q)
         // Support "SET NUMBER" shortcode (e.g. "PFL 001", "OBF 125")
         const codeMatch = /^([A-Za-z]+\d*)\s+(\d+)$/.exec(q)
@@ -888,9 +889,9 @@ export default function Collection() {
         if (codeMatch) {
           const [, setCode, num] = codeMatch
           const normalizedNum = String(parseInt(num, 10))
-          const cardAbbr = (card?.set_ref?.abbreviation || "").toLowerCase()
-          const cardSetId = (card?.set_id || card?.set?.id || "").toLowerCase()
-          const cardTcgSetId = (card?.set_ref?.tcg_set_id || "").toLowerCase()
+          const cardAbbr = normalizeSearchText(card?.set_ref?.abbreviation)
+          const cardSetId = normalizeSearchText(card?.set_id || card?.set?.id)
+          const cardTcgSetId = normalizeSearchText(card?.set_ref?.tcg_set_id)
           shortcodeMatch = (cardAbbr === setCode || cardSetId.includes(setCode) || cardTcgSetId === setCode) && cardNumberMatches(card?.number || card?.localId, normalizedNum)
         }
         if (!nameMatch && !setMatch && !numberMatch && !shortcodeMatch) return false
