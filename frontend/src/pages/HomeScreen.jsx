@@ -38,10 +38,11 @@ const PERIODS = [
 // ── Custom chart tooltip ──────────────────────────────────────────────────────
 function ChartTooltip({ active, payload, label, formatPrice }) {
   if (!active || !payload?.length) return null
+  const tooltipLabel = payload[0]?.payload?.tooltipLabel || label
   return (
     <div className="rounded-xl px-3 py-2 text-xs shadow-xl"
       style={{ background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.12)' }}>
-      <p className="text-text-muted mb-1">{label}</p>
+      <p className="text-text-muted mb-1">{tooltipLabel}</p>
       <p className="font-black" style={{ color: '#f5c842' }}>
         {formatPrice(Number(payload[0].value))}
       </p>
@@ -125,10 +126,16 @@ export default function HomeScreen() {
   const chartData = useMemo(() => {
     const fmtMap = { '1W': 'EEE dd.MM', '1Y': 'MMM yy', 'MAX': 'MMM yy' }
     const dateFmt = fmtMap[chartPeriod] ?? 'dd.MM.'
-    return (investmentData || []).map(d => ({
-      date: format(parseISO(d.date), dateFmt),
-      value: d.value,
-    }))
+    return (investmentData || []).map(d => {
+      const snapshotDate = parseISO(d.date)
+      return {
+        date: format(snapshotDate, dateFmt),
+        tooltipLabel: chartPeriod === '1W'
+          ? format(snapshotDate, 'EEE dd.MM HH:mm')
+          : format(snapshotDate, dateFmt),
+        value: d.value,
+      }
+    })
   }, [investmentData, chartPeriod])
 
   // Determine chart color based on trend
