@@ -8,6 +8,7 @@ import { CustomCardModal } from '../components/CardItem'
 import { useSettings } from '../contexts/SettingsContext'
 import CardImage from '../components/CardImage'
 import CardListItem from '../components/CardListItem'
+import MoneyInput from '../components/MoneyInput'
 import TabNav from '../components/TabNav'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
@@ -21,6 +22,7 @@ import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
 import { tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
+import { formatMoneyInputValue, parseMoneyInputValue } from '../utils/moneyInput'
 
 function TiltBinderCard({ className, onClick, children }) {
   const { ref, onMouseMove, onMouseEnter, onMouseLeave } = useTilt(10)
@@ -250,15 +252,16 @@ function HoloOverlay({ variant }) {
 // ─── CollectionEditModal ────────────────────────────────────────────────────
 // Opens when clicking any card in the collection. Allows editing + deleting.
 function CollectionEditModal({ item, onClose }) {
-  const { t, formatPrice, pricePrimaryField } = useSettings()
+  const { t, formatPrice, pricePrimaryField, exchangeRate, exchangeRateReady } = useSettings()
   const queryClient = useQueryClient()
   const card = item.card
+  const itemPriceInput = formatMoneyInputValue(item.purchase_price, exchangeRate)
 
   const [quantity, setQuantity] = useState(item.quantity)
   const [condition, setCondition] = useState(item.condition || 'NM')
   const [variant, setVariant] = useState(item.variant || 'Normal')
   const [lang, setLang] = useState(item.lang || 'en')
-  const [price, setPrice] = useState(item.purchase_price ? String(item.purchase_price) : '')
+  const [price, setPrice] = useState(itemPriceInput)
   const [showAddVersionForm, setShowAddVersionForm] = useState(false)
   const [newVersionQuantity, setNewVersionQuantity] = useState(1)
   const [newVersionCondition, setNewVersionCondition] = useState(item.condition || 'NM')
@@ -276,7 +279,7 @@ function CollectionEditModal({ item, onClose }) {
     condition: item.condition || 'NM',
     variant: item.variant || 'Normal',
     lang: item.lang || 'en',
-    price: item.purchase_price ? String(item.purchase_price) : '',
+    price: itemPriceInput,
     customImageUrl: card?.custom_image_url || '',
   })
 
@@ -287,7 +290,7 @@ function CollectionEditModal({ item, onClose }) {
       condition: item.condition || 'NM',
       variant: item.variant || 'Normal',
       lang: item.lang || 'en',
-      price: item.purchase_price ? String(item.purchase_price) : '',
+      price: itemPriceInput,
       customImageUrl: card?.custom_image_url || '',
     }
 
@@ -325,7 +328,7 @@ function CollectionEditModal({ item, onClose }) {
     }
 
     prevItemRef.current = nextItem
-  }, [item.id, item.quantity, item.condition, item.variant, item.lang, item.purchase_price, card?.custom_image_url])
+  }, [item.id, item.quantity, item.condition, item.variant, item.lang, item.purchase_price, itemPriceInput, card?.custom_image_url])
 
   const { data: binders = [] } = useQuery({
     queryKey: ['binders'],
@@ -346,7 +349,7 @@ function CollectionEditModal({ item, onClose }) {
       condition,
       variant,
       lang,
-      purchase_price: price ? parseFloat(price) : null,
+      purchase_price: parseMoneyInputValue(price, exchangeRate, null),
     }),
     onSuccess: () => {
       toast.success(t('collection.updated'))
@@ -379,7 +382,7 @@ function CollectionEditModal({ item, onClose }) {
       condition: newVersionCondition,
       variant: newVersionVariant,
       lang: newVersionLang,
-      purchase_price: newVersionPrice ? parseFloat(newVersionPrice) : undefined,
+      purchase_price: parseMoneyInputValue(newVersionPrice, exchangeRate),
     }),
     onSuccess: () => {
       toast.success(t('collection.versionAdded'))
@@ -546,12 +549,10 @@ function CollectionEditModal({ item, onClose }) {
 
               <div>
                 <label className="text-xs text-text-muted mb-1 block">{t('card.purchasePrice')}</label>
-                <input
-                  type="number" step="0.01" min="0"
+                <MoneyInput
                   placeholder={t('card.purchasePricePlaceholder')}
                   value={price}
                   onChange={e => setPrice(e.target.value)}
-                  className="input"
                 />
               </div>
 
@@ -617,7 +618,7 @@ function CollectionEditModal({ item, onClose }) {
             <div className="flex gap-2 mt-5">
               <button
                 onClick={() => updateMutation.mutate()}
-                disabled={updateMutation.isPending}
+                disabled={updateMutation.isPending || !exchangeRateReady}
                 className="btn-primary flex-1"
               >
                 <Check size={16} /> {updateMutation.isPending ? t('common.saving') : t('common.save')}
@@ -643,6 +644,7 @@ function CollectionEditModal({ item, onClose }) {
             )}
             onSubmit={(e) => {
               e.preventDefault()
+              if (!exchangeRateReady) return
               cloneMutation.mutate()
             }}
           >
@@ -685,19 +687,17 @@ function CollectionEditModal({ item, onClose }) {
 
               <div>
                 <label className="text-xs text-text-muted mb-1 block">{t('card.purchasePrice')}</label>
-                <input
-                  type="number" step="0.01" min="0"
+                <MoneyInput
                   placeholder={t('card.purchasePricePlaceholder')}
                   value={newVersionPrice}
                   onChange={e => setNewVersionPrice(e.target.value)}
-                  className="input"
                 />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
                 <button
                   type="submit"
-                  disabled={cloneMutation.isPending}
+                  disabled={cloneMutation.isPending || !exchangeRateReady}
                   className="btn-primary justify-center"
                 >
                   <Copy size={14} /> {cloneMutation.isPending ? t('card.adding') : t('collection.addVersionToCollection')}

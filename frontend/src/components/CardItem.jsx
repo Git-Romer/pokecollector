@@ -11,9 +11,11 @@ import { useTilt } from '../hooks/useTilt'
 import { cardImageUrl, resolveCardImageUrl } from '../utils/imageUrl'
 import { CARD_VARIANTS, getAvailableVariants, getDefaultVariant, getDefaultVariantOrNull } from '../utils/cardVariants'
 import FallbackBadges from './FallbackBadges'
+import MoneyInput from './MoneyInput'
 import { getEffectiveCardPrice } from '../utils/prices'
 import { tcgdexLanguageBadgeClass, tcgdexLanguageLabel, getTcgdexLanguage } from '../utils/tcgdexLanguages'
 import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
+import { parseMoneyInputValue } from '../utils/moneyInput'
 
 function askWishlistQuantity(t, defaultQuantity = 1) {
   const initialQuantity = Math.max(1, Math.min(99, parseInt(defaultQuantity, 10) || 1))
@@ -60,7 +62,7 @@ function getPriceValue(card, priceKey) {
 const POKEMON_TYPES = ['Fire', 'Water', 'Grass', 'Lightning', 'Psychic', 'Fighting', 'Darkness', 'Metal', 'Dragon', 'Colorless', 'Fairy', 'Stellar']
 
 export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoAddCollection = false, editCard = null }) {
-  const { t } = useSettings()
+  const { t, exchangeRate, exchangeRateReady } = useSettings()
   const [name, setName] = useState(editCard?.name || '')
   const [setChoice, setSetChoice] = useState('')
   const [customSetId, setCustomSetId] = useState('')
@@ -192,7 +194,7 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
       quantity,
       condition,
       variant,
-      purchase_price: purchasePrice ? parseFloat(purchasePrice) : undefined,
+      purchase_price: parseMoneyInputValue(purchasePrice, exchangeRate),
       lang: createdCard.lang || 'en',
     })
   }
@@ -365,11 +367,14 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
               </div>
               <div>
                 <label className="text-xs text-text-muted mb-1 block">{t('card.purchasePrice')}</label>
-                <input type="number" step="0.01" min="0" placeholder={t('card.purchasePricePlaceholder')}
-                  value={purchasePrice} onChange={(e) => setPurchasePrice(e.target.value)} className="input" />
+                <MoneyInput
+                  placeholder={t('card.purchasePricePlaceholder')}
+                  value={purchasePrice}
+                  onChange={(e) => setPurchasePrice(e.target.value)}
+                />
               </div>
               <div className="flex gap-3">
-                <button onClick={handleAddToCollection} disabled={addMutation.isPending} className="btn-primary flex-1">
+                <button onClick={handleAddToCollection} disabled={addMutation.isPending || !exchangeRateReady} className="btn-primary flex-1">
                   <Plus size={16} /> {addMutation.isPending ? t('card.adding') : t('card.addToCollection')}
                 </button>
                 <button onClick={onClose} className="btn-ghost">{t('common.close')}</button>
@@ -557,7 +562,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
   const [savedCustomImageUrl, setSavedCustomImageUrl] = useState(card.custom_image_url || '')
   const [customImageVersion, setCustomImageVersion] = useState(0)
   const customImageInputId = useId()
-  const { t, formatPrice, formatUsdPrice, pricePrimary, pricePrimaryField } = useSettings()
+  const { t, formatPrice, formatUsdPrice, pricePrimary, pricePrimaryField, exchangeRate, exchangeRateReady } = useSettings()
   const queryClient = useQueryClient()
 
   // Price history chart
@@ -990,17 +995,20 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
               )}
               <div>
                 <label className="text-xs text-text-muted mb-1 block">{t('card.purchasePrice')}</label>
-                <input type="number" step="0.01" min="0" placeholder={t('card.purchasePricePlaceholder')}
-                  value={purchasePrice} onChange={(e) => setPurchasePrice(e.target.value)} className="input" />
+                <MoneyInput
+                  placeholder={t('card.purchasePricePlaceholder')}
+                  value={purchasePrice}
+                  onChange={(e) => setPurchasePrice(e.target.value)}
+                />
               </div>
 
               <div className="flex gap-2 pb-safe">
                 <button className="btn-primary flex-1" onClick={() => addMutation.mutate({
                   card_id: resolvedCardId, quantity, condition,
                   variant,
-                  purchase_price: purchasePrice ? parseFloat(purchasePrice) : undefined,
+                  purchase_price: parseMoneyInputValue(purchasePrice, exchangeRate),
                   lang: card.lang || 'en',
-                })} disabled={addMutation.isPending}>
+                })} disabled={addMutation.isPending || !exchangeRateReady}>
                   <Plus size={16} /> {addMutation.isPending ? t('card.adding') : t('card.addToCollection')}
                 </button>
                 <button className="btn-ghost" onClick={() => wishlistMutation.mutate({ card_id: card.id, quantity: Math.max(1, Math.min(99, quantity)) })}

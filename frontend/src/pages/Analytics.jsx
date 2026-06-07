@@ -19,6 +19,8 @@ import PeriodSelector, { CARD_PERIODS, PERIOD_DAYS } from '../components/PeriodS
 import TabNav from '../components/TabNav'
 import toast from 'react-hot-toast'
 import { resolveCardImageUrl } from '../utils/imageUrl'
+import MoneyInput from '../components/MoneyInput'
+import { parseMoneyInputValue } from '../utils/moneyInput'
 
 const RARITY_COLORS = [
   '#EF1515', '#3b82f6', '#22c55e', '#eab308', '#8b5cf6',
@@ -50,7 +52,7 @@ function AddExpenseModal({ onClose, onSuccess }) {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
   const queryClient = useQueryClient()
 
-  const { t } = useSettings()
+  const { t, exchangeRate, exchangeRateReady } = useSettings()
   const mutation = useMutation({
     mutationFn: (data) => createProduct(data),
     onSuccess: () => {
@@ -65,11 +67,11 @@ function AddExpenseModal({ onClose, onSuccess }) {
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    if (!amount || parseFloat(amount) <= 0) return
+    if (!exchangeRateReady || !amount || parseFloat(amount) <= 0) return
     mutation.mutate({
       product_name: description.trim() || productType,
       product_type: productType,
-      purchase_price: parseFloat(amount),
+      purchase_price: parseMoneyInputValue(amount, exchangeRate),
       purchase_date: date,
       notes: description.trim() || null,
     })
@@ -102,15 +104,12 @@ function AddExpenseModal({ onClose, onSuccess }) {
               <label className="text-xs text-text-secondary mb-1 block font-medium">
                 {t('analytics.amountLabel')} <span className="text-brand-red">*</span>
               </label>
-              <input
-                type="number"
-                step="0.01"
+              <MoneyInput
                 min="0.01"
                 required
                 placeholder={t('analytics.amountPlaceholder')}
                 value={amount}
                 onChange={e => setAmount(e.target.value)}
-                className="input"
               />
             </div>
             <div>
@@ -139,7 +138,7 @@ function AddExpenseModal({ onClose, onSuccess }) {
               />
             </div>
             <div className="flex gap-3 pt-2">
-              <button type="submit" disabled={mutation.isPending || !amount} className="btn-primary flex-1">
+              <button type="submit" disabled={mutation.isPending || !amount || !exchangeRateReady} className="btn-primary flex-1">
                 <Plus size={16} /> {mutation.isPending ? t('analytics.saving') : t('analytics.saveExpense')}
               </button>
               <button type="button" onClick={onClose} className="btn-ghost">{t('common.cancel')}</button>

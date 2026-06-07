@@ -13,6 +13,8 @@ import FallbackBadges from '../components/FallbackBadges'
 import { HOLO_FIELD_MAP } from '../utils/prices'
 import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
 import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
+import MoneyInput from '../components/MoneyInput'
+import { parseMoneyInputValue } from '../utils/moneyInput'
 
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
 
@@ -128,6 +130,7 @@ function OwnedVersionRow({ item, onQuantityChange, onRemove, isUpdating, isRemov
 }
 
 function SetCardActionModal({ card, setLang, onClose, onAdd, onAddWishlist, onQuantityChange, onRemove, isAdding, isAddingWishlist, isUpdatingQuantity, isRemoving, t }) {
+  const { exchangeRate, exchangeRateReady } = useSettings()
   const [addQuantity, setAddQuantity] = useState(1)
   const [addCondition, setAddCondition] = useState('NM')
   const [addVariant, setAddVariant] = useState('Normal')
@@ -150,13 +153,14 @@ function SetCardActionModal({ card, setLang, onClose, onAdd, onAddWishlist, onQu
 
   const submitAddVersion = (event) => {
     event.preventDefault()
+    if (!exchangeRateReady) return
     onAdd({
       card,
       quantity: Math.max(1, parseInt(addQuantity, 10) || 1),
       condition: addCondition,
       variant: addVariant,
       lang: addLang,
-      purchase_price: addPrice ? parseFloat(addPrice) : undefined,
+      purchase_price: parseMoneyInputValue(addPrice, exchangeRate),
     })
   }
 
@@ -222,19 +226,15 @@ function SetCardActionModal({ card, setLang, onClose, onAdd, onAddWishlist, onQu
 
               <div>
                 <label className="text-xs text-text-muted mb-1 block">{t('card.purchasePrice')}</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
+                <MoneyInput
                   placeholder={t('card.purchasePricePlaceholder')}
                   value={addPrice}
                   onChange={(e) => setAddPrice(e.target.value)}
-                  className="input"
                 />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <button type="submit" disabled={isAdding} className="btn-primary justify-center">
+                <button type="submit" disabled={isAdding || !exchangeRateReady} className="btn-primary justify-center">
                   <Plus size={14} /> {isAdding ? t('card.adding') : t('collection.addVersionToCollection')}
                 </button>
                 <button

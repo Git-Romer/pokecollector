@@ -8,10 +8,12 @@ import toast from 'react-hot-toast'
 import { CARD_VARIANTS, getDefaultVariant } from '../utils/cardVariants'
 import TcgdexLanguageSelect from './TcgdexLanguageSelect'
 import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
+import MoneyInput from './MoneyInput'
+import { parseMoneyInputValue } from '../utils/moneyInput'
 
 // ─── Add-to-Collection Modal für Scan-Ergebnis ──────────────────────────────
 function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
-  const { t } = useSettings()
+  const { t, exchangeRate, exchangeRateReady } = useSettings()
   const [quantity, setQuantity] = useState(1)
   const [condition, setCondition] = useState('NM')
   const [variant, setVariant] = useState(() => getDefaultVariant(match))
@@ -21,6 +23,7 @@ function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
   const queryClient = useQueryClient()
 
   const handleAdd = async () => {
+    if (!exchangeRateReady) return
     setAdding(true)
     try {
       await addToCollection({
@@ -29,7 +32,7 @@ function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
         condition,
         variant,
         lang,
-        purchase_price: purchasePrice ? parseFloat(purchasePrice) : undefined,
+        purchase_price: parseMoneyInputValue(purchasePrice, exchangeRate),
       })
       queryClient.invalidateQueries({ queryKey: ['collection'] })
       invalidateTcgdexFilterLanguages(queryClient)
@@ -112,12 +115,10 @@ function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
             {/* Purchase price */}
             <div>
               <label className="text-xs text-text-muted mb-1 block">{t('scanner.purchasePriceLabel')}</label>
-              <input
-                type="number" step="0.01" min="0"
+              <MoneyInput
                 placeholder={t('analytics.amountPlaceholder')}
                 value={purchasePrice}
                 onChange={e => setPurchasePrice(e.target.value)}
-                className="input"
               />
             </div>
           </div>
@@ -125,7 +126,7 @@ function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
           <div className="flex gap-2 mt-5">
             <button
               onClick={handleAdd}
-              disabled={adding}
+              disabled={adding || !exchangeRateReady}
               className="flex-1 py-3 rounded-xl font-black text-white flex items-center justify-center gap-2 transition-all"
               style={{ background: adding ? '#555' : '#e3000b', boxShadow: adding ? 'none' : '0 0 16px rgba(227,0,11,0.3)' }}
             >

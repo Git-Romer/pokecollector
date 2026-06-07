@@ -1,4 +1,4 @@
-import { Fragment, useState, useMemo } from 'react'
+import { Fragment, useEffect, useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -8,37 +8,54 @@ import { Plus, Trash2, Edit2, TrendingUp, TrendingDown, Package, Check, X, SortA
 import { getProducts, createProduct, updateProduct, deleteProduct, getProductsSummary, getCollection, linkProductCard, unlinkProductCard, sellProductCard, addProductLedgerEntry, getApiErrorMessage } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import CardListItem from '../components/CardListItem'
+import MoneyInput from '../components/MoneyInput'
 import PeriodSelector, { PRODUCT_PERIODS, getPeriodCutoff } from '../components/PeriodSelector'
 import TabNav from '../components/TabNav'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
+import { formatMoneyInputValue, isValidMoneyInputValue, parseMoneyInputValue } from '../utils/moneyInput'
 
 const PRODUCT_TYPES = ['Booster Pack', 'Booster Box', 'Elite Trainer Box', 'Tin', 'Bundle', 'Collection Box', 'Blister', 'Other']
 
 function ProductForm({ initial = {}, onSubmit, onCancel, loading }) {
-  const { t } = useSettings()
+  const { t, exchangeRate, exchangeRateReady } = useSettings()
   const today = new Date().toISOString().split('T')[0]
   const [form, setForm] = useState({
     product_name: initial.product_name || '',
     product_type: initial.product_type || 'Booster Pack',
-    purchase_price: initial.purchase_price ?? '',
-    current_value: initial.current_value ?? '',
-    sold_price: initial.sold_price ?? '',
+    purchase_price: formatMoneyInputValue(initial.purchase_price, exchangeRate),
+    current_value: formatMoneyInputValue(initial.current_value, exchangeRate),
+    sold_price: formatMoneyInputValue(initial.sold_price, exchangeRate),
     purchase_date: initial.purchase_date || today,
     sold_date: initial.sold_date || '',
     notes: initial.notes || '',
   })
+  const [moneyTouched, setMoneyTouched] = useState(false)
+
+  useEffect(() => {
+    if (moneyTouched) return
+    setForm(prev => ({
+      ...prev,
+      purchase_price: formatMoneyInputValue(initial.purchase_price, exchangeRate),
+      current_value: formatMoneyInputValue(initial.current_value, exchangeRate),
+      sold_price: formatMoneyInputValue(initial.sold_price, exchangeRate),
+    }))
+  }, [initial.purchase_price, initial.current_value, initial.sold_price, exchangeRate, moneyTouched])
 
   const set = (key, val) => setForm(p => ({ ...p, [key]: val }))
-  const purchasePriceNumber = Number(form.purchase_price)
-  const currentValueNumber = Number(form.current_value)
-  const soldPriceNumber = Number(form.sold_price)
+  const setMoney = (key, val) => {
+    setMoneyTouched(true)
+    set(key, val)
+  }
+  const purchasePriceValid = isValidMoneyInputValue(form.purchase_price)
+  const currentValueValid = form.current_value === '' || isValidMoneyInputValue(form.current_value)
+  const soldPriceValid = form.sold_price === '' || isValidMoneyInputValue(form.sold_price)
   const canSubmit = form.product_name.trim()
     && form.purchase_price !== ''
-    && Number.isFinite(purchasePriceNumber)
-    && purchasePriceNumber >= 0
-    && (form.current_value === '' || (Number.isFinite(currentValueNumber) && currentValueNumber >= 0))
-    && (form.sold_price === '' || (Number.isFinite(soldPriceNumber) && soldPriceNumber >= 0))
+    && purchasePriceValid
+    && currentValueValid
+    && soldPriceValid
+    && exchangeRateReady
 
   return (
     <div className="grid grid-cols-2 gap-3">
@@ -59,18 +76,15 @@ function ProductForm({ initial = {}, onSubmit, onCancel, loading }) {
       </div>
       <div>
         <label className="text-xs text-text-muted mb-1 block">{t('products.purchasePrice')}</label>
-        <input type="number" min="0" step="0.01" placeholder="0.00" value={form.purchase_price}
-          onChange={(e) => set('purchase_price', e.target.value)} className="input" />
+        <MoneyInput value={form.purchase_price} onChange={(e) => setMoney('purchase_price', e.target.value)} />
       </div>
       <div>
         <label className="text-xs text-text-muted mb-1 block">{t('products.currentValueLabel')}</label>
-        <input type="number" min="0" step="0.01" placeholder="0.00" value={form.current_value}
-          onChange={(e) => set('current_value', e.target.value)} className="input" />
+        <MoneyInput value={form.current_value} onChange={(e) => setMoney('current_value', e.target.value)} />
       </div>
       <div>
         <label className="text-xs text-text-muted mb-1 block">{t('products.soldPrice')}</label>
-        <input type="number" min="0" step="0.01" placeholder={t('products.soldPriceHint')} value={form.sold_price}
-          onChange={(e) => set('sold_price', e.target.value)} className="input" />
+        <MoneyInput placeholder={t('products.soldPriceHint')} value={form.sold_price} onChange={(e) => setMoney('sold_price', e.target.value)} />
       </div>
       <div>
         <label className="text-xs text-text-muted mb-1 block">{t('products.soldDate')}</label>
@@ -84,11 +98,11 @@ function ProductForm({ initial = {}, onSubmit, onCancel, loading }) {
       <div className="col-span-2 flex gap-2">
         <button onClick={() => onSubmit({
           ...form,
-          purchase_price: purchasePriceNumber,
-          current_value: form.current_value === '' ? null : currentValueNumber,
-          sold_price: form.sold_price === '' ? null : soldPriceNumber,
+          purchase_price: parseMoneyInputValue(form.purchase_price, exchangeRate),
+          current_value: parseMoneyInputValue(form.current_value, exchangeRate, null),
+          sold_price: parseMoneyInputValue(form.sold_price, exchangeRate, null),
           sold_date: form.sold_date || null,
-        })} disabled={!canSubmit || loading} className="btn-primary flex-1">
+        })} disabled={!canSubmit || loading || !exchangeRateReady} className="btn-primary flex-1">
           <Check size={14} /> {loading ? t('common.saving') : t('common.save')}
         </button>
         <button onClick={onCancel} className="btn-ghost">
@@ -125,6 +139,7 @@ function linkedActiveQuantityByCollectionItem(products) {
 }
 
 function ProductLedgerPanel({ product, products, collectionItems, formatPrice, t, onLink, onUnlink, onSell, onFlatGain, loading }) {
+  const { exchangeRate, exchangeRateReady } = useSettings()
   const today = new Date().toISOString().split('T')[0]
   const [collectionItemId, setCollectionItemId] = useState('')
   const [linkQuantity, setLinkQuantity] = useState(1)
@@ -140,8 +155,7 @@ function ProductLedgerPanel({ product, products, collectionItems, formatPrice, t
     && Number.isInteger(normalizedLinkQuantity)
     && normalizedLinkQuantity >= 1
     && normalizedLinkQuantity <= selectedAvailable
-  const flatGainAmount = Number(flatGain.amount)
-  const canAddFlatGain = flatGain.amount !== '' && Number.isFinite(flatGainAmount) && flatGainAmount >= 0
+  const canAddFlatGain = exchangeRateReady && isValidMoneyInputValue(flatGain.amount)
 
   const updateSaleForm = (entryId, key, value) => {
     setSaleForms(prev => ({
@@ -177,10 +191,11 @@ function ProductLedgerPanel({ product, products, collectionItems, formatPrice, t
   }
 
   const submitSale = (entry) => {
+    if (!exchangeRateReady) return
     const form = saleForms[entry.id] || { quantity: 1, sold_price: '', sold_date: today, notes: '' }
     const saleQuantity = Number(form.quantity)
-    const salePrice = Number(form.sold_price)
-    if (!Number.isInteger(saleQuantity) || saleQuantity < 1 || saleQuantity > entry.active_quantity || !Number.isFinite(salePrice) || salePrice < 0) return
+    const salePrice = parseMoneyInputValue(form.sold_price, exchangeRate)
+    if (!Number.isInteger(saleQuantity) || saleQuantity < 1 || saleQuantity > entry.active_quantity || salePrice == null || salePrice < 0) return
     return onSell(product.id, entry.id, {
       quantity: saleQuantity,
       sold_price: salePrice,
@@ -190,10 +205,10 @@ function ProductLedgerPanel({ product, products, collectionItems, formatPrice, t
   }
 
   const submitFlatGain = () => {
-    if (!canAddFlatGain) return
+    if (!canAddFlatGain || !exchangeRateReady) return
     onFlatGain(product.id, {
       entry_type: 'flat_gain',
-      amount: flatGainAmount,
+      amount: parseMoneyInputValue(flatGain.amount, exchangeRate),
       event_date: flatGain.event_date || today,
       notes: flatGain.notes || null,
     }).then(() => setFlatGain({ amount: '', event_date: today, notes: '' }))
@@ -246,13 +261,12 @@ function ProductLedgerPanel({ product, products, collectionItems, formatPrice, t
           {(product.product_cards || []).map(entry => {
             const form = saleForms[entry.id] || { quantity: 1, sold_price: '', sold_date: today, notes: '' }
             const saleQuantity = Number(form.quantity)
-            const salePrice = Number(form.sold_price)
             const canSell = Number.isInteger(saleQuantity)
               && saleQuantity >= 1
               && saleQuantity <= entry.active_quantity
               && form.sold_price !== ''
-              && Number.isFinite(salePrice)
-              && salePrice >= 0
+              && isValidMoneyInputValue(form.sold_price)
+              && exchangeRateReady
             return (
               <div key={entry.id} className="bg-bg-card border border-border rounded-lg p-3 space-y-3">
                 <div className="flex items-start justify-between gap-3">
@@ -273,7 +287,7 @@ function ProductLedgerPanel({ product, products, collectionItems, formatPrice, t
                 {entry.active_quantity > 0 && (
                   <div className="grid gap-2 md:grid-cols-[0.5fr_0.8fr_0.8fr_1fr_auto]">
                     <input type="number" min="1" max={entry.active_quantity} step="1" className="input text-sm py-1.5" value={form.quantity} onChange={(e) => updateSaleForm(entry.id, 'quantity', e.target.value)} aria-label={t('common.quantity')} />
-                    <input type="number" min="0" step="0.01" className="input text-sm py-1.5" placeholder={t('products.saleTotal')} value={form.sold_price} onChange={(e) => updateSaleForm(entry.id, 'sold_price', e.target.value)} />
+                    <MoneyInput className="input text-sm py-1.5" placeholder={t('products.saleTotal')} value={form.sold_price} onChange={(e) => updateSaleForm(entry.id, 'sold_price', e.target.value)} />
                     <input type="date" className="input text-sm py-1.5" value={form.sold_date} onChange={(e) => updateSaleForm(entry.id, 'sold_date', e.target.value)} />
                     <input type="text" className="input text-sm py-1.5" placeholder={t('products.saleNotes')} value={form.notes} onChange={(e) => updateSaleForm(entry.id, 'notes', e.target.value)} />
                     <button disabled={loading || !canSell} onClick={() => submitSale(entry)} className="btn-primary text-sm py-1.5">
@@ -300,7 +314,7 @@ function ProductLedgerPanel({ product, products, collectionItems, formatPrice, t
       )}
 
       <div className="grid gap-2 md:grid-cols-[0.8fr_0.8fr_1fr_auto] pt-3 border-t border-border">
-        <input type="number" min="0" step="0.01" className="input text-sm py-1.5" placeholder={t('products.flatGainAmount')} value={flatGain.amount} onChange={(e) => setFlatGain(prev => ({ ...prev, amount: e.target.value }))} />
+        <MoneyInput className="input text-sm py-1.5" placeholder={t('products.flatGainAmount')} value={flatGain.amount} onChange={(e) => setFlatGain(prev => ({ ...prev, amount: e.target.value }))} />
         <input type="date" className="input text-sm py-1.5" value={flatGain.event_date} onChange={(e) => setFlatGain(prev => ({ ...prev, event_date: e.target.value }))} />
         <input type="text" className="input text-sm py-1.5" placeholder={t('products.flatGainNotes')} value={flatGain.notes} onChange={(e) => setFlatGain(prev => ({ ...prev, notes: e.target.value }))} />
         <button disabled={loading || !canAddFlatGain} onClick={submitFlatGain} className="btn-ghost text-sm py-1.5">

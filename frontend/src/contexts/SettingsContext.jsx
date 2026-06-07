@@ -61,6 +61,8 @@ export function SettingsProvider({ children }) {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS)
   const [loaded, setLoaded] = useState(false)
   const [exchangeRate, setExchangeRate] = useState(1.0)
+  const [exchangeRateReady, setExchangeRateReady] = useState(true)
+  const [exchangeRateCurrency, setExchangeRateCurrency] = useState('EUR')
   const [usdToEurRate, setUsdToEurRate] = useState(0.91)
 
   // Load settings from backend on mount
@@ -105,10 +107,19 @@ export function SettingsProvider({ children }) {
     const curr = settings.currency || 'EUR'
     let cancelled = false
     if (curr === 'USD') {
+      setExchangeRateReady(false)
+      setExchangeRateCurrency(null)
+      setExchangeRate(1.1)
       fetchExchangeRate('EUR', 'USD', 1.1).then(rate => {
-        if (!cancelled) setExchangeRate(rate)
+        if (!cancelled) {
+          setExchangeRate(rate)
+          setExchangeRateCurrency('USD')
+          setExchangeRateReady(true)
+        }
       })
     } else {
+      setExchangeRateReady(true)
+      setExchangeRateCurrency('EUR')
       setExchangeRate(1.0)
       fetchExchangeRate('USD', 'EUR', 0.91).then(rate => {
         if (!cancelled) setUsdToEurRate(rate)
@@ -185,6 +196,7 @@ export function SettingsProvider({ children }) {
 
   const currency = settings.currency || 'EUR'
   const currencySymbol = currency === 'USD' ? '$' : '€'
+  const moneyExchangeRateReady = currency !== 'USD' || (exchangeRateReady && exchangeRateCurrency === 'USD')
   const pricePrimary = getPricePrimary()
   const pricePrimaryField = priceFieldFromPrimary(pricePrimary)
 
@@ -213,6 +225,7 @@ export function SettingsProvider({ children }) {
       currency,
       currencySymbol,
       exchangeRate,
+      exchangeRateReady: moneyExchangeRateReady,
       formatPrice,
       formatUsdPrice,
     }}>
