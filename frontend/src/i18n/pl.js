@@ -397,6 +397,8 @@ const pl = {
     duplicatesDesc: 'Karty, które masz więcej niż raz, posortowane według wartości',
     noDuplicates: 'Brak duplikatów w kolekcji',
     moversDesc: 'Zmiany cen w ostatnich',
+    sortBy: 'Sortuj według',
+    sortPercentage: '%',
     days: 'dniach',
     noMovers: 'Brak historii cen. Synchronizuj, aby rozpocząć śledzenie.',
     noRarityStats: 'Brak kart w kolekcji',

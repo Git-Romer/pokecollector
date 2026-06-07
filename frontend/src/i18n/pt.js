@@ -397,6 +397,8 @@ const pt = {
     duplicatesDesc: 'Cartas que possui mais de uma vez, ordenadas por valor',
     noDuplicates: 'Sem duplicados na sua coleção',
     moversDesc: 'Alterações de preço nos últimos',
+    sortBy: 'Ordenar por',
+    sortPercentage: '%',
     days: 'dias',
     noMovers: 'Ainda sem dados de histórico de preços. Sincronize para começar a acompanhar.',
     noRarityStats: 'Ainda sem cartas na coleção',

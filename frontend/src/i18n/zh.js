@@ -397,6 +397,8 @@ const zh = {
     duplicatesDesc: '你拥有超过一张的卡牌，按价值排序',
     noDuplicates: '你的收藏中没有重复',
     moversDesc: '最近价格变化',
+    sortBy: '排序',
+    sortPercentage: '%',
     days: '天',
     noMovers: '暂无价格历史数据。运行同步开始追踪。',
     noRarityStats: '收藏中暂无卡牌',

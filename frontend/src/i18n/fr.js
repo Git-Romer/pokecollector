@@ -395,6 +395,8 @@ const fr = {
     duplicatesDesc: 'Cartes possédées en plusieurs exemplaires, triées par valeur',
     noDuplicates: 'Aucun doublon dans votre collection',
     moversDesc: 'Changements de prix au cours des derniers',
+    sortBy: 'Trier par',
+    sortPercentage: '%',
     days: 'jours',
     noMovers: 'Pas encore de données d\'historique des prix. Synchronisez pour commencer.',
     noRarityStats: 'Pas encore de cartes dans la collection',

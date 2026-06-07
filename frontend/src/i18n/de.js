@@ -397,6 +397,8 @@ const de = {
     duplicatesDesc: 'Karten die du mehrfach besitzt, nach Wert sortiert',
     noDuplicates: 'Keine Duplikate in deiner Sammlung',
     moversDesc: 'Preisänderungen in den letzten',
+    sortBy: 'Sortieren',
+    sortPercentage: '%',
     days: 'Tagen',
     noMovers: 'Noch keine Preisverlaufsdaten. Sync starten.',
     noRarityStats: 'Noch keine Karten in der Sammlung',

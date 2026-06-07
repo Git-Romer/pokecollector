@@ -4,6 +4,7 @@ from sqlalchemy import func
 from api.auth import get_current_user
 from database import get_db
 from services.card_values import effective_market_price, normalize_price_field
+from services.analytics import sort_top_movers
 from models import CollectionItem, Card, PriceHistory, PortfolioSnapshot, Set, ProductPurchase, User
 from typing import Optional
 import datetime
@@ -55,6 +56,11 @@ def get_duplicates(
 def get_top_movers(
     days: int = Query(7, ge=1, le=30),
     price_field: str = Query(default="price_trend", description="Price field to use for value calculation"),
+    sort_by: str = Query(
+        default="percentage",
+        pattern="^(percentage|absolute)$",
+        description="Sort top movers by percentage change or absolute value change",
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -108,9 +114,7 @@ def get_top_movers(
             "change_pct": round(change_pct, 1),
         })
 
-    # Sort by absolute change percentage
-    results.sort(key=lambda x: abs(x["change_pct"]), reverse=True)
-    return results[:20]
+    return sort_top_movers(results, sort_by)[:20]
 
 
 @router.get("/rarity-stats")

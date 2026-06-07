@@ -397,6 +397,8 @@ const id = {
     duplicatesDesc: 'Kartu yang Anda miliki lebih dari sekali, diurutkan berdasarkan nilai',
     noDuplicates: 'Tidak ada duplikat dalam koleksi Anda',
     moversDesc: 'Perubahan harga dalam',
+    sortBy: 'Urutkan',
+    sortPercentage: '%',
     days: 'hari',
     noMovers: 'Belum ada data riwayat harga. Sinkronkan untuk mulai melacak.',
     noRarityStats: 'Belum ada kartu dalam koleksi',

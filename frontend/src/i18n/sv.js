@@ -395,6 +395,8 @@ const sv = {
     duplicatesDesc: 'Kort du äger mer än en gång, sorterade efter värde',
     noDuplicates: 'Inga dubbletter i din samling',
     moversDesc: 'Prisändringar de senaste',
+    sortBy: 'Sortera efter',
+    sortPercentage: '%',
     days: 'dagarna',
     noMovers: 'Ingen prishistorik ännu. Synka för att börja spåra.',
     noRarityStats: 'Inga kort i samlingen ännu',

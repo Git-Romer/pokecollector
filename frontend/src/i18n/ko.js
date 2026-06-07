@@ -397,6 +397,8 @@ const ko = {
     duplicatesDesc: '두 장 이상 보유한 카드, 가치순 정렬',
     noDuplicates: '컬렉션에 중복 카드가 없습니다',
     moversDesc: '최근 기간의 가격 변동',
+    sortBy: '정렬',
+    sortPercentage: '%',
     days: '일',
     noMovers: '아직 가격 기록 데이터가 없습니다. 동기화해 추적을 시작하세요.',
     noRarityStats: '아직 컬렉션에 카드가 없습니다',

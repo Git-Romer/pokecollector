@@ -395,6 +395,8 @@ const nl = {
     duplicatesDesc: 'Kaarten die je vaker dan eens bezit, gesorteerd op waarde',
     noDuplicates: 'Geen dubbele kaarten in je collectie',
     moversDesc: 'Prijsveranderingen in de afgelopen',
+    sortBy: 'Sorteren op',
+    sortPercentage: '%',
     days: 'dagen',
     noMovers: 'Nog geen prijsgeschiedenis data. Synchroniseer om te beginnen met tracken.',
     noRarityStats: 'Nog geen kaarten in de collectie',

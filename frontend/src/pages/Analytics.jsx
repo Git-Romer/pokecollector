@@ -153,8 +153,9 @@ function AddExpenseModal({ onClose, onSuccess }) {
 }
 
 export default function Analytics() {
-  const { t, formatPrice, pricePrimaryField } = useSettings()
+  const { t, formatPrice, pricePrimaryField, currencySymbol } = useSettings()
   const [moversPeriod, setMoversPeriod] = useState('7d')
+  const [moversSort, setMoversSort] = useState('percentage')
   const [activeTab, setActiveTab] = useState('duplicates')
   const [showExpenseModal, setShowExpenseModal] = useState(false)
   const queryClient = useQueryClient()
@@ -171,8 +172,8 @@ export default function Analytics() {
 
   const moversDay = PERIOD_DAYS[moversPeriod] || 7
   const { data: topMovers = [], isLoading: moversLoading } = useQuery({
-    queryKey: ['top-movers', moversDay, pricePrimaryField],
-    queryFn: () => getTopMovers(moversDay, { price_field: pricePrimaryField }).then(r => r.data),
+    queryKey: ['top-movers', moversDay, pricePrimaryField, moversSort],
+    queryFn: () => getTopMovers(moversDay, { price_field: pricePrimaryField, sort_by: moversSort }).then(r => r.data),
   })
 
   const { data: rarityStats = [], isLoading: rarityLoading } = useQuery({
@@ -323,6 +324,30 @@ export default function Analytics() {
           <div className="flex items-center gap-3 flex-wrap">
             <p className="text-sm text-text-secondary">{t('analytics.moversDesc')} {moversDay} {t('analytics.days')}</p>
             <PeriodSelector value={moversPeriod} onChange={setMoversPeriod} periods={CARD_PERIODS} />
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-text-muted">{t('analytics.sortBy')}</span>
+              <div className="flex rounded-lg border border-border bg-bg-surface p-0.5">
+                {[
+                  { value: 'percentage', label: t('analytics.sortPercentage') },
+                  { value: 'absolute', label: currencySymbol },
+                ].map(option => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setMoversSort(option.value)}
+                    aria-pressed={moversSort === option.value}
+                    className={clsx(
+                      'min-w-10 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors',
+                      moversSort === option.value
+                        ? 'bg-brand-red text-white'
+                        : 'text-text-secondary hover:text-text-primary hover:bg-bg-elevated'
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
           {moversLoading ? (
             <div className="skeleton h-64 rounded-xl" />

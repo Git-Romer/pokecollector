@@ -397,6 +397,8 @@ const en = {
     duplicatesDesc: 'Cards you own more than once, sorted by value',
     noDuplicates: 'No duplicates in your collection',
     moversDesc: 'Price changes in the last',
+    sortBy: 'Sort by',
+    sortPercentage: '%',
     days: 'days',
     noMovers: 'No price history data yet. Sync to start tracking.',
     noRarityStats: 'No cards in collection yet',

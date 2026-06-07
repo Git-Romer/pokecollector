@@ -397,6 +397,8 @@ const ja = {
     duplicatesDesc: '複数所持しているカードを価値順に表示',
     noDuplicates: 'コレクションに重複はありません',
     moversDesc: '過去期間の価格変動',
+    sortBy: '並び替え',
+    sortPercentage: '%',
     days: '日',
     noMovers: '価格履歴データはまだありません。同期して追跡を開始してください。',
     noRarityStats: 'コレクションにカードはまだありません',
