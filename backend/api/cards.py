@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func, cast, Integer, or_
+from sqlalchemy import func, cast, Integer, String, or_
 from sqlalchemy.exc import IntegrityError
 from typing import Optional, List
 from api.auth import get_current_user
@@ -14,6 +14,7 @@ from services.card_fallbacks import (
     clone_card_for_missing_language,
     other_supported_lang,
 )
+from services.card_metadata import METADATA_ENRICHMENT_PER_SEARCH_PAGE, enrich_cards_metadata
 from services.card_upsert import upsert_card
 from services.card_visibility import get_configured_sync_languages, visible_card_filter, visible_set_filter
 from services.image_url_security import validate_public_https_image_url
@@ -50,6 +51,7 @@ def _card_to_dict(card: Card) -> dict:
         "rarity": card.rarity,
         "types": card.types,
         "supertype": card.supertype,
+        "subtypes": card.subtypes,
         "hp": card.hp,
         "artist": card.artist,
         "stage": getattr(card, "stage", None),
@@ -123,6 +125,20 @@ def _with_collection_summary(db: Session, current_user: User, card_dicts: List[d
             for item in owned_items
         ]
     return card_dicts
+
+
+def _enrich_search_page_metadata(db: Session, cards: List[Card]) -> List[Card]:
+    """Opportunistically enrich visible search results that only have brief set-list data."""
+    if not cards:
+        return cards
+    result = enrich_cards_metadata(db, cards, limit=METADATA_ENRICHMENT_PER_SEARCH_PAGE)
+    if not result["updated"]:
+        return cards
+
+    card_ids = [card.id for card in cards]
+    refreshed = db.query(Card).filter(Card.id.in_(card_ids)).all()
+    by_id = {card.id: card for card in refreshed}
+    return [by_id.get(card.id, card) for card in cards]
 
 
 def _search_by_code_number(
@@ -240,6 +256,7 @@ def _search_by_code_number(
 
     start = (page - 1) * page_size
     page_cards = cards[start:start + page_size]
+    page_cards = _enrich_search_page_metadata(db, page_cards)
     card_dicts = _with_collection_summary(db, current_user, [_card_to_dict(c) for c in page_cards])
     return {
         "data": card_dicts,
@@ -381,6 +398,8 @@ def search_cards(
     name: Optional[str] = None,
     set_id: Optional[str] = None,
     type_filter: Optional[str] = Query(None, alias="type"),
+    category: Optional[str] = None,
+    subtype: Optional[str] = None,
     rarity: Optional[str] = None,
     artist: Optional[str] = None,
     hp_min: Optional[int] = None,
@@ -431,7 +450,19 @@ def search_cards(
                 query = query.filter(Card.set_id == set_id)
 
         if type_filter:
-            query = query.filter(Card.types.contains([type_filter]))
+            query = query.filter(accent_insensitive_contains(db, cast(Card.types, String), type_filter))
+
+        if category:
+            query = query.filter(accent_insensitive_contains(db, Card.supertype, category))
+
+        if subtype:
+            query = query.filter(or_(
+                accent_insensitive_contains(db, Card.trainer_type, subtype),
+                accent_insensitive_contains(db, Card.energy_type, subtype),
+                accent_insensitive_contains(db, Card.stage, subtype),
+                accent_insensitive_contains(db, Card.suffix, subtype),
+                accent_insensitive_contains(db, cast(Card.subtypes, String), subtype),
+            ))
 
         if rarity:
             query = query.filter(accent_insensitive_contains(db, Card.rarity, rarity))
@@ -461,6 +492,7 @@ def search_cards(
 
         total_count = query.count()
         cards = query.offset((page - 1) * page_size).limit(page_size).all()
+        cards = _enrich_search_page_metadata(db, cards)
         card_dicts = _with_collection_summary(db, current_user, [_card_to_dict(c) for c in cards])
 
         return {

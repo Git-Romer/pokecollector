@@ -7,6 +7,7 @@ from sqlalchemy import func, or_
 from models import Card, Set, CollectionItem, WishlistItem, BinderCard, PriceHistory, SyncLog, PortfolioSnapshot, CustomCardMatch, ProductPurchase, User, UserSetting
 from services import pokemon_api, telegram
 from services.card_fallbacks import apply_cross_language_fallbacks, build_missing_language_cards_for_set
+from services.card_metadata import enrich_missing_card_metadata
 from services.card_upsert import upsert_card
 from services.card_visibility import card_pair_filter, get_configured_sync_languages, get_pinned_set_language_pairs, sync_set_filter
 from services.card_values import effective_market_price, normalize_price_field
@@ -600,6 +601,23 @@ def perform_full_sync(db: Session) -> dict:
                     logger.warning(f"Failed to create fallback cards for set {set_obj.id}: {fallback_error}")
                     db.rollback()
         logger.info("Full card catalogue sync complete")
+
+        # 2b. Set card lists only contain brief card data. Enrich a bounded
+        # batch with full card detail so global search filters can work on
+        # unowned catalogue cards without making every full sync unbounded.
+        metadata_limit = _price_sync_limit(db)
+        metadata_result = enrich_missing_card_metadata(db, limit=metadata_limit)
+        if metadata_result["attempted"]:
+            logger.info(
+                "Full sync metadata enrichment: attempted=%s updated=%s missing=%s failed=%s limit=%s",
+                metadata_result["attempted"],
+                metadata_result["updated"],
+                metadata_result["missing"],
+                metadata_result["failed"],
+                metadata_limit,
+            )
+            cards_updated += metadata_result["updated"]
+            updated_card_ids.extend(metadata_result["ids"])
 
         # 3. Update prices for collection, wishlist, binder cards, and every
         # cached card in pinned disabled-language sets. Use the same fair dynamic

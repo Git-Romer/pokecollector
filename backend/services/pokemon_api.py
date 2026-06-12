@@ -354,6 +354,19 @@ def parse_card_for_db(card_data: Dict, default_set_id: Optional[str] = None, lan
     except (TypeError, ValueError):
         retreat = None
 
+    subtypes = card_data.get("subtypes")
+    if subtypes is None:
+        subtypes = [
+            value
+            for value in (
+                card_data.get("trainerType"),
+                card_data.get("energyType"),
+                card_data.get("stage"),
+                card_data.get("suffix"),
+            )
+            if value
+        ] or None
+
     return {
         "id": db_id,
         "tcg_card_id": tcgdex_id,
@@ -363,7 +376,7 @@ def parse_card_for_db(card_data: Dict, default_set_id: Optional[str] = None, lan
         "rarity": card_data.get("rarity"),
         "types": card_data.get("types"),
         "supertype": card_data.get("category"),
-        "subtypes": None,   # TCGdex uses 'stage' rather than subtypes
+        "subtypes": subtypes,
         "hp": hp,
         "artist": card_data.get("illustrator"),
         "images_small": f"{image}/low.webp" if image else None,

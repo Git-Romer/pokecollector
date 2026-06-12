@@ -31,6 +31,10 @@ class AccentInsensitiveSearchTests(unittest.TestCase):
                 set_id="sv1",
                 number="1",
                 rarity="Spécial",
+                types=["Item"],
+                supertype="Trainer",
+                subtypes=["Item"],
+                trainer_type="Item",
                 artist="José García",
                 lang="en",
                 is_custom=False,
@@ -41,6 +45,22 @@ class AccentInsensitiveSearchTests(unittest.TestCase):
                 name="Éclair Energy",
                 set_id="sv1",
                 number="2",
+                types=["Lightning"],
+                supertype="Energy",
+                subtypes=["Basic"],
+                energy_type="Basic",
+                lang="en",
+                is_custom=False,
+            ),
+            Card(
+                id="sv1-3_en",
+                tcg_card_id="sv1-3",
+                name="Professor's Research",
+                set_id="sv1",
+                number="3",
+                supertype="Trainer",
+                subtypes=["Supporter"],
+                trainer_type="Supporter",
                 lang="en",
                 is_custom=False,
             ),
@@ -77,6 +97,12 @@ class AccentInsensitiveSearchTests(unittest.TestCase):
     def test_artist_and_rarity_filters_match_without_diacritics(self):
         self.assertEqual(self._search_names(artist="Jose Garcia"), ["Pokégear 3.0"])
         self.assertEqual(self._search_names(rarity="Special"), ["Pokégear 3.0"])
+
+    def test_category_filter_matches_base_card_metadata(self):
+        self.assertEqual(self._search_names(category="Energy"), ["Éclair Energy"])
+
+    def test_subtype_filter_matches_base_card_metadata(self):
+        self.assertEqual(self._search_names(subtype="Supporter"), ["Professor's Research"])
 
     def test_accent_search_still_respects_language_visibility(self):
         self.assertEqual(self._search_names(name="Flabebe"), [])

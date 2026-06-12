@@ -35,6 +35,8 @@ function TiltCardWrapper({ children, className, onClick }) {
 const CODE_NUMBER_RE = /^([A-Za-z]+\d*)\s+(\d+)$/
 
 const TYPES = ['Fire', 'Water', 'Grass', 'Lightning', 'Psychic', 'Fighting', 'Darkness', 'Metal', 'Dragon', 'Colorless', 'Fairy', 'Stellar']
+const CATEGORIES = ['Pokemon', 'Trainer', 'Energy']
+const SUBTYPES = ['Basic', 'Stage1', 'Stage2', 'Supporter', 'Item', 'Stadium', 'Tool', 'Technical Machine', 'Special']
 const RARITIES = ['Common', 'Uncommon', 'Rare', 'Rare Holo', 'Rare Ultra', 'Rare Secret', 'Illustration Rare', 'Special Illustration Rare', 'Hyper Rare', 'Double Rare', 'ACE SPEC Rare', 'Promo', 'Amazing Rare']
 
 function FilterForm({ filters, setFilter, allSeries, setsForSeries, toggleSortOrder, t }) {
@@ -65,12 +67,26 @@ function FilterForm({ filters, setFilter, allSeries, setsForSeries, toggleSortOr
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
         <div>
-          <label className="text-xs text-text-muted mb-1 block">{t('common.type')}</label>
+          <label className="text-xs text-text-muted mb-1 block">{t('cardSearch.cardCategory')}</label>
+          <select className="select" value={filters.category} onChange={(e) => setFilter('category', e.target.value)}>
+            <option value="">{t('cardSearch.allCategories')}</option>
+            {CATEGORIES.map(category => <option key={category} value={category}>{category}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs text-text-muted mb-1 block">{t('cardSearch.energyType')}</label>
           <select className="select" value={filters.type} onChange={(e) => setFilter('type', e.target.value)}>
-            <option value="">{t('common.allTypes')}</option>
+            <option value="">{t('cardSearch.allEnergyTypes')}</option>
             {TYPES.map(tp => <option key={tp} value={tp}>{tp}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs text-text-muted mb-1 block">{t('cardSearch.subtype')}</label>
+          <select className="select" value={filters.subtype} onChange={(e) => setFilter('subtype', e.target.value)}>
+            <option value="">{t('cardSearch.allSubtypes')}</option>
+            {SUBTYPES.map(subtype => <option key={subtype} value={subtype}>{subtype}</option>)}
           </select>
         </div>
         <div>
@@ -80,6 +96,9 @@ function FilterForm({ filters, setFilter, allSeries, setsForSeries, toggleSortOr
             {RARITIES.map(r => <option key={r} value={r}>{r}</option>)}
           </select>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
         <div>
           <label className="text-xs text-text-muted mb-1 block">{t('cardSearch.series')}</label>
           <select className="select" value={filters.series} onChange={(e) => setFilter('series', e.target.value)}>
@@ -87,9 +106,6 @@ function FilterForm({ filters, setFilter, allSeries, setsForSeries, toggleSortOr
             {allSeries.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
         <div>
           <label className="text-xs text-text-muted mb-1 block">{t('common.set')}</label>
           <select className="select" value={filters.set_id} onChange={(e) => setFilter('set_id', e.target.value)}>
@@ -123,7 +139,7 @@ export default function CardSearch() {
   const queryClient = useQueryClient()
   const [searchInput, setSearchInput] = useState('')
   const [filters, setFilters] = useState({
-    name: '', type: '', rarity: '', set_id: '', series: '', artist: '',
+    name: '', category: '', type: '', subtype: '', rarity: '', set_id: '', series: '', artist: '',
     hp_min: '', hp_max: '', sort_by: '', sort_order: 'asc',
   })
   const [langFilter, setLangFilter] = useState('all')
@@ -167,7 +183,9 @@ export default function CardSearch() {
 
   const queryParams = {
     name: filters.name || undefined,
+    category: filters.category || undefined,
     type: filters.type || undefined,
+    subtype: filters.subtype || undefined,
     rarity: filters.rarity || undefined,
     set_id: filters.set_id || undefined,
     artist: filters.artist || undefined,
@@ -180,7 +198,7 @@ export default function CardSearch() {
     page_size: pageSize,
   }
 
-  const hasQuery = filters.name || filters.type || filters.rarity || filters.set_id || filters.artist || filters.hp_min || filters.hp_max || filters.series
+  const hasQuery = filters.name || filters.category || filters.type || filters.subtype || filters.rarity || filters.set_id || filters.artist || filters.hp_min || filters.hp_max || filters.series
 
   const { data, isLoading, error, isFetching } = useQuery({
     queryKey: ['card-search', queryParams, langFilter],
@@ -215,14 +233,14 @@ export default function CardSearch() {
   }
 
   const clearFilters = () => {
-    setFilters({ name: '', type: '', rarity: '', set_id: '', series: '', artist: '', hp_min: '', hp_max: '', sort_by: '', sort_order: 'asc' })
+    setFilters({ name: '', category: '', type: '', subtype: '', rarity: '', set_id: '', series: '', artist: '', hp_min: '', hp_max: '', sort_by: '', sort_order: 'asc' })
     setSearchInput('')
     setLangFilter('all')
     setPage(1)
   }
 
-  const hasActiveFilters = !!(filters.type || filters.rarity || filters.set_id || filters.series || filters.artist || filters.hp_min || filters.hp_max || filters.sort_by)
-  const activeFilterCount = [filters.type, filters.rarity, filters.set_id, filters.series, filters.artist, filters.hp_min, filters.hp_max, filters.sort_by].filter(Boolean).length
+  const hasActiveFilters = !!(filters.category || filters.type || filters.subtype || filters.rarity || filters.set_id || filters.series || filters.artist || filters.hp_min || filters.hp_max || filters.sort_by)
+  const activeFilterCount = [filters.category, filters.type, filters.subtype, filters.rarity, filters.set_id, filters.series, filters.artist, filters.hp_min, filters.hp_max, filters.sort_by].filter(Boolean).length
   const totalPages = data ? Math.ceil(data.total_count / pageSize) : 0
   const hasOpenOverlay = Boolean(selectedCard || showFilters || showCustomModal || showScanner)
 
