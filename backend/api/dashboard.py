@@ -5,6 +5,7 @@ from api.auth import get_current_user
 from database import get_db
 from models import CollectionItem, Card, Set, PortfolioSnapshot, SyncLog, ProductLedgerEntry, ProductPurchase, User
 from services.card_values import effective_market_price, normalize_price_field
+from services.card_visibility import visible_card_filter, visible_set_filter
 import datetime
 
 router = APIRouter()
@@ -20,10 +21,11 @@ def get_dashboard(
     price_field = normalize_price_field(price_field)
 
     # Collection stats
-    items = db.query(CollectionItem).options(
+    items = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).options(
         joinedload(CollectionItem.card)
     ).filter(
-        CollectionItem.user_id == current_user.id
+        CollectionItem.user_id == current_user.id,
+        visible_card_filter(db, current_user.id, "all"),
     ).all()
 
     total_cards = sum(item.quantity for item in items)
@@ -71,7 +73,7 @@ def get_dashboard(
     pnl = total_value - total_cost + products_realized_pnl
 
     # Sets stats
-    total_sets = db.query(Set).count()
+    total_sets = db.query(Set).filter(visible_set_filter(db, current_user.id, "all")).count()
 
     # Count sets with at least one card
     owned_set_ids = set()
@@ -131,10 +133,11 @@ def get_dashboard(
     ]
 
     # Recent additions (last 12)
-    recent = db.query(CollectionItem).options(
+    recent = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).options(
         joinedload(CollectionItem.card).joinedload(Card.set_ref)
     ).filter(
-        CollectionItem.user_id == current_user.id
+        CollectionItem.user_id == current_user.id,
+        visible_card_filter(db, current_user.id, "all"),
     ).order_by(CollectionItem.added_at.desc()).limit(12).all()
 
     recent_data = []
@@ -170,7 +173,10 @@ def get_dashboard(
         }
 
     # New sets count
-    new_sets_count = db.query(Set).filter(Set.is_new == True).count()
+    new_sets_count = db.query(Set).filter(
+        Set.is_new == True,
+        visible_set_filter(db, current_user.id, "all"),
+    ).count()
 
     return {
         "total_cards": total_cards,

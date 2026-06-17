@@ -13,6 +13,7 @@ from services import pokemon_api
 from services.card_fallbacks import apply_cross_language_fallbacks
 from services.card_upsert import upsert_card
 from services.card_values import effective_market_price, normalize_price_field
+from services.card_visibility import visible_card_filter
 from services.binder_csv import BINDER_CSV_DUPLICATE_QUANTITY_ERROR, combine_binder_required_quantity
 from services.wishlist_missing import plan_missing_wishlist_additions
 from services.tcgdex_languages import SUPPORTED_TCGDEX_LANGUAGES, is_supported_tcgdex_language, normalize_tcgdex_language
@@ -72,7 +73,10 @@ def _collection_binder_usage_counts(db: Session, current_user: User) -> dict[int
 
 def _binder_counts(db: Session, binder: Binder) -> tuple[int, int]:
     binder_type = binder.binder_type or "collection"
-    base_query = db.query(BinderCard).filter(BinderCard.binder_id == binder.id)
+    base_query = db.query(BinderCard).join(Card, Card.id == BinderCard.card_id).filter(
+        BinderCard.binder_id == binder.id,
+        visible_card_filter(db, binder.user_id, "all"),
+    )
     unique_count = base_query.with_entities(func.count(func.distinct(BinderCard.card_id))).scalar() or 0
     if binder_type == "collection":
         total_count = base_query.with_entities(func.count(BinderCard.id)).scalar() or 0
@@ -97,8 +101,11 @@ def _binder_response(binder: Binder, card_count: int = 0, unique_card_count: int
 
 
 def _user_collection_quantities(db: Session, current_user: User, card_ids: list[str] | None = None) -> dict[str, int]:
-    query = db.query(CollectionItem.card_id, func.coalesce(func.sum(CollectionItem.quantity), 0)).filter(
-        CollectionItem.user_id == current_user.id
+    query = db.query(CollectionItem.card_id, func.coalesce(func.sum(CollectionItem.quantity), 0)).join(
+        Card, Card.id == CollectionItem.card_id
+    ).filter(
+        CollectionItem.user_id == current_user.id,
+        visible_card_filter(db, current_user.id, "all"),
     )
     if card_ids is not None:
         if not card_ids:
@@ -111,8 +118,11 @@ def _user_collection_quantities(db: Session, current_user: User, card_ids: list[
 
 
 def _user_wishlist_quantities(db: Session, current_user: User, card_ids: list[str] | None = None) -> dict[str, int]:
-    query = db.query(WishlistItem.card_id, func.coalesce(func.sum(WishlistItem.quantity), 0)).filter(
-        WishlistItem.user_id == current_user.id
+    query = db.query(WishlistItem.card_id, func.coalesce(func.sum(WishlistItem.quantity), 0)).join(
+        Card, Card.id == WishlistItem.card_id
+    ).filter(
+        WishlistItem.user_id == current_user.id,
+        visible_card_filter(db, current_user.id, "all"),
     )
     if card_ids is not None:
         if not card_ids:
@@ -269,7 +279,12 @@ def _price_sort_value(card: Card, variant: str | None = None, price_field: str |
     return float(price) if price and price > 0 else None
 
 
-def _cheapest_equivalent_candidate(db: Session, source_card: Card, price_field: str | None = "price_trend") -> Card | None:
+def _cheapest_equivalent_candidate(
+    db: Session,
+    current_user: User,
+    source_card: Card,
+    price_field: str | None = "price_trend",
+) -> Card | None:
     source_card = _ensure_card_gameplay_data(db, source_card)
     if not source_card or not source_card.playable_fingerprint:
         return None
@@ -283,6 +298,7 @@ def _cheapest_equivalent_candidate(db: Session, source_card: Card, price_field: 
         Card.playable_fingerprint == source_card.playable_fingerprint,
         Card.lang == (source_card.lang or "en"),
         Card.is_custom.is_(False),
+        visible_card_filter(db, current_user.id, "all"),
     ).all()
     priced_candidates = [(card, _price_sort_value(card, price_field=price_field)) for card in candidates]
     priced_candidates = [(card, price) for card, price in priced_candidates if price is not None]
@@ -311,6 +327,7 @@ def _collection_optimizer_candidates(
         Card.name == source_card.name,
         Card.lang == (source_card.lang or "en"),
         Card.is_custom.is_(False),
+        visible_card_filter(db, current_user.id, "all"),
     ).all()
 
     candidates = []
@@ -335,10 +352,13 @@ def _build_print_optimization_preview(db: Session, binder: Binder, current_user:
     if binder_type not in {"collection", "wishlist"}:
         raise HTTPException(status_code=400, detail="Print optimization is available for collection and wishlist binders")
 
-    binder_cards = db.query(BinderCard).options(
+    binder_cards = db.query(BinderCard).join(Card, Card.id == BinderCard.card_id).options(
         joinedload(BinderCard.card).joinedload(Card.set_ref),
         joinedload(BinderCard.collection_item),
-    ).filter(BinderCard.binder_id == binder.id).order_by(BinderCard.added_at.desc()).all()
+    ).filter(
+        BinderCard.binder_id == binder.id,
+        visible_card_filter(db, current_user.id, "all"),
+    ).order_by(BinderCard.added_at.desc()).all()
 
     recommendations = []
     candidate_cache: dict[str, Card | None] = {}
@@ -392,7 +412,7 @@ def _build_print_optimization_preview(db: Session, binder: Binder, current_user:
 
         cache_key = f"{source_card.lang or 'en'}:{source_card.playable_fingerprint}"
         if cache_key not in candidate_cache:
-            candidate_cache[cache_key] = _cheapest_equivalent_candidate(db, source_card, price_field)
+            candidate_cache[cache_key] = _cheapest_equivalent_candidate(db, current_user, source_card, price_field)
         candidate = candidate_cache[cache_key]
         if not candidate or candidate.id == bc.card_id:
             continue
@@ -548,22 +568,28 @@ def get_binder_cards(
     binder_type = binder.binder_type or "collection"
     price_field = normalize_price_field(price_field)
 
-    binder_cards = db.query(BinderCard).options(
+    binder_cards = db.query(BinderCard).join(Card, Card.id == BinderCard.card_id).options(
         joinedload(BinderCard.card).joinedload(Card.set_ref),
         joinedload(BinderCard.collection_item),
-    ).filter(BinderCard.binder_id == binder_id).order_by(BinderCard.added_at.desc()).all()
+    ).filter(
+        BinderCard.binder_id == binder_id,
+        visible_card_filter(db, current_user.id, "all"),
+    ).order_by(BinderCard.added_at.desc()).all()
 
     collection_quantities = dict(
         db.query(CollectionItem.card_id, func.coalesce(func.sum(CollectionItem.quantity), 0))
+        .join(Card, Card.id == CollectionItem.card_id)
         .filter(CollectionItem.user_id == current_user.id)
+        .filter(visible_card_filter(db, current_user.id, "all"))
         .group_by(CollectionItem.card_id)
         .all()
     )
     usage_counts = _collection_binder_usage_counts(db, current_user)
     unavailable_collection_item_ids = []
     if binder_type == "collection":
-        owned_items = db.query(CollectionItem.id, CollectionItem.quantity).filter(
+        owned_items = db.query(CollectionItem.id, CollectionItem.quantity).join(Card, Card.id == CollectionItem.card_id).filter(
             CollectionItem.user_id == current_user.id,
+            visible_card_filter(db, current_user.id, "all"),
         ).all()
         unavailable_collection_item_ids = [
             item_id for item_id, quantity in owned_items
@@ -588,9 +614,10 @@ def get_binder_cards(
         if bc.collection_item_id:
             col_item = bc.collection_item if bc.collection_item and bc.collection_item.user_id == current_user.id else None
         if not col_item:
-            col_item = db.query(CollectionItem).filter(
+            col_item = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).filter(
                 CollectionItem.card_id == bc.card_id,
                 CollectionItem.user_id == current_user.id,
+                visible_card_filter(db, current_user.id, "all"),
             ).first()
         in_collection = col_item is not None
 
@@ -846,9 +873,10 @@ def add_collection_item_to_binder(
     if (binder.binder_type or "collection") != "collection":
         raise HTTPException(status_code=400, detail="Collection items can only be added to collection binders")
 
-    item = db.query(CollectionItem).filter(
+    item = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).filter(
         CollectionItem.id == collection_item_id,
         CollectionItem.user_id == current_user.id,
+        visible_card_filter(db, current_user.id, "all"),
     ).first()
     if not item:
         raise HTTPException(status_code=404, detail="Collection item not found")
@@ -892,9 +920,10 @@ def update_binder_entry(
     if not binder:
         raise HTTPException(status_code=404, detail="Binder not found")
 
-    bc = db.query(BinderCard).filter(
+    bc = db.query(BinderCard).join(Card, Card.id == BinderCard.card_id).filter(
         BinderCard.id == binder_card_id,
         BinderCard.binder_id == binder_id,
+        visible_card_filter(db, current_user.id, "all"),
     ).first()
     if not bc:
         raise HTTPException(status_code=404, detail="Binder entry not found")
@@ -924,9 +953,10 @@ def get_binder_entry_equivalent_prints(
     binder_type = binder.binder_type or "collection"
     price_field = normalize_price_field(price_field)
 
-    bc = db.query(BinderCard).options(joinedload(BinderCard.card)).filter(
+    bc = db.query(BinderCard).join(Card, Card.id == BinderCard.card_id).options(joinedload(BinderCard.card)).filter(
         BinderCard.id == binder_card_id,
         BinderCard.binder_id == binder_id,
+        visible_card_filter(db, current_user.id, "all"),
     ).first()
     if not bc or not bc.card:
         raise HTTPException(status_code=404, detail="Binder entry not found")
@@ -951,6 +981,7 @@ def get_binder_entry_equivalent_prints(
             Card.name == source_card.name,
             Card.lang == (source_card.lang or "en"),
             Card.is_custom.is_(False),
+            visible_card_filter(db, current_user.id, "all"),
         ).all()
 
         summaries = []
@@ -991,6 +1022,7 @@ def get_binder_entry_equivalent_prints(
         Card.playable_fingerprint == source_card.playable_fingerprint,
         Card.lang == (source_card.lang or "en"),
         Card.is_custom.is_(False),
+        visible_card_filter(db, current_user.id, "all"),
     ).all()
 
     summaries = [
@@ -1032,9 +1064,10 @@ def switch_binder_entry_card(
     if binder_type not in {"collection", "wishlist"}:
         raise HTTPException(status_code=400, detail="Equivalent print switching is available for collection and wishlist binders")
 
-    bc = db.query(BinderCard).options(joinedload(BinderCard.card)).filter(
+    bc = db.query(BinderCard).join(Card, Card.id == BinderCard.card_id).options(joinedload(BinderCard.card)).filter(
         BinderCard.id == binder_card_id,
         BinderCard.binder_id == binder_id,
+        visible_card_filter(db, current_user.id, "all"),
     ).first()
     if not bc or not bc.card:
         raise HTTPException(status_code=404, detail="Binder entry not found")
@@ -1042,9 +1075,10 @@ def switch_binder_entry_card(
     if binder_type == "collection":
         if not update.collection_item_id:
             raise HTTPException(status_code=400, detail="Collection print switching requires a collection item")
-        target_item = db.query(CollectionItem).options(joinedload(CollectionItem.card)).filter(
+        target_item = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).options(joinedload(CollectionItem.card)).filter(
             CollectionItem.id == update.collection_item_id,
             CollectionItem.user_id == current_user.id,
+            visible_card_filter(db, current_user.id, "all"),
         ).first()
         if not target_item or not target_item.card:
             raise HTTPException(status_code=404, detail="Collection item not found")
@@ -1082,7 +1116,10 @@ def switch_binder_entry_card(
     if not update.card_id:
         raise HTTPException(status_code=400, detail="Card id is required")
 
-    target_card = db.query(Card).filter(Card.id == update.card_id).first()
+    target_card = db.query(Card).filter(
+        Card.id == update.card_id,
+        visible_card_filter(db, current_user.id, "all"),
+    ).first()
     if not target_card:
         _, detected_lang = pokemon_api.strip_lang_suffix(update.card_id)
         target_card = ensure_card_exists(db, update.card_id, lang=detected_lang or "en")
@@ -1132,9 +1169,10 @@ def add_binder_entry_to_wishlist(
     if not binder:
         raise HTTPException(status_code=404, detail="Binder not found")
 
-    bc = db.query(BinderCard).filter(
+    bc = db.query(BinderCard).join(Card, Card.id == BinderCard.card_id).filter(
         BinderCard.id == binder_card_id,
         BinderCard.binder_id == binder_id,
+        visible_card_filter(db, current_user.id, "all"),
     ).first()
     if not bc:
         raise HTTPException(status_code=404, detail="Binder entry not found")
@@ -1252,7 +1290,12 @@ def add_binder_cards_to_wishlist(
     if (binder.binder_type or "collection") != "wishlist":
         raise HTTPException(status_code=400, detail="Bulk wishlist add is only available for wishlist binders")
 
-    binder_cards = db.query(BinderCard.card_id, BinderCard.required_quantity).filter(BinderCard.binder_id == binder_id).all()
+    binder_cards = db.query(BinderCard.card_id, BinderCard.required_quantity).join(
+        Card, Card.id == BinderCard.card_id
+    ).filter(
+        BinderCard.binder_id == binder_id,
+        visible_card_filter(db, current_user.id, "all"),
+    ).all()
     entries = []
     card_ids = []
     seen = set()
@@ -1306,9 +1349,12 @@ def export_binder_csv(
     if not binder:
         raise HTTPException(status_code=404, detail="Binder not found")
 
-    rows = db.query(BinderCard).options(
+    rows = db.query(BinderCard).join(Card, Card.id == BinderCard.card_id).options(
         joinedload(BinderCard.card).joinedload(Card.set_ref)
-    ).filter(BinderCard.binder_id == binder_id).order_by(BinderCard.added_at.asc()).all()
+    ).filter(
+        BinderCard.binder_id == binder_id,
+        visible_card_filter(db, current_user.id, "all"),
+    ).order_by(BinderCard.added_at.asc()).all()
     binder_type = binder.binder_type or "collection"
 
     output = io.StringIO()

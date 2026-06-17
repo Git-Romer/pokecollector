@@ -8,6 +8,8 @@ from api.auth import get_current_user
 from database import get_db
 from models import Card, CollectionItem, ProductLedgerEntry, ProductPurchase, Set, User, WishlistItem
 from services.card_values import effective_market_price, normalize_price_field
+from services.card_visibility import visible_card_filter
+from services.digital_sets import digital_sets_enabled
 
 router = APIRouter()
 
@@ -202,7 +204,7 @@ def _load_user_stats(db: Session, user_ids: list[int] | None = None, price_field
 
     active_user_ids = [user.id for user in users]
 
-    collection_rows = db.query(
+    collection_query = db.query(
         CollectionItem.user_id,
         CollectionItem.card_id,
         CollectionItem.quantity,
@@ -230,7 +232,10 @@ def _load_user_stats(db: Session, user_ids: list[int] | None = None, price_field
         Card, CollectionItem.card_id == Card.id
     ).filter(
         CollectionItem.user_id.in_(active_user_ids)
-    ).all()
+    )
+    if not digital_sets_enabled(db):
+        collection_query = collection_query.filter(Card.is_digital == False)
+    collection_rows = collection_query.all()
 
     set_sizes = {
         (row.set_id, row.lang): row.card_count
@@ -245,14 +250,19 @@ def _load_user_stats(db: Session, user_ids: list[int] | None = None, price_field
         ).all()
     }
 
+    wishlist_query = db.query(
+        WishlistItem.user_id,
+        func.count(WishlistItem.id).label("count"),
+    ).join(
+        Card, WishlistItem.card_id == Card.id
+    ).filter(
+        WishlistItem.user_id.in_(active_user_ids)
+    )
+    if not digital_sets_enabled(db):
+        wishlist_query = wishlist_query.filter(Card.is_digital == False)
     wishlist_counts = {
         row.user_id: row.count
-        for row in db.query(
-            WishlistItem.user_id,
-            func.count(WishlistItem.id).label("count"),
-        ).filter(
-            WishlistItem.user_id.in_(active_user_ids)
-        ).group_by(
+        for row in wishlist_query.group_by(
             WishlistItem.user_id
         ).all()
     }
@@ -397,7 +407,8 @@ def compare_users(
         ).join(
             Card, CollectionItem.card_id == Card.id
         ).filter(
-            CollectionItem.user_id == current_user.id
+            CollectionItem.user_id == current_user.id,
+            visible_card_filter(db, current_user.id, "all"),
         ).all()
     }
     user_b_cards = {
@@ -410,17 +421,24 @@ def compare_users(
         ).join(
             Card, CollectionItem.card_id == Card.id
         ).filter(
-            CollectionItem.user_id == user_id
+            CollectionItem.user_id == user_id,
+            visible_card_filter(db, user_id, "all"),
         ).all()
     }
 
     user_a_wishlist = {
         row.card_id
-        for row in db.query(WishlistItem.card_id).filter(WishlistItem.user_id == current_user.id).all()
+        for row in db.query(WishlistItem.card_id).join(Card, Card.id == WishlistItem.card_id).filter(
+            WishlistItem.user_id == current_user.id,
+            visible_card_filter(db, current_user.id, "all"),
+        ).all()
     }
     user_b_wishlist = {
         row.card_id
-        for row in db.query(WishlistItem.card_id).filter(WishlistItem.user_id == user_id).all()
+        for row in db.query(WishlistItem.card_id).join(Card, Card.id == WishlistItem.card_id).filter(
+            WishlistItem.user_id == user_id,
+            visible_card_filter(db, user_id, "all"),
+        ).all()
     }
 
     overlap = len(set(user_a_cards) & set(user_b_cards))

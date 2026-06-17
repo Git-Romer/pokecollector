@@ -6,6 +6,7 @@ from database import get_db
 from models import WishlistItem, Card, Set, User
 from schemas import WishlistItemCreate, WishlistItemUpdate, WishlistItemResponse
 from api.collection import ensure_card_exists
+from services.card_visibility import visible_card_filter
 import datetime
 
 router = APIRouter()
@@ -28,10 +29,11 @@ def get_wishlist(
     db: Session = Depends(get_db),
 ):
     """Get all wishlist items."""
-    items = db.query(WishlistItem).options(
+    items = db.query(WishlistItem).join(Card, Card.id == WishlistItem.card_id).options(
         joinedload(WishlistItem.card).joinedload(Card.set_ref)
     ).filter(
-        WishlistItem.user_id == current_user.id
+        WishlistItem.user_id == current_user.id,
+        visible_card_filter(db, current_user.id, "all"),
     ).order_by(WishlistItem.created_at.desc()).all()
     return items
 

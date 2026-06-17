@@ -10,6 +10,7 @@ from services import pokemon_api
 from services.card_fallbacks import apply_cross_language_fallbacks, build_missing_language_card
 from services.card_numbers import card_number_matches
 from services.card_values import effective_market_price, normalize_price_field
+from services.card_visibility import visible_card_filter
 from services.digital_sets import digital_sets_enabled
 from services.tcgdex_languages import SUPPORTED_TCGDEX_LANGUAGES, has_lang_suffix, is_supported_tcgdex_language, normalize_tcgdex_language
 from services.collection_csv import collection_import_key, is_valid_collection_purchase_price, merge_collection_import_item, normalize_collection_variant
@@ -339,9 +340,12 @@ def get_user_collection(
     target_user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
     if not target_user:
         raise HTTPException(status_code=404, detail="User not found")
-    query = db.query(CollectionItem).options(
+    query = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).options(
         joinedload(CollectionItem.card).joinedload(Card.set_ref)
-    ).filter(CollectionItem.user_id == user_id)
+    ).filter(
+        CollectionItem.user_id == user_id,
+        visible_card_filter(db, user_id, "all"),
+    )
     return query.all()
 
 
@@ -353,9 +357,12 @@ def get_collection(
     order: Optional[str] = "desc",
 ):
     """Get all collection items."""
-    query = db.query(CollectionItem).options(
+    query = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).options(
         joinedload(CollectionItem.card).joinedload(Card.set_ref)
-    ).filter(CollectionItem.user_id == current_user.id)
+    ).filter(
+        CollectionItem.user_id == current_user.id,
+        visible_card_filter(db, current_user.id, "all"),
+    )
 
     sort_col = {
         "added_at": CollectionItem.added_at,
@@ -690,9 +697,12 @@ def get_collection_stats(
     price_field: str = Query(default="price_trend", description="Price field to use for value calculation"),
 ):
     """Get collection statistics."""
-    items = db.query(CollectionItem).options(
+    items = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).options(
         joinedload(CollectionItem.card)
-    ).filter(CollectionItem.user_id == current_user.id).all()
+    ).filter(
+        CollectionItem.user_id == current_user.id,
+        visible_card_filter(db, current_user.id, "all"),
+    ).all()
 
     total_cards = sum(item.quantity for item in items)
     unique_cards = len(set(item.card_id for item in items))

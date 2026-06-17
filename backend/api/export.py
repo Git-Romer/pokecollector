@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 from api.auth import get_current_user
 from database import get_db
 from services.card_values import effective_market_price, normalize_price_field
+from services.card_visibility import visible_card_filter
 from models import CollectionItem, Card, User
 import io
 import csv
@@ -42,9 +43,12 @@ def export_csv(
     """Export collection as CSV."""
     price_field = normalize_price_field(price_field)
     currency, symbol = _normalize_currency(currency)
-    items = db.query(CollectionItem).options(
+    items = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).options(
         joinedload(CollectionItem.card).joinedload(Card.set_ref)
-    ).filter(CollectionItem.user_id == current_user.id).all()
+    ).filter(
+        CollectionItem.user_id == current_user.id,
+        visible_card_filter(db, current_user.id, "all"),
+    ).all()
 
     output = io.StringIO()
     writer = csv.writer(output)
@@ -110,9 +114,12 @@ def export_pdf(
         from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
         from reportlab.lib.units import mm
 
-        items = db.query(CollectionItem).options(
+        items = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).options(
             joinedload(CollectionItem.card).joinedload(Card.set_ref)
-        ).filter(CollectionItem.user_id == current_user.id).all()
+        ).filter(
+            CollectionItem.user_id == current_user.id,
+            visible_card_filter(db, current_user.id, "all"),
+        ).all()
 
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(

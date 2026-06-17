@@ -4,6 +4,7 @@ from sqlalchemy import func
 from api.auth import get_current_user
 from database import get_db
 from services.card_values import effective_market_price, normalize_price_field
+from services.card_visibility import visible_card_filter, visible_set_filter
 from services.analytics import sort_top_movers
 from models import CollectionItem, Card, PriceHistory, PortfolioSnapshot, Set, ProductPurchase, User
 from typing import Optional
@@ -23,11 +24,12 @@ def get_duplicates(
     current_user: User = Depends(get_current_user),
 ):
     """Get all cards owned more than once, sorted by total value."""
-    items = db.query(CollectionItem).options(
+    items = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).options(
         joinedload(CollectionItem.card).joinedload(Card.set_ref)
     ).filter(
         CollectionItem.user_id == current_user.id,
         CollectionItem.quantity > 1,
+        visible_card_filter(db, current_user.id, "all"),
     ).all()
 
     price_field = normalize_price_field(price_field)
@@ -72,8 +74,9 @@ def get_top_movers(
     # Get collection card IDs
     col_card_ids = [
         item.card_id
-        for item in db.query(CollectionItem.card_id).filter(
-            CollectionItem.user_id == current_user.id
+        for item in db.query(CollectionItem.card_id).join(Card, Card.id == CollectionItem.card_id).filter(
+            CollectionItem.user_id == current_user.id,
+            visible_card_filter(db, current_user.id, "all"),
         ).all()
     ]
     if not col_card_ids:
@@ -124,10 +127,11 @@ def get_rarity_stats(
     current_user: User = Depends(get_current_user),
 ):
     """Get rarity distribution of collection."""
-    items = db.query(CollectionItem).options(
+    items = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).options(
         joinedload(CollectionItem.card)
     ).filter(
-        CollectionItem.user_id == current_user.id
+        CollectionItem.user_id == current_user.id,
+        visible_card_filter(db, current_user.id, "all"),
     ).all()
 
     price_field = normalize_price_field(price_field)
@@ -171,8 +175,9 @@ def _take_portfolio_snapshot(db: Session, user_id: int, price_field: str = "pric
     """Insert a new portfolio snapshot (called on every price sync)."""
     now = datetime.datetime.utcnow()
 
-    collection_items = db.query(CollectionItem).join(Card).filter(
-        CollectionItem.user_id == user_id
+    collection_items = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).filter(
+        CollectionItem.user_id == user_id,
+        visible_card_filter(db, user_id, "all"),
     ).all()
     total_value = sum(
         _get_item_price(item, price_field) * item.quantity
@@ -306,7 +311,7 @@ def get_new_sets(
     current_user: User = Depends(get_current_user),
 ):
     """Get newly detected sets."""
-    new_sets = db.query(Set).filter(Set.is_new == True).all()
+    new_sets = db.query(Set).filter(Set.is_new == True, visible_set_filter(db, current_user.id, "all")).all()
     return [
         {
             "id": s.id,
