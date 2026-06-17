@@ -1,6 +1,4 @@
 import unittest
-import datetime
-
 try:
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
@@ -11,16 +9,16 @@ try:
         BinderCard,
         Card,
         CollectionItem,
-        CustomCardMatch,
-        ProductCard,
-        ProductLedgerEntry,
-        ProductPurchase,
         Set,
         Setting,
         User,
         WishlistItem,
     )
-    from services.digital_sets import is_digital_set_data, purge_digital_catalogue, purge_disabled_digital_catalogue
+    from services.digital_sets import (
+        digital_sets_enabled,
+        is_digital_set_data,
+        refresh_digital_catalogue_flags,
+    )
     from services.pokemon_api import parse_card_for_db, parse_set_for_db
     API_TEST_DEPS_AVAILABLE = True
 except ModuleNotFoundError:
@@ -56,72 +54,17 @@ class DigitalSetTests(unittest.TestCase):
             "serie": {"id": "sv", "name": "Scarlet & Violet"},
         }))
 
-    def test_purge_detaches_product_ledger_and_deletes_custom_matches(self):
+    def test_digital_sets_default_to_enabled_when_setting_is_missing(self):
         engine = create_engine("sqlite:///:memory:")
         Base.metadata.create_all(engine)
         Session = sessionmaker(bind=engine)
         db = Session()
         try:
-            user = User(username="ash", hashed_password="x", role="trainer", is_active=True)
-            db.add(user)
-            db.commit()
-            db.refresh(user)
-
-            product = ProductPurchase(
-                product_name="Pocket booster",
-                user_id=user.id,
-                product_type="Booster",
-                purchase_price=4.99,
-                purchase_date=datetime.date(2026, 1, 1),
-            )
-            db.add(product)
-            db.flush()
-
-            db.add(Set(id="A1_en", tcg_set_id="A1", name="Genetic Apex", lang="en", is_digital=True))
-            db.add(Card(id="A1-1_en", tcg_card_id="A1-1", name="Digital", set_id="A1", lang="en", is_digital=True))
-            db.flush()
-
-            product_card = ProductCard(
-                product_id=product.id,
-                user_id=user.id,
-                card_id="A1-1_en",
-                initial_quantity=1,
-                active_quantity=1,
-            )
-            db.add(product_card)
-            db.flush()
-
-            ledger = ProductLedgerEntry(
-                product_card_id=product_card.id,
-                product_id=product.id,
-                user_id=user.id,
-                entry_type="card_sale",
-                card_id="A1-1_en",
-                quantity=1,
-                amount=5.0,
-                event_date=datetime.date(2026, 1, 2),
-                card_name="Digital",
-            )
-            db.add(ledger)
-            db.add(CustomCardMatch(custom_card_id="A1-1_en", api_card_id="A1-1", status="pending"))
-            db.commit()
-
-            result = purge_digital_catalogue(db)
-            db.commit()
-
-            self.assertEqual(result, {"sets_deleted": 1, "cards_deleted": 1})
-            self.assertEqual(db.query(Set).count(), 0)
-            self.assertEqual(db.query(Card).count(), 0)
-            self.assertEqual(db.query(ProductCard).count(), 0)
-            self.assertEqual(db.query(CustomCardMatch).count(), 0)
-            ledger_row = db.query(ProductLedgerEntry).one()
-            self.assertIsNone(ledger_row.card_id)
-            self.assertIsNone(ledger_row.product_card_id)
-            self.assertEqual(ledger_row.card_name, "Digital")
+            self.assertTrue(digital_sets_enabled(db))
         finally:
             db.close()
 
-    def test_disabled_startup_cleanup_purges_legacy_pocket_user_rows(self):
+    def test_disabled_refresh_marks_legacy_pocket_rows_without_deleting_user_rows(self):
         engine = create_engine("sqlite:///:memory:")
         Base.metadata.create_all(engine)
         Session = sessionmaker(bind=engine)
@@ -165,20 +108,22 @@ class DigitalSetTests(unittest.TestCase):
             ))
             db.commit()
 
-            result = purge_disabled_digital_catalogue(db)
+            result = refresh_digital_catalogue_flags(db)
             db.commit()
 
-            self.assertEqual(result, {"sets_deleted": 1, "cards_deleted": 1})
-            self.assertEqual(db.query(Set).count(), 0)
-            self.assertEqual(db.query(Card).count(), 0)
-            self.assertEqual(db.query(CollectionItem).count(), 0)
-            self.assertEqual(db.query(WishlistItem).count(), 0)
-            self.assertEqual(db.query(BinderCard).count(), 0)
+            self.assertEqual(result, {"sets_marked": 1, "cards_marked": 1})
+            self.assertEqual(db.query(Set).count(), 1)
+            self.assertEqual(db.query(Card).count(), 1)
+            self.assertEqual(db.query(CollectionItem).count(), 1)
+            self.assertEqual(db.query(WishlistItem).count(), 1)
+            self.assertEqual(db.query(BinderCard).count(), 1)
             self.assertEqual(db.query(Binder).count(), 1)
+            self.assertTrue(db.query(Set).one().is_digital)
+            self.assertTrue(db.query(Card).one().is_digital)
         finally:
             db.close()
 
-    def test_enabled_startup_cleanup_marks_legacy_pocket_rows_without_purging(self):
+    def test_refresh_digital_flags_is_idempotent(self):
         engine = create_engine("sqlite:///:memory:")
         Base.metadata.create_all(engine)
         Session = sessionmaker(bind=engine)
@@ -203,10 +148,13 @@ class DigitalSetTests(unittest.TestCase):
             ))
             db.commit()
 
-            result = purge_disabled_digital_catalogue(db)
+            result = refresh_digital_catalogue_flags(db)
+            db.commit()
+            second_result = refresh_digital_catalogue_flags(db)
             db.commit()
 
-            self.assertEqual(result, {"sets_deleted": 0, "cards_deleted": 0})
+            self.assertEqual(result, {"sets_marked": 1, "cards_marked": 1})
+            self.assertEqual(second_result, {"sets_marked": 0, "cards_marked": 0})
             self.assertEqual(db.query(Set).count(), 1)
             self.assertEqual(db.query(Card).count(), 1)
             self.assertTrue(db.query(Set).one().is_digital)

@@ -527,7 +527,7 @@ export default function Settings() {
     }
   }
 
-  const handleCrossLanguageFallbackToggle = async (key, enabled) => {
+  const handleAdminBooleanSettingToggle = async (key, enabled) => {
     try {
       await updateSettings({ [key]: enabled ? 'true' : 'false' })
       if (key === 'tcgdex_digital_sets_enabled') {
@@ -910,19 +910,19 @@ export default function Settings() {
                   <SettingsRow label={t('settings.digitalSets')} description={t('settings.digitalSetsDesc')}>
                     <Toggle
                       value={digitalSetsEnabled}
-                      onChange={(val) => handleCrossLanguageFallbackToggle('tcgdex_digital_sets_enabled', val)}
+                      onChange={(val) => handleAdminBooleanSettingToggle('tcgdex_digital_sets_enabled', val)}
                     />
                   </SettingsRow>
                   <SettingsRow label={t('settings.crossLanguagePriceFallback')} description={t('settings.crossLanguagePriceFallbackDesc')}>
                     <Toggle
                       value={crossLanguagePriceFallback}
-                      onChange={(val) => handleCrossLanguageFallbackToggle('cross_language_price_fallback', val)}
+                      onChange={(val) => handleAdminBooleanSettingToggle('cross_language_price_fallback', val)}
                     />
                   </SettingsRow>
                   <SettingsRow label={t('settings.crossLanguageImageFallback')} description={t('settings.crossLanguageImageFallbackDesc')}>
                     <Toggle
                       value={crossLanguageImageFallback}
-                      onChange={(val) => handleCrossLanguageFallbackToggle('cross_language_image_fallback', val)}
+                      onChange={(val) => handleAdminBooleanSettingToggle('cross_language_image_fallback', val)}
                     />
                   </SettingsRow>
                 </>

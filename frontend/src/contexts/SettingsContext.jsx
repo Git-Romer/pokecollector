@@ -50,7 +50,7 @@ const DEFAULT_SETTINGS = {
   price_display: '["trend", "avg", "avg1", "avg7", "avg30", "low"]',
   price_primary: 'trend',
   tcgdex_sync_languages: 'en,de',
-  tcgdex_digital_sets_enabled: 'false',
+  tcgdex_digital_sets_enabled: 'true',
   cross_language_price_fallback: 'true',
   cross_language_image_fallback: 'true',
   debug_mode: 'false',

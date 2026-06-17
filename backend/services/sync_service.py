@@ -9,7 +9,7 @@ from services import pokemon_api, telegram
 from services.card_fallbacks import apply_cross_language_fallbacks, build_missing_language_cards_for_set
 from services.card_upsert import upsert_card
 from services.card_visibility import card_pair_filter, get_configured_sync_languages, get_pinned_set_language_pairs, sync_set_filter
-from services.digital_sets import digital_sets_enabled, purge_digital_catalogue
+from services.digital_sets import digital_sets_enabled, refresh_digital_catalogue_flags
 from services.card_values import effective_market_price, normalize_price_field
 from services.price_utils import PRICE_FIELDS, has_valid_price
 from services.tcgdex_languages import with_lang_suffix
@@ -118,6 +118,7 @@ def _price_sync_plan(
     now = now or datetime.datetime.utcnow()
     no_price_retry_before = now - NO_PRICE_RETRY_COOLDOWN
     latest_activity: dict[str, datetime.datetime] = {}
+    include_digital = digital_sets_enabled(db)
 
     collection_rows = db.query(
         CollectionItem.card_id,
@@ -142,12 +143,13 @@ def _price_sync_plan(
     if include_pinned_sets:
         pinned_pairs = get_pinned_set_language_pairs(db)
         if pinned_pairs:
-            pinned_card_ids = [
-                card_id
-                for (card_id,) in db.query(Card.id)
-                .filter(card_pair_filter(pinned_pairs), Card.is_custom == False)
-                .all()
-            ]
+            pinned_card_query = db.query(Card.id).filter(
+                card_pair_filter(pinned_pairs),
+                Card.is_custom == False,
+            )
+            if not include_digital:
+                pinned_card_query = pinned_card_query.filter(Card.is_digital == False)
+            pinned_card_ids = [card_id for (card_id,) in pinned_card_query.all()]
             for card_id in pinned_card_ids:
                 latest_activity.setdefault(card_id, datetime.datetime.min)
 
@@ -164,6 +166,7 @@ def _price_sync_plan(
                 Card.last_price_sync_attempt_at,
                 Card.last_price_sync_success_at,
                 Card.is_custom,
+                Card.is_digital,
                 Card.tcg_card_id,
                 *price_columns,
             )
@@ -171,6 +174,7 @@ def _price_sync_plan(
         syncable_cards.extend(
             card for card in cards
             if not getattr(card, "is_custom", False) and getattr(card, "tcg_card_id", None)
+            and (include_digital or not getattr(card, "is_digital", False))
         )
 
     sync_limit = _price_sync_limit(db)
@@ -498,15 +502,14 @@ def perform_full_sync(db: Session) -> dict:
         # 1. Sync all sets first
         sync_languages = _get_tcgdex_sync_languages(db)
         include_digital = digital_sets_enabled(db)
-        if not include_digital:
-            purge_result = purge_digital_catalogue(db)
-            if purge_result["sets_deleted"] or purge_result["cards_deleted"]:
-                db.commit()
-                logger.info(
-                    "Purged %s digital sets and %s digital cards before full sync",
-                    purge_result["sets_deleted"],
-                    purge_result["cards_deleted"],
-                )
+        flag_result = refresh_digital_catalogue_flags(db)
+        if flag_result["sets_marked"] or flag_result["cards_marked"]:
+            db.commit()
+            logger.info(
+                "Marked %s digital sets and %s digital cards before full sync",
+                flag_result["sets_marked"],
+                flag_result["cards_marked"],
+            )
         pinned_set_pairs = get_pinned_set_language_pairs(db)
         logger.info("Syncing sets for languages: %s", ", ".join(sync_languages))
         sets_data = pokemon_api.get_all_sets(languages=sync_languages, include_digital=include_digital)

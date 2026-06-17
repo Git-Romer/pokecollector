@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import Setting, UserSetting, User
 from services.debug_logging import configure_debug_logging, get_debug_log_path
-from services.digital_sets import DIGITAL_SETS_SETTING_KEY, purge_digital_catalogue
+from services.digital_sets import DIGITAL_SETS_SETTING_KEY, refresh_digital_catalogue_flags
 from services.exchange_rates import (
     ExchangeRateError,
     fallback_exchange_rate,
@@ -53,7 +53,7 @@ DEFAULT_SETTINGS = {
     "price_primary": "trend",
     "price_display": '["trend", "avg", "avg1", "avg7", "avg30", "low"]',
     "tcgdex_sync_languages": "en,de",
-    DIGITAL_SETS_SETTING_KEY: "false",
+    DIGITAL_SETS_SETTING_KEY: "true",
     "cross_language_price_fallback": "true",
     "cross_language_image_fallback": "true",
     "debug_mode": "false",
@@ -80,12 +80,13 @@ def _apply_setting_side_effect(db: Session, key: str, value: str) -> None:
         enabled = value == "true"
         configure_debug_logging(enabled)
         logger.info("Debug mode setting changed to %s", enabled)
-    elif key == DIGITAL_SETS_SETTING_KEY and value != "true":
-        result = purge_digital_catalogue(db)
+    elif key == DIGITAL_SETS_SETTING_KEY:
+        result = refresh_digital_catalogue_flags(db)
         logger.info(
-            "Digital set tracking disabled; purged %s digital sets and %s digital cards",
-            result["sets_deleted"],
-            result["cards_deleted"],
+            "Digital set visibility changed to %s; marked %s digital sets and %s digital cards",
+            value == "true",
+            result["sets_marked"],
+            result["cards_marked"],
         )
 
 

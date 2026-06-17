@@ -36,7 +36,7 @@ DEFAULT_SETTINGS = {
     "price_primary": "trend",
     "multi_user_mode": "false",
     "tcgdex_sync_languages": "en,de",
-    "tcgdex_digital_sets_enabled": "false",
+    "tcgdex_digital_sets_enabled": "true",
     "cross_language_price_fallback": "true",
     "cross_language_image_fallback": "true",
     "debug_mode": "false",
@@ -500,20 +500,20 @@ def init_db():
     except Exception:
         db.rollback()
 
-    # Keep upgraded installs aligned with the default-off digital set setting.
+    # Keep upgraded installs' legacy Pocket rows correctly flagged for visibility filters.
     try:
-        from services.digital_sets import purge_disabled_digital_catalogue
-        result = purge_disabled_digital_catalogue(db)
+        from services.digital_sets import refresh_digital_catalogue_flags
+        result = refresh_digital_catalogue_flags(db)
         db.commit()
-        if result["sets_deleted"] or result["cards_deleted"]:
+        if result["sets_marked"] or result["cards_marked"]:
             logger.info(
-                "Digital set tracking disabled; purged %s digital sets and %s digital cards during startup",
-                result["sets_deleted"],
-                result["cards_deleted"],
+                "Digital catalogue startup cleanup marked %s sets and %s cards",
+                result["sets_marked"],
+                result["cards_marked"],
             )
     except Exception as e:
         db.rollback()
-        logger.warning("Digital catalogue startup cleanup: %s", e)
+        logger.warning("Digital catalogue flag refresh: %s", e)
 
     # v42: Migrate per-user settings from global to admin user
     try:

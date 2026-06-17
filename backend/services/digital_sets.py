@@ -6,18 +6,7 @@ from typing import Any, Mapping
 
 from sqlalchemy.orm import Session
 
-from models import (
-    BinderCard,
-    Card,
-    CollectionItem,
-    CustomCardMatch,
-    PriceHistory,
-    ProductCard,
-    ProductLedgerEntry,
-    Set,
-    Setting,
-    WishlistItem,
-)
+from models import Card, Set, Setting
 
 DIGITAL_SETS_SETTING_KEY = "tcgdex_digital_sets_enabled"
 DIGITAL_SERIES_IDS = {"tcgp"}
@@ -29,14 +18,12 @@ def setting_truthy(value: Any) -> bool:
 
 def digital_sets_enabled(db: Session) -> bool:
     row = db.query(Setting).filter(Setting.key == DIGITAL_SETS_SETTING_KEY).first()
-    return setting_truthy(row.value if row else "false")
+    return setting_truthy(row.value if row else "true")
 
 
-def purge_disabled_digital_catalogue(db: Session) -> dict[str, int]:
-    if digital_sets_enabled(db):
-        mark_existing_digital_rows(db)
-        return {"sets_deleted": 0, "cards_deleted": 0}
-    return purge_digital_catalogue(db)
+def refresh_digital_catalogue_flags(db: Session) -> dict[str, int]:
+    """Mark known digital catalogue rows without deleting user or catalogue data."""
+    return mark_existing_digital_rows(db)
 
 
 def is_digital_set_data(set_data: Mapping[str, Any] | None) -> bool:
@@ -59,7 +46,7 @@ def is_digital_set_data(set_data: Mapping[str, Any] | None) -> bool:
     return False
 
 
-def mark_existing_digital_rows(db: Session) -> None:
+def mark_existing_digital_rows(db: Session) -> dict[str, int]:
     digital_set_rows = db.query(Set).filter(
         (
             (Set.is_digital == True)
@@ -70,59 +57,24 @@ def mark_existing_digital_rows(db: Session) -> None:
         )
     ).all()
     if not digital_set_rows:
-        return
+        return {"sets_marked": 0, "cards_marked": 0}
 
+    sets_marked = 0
     for set_row in digital_set_rows:
-        set_row.is_digital = True
+        if not set_row.is_digital:
+            sets_marked += 1
+            set_row.is_digital = True
 
     digital_pairs = {
         (set_row.tcg_set_id or set_row.id, set_row.lang or "en")
         for set_row in digital_set_rows
     }
+    cards_marked = 0
     for set_id, lang in digital_pairs:
-        db.query(Card).filter(Card.set_id == set_id, Card.lang == lang).update(
-            {"is_digital": True},
-            synchronize_session=False,
-        )
+        cards_marked += db.query(Card).filter(
+            Card.set_id == set_id,
+            Card.lang == lang,
+            Card.is_digital == False,
+        ).update({"is_digital": True}, synchronize_session=False)
 
-
-def purge_digital_catalogue(db: Session) -> dict[str, int]:
-    """Remove digital set/card catalogue rows and dependent user rows."""
-    mark_existing_digital_rows(db)
-
-    digital_set_ids = [row.id for row in db.query(Set.id).filter(Set.is_digital == True).all()]
-    digital_card_ids = [row.id for row in db.query(Card.id).filter(Card.is_digital == True).all()]
-
-    if not digital_set_ids and not digital_card_ids:
-        return {"sets_deleted": 0, "cards_deleted": 0}
-
-    if digital_card_ids:
-        digital_product_card_ids = [
-            row.id
-            for row in db.query(ProductCard.id).filter(ProductCard.card_id.in_(digital_card_ids)).all()
-        ]
-        if digital_product_card_ids:
-            db.query(ProductLedgerEntry).filter(
-                ProductLedgerEntry.product_card_id.in_(digital_product_card_ids)
-            ).update({"product_card_id": None}, synchronize_session=False)
-        db.query(ProductLedgerEntry).filter(ProductLedgerEntry.card_id.in_(digital_card_ids)).update(
-            {"card_id": None},
-            synchronize_session=False,
-        )
-        db.query(CustomCardMatch).filter(CustomCardMatch.custom_card_id.in_(digital_card_ids)).delete(
-            synchronize_session=False,
-        )
-        for model, column in (
-            (BinderCard, BinderCard.card_id),
-            (CollectionItem, CollectionItem.card_id),
-            (WishlistItem, WishlistItem.card_id),
-            (PriceHistory, PriceHistory.card_id),
-            (ProductCard, ProductCard.card_id),
-        ):
-            db.query(model).filter(column.in_(digital_card_ids)).delete(synchronize_session=False)
-        db.query(Card).filter(Card.id.in_(digital_card_ids)).delete(synchronize_session=False)
-
-    if digital_set_ids:
-        db.query(Set).filter(Set.id.in_(digital_set_ids)).delete(synchronize_session=False)
-
-    return {"sets_deleted": len(digital_set_ids), "cards_deleted": len(digital_card_ids)}
+    return {"sets_marked": sets_marked, "cards_marked": cards_marked}

@@ -148,6 +148,33 @@ class CardVisibilityTests(unittest.TestCase):
         self.assertIn("A1-1_en", visible_card_ids)
         self.assertIn("A1_en", sync_set_ids)
 
+    def test_price_plan_excludes_tracked_digital_cards_when_setting_is_disabled(self):
+        self.db.add(Card(
+            id="A1-2_en",
+            tcg_card_id="A1-2",
+            name="Digital Setmate EN",
+            set_id="A1",
+            number="2",
+            lang="en",
+            is_custom=False,
+            is_digital=True,
+        ))
+        self.db.add(CollectionItem(
+            card_id="A1-1_en",
+            user_id=self.user.id,
+            quantity=1,
+            condition="NM",
+            variant="Normal",
+            lang="en",
+            added_at=datetime.datetime.utcnow(),
+        ))
+        self.db.commit()
+
+        plan = _price_sync_plan(self.db, force=True, include_pinned_sets=True)
+
+        self.assertNotIn("A1-1_en", plan["ids"])
+        self.assertNotIn("A1-2_en", plan["ids"])
+
     def test_full_sync_price_plan_includes_all_cards_in_pinned_set(self):
         plan = _price_sync_plan(self.db, force=True, include_pinned_sets=True)
 
