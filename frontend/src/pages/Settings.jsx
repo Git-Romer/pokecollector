@@ -595,6 +595,9 @@ export default function Settings() {
   const lastFullSyncText = syncStatus?.last_full_sync?.finished_at
     ? formatDistanceToNow(new Date(syncStatus.last_full_sync.finished_at), { addSuffix: true })
     : t('settings.neverSynced')
+  const lastFullSyncDescription = syncStatus?.last_full_sync?.status === 'error'
+    ? `${t('settings.lastSyncFailed')} ${lastFullSyncText}${syncStatus.last_full_sync.error_message ? `: ${syncStatus.last_full_sync.error_message}` : ''}`
+    : lastFullSyncText
 
   return (
     <div className="space-y-6 py-6">
@@ -884,7 +887,7 @@ export default function Settings() {
 
             {/* Card 1: Full Sync */}
             <SettingsCard>
-              <SettingsRow label={t('settings.syncSetsCards')} description={lastFullSyncText}>
+              <SettingsRow label={t('settings.syncSetsCards')} description={lastFullSyncDescription}>
                 <button
                   onClick={() => syncMutation.mutate()}
                   disabled={isRunning}

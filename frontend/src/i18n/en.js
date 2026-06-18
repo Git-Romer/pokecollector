@@ -568,6 +568,7 @@ const en = {
     syncing: 'Syncing...',
     syncStarted: 'Sync started!',
     syncFailed: 'Failed to start sync',
+    lastSyncFailed: 'Last sync failed',
     exportCollection: 'Export Collection',
     exportCSV: 'Export as CSV',
     exportPDF: 'Export as PDF',

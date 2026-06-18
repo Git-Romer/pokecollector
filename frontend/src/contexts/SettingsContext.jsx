@@ -21,6 +21,7 @@ import th from '../i18n/th'
 import zhTw from '../i18n/zhTw'
 import { priceFieldFromPrimary } from '../utils/prices'
 import { normalizeTcgdexLanguageCsv } from '../utils/tcgdexLanguages'
+import { useAuth } from './AuthContext'
 
 const translations = {
   de,
@@ -59,6 +60,7 @@ const DEFAULT_SETTINGS = {
 const SettingsContext = createContext(null)
 
 export function SettingsProvider({ children }) {
+  const { user, loading: authLoading, multiUser } = useAuth()
   const [settings, setSettings] = useState(DEFAULT_SETTINGS)
   const [loaded, setLoaded] = useState(false)
   const [exchangeRate, setExchangeRate] = useState(1.0)
@@ -66,12 +68,20 @@ export function SettingsProvider({ children }) {
   const [exchangeRateCurrency, setExchangeRateCurrency] = useState('EUR')
   const [usdToEurRate, setUsdToEurRate] = useState(0.91)
 
-  // Load settings from backend on mount
+  // Load settings from backend once auth mode is known. Single-user mode has no
+  // token, but the backend still auto-authenticates the bootstrap admin.
   useEffect(() => {
+    if (authLoading) return
+
     const token = localStorage.getItem('token')
-    if (!token) { setLoaded(true); return }
-    fetch('/api/settings/', { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
+    if (multiUser && !token) { setLoaded(true); return }
+
+    const headers = token && multiUser ? { Authorization: `Bearer ${token}` } : {}
+    fetch('/api/settings/', { headers })
+      .then(r => {
+        if (!r.ok) throw new Error('Settings load failed')
+        return r.json()
+      })
       .then(data => {
         setSettings(prev => ({
           ...prev,
@@ -85,17 +95,19 @@ export function SettingsProvider({ children }) {
         // Backend not available, use defaults
         setLoaded(true)
       })
-  }, [])
+  }, [authLoading, multiUser, user?.id])
 
   // Fetch exchange rates through the backend to avoid browser CORS/redirect issues.
   // Most app prices are stored in EUR; TCGPlayer prices are stored in USD and need the inverse path.
   useEffect(() => {
+    const token = localStorage.getItem('token')
+    if (authLoading || (multiUser && !token)) return
+
     const fetchExchangeRate = async (from, to, fallback) => {
-      const token = localStorage.getItem('token')
-      if (!token) return fallback
       try {
+        const headers = token && multiUser ? { Authorization: `Bearer ${token}` } : {}
         const response = await fetch(`/api/settings/exchange-rate?from=${from}&to=${to}`, {
-          headers: { Authorization: `Bearer ${token}` },
+          headers,
         })
         if (!response.ok) throw new Error('Exchange rate lookup failed')
         const data = await response.json()
@@ -127,7 +139,7 @@ export function SettingsProvider({ children }) {
       })
     }
     return () => { cancelled = true }
-  }, [settings.currency])
+  }, [settings.currency, authLoading, multiUser, user?.id])
 
   // Update one or more settings
   const updateSettings = useCallback(async (updates) => {
@@ -136,7 +148,7 @@ export function SettingsProvider({ children }) {
     try {
       const token = localStorage.getItem('token')
       const headers = { 'Content-Type': 'application/json' }
-      if (token) headers.Authorization = `Bearer ${token}`
+      if (token && multiUser) headers.Authorization = `Bearer ${token}`
 
       const resp = await fetch('/api/settings/', {
         method: 'PUT',
@@ -155,7 +167,7 @@ export function SettingsProvider({ children }) {
       console.error('Failed to save settings:', err)
       throw err
     }
-  }, [settings])
+  }, [settings, multiUser])
 
   const lang = settings.language || 'de'
   const msgs = translations[lang] || translations.de

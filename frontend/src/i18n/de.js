@@ -568,6 +568,7 @@ const de = {
     syncing: 'Synchronisiert...',
     syncStarted: 'Sync gestartet!',
     syncFailed: 'Sync konnte nicht gestartet werden',
+    lastSyncFailed: 'Letzter Sync fehlgeschlagen',
     exportCollection: 'Sammlung exportieren',
     exportCSV: 'Als CSV exportieren',
     exportPDF: 'Als PDF exportieren',

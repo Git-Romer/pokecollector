@@ -5,8 +5,10 @@ from database import get_db
 from models import SyncLog, User
 from services.sync_service import perform_sync, perform_price_sync
 import datetime
+import logging
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 _sync_running = False
 _price_sync_running = False
@@ -34,6 +36,7 @@ def _sync_log_payload(sync_log: SyncLog | None):
         "cards_updated": sync_log.cards_updated,
         "sets_updated": sync_log.sets_updated,
         "sync_type": sync_log.sync_type,
+        "error_message": sync_log.error_message,
     }
 
 
@@ -57,8 +60,8 @@ def trigger_sync(
         sync_db = SessionLocal()
         try:
             perform_sync(sync_db)
-        except Exception as e:
-            pass
+        except Exception:
+            logger.exception("Background full sync failed")
         finally:
             _sync_running = False
             sync_db.close()
@@ -87,8 +90,8 @@ def trigger_price_sync(
         sync_db = SessionLocal()
         try:
             perform_price_sync(sync_db)
-        except Exception as e:
-            pass
+        except Exception:
+            logger.exception("Background price sync failed")
         finally:
             _price_sync_running = False
             sync_db.close()
@@ -117,8 +120,8 @@ def trigger_all_price_sync(
         sync_db = SessionLocal()
         try:
             perform_price_sync(sync_db, force=True)
-        except Exception as e:
-            pass
+        except Exception:
+            logger.exception("Background forced price sync failed")
         finally:
             _price_sync_running = False
             sync_db.close()
