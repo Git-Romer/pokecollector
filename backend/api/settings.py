@@ -3,7 +3,7 @@ import os
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from api.auth import get_current_user
 from sqlalchemy.orm import Session
 from database import get_db
@@ -187,11 +187,11 @@ def download_debug_log(current_user: User = Depends(get_current_user)):
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Admin only")
     path = get_debug_log_path()
-    return FileResponse(
-        path,
-        filename="pokecollector-debug.log",
+    return Response(
+        content=path.read_bytes(),
         media_type="text/plain; charset=utf-8",
         headers={
+            "Content-Disposition": 'attachment; filename="pokecollector-debug.log"',
             "Cache-Control": "no-store",
             "Pragma": "no-cache",
             "Expires": "0",

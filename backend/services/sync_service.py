@@ -330,6 +330,19 @@ def upsert_set(db: Session, set_data: dict):
     return existing
 
 
+def _parse_unique_sync_sets(sets_data: list[dict]) -> tuple[list[dict], int]:
+    """Parse and dedupe fetched set rows by DB key before adding them to a session."""
+    parsed_by_id: dict[str, dict] = {}
+    duplicate_count = 0
+    for set_data in sets_data:
+        parsed = pokemon_api.parse_set_for_db(set_data)
+        parsed["lang"] = set_data.get("_lang", "en")
+        if parsed["id"] in parsed_by_id:
+            duplicate_count += 1
+        parsed_by_id[parsed["id"]] = parsed
+    return list(parsed_by_id.values()), duplicate_count
+
+
 def record_price_history(db: Session, card: Card):
     """Record today's price for a card."""
     today = datetime.date.today()
@@ -514,12 +527,15 @@ def perform_full_sync(db: Session) -> dict:
         pinned_set_pairs = get_pinned_set_language_pairs(db)
         logger.info("Syncing sets for languages: %s", ", ".join(sync_languages))
         sets_data = pokemon_api.get_all_sets(languages=sync_languages, include_digital=include_digital)
+        parsed_sets, duplicate_sets = _parse_unique_sync_sets(sets_data)
+        if duplicate_sets:
+            logger.warning(
+                "TCGdex returned %s duplicate set ids in the sync list; keeping the last row for each id",
+                duplicate_sets,
+            )
         known_set_ids = {s.id for s in db.query(Set.id).all()}
 
-        for set_data in sets_data:
-            parsed = pokemon_api.parse_set_for_db(set_data)
-            # Inject lang from the _lang field (required for composite key format)
-            parsed["lang"] = set_data.get("_lang", "en")
+        for parsed in parsed_sets:
             is_new = parsed["id"] not in known_set_ids
             upsert_set(db, parsed)
             if is_new:
