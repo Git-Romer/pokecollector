@@ -2,6 +2,7 @@ import re
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import text, func
 from api.auth import get_current_user
@@ -22,6 +23,10 @@ from services.tcgdex_languages import DEFAULT_TCGDEX_SYNC_LANGUAGES, has_lang_su
 router = APIRouter()
 
 _NATURAL_SORT_RE = re.compile(r"(\d+|\D+)")
+
+
+class MarkSetsSeenRequest(BaseModel):
+    set_ids: Optional[List[str]] = None
 
 
 def _natural_card_number_key(number: Optional[str]) -> tuple:
@@ -151,11 +156,15 @@ def get_new_sets(
 
 @router.post("/mark-seen")
 def mark_sets_seen(
+    body: Optional[MarkSetsSeenRequest] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Mark all new sets as seen."""
-    db.query(Set).filter(Set.is_new == True).update({"is_new": False})
+    query = db.query(Set).filter(Set.is_new == True)
+    if body and body.set_ids is not None:
+        query = query.filter(Set.id.in_(body.set_ids))
+    query.update({"is_new": False}, synchronize_session=False)
     db.commit()
     return {"message": "All new sets marked as seen"}
 

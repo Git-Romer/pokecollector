@@ -324,6 +324,13 @@ const esMx = {
     releaseDate: 'Lanzamiento',
     topSet: 'Serie principal',
     heroCards: 'cartas',
+    resetFilters: 'Restablecer filtros',
+    showHiddenSets: 'Mostrar sets ocultos',
+    hideHiddenSets: 'Ocultar sets ocultos',
+    hideSet: 'Ocultar set',
+    unhideSet: 'Mostrar set',
+    hidden: 'Oculto',
+    savePreferencesFailed: 'No se pudieron guardar las preferencias de sets',
   },
 
   // Wishlist

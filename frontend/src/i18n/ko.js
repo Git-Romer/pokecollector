@@ -324,6 +324,13 @@ const ko = {
     releaseDate: '출시',
     topSet: '상위 세트',
     heroCards: '카드',
+    resetFilters: '필터 초기화',
+    showHiddenSets: '숨긴 세트 표시',
+    hideHiddenSets: '숨긴 세트 숨기기',
+    hideSet: '세트 숨기기',
+    unhideSet: '세트 표시',
+    hidden: '숨김',
+    savePreferencesFailed: '세트 설정을 저장하지 못했습니다',
   },
 
   // Wishlist

@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 PER_USER_KEYS = {
     "language", "currency", "price_primary", "price_display",
+    "set_overview_filters", "hidden_set_ids",
     "telegram_bot_token", "telegram_chat_id", "telegram_enabled",
     "price_alerts_enabled", "price_alert_threshold",
     "gemini_api_key", "trainer_name",
@@ -52,6 +53,8 @@ DEFAULT_SETTINGS = {
     "currency": "EUR",
     "price_primary": "trend",
     "price_display": '["trend", "avg", "avg1", "avg7", "avg30", "low"]',
+    "set_overview_filters": "{}",
+    "hidden_set_ids": "[]",
     "tcgdex_sync_languages": "en,de",
     DIGITAL_SETS_SETTING_KEY: "true",
     "cross_language_price_fallback": "true",

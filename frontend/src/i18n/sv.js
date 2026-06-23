@@ -322,6 +322,13 @@ const sv = {
     releaseDate: 'Utgiven',
     topSet: 'Toppset',
     heroCards: 'kort',
+    resetFilters: 'Aterstall filter',
+    showHiddenSets: 'Visa dolda set',
+    hideHiddenSets: 'Dolj dolda set',
+    hideSet: 'Dolj set',
+    unhideSet: 'Visa set',
+    hidden: 'Dolt',
+    savePreferencesFailed: 'Det gick inte att spara setinstallningar',
   },
 
   // Wishlist

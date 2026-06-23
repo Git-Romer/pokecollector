@@ -324,6 +324,13 @@ const zhTw = {
     releaseDate: '發佈',
     topSet: '熱門系列',
     heroCards: '張卡牌',
+    resetFilters: '重設篩選',
+    showHiddenSets: '顯示隱藏系列',
+    hideHiddenSets: '隱藏已隱藏系列',
+    hideSet: '隱藏系列',
+    unhideSet: '顯示系列',
+    hidden: '已隱藏',
+    savePreferencesFailed: '儲存系列偏好失敗',
   },
 
   // Wishlist

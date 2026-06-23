@@ -322,6 +322,13 @@ const th = {
     releaseDate: 'วางจำหน่าย',
     topSet: 'ชุดเด่น',
     heroCards: 'การ์ด',
+    resetFilters: 'รีเซ็ตตัวกรอง',
+    showHiddenSets: 'แสดงชุดที่ซ่อนไว้',
+    hideHiddenSets: 'ซ่อนชุดที่ซ่อนไว้',
+    hideSet: 'ซ่อนชุด',
+    unhideSet: 'แสดงชุด',
+    hidden: 'ซ่อนอยู่',
+    savePreferencesFailed: 'บันทึกการตั้งค่าชุดไม่สำเร็จ',
   },
 
   // Wishlist

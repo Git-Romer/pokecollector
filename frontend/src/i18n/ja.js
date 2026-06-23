@@ -324,6 +324,13 @@ const ja = {
     releaseDate: '発売',
     topSet: 'トップセット',
     heroCards: 'カード',
+    resetFilters: 'フィルターをリセット',
+    showHiddenSets: '非表示のセットを表示',
+    hideHiddenSets: '非表示のセットを隠す',
+    hideSet: 'セットを非表示',
+    unhideSet: 'セットを表示',
+    hidden: '非表示',
+    savePreferencesFailed: 'セット設定を保存できませんでした',
   },
 
   // Wishlist
