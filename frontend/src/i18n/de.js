@@ -330,6 +330,13 @@ const de = {
     releaseDate: 'Release',
     topSet: 'Top Set',
     heroCards: 'Karten',
+    resetFilters: 'Filter zurücksetzen',
+    showHiddenSets: 'Ausgeblendete Sets anzeigen',
+    hideHiddenSets: 'Ausgeblendete Sets verstecken',
+    hideSet: 'Set ausblenden',
+    unhideSet: 'Set einblenden',
+    hidden: 'Ausgeblendet',
+    savePreferencesFailed: 'Set-Einstellungen konnten nicht gespeichert werden',
   },
 
   // Wishlist

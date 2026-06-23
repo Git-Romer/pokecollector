@@ -322,6 +322,13 @@ const nl = {
     releaseDate: 'Release',
     topSet: 'Top Set',
     heroCards: 'kaarten',
+    resetFilters: 'Filters resetten',
+    showHiddenSets: 'Verborgen sets tonen',
+    hideHiddenSets: 'Verborgen sets verbergen',
+    hideSet: 'Set verbergen',
+    unhideSet: 'Set tonen',
+    hidden: 'Verborgen',
+    savePreferencesFailed: 'Setvoorkeuren opslaan mislukt',
   },
 
   // Wishlist

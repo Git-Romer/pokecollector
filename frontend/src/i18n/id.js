@@ -324,6 +324,13 @@ const id = {
     releaseDate: 'Rilis',
     topSet: 'Set Teratas',
     heroCards: 'kartu',
+    resetFilters: 'Reset filter',
+    showHiddenSets: 'Tampilkan set tersembunyi',
+    hideHiddenSets: 'Sembunyikan set tersembunyi',
+    hideSet: 'Sembunyikan set',
+    unhideSet: 'Tampilkan set',
+    hidden: 'Tersembunyi',
+    savePreferencesFailed: 'Gagal menyimpan preferensi set',
   },
 
   // Wishlist

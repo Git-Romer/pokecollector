@@ -1,7 +1,7 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Search, Bell, BellOff, SortAsc, Filter, ChevronUp, ChevronDown } from 'lucide-react'
+import { Search, Bell, BellOff, SortAsc, Filter, ChevronUp, ChevronDown, Eye, EyeOff, RotateCcw } from 'lucide-react'
 import { getSets, markSetsSeen } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
@@ -11,16 +11,66 @@ import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import { tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { textIncludes } from '../utils/textSearch'
 
+const DEFAULT_SET_FILTERS = {
+  search: '',
+  series: '',
+  sortBy: 'release_date',
+  sortOrder: 'desc',
+  progressFilter: 'all',
+  langFilter: 'all',
+  showHiddenSets: false,
+}
+
+const SET_FILTER_OPTIONS = {
+  sortBy: new Set(['release_date', 'name', 'total', 'progress']),
+  sortOrder: new Set(['asc', 'desc']),
+  progressFilter: new Set(['all', 'started', 'complete']),
+}
+
+const parseJsonSetting = (value, fallback) => {
+  if (!value) return fallback
+  if (typeof value === 'object') return value
+  try {
+    return JSON.parse(value)
+  } catch {
+    return fallback
+  }
+}
+
+const normalizeSetFilters = (value) => {
+  const parsed = parseJsonSetting(value, {})
+  return {
+    search: typeof parsed.search === 'string' ? parsed.search : DEFAULT_SET_FILTERS.search,
+    series: typeof parsed.series === 'string' ? parsed.series : DEFAULT_SET_FILTERS.series,
+    sortBy: SET_FILTER_OPTIONS.sortBy.has(parsed.sortBy) ? parsed.sortBy : DEFAULT_SET_FILTERS.sortBy,
+    sortOrder: SET_FILTER_OPTIONS.sortOrder.has(parsed.sortOrder) ? parsed.sortOrder : DEFAULT_SET_FILTERS.sortOrder,
+    progressFilter: SET_FILTER_OPTIONS.progressFilter.has(parsed.progressFilter) ? parsed.progressFilter : DEFAULT_SET_FILTERS.progressFilter,
+    langFilter: typeof parsed.langFilter === 'string' && parsed.langFilter ? parsed.langFilter : DEFAULT_SET_FILTERS.langFilter,
+    showHiddenSets: parsed.showHiddenSets === true,
+  }
+}
+
+const normalizeHiddenSetIds = (value) => {
+  const parsed = parseJsonSetting(value, [])
+  if (!Array.isArray(parsed)) return []
+  return [...new Set(parsed.filter(Boolean).map(String))].sort()
+}
+
 export default function Sets() {
   const navigate = useNavigate()
-  const { t } = useSettings()
+  const { t, settings, updateSettings, loaded: settingsLoaded } = useSettings()
   const visibleLanguages = useVisibleTcgdexLanguages()
-  const [search, setSearch] = useState('')
-  const [series, setSeries] = useState('')
-  const [sortBy, setSortBy] = useState('release_date')
-  const [sortOrder, setSortOrder] = useState('desc')
-  const [progressFilter, setProgressFilter] = useState('all')
-  const [langFilter, setLangFilter] = useState('all')
+  const [filtersHydrated, setFiltersHydrated] = useState(false)
+  const [search, setSearch] = useState(DEFAULT_SET_FILTERS.search)
+  const [series, setSeries] = useState(DEFAULT_SET_FILTERS.series)
+  const [sortBy, setSortBy] = useState(DEFAULT_SET_FILTERS.sortBy)
+  const [sortOrder, setSortOrder] = useState(DEFAULT_SET_FILTERS.sortOrder)
+  const [progressFilter, setProgressFilter] = useState(DEFAULT_SET_FILTERS.progressFilter)
+  const [langFilter, setLangFilter] = useState(DEFAULT_SET_FILTERS.langFilter)
+  const [showHiddenSets, setShowHiddenSets] = useState(DEFAULT_SET_FILTERS.showHiddenSets)
+  const [hiddenSetIds, setHiddenSetIds] = useState([])
+  const savedFilterStateRef = useRef('')
+  const savedHiddenSetIdsRef = useRef('')
   const queryClient = useQueryClient()
 
   const { data: sets = [], isLoading } = useQuery({
@@ -45,11 +95,70 @@ export default function Sets() {
     }
   }, [langFilter, visibleLanguageCodes, visibleLanguages.isLoading])
 
-  const newSets = sets.filter(s => s.is_new)
+  useEffect(() => {
+    if (!settingsLoaded) setFiltersHydrated(false)
+  }, [settingsLoaded])
+
+  useEffect(() => {
+    if (!settingsLoaded || filtersHydrated) return
+    const savedFilters = normalizeSetFilters(settings.set_overview_filters)
+    const savedHiddenIds = normalizeHiddenSetIds(settings.hidden_set_ids)
+    setSearch(savedFilters.search)
+    setSeries(savedFilters.series)
+    setSortBy(savedFilters.sortBy)
+    setSortOrder(savedFilters.sortOrder)
+    setProgressFilter(savedFilters.progressFilter)
+    setLangFilter(savedFilters.langFilter)
+    setShowHiddenSets(savedFilters.showHiddenSets)
+    setHiddenSetIds(savedHiddenIds)
+    savedFilterStateRef.current = JSON.stringify(savedFilters)
+    savedHiddenSetIdsRef.current = JSON.stringify(savedHiddenIds)
+    setFiltersHydrated(true)
+  }, [filtersHydrated, settings, settingsLoaded])
+
+  useEffect(() => {
+    if (!settingsLoaded || !filtersHydrated) return
+    const serializedFilters = JSON.stringify({
+      search,
+      series,
+      sortBy,
+      sortOrder,
+      progressFilter,
+      langFilter,
+      showHiddenSets,
+    })
+    if (savedFilterStateRef.current === serializedFilters) return
+    const handle = setTimeout(() => {
+      savedFilterStateRef.current = serializedFilters
+      updateSettings({ set_overview_filters: serializedFilters })
+        .catch(() => {
+          savedFilterStateRef.current = ''
+          toast.error(t('sets.savePreferencesFailed'))
+        })
+    }, 400)
+    return () => clearTimeout(handle)
+  }, [filtersHydrated, langFilter, progressFilter, search, series, settingsLoaded, showHiddenSets, sortBy, sortOrder, t, updateSettings])
+
+  useEffect(() => {
+    if (!settingsLoaded || !filtersHydrated) return
+    const serializedHiddenSetIds = JSON.stringify(hiddenSetIds)
+    if (savedHiddenSetIdsRef.current === serializedHiddenSetIds) return
+    savedHiddenSetIdsRef.current = serializedHiddenSetIds
+    updateSettings({ hidden_set_ids: serializedHiddenSetIds })
+      .catch(() => {
+        savedHiddenSetIdsRef.current = ''
+        toast.error(t('sets.savePreferencesFailed'))
+      })
+  }, [filtersHydrated, hiddenSetIds, settingsLoaded, t, updateSettings])
+
   const allSeries = [...new Set(sets.map(s => s.series).filter(Boolean))].sort()
+  const hiddenSetIdSet = useMemo(() => new Set(hiddenSetIds), [hiddenSetIds])
+  const hiddenSetCount = sets.filter(set => hiddenSetIdSet.has(String(set.id))).length
+  const newSets = sets.filter(s => s.is_new && (showHiddenSets || !hiddenSetIdSet.has(String(s.id))))
 
   const filtered = useMemo(() => {
     let result = sets.filter(s => {
+      if (!showHiddenSets && hiddenSetIdSet.has(String(s.id))) return false
       if (search && !textIncludes(s.name, search)) return false
       if (series && s.series !== series) return false
       const owned = s.owned_count ?? 0
@@ -79,9 +188,27 @@ export default function Sets() {
     })
 
     return result
-  }, [sets, search, series, progressFilter, sortBy, sortOrder])
+  }, [hiddenSetIdSet, progressFilter, search, series, sets, showHiddenSets, sortBy, sortOrder])
 
   const toggleOrder = () => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')
+  const resetFilters = () => {
+    setSearch(DEFAULT_SET_FILTERS.search)
+    setSeries(DEFAULT_SET_FILTERS.series)
+    setSortBy(DEFAULT_SET_FILTERS.sortBy)
+    setSortOrder(DEFAULT_SET_FILTERS.sortOrder)
+    setProgressFilter(DEFAULT_SET_FILTERS.progressFilter)
+    setLangFilter(DEFAULT_SET_FILTERS.langFilter)
+    setShowHiddenSets(DEFAULT_SET_FILTERS.showHiddenSets)
+  }
+  const toggleHiddenSet = (setId) => {
+    const normalizedId = String(setId)
+    setHiddenSetIds(current => (
+      current.includes(normalizedId)
+        ? current.filter(id => id !== normalizedId)
+        : [...current, normalizedId].sort()
+    ))
+  }
+  const hasActiveFilters = search || series || sortBy !== DEFAULT_SET_FILTERS.sortBy || sortOrder !== DEFAULT_SET_FILTERS.sortOrder || progressFilter !== DEFAULT_SET_FILTERS.progressFilter || langFilter !== DEFAULT_SET_FILTERS.langFilter || showHiddenSets !== DEFAULT_SET_FILTERS.showHiddenSets
 
   return (
     <div className="space-y-4 pb-2">
@@ -99,7 +226,7 @@ export default function Sets() {
         </div>
         <div className="flex gap-2">
           {newSets.length > 0 && (
-            <button onClick={() => markSeenMutation.mutate()} className="btn-ghost text-sm py-1.5">
+            <button onClick={() => markSeenMutation.mutate(newSets.map(set => set.id))} className="btn-ghost text-sm py-1.5">
               <BellOff size={14} /> {t('sets.markAllSeen')}
             </button>
           )}
@@ -181,6 +308,28 @@ export default function Sets() {
             ))}
           </div>
 
+          <div className="flex items-center gap-2 flex-wrap">
+            {hiddenSetCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowHiddenSets(value => !value)}
+                className={`btn-ghost py-1.5 px-2 text-xs font-medium ${
+                  showHiddenSets ? 'text-brand-red border-brand-red/30 bg-brand-red/10' : ''
+                }`}
+              >
+                {showHiddenSets ? <EyeOff size={14} /> : <Eye size={14} />}
+                {showHiddenSets ? t('sets.hideHiddenSets') : t('sets.showHiddenSets')}
+                <span className="rounded-full bg-bg-elevated px-1.5 py-0.5 text-[10px] text-text-secondary">{hiddenSetCount}</span>
+              </button>
+            )}
+            {hasActiveFilters && (
+              <button type="button" onClick={resetFilters} className="btn-ghost py-1.5 px-2 text-xs font-medium">
+                <RotateCcw size={14} />
+                {t('sets.resetFilters')}
+              </button>
+            )}
+          </div>
+
           <span className="text-xs text-text-muted sm:ml-auto">
             {filtered.length} / {sets.length} {t('sets.setsTotal')}
           </span>
@@ -248,15 +397,41 @@ export default function Sets() {
             const total = set.total ?? 0
             const pct = total > 0 ? Math.round((owned / total) * 100) : 0
             const hpClass = pct >= 66 ? 'healthy' : pct >= 33 ? 'medium' : 'low'
+            const isHidden = hiddenSetIdSet.has(String(set.id))
 
             return (
               <div
                 key={set.id}
-                className="bg-bg-card border border-border rounded-2xl overflow-hidden cursor-pointer hover:border-brand-red/40 transition-all duration-200 hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)] group relative"
+                className={`bg-bg-card border rounded-2xl overflow-hidden cursor-pointer hover:border-brand-red/40 transition-all duration-200 hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)] group relative ${
+                  isHidden ? 'border-border/70 opacity-60' : 'border-border'
+                }`}
                 onClick={() => navigate(`/sets/${set.id}`)}
               >
                 {set.is_new && (
                   <span className="absolute top-2 left-2 z-10 badge badge-red">{t('common.new')}</span>
+                )}
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    toggleHiddenSet(set.id)
+                  }}
+                  className={`absolute top-2 z-20 flex h-8 w-8 items-center justify-center rounded-full border transition-colors ${
+                    set.is_new ? 'left-14' : 'left-2'
+                  } ${
+                    isHidden
+                      ? 'border-brand-red/30 bg-brand-red/15 text-brand-red hover:bg-brand-red/25'
+                      : 'border-border bg-bg-card/90 text-text-muted hover:text-text-primary hover:bg-bg-elevated'
+                  }`}
+                  title={isHidden ? t('sets.unhideSet') : t('sets.hideSet')}
+                  aria-label={isHidden ? t('sets.unhideSet') : t('sets.hideSet')}
+                >
+                  {isHidden ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+                {isHidden && (
+                  <span className="absolute top-2 right-2 z-10 rounded-full border border-border bg-bg-card/90 px-2 py-0.5 text-[10px] font-bold text-text-secondary">
+                    {t('sets.hidden')}
+                  </span>
                 )}
 
                 {/* Set logo area — big, centered with dot pattern */}
@@ -296,7 +471,7 @@ export default function Sets() {
                     <img src="/pokemon-logo.svg" className="w-28 h-12 object-contain opacity-40 relative z-10" alt="" />
                   )}
 
-                  {pct === 100 && (
+                  {pct === 100 && !isHidden && (
                     <span className="absolute top-2 right-2 z-10 bg-green/20 text-green text-[10px] font-black px-2 py-0.5 rounded-full border border-green/30">
                       ★ {t('sets.filterComplete')}
                     </span>

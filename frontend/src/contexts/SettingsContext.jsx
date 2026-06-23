@@ -54,6 +54,8 @@ const DEFAULT_SETTINGS = {
   tcgdex_digital_sets_enabled: 'true',
   cross_language_price_fallback: 'true',
   cross_language_image_fallback: 'true',
+  set_overview_filters: '{}',
+  hidden_set_ids: '[]',
   debug_mode: 'false',
 }
 
@@ -73,8 +75,13 @@ export function SettingsProvider({ children }) {
   useEffect(() => {
     if (authLoading) return
 
+    setLoaded(false)
     const token = localStorage.getItem('token')
-    if (multiUser && !token) { setLoaded(true); return }
+    if (multiUser && !token) {
+      setSettings(DEFAULT_SETTINGS)
+      setLoaded(true)
+      return
+    }
 
     const headers = token && multiUser ? { Authorization: `Bearer ${token}` } : {}
     fetch('/api/settings/', { headers })

@@ -129,7 +129,7 @@ export const getSets = (params) => api.get('/sets/', { params })
 export const getSet = (id) => api.get(`/sets/${id}`)
 export const getSetChecklist = (id) => api.get(`/sets/${id}/checklist`)
 export const getNewSets = () => api.get('/sets/new')
-export const markSetsSeen = () => api.post('/sets/mark-seen')
+export const markSetsSeen = (setIds) => api.post('/sets/mark-seen', Array.isArray(setIds) ? { set_ids: setIds } : undefined)
 
 // Wishlist
 export const getWishlist = () => api.get('/wishlist/')

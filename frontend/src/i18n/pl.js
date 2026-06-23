@@ -324,6 +324,13 @@ const pl = {
     releaseDate: 'Wydanie',
     topSet: 'Top zestaw',
     heroCards: 'karty',
+    resetFilters: 'Resetuj filtry',
+    showHiddenSets: 'Pokaz ukryte zestawy',
+    hideHiddenSets: 'Ukryj ukryte zestawy',
+    hideSet: 'Ukryj zestaw',
+    unhideSet: 'Pokaz zestaw',
+    hidden: 'Ukryty',
+    savePreferencesFailed: 'Nie udalo sie zapisac preferencji zestawow',
   },
 
   // Wishlist

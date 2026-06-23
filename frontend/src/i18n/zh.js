@@ -324,6 +324,13 @@ const zh = {
     releaseDate: '发布',
     topSet: '热门系列',
     heroCards: '张卡牌',
+    resetFilters: '重置筛选',
+    showHiddenSets: '显示隐藏系列',
+    hideHiddenSets: '隐藏已隐藏系列',
+    hideSet: '隐藏系列',
+    unhideSet: '显示系列',
+    hidden: '已隐藏',
+    savePreferencesFailed: '保存系列偏好失败',
   },
 
   // Wishlist

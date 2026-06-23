@@ -324,6 +324,13 @@ const ru = {
     releaseDate: 'Выпуск',
     topSet: 'Лучший набор',
     heroCards: 'карты',
+    resetFilters: 'Сбросить фильтры',
+    showHiddenSets: 'Показать скрытые наборы',
+    hideHiddenSets: 'Скрыть скрытые наборы',
+    hideSet: 'Скрыть набор',
+    unhideSet: 'Показать набор',
+    hidden: 'Скрыто',
+    savePreferencesFailed: 'Не удалось сохранить настройки наборов',
   },
 
   // Wishlist

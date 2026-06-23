@@ -330,6 +330,13 @@ const en = {
     releaseDate: 'Release',
     topSet: 'Top Set',
     heroCards: 'cards',
+    resetFilters: 'Reset filters',
+    showHiddenSets: 'Show hidden sets',
+    hideHiddenSets: 'Hide hidden sets',
+    hideSet: 'Hide set',
+    unhideSet: 'Unhide set',
+    hidden: 'Hidden',
+    savePreferencesFailed: 'Failed to save set preferences',
   },
 
   // Wishlist
