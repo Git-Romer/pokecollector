@@ -24,12 +24,12 @@ export default {
           secondary: '#a0a0b8',
           muted: '#606078',
         },
-        // Pokemon brand — richer, more saturated
+        // Archive semantic aliases retained while existing spaces are refit.
         brand: {
           red: 'rgb(var(--color-brand-red-rgb) / <alpha-value>)',
           'red-light': 'var(--color-brand-red-light)',
           'red-dark': 'var(--color-brand-red-dark)',
-          'red-glow': 'rgba(227,0,11,0.35)',
+          'red-glow': 'rgba(91,156,255,0.35)',
         },
         // Status — keeping legacy names for backward compat
         pokemon: {
@@ -58,10 +58,9 @@ export default {
           DEFAULT: '#3b82f6',
           subtle: '#0c1a2e',
         },
-        // Pokemon gold
-        gold: '#f5c842',
-        'gold-muted': 'rgba(245,200,66,0.15)',
-        'gold-border': 'rgba(245,200,66,0.35)',
+        gold: '#8fc0ff',
+        'gold-muted': 'rgba(143,192,255,0.15)',
+        'gold-border': 'rgba(143,192,255,0.35)',
         // Pokemon energy type colors
         'type-fire': '#ff6b35',
         'type-water': '#4fc3f7',
@@ -77,7 +76,7 @@ export default {
       },
 
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        sans: ['Segoe UI Variable', 'Segoe UI', 'system-ui', 'sans-serif'],
       },
 
       fontSize: {

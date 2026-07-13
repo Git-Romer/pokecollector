@@ -1,0 +1,62 @@
+:root {
+  --archive-canvas: #09111f;
+  --archive-surface: #101c30;
+  --archive-surface-raised: #16253d;
+  --archive-border: rgba(177, 205, 245, 0.16);
+  --archive-text: #f4f7ff;
+  --archive-muted: #a9b9d2;
+  --archive-signal: #7cb0ff;
+  --archive-focus: #a8ccff;
+  --archive-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
+}
+
+[data-theme='light'] {
+  --archive-canvas: #f7f9fd;
+  --archive-surface: #ffffff;
+  --archive-surface-raised: #eef3fb;
+  --archive-border: rgba(32, 57, 91, 0.16);
+  --archive-text: #172033;
+  --archive-muted: #45536c;
+  --archive-signal: #0f6cbd;
+  --archive-focus: #0f6cbd;
+  --archive-shadow: 0 16px 40px rgba(33, 54, 85, 0.12);
+}
+
+body {
+  background: radial-gradient(circle at 78% 0%, rgba(91, 156, 255, 0.12), transparent 32%), var(--archive-canvas);
+  color: var(--archive-text);
+  font-family: 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+}
+
+#root::before {
+  background: radial-gradient(ellipse 480px 320px at 78% 0%, rgba(91, 156, 255, 0.12), transparent 72%);
+}
+
+:focus-visible {
+  outline: 3px solid var(--archive-focus);
+  outline-offset: 3px;
+}
+
+.archive-surface {
+  background: color-mix(in srgb, var(--archive-surface) 92%, transparent);
+  border: 1px solid var(--archive-border);
+  box-shadow: var(--archive-shadow);
+}
+
+.archive-card-reveal {
+  animation: archive-reveal 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes archive-reveal {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+  }
+}

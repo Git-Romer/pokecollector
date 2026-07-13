@@ -1,30 +1,29 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
-const THEMES = [
-  { id: 'default', label: 'Pokémon Red', color: '#e3000b', emoji: '🔴' },
-  { id: 'fire', label: 'Fire', color: '#ff6b35', emoji: '🔥' },
-  { id: 'water', label: 'Water', color: '#4fc3f7', emoji: '💧' },
-  { id: 'grass', label: 'Grass', color: '#66bb6a', emoji: '🌿' },
-  { id: 'electric', label: 'Electric', color: '#fdd835', emoji: '⚡' },
-  { id: 'psychic', label: 'Psychic', color: '#ce93d8', emoji: '🔮' },
-  { id: 'dragon', label: 'Dragon', color: '#9575cd', emoji: '🐉' },
-  { id: 'dark', label: 'Dark', color: '#78909c', emoji: '🌑' },
-  { id: 'fairy', label: 'Fairy', color: '#f48fb1', emoji: '🧚' },
+export const ARCHIVE_THEME_STORAGE_KEY = 'john-johns-pc-theme'
+export const ARCHIVE_THEMES = [
+  { id: 'midnight', label: 'Midnight Archive' },
+  { id: 'light', label: 'Daylight Archive' },
 ]
 
+const themeIds = new Set(ARCHIVE_THEMES.map(({ id }) => id))
+
+function readTheme() {
+  const savedTheme = localStorage.getItem(ARCHIVE_THEME_STORAGE_KEY)
+  return themeIds.has(savedTheme) ? savedTheme : 'midnight'
+}
+
 export function useTheme() {
-  const [theme, setThemeState] = useState(() => localStorage.getItem('theme') || 'default')
+  const [theme, setThemeState] = useState(readTheme)
 
   useEffect(() => {
-    if (theme === 'default') {
-      document.documentElement.removeAttribute('data-theme')
-    } else {
-      document.documentElement.setAttribute('data-theme', theme)
-    }
-    localStorage.setItem('theme', theme)
+    document.documentElement.dataset.theme = theme
+    localStorage.setItem(ARCHIVE_THEME_STORAGE_KEY, theme)
   }, [theme])
 
-  const setTheme = useCallback((t) => setThemeState(t), [])
+  const setTheme = useCallback((nextTheme) => {
+    if (themeIds.has(nextTheme)) setThemeState(nextTheme)
+  }, [])
 
-  return { theme, setTheme, themes: THEMES }
+  return { theme, setTheme, themes: ARCHIVE_THEMES }
 }

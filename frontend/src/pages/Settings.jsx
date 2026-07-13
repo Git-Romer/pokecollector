@@ -695,7 +695,7 @@ export default function Settings() {
             <SettingsCard>
               <div className="px-4 py-3.5">
                 <p className="text-sm font-semibold text-text-primary mb-3">{t('settings.theme')}</p>
-                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   {themes.map((th) => (
                     <button
                       key={th.id}
@@ -706,12 +706,10 @@ export default function Settings() {
                           : 'hover:bg-bg-elevated'
                       }`}
                       style={{
-                        background: theme === th.id ? `${th.color}15` : 'rgba(255,255,255,0.03)',
-                        border: `1px solid ${theme === th.id ? `${th.color}50` : 'rgba(255,255,255,0.05)'}`,
-                        ...(theme === th.id ? { ringColor: th.color } : {}),
+                        background: theme === th.id ? 'rgba(91,156,255,0.15)' : 'rgba(255,255,255,0.03)',
+                        border: `1px solid ${theme === th.id ? 'rgba(143,192,255,0.65)' : 'rgba(255,255,255,0.05)'}`,
                       }}
                     >
-                      <span className="text-xl">{th.emoji}</span>
                       <span className="text-[10px] font-semibold text-text-secondary">{th.label}</span>
                     </button>
                   ))}
