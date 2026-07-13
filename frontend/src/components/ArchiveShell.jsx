@@ -1,17 +1,17 @@
 import { useEffect, useState } from 'react'
 import { Badge, Button, Toolbar, ToolbarButton } from '@fluentui/react-components'
-import { ArchiveRegular, BoxRegular, CollectionsRegular, SearchRegular, TableRegular } from '@fluentui/react-icons'
+import { CollectionsRegular, DataBarVerticalRegular, SearchRegular, SettingsRegular, TableRegular } from '@fluentui/react-icons'
 import { NavLink, Outlet } from 'react-router-dom'
 import clsx from 'clsx'
 import ArchiveCommandBar from './ArchiveCommandBar'
 import JohnJohnSignal from './JohnJohnSignal'
 
 export const PRIMARY_ARCHIVE_NAV = [
-  { to: '/', label: 'Archive', icon: ArchiveRegular, end: true },
   { to: '/collection', label: 'Collection', icon: CollectionsRegular },
-  { to: '/boxes', label: 'Boxes', icon: BoxRegular },
+  { to: '/search', label: 'Card Search', icon: SearchRegular },
   { to: '/sets', label: 'Sets', icon: TableRegular },
-  { to: '/discover', label: 'Discover', icon: SearchRegular },
+  { to: '/analytics', label: 'Analytics', icon: DataBarVerticalRegular },
+  { to: '/settings', label: 'Settings', icon: SettingsRegular },
 ]
 
 export default function ArchiveShell() {

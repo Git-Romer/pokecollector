@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import ArchiveShell from './ArchiveShell'
 
-test('shows the five primary archive destinations', () => {
+test('shows the five familiar primary destinations', () => {
   render(
     <MemoryRouter initialEntries={['/']}>
       <Routes>
@@ -13,9 +13,9 @@ test('shows the five primary archive destinations', () => {
     </MemoryRouter>
   )
 
-  expect(screen.getByRole('link', { name: 'Archive' })).toBeVisible()
   expect(screen.getByRole('link', { name: 'Collection' })).toBeVisible()
-  expect(screen.getByRole('link', { name: 'Boxes' })).toBeVisible()
+  expect(screen.getByRole('link', { name: 'Card Search' })).toBeVisible()
   expect(screen.getByRole('link', { name: 'Sets' })).toBeVisible()
-  expect(screen.getByRole('link', { name: 'Discover' })).toBeVisible()
+  expect(screen.getByRole('link', { name: 'Analytics' })).toBeVisible()
+  expect(screen.getByRole('link', { name: 'Settings' })).toBeVisible()
 })

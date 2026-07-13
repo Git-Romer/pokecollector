@@ -150,7 +150,7 @@ function ProtectedRoutes() {
       <Route path="/" element={<ArchiveShell />}>
         <Route index element={lazyRoute(<Archive />)} />
         <Route path="dashboard" element={<Navigate replace to="/" />} />
-        <Route path="search" element={<SearchRedirect />} />
+        <Route path="search" element={lazyRoute(<CardSearch />)} />
         <Route path="discover" element={lazyRoute(<Discover />)} />
         <Route path="card-search" element={lazyRoute(<CardSearch />)} />
         <Route path="collection" element={lazyRoute(<Collection />)} />

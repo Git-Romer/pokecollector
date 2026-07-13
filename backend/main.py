@@ -44,7 +44,7 @@ def read_app_version() -> str:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    logger.info("Starting Pokemon TCG Collection API...")
+    logger.info("Starting John John's PC API...")
     current_version = read_app_version()
     from database import DATABASE_URL, SessionLocal, engine, init_db
     from services.auth import bootstrap_admin
@@ -76,9 +76,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Pokemon TCG Collection API",
+    title="John John's PC API",
     version=read_app_version(),
-    description="Complete Pokemon TCG collection management system",
+    description="Private, locally hosted Pokemon TCG collection archive.",
     lifespan=lifespan,
 )
 
