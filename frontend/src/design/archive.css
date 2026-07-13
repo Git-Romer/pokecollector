@@ -64,6 +64,10 @@ body {
 .archive-mobile-nav { position: fixed; z-index: 50; right: 0; bottom: 0; left: 0; display: grid; grid-template-columns: repeat(5, 1fr); padding: .4rem max(.6rem, env(safe-area-inset-right)) calc(.4rem + env(safe-area-inset-bottom)) max(.6rem, env(safe-area-inset-left)); border-top: 1px solid var(--archive-border); background: color-mix(in srgb, var(--archive-surface) 94%, transparent); backdrop-filter: blur(18px); }
 .archive-mobile-link { min-height: 3.6rem; flex-direction: column; justify-content: center; gap: .2rem; font-size: .67rem; }
 .archive-mobile-link-active { color: var(--archive-signal); }
+.archive-featured { display: flex; gap: 1.5rem; padding: 1.5rem; background: linear-gradient(135deg, color-mix(in srgb, var(--archive-signal) 16%, var(--archive-surface)), var(--archive-surface)); }
+.archive-recent-card { display: grid; gap: .55rem; color: var(--archive-text); font-size: .85rem; font-weight: 600; }
+.archive-recent-card:hover { color: var(--archive-signal); transform: translateY(-2px); transition: transform 180ms ease; }
+.archive-note { padding: 1rem; }
 @media (max-width: 640px) { .archive-toolbar { padding: 0 1rem; } .archive-main { padding: 1.5rem 1rem 6rem; } }
 
 @keyframes archive-reveal {
