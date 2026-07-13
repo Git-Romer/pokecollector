@@ -9,6 +9,8 @@ import ArchiveShell from './components/ArchiveShell'
 import { useSettings } from './contexts/SettingsContext'
 
 const Archive = lazy(() => import('./pages/Archive'))
+const Boxes = lazy(() => import('./pages/Boxes'))
+const Discover = lazy(() => import('./pages/Discover'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const CardSearch = lazy(() => import('./pages/CardSearch'))
 const Collection = lazy(() => import('./pages/Collection'))
@@ -149,13 +151,14 @@ function ProtectedRoutes() {
         <Route index element={lazyRoute(<Archive />)} />
         <Route path="dashboard" element={<Navigate replace to="/" />} />
         <Route path="search" element={<SearchRedirect />} />
-        <Route path="discover" element={lazyRoute(<CardSearch />)} />
+        <Route path="discover" element={lazyRoute(<Discover />)} />
+        <Route path="card-search" element={lazyRoute(<CardSearch />)} />
         <Route path="collection" element={lazyRoute(<Collection />)} />
         <Route path="collection/user/:userId" element={lazyRoute(<UserCollection />)} />
         <Route path="sets" element={lazyRoute(<Sets />)} />
         <Route path="sets/:setId" element={lazyRoute(<SetDetail />)} />
         <Route path="wishlist" element={lazyRoute(<Wishlist />)} />
-        <Route path="boxes" element={lazyRoute(<Binders />)} />
+        <Route path="boxes" element={lazyRoute(<Boxes />)} />
         <Route path="boxes/:binderId" element={lazyRoute(<BinderDetail />)} />
         <Route path="binders" element={<Navigate replace to="/boxes" />} />
         <Route path="binders/:binderId" element={<BinderRedirect />} />

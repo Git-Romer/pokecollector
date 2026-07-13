@@ -68,6 +68,8 @@ body {
 .archive-recent-card { display: grid; gap: .55rem; color: var(--archive-text); font-size: .85rem; font-weight: 600; }
 .archive-recent-card:hover { color: var(--archive-signal); transform: translateY(-2px); transition: transform 180ms ease; }
 .archive-note { padding: 1rem; }
+.archive-box, .archive-discover-card { display: grid; gap: .8rem; min-height: 11rem; padding: 1.25rem; background: var(--archive-surface); border: 1px solid var(--archive-border); }
+.archive-box:hover, .archive-discover-card:hover { border-color: color-mix(in srgb, var(--archive-signal) 70%, var(--archive-border)); transform: translateY(-2px); transition: 180ms ease; }
 @media (max-width: 640px) { .archive-toolbar { padding: 0 1rem; } .archive-main { padding: 1.5rem 1rem 6rem; } }
 
 @keyframes archive-reveal {
