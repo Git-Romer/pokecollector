@@ -12,3 +12,4 @@ build/
 venv/
 node_modules/
 *.log
+.worktrees/
