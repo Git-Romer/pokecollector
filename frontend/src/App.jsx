@@ -1,14 +1,14 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { Suspense, lazy, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import PokeBallLoader from './components/PokeBallLoader'
 import { SettingsProvider } from './contexts/SettingsContext'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { forceChangePassword } from './api/client'
-import Layout from './components/Layout'
+import ArchiveShell from './components/ArchiveShell'
 import { useSettings } from './contexts/SettingsContext'
 
-const HomeScreen = lazy(() => import('./pages/HomeScreen'))
+const Archive = lazy(() => import('./pages/Archive'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const CardSearch = lazy(() => import('./pages/CardSearch'))
 const Collection = lazy(() => import('./pages/Collection'))
@@ -106,6 +106,16 @@ function lazyRoute(element) {
   return <Suspense fallback={<RouteLoader />}>{element}</Suspense>
 }
 
+function SearchRedirect() {
+  const location = useLocation()
+  return <Navigate replace to={`/discover${location.search}`} />
+}
+
+function BinderRedirect() {
+  const { binderId } = useParams()
+  return <Navigate replace to={`/boxes/${binderId}`} />
+}
+
 function ProtectedRoutes() {
   const { user, loading, multiUser } = useAuth()
 
@@ -135,17 +145,20 @@ function ProtectedRoutes() {
 
   return (
     <Routes>
-      <Route path="/" element={<Layout />}>
-        <Route index element={lazyRoute(<HomeScreen />)} />
-        <Route path="dashboard" element={lazyRoute(<Dashboard />)} />
-        <Route path="search" element={lazyRoute(<CardSearch />)} />
+      <Route path="/" element={<ArchiveShell />}>
+        <Route index element={lazyRoute(<Archive />)} />
+        <Route path="dashboard" element={<Navigate replace to="/" />} />
+        <Route path="search" element={<SearchRedirect />} />
+        <Route path="discover" element={lazyRoute(<CardSearch />)} />
         <Route path="collection" element={lazyRoute(<Collection />)} />
         <Route path="collection/user/:userId" element={lazyRoute(<UserCollection />)} />
         <Route path="sets" element={lazyRoute(<Sets />)} />
         <Route path="sets/:setId" element={lazyRoute(<SetDetail />)} />
         <Route path="wishlist" element={lazyRoute(<Wishlist />)} />
-        <Route path="binders" element={lazyRoute(<Binders />)} />
-        <Route path="binders/:binderId" element={lazyRoute(<BinderDetail />)} />
+        <Route path="boxes" element={lazyRoute(<Binders />)} />
+        <Route path="boxes/:binderId" element={lazyRoute(<BinderDetail />)} />
+        <Route path="binders" element={<Navigate replace to="/boxes" />} />
+        <Route path="binders/:binderId" element={<BinderRedirect />} />
         <Route path="analytics" element={lazyRoute(<Analytics />)} />
         <Route path="products" element={lazyRoute(<Products />)} />
         <Route path="leaderboard" element={lazyRoute(<Leaderboard />)} />

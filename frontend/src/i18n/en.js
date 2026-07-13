@@ -3,6 +3,9 @@
 const en = {
   // Navigation
   nav: {
+    archive: 'Archive',
+    boxes: 'Boxes',
+    discover: 'Discover',
     dashboard: 'Dashboard',
     cardSearch: 'Card Search',
     collection: 'Collection',
@@ -17,6 +20,11 @@ const en = {
     cards: 'Cards',
     value: 'Value',
     more: 'More',
+  },
+
+  archive: {
+    search: 'Search archive',
+    notes: 'Archive Notes',
   },
 
   // Common / General

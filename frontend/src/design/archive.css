@@ -47,6 +47,25 @@ body {
   animation: archive-reveal 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
+.archive-shell { display: flex; background: var(--archive-canvas); }
+.archive-rail { position: sticky; top: 0; height: 100dvh; width: 17rem; flex-direction: column; padding: 1.5rem 1rem; border-right: 1px solid var(--archive-border); background: color-mix(in srgb, var(--archive-surface) 88%, transparent); }
+.archive-wordmark { display: flex; align-items: center; gap: .75rem; padding: .5rem .75rem 2rem; color: var(--archive-text); }
+.archive-wordmark span, .john-john-mark { display: inline-grid; place-items: center; width: 2rem; height: 2rem; border-radius: .65rem; background: var(--archive-signal); color: #07101e; font-size: .72rem; font-weight: 800; letter-spacing: -.08em; }
+.archive-nav { display: grid; gap: .35rem; }
+.archive-nav-link, .archive-mobile-link { display: flex; align-items: center; gap: .75rem; border-radius: .6rem; color: var(--archive-muted); font-weight: 600; }
+.archive-nav-link { padding: .75rem; }
+.archive-nav-link:hover, .archive-nav-link-active { background: color-mix(in srgb, var(--archive-signal) 13%, transparent); color: var(--archive-text); }
+.archive-rail-footer { margin-top: auto; display: flex; align-items: center; gap: .5rem; color: var(--archive-muted); font-size: .75rem; padding: .75rem; }
+.john-john-signal { position: relative; min-width: 2.75rem; }
+.john-john-presence { position: absolute; width: .45rem; height: .45rem; right: .32rem; bottom: .32rem; border: 2px solid var(--archive-surface); border-radius: 999px; background: #6ccb8b; }
+.archive-content { width: min(100%, 100rem); flex: 1; }
+.archive-toolbar { min-height: 4.5rem; padding: 0 1.5rem; border-bottom: 1px solid var(--archive-border); }
+.archive-main { padding: 2rem; padding-bottom: 6rem; }
+.archive-mobile-nav { position: fixed; z-index: 50; right: 0; bottom: 0; left: 0; display: grid; grid-template-columns: repeat(5, 1fr); padding: .4rem max(.6rem, env(safe-area-inset-right)) calc(.4rem + env(safe-area-inset-bottom)) max(.6rem, env(safe-area-inset-left)); border-top: 1px solid var(--archive-border); background: color-mix(in srgb, var(--archive-surface) 94%, transparent); backdrop-filter: blur(18px); }
+.archive-mobile-link { min-height: 3.6rem; flex-direction: column; justify-content: center; gap: .2rem; font-size: .67rem; }
+.archive-mobile-link-active { color: var(--archive-signal); }
+@media (max-width: 640px) { .archive-toolbar { padding: 0 1rem; } .archive-main { padding: 1.5rem 1rem 6rem; } }
+
 @keyframes archive-reveal {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
