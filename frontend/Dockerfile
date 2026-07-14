@@ -5,7 +5,7 @@ WORKDIR /app
 ARG PUBLIC_MODE=false
 
 COPY frontend/package*.json ./
-RUN npm install
+RUN npm ci --prefer-offline --no-audit --no-fund
 
 ARG BUILD_REVISION=dev
 RUN echo "Building revision ${BUILD_REVISION}"
