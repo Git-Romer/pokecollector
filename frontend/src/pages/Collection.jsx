@@ -354,7 +354,7 @@ function HoloOverlay({ variant }) {
 
 // ─── CollectionEditModal ────────────────────────────────────────────────────
 // Opens when clicking any card in the collection. Allows editing + deleting.
-function CollectionEditModal({ item, onClose }) {
+function CollectionEditModal({ item, siblings = [], onSelectVersion, onClose }) {
   const { t, formatPrice, pricePrimaryField, exchangeRate, exchangeRateReady } = useSettings()
   const queryClient = useQueryClient()
   const card = item.card
@@ -591,6 +591,18 @@ function CollectionEditModal({ item, onClose }) {
     </div>
   )
 
+  const versions = siblings.length > 1 ? siblings : []
+  const variantCounts = versions.reduce((counts, row) => {
+    const key = row.variant || 'Normal'
+    counts[key] = (counts[key] || 0) + 1
+    return counts
+  }, {})
+  const versionLabel = (row) => {
+    const rowVariant = row.variant || 'Normal'
+    const label = t(`variants.${rowVariant}`) || rowVariant
+    return variantCounts[rowVariant] > 1 ? `${label} · ${row.condition || 'NM'}` : label
+  }
+
   return createPortal(
     <div
       className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm md:flex md:items-center md:justify-center md:bg-black/80"
@@ -650,6 +662,26 @@ function CollectionEditModal({ item, onClose }) {
 
             {/* Edit Form */}
             <div className="space-y-3">
+              {versions.length > 0 && (
+                <div className="flex flex-wrap gap-1 mb-4 pb-3 border-b border-border">
+                  {versions.map(row => (
+                    <button
+                      key={row.id}
+                      type="button"
+                      onClick={() => onSelectVersion(row)}
+                      className={clsx(
+                        'px-2 py-1 rounded-md text-xs font-semibold transition-colors',
+                        row.id === item.id
+                          ? 'bg-brand-red text-white'
+                          : 'bg-bg-elevated text-text-secondary hover:text-text-primary',
+                      )}
+                    >
+                      {versionLabel(row)}
+                      {row.quantity > 1 && <span className="ml-1 opacity-70">×{row.quantity}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-text-muted mb-1 block">{t('card.quantity')}</label>
@@ -857,6 +889,7 @@ export default function Collection() {
   const visibleLanguages = useVisibleTcgdexLanguages()
   const [viewMode, setViewMode] = useState('grid')
   const [editingCollectionItem, setEditingCollectionItem] = useState(null) // for CollectionEditModal
+  const [editingSiblings, setEditingSiblings] = useState([]) // sibling rows (other variants) of the item being edited
   const [showCustomModal, setShowCustomModal] = useState(false)
   const [editCard, setEditCard] = useState(null)
   const [sortBy, setSortBy] = useState('added_at')
@@ -940,6 +973,7 @@ export default function Collection() {
 
   const closeCollectionItemModal = () => {
     setEditingCollectionItem(null)
+    setEditingSiblings([])
     if (targetItemId || targetCardId) clearTargetParams()
   }
 
@@ -1347,7 +1381,10 @@ export default function Collection() {
                       )}
                       <TiltBinderCard
                         className={`binder-card ${rarityClass} cursor-pointer`}
-                        onClick={() => setEditingCollectionItem(item)}
+                        onClick={() => {
+                          setEditingCollectionItem(item)
+                          setEditingSiblings(group.rows)
+                        }}
                       >
                         <div
                           className="aspect-[2.5/3.5] relative rounded-xl overflow-hidden flex-shrink-0"
@@ -1588,6 +1625,8 @@ export default function Collection() {
       {editingCollectionItem && (
         <CollectionEditModal
           item={editingCollectionItem}
+          siblings={editingSiblings}
+          onSelectVersion={setEditingCollectionItem}
           onClose={closeCollectionItemModal}
         />
       )}
