@@ -11,7 +11,7 @@ export default function VariantPills({ rows, className = '' }) {
     <div className={clsx('flex flex-wrap gap-0.5', className)}>
       {owned.map(({ variant, quantity }) => {
         const meta = VARIANT_PILL_META[variant]
-        const label = t(`variants.${variant}`) || variant
+        const label = t(`variants.${variant}`)
         return (
           <span
             key={variant}

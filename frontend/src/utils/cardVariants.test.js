@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getOwnedVariants, groupCollectionByCard } from './cardVariants'
+import { getOwnedVariants, getPrimaryVariant, groupCollectionByCard } from './cardVariants'
 
 const row = (over = {}) => ({
   id: 1, card_id: 'sv01-003_en', card: { id: 'sv01-003_en', name: 'Card' },
@@ -42,6 +42,79 @@ describe('getOwnedVariants', () => {
 
   it('returns an empty array for no rows', () => {
     expect(getOwnedVariants([])).toEqual([])
+  })
+
+  it('still returns a pill for a variant outside the four canonical prints', () => {
+    const result = getOwnedVariants([
+      row({ id: 1, variant: 'Normal' }),
+      row({ id: 2, variant: 'Promo' }),
+    ])
+    expect(result).toEqual([
+      { variant: 'Normal', quantity: 1 },
+      { variant: 'Promo', quantity: 1 },
+    ])
+  })
+
+  it('sorts multiple unknown variants alphabetically after the canonical ones', () => {
+    const result = getOwnedVariants([
+      row({ id: 1, variant: 'Zeta Promo' }),
+      row({ id: 2, variant: 'Alpha Promo' }),
+    ])
+    expect(result.map(entry => entry.variant)).toEqual(['Alpha Promo', 'Zeta Promo'])
+  })
+})
+
+describe('getPrimaryVariant', () => {
+  it('prefers First Edition over every other owned variant', () => {
+    const variant = getPrimaryVariant([
+      row({ id: 1, variant: 'Normal' }),
+      row({ id: 2, variant: 'Holo' }),
+      row({ id: 3, variant: 'Reverse Holo' }),
+      row({ id: 4, variant: 'First Edition' }),
+    ])
+    expect(variant).toBe('First Edition')
+  })
+
+  it('prefers Holo over Reverse Holo and Normal when no First Edition is owned', () => {
+    const variant = getPrimaryVariant([
+      row({ id: 1, variant: 'Normal' }),
+      row({ id: 2, variant: 'Reverse Holo' }),
+      row({ id: 3, variant: 'Holo' }),
+    ])
+    expect(variant).toBe('Holo')
+  })
+
+  it('prefers Reverse Holo over Normal when that is the only premium print owned', () => {
+    const variant = getPrimaryVariant([
+      row({ id: 1, variant: 'Normal' }),
+      row({ id: 2, variant: 'Reverse Holo' }),
+    ])
+    expect(variant).toBe('Reverse Holo')
+  })
+
+  it('falls back to Normal when it is the only owned variant', () => {
+    expect(getPrimaryVariant([row({ variant: 'Normal' })])).toBe('Normal')
+  })
+
+  it('is independent of row order', () => {
+    const forward = getPrimaryVariant([
+      row({ id: 1, variant: 'Normal' }),
+      row({ id: 2, variant: 'First Edition' }),
+    ])
+    const reversed = getPrimaryVariant([
+      row({ id: 2, variant: 'First Edition' }),
+      row({ id: 1, variant: 'Normal' }),
+    ])
+    expect(forward).toBe('First Edition')
+    expect(reversed).toBe('First Edition')
+  })
+
+  it('falls back to the (alphabetically first) unknown variant when no canonical print is owned', () => {
+    expect(getPrimaryVariant([row({ variant: 'Promo' })])).toBe('Promo')
+  })
+
+  it('returns null for no rows', () => {
+    expect(getPrimaryVariant([])).toBeNull()
   })
 })
 

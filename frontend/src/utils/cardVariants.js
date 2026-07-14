@@ -1,4 +1,26 @@
-export const CARD_VARIANTS = ['Normal', 'Holo', 'Reverse Holo', 'First Edition']
+// Single source of truth for the four canonical prints: their canonical order,
+// their display code, and their pill styling. CARD_VARIANTS and VARIANT_PILL_META
+// are both derived from this one list instead of repeating the variant names.
+const VARIANT_DEFINITIONS = [
+  { name: 'Normal',        code: 'NOR', className: 'bg-bg-elevated text-text-secondary border-border' },
+  { name: 'Holo',          code: 'HOL', className: 'bg-purple-500/15 text-purple-300 border-purple-500/30' },
+  { name: 'Reverse Holo',  code: 'REV', className: 'bg-blue/15 text-blue border-blue/30' },
+  { name: 'First Edition', code: '1ST', className: 'bg-yellow/15 text-yellow border-yellow/30' },
+]
+
+export const CARD_VARIANTS = VARIANT_DEFINITIONS.map(v => v.name)
+
+export const VARIANT_PILL_META = Object.fromEntries(
+  VARIANT_DEFINITIONS.map(({ name, code, className }) => [name, { code, className }])
+)
+
+// Alias kept for readability at call sites where "canonical ordering" is the intent
+// rather than "the four allowed variants" - same array, one source of truth.
+export const VARIANT_ORDER = CARD_VARIANTS
+
+// Most premium print first. Used to pick a single deterministic variant to represent
+// a stack of rows (e.g. for the HoloOverlay shimmer), independent of row/sort order.
+const PRIMARY_VARIANT_PRIORITY = ['First Edition', 'Holo', 'Reverse Holo', 'Normal']
 
 export const getAvailableVariants = (card) => [
   card?.variants_normal && 'Normal',
@@ -18,15 +40,6 @@ export const getDefaultVariant = (card) => {
 }
 
 export const getDefaultVariantOrNull = (card) => getDefaultVariant(card)
-
-export const VARIANT_ORDER = ['Normal', 'Holo', 'Reverse Holo', 'First Edition']
-
-export const VARIANT_PILL_META = {
-  'Normal':        { code: 'NOR', className: 'bg-bg-elevated text-text-secondary border-border' },
-  'Holo':          { code: 'HOL', className: 'bg-purple-500/15 text-purple-300 border-purple-500/30' },
-  'Reverse Holo':  { code: 'REV', className: 'bg-blue/15 text-blue border-blue/30' },
-  'First Edition': { code: '1ST', className: 'bg-yellow/15 text-yellow border-yellow/30' },
-}
 
 // Rows of the same variant differing only by condition (a NM and an LP Normal) are one
 // pill: the pill answers "do I own a Normal", not "how many rows exist".
@@ -51,13 +64,25 @@ export const getOwnedVariants = (rows = []) => {
   return [...ordered, ...unknown]
 }
 
+// Picks the single variant that should represent a stack of rows (e.g. which holo
+// shimmer to render on a stacked tile). Deterministic by print premium-ness rather
+// than by row/sort order: First Edition > Holo > Reverse Holo > Normal. Falls back to
+// whatever non-canonical variant is owned (alphabetically first) if none of the four
+// canonical prints are present, and to null when there are no rows at all.
+export const getPrimaryVariant = (rows = []) => {
+  const owned = getOwnedVariants(rows)
+  if (owned.length === 0) return null
+  const ownedNames = new Set(owned.map(entry => entry.variant))
+  const preferred = PRIMARY_VARIANT_PRIORITY.find(variant => ownedNames.has(variant))
+  return preferred ?? owned[0].variant
+}
+
 // Card ids carry a language suffix (sv01-003_en), so grouping by card id keeps the
 // English and German copies of a card in separate tiles.
 export const groupCollectionByCard = (items = []) => {
   const groups = new Map()
   for (const item of items) {
     const cardId = item?.card_id ?? item?.card?.id
-    if (!cardId) continue
     if (!groups.has(cardId)) {
       groups.set(cardId, { cardId, card: item.card, rows: [], totalQuantity: 0 })
     }

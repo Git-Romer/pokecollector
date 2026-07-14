@@ -23,7 +23,7 @@ import { tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLa
 import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import { formatMoneyInputValue, parseMoneyInputValue } from '../utils/moneyInput'
-import { groupCollectionByCard } from '../utils/cardVariants'
+import { groupCollectionByCard, getPrimaryVariant } from '../utils/cardVariants'
 import VariantPills from '../components/VariantPills'
 
 function TiltBinderCard({ className, onClick, children }) {
@@ -889,7 +889,6 @@ export default function Collection() {
   const visibleLanguages = useVisibleTcgdexLanguages()
   const [viewMode, setViewMode] = useState('grid')
   const [editingCollectionItem, setEditingCollectionItem] = useState(null) // for CollectionEditModal
-  const [editingSiblings, setEditingSiblings] = useState([]) // sibling rows (other variants) of the item being edited
   const [showCustomModal, setShowCustomModal] = useState(false)
   const [editCard, setEditCard] = useState(null)
   const [sortBy, setSortBy] = useState('added_at')
@@ -971,9 +970,16 @@ export default function Collection() {
     }
   }, [items, editingCollectionItem])
 
+  // Derived (not stored) so every path that opens the modal - tile click, list row
+  // click, or a deep link via ?itemId=/?cardId= - gets accurate version tabs, and so
+  // the 60s background refetch keeps them in sync automatically.
+  const editingSiblings = useMemo(() => {
+    if (!editingCollectionItem) return []
+    return items.filter(i => i.card_id === editingCollectionItem.card_id)
+  }, [items, editingCollectionItem])
+
   const closeCollectionItemModal = () => {
     setEditingCollectionItem(null)
-    setEditingSiblings([])
     if (targetItemId || targetCardId) clearTargetParams()
   }
 
@@ -1371,8 +1377,10 @@ export default function Collection() {
                     rarityClass = 'card-holo'
                   }
 
+                  const primaryVariant = isStacked ? getPrimaryVariant(group.rows) : item.variant
+
                   return (
-                    <div key={group.cardId} className="relative">
+                    <div key={group.cardId} className="relative isolate">
                       {isStacked && (
                         <>
                           <div aria-hidden className="absolute inset-0 -z-10 translate-x-1 translate-y-1 rounded-xl bg-bg-elevated border border-border" />
@@ -1381,16 +1389,13 @@ export default function Collection() {
                       )}
                       <TiltBinderCard
                         className={`binder-card ${rarityClass} cursor-pointer`}
-                        onClick={() => {
-                          setEditingCollectionItem(item)
-                          setEditingSiblings(group.rows)
-                        }}
+                        onClick={() => setEditingCollectionItem(item)}
                       >
                         <div
                           className="aspect-[2.5/3.5] relative rounded-xl overflow-hidden flex-shrink-0"
                         >
                           <CardImage src={resolveCardImageUrl(card)} alt={card?.name} className="w-full h-full object-cover" />
-                          <HoloOverlay variant={item.variant} />
+                          <HoloOverlay variant={primaryVariant} />
                           <ProductSourceBadge item={item} t={t} compact className="absolute right-1 top-1 z-10 h-6 w-6" />
                         </div>
                         {(() => {
@@ -1414,12 +1419,15 @@ export default function Collection() {
                         })()}
                         <VariantPills rows={group.rows} className="mt-1" />
                         <div className="flex flex-wrap gap-0.5 mt-0.5 px-0.5">
-                          {item.quantity > 1 && (
+                          {/* On stacked tiles the variant pills already show accurate owned
+                              quantities/variants per print; item is only rows[0] here, so a
+                              ×N / variant badge sourced from it would misrepresent the stack. */}
+                          {!isStacked && item.quantity > 1 && (
                             <span className="inline-flex items-center gap-0.5 text-[10px] font-black px-1.5 py-0.5 rounded-full bg-brand-red/20 text-brand-red border border-brand-red/40">
                               ×{item.quantity}
                             </span>
                           )}
-                          {item.variant && item.variant !== 'Normal' && (
+                          {!isStacked && item.variant && item.variant !== 'Normal' && (
                             <span className="inline-flex max-w-full min-w-0 items-center justify-center text-center text-[10px] font-semibold leading-tight px-1.5 py-0.5 rounded-full bg-yellow/15 text-yellow border border-yellow/30 whitespace-normal break-words">
                               ✨ {item.variant}
                             </span>
@@ -1440,7 +1448,9 @@ export default function Collection() {
           )}
           {filtered.length > 0 && (
             <div className="flex items-center justify-between text-sm pt-1 px-1">
-              <span className="text-text-muted">{filtered.length} {t('collection.filtered')}</span>
+              <span className="text-text-muted">
+                {groupedCards.length} {t('collection.cards')} · {filtered.length} {t('collection.filtered')}
+              </span>
               <span className="font-bold text-gold">{formatPrice(totalValue)}</span>
             </div>
           )}
