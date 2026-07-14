@@ -23,8 +23,6 @@ import { tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLa
 import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import { formatMoneyInputValue, parseMoneyInputValue } from '../utils/moneyInput'
-import { groupCollectionByCard, getPrimaryVariant, sortRowsByVariant } from '../utils/cardVariants'
-import VariantPills from '../components/VariantPills'
 
 function TiltBinderCard({ className, onClick, children }) {
   const { ref, onMouseMove, onMouseEnter, onMouseLeave } = useTilt(10)
@@ -124,26 +122,6 @@ const getProductSourceSummary = (item) => {
     .map(source => `${source.product_name}${source.active_quantity > 1 ? ` x${source.active_quantity}` : ''}`)
     .join('\n')
   return { sources, primary, totalQuantity, label, title }
-}
-
-// A stacked tile represents several collection rows, and each row carries its own
-// product sources. Reading them off rows[0] alone would hide the provenance of every
-// other row (and flip with the sort order, since rows[0] is order-dependent), so the
-// tile's badge merges sources across the stack, summing quantities per product.
-const mergeProductSources = (rows = []) => {
-  const merged = new Map()
-  for (const row of rows) {
-    for (const source of row?.product_sources || []) {
-      const key = source?.product_id ?? source?.product_name
-      const existing = merged.get(key)
-      if (existing) {
-        existing.active_quantity = (existing.active_quantity || 0) + (source.active_quantity || 0)
-      } else {
-        merged.set(key, { ...source })
-      }
-    }
-  }
-  return [...merged.values()]
 }
 
 function ProductSourceBadge({ item, t, compact = false, className = '' }) {
@@ -374,7 +352,7 @@ function HoloOverlay({ variant }) {
 
 // ─── CollectionEditModal ────────────────────────────────────────────────────
 // Opens when clicking any card in the collection. Allows editing + deleting.
-function CollectionEditModal({ item, siblings = [], onSelectVersion, onClose }) {
+function CollectionEditModal({ item, onClose }) {
   const { t, formatPrice, pricePrimaryField, exchangeRate, exchangeRateReady } = useSettings()
   const queryClient = useQueryClient()
   const card = item.card
@@ -611,18 +589,6 @@ function CollectionEditModal({ item, siblings = [], onSelectVersion, onClose }) 
     </div>
   )
 
-  const versions = siblings.length > 1 ? siblings : []
-  const variantCounts = versions.reduce((counts, row) => {
-    const key = row.variant || 'Normal'
-    counts[key] = (counts[key] || 0) + 1
-    return counts
-  }, {})
-  const versionLabel = (row) => {
-    const rowVariant = row.variant || 'Normal'
-    const label = t(`variants.${rowVariant}`) || rowVariant
-    return variantCounts[rowVariant] > 1 ? `${label} · ${row.condition || 'NM'}` : label
-  }
-
   return createPortal(
     <div
       className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm md:flex md:items-center md:justify-center md:bg-black/80"
@@ -682,26 +648,6 @@ function CollectionEditModal({ item, siblings = [], onSelectVersion, onClose }) 
 
             {/* Edit Form */}
             <div className="space-y-3">
-              {versions.length > 0 && (
-                <div className="flex flex-wrap gap-1 mb-4 pb-3 border-b border-border">
-                  {versions.map(row => (
-                    <button
-                      key={row.id}
-                      type="button"
-                      onClick={() => onSelectVersion(row)}
-                      className={clsx(
-                        'px-2 py-1 rounded-md text-xs font-semibold transition-colors',
-                        row.id === item.id
-                          ? 'bg-brand-red text-white'
-                          : 'bg-bg-elevated text-text-secondary hover:text-text-primary',
-                      )}
-                    >
-                      {versionLabel(row)}
-                      {row.quantity > 1 && <span className="ml-1 opacity-70">×{row.quantity}</span>}
-                    </button>
-                  ))}
-                </div>
-              )}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-text-muted mb-1 block">{t('card.quantity')}</label>
@@ -990,17 +936,6 @@ export default function Collection() {
     }
   }, [items, editingCollectionItem])
 
-  // Derived (not stored) so every path that opens the modal - tile click, list row
-  // click, or a deep link via ?itemId=/?cardId= - gets accurate version tabs, and so
-  // the 60s background refetch keeps them in sync automatically.
-  // Sorted canonically so the version tabs appear in the same order as the tile's pills.
-  // Sourced from the unfiltered `items` on purpose: with a variant filter active the tile
-  // shows only the matching pills, but every version must still be reachable for editing.
-  const editingSiblings = useMemo(() => {
-    if (!editingCollectionItem) return []
-    return sortRowsByVariant(items.filter(i => i.card_id === editingCollectionItem.card_id))
-  }, [items, editingCollectionItem])
-
   const closeCollectionItemModal = () => {
     setEditingCollectionItem(null)
     if (targetItemId || targetCardId) clearTargetParams()
@@ -1144,7 +1079,6 @@ export default function Collection() {
 
   const totalValue = filtered.reduce((sum, item) => sum + (getEffectivePrice(item.card, item.variant) * item.quantity), 0)
   const totalCards = filtered.reduce((sum, item) => sum + item.quantity, 0)
-  const groupedCards = useMemo(() => groupCollectionByCard(filtered), [filtered])
   const exportParams = { price_field: pricePrimaryField, currency, exchange_rate: exchangeRate }
 
   const resetFilters = () => {
@@ -1381,10 +1315,8 @@ export default function Collection() {
           ) : (
             <div className="binder-grid">
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
-                {groupedCards.map(group => {
-                  const item = group.rows[0]
-                  const card = group.card
-                  const isStacked = group.rows.length > 1
+                {filtered.map(item => {
+                  const card = item.card
                   const rarityLower = (card?.rarity || '').toLowerCase()
                   let rarityClass = ''
                   if (rarityLower.includes('secret') || rarityLower.includes('rainbow')) {
@@ -1400,73 +1332,57 @@ export default function Collection() {
                     rarityClass = 'card-holo'
                   }
 
-                  const primaryVariant = isStacked ? getPrimaryVariant(group.rows) : item.variant
-                  const tileProductItem = isStacked
-                    ? { ...item, product_sources: mergeProductSources(group.rows) }
-                    : item
-
                   return (
-                    <div key={group.cardId} className="relative isolate">
-                      {isStacked && (
-                        <>
-                          <div aria-hidden className="absolute inset-0 -z-10 translate-x-1 translate-y-1 rounded-xl bg-bg-elevated border border-border" />
-                          <div aria-hidden className="absolute inset-0 -z-20 translate-x-2 translate-y-2 rounded-xl bg-bg-surface border border-border" />
-                        </>
-                      )}
-                      <TiltBinderCard
-                        className={`binder-card ${rarityClass} cursor-pointer`}
-                        onClick={() => setEditingCollectionItem(item)}
+                    <TiltBinderCard
+                      key={item.id}
+                      className={`binder-card ${rarityClass} cursor-pointer`}
+                      onClick={() => setEditingCollectionItem(item)}
+                    >
+                      <div
+                        className="aspect-[2.5/3.5] relative rounded-xl overflow-hidden flex-shrink-0"
                       >
-                        <div
-                          className="aspect-[2.5/3.5] relative rounded-xl overflow-hidden flex-shrink-0"
-                        >
-                          <CardImage src={resolveCardImageUrl(card)} alt={card?.name} className="w-full h-full object-cover" />
-                          <HoloOverlay variant={primaryVariant} />
-                          <ProductSourceBadge item={tileProductItem} t={t} compact className="absolute right-1 top-1 z-10 h-6 w-6" />
-                        </div>
-                        {(() => {
-                          const abbr = card?.set_ref?.abbreviation
-                          const num = card?.number
-                          const setName = card?.set_ref?.name
-                          if (abbr && num) {
-                            return (
-                              <p className="text-[10px] font-mono font-bold text-brand-red/70 leading-tight truncate mt-0.5 px-0.5">
-                                {abbr} {num}
-                              </p>
-                            )
-                          } else if (setName) {
-                            return (
-                              <p className="text-[10px] text-text-muted leading-tight truncate mt-0.5 px-0.5">
-                                {setName}
-                              </p>
-                            )
-                          }
-                          return null
-                        })()}
-                        <VariantPills rows={group.rows} className="mt-2 mb-0.5" />
-                        <div className="flex flex-wrap gap-0.5 mt-0.5 px-0.5">
-                          {/* On stacked tiles the variant pills already show accurate owned
-                              quantities/variants per print; item is only rows[0] here, so a
-                              ×N / variant badge sourced from it would misrepresent the stack. */}
-                          {!isStacked && item.quantity > 1 && (
-                            <span className="inline-flex items-center gap-0.5 text-[10px] font-black px-1.5 py-0.5 rounded-full bg-brand-red/20 text-brand-red border border-brand-red/40">
-                              ×{item.quantity}
-                            </span>
-                          )}
-                          {!isStacked && item.variant && item.variant !== 'Normal' && (
-                            <span className="inline-flex max-w-full min-w-0 items-center justify-center text-center text-[10px] font-semibold leading-tight px-1.5 py-0.5 rounded-full bg-yellow/15 text-yellow border border-yellow/30 whitespace-normal break-words">
-                              ✨ {item.variant}
-                            </span>
-                          )}
-                          {item.lang && (
-                            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${tcgdexLanguageBadgeClass(item.lang)}`}>
-                              {tcgdexLanguageLabel(item.lang)}
-                            </span>
-                          )}
-                          <FallbackBadges card={card} compact />
-                        </div>
-                      </TiltBinderCard>
-                    </div>
+                        <CardImage src={resolveCardImageUrl(card)} alt={card?.name} className="w-full h-full object-cover" />
+                        <HoloOverlay variant={item.variant} />
+                        <ProductSourceBadge item={item} t={t} compact className="absolute right-1 top-1 z-10 h-6 w-6" />
+                      </div>
+                      {(() => {
+                        const abbr = card?.set_ref?.abbreviation
+                        const num = card?.number
+                        const setName = card?.set_ref?.name
+                        if (abbr && num) {
+                          return (
+                            <p className="text-[10px] font-mono font-bold text-brand-red/70 leading-tight truncate mt-0.5 px-0.5">
+                              {abbr} {num}
+                            </p>
+                          )
+                        } else if (setName) {
+                          return (
+                            <p className="text-[10px] text-text-muted leading-tight truncate mt-0.5 px-0.5">
+                              {setName}
+                            </p>
+                          )
+                        }
+                        return null
+                      })()}
+                      <div className="flex flex-wrap gap-0.5 mt-0.5 px-0.5">
+                        {item.quantity > 1 && (
+                          <span className="inline-flex items-center gap-0.5 text-[10px] font-black px-1.5 py-0.5 rounded-full bg-brand-red/20 text-brand-red border border-brand-red/40">
+                            ×{item.quantity}
+                          </span>
+                        )}
+                        {item.variant && item.variant !== 'Normal' && (
+                          <span className="inline-flex max-w-full min-w-0 items-center justify-center text-center text-[10px] font-semibold leading-tight px-1.5 py-0.5 rounded-full bg-yellow/15 text-yellow border border-yellow/30 whitespace-normal break-words">
+                            ✨ {item.variant}
+                          </span>
+                        )}
+                        {item.lang && (
+                          <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${tcgdexLanguageBadgeClass(item.lang)}`}>
+                            {tcgdexLanguageLabel(item.lang)}
+                          </span>
+                        )}
+                        <FallbackBadges card={card} compact />
+                      </div>
+                    </TiltBinderCard>
                   )
                 })}
               </div>
@@ -1474,9 +1390,7 @@ export default function Collection() {
           )}
           {filtered.length > 0 && (
             <div className="flex items-center justify-between text-sm pt-1 px-1">
-              <span className="text-text-muted">
-                {groupedCards.length} {t('collection.cards')}
-              </span>
+              <span className="text-text-muted">{filtered.length} {t('collection.filtered')}</span>
               <span className="font-bold text-gold">{formatPrice(totalValue)}</span>
             </div>
           )}
@@ -1661,8 +1575,6 @@ export default function Collection() {
       {editingCollectionItem && (
         <CollectionEditModal
           item={editingCollectionItem}
-          siblings={editingSiblings}
-          onSelectVersion={setEditingCollectionItem}
           onClose={closeCollectionItemModal}
         />
       )}

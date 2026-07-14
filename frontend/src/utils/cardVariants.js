@@ -18,14 +18,6 @@ export const VARIANT_PILL_META = Object.fromEntries(
   VARIANT_DEFINITIONS.map(({ name, code, className }) => [name, { code, className }])
 )
 
-// Alias kept for readability at call sites where "canonical ordering" is the intent
-// rather than "the four allowed variants" - same array, one source of truth.
-export const VARIANT_ORDER = CARD_VARIANTS
-
-// Most premium print first. Used to pick a single deterministic variant to represent
-// a stack of rows (e.g. for the HoloOverlay shimmer), independent of row/sort order.
-const PRIMARY_VARIANT_PRIORITY = ['First Edition', 'Holo', 'Reverse Holo', 'Normal']
-
 export const getAvailableVariants = (card) => [
   card?.variants_normal && 'Normal',
   card?.variants_reverse && 'Reverse Holo',
@@ -45,8 +37,9 @@ export const getDefaultVariant = (card) => {
 
 export const getDefaultVariantOrNull = (card) => getDefaultVariant(card)
 
-// Rows of the same variant differing only by condition (a NM and an LP Normal) are one
-// pill: the pill answers "do I own a Normal", not "how many rows exist".
+// Which prints of a card the user owns, for the set-grid pills. Rows of the same
+// variant differing only by condition (a NM and an LP Normal) collapse into one entry:
+// the pill answers "do I own a Normal", not "how many rows exist".
 export const getOwnedVariants = (rows = []) => {
   const totals = new Map()
   for (const row of rows) {
@@ -56,56 +49,16 @@ export const getOwnedVariants = (rows = []) => {
 
   // Test the summed quantity, not key presence: a row with quantity 0 or null must not
   // produce a pill claiming ownership of zero copies.
-  const ordered = VARIANT_ORDER
+  const ordered = CARD_VARIANTS
     .filter(variant => totals.get(variant) > 0)
     .map(variant => ({ variant, quantity: totals.get(variant) }))
 
   // Anything outside the four canonical prints (a hand-edited CSV import, say) still
   // gets a pill rather than vanishing.
   const unknown = [...totals.keys()]
-    .filter(variant => !VARIANT_ORDER.includes(variant) && totals.get(variant) > 0)
+    .filter(variant => !CARD_VARIANTS.includes(variant) && totals.get(variant) > 0)
     .sort()
     .map(variant => ({ variant, quantity: totals.get(variant) }))
 
   return [...ordered, ...unknown]
-}
-
-// Canonical ordering for a card's collection rows, so the edit modal's version tabs
-// appear in the same order as the pills on the tile. Non-canonical prints sort last.
-// Stable within a variant, and non-mutating.
-export const sortRowsByVariant = (rows = []) => {
-  const rank = (row) => {
-    const index = VARIANT_ORDER.indexOf(row?.variant || 'Normal')
-    return index === -1 ? VARIANT_ORDER.length : index
-  }
-  return [...rows].sort((a, b) => rank(a) - rank(b))
-}
-
-// Picks the single variant that should represent a stack of rows (e.g. which holo
-// shimmer to render on a stacked tile). Deterministic by print premium-ness rather
-// than by row/sort order: First Edition > Holo > Reverse Holo > Normal. Falls back to
-// whatever non-canonical variant is owned (alphabetically first) if none of the four
-// canonical prints are present, and to null when there are no rows at all.
-export const getPrimaryVariant = (rows = []) => {
-  const owned = getOwnedVariants(rows)
-  if (owned.length === 0) return null
-  const ownedNames = new Set(owned.map(entry => entry.variant))
-  const preferred = PRIMARY_VARIANT_PRIORITY.find(variant => ownedNames.has(variant))
-  return preferred ?? owned[0].variant
-}
-
-// Card ids carry a language suffix (sv01-003_en), so grouping by card id keeps the
-// English and German copies of a card in separate tiles.
-export const groupCollectionByCard = (items = []) => {
-  const groups = new Map()
-  for (const item of items) {
-    const cardId = item?.card_id ?? item?.card?.id
-    if (!groups.has(cardId)) {
-      groups.set(cardId, { cardId, card: item.card, rows: [], totalQuantity: 0 })
-    }
-    const group = groups.get(cardId)
-    group.rows.push(item)
-    group.totalQuantity += item.quantity || 0
-  }
-  return [...groups.values()]
 }

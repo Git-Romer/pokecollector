@@ -523,7 +523,9 @@ export default function SetDetail() {
               <VariantPills rows={card.owned_items || []} className="justify-center" />
             </div>
 
-            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex flex-col items-center justify-center gap-1 opacity-0 group-hover:opacity-100">
+            {/* Above the pills (z-10) so hovering dims them along with the art, rather
+                than leaving them lit on top of the overlay. */}
+            <div className="absolute inset-0 z-20 bg-black/0 group-hover:bg-black/40 transition-all flex flex-col items-center justify-center gap-1 opacity-0 group-hover:opacity-100">
               <p className="text-white text-xs font-medium text-center px-1 line-clamp-2">{card.name}</p>
               <button onClick={(e) => { e.stopPropagation(); setSelectedCard(card) }}
                 className="bg-brand-red text-white rounded-full p-1">

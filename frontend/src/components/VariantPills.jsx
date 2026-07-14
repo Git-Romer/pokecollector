@@ -11,7 +11,12 @@ export default function VariantPills({ rows, className = '' }) {
     <div className={clsx('flex flex-wrap gap-1', className)}>
       {owned.map(({ variant, quantity }) => {
         const meta = VARIANT_PILL_META[variant]
-        const label = t(`variants.${variant}`)
+        // A non-canonical variant (a CSV-imported "Full Art", say) has no i18n key, and
+        // t() returns the raw path when it can't resolve one. Show the variant name
+        // rather than the string "variants.Full Art".
+        const key = `variants.${variant}`
+        const translated = t(key)
+        const label = translated === key ? variant : translated
         return (
           <span
             key={variant}
