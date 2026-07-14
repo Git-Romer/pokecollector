@@ -17,6 +17,10 @@
 - John John is a local faceless JJ signal, never a chatbot, avatar, or external AI integration.
 - Use black, warm-white, and orange for chrome; reserve the spectrum for John John.
 - Use Inter, accessible dark/light themes, and reduced-motion support.
+- Use React Bits as a motion-quality reference. Implement page transitions,
+  loading states, collection reveals, card hover/focus feedback, and the JJ
+  presence signal only where they communicate discovery, activity, presence,
+  or intelligence; never as continuous decoration.
 - Imports never automatically overwrite collection data; no credentials or live integrations are added.
 - Every behavior change starts with a failing focused test.
 
@@ -59,7 +63,7 @@ test('calls the root Collection Overview without market copy', async () => {
 ```
 
 - [ ] **Step 5: Run `npm --prefix frontend test -- Archive.test.jsx`, then implement the minimum change.**
-Expected: FAIL because the page still renders Your Archive. Replace root-page Archive language with Collection Overview and Archive notes with John John’s Notes. Preserve existing dashboard/set queries, feature/recent/set-progress ordering, and CSS-only motion.
+Expected: FAIL because the page still renders Your Archive. Replace root-page Archive language with Collection Overview and Archive notes with John John’s Notes. Preserve existing dashboard/set queries and feature/recent/set-progress ordering. Add CSS-only entry/reveal transitions for collection content, tactile card hover/focus feedback, and an animated loading state. Keep the JJ signal still at rest and animate it only for loading/import/new-note context; every animation must be disabled by reduced-motion rules.
 
 - [ ] **Step 6: Verify and commit.**
 

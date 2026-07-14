@@ -43,7 +43,14 @@ avatar, notification channel, or permanent side panel.
   copy.
 - Dark is the default, with a complete accessible light theme.
 - Motion is purposeful: gallery reveals, card hover/focus feedback, and loading
-  transitions. It must respect system and in-app reduced-motion preferences.
+  transitions. Treat React Bits as an interaction-quality reference, not a
+  dependency requirement. It must respect system and in-app reduced-motion
+  preferences.
+- Motion communicates discovery, activity, presence, and intelligence: smooth
+  route transitions, animated loading states, a context-aware JJ presence
+  signal, collection reveals, and tactile card hover/focus feedback. Do not
+  animate decorative chrome or run continuous motion without a collection
+  event.
 - Fluent 2 principles remain the UI foundation: spacious layouts, rounded
   surfaces, soft depth, visible focus states, responsive behavior, and
   accessible contrast.
