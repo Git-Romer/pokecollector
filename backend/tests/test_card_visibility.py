@@ -165,6 +165,26 @@ class CardVisibilityTests(unittest.TestCase):
         }
         self.assertEqual(fr_card_ids, {"sv2-1_fr", "sv2-2_fr"})
 
+    def test_custom_cards_remain_visible_outside_synced_languages(self):
+        custom_card = Card(
+            id="custom-SV-P-ID-155",
+            name="Pikachu",
+            set_id=None,
+            number="155",
+            lang="id",
+            is_custom=True,
+            is_digital=False,
+        )
+        self.db.add(custom_card)
+        self.db.commit()
+
+        visible_ids = {
+            row.id
+            for row in self.db.query(Card).filter(visible_card_filter(self.db, self.user.id, "all")).all()
+        }
+
+        self.assertIn(custom_card.id, visible_ids)
+
     def test_background_sync_keeps_app_wide_pinned_sets(self):
         sync_set_ids = {row.id for row in self.db.query(Set).filter(sync_set_filter(self.db)).all()}
         self.assertIn("sv1_en", sync_set_ids)

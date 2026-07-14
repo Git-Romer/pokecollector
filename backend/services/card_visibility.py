@@ -144,10 +144,12 @@ def visible_card_filter(db: Session, user_id: int, requested_lang: str | None = 
 
     if lang != "all":
         if lang in active_languages:
-            return and_(Card.lang == lang, digital_clause)
-        return and_(card_pair_filter({pair for pair in pinned_pairs if pair[1] == lang}), digital_clause)
+            catalogue_clause = Card.lang == lang
+        else:
+            catalogue_clause = card_pair_filter({pair for pair in pinned_pairs if pair[1] == lang})
+        return and_(or_(Card.is_custom == True, catalogue_clause), digital_clause)
 
-    return and_(or_(Card.lang.in_(active_languages), card_pair_filter(pinned_pairs)), digital_clause)
+    return and_(or_(Card.is_custom == True, Card.lang.in_(active_languages), card_pair_filter(pinned_pairs)), digital_clause)
 
 
 def sync_set_filter(db: Session):
