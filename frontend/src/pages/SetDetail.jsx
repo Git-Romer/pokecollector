@@ -10,6 +10,7 @@ import clsx from 'clsx'
 import { resolveCardImageUrl, resolveSetImageUrl } from '../utils/imageUrl'
 import { CARD_VARIANTS, getAvailableVariants, getDefaultVariantOrNull } from '../utils/cardVariants'
 import FallbackBadges from '../components/FallbackBadges'
+import VariantPills from '../components/VariantPills'
 import { HOLO_FIELD_MAP } from '../utils/prices'
 import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
 import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
@@ -520,6 +521,11 @@ export default function SetDetail() {
               className="absolute left-1 right-1 bottom-5 z-10 justify-center pointer-events-none"
               compact
               variant="overlay"
+            />
+
+            <VariantPills
+              rows={card.owned_items || []}
+              className="absolute left-1 right-1 bottom-5 z-10 justify-center pointer-events-none"
             />
 
             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex flex-col items-center justify-center gap-1 opacity-0 group-hover:opacity-100">
