@@ -5,14 +5,10 @@ import { NavLink, Outlet } from 'react-router-dom'
 import clsx from 'clsx'
 import ArchiveCommandBar from './ArchiveCommandBar'
 import JohnJohnSignal from './JohnJohnSignal'
+import { PRIMARY_ARCHIVE_DESTINATIONS } from './archiveNavigation'
 
-export const PRIMARY_ARCHIVE_NAV = [
-  { to: '/collection', label: 'Collection', icon: CollectionsRegular },
-  { to: '/search', label: 'Card Search', icon: SearchRegular },
-  { to: '/sets', label: 'Sets', icon: TableRegular },
-  { to: '/analytics', label: 'Analytics', icon: DataBarVerticalRegular },
-  { to: '/settings', label: 'Settings', icon: SettingsRegular },
-]
+const ICONS = { collection: CollectionsRegular, search: SearchRegular, sets: TableRegular, analytics: DataBarVerticalRegular, settings: SettingsRegular }
+export const PRIMARY_ARCHIVE_NAV = PRIMARY_ARCHIVE_DESTINATIONS.map((item) => ({ ...item, icon: ICONS[item.icon] }))
 
 export default function ArchiveShell() {
   const [commandOpen, setCommandOpen] = useState(false)
