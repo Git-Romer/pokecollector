@@ -23,6 +23,8 @@ import { tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLa
 import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import { formatMoneyInputValue, parseMoneyInputValue } from '../utils/moneyInput'
+import { groupCollectionByCard } from '../utils/cardVariants'
+import VariantPills from '../components/VariantPills'
 
 function TiltBinderCard({ className, onClick, children }) {
   const { ref, onMouseMove, onMouseEnter, onMouseLeave } = useTilt(10)
@@ -1079,6 +1081,7 @@ export default function Collection() {
 
   const totalValue = filtered.reduce((sum, item) => sum + (getEffectivePrice(item.card, item.variant) * item.quantity), 0)
   const totalCards = filtered.reduce((sum, item) => sum + item.quantity, 0)
+  const groupedCards = useMemo(() => groupCollectionByCard(filtered), [filtered])
   const exportParams = { price_field: pricePrimaryField, currency, exchange_rate: exchangeRate }
 
   const resetFilters = () => {
@@ -1315,8 +1318,10 @@ export default function Collection() {
           ) : (
             <div className="binder-grid">
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
-                {filtered.map(item => {
-                  const card = item.card
+                {groupedCards.map(group => {
+                  const item = group.rows[0]
+                  const card = group.card
+                  const isStacked = group.rows.length > 1
                   const rarityLower = (card?.rarity || '').toLowerCase()
                   let rarityClass = ''
                   if (rarityLower.includes('secret') || rarityLower.includes('rainbow')) {
@@ -1333,56 +1338,64 @@ export default function Collection() {
                   }
 
                   return (
-                    <TiltBinderCard
-                      key={item.id}
-                      className={`binder-card ${rarityClass} cursor-pointer`}
-                      onClick={() => setEditingCollectionItem(item)}
-                    >
-                      <div
-                        className="aspect-[2.5/3.5] relative rounded-xl overflow-hidden flex-shrink-0"
+                    <div key={group.cardId} className="relative">
+                      {isStacked && (
+                        <>
+                          <div aria-hidden className="absolute inset-0 -z-10 translate-x-1 translate-y-1 rounded-xl bg-bg-elevated border border-border" />
+                          <div aria-hidden className="absolute inset-0 -z-20 translate-x-2 translate-y-2 rounded-xl bg-bg-surface border border-border" />
+                        </>
+                      )}
+                      <TiltBinderCard
+                        className={`binder-card ${rarityClass} cursor-pointer`}
+                        onClick={() => setEditingCollectionItem(item)}
                       >
-                        <CardImage src={resolveCardImageUrl(card)} alt={card?.name} className="w-full h-full object-cover" />
-                        <HoloOverlay variant={item.variant} />
-                        <ProductSourceBadge item={item} t={t} compact className="absolute right-1 top-1 z-10 h-6 w-6" />
-                      </div>
-                      {(() => {
-                        const abbr = card?.set_ref?.abbreviation
-                        const num = card?.number
-                        const setName = card?.set_ref?.name
-                        if (abbr && num) {
-                          return (
-                            <p className="text-[10px] font-mono font-bold text-brand-red/70 leading-tight truncate mt-0.5 px-0.5">
-                              {abbr} {num}
-                            </p>
-                          )
-                        } else if (setName) {
-                          return (
-                            <p className="text-[10px] text-text-muted leading-tight truncate mt-0.5 px-0.5">
-                              {setName}
-                            </p>
-                          )
-                        }
-                        return null
-                      })()}
-                      <div className="flex flex-wrap gap-0.5 mt-0.5 px-0.5">
-                        {item.quantity > 1 && (
-                          <span className="inline-flex items-center gap-0.5 text-[10px] font-black px-1.5 py-0.5 rounded-full bg-brand-red/20 text-brand-red border border-brand-red/40">
-                            ×{item.quantity}
-                          </span>
-                        )}
-                        {item.variant && item.variant !== 'Normal' && (
-                          <span className="inline-flex max-w-full min-w-0 items-center justify-center text-center text-[10px] font-semibold leading-tight px-1.5 py-0.5 rounded-full bg-yellow/15 text-yellow border border-yellow/30 whitespace-normal break-words">
-                            ✨ {item.variant}
-                          </span>
-                        )}
-                        {item.lang && (
-                          <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${tcgdexLanguageBadgeClass(item.lang)}`}>
-                            {tcgdexLanguageLabel(item.lang)}
-                          </span>
-                        )}
-                        <FallbackBadges card={card} compact />
-                      </div>
-                    </TiltBinderCard>
+                        <div
+                          className="aspect-[2.5/3.5] relative rounded-xl overflow-hidden flex-shrink-0"
+                        >
+                          <CardImage src={resolveCardImageUrl(card)} alt={card?.name} className="w-full h-full object-cover" />
+                          <HoloOverlay variant={item.variant} />
+                          <ProductSourceBadge item={item} t={t} compact className="absolute right-1 top-1 z-10 h-6 w-6" />
+                        </div>
+                        {(() => {
+                          const abbr = card?.set_ref?.abbreviation
+                          const num = card?.number
+                          const setName = card?.set_ref?.name
+                          if (abbr && num) {
+                            return (
+                              <p className="text-[10px] font-mono font-bold text-brand-red/70 leading-tight truncate mt-0.5 px-0.5">
+                                {abbr} {num}
+                              </p>
+                            )
+                          } else if (setName) {
+                            return (
+                              <p className="text-[10px] text-text-muted leading-tight truncate mt-0.5 px-0.5">
+                                {setName}
+                              </p>
+                            )
+                          }
+                          return null
+                        })()}
+                        <VariantPills rows={group.rows} className="mt-1" />
+                        <div className="flex flex-wrap gap-0.5 mt-0.5 px-0.5">
+                          {item.quantity > 1 && (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] font-black px-1.5 py-0.5 rounded-full bg-brand-red/20 text-brand-red border border-brand-red/40">
+                              ×{item.quantity}
+                            </span>
+                          )}
+                          {item.variant && item.variant !== 'Normal' && (
+                            <span className="inline-flex max-w-full min-w-0 items-center justify-center text-center text-[10px] font-semibold leading-tight px-1.5 py-0.5 rounded-full bg-yellow/15 text-yellow border border-yellow/30 whitespace-normal break-words">
+                              ✨ {item.variant}
+                            </span>
+                          )}
+                          {item.lang && (
+                            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${tcgdexLanguageBadgeClass(item.lang)}`}>
+                              {tcgdexLanguageLabel(item.lang)}
+                            </span>
+                          )}
+                          <FallbackBadges card={card} compact />
+                        </div>
+                      </TiltBinderCard>
+                    </div>
                   )
                 })}
               </div>
