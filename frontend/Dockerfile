@@ -7,6 +7,9 @@ ARG PUBLIC_MODE=false
 COPY frontend/package*.json ./
 RUN npm install
 
+ARG BUILD_REVISION=dev
+RUN echo "Building revision ${BUILD_REVISION}"
+
 COPY VERSION /VERSION
 COPY frontend/ .
 
