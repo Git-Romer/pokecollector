@@ -1,8 +1,8 @@
-# Pokémon TCG Tracker Refinement Implementation Plan
+# John John's PC Refinement Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Refine the local tracker into a collection-first Pokémon TCG Tracker with John John as an ambient local-only presence, structured care data, and Excel export.
+**Goal:** Refine the local tracker into a collection-first John John's PC with John John as an ambient local-only presence, structured care data, and Excel export.
 
 **Architecture:** Preserve the existing FastAPI routes, SQLite migration pattern, React Router paths, collection rows, and product records. Add optional collection metadata, use the existing product model for sealed inventory, and expose those concerns through focused frontend components.
 
@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Visible product name is exactly `Pokémon TCG Tracker`.
+- Visible product name is exactly `John John's PC`.
 - Primary navigation remains Collection, Card Search, Sets, Analytics, and Settings.
 - Preserve database records, API paths, legacy routes, and `docker-compose.local.yml`.
 - Collection Overview has no portfolio, P&L, or market hero metric.
@@ -29,14 +29,14 @@
 - Modify: `frontend/src/components/ArchiveShell.test.jsx`
 - Create: `frontend/src/pages/Archive.test.jsx`
 
-**Interfaces:** The wordmark links to `/` as Pokémon TCG Tracker. The root renders Collection Overview and John John’s Notes. The fixed five destination labels and routes remain unchanged.
+**Interfaces:** The wordmark links to `/` as John John's PC. The root renders Collection Overview and John John’s Notes. The fixed five destination labels and routes remain unchanged.
 
 - [ ] **Step 1: Write the failing shell identity test.**
 
 ```jsx
 test('uses the tracker wordmark and familiar destinations', () => {
   render(<MemoryRouter><ArchiveShell /></MemoryRouter>)
-  expect(screen.getAllByText('Pokémon TCG Tracker')[0]).toBeVisible()
+  expect(screen.getAllByText("John John's PC")[0]).toBeVisible()
   expect(screen.getByRole('link', { name: 'Collection' })).toBeVisible()
   expect(screen.getByRole('link', { name: 'Settings' })).toBeVisible()
 })
@@ -46,7 +46,7 @@ test('uses the tracker wordmark and familiar destinations', () => {
 Expected: FAIL because the current wordmark is John John's PC.
 
 - [ ] **Step 3: Implement the minimal identity/token changes.**
-Set browser and PWA titles to Pokémon TCG Tracker. Make the wordmark a `NavLink` to `/`; change passive signal copy to “John John is keeping watch.” Replace navy tokens with black canvas `#000000`, warm surface `#171513`, warm-white text `#FFFFFF`, and orange `#F58220`; retain contrast-safe light tokens and reduced-motion rules. Change the primary font stack to `Inter, system-ui, sans-serif`.
+Set browser and PWA titles to John John's PC. Make the wordmark a `NavLink` to `/`; change passive signal copy to “John John is keeping watch.” Replace navy tokens with black canvas `#000000`, warm surface `#171513`, warm-white text `#FFFFFF`, and orange `#F58220`; retain contrast-safe light tokens and reduced-motion rules. Change the primary font stack to `Inter, system-ui, sans-serif`.
 
 - [ ] **Step 4: Write the failing root-copy test.**
 
@@ -67,7 +67,7 @@ Expected: FAIL because the page still renders Your Archive. Replace root-page Ar
 npm --prefix frontend test -- ArchiveShell.test.jsx Archive.test.jsx
 npm --prefix frontend run build
 git add frontend/index.html frontend/public/manifest.json frontend/src/components/ArchiveShell.jsx frontend/src/components/JohnJohnSignal.jsx frontend/src/pages/Archive.jsx frontend/src/pages/Archive.test.jsx frontend/src/design/archiveTheme.js frontend/src/design/archive.css frontend/src/hooks/useTheme.js frontend/src/components/ArchiveShell.test.jsx
-git commit -m "feat: refine Pokémon TCG Tracker collection overview"
+git commit -m "feat: refine John John's PC collection overview"
 ```
 
 ### Task 2: Add backward-compatible card care and provenance metadata
@@ -203,7 +203,7 @@ Render the notice in the existing CSV import modal. Add `exportExcel()` next to 
 npm --prefix frontend test -- ImportReviewNotice.test.jsx
 npm --prefix frontend run build
 git add backend/api/export.py backend/tests/test_excel_export.py frontend/src/api/client.js frontend/src/pages/Collection.jsx frontend/src/components/ImportReviewNotice.jsx frontend/src/components/ImportReviewNotice.test.jsx
-git commit -m "feat: export Pokémon TCG Tracker to Excel"
+git commit -m "feat: export John John's PC to Excel"
 ```
 
 ### Task 5: Document local-first controls and perform release verification
@@ -239,6 +239,5 @@ pytest backend/tests -v
 Invoke-WebRequest http://127.0.0.1:13000 -UseBasicParsing | Select-Object -ExpandProperty StatusCode
 Invoke-WebRequest http://127.0.0.1:18080/openapi.json -UseBasicParsing | Select-Object -ExpandProperty StatusCode
 git add frontend/src/pages/Settings.jsx frontend/src/pages/Settings.test.jsx docs/FRONTEND.md docs/ARCHITECTURE.md README.md
-git commit -m "docs: document local Pokémon TCG Tracker controls"
+git commit -m "docs: document local John John's PC controls"
 ```
-

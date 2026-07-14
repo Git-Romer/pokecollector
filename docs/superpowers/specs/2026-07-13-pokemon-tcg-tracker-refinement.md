@@ -1,15 +1,15 @@
-# Pokémon TCG Tracker Refinement
+# John John's PC Refinement
 
 ## Purpose
 
-Refine the locally hosted Pokémon TCG Tracker into a personal, collection-first
+Refine the locally hosted John John's PC into a personal, collection-first
 databank. The tracker remains the visible product and the user’s source of
 truth. John John supplies an ambient, local-only design presence; he does not
 rename, own, or compete with the collection.
 
 ## Product identity and navigation
 
-- Visible product name and browser/PWA metadata: **Pokémon TCG Tracker**.
+- Visible product name and browser/PWA metadata: **John John's PC**.
 - The tracker wordmark returns to the root **Collection Overview** route.
 - Primary navigation remains exactly: **Collection**, **Card Search**, **Sets**,
   **Analytics**, and **Settings**.
