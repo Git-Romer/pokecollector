@@ -2,7 +2,7 @@ import { Button, Tooltip } from '@fluentui/react-components'
 
 export default function JohnJohnSignal({ noteCount = 0, onOpenNotes }) {
   const canOpenNotes = noteCount > 0 && onOpenNotes
-  const label = canOpenNotes ? 'Open Archive Notes' : 'John John is keeping watch'
+  const label = canOpenNotes ? 'Open John John’s Notes' : 'John John is keeping watch'
 
   return (
     <Tooltip content={label} relationship="label">

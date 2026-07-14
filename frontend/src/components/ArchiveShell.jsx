@@ -33,7 +33,7 @@ export default function ArchiveShell() {
   return (
     <div className="archive-shell min-h-dvh">
       <aside className="archive-rail hidden lg:flex" aria-label="Primary navigation">
-        <div className="archive-wordmark"><span>JJ</span><strong>John John's PC</strong></div>
+        <NavLink to="/" className="archive-wordmark" aria-label="John John's PC, Collection Overview"><span>JJ</span><strong>John John's PC</strong></NavLink>
         <nav className="archive-nav">
           {PRIMARY_ARCHIVE_NAV.map(({ to, label, icon: Icon, end }) => (
             <NavLink key={to} to={to} end={end} className={({ isActive }) => clsx('archive-nav-link', isActive && 'archive-nav-link-active')}>
@@ -41,7 +41,7 @@ export default function ArchiveShell() {
             </NavLink>
           ))}
         </nav>
-        <div className="archive-rail-footer"><JohnJohnSignal /><span>Archive keeper</span></div>
+        <div className="archive-rail-footer"><JohnJohnSignal /><span>John John is keeping watch</span></div>
       </aside>
       <div className="archive-content">
         <Toolbar className="archive-toolbar">
