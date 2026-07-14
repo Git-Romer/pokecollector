@@ -17,6 +17,10 @@
 - John John is a local faceless JJ signal, never a chatbot, avatar, or external AI integration.
 - Use black, warm-white, and orange for chrome; reserve the spectrum for John John.
 - Use Inter, accessible dark/light themes, and reduced-motion support.
+- Use Fluent UI v9 patterns and tokens before custom primitives. Maintain
+  spacious responsive layouts, rounded soft-depth surfaces, meaningful visual
+  hierarchy, keyboard-first interaction, visible focus states, and contrast
+  that meets the quality bar of Copilot, Windows 11, Loop, and Designer.
 - Use React Bits as a motion-quality reference. Implement page transitions,
   loading states, collection reveals, card hover/focus feedback, and the JJ
   presence signal only where they communicate discovery, activity, presence,
@@ -50,7 +54,7 @@ test('uses the tracker wordmark and familiar destinations', () => {
 Expected: FAIL because the current wordmark is John John's PC.
 
 - [ ] **Step 3: Implement the minimal identity/token changes.**
-Set browser and PWA titles to John John's PC. Make the wordmark a `NavLink` to `/`; change passive signal copy to “John John is keeping watch.” Replace navy tokens with black canvas `#000000`, warm surface `#171513`, warm-white text `#FFFFFF`, and orange `#F58220`; retain contrast-safe light tokens and reduced-motion rules. Change the primary font stack to `Inter, system-ui, sans-serif`.
+Set browser and PWA titles to John John's PC. Make the wordmark a `NavLink` to `/`; change passive signal copy to “John John is keeping watch.” Replace navy tokens with black canvas `#000000`, warm surface `#171513`, warm-white text `#FFFFFF`, and orange `#F58220`; retain contrast-safe light tokens and reduced-motion rules. Change the primary font stack to `Inter, system-ui, sans-serif`. Use Fluent v9 tokens for controls and surfaces; retain custom CSS only for collection-specific presentation and motion.
 
 - [ ] **Step 4: Write the failing root-copy test.**
 

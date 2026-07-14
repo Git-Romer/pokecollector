@@ -53,7 +53,12 @@ avatar, notification channel, or permanent side panel.
   event.
 - Fluent 2 principles remain the UI foundation: spacious layouts, rounded
   surfaces, soft depth, visible focus states, responsive behavior, and
-  accessible contrast.
+  accessible contrast. Use Fluent UI v9 patterns and tokens before custom UI
+  primitives, with the visual polish benchmarked against Microsoft Copilot,
+  Windows 11, Microsoft Loop, and Microsoft Designer.
+- Treat accessibility as a product behavior: semantic landmarks, predictable
+  focus order, keyboard-complete controls, clear states, sufficient contrast,
+  responsive reflow, and reduced motion are required acceptance criteria.
 
 ## Collection model
 
