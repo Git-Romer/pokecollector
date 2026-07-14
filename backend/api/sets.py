@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text, func
 from api.auth import get_current_user
 from database import get_db
-from models import Set, Card, CollectionItem, Setting, User
+from models import Set, Card, CollectionItem, User
 from schemas import SetBase
 from services import pokemon_api
 from services.card_fallbacks import (
@@ -18,6 +18,7 @@ from services.card_fallbacks import (
 from services.card_upsert import upsert_card
 from services.card_visibility import get_configured_sync_languages, visible_set_filter
 from services.digital_sets import digital_sets_enabled
+from services.display_language import get_display_language
 from services.tcgdex_languages import DEFAULT_TCGDEX_SYNC_LANGUAGES, has_lang_suffix, is_supported_tcgdex_language, normalize_tcgdex_language
 
 router = APIRouter()
@@ -47,12 +48,6 @@ def _natural_card_number_key(number: Optional[str]) -> tuple:
         else:
             parts.append((1, part.casefold()))
     return tuple(parts) or ((2, ""),)
-
-
-def _get_language(db: Session) -> str:
-    """Get display language from settings."""
-    row = db.query(Setting).filter(Setting.key == "language").first()
-    return row.value if row else "de"
 
 
 def _refresh_sets(db: Session, display_lang: str):
@@ -97,7 +92,7 @@ def get_sets(
     lang_filter = requested_lang if is_supported_tcgdex_language(requested_lang) else "all"
 
     # Determine display language for API calls
-    display_lang = lang_filter if lang_filter != "all" else _get_language(db)
+    display_lang = lang_filter if lang_filter != "all" else get_display_language(db, current_user.id)
 
     # Always refresh if empty DB or explicitly requested
     if refresh or db.query(Set).count() == 0:

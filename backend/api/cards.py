@@ -5,7 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from typing import Optional, List
 from api.auth import get_current_user
 from database import get_db
-from models import Card, Set, PriceHistory, CustomCardMatch, CollectionItem, WishlistItem, BinderCard, Setting, User, ImageCache
+from models import Card, Set, PriceHistory, CustomCardMatch, CollectionItem, WishlistItem, BinderCard, User, ImageCache
 from schemas import CardBase, CardWithSet, PriceHistoryResponse, CardCustomCreate, CustomCardUpdate, CardCustomImageUpdate
 from services import pokemon_api
 from services.card_fallbacks import (
@@ -30,12 +30,6 @@ router = APIRouter()
 
 # Pattern: one or more letters, whitespace, one or more digits (e.g. "MEP 022", "SSP 136", "sv08 032")
 _CODE_NUMBER_RE = re.compile(r'^([A-Za-z]+\d*)\s+(\d+)$')
-
-
-def _get_language(db: Session) -> str:
-    """Get display language from settings."""
-    row = db.query(Setting).filter(Setting.key == "language").first()
-    return row.value if row else "de"
 
 
 def _card_to_dict(card: Card) -> dict:
