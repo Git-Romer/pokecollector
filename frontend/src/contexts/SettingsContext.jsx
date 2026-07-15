@@ -219,8 +219,8 @@ export function SettingsProvider({ children }) {
       if (val === undefined) break
     }
     if (val === undefined) {
-      // Fallback to German
-      let fallback = translations.de
+      // Fallback to English
+      let fallback = translations.en
       for (const part of parts) {
         fallback = fallback?.[part]
         if (fallback === undefined) break

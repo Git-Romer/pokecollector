@@ -62,7 +62,7 @@ function getPriceValue(card, priceKey) {
 const POKEMON_TYPES = ['Fire', 'Water', 'Grass', 'Lightning', 'Psychic', 'Fighting', 'Darkness', 'Metal', 'Dragon', 'Colorless', 'Fairy', 'Stellar']
 
 export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoAddCollection = false, editCard = null }) {
-  const { t, exchangeRate, exchangeRateReady } = useSettings()
+  const { t, settings, exchangeRate, exchangeRateReady } = useSettings()
   const [name, setName] = useState(editCard?.name || '')
   const [setChoice, setSetChoice] = useState('')
   const [customSetId, setCustomSetId] = useState('')
@@ -81,7 +81,7 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
   const queryClient = useQueryClient()
 
   const { data: fetchedSets = [] } = useQuery({
-    queryKey: ['sets'],
+    queryKey: ['sets', settings.language || 'en'],
     queryFn: () => getSets().then(r => r.data),
     staleTime: 60000,
     enabled: setsProp.length === 0,

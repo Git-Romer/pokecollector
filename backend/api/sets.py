@@ -18,7 +18,7 @@ from services.card_fallbacks import (
 from services.card_upsert import upsert_card
 from services.card_visibility import get_configured_sync_languages, visible_set_filter
 from services.digital_sets import digital_sets_enabled
-from services.display_language import get_display_language
+from services.display_language import get_tcgdex_display_language
 from services.tcgdex_languages import DEFAULT_TCGDEX_SYNC_LANGUAGES, has_lang_suffix, is_supported_tcgdex_language, normalize_tcgdex_language
 
 router = APIRouter()
@@ -81,18 +81,21 @@ def get_sets(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     refresh: bool = False,
-    lang: Optional[str] = Query("all", description="Language filter: supported TCGdex language code or 'all'"),
+    lang: Optional[str] = Query(None, description="Language filter: supported TCGdex language code or 'all'"),
 ):
     """Get all sets, optionally refresh from TCGdex API.
 
     lang: filter by set language code or 'all'.
     Sets are stored separately per language, with no 'both' entries.
     """
-    requested_lang = normalize_tcgdex_language(lang or "all")
-    lang_filter = requested_lang if is_supported_tcgdex_language(requested_lang) else "all"
+    if lang is None:
+        lang_filter = get_tcgdex_display_language(db, current_user.id)
+    else:
+        requested_lang = normalize_tcgdex_language(lang or "all")
+        lang_filter = requested_lang if is_supported_tcgdex_language(requested_lang) else "all"
 
     # Determine display language for API calls
-    display_lang = lang_filter if lang_filter != "all" else get_display_language(db, current_user.id)
+    display_lang = lang_filter if lang_filter != "all" else get_tcgdex_display_language(db, current_user.id)
 
     # Always refresh if empty DB or explicitly requested
     if refresh or db.query(Set).count() == 0:

@@ -47,20 +47,20 @@ class DisplayLanguageTests(unittest.TestCase):
         self.assertEqual(get_display_language(self.db, self.ash.id), "en")
         self.assertEqual(get_display_language(self.db, self.misty.id), "fr")
 
-    def test_falls_back_to_the_global_setting_when_the_user_has_no_override(self):
+    def test_ignores_legacy_global_setting_when_the_user_has_no_override(self):
         self.db.add(Setting(key="language", value="fr"))
         self.db.commit()
 
-        self.assertEqual(get_display_language(self.db, self.misty.id), "fr")
+        self.assertEqual(get_display_language(self.db, self.misty.id), "en")
 
     def test_falls_back_to_the_default_when_neither_is_set(self):
         self.assertEqual(get_display_language(self.db, self.ash.id), "en")
 
-    def test_falls_back_to_the_global_setting_when_no_user_is_given(self):
+    def test_falls_back_to_the_default_when_no_user_is_given(self):
         self.db.add(Setting(key="language", value="de"))
         self.db.commit()
 
-        self.assertEqual(get_display_language(self.db, None), "de")
+        self.assertEqual(get_display_language(self.db, None), "en")
 
 
 if __name__ == "__main__":
