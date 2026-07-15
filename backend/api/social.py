@@ -333,7 +333,7 @@ def _load_user_stats(db: Session, user_ids: list[int] | None = None, price_field
         products_sold_revenue = sum(p.sold_price for p in sold_products if p.sold_price is not None)
         product_card_realized_gains = db.query(func.coalesce(func.sum(ProductLedgerEntry.amount), 0)).filter(
             ProductLedgerEntry.user_id == user.id,
-            ProductLedgerEntry.entry_type.in_(["card_sale", "flat_gain"]),
+            ProductLedgerEntry.entry_type.in_(["card_sale", "trade_out", "flat_gain"]),
         ).scalar() or 0
         products_realized_pnl = products_sold_revenue - products_sold_cost + product_card_realized_gains
 

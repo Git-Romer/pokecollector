@@ -300,7 +300,7 @@ function ProductLedgerPanel({ product, products, collectionItems, formatPrice, t
                   <div className="pt-2 border-t border-border/70 space-y-1">
                     {(entry.ledger_entries || []).map(ledger => (
                       <p key={ledger.id} className="text-xs text-text-muted flex items-center gap-1">
-                        <History size={12} /> {ledger.event_date}: {ledger.quantity} × {entry.card?.name || entry.card_id} · {formatPrice(ledger.amount)}{ledger.notes ? ` · ${ledger.notes}` : ''}
+                        <History size={12} /> {ledger.event_date}: {ledger.quantity} × {ledger.entry_type === 'trade_out' ? `${t('products.tradeOut')} - ${ledger.card_name || entry.card?.name || entry.card_id}` : (entry.card?.name || entry.card_id)} · {formatPrice(ledger.amount)}{ledger.notes ? ` · ${ledger.notes}` : ''}
                       </p>
                     ))}
                   </div>

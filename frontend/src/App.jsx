@@ -19,6 +19,7 @@ const Binders = lazy(() => import('./pages/Binders'))
 const BinderDetail = lazy(() => import('./pages/BinderDetail'))
 const Analytics = lazy(() => import('./pages/Analytics'))
 const Products = lazy(() => import('./pages/Products'))
+const Trades = lazy(() => import('./pages/Trades'))
 const Settings = lazy(() => import('./pages/Settings'))
 const CardMigration = lazy(() => import('./pages/CardMigration'))
 const Login = lazy(() => import('./pages/Login'))
@@ -148,6 +149,7 @@ function ProtectedRoutes() {
         <Route path="binders/:binderId" element={lazyRoute(<BinderDetail />)} />
         <Route path="analytics" element={lazyRoute(<Analytics />)} />
         <Route path="products" element={lazyRoute(<Products />)} />
+        <Route path="trades" element={lazyRoute(<Trades />)} />
         <Route path="leaderboard" element={lazyRoute(<Leaderboard />)} />
         <Route path="leaderboard/compare/:userId" element={lazyRoute(<Compare />)} />
         <Route path="achievements" element={lazyRoute(<Achievements />)} />

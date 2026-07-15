@@ -209,6 +209,11 @@ export const unlinkProductCard = (productId, productCardId) => api.delete(`/prod
 export const sellProductCard = (productId, productCardId, data) => api.post(`/products/${productId}/cards/${productCardId}/sell`, data).then(r => r.data)
 export const addProductLedgerEntry = (productId, data) => api.post(`/products/${productId}/ledger`, data).then(r => r.data)
 
+export const getTrades = () => api.get('/trades/').then(r => r.data)
+export const getTrade = (id) => api.get(`/trades/${id}`).then(r => r.data)
+export const createTrade = (data, params = {}) => api.post('/trades/', data, { params }).then(r => r.data)
+export const valueTrade = (data, params = {}) => api.post('/trades/value', data, { params }).then(r => r.data)
+
 // Export
 export const exportCSV = (params = {}) => {
   const token = localStorage.getItem('token')

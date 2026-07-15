@@ -61,7 +61,7 @@ def entry_realized_value(entry) -> float:
     ledger_entries = getattr(entry, "ledger_entries", None) or []
     total = 0.0
     for ledger_entry in ledger_entries:
-        if getattr(ledger_entry, "entry_type", None) != "card_sale":
+        if getattr(ledger_entry, "entry_type", None) not in {"card_sale", "trade_out"}:
             continue
         value = getattr(ledger_entry, "amount", 0) or 0
         if finite_non_negative(value):

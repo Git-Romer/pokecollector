@@ -36,6 +36,7 @@ class ProductLedgerTests(unittest.TestCase):
             card=card,
             ledger_entries=[
                 SimpleNamespace(entry_type="card_sale", amount=25),
+                SimpleNamespace(entry_type="trade_out", amount=15),
             ],
         )
 
@@ -43,8 +44,8 @@ class ProductLedgerTests(unittest.TestCase):
 
         self.assertEqual(source, "linked_cards")
         self.assertEqual(totals.live_cards_value, 10)
-        self.assertEqual(totals.realized_gains, 25)
-        self.assertEqual(value, 35)
+        self.assertEqual(totals.realized_gains, 40)
+        self.assertEqual(value, 50)
 
     def test_product_effective_value_keeps_zero_manual_current_value(self):
         product = SimpleNamespace(purchase_price=50, current_value=0, sold_price=None)
