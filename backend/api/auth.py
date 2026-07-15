@@ -56,6 +56,20 @@ def field_was_set(model: BaseModel, field_name: str) -> bool:
     return field_name in model.__fields_set__
 
 
+def active_admin_count(db: Session) -> int:
+    return db.query(User).filter(User.role == "admin", User.is_active == True).count()
+
+
+def ensure_keeps_active_admin(db: Session, user: User, data: UpdateUserRequest):
+    next_role = data.role if data.role is not None else user.role
+    next_is_active = data.is_active if data.is_active is not None else user.is_active
+    removes_active_admin = user.role == "admin" and user.is_active and (
+        next_role != "admin" or not next_is_active
+    )
+    if removes_active_admin and active_admin_count(db) <= 1:
+        raise HTTPException(status_code=400, detail="At least one active admin account is required")
+
+
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
     if not token:
         multi = get_setting("multi_user_mode")
@@ -201,6 +215,7 @@ def update_user(
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    ensure_keeps_active_admin(db, user, data)
     if data.username is not None:
         user.username = data.username
     if data.password is not None:

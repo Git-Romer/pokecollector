@@ -1289,6 +1289,8 @@ function UsersTab({ t, queryClient }) {
   const { user: currentUser } = useAuth()
 
   const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: getUsers })
+  const activeAdminCount = users.filter((u) => u.role === 'admin' && u.is_active).length
+  const isLastActiveAdmin = (u) => u?.role === 'admin' && u?.is_active && activeAdminCount <= 1
 
   const createMut = useMutation({
     mutationFn: (data) => createUser(data),
@@ -1348,19 +1350,27 @@ function UsersTab({ t, queryClient }) {
           </button>
         </div>
         <SettingsCard>
-          {users.map((u, i) => (
-            <SettingsRow key={u.id} label={u.username} description={`${u.role} · ${u.is_active ? t('settings.users.active') : t('settings.users.inactive')}`} last={i === users.length - 1}>
-              <div className="flex items-center gap-2">
-                <button onClick={() => updateMut.mutate({ id: u.id, data: { is_active: !u.is_active } })} className="text-text-muted hover:text-text-primary" title={u.is_active ? 'Deactivate' : 'Activate'}>
-                  {u.is_active ? <UserCheck size={15} /> : <UserX size={15} />}
-                </button>
-                <button onClick={() => openEdit(u)} className="text-text-muted hover:text-text-primary"><Pencil size={15} /></button>
-                {u.id !== currentUser?.id && (
-                  <button onClick={() => { if (window.confirm(t('settings.users.deleteConfirm'))) deleteMut.mutate(u.id) }} className="text-text-muted hover:text-brand-red"><Trash2 size={15} /></button>
-                )}
-              </div>
-            </SettingsRow>
-          ))}
+          {users.map((u, i) => {
+            const lastActiveAdmin = isLastActiveAdmin(u)
+            return (
+              <SettingsRow key={u.id} label={u.username} description={`${u.role} · ${u.is_active ? t('settings.users.active') : t('settings.users.inactive')}`} last={i === users.length - 1}>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => updateMut.mutate({ id: u.id, data: { is_active: !u.is_active } })}
+                    disabled={lastActiveAdmin}
+                    className={`text-text-muted hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:text-text-muted`}
+                    title={lastActiveAdmin ? t('settings.users.lastAdminRequired') : (u.is_active ? t('settings.users.deactivate') : t('settings.users.activate'))}
+                  >
+                    {u.is_active ? <UserCheck size={15} /> : <UserX size={15} />}
+                  </button>
+                  <button onClick={() => openEdit(u)} className="text-text-muted hover:text-text-primary"><Pencil size={15} /></button>
+                  {u.id !== currentUser?.id && (
+                    <button onClick={() => { if (window.confirm(t('settings.users.deleteConfirm'))) deleteMut.mutate(u.id) }} className="text-text-muted hover:text-brand-red"><Trash2 size={15} /></button>
+                  )}
+                </div>
+              </SettingsRow>
+            )
+          })}
         </SettingsCard>
       </section>
 
@@ -1390,9 +1400,12 @@ function UsersTab({ t, queryClient }) {
           <div>
             <label className="text-xs text-text-secondary mb-1 block">{t('settings.users.role')}</label>
             <select value={formRole} onChange={(e) => setFormRole(e.target.value)} className="select w-full">
-              <option value="trainer">{t('settings.users.trainer')}</option>
+              <option value="trainer" disabled={isLastActiveAdmin(editingUser)}>{t('settings.users.trainer')}</option>
               <option value="admin">{t('settings.users.admin')}</option>
             </select>
+            {isLastActiveAdmin(editingUser) && (
+              <p className="mt-1 text-xs text-text-muted">{t('settings.users.lastAdminRequired')}</p>
+            )}
           </div>
           {!editingUser && (
             <label className="flex items-center gap-2 text-sm text-text-primary">
