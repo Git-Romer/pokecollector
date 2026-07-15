@@ -343,7 +343,7 @@ class TradeItem(Base):
     trade_id = Column(Integer, ForeignKey("trades.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     direction = Column(String, nullable=False)
-    card_id = Column(String, ForeignKey("cards.id"), nullable=False)
+    card_id = Column(String, ForeignKey("cards.id", ondelete="SET NULL"), nullable=True)
     original_collection_item_id = Column(Integer, nullable=True)
     created_collection_item_id = Column(Integer, nullable=True)
     product_card_id = Column(Integer, nullable=True)
