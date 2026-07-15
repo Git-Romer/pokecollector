@@ -5,7 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from typing import Optional, List
 from api.auth import get_current_user
 from database import get_db
-from models import Card, Set, PriceHistory, CustomCardMatch, CollectionItem, WishlistItem, BinderCard, Setting, User, ImageCache, ProductCard, ProductLedgerEntry, TradeItem
+from models import Card, Set, PriceHistory, CustomCardMatch, CollectionItem, WishlistItem, BinderCard, User, ImageCache, ProductCard, ProductLedgerEntry, TradeItem
 from schemas import CardBase, CardWithSet, PriceHistoryResponse, CardCustomCreate, CustomCardUpdate, CardCustomImageUpdate
 from services import pokemon_api
 from services.card_fallbacks import (
@@ -18,6 +18,7 @@ from services.card_metadata import METADATA_ENRICHMENT_PER_SEARCH_PAGE, enrich_c
 from services.card_upsert import upsert_card
 from services.card_visibility import get_configured_sync_languages, visible_card_filter, visible_set_filter
 from services.digital_sets import digital_sets_enabled
+from services.display_language import get_tcgdex_display_language
 from services.image_url_security import validate_public_https_image_url
 from services.card_numbers import card_number_matches
 from services.tcgdex_languages import english_fallback_languages, has_lang_suffix, is_supported_tcgdex_language, normalize_tcgdex_language
@@ -30,12 +31,6 @@ router = APIRouter()
 
 # Pattern: one or more letters, whitespace, one or more digits (e.g. "MEP 022", "SSP 136", "sv08 032")
 _CODE_NUMBER_RE = re.compile(r'^([A-Za-z]+\d*)\s+(\d+)$')
-
-
-def _get_language(db: Session) -> str:
-    """Get display language from settings."""
-    row = db.query(Setting).filter(Setting.key == "language").first()
-    return row.value if row else "de"
 
 
 def _card_to_dict(card: Card) -> dict:
@@ -423,7 +418,7 @@ def search_cards(
     sort_order: Optional[str] = "asc",
     page: int = 1,
     page_size: int = 20,
-    lang: Optional[str] = Query("all", description="Language filter: supported TCGdex language code or 'all'"),
+    lang: Optional[str] = Query(None, description="Language filter: supported TCGdex language code or 'all'"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -433,7 +428,7 @@ def search_cards(
     - "MEP 022" or "sv08 032" → set abbreviation/id + card number search
     - lang: supported TCGdex language code or "all" for all languages
     """
-    requested_lang = normalize_tcgdex_language(lang or "all")
+    requested_lang = normalize_tcgdex_language(lang or get_tcgdex_display_language(db, current_user.id))
     search_lang = requested_lang if is_supported_tcgdex_language(requested_lang) else "all"
 
     try:
@@ -876,14 +871,15 @@ def update_card_custom_image(
 @router.get("/{card_id}", response_model=CardBase)
 def get_card(
     card_id: str,
-    lang: Optional[str] = Query("en"),
+    lang: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Get a single card from DB or fetch full detail from TCGdex.
 
-    lang: the language to fetch from (defaults to "en"). The card's stored language
-    is always used if available; this parameter only affects new fetches.
+    lang: the language to fetch from. If omitted, the current user's selected
+    catalogue language is used. The card's stored language is always used if
+    available; this parameter only affects new fetches.
     """
     card = db.query(Card).filter(
         Card.id == card_id,
@@ -898,7 +894,7 @@ def get_card(
     # An explicit suffix in the DB id wins over the query default. Requesting
     # me04-001_de should create/return a German row, even if it temporarily uses
     # English fallback data.
-    requested_lang = normalize_tcgdex_language(lang or detected_lang)
+    requested_lang = normalize_tcgdex_language(lang or get_tcgdex_display_language(db, current_user.id))
     if not is_supported_tcgdex_language(requested_lang):
         requested_lang = detected_lang
     card_lang = detected_lang if has_lang_suffix(card_id) else requested_lang

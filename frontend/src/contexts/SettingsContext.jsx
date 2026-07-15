@@ -47,7 +47,7 @@ const translations = {
 }
 
 const DEFAULT_SETTINGS = {
-  language: 'de',
+  language: 'en',
   price_display: '["trend", "avg", "avg1", "avg7", "avg30", "low"]',
   price_primary: 'trend',
   tcgdex_sync_languages: 'en,de',
@@ -59,11 +59,38 @@ const DEFAULT_SETTINGS = {
   debug_mode: 'false',
 }
 
+const LANGUAGE_STORAGE_KEY = 'app_language'
+
+// The backend stays the source of truth for the language, but it only answers after
+// auth resolves. Mirroring the choice locally lets the first paint (and a failed or
+// unauthenticated settings fetch) use the language the user actually picked.
+function readCachedLanguage() {
+  try {
+    const cached = localStorage.getItem(LANGUAGE_STORAGE_KEY)
+    return cached && translations[cached] ? cached : null
+  } catch {
+    return null
+  }
+}
+
+function cacheLanguage(language) {
+  if (!language || !translations[language]) return
+  try {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, language)
+  } catch {
+    // Storage can be unavailable (private mode, blocked cookies); the backend copy still holds.
+  }
+}
+
+function initialSettings() {
+  return { ...DEFAULT_SETTINGS, language: readCachedLanguage() || DEFAULT_SETTINGS.language }
+}
+
 const SettingsContext = createContext(null)
 
 export function SettingsProvider({ children }) {
   const { user, loading: authLoading, multiUser } = useAuth()
-  const [settings, setSettings] = useState(DEFAULT_SETTINGS)
+  const [settings, setSettings] = useState(initialSettings)
   const [loaded, setLoaded] = useState(false)
   const [exchangeRate, setExchangeRate] = useState(1.0)
   const [exchangeRateReady, setExchangeRateReady] = useState(true)
@@ -78,7 +105,7 @@ export function SettingsProvider({ children }) {
     setLoaded(false)
     const token = localStorage.getItem('token')
     if (multiUser && !token) {
-      setSettings(DEFAULT_SETTINGS)
+      setSettings(initialSettings())
       setLoaded(true)
       return
     }
@@ -90,10 +117,12 @@ export function SettingsProvider({ children }) {
         return r.json()
       })
       .then(data => {
+        const language = data.language === 'zh' ? 'zh-cn' : data.language
+        cacheLanguage(language)
         setSettings(prev => ({
           ...prev,
           ...data,
-          language: data.language === 'zh' ? 'zh-cn' : (data.language || prev.language),
+          language: language || prev.language,
           tcgdex_sync_languages: normalizeTcgdexLanguageCsv(data.tcgdex_sync_languages || prev.tcgdex_sync_languages),
         }))
         setLoaded(true)
@@ -164,10 +193,12 @@ export function SettingsProvider({ children }) {
       })
       if (!resp.ok) throw new Error('Save failed')
       const saved = await resp.json()
+      const language = saved.language === 'zh' ? 'zh-cn' : saved.language
+      cacheLanguage(language)
       setSettings(prev => ({
         ...prev,
         ...saved,
-        language: saved.language === 'zh' ? 'zh-cn' : (saved.language || prev.language),
+        language: language || prev.language,
       }))
     } catch (err) {
       setSettings(settings)
@@ -176,8 +207,8 @@ export function SettingsProvider({ children }) {
     }
   }, [settings, multiUser])
 
-  const lang = settings.language || 'de'
-  const msgs = translations[lang] || translations.de
+  const lang = settings.language || DEFAULT_SETTINGS.language
+  const msgs = translations[lang] || translations.en
 
   // Translation helper
   const t = useCallback((path) => {
@@ -188,8 +219,8 @@ export function SettingsProvider({ children }) {
       if (val === undefined) break
     }
     if (val === undefined) {
-      // Fallback to German
-      let fallback = translations.de
+      // Fallback to English
+      let fallback = translations.en
       for (const part of parts) {
         fallback = fallback?.[part]
         if (fallback === undefined) break

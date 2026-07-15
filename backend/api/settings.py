@@ -49,7 +49,7 @@ DEFAULT_SETTINGS = {
     "telegram_chat_id": "",
     "price_alerts_enabled": "false",
     "price_alert_threshold": "10",
-    "language": "de",
+    "language": "en",
     "currency": "EUR",
     "price_primary": "trend",
     "price_display": '["trend", "avg", "avg1", "avg7", "avg30", "low"]',

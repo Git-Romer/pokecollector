@@ -13,7 +13,7 @@ import { normalizeSearchText, textIncludes } from '../utils/textSearch'
 import { useTilt } from '../hooks/useTilt'
 import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
-import { tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
+import { normalizeTcgdexLanguage, tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 
 function TiltCardWrapper({ children, className, onClick }) {
@@ -134,7 +134,7 @@ function FilterForm({ filters, setFilter, allSeries, setsForSeries, toggleSortOr
 }
 
 export default function CardSearch() {
-  const { t } = useSettings()
+  const { t, settings, loaded: settingsLoaded } = useSettings()
   const visibleLanguages = useVisibleTcgdexLanguages()
   const queryClient = useQueryClient()
   const [searchInput, setSearchInput] = useState('')
@@ -158,13 +158,17 @@ export default function CardSearch() {
   })
 
   const { data: allSets = [] } = useQuery({
-    queryKey: ['sets'],
+    queryKey: ['sets', settings.language || 'en'],
     queryFn: () => getSets().then(r => r.data),
     staleTime: 5 * 60 * 1000,
   })
 
   const allSeries = useMemo(() => [...new Set(allSets.map(s => s.series).filter(Boolean))].sort(), [allSets])
   const visibleLanguageCodes = useMemo(() => visibleLanguages.map(language => language.code), [visibleLanguages])
+  const preferredCatalogueLanguage = normalizeTcgdexLanguage(settings.language || 'en', 'en')
+  const defaultLangFilter = visibleLanguageCodes.includes(preferredCatalogueLanguage)
+    ? preferredCatalogueLanguage
+    : 'all'
   const setsForSeries = useMemo(() => {
     if (!filters.series) return allSets
     return allSets.filter(s => s.series === filters.series)
@@ -203,7 +207,7 @@ export default function CardSearch() {
   const { data, isLoading, error, isFetching } = useQuery({
     queryKey: ['card-search', queryParams, langFilter],
     queryFn: () => searchCards(queryParams).then(r => r.data),
-    enabled: !!hasQuery || langFilter !== 'all',
+    enabled: !!hasQuery,
     placeholderData: (prev) => prev,
   })
 
@@ -235,7 +239,7 @@ export default function CardSearch() {
   const clearFilters = () => {
     setFilters({ name: '', category: '', type: '', subtype: '', rarity: '', set_id: '', series: '', artist: '', hp_min: '', hp_max: '', sort_by: '', sort_order: 'asc' })
     setSearchInput('')
-    setLangFilter('all')
+    setLangFilter(defaultLangFilter)
     setPage(1)
   }
 
@@ -246,10 +250,18 @@ export default function CardSearch() {
 
   useEffect(() => {
     if (!visibleLanguages.isLoading && langFilter !== 'all' && !visibleLanguageCodes.includes(langFilter)) {
-      setLangFilter('all')
+      setLangFilter(defaultLangFilter)
       setPage(1)
     }
-  }, [langFilter, visibleLanguageCodes, visibleLanguages.isLoading])
+  }, [defaultLangFilter, langFilter, visibleLanguageCodes, visibleLanguages.isLoading])
+
+  useEffect(() => {
+    if (!settingsLoaded || visibleLanguages.isLoading) return
+    if (langFilter === 'all' && defaultLangFilter !== 'all' && !hasQuery) {
+      setLangFilter(defaultLangFilter)
+      setPage(1)
+    }
+  }, [defaultLangFilter, hasQuery, langFilter, settingsLoaded, visibleLanguages.isLoading])
 
   useEffect(() => {
     const handleKeyDown = (event) => {
