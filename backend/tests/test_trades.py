@@ -7,6 +7,7 @@ try:
     from sqlalchemy.orm import sessionmaker
 
     from api.cards import delete_custom_card
+    from api.analytics import get_trades_summary
     from api.trades import create_trade, get_trades
     from database import Base
     from models import Card, CollectionItem, ProductCard, ProductLedgerEntry, ProductPurchase, Trade, TradeItem, User
@@ -174,6 +175,69 @@ class TradeApiTests(unittest.TestCase):
         self.assertEqual(response.value_delta, 6)
         self.assertEqual(len(cash_items), 2)
         self.assertEqual([item.value_total for item in cash_items], [7, 5])
+
+    def test_trades_summary_counts_cards_cash_and_product_locks(self):
+        outgoing = self.add_collection_item(quantity=1)
+        product = ProductPurchase(
+            product_name="Booster Bundle",
+            product_type="Bundle",
+            purchase_price=20,
+            purchase_date=datetime.date(2026, 7, 1),
+            user_id=self.user.id,
+        )
+        self.db.add(product)
+        self.db.commit()
+        product_card = ProductCard(
+            product_id=product.id,
+            user_id=self.user.id,
+            card_id=outgoing.card_id,
+            collection_item_id=outgoing.id,
+            initial_quantity=1,
+            active_quantity=1,
+            sold_quantity=0,
+            condition=outgoing.condition,
+            variant=outgoing.variant,
+            lang=outgoing.lang,
+            purchase_price=outgoing.purchase_price,
+            linked_at=datetime.datetime.utcnow(),
+        )
+        self.db.add(product_card)
+        self.db.commit()
+
+        create_trade(
+            TradeCreate(
+                trade_date=datetime.date(2026, 7, 15),
+                outgoing_cash=3,
+                incoming_cash=5,
+                outgoing=[TradeOutgoingItemCreate(collection_item_id=outgoing.id, quantity=1, value_per_card=10)],
+                incoming=[
+                    TradeIncomingItemCreate(
+                        card_id=self.incoming_card.id,
+                        quantity=2,
+                        condition="NM",
+                        variant="Normal",
+                        lang="en",
+                        value_per_card=7,
+                    )
+                ],
+            ),
+            current_user=self.user,
+            db=self.db,
+        )
+
+        summary = get_trades_summary(current_user=self.user, db=self.db)
+
+        self.assertEqual(summary["trade_count"], 1)
+        self.assertEqual(summary["outgoing_value"], 13)
+        self.assertEqual(summary["incoming_value"], 19)
+        self.assertEqual(summary["value_delta"], 6)
+        self.assertEqual(summary["outgoing_cash"], 3)
+        self.assertEqual(summary["incoming_cash"], 5)
+        self.assertEqual(summary["cash_delta"], 2)
+        self.assertEqual(summary["outgoing_card_quantity"], 1)
+        self.assertEqual(summary["incoming_card_quantity"], 2)
+        self.assertEqual(summary["product_locked_value"], 10)
+        self.assertEqual(summary["product_locked_quantity"], 1)
 
     def test_create_trade_can_be_cash_only(self):
         response = create_trade(

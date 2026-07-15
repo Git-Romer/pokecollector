@@ -187,6 +187,7 @@ export const getDuplicates = (params = {}) => api.get('/analytics/duplicates', {
 export const getTopMovers = (days, params = {}) => api.get('/analytics/top-movers', { params: { ...params, days } })
 export const getRarityStats = (params = {}) => api.get('/analytics/rarity-stats', { params })
 export const getInvestmentTracker = (params = {}) => api.get('/analytics/investment-tracker', { params })
+export const getTradeStats = () => api.get('/analytics/trades-summary')
 export const getAnalyticsNewSets = () => api.get('/analytics/new-sets')
 
 // Sync

@@ -9,7 +9,7 @@ import {
 import { TrendingUp, TrendingDown, Copy, BarChart3, Activity, Plus, X, ShoppingCart, ShoppingBag, LayoutDashboard } from 'lucide-react'
 import {
   getDuplicates, getTopMovers, getRarityStats,
-  getInvestmentTracker, getAnalyticsNewSets, getProducts, createProduct
+  getInvestmentTracker, getTradeStats, getAnalyticsNewSets, getProducts, createProduct
 } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import CardListItem from '../components/CardListItem'
@@ -185,6 +185,11 @@ export default function Analytics() {
     queryFn: () => getInvestmentTracker({ price_field: pricePrimaryField }).then(r => r.data),
   })
 
+  const { data: tradeStats = null } = useQuery({
+    queryKey: ['trade-stats'],
+    queryFn: () => getTradeStats().then(r => r.data),
+  })
+
   const { data: products = [] } = useQuery({
     queryKey: ['products', pricePrimaryField],
     queryFn: () => getProducts({ price_field: pricePrimaryField }).then(r => r.data),
@@ -219,6 +224,7 @@ export default function Analytics() {
   const productCardRealizedGains = products.reduce((sum, p) => sum + (p.realized_gains || 0), 0)
   const realizedPnl = totalSoldRevenue - totalSoldCost + productCardRealizedGains
   const unrealizedPnl = (latestSnapshot?.value ?? 0) - (latestSnapshot?.cost ?? 0)
+  const hasTradeStats = tradeStats && tradeStats.trade_count > 0
 
   return (
     <div className="space-y-4 pb-2">
@@ -509,6 +515,75 @@ export default function Analytics() {
                   <p className="text-sm font-black" style={{ color: stat.color }}>{stat.value}</p>
                 </div>
               ))}
+            </div>
+          )}
+
+          {hasTradeStats && (
+            <div className="card space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-semibold text-text-primary">{t('analytics.tradeStats')}</h3>
+                  <p className="text-xs text-text-muted mt-0.5">{t('analytics.tradeStatsDesc')}</p>
+                </div>
+                <div className="px-2.5 py-1 rounded-md bg-bg-elevated border border-border text-xs font-bold text-text-primary">
+                  {tradeStats.trade_count} {tradeStats.trade_count === 1 ? t('analytics.trade') : t('analytics.trades')}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                {[
+                  {
+                    label: t('analytics.tradeValueDelta'),
+                    value: formatPrice(tradeStats.value_delta),
+                    color: tradeStats.value_delta >= 0 ? '#66bb6a' : '#e3000b',
+                  },
+                  {
+                    label: t('analytics.tradeCardsMoved'),
+                    value: `${tradeStats.outgoing_card_quantity} / ${tradeStats.incoming_card_quantity}`,
+                    color: '#90a4ae',
+                  },
+                  {
+                    label: t('analytics.tradeCashNet'),
+                    value: formatPrice(tradeStats.cash_delta),
+                    color: tradeStats.cash_delta >= 0 ? '#66bb6a' : '#e3000b',
+                  },
+                  {
+                    label: t('analytics.tradeProductLocked'),
+                    value: formatPrice(tradeStats.product_locked_value),
+                    color: '#facc15',
+                  },
+                ].map(stat => (
+                  <div key={stat.label} className="rounded-xl p-3 text-center bg-bg-elevated/60 border border-border/70">
+                    <p className="text-xs text-text-muted mb-1 leading-tight">{stat.label}</p>
+                    <p className="text-sm font-black" style={{ color: stat.color }}>{stat.value}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                <div className="rounded-xl bg-bg-elevated/40 border border-border/60 p-3">
+                  <p className="text-xs uppercase text-text-muted mb-2">{t('analytics.tradeGiven')}</p>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-text-secondary">{t('analytics.tradeCards')}</span>
+                    <span className="font-semibold text-text-primary">{formatPrice(tradeStats.outgoing_card_value)}</span>
+                  </div>
+                  <div className="flex justify-between gap-3 mt-1">
+                    <span className="text-text-secondary">{t('analytics.tradeCash')}</span>
+                    <span className="font-semibold text-brand-red">{formatPrice(tradeStats.outgoing_cash)}</span>
+                  </div>
+                </div>
+                <div className="rounded-xl bg-bg-elevated/40 border border-border/60 p-3">
+                  <p className="text-xs uppercase text-text-muted mb-2">{t('analytics.tradeReceived')}</p>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-text-secondary">{t('analytics.tradeCards')}</span>
+                    <span className="font-semibold text-text-primary">{formatPrice(tradeStats.incoming_card_value)}</span>
+                  </div>
+                  <div className="flex justify-between gap-3 mt-1">
+                    <span className="text-text-secondary">{t('analytics.tradeCash')}</span>
+                    <span className="font-semibold text-green">{formatPrice(tradeStats.incoming_cash)}</span>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
