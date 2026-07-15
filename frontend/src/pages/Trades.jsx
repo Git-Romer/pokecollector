@@ -54,9 +54,11 @@ function moneyToEur(value, exchangeRate) {
   return parsed == null ? 0 : parsed
 }
 
-function TradeHealthBar({ outgoingValue, incomingValue, missingPrices, t, formatPrice }) {
+function TradeHealthBar({ outgoingValue, incomingValue, scoreOutgoingValue, missingPrices, t, formatPrice }) {
   const delta = incomingValue - outgoingValue
-  const deltaPct = outgoingValue > 0 ? (delta / outgoingValue) * 100 : (incomingValue > 0 ? 100 : 0)
+  const deltaPct = scoreOutgoingValue > 0
+    ? (delta / scoreOutgoingValue) * 100
+    : (delta > 0 ? 100 : (delta < 0 ? -100 : 0))
   let label = t('trades.emptyTrade')
   let score = 12
   let barColor = '#6b7280'
@@ -291,7 +293,7 @@ export default function Trades() {
       const existing = prev.find(item => item.collectionItem.id === collectionItem.id)
       if (existing) {
         return prev.map(item => item.collectionItem.id === collectionItem.id
-          ? { ...item, quantity: Math.min((Number(item.quantity) || 1) + 1, Number(collectionItem.quantity) || 999) }
+          ? { ...item, quantity: Math.min((Number(item.quantity) || 1) + 1, 999) }
           : item)
       }
       return [...prev, {
@@ -346,11 +348,13 @@ export default function Trades() {
     ), 0)
     const outgoingCashValue = moneyToEur(outgoingCash, exchangeRate)
     const incomingCashValue = moneyToEur(incomingCash, exchangeRate)
+    const sharedCashValue = Math.min(outgoingCashValue, incomingCashValue)
     const hasMoneyValue = outgoingCashValue > 0 || incomingCashValue > 0
     const missing = !hasMoneyValue && [...outgoing, ...incoming].some(item => moneyToEur(item.value_per_card, exchangeRate) <= 0)
     const outgoingValue = Math.round((sum(outgoing) + outgoingCashValue) * 100) / 100
     const incomingValue = Math.round((sum(incoming) + incomingCashValue) * 100) / 100
-    return { outgoingValue, incomingValue, missing }
+    const scoreOutgoingValue = Math.max(0, Math.round((outgoingValue - sharedCashValue) * 100) / 100)
+    return { outgoingValue, incomingValue, scoreOutgoingValue, missing }
   }, [exchangeRate, incoming, incomingCash, outgoing, outgoingCash])
 
   const resetDraft = () => {
@@ -440,6 +444,7 @@ export default function Trades() {
           <TradeHealthBar
             outgoingValue={totals.outgoingValue}
             incomingValue={totals.incomingValue}
+            scoreOutgoingValue={totals.scoreOutgoingValue}
             missingPrices={totals.missing}
             t={t}
             formatPrice={formatPrice}
