@@ -15,6 +15,7 @@ import PokeBallLoader from '../components/PokeBallLoader'
 import CardImage from '../components/CardImage'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 import { collectionItemTargetUrl } from '../utils/navigation'
+import AnalyticsSectionNav from '../components/AnalyticsSectionNav'
 
 const CustomTooltip = ({ active, payload, label }) => {
   const { formatPrice } = useSettings()
@@ -47,38 +48,44 @@ export default function Dashboard() {
 
   if (isLoading) {
     return (
-      <div className="space-y-5 animate-pulse pb-4">
-        {/* Trainer card skeleton */}
-        <div className="rounded-2xl overflow-hidden border-2 border-gold/20" style={{ background: 'linear-gradient(135deg, #1a2040, #0d1530)' }}>
-          <div className="h-9 bg-brand-red/70" />
-          <div className="p-4 space-y-3">
-            <div className="flex gap-4">
-              <div className="skeleton w-20 h-24 rounded-xl" />
-              <div className="flex-1 space-y-2">
-                <div className="skeleton h-6 w-32 rounded" />
-                <div className="skeleton h-3 w-16 rounded" />
-                <div className="skeleton h-3 w-full rounded mt-2" />
-                <div className="skeleton h-3 w-full rounded" />
-                <div className="skeleton h-3 w-full rounded" />
+      <div className="space-y-5 pb-4">
+        <AnalyticsSectionNav />
+        <div className="space-y-5 animate-pulse">
+          {/* Trainer card skeleton */}
+          <div className="rounded-2xl overflow-hidden border-2 border-gold/20" style={{ background: 'linear-gradient(135deg, #1a2040, #0d1530)' }}>
+            <div className="h-9 bg-brand-red/70" />
+            <div className="p-4 space-y-3">
+              <div className="flex gap-4">
+                <div className="skeleton w-20 h-24 rounded-xl" />
+                <div className="flex-1 space-y-2">
+                  <div className="skeleton h-6 w-32 rounded" />
+                  <div className="skeleton h-3 w-16 rounded" />
+                  <div className="skeleton h-3 w-full rounded mt-2" />
+                  <div className="skeleton h-3 w-full rounded" />
+                  <div className="skeleton h-3 w-full rounded" />
+                </div>
               </div>
+              <div className="skeleton h-2 rounded-full w-full mt-2" />
             </div>
-            <div className="skeleton h-2 rounded-full w-full mt-2" />
           </div>
+          <div className="skeleton h-36 rounded-2xl" />
+          <div className="grid grid-cols-3 gap-2">
+            {[...Array(3)].map((_, i) => <div key={i} className="skeleton h-20 rounded-xl" />)}
+          </div>
+          <div className="skeleton h-56 rounded-2xl" />
         </div>
-        <div className="skeleton h-36 rounded-2xl" />
-        <div className="grid grid-cols-3 gap-2">
-          {[...Array(3)].map((_, i) => <div key={i} className="skeleton h-20 rounded-xl" />)}
-        </div>
-        <div className="skeleton h-56 rounded-2xl" />
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="card text-center py-12">
-        <PokeBallLoader size={48} className="mb-4 opacity-40" />
-        <p className="text-brand-red">{t('dashboard.backendError')}</p>
+      <div className="space-y-5 pb-4">
+        <AnalyticsSectionNav />
+        <div className="card text-center py-12">
+          <PokeBallLoader size={48} className="mb-4 opacity-40" />
+          <p className="text-brand-red">{t('dashboard.backendError')}</p>
+        </div>
       </div>
     )
   }
@@ -106,6 +113,7 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-5 pb-2">
+      <AnalyticsSectionNav />
 
       {/* ─── 1. TRAINER CARD HERO ──────────────────────────────────── */}
       {data && (
