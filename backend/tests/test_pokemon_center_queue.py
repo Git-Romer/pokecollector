@@ -88,6 +88,30 @@ class PokemonCenterQueueDetectionTests(unittest.TestCase):
         self.assertEqual(result.status, "normal")
 
 
+class PokemonCenterQueueSchedulerTests(unittest.TestCase):
+    def test_one_minute_interval_uses_thirty_second_jitter_window(self):
+        try:
+            from services.scheduler import _queue_check_trigger
+        except ModuleNotFoundError as exc:
+            self.skipTest(f"Scheduler dependencies are not installed: {exc}")
+
+        trigger = _queue_check_trigger(1)
+
+        self.assertEqual(trigger.interval.total_seconds(), 30)
+        self.assertEqual(trigger.jitter, 60)
+
+    def test_default_interval_uses_thirty_second_jitter_window(self):
+        try:
+            from services.scheduler import _queue_check_trigger
+        except ModuleNotFoundError as exc:
+            self.skipTest(f"Scheduler dependencies are not installed: {exc}")
+
+        trigger = _queue_check_trigger(5)
+
+        self.assertEqual(trigger.interval.total_seconds(), 270)
+        self.assertEqual(trigger.jitter, 60)
+
+
 @unittest.skipUnless(DB_TEST_DEPS_AVAILABLE, "Backend dependencies are not installed in this lightweight test environment")
 class PokemonCenterQueueWorkflowTests(unittest.TestCase):
     def setUp(self):

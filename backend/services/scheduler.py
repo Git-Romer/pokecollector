@@ -9,6 +9,7 @@ scheduler = BackgroundScheduler()
 _DEFAULT_FULL_SYNC_DAYS = 5
 _DEFAULT_PRICE_SYNC_MINUTES = 30
 _DEFAULT_QUEUE_CHECK_MINUTES = 5
+_QUEUE_CHECK_JITTER_SECONDS = 30
 
 
 def _get_full_sync_interval_days() -> int:
@@ -51,6 +52,18 @@ def _get_queue_check_interval_minutes() -> int:
     except Exception:
         pass
     return _DEFAULT_QUEUE_CHECK_MINUTES
+
+
+def _queue_check_trigger(interval_minutes: int) -> IntervalTrigger:
+    """Build a lightly randomized queue monitor trigger.
+
+    APScheduler jitter only delays runs, so use a slightly shorter base interval
+    plus jitter to make the configured interval the center of the window.
+    """
+    interval_seconds = max(60, int(interval_minutes) * 60)
+    jitter_seconds = min(_QUEUE_CHECK_JITTER_SECONDS, interval_seconds // 2)
+    base_seconds = interval_seconds - jitter_seconds
+    return IntervalTrigger(seconds=base_seconds, jitter=jitter_seconds * 2)
 
 
 def run_full_sync():
@@ -148,7 +161,7 @@ def start_scheduler():
 
         scheduler.add_job(
             run_pokemon_center_queue_check,
-            trigger=IntervalTrigger(minutes=queue_interval_minutes),
+            trigger=_queue_check_trigger(queue_interval_minutes),
             id="pokemon_center_queue_job",
             name="Pokemon Center Queue Monitor",
             replace_existing=True,
@@ -160,7 +173,8 @@ def start_scheduler():
             f"Scheduler started — full sync every {full_interval_days} days "
             f"({'immediately' if needs_initial_sync else f'in {full_interval_days} days'}), "
             f"small price sync every {price_interval_minutes} minutes, "
-            f"Pokemon Center queue check every {queue_interval_minutes} minutes"
+            f"Pokemon Center queue check around every {queue_interval_minutes} minutes "
+            f"(+/- {_QUEUE_CHECK_JITTER_SECONDS} seconds)"
         )
     else:
         logger.info("Scheduler already running")
@@ -198,6 +212,9 @@ def reschedule_pokemon_center_queue_check(interval_minutes: int):
     if scheduler.running:
         scheduler.reschedule_job(
             "pokemon_center_queue_job",
-            trigger=IntervalTrigger(minutes=interval_minutes),
+            trigger=_queue_check_trigger(interval_minutes),
         )
-        logger.info(f"Pokemon Center queue monitor rescheduled to every {interval_minutes} minutes")
+        logger.info(
+            f"Pokemon Center queue monitor rescheduled to around every {interval_minutes} minutes "
+            f"(+/- {_QUEUE_CHECK_JITTER_SECONDS} seconds)"
+        )
