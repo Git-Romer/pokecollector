@@ -31,6 +31,7 @@ PER_USER_KEYS = {
     "set_overview_filters", "hidden_set_ids",
     "telegram_bot_token", "telegram_chat_id", "telegram_enabled",
     "price_alerts_enabled", "price_alert_threshold",
+    "pokemon_center_queue_alerts_enabled",
     "gemini_api_key", "trainer_name",
 }
 
@@ -38,6 +39,7 @@ ADMIN_ONLY_KEYS = {
     "full_sync_interval_days", "price_sync_interval_minutes", "multi_user_mode",
     "tcgdex_sync_languages", "debug_mode",
     "cross_language_price_fallback", "cross_language_image_fallback",
+    "pokemon_center_queue_check_interval_minutes",
     DIGITAL_SETS_SETTING_KEY,
 }
 
@@ -49,6 +51,8 @@ DEFAULT_SETTINGS = {
     "telegram_chat_id": "",
     "price_alerts_enabled": "false",
     "price_alert_threshold": "10",
+    "pokemon_center_queue_alerts_enabled": "false",
+    "pokemon_center_queue_check_interval_minutes": "5",
     "language": "en",
     "currency": "EUR",
     "price_primary": "trend",
@@ -73,8 +77,21 @@ def _normalize_tcgdex_sync_languages(value) -> str:
 def _coerce_setting_value(key: str, value) -> str:
     if key == "tcgdex_sync_languages":
         return _normalize_tcgdex_sync_languages(value)
-    if key in {"debug_mode", "cross_language_price_fallback", "cross_language_image_fallback", DIGITAL_SETS_SETTING_KEY}:
+    if key in {
+        "debug_mode",
+        "cross_language_price_fallback",
+        "cross_language_image_fallback",
+        DIGITAL_SETS_SETTING_KEY,
+    }:
         return "true" if str(value).lower() in {"true", "1", "yes", "on"} else "false"
+    if key == "pokemon_center_queue_check_interval_minutes":
+        try:
+            minutes = int(value)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="Queue check interval must be a number") from None
+        if minutes < 1 or minutes > 1440:
+            raise HTTPException(status_code=422, detail="Queue check interval must be between 1 and 1440 minutes")
+        return str(minutes)
     return str(value)
 
 
@@ -91,6 +108,12 @@ def _apply_setting_side_effect(db: Session, key: str, value: str) -> None:
             result["sets_marked"],
             result["cards_marked"],
         )
+    elif key == "pokemon_center_queue_check_interval_minutes":
+        try:
+            from services.scheduler import reschedule_pokemon_center_queue_check
+            reschedule_pokemon_center_queue_check(int(value))
+        except Exception as exc:
+            logger.warning("Failed to reschedule Pokemon Center queue monitor: %s", exc)
 
 
 def _is_admin(db: Session, user_id: int) -> bool:

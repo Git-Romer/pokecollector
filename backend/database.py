@@ -39,6 +39,7 @@ DEFAULT_SETTINGS = {
     "tcgdex_digital_sets_enabled": "true",
     "cross_language_price_fallback": "true",
     "cross_language_image_fallback": "true",
+    "pokemon_center_queue_check_interval_minutes": "5",
     "debug_mode": "false",
 }
 
@@ -350,6 +351,19 @@ def _run_migrations(conn):
         "ALTER TABLE trade_items DROP CONSTRAINT IF EXISTS trade_items_card_id_fkey",
         "ALTER TABLE trade_items ALTER COLUMN card_id DROP NOT NULL",
         "ALTER TABLE trade_items ADD CONSTRAINT trade_items_card_id_fkey FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE SET NULL",
+        # v52: Experimental Pokemon Center queue monitor status.
+        """CREATE TABLE IF NOT EXISTS pokemon_center_queue_status (
+            id SERIAL PRIMARY KEY,
+            status VARCHAR NOT NULL DEFAULT 'unknown',
+            previous_status VARCHAR,
+            checked_at TIMESTAMP DEFAULT NOW(),
+            notified_at TIMESTAMP,
+            url TEXT,
+            final_url TEXT,
+            http_status INTEGER,
+            evidence JSON,
+            error_message TEXT
+        )""",
         """UPDATE sets
            SET is_digital = TRUE
            WHERE COALESCE(is_digital, FALSE) = FALSE

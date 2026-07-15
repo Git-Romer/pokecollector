@@ -8,6 +8,7 @@ import {
   getSetting, setSetting, getTelegramStatus, saveSettings, setAuthMode,
   getUsers, createUser, updateUser, deleteUser, changePassword, changeAvatar, changeUsername,
   getContributors, getSupporters, getRescueDonations, getCustomMatches, downloadDebugLog,
+  getPokemonCenterQueueStatus, checkPokemonCenterQueue,
 } from '../api/client'
 import api from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
@@ -319,6 +320,8 @@ export default function Settings() {
   // Notification settings
   const [priceAlertsEnabled, setPriceAlertsEnabled] = useState(false)
   const [alertThreshold, setAlertThreshold] = useState('10')
+  const [pokemonCenterQueueAlertsEnabled, setPokemonCenterQueueAlertsEnabled] = useState(false)
+  const [pokemonCenterQueueIntervalMinutes, setPokemonCenterQueueIntervalMinutes] = useState('5')
 
   // Load individual settings from backend
   const { data: fullSyncIntervalData } = useQuery({
@@ -339,6 +342,24 @@ export default function Settings() {
   const { data: alertThresholdData } = useQuery({
     queryKey: ['setting', 'price_alert_threshold'],
     queryFn: () => getSetting('price_alert_threshold').catch(() => ({ value: '10' })),
+  })
+
+  const { data: pokemonCenterQueueAlertsData } = useQuery({
+    queryKey: ['setting', 'pokemon_center_queue_alerts_enabled'],
+    queryFn: () => getSetting('pokemon_center_queue_alerts_enabled').catch(() => ({ value: 'false' })),
+  })
+
+  const { data: pokemonCenterQueueIntervalData } = useQuery({
+    queryKey: ['setting', 'pokemon_center_queue_check_interval_minutes'],
+    queryFn: () => getSetting('pokemon_center_queue_check_interval_minutes').catch(() => ({ value: '5' })),
+    enabled: user?.role === 'admin',
+  })
+
+  const { data: pokemonCenterQueueStatus } = useQuery({
+    queryKey: ['pokemon-center-queue-status'],
+    queryFn: () => getPokemonCenterQueueStatus(),
+    enabled: user?.role === 'admin',
+    refetchInterval: 60000,
   })
 
   const { data: geminiKeyData } = useQuery({
@@ -398,6 +419,18 @@ export default function Settings() {
   }, [alertThresholdData])
 
   useEffect(() => {
+    if (pokemonCenterQueueAlertsData?.value) {
+      setPokemonCenterQueueAlertsEnabled(pokemonCenterQueueAlertsData.value === 'true')
+    }
+  }, [pokemonCenterQueueAlertsData])
+
+  useEffect(() => {
+    if (pokemonCenterQueueIntervalData?.value) {
+      setPokemonCenterQueueIntervalMinutes(pokemonCenterQueueIntervalData.value)
+    }
+  }, [pokemonCenterQueueIntervalData])
+
+  useEffect(() => {
     if (geminiKeyData?.value !== undefined && !geminiDirty) setGeminiKey(geminiKeyData.value)
   }, [geminiKeyData])
 
@@ -444,6 +477,15 @@ export default function Settings() {
     onError: (err) => toast.error(err.response?.data?.detail || t('common.error')),
   })
 
+  const queueCheckMutation = useMutation({
+    mutationFn: checkPokemonCenterQueue,
+    onSuccess: () => {
+      toast.success(t('settings.pokemonCenterQueueCheckComplete'))
+      queryClient.invalidateQueries({ queryKey: ['pokemon-center-queue-status'] })
+    },
+    onError: () => toast.error(t('settings.pokemonCenterQueueCheckFailed')),
+  })
+
   const isRunning = syncStatus?.is_running || syncStatus?.is_price_sync_running || syncMutation.isPending || allPriceSyncMutation.isPending
 
   // Save helper
@@ -476,6 +518,15 @@ export default function Settings() {
 
   const handleAlertThresholdBlur = async () => {
     await saveSetting('price_alert_threshold', alertThreshold)
+  }
+
+  const handlePokemonCenterQueueAlertsToggle = async (val) => {
+    setPokemonCenterQueueAlertsEnabled(val)
+    await saveSetting('pokemon_center_queue_alerts_enabled', val ? 'true' : 'false')
+  }
+
+  const handlePokemonCenterQueueIntervalBlur = async () => {
+    await saveSetting('pokemon_center_queue_check_interval_minutes', pokemonCenterQueueIntervalMinutes)
   }
 
   const handleLanguageChange = async (lang) => {
@@ -1199,7 +1250,6 @@ export default function Settings() {
                 <SettingsRow
                   label={t('settings.threshold')}
                   description={t('settings.thresholdDesc')}
-                  last
                 >
                   <div className="flex items-center gap-1.5">
                     <input
@@ -1219,7 +1269,91 @@ export default function Settings() {
                   </div>
                 </SettingsRow>
               )}
-              {!priceAlertsEnabled && <div style={{ height: 0 }} />}
+              <SettingsRow
+                label={t('settings.pokemonCenterQueueAlerts')}
+                description={t('settings.pokemonCenterQueueAlertsDesc')}
+              >
+                <Toggle
+                  value={pokemonCenterQueueAlertsEnabled}
+                  onChange={handlePokemonCenterQueueAlertsToggle}
+                />
+              </SettingsRow>
+              {user?.role === 'admin' && (
+                <>
+                  <SettingsRow
+                    label={t('settings.pokemonCenterQueueInterval')}
+                    description={t('settings.pokemonCenterQueueIntervalDesc')}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        value={pokemonCenterQueueIntervalMinutes}
+                        onChange={(e) => setPokemonCenterQueueIntervalMinutes(e.target.value)}
+                        onBlur={handlePokemonCenterQueueIntervalBlur}
+                        min="1"
+                        max="1440"
+                        className="text-xs font-semibold text-text-primary rounded-lg px-3 py-1.5 outline-none w-16 text-right"
+                        style={{
+                          background: 'rgba(255,255,255,0.07)',
+                          border: '1px solid rgba(255,255,255,0.1)',
+                        }}
+                      />
+                      <span className="text-xs text-text-muted">min</span>
+                    </div>
+                  </SettingsRow>
+                  <SettingsRow
+                    label={t('settings.pokemonCenterQueueStatus')}
+                    description={t('settings.pokemonCenterQueueStatusDesc')}
+                    last
+                  >
+                    <div className="flex flex-col items-end gap-2 min-w-0 w-full max-w-md">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold px-2.5 py-1 rounded-full border border-white/10 bg-white/5 text-text-primary">
+                          {pokemonCenterQueueStatus?.status || 'unknown'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => queueCheckMutation.mutate()}
+                          disabled={queueCheckMutation.isPending}
+                          className="btn-primary-sm"
+                        >
+                          {queueCheckMutation.isPending ? t('common.loading') : t('settings.pokemonCenterQueueCheckNow')}
+                        </button>
+                      </div>
+                      {pokemonCenterQueueStatus?.checked_at && (
+                        <span className="text-[11px] text-text-muted">
+                          {t('settings.pokemonCenterQueueLastChecked')}: {new Date(pokemonCenterQueueStatus.checked_at).toLocaleString()}
+                        </span>
+                      )}
+                      <div className="w-full grid grid-cols-1 gap-1 text-[11px] text-text-muted text-left">
+                        <div>
+                          <span className="font-semibold text-text-secondary">{t('settings.pokemonCenterQueueHttp')}:</span>{' '}
+                          {pokemonCenterQueueStatus?.http_status || 'n/a'}
+                        </div>
+                        <div>
+                          <span className="font-semibold text-text-secondary">{t('settings.pokemonCenterQueueUrl')}:</span>{' '}
+                          <span className="break-all">{pokemonCenterQueueStatus?.final_url || pokemonCenterQueueStatus?.url || 'n/a'}</span>
+                        </div>
+                        <div>
+                          <span className="font-semibold text-text-secondary">{t('settings.pokemonCenterQueueNotified')}:</span>{' '}
+                          {pokemonCenterQueueStatus?.notified_at
+                            ? new Date(pokemonCenterQueueStatus.notified_at).toLocaleString()
+                            : 'n/a'}
+                        </div>
+                        {pokemonCenterQueueStatus?.error_message && (
+                          <div>
+                            <span className="font-semibold text-text-secondary">{t('settings.pokemonCenterQueueMessage')}:</span>{' '}
+                            <span className="break-words">{pokemonCenterQueueStatus.error_message}</span>
+                          </div>
+                        )}
+                      </div>
+                      <pre className="w-full max-h-40 overflow-auto rounded-lg border border-white/10 bg-black/20 p-2 text-[10px] leading-relaxed text-left text-text-muted whitespace-pre-wrap break-words">
+                        {JSON.stringify(pokemonCenterQueueStatus?.evidence || {}, null, 2)}
+                      </pre>
+                    </div>
+                  </SettingsRow>
+                </>
+              )}
             </SettingsCard>
           </section>
         </>

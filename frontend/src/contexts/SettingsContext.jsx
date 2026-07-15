@@ -54,6 +54,8 @@ const DEFAULT_SETTINGS = {
   tcgdex_digital_sets_enabled: 'true',
   cross_language_price_fallback: 'true',
   cross_language_image_fallback: 'true',
+  pokemon_center_queue_alerts_enabled: 'false',
+  pokemon_center_queue_check_interval_minutes: '5',
   set_overview_filters: '{}',
   hidden_set_ids: '[]',
   debug_mode: 'false',

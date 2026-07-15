@@ -8,6 +8,7 @@ scheduler = BackgroundScheduler()
 
 _DEFAULT_FULL_SYNC_DAYS = 5
 _DEFAULT_PRICE_SYNC_MINUTES = 30
+_DEFAULT_QUEUE_CHECK_MINUTES = 5
 
 
 def _get_full_sync_interval_days() -> int:
@@ -36,6 +37,20 @@ def _get_price_sync_interval_minutes() -> int:
     except Exception:
         pass
     return _DEFAULT_PRICE_SYNC_MINUTES
+
+
+def _get_queue_check_interval_minutes() -> int:
+    """Read Pokemon Center queue monitor interval from DB settings."""
+    try:
+        from database import SessionLocal
+        from models import Setting
+        with SessionLocal() as db:
+            row = db.query(Setting).filter(Setting.key == "pokemon_center_queue_check_interval_minutes").first()
+            if row:
+                return int(row.value)
+    except Exception:
+        pass
+    return _DEFAULT_QUEUE_CHECK_MINUTES
 
 
 def run_full_sync():
@@ -70,6 +85,25 @@ def run_price_sync():
         db.close()
 
 
+def run_pokemon_center_queue_check():
+    """Pokemon Center queue monitor job."""
+    from database import SessionLocal
+    from services.pokemon_center_queue import check_pokemon_center_queue
+
+    db = SessionLocal()
+    try:
+        logger.info("Starting scheduled Pokemon Center queue check...")
+        result = check_pokemon_center_queue(db)
+        if result.get("skipped"):
+            logger.debug("Scheduled Pokemon Center queue check skipped: %s", result.get("reason"))
+        else:
+            logger.info("Scheduled Pokemon Center queue check completed with status=%s", result.get("status"))
+    except Exception as e:
+        logger.error(f"Scheduled Pokemon Center queue check failed: {e}")
+    finally:
+        db.close()
+
+
 # Keep legacy alias
 def run_sync():
     """Legacy alias for run_full_sync."""
@@ -89,6 +123,7 @@ def start_scheduler():
 
         full_interval_days = _get_full_sync_interval_days()
         price_interval_minutes = _get_price_sync_interval_minutes()
+        queue_interval_minutes = _get_queue_check_interval_minutes()
 
         # Job 1: Full sync (sets + cards + tracked prices)
         full_next_run = now_utc if needs_initial_sync else now_utc + datetime.timedelta(days=full_interval_days)
@@ -111,11 +146,21 @@ def start_scheduler():
             next_run_time=now_utc + datetime.timedelta(minutes=price_interval_minutes),
         )
 
+        scheduler.add_job(
+            run_pokemon_center_queue_check,
+            trigger=IntervalTrigger(minutes=queue_interval_minutes),
+            id="pokemon_center_queue_job",
+            name="Pokemon Center Queue Monitor",
+            replace_existing=True,
+            next_run_time=now_utc + datetime.timedelta(minutes=1),
+        )
+
         scheduler.start()
         logger.info(
             f"Scheduler started — full sync every {full_interval_days} days "
             f"({'immediately' if needs_initial_sync else f'in {full_interval_days} days'}), "
-            f"small price sync every {price_interval_minutes} minutes"
+            f"small price sync every {price_interval_minutes} minutes, "
+            f"Pokemon Center queue check every {queue_interval_minutes} minutes"
         )
     else:
         logger.info("Scheduler already running")
@@ -146,3 +191,13 @@ def reschedule_price_sync(interval_minutes: int):
             trigger=IntervalTrigger(minutes=interval_minutes),
         )
         logger.info(f"Price sync rescheduled to every {interval_minutes} minutes")
+
+
+def reschedule_pokemon_center_queue_check(interval_minutes: int):
+    """Reschedule the Pokemon Center queue monitor job with a new interval."""
+    if scheduler.running:
+        scheduler.reschedule_job(
+            "pokemon_center_queue_job",
+            trigger=IntervalTrigger(minutes=interval_minutes),
+        )
+        logger.info(f"Pokemon Center queue monitor rescheduled to every {interval_minutes} minutes")

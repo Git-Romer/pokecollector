@@ -26,6 +26,17 @@ def _get_telegram_credentials(db=None, user_id=None):
                 chat_id = chat_row.value
         except Exception:
             pass
+        try:
+            from models import User
+            user = db.query(User).filter(User.id == user_id).first()
+            is_admin = user is not None and user.role == "admin"
+        except Exception:
+            is_admin = False
+        if is_admin:
+            if not token:
+                token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+            if not chat_id:
+                chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
     # If no user_id provided (system-level notification), try global settings + env
     if not token and user_id is None:
         if db is not None:

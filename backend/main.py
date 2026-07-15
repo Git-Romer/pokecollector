@@ -121,7 +121,7 @@ async def debug_request_logging(request: Request, call_next):
     return response
 
 # Include routers
-from api import auth, cards, collection, sets, wishlist, binders, dashboard, analytics, sync, products, trades, export, backup, settings, images, social
+from api import auth, cards, collection, sets, wishlist, binders, dashboard, analytics, sync, products, trades, export, backup, settings, images, social, pokemon_center
 from api.github import router as github_router
 from api.recognize import router as recognize_router
 
@@ -169,6 +169,7 @@ app.include_router(backup.router, prefix="/api/backup", tags=["backup"])
 app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 app.include_router(images.router, prefix="/api/images", tags=["images"])
 app.include_router(social.router, prefix="/api/social", tags=["social"])
+app.include_router(pokemon_center.router, prefix="/api/pokemon-center", tags=["pokemon-center"])
 app.include_router(github_router, prefix="/api/github", tags=["github"])
 
 

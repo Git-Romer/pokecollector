@@ -383,6 +383,21 @@ class SyncLog(Base):
     sync_type = Column(String, nullable=True, default="full")  # "full" or "price"
 
 
+class PokemonCenterQueueStatus(Base):
+    __tablename__ = "pokemon_center_queue_status"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    status = Column(String, nullable=False, default="unknown")
+    previous_status = Column(String, nullable=True)
+    checked_at = Column(DateTime, default=func.now())
+    notified_at = Column(DateTime, nullable=True)
+    url = Column(Text, nullable=True)
+    final_url = Column(Text, nullable=True)
+    http_status = Column(Integer, nullable=True)
+    evidence = Column(JSON, nullable=True)
+    error_message = Column(Text, nullable=True)
+
+
 class PortfolioSnapshot(Base):
     __tablename__ = "portfolio_snapshots"
 
