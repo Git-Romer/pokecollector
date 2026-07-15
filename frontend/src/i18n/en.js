@@ -225,8 +225,8 @@ const en = {
   collection: {
     title: 'Collection',
     userCollection: 'Collection',
-    empty: 'No cards in this collection',
-    emptyHint: 'Search for cards and add them to start',
+    empty: 'The archive is waiting',
+    emptyHint: 'Search the databank and file your first card',
     addCustomCard: 'Add card manually',
     importCsv: 'Import CSV',
     importingCsv: 'Importing...',
@@ -351,8 +351,8 @@ const en = {
   wishlist: {
     title: 'Wishlist',
     subtitle: 'Cards you want · Set price alerts for Telegram notifications',
-    empty: 'Your wishlist is empty',
-    emptyHint: 'Search for cards and click the heart icon to add them',
+    empty: 'No targets identified',
+    emptyHint: 'Mark cards to keep an eye on them',
     card: 'Card',
     marketPrice: 'Market Price',
     priceAlerts: 'Price Alerts',
@@ -388,8 +388,8 @@ const en = {
   binders: {
     title: 'Binders',
     subtitle: 'Organize cards into virtual binders',
-    empty: 'No binders yet',
-    emptyHint: 'Create binders to organize your cards',
+    empty: 'The storage room is empty',
+    emptyHint: 'Create a box to start organizing',
     createFirst: 'Create First Binder',
     newBinder: 'New Binder',
     createBinder: 'Create Binder',
@@ -1142,3 +1142,5 @@ const en = {
 }
 
 export default en
+
+

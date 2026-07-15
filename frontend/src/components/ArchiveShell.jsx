@@ -6,6 +6,8 @@ import clsx from 'clsx'
 import ArchiveCommandBar from './ArchiveCommandBar'
 import JohnJohnSignal from './JohnJohnSignal'
 import { PRIMARY_ARCHIVE_DESTINATIONS } from './archiveNavigation'
+import Grainient from './reactbits/Grainient'
+import ShinyText from './reactbits/ShinyText'
 
 const ICONS = { collection: CollectionsRegular, search: SearchRegular, sets: TableRegular, analytics: DataBarVerticalRegular, settings: SettingsRegular }
 export const PRIMARY_ARCHIVE_NAV = PRIMARY_ARCHIVE_DESTINATIONS.map((item) => ({ ...item, icon: ICONS[item.icon] }))
@@ -31,9 +33,9 @@ export default function ArchiveShell() {
   }, [])
 
   return (
-    <div className="archive-shell min-h-dvh">
+    <Grainient className="archive-shell min-h-dvh">
       <aside className="archive-rail hidden lg:flex" aria-label="Primary navigation">
-        <NavLink to="/" className="archive-wordmark" aria-label="John John's PC, Collection Overview"><span>JJ</span><strong>John John's PC</strong></NavLink>
+        <NavLink to="/collection" className="archive-wordmark" aria-label="John John's PC, Collection Overview"><span>JJ</span><strong><ShinyText text="John John's PC" speed={5} /></strong></NavLink>
         <nav className="archive-nav">
           {PRIMARY_ARCHIVE_NAV.map(({ to, label, icon: Icon, end }) => (
             <NavLink key={to} to={to} end={end} className={({ isActive }) => clsx('archive-nav-link', isActive && 'archive-nav-link-active')}>
@@ -58,6 +60,6 @@ export default function ArchiveShell() {
         ))}
       </nav>
       <ArchiveCommandBar open={commandOpen} onClose={() => setCommandOpen(false)} />
-    </div>
+    </Grainient>
   )
 }

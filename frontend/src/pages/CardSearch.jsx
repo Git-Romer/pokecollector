@@ -1,3 +1,4 @@
+import SplitText from '../components/reactbits/SplitText'
 import { useState, useMemo, useEffect } from 'react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { Search, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, SortAsc, Hash, PenLine, SlidersHorizontal, Camera, CheckSquare, Plus, Check } from 'lucide-react'
@@ -396,7 +397,7 @@ export default function CardSearch() {
       {/* ─── Header ───────────────────────────────────────────────── */}
       <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
         <div className="min-w-0">
-          <h1 className="text-xl font-bold text-text-primary">{t('cardSearch.title')}</h1>
+          <h1 className="text-5xl font-bold text-text-primary mag-heading uppercase leading-none mt-2"><SplitText text="{t('cardSearch.title')}" delay={40} /></h1>
           <p className="text-sm text-text-secondary mt-1">{t('cardSearch.subtitle')}</p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">

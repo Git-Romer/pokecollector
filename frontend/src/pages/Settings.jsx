@@ -1,10 +1,11 @@
+import SplitText from '../components/reactbits/SplitText'
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Crown, RefreshCw, Download, Upload, Plus, Pencil, Trash2, User, UserCheck, UserX, Zap } from 'lucide-react'
 import {
   getSyncStatus, triggerSync, triggerAllPriceSync, rescheduleFullSync, reschedulePriceSync,
-  downloadBackup, restoreBackup, exportCSV,
+  downloadBackup, restoreBackup, exportCSV, exportXLSX,
   getSetting, setSetting, getTelegramStatus, saveSettings, setAuthMode,
   getUsers, createUser, updateUser, deleteUser, changePassword, changeAvatar, changeUsername,
   getContributors, getSupporters, getRescueDonations, getCustomMatches, downloadDebugLog,
@@ -272,7 +273,7 @@ function SupportersSection({ t }) {
     return (
       <SettingsCard>
         <div className="p-4 text-center">
-          <p className="text-sm text-text-muted">{t('settings.noSupportersYet')}</p>
+          <span className="mag-issue">{T('SETTINGS.NOSUPPORTERSYET')}</span>
         </div>
       </SettingsCard>
     )
@@ -602,7 +603,7 @@ export default function Settings() {
   return (
     <div className="space-y-6 py-6">
       <div className="px-1">
-        <h1 className="text-2xl font-black text-text-primary tracking-tight">{t('settings.title')}</h1>
+        <h1 className="text-5xl font-bold text-text-primary mag-heading uppercase leading-none mt-2"><SplitText text="{t('settings.title')}" delay={40} /></h1>
         <p className="text-sm text-text-muted mt-1">{t('settings.appConfig')}</p>
       </div>
       <div className="flex border-b border-border overflow-x-auto scrollbar-none -mx-4 px-4" style={{WebkitOverflowScrolling:"touch"}}>
@@ -1027,13 +1028,38 @@ export default function Settings() {
                 </button>
               </SettingsRow>
               <SettingsRow label={t('settings.csvExport')} description={t('settings.csvExportDesc')}>
-                <button
-                  onClick={() => exportCSV(exportParams)}
-                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity"
-                  style={{ background: 'rgba(255,255,255,0.07)', color: '#90a4ae', border: '1px solid rgba(255,255,255,0.1)' }}
+                <div className="flex flex-wrap justify-end gap-2">
+                  <button
+                    onClick={() => exportXLSX(exportParams)}
+                    className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity"
+                    style={{ background: 'rgba(255,255,255,0.07)', color: '#90a4ae', border: '1px solid rgba(255,255,255,0.1)' }}
+                  >
+                    <Download size={13} /> {t('settings.exportExcelButton')}
+                  </button>
+                  <button
+                    onClick={() => exportCSV(exportParams)}
+                    className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity"
+                    style={{ background: 'rgba(255,255,255,0.07)', color: '#90a4ae', border: '1px solid rgba(255,255,255,0.1)' }}
+                  >
+                    <Download size={13} /> {t('settings.exportCsvButton')}
+                  </button>
+                </div>
+              </SettingsRow>
+              <SettingsRow label={t('settings.localFirstTitle')} description={t('settings.localFirstDesc')}>
+                <span
+                  className="text-xs font-bold px-2.5 py-1 rounded-full"
+                  style={{ background: 'rgba(102,187,106,0.15)', color: '#66bb6a', border: '1px solid rgba(102,187,106,0.3)' }}
                 >
-                  <Download size={13} /> {t('settings.exportButton')}
-                </button>
+                  {t('settings.localFirstBadge')}
+                </span>
+              </SettingsRow>
+              <SettingsRow label={t('settings.aiControlTitle')} description={t('settings.aiControlDesc')}>
+                <span
+                  className="text-xs font-bold px-2.5 py-1 rounded-full"
+                  style={{ background: 'rgba(0,163,224,0.14)', color: '#00A3E0', border: '1px solid rgba(0,163,224,0.3)' }}
+                >
+                  {t('settings.aiControlBadge')}
+                </span>
               </SettingsRow>
               <SettingsRow label={t('settings.backupDownload')} description={t('settings.backupDownloadDesc')}>
                 <div className="flex flex-col gap-2 items-end">

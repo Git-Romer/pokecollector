@@ -1,3 +1,4 @@
+import SplitText from '../components/reactbits/SplitText'
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -443,7 +444,7 @@ export default function BinderDetail() {
             ) : (
               <Package size={20} className="flex-shrink-0" style={{ color: binder?.color }} />
             )}
-            <h1 className="text-xl font-bold text-text-primary truncate">{binder?.name}</h1>
+            <h1 className="text-5xl font-bold text-text-primary mag-heading uppercase leading-none mt-2"><SplitText text="{binder?.name}" delay={40} /></h1>
             <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
               isWishlist ? 'bg-yellow/20 text-yellow' : 'bg-blue/20 text-blue'
             }`}>

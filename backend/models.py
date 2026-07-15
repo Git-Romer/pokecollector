@@ -149,6 +149,13 @@ class CollectionItem(Base):
     condition = Column(String, default="NM")  # Mint/NM/LP/MP/HP
     variant = Column(String, nullable=False, default="Normal")  # Normal/Holo/Reverse Holo/First Edition
     purchase_price = Column(Float)
+    acquisition_source = Column(String)
+    storage_type = Column(String)
+    storage_detail = Column(String)
+    grader = Column(String)
+    grade = Column(String)
+    certification_number = Column(String)
+    notes = Column(Text)
     lang = Column(String, default="en")  # fixed TCGdex card language
     added_at = Column(DateTime, default=func.now())
 
@@ -238,6 +245,8 @@ class ProductPurchase(Base):
     purchase_date = Column(Date, nullable=False)
     sold_date = Column(Date)
     notes = Column(Text)
+    storage_type = Column(String)
+    storage_detail = Column(String)
     created_at = Column(DateTime, default=func.now())
 
 
@@ -373,3 +382,29 @@ class ImageCache(Base):
     data = Column(LargeBinary, nullable=False)
     content_type = Column(String, default="image/webp")
     cached_at = Column(DateTime, default=func.now())
+
+class JohnJohnAuditLog(Base):
+    __tablename__ = "john_john_audit_log"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    action_type = Column(String, nullable=False)
+    payload = Column(JSON, nullable=False)
+    reverted = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=func.now())
+
+
+class JohnJohnNote(Base):
+    __tablename__ = "john_john_notes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    kind = Column(String, nullable=False)
+    title = Column(String, nullable=False)
+    body = Column(Text, nullable=False)
+    href = Column(String, nullable=True)
+    undo_action_id = Column(Integer, ForeignKey("john_john_audit_log.id", ondelete="SET NULL"), nullable=True)
+    dismissed = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=func.now())
+
+    audit_log = relationship("JohnJohnAuditLog")

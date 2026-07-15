@@ -1,3 +1,4 @@
+import SplitText from '../components/reactbits/SplitText'
 import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { User } from 'lucide-react'
@@ -50,9 +51,9 @@ export default function Login() {
         >
           <div className="mb-8 text-center">
             <p className="text-xs font-semibold uppercase tracking-[0.35em] text-text-muted">PokéCollector</p>
-            <h1 className="mt-4 text-3xl font-semibold text-text-primary">
+            <h1 className="text-5xl font-bold text-text-primary mag-heading uppercase leading-none mt-2"><SplitText text="
               {lastUser && !showSwitchUser ? t('auth.welcomeBack') : t('auth.login')}
-            </h1>
+            " delay={40} /></h1>
             <p className="mt-2 text-sm text-text-muted">{t('auth.signInToCollection')}</p>
           </div>
 

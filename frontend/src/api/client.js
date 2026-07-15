@@ -246,6 +246,25 @@ export const exportPDF = (params = {}) => {
     window.URL.revokeObjectURL(url)
   })
 }
+export const exportXLSX = (params = {}) => {
+  const token = localStorage.getItem('token')
+  const config = {
+    responseType: 'blob',
+    params,
+  }
+  if (token) {
+    config.headers = { Authorization: `Bearer ${token}` }
+  }
+  return api.get('/export/xlsx', config).then(r => {
+    const url = window.URL.createObjectURL(r.data)
+    const a = document.createElement('a')
+    const today = new Date().toISOString().slice(0, 10)
+    a.href = url
+    a.download = `john-johns-pc-${today}.xlsx`
+    a.click()
+    window.URL.revokeObjectURL(url)
+  })
+}
 
 // Backup
 export const downloadBackup = (include = 'full') => {

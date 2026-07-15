@@ -485,13 +485,19 @@ def add_to_collection(
         effective_card_id = f"{tcg_card_id}_{item_lang}"
         ensure_card_exists(db, effective_card_id, lang=item_lang)
 
+    purchase_price = item.purchase_price
+    if purchase_price is None and item.acquisition_source == "pulled":
+        purchase_price = 4.49
+    elif purchase_price is None and item.acquisition_source == "bulk_before_tracking":
+        purchase_price = 0.0
+
     # Find existing entry for same card + variant + lang + condition + purchase_price combination
     existing = db.query(CollectionItem).filter(
         CollectionItem.card_id == effective_card_id,
         CollectionItem.variant == item_variant,
         CollectionItem.lang == item_lang,
         CollectionItem.condition == item.condition,
-        CollectionItem.purchase_price == item.purchase_price,
+        CollectionItem.purchase_price == purchase_price,
         CollectionItem.user_id == current_user.id,
     ).first()
 
@@ -506,7 +512,14 @@ def add_to_collection(
             quantity=item.quantity,
             condition=item.condition,
             variant=item_variant,
-            purchase_price=item.purchase_price,
+            purchase_price=purchase_price,
+            acquisition_source=item.acquisition_source,
+            storage_type=item.storage_type,
+            storage_detail=item.storage_detail,
+            grader=item.grader,
+            grade=item.grade,
+            certification_number=item.certification_number,
+            notes=item.notes,
             lang=item_lang,
             user_id=current_user.id,
             added_at=datetime.datetime.utcnow(),
@@ -540,6 +553,11 @@ def bulk_add_to_collection(
             _, detected_lang = pokemon_api.strip_lang_suffix(item.card_id)
             item_lang = _normalize_request_lang(item.lang or detected_lang or "en")
             item_variant = _normalize_collection_variant(item.variant)
+            purchase_price = item.purchase_price
+            if purchase_price is None and item.acquisition_source == "pulled":
+                purchase_price = 4.49
+            elif purchase_price is None and item.acquisition_source == "bulk_before_tracking":
+                purchase_price = 0.0
 
             if item.card_id.startswith("custom-"):
                 effective_card_id = item.card_id
@@ -556,7 +574,7 @@ def bulk_add_to_collection(
                 CollectionItem.variant == item_variant,
                 CollectionItem.lang == item_lang,
                 CollectionItem.condition == item.condition,
-                CollectionItem.purchase_price == item.purchase_price,
+                CollectionItem.purchase_price == purchase_price,
                 CollectionItem.user_id == current_user.id,
             ).first()
 
@@ -570,7 +588,14 @@ def bulk_add_to_collection(
                     quantity=item.quantity,
                     condition=item.condition,
                     variant=item_variant,
-                    purchase_price=item.purchase_price,
+                    purchase_price=purchase_price,
+                    acquisition_source=item.acquisition_source,
+                    storage_type=item.storage_type,
+                    storage_detail=item.storage_detail,
+                    grader=item.grader,
+                    grade=item.grade,
+                    certification_number=item.certification_number,
+                    notes=item.notes,
                     lang=item_lang,
                     user_id=current_user.id,
                     added_at=datetime.datetime.utcnow(),

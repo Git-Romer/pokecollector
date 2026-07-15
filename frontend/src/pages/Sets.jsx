@@ -1,3 +1,4 @@
+import SplitText from '../components/reactbits/SplitText'
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
@@ -216,7 +217,7 @@ export default function Sets() {
       {/* ─── Header ───────────────────────────────────────────────── */}
       <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
         <div className="min-w-0">
-          <h1 className="text-xl font-bold text-text-primary">{t('sets.title')}</h1>
+          <h1 className="text-5xl font-bold text-text-primary mag-heading uppercase leading-none mt-2"><SplitText text="{t('sets.title')}" delay={40} /></h1>
           <p className="text-sm text-text-secondary mt-1">
             {sets.length} {t('sets.setsTotal')}
             {newSets.length > 0 && (

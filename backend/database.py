@@ -105,6 +105,15 @@ def _run_migrations(conn):
         "ALTER TABLE collection ALTER COLUMN variant SET NOT NULL",
         # v32: Add grade column to collection table (PSA/BGS/CGC grade)
         "ALTER TABLE collection ADD COLUMN IF NOT EXISTS grade VARCHAR DEFAULT 'raw'",
+        "ALTER TABLE collection ALTER COLUMN grade DROP DEFAULT",
+        "ALTER TABLE collection ADD COLUMN IF NOT EXISTS acquisition_source VARCHAR",
+        "ALTER TABLE collection ADD COLUMN IF NOT EXISTS storage_type VARCHAR",
+        "ALTER TABLE collection ADD COLUMN IF NOT EXISTS storage_detail VARCHAR",
+        "ALTER TABLE collection ADD COLUMN IF NOT EXISTS grader VARCHAR",
+        "ALTER TABLE collection ADD COLUMN IF NOT EXISTS certification_number VARCHAR",
+        "ALTER TABLE collection ADD COLUMN IF NOT EXISTS notes TEXT",
+        "ALTER TABLE product_purchases ADD COLUMN IF NOT EXISTS storage_type VARCHAR",
+        "ALTER TABLE product_purchases ADD COLUMN IF NOT EXISTS storage_detail VARCHAR",
         # v32: Add ebay_app_id to settings table
         "ALTER TABLE settings ADD COLUMN IF NOT EXISTS ebay_app_id VARCHAR",
         # v41: Add Pokemon avatar selection to users

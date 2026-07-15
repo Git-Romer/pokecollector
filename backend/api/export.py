@@ -5,12 +5,76 @@ from api.auth import get_current_user
 from database import get_db
 from services.card_values import effective_market_price, normalize_price_field
 from services.card_visibility import visible_card_filter
-from models import CollectionItem, Card, User
+from models import CollectionItem, Card, ProductPurchase, User
 import io
 import csv
 import datetime
+from openpyxl import Workbook
 
 router = APIRouter()
+
+
+def build_collection_workbook(items, products) -> bytes:
+    workbook = Workbook()
+    cards = workbook.active
+    cards.title = "Cards"
+    cards.append(["Card ID", "Name", "Set", "Number", "Rarity", "Quantity", "Condition", "Variant", "Language", "Cost Basis", "Added At"])
+    for item in items:
+        card = item.card
+        if not card:
+            continue
+        cards.append([
+            card.id, card.name, card.set_ref.name if card.set_ref else "", card.number or "", card.rarity or "",
+            item.quantity, item.condition, item.variant, item.lang, item.purchase_price,
+            item.added_at.date().isoformat() if item.added_at else "",
+        ])
+
+    sealed = workbook.create_sheet("Sealed Product")
+    sealed.append(["Product Name", "Product Type", "Cost Basis", "Acquisition Date", "Storage Type", "Storage Detail", "Notes"])
+    for product in products:
+        sealed.append([
+            product.product_name, product.product_type or "", product.purchase_price,
+            product.purchase_date.isoformat() if product.purchase_date else "",
+            product.storage_type or "", product.storage_detail or "", product.notes or "",
+        ])
+
+    care = workbook.create_sheet("Acquisition & Storage")
+    care.append(["Card ID", "Name", "Acquisition Source", "Storage Type", "Storage Detail", "Grader", "Grade", "Certification Number", "Notes"])
+    for item in items:
+        if not item.card:
+            continue
+        care.append([
+            item.card.id, item.card.name, item.acquisition_source or "", item.storage_type or "",
+            item.storage_detail or "", item.grader or "", item.grade or "",
+            item.certification_number or "", item.notes or "",
+        ])
+
+    for sheet in workbook.worksheets:
+        sheet.freeze_panes = "A2"
+        sheet.auto_filter.ref = sheet.dimensions
+    output = io.BytesIO()
+    workbook.save(output)
+    return output.getvalue()
+
+
+@router.get("/xlsx")
+def export_xlsx(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    items = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).options(
+        joinedload(CollectionItem.card).joinedload(Card.set_ref)
+    ).filter(
+        CollectionItem.user_id == current_user.id,
+        visible_card_filter(db, current_user.id, "all"),
+    ).all()
+    products = db.query(ProductPurchase).filter(ProductPurchase.user_id == current_user.id).order_by(ProductPurchase.purchase_date.desc()).all()
+    filename = f"john-johns-pc-{datetime.date.today().isoformat()}.xlsx"
+    return StreamingResponse(
+        io.BytesIO(build_collection_workbook(items, products)),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 def _normalize_currency(value: str | None) -> tuple[str, str]:

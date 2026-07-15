@@ -1,0 +1,21 @@
+name: john-johns-pc
+
+services:
+  postgres:
+    container_name: !reset null
+    ports: !override []
+
+  backend:
+    container_name: !reset null
+    ports: !override
+      - "127.0.0.1:18080:8000"
+
+  frontend:
+    container_name: !reset null
+    ports: !override
+      - "127.0.0.1:13000:80"
+
+volumes:
+  postgres_data:
+    external: true
+    name: pokecollector_postgres_data

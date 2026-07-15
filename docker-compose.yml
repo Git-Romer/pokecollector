@@ -1,7 +1,9 @@
+name: john-johns-pc
+
 services:
   postgres:
     image: postgres:18-alpine
-    container_name: pokemon-postgres
+    container_name: jjpc-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: pokemon
@@ -35,7 +37,7 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    container_name: pokemon-backend
+    container_name: jjpc-backend
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://pokemon:${POSTGRES_PASSWORD:-changeme}@postgres:5432/pokemon_tcg
@@ -55,6 +57,7 @@ services:
         condition: service_healthy
     volumes:
       - ./backups:/app/backups
+      - O:\:/mnt/odrive
     ports:
       - "8000:8000"
 
@@ -64,7 +67,7 @@ services:
       dockerfile: frontend/Dockerfile
       args:
         PUBLIC_MODE: ${PUBLIC_MODE:-false}
-    container_name: pokemon-frontend
+    container_name: jjpc-frontend
     restart: unless-stopped
     depends_on:
       - backend
@@ -73,3 +76,5 @@ services:
 
 volumes:
   postgres_data:
+    external: true
+    name: john-johns-pc_postgres_data

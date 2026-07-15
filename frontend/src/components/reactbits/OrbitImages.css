@@ -1,0 +1,64 @@
+.orbit-container {
+  position: relative;
+  width: 300px;
+  height: 300px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.orbit-center {
+  position: absolute;
+  width: 100px;
+  height: 100px;
+  background: #000;
+  color: #FFF;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Anton', sans-serif;
+  font-size: 1.5rem;
+  z-index: 10;
+  box-shadow: 0 0 20px rgba(0, 180, 216, 0.5);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+.orbit-item {
+  position: absolute;
+  width: 80px;
+  height: 110px;
+  top: 50%;
+  left: 50%;
+  margin-top: -55px;
+  margin-left: -40px;
+  transform-origin: center;
+  animation: orbit 20s linear infinite;
+}
+
+.orbit-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border: 3px solid #FFF;
+  box-shadow: 4px 4px 0 #000;
+  /* Counter-rotate the image so it stays upright while orbiting */
+  animation: counter-orbit 20s linear infinite;
+}
+
+@keyframes orbit {
+  0% { transform: rotate(var(--angle)) translateX(140px) rotate(0deg); }
+  100% { transform: rotate(calc(var(--angle) + 360deg)) translateX(140px) rotate(0deg); }
+}
+
+@keyframes counter-orbit {
+  0% { transform: rotate(calc(-1 * var(--angle))); }
+  100% { transform: rotate(calc(-1 * (var(--angle) + 360deg))); }
+}

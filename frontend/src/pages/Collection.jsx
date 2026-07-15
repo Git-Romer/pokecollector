@@ -1,9 +1,10 @@
+import SplitText from '../components/reactbits/SplitText'
 import { useState, useMemo, useId, useRef, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Trash2, Check, X, Filter, SortAsc, Download, Upload, ChevronUp, ChevronDown, Search, PenLine, Grid2X2, List, Library, BookOpen, Heart, Copy, ArrowLeft, Package } from 'lucide-react'
-import { getCollection, updateCollectionItem, updateCardCustomImage, removeFromCollection, importCollectionCsv, exportCSV, exportPDF, getSets, addToCollection, getBinders, addCollectionItemToBinder, getWishlist, getApiErrorMessage } from '../api/client'
+import { getCollection, updateCollectionItem, updateCardCustomImage, removeFromCollection, importCollectionCsv, exportCSV, exportPDF, exportXLSX, getSets, addToCollection, getBinders, addCollectionItemToBinder, getWishlist, getApiErrorMessage } from '../api/client'
 import { CustomCardModal } from '../components/CardItem'
 import { useSettings } from '../contexts/SettingsContext'
 import CardImage from '../components/CardImage'
@@ -23,6 +24,7 @@ import { tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLa
 import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import { formatMoneyInputValue, parseMoneyInputValue } from '../utils/moneyInput'
+import { defaultPurchasePrice, ACQUISITION_SOURCES } from '../utils/collectionMetadata'
 
 function TiltBinderCard({ className, onClick, children }) {
   const { ref, onMouseMove, onMouseEnter, onMouseLeave } = useTilt(10)
@@ -228,6 +230,11 @@ function CsvImportModal({ t, onClose, onChooseFile, onDownloadTemplate, isImport
             </button>
           </div>
 
+          <div className="rounded-xl border border-light-blue/25 bg-light-blue/10 px-3 py-2 text-xs text-text-secondary">
+            <p className="font-semibold text-text-primary">{t('collection.importReviewTitle')}</p>
+            <p className="mt-1">{t('collection.importReviewDescription')}</p>
+          </div>
+
           <div className="rounded-xl bg-bg-elevated/35 p-3 text-xs text-text-secondary space-y-3">
             <div className="space-y-1">
               <p className="font-semibold text-text-primary">{t('collection.csvImportSectionCardCode')}</p>
@@ -364,16 +371,52 @@ function CollectionEditModal({ item, onClose }) {
   const [variant, setVariant] = useState(item.variant || 'Normal')
   const [lang, setLang] = useState(item.lang || 'en')
   const [price, setPrice] = useState(itemPriceInput)
+  const [acquisitionSource, setAcquisitionSource] = useState(item.acquisition_source || '')
+  const [storageType, setStorageType] = useState(item.storage_type || '')
+  const [storageDetail, setStorageDetail] = useState(item.storage_detail || '')
+  const [grader, setGrader] = useState(item.grader || '')
+  const [grade, setGrade] = useState(item.grade || '')
+  const [certificationNumber, setCertificationNumber] = useState(item.certification_number || '')
+  const [notes, setNotes] = useState(item.notes || '')
+
   const [showAddVersionForm, setShowAddVersionForm] = useState(false)
   const [newVersionQuantity, setNewVersionQuantity] = useState(1)
   const [newVersionCondition, setNewVersionCondition] = useState(item.condition || 'NM')
   const [newVersionVariant, setNewVersionVariant] = useState(item.variant || 'Normal')
   const [newVersionLang, setNewVersionLang] = useState(item.lang || 'en')
   const [newVersionPrice, setNewVersionPrice] = useState('')
+  const [newVersionAcquisitionSource, setNewVersionAcquisitionSource] = useState('')
+  const [newVersionStorageType, setNewVersionStorageType] = useState('')
+  const [newVersionStorageDetail, setNewVersionStorageDetail] = useState('')
+  const [newVersionGrader, setNewVersionGrader] = useState('')
+  const [newVersionGrade, setNewVersionGrade] = useState('')
+  const [newVersionCertificationNumber, setNewVersionCertificationNumber] = useState('')
+  const [newVersionNotes, setNewVersionNotes] = useState('')
+
   const [customImageUrl, setCustomImageUrl] = useState(card?.custom_image_url || '')
   const [savedCustomImageUrl, setSavedCustomImageUrl] = useState(card?.custom_image_url || '')
   const [customImageVersion, setCustomImageVersion] = useState(0)
   const customImageInputId = useId()
+
+  const handleAcquisitionSourceChange = (newSource) => {
+    setAcquisitionSource(newSource)
+    if (!price || price.trim() === '') {
+      const defaultPrice = defaultPurchasePrice(newSource)
+      if (defaultPrice !== null) {
+        setPrice(formatMoneyInputValue(defaultPrice, exchangeRate))
+      }
+    }
+  }
+
+  const handleNewVersionAcquisitionSourceChange = (newSource) => {
+    setNewVersionAcquisitionSource(newSource)
+    if (!newVersionPrice || newVersionPrice.trim() === '') {
+      const defaultPrice = defaultPurchasePrice(newSource)
+      if (defaultPrice !== null) {
+        setNewVersionPrice(formatMoneyInputValue(defaultPrice, exchangeRate))
+      }
+    }
+  }
 
   const prevItemRef = useRef({
     id: item.id,
@@ -383,6 +426,13 @@ function CollectionEditModal({ item, onClose }) {
     lang: item.lang || 'en',
     price: itemPriceInput,
     customImageUrl: card?.custom_image_url || '',
+    acquisitionSource: item.acquisition_source || '',
+    storageType: item.storage_type || '',
+    storageDetail: item.storage_detail || '',
+    grader: item.grader || '',
+    grade: item.grade || '',
+    certificationNumber: item.certification_number || '',
+    notes: item.notes || '',
   })
 
   useEffect(() => {
@@ -394,6 +444,13 @@ function CollectionEditModal({ item, onClose }) {
       lang: item.lang || 'en',
       price: itemPriceInput,
       customImageUrl: card?.custom_image_url || '',
+      acquisitionSource: item.acquisition_source || '',
+      storageType: item.storage_type || '',
+      storageDetail: item.storage_detail || '',
+      grader: item.grader || '',
+      grade: item.grade || '',
+      certificationNumber: item.certification_number || '',
+      notes: item.notes || '',
     }
 
     const prevItem = prevItemRef.current
@@ -407,6 +464,13 @@ function CollectionEditModal({ item, onClose }) {
       setPrice(nextItem.price)
       setCustomImageUrl(nextItem.customImageUrl)
       setSavedCustomImageUrl(nextItem.customImageUrl)
+      setAcquisitionSource(nextItem.acquisitionSource)
+      setStorageType(nextItem.storageType)
+      setStorageDetail(nextItem.storageDetail)
+      setGrader(nextItem.grader)
+      setGrade(nextItem.grade)
+      setCertificationNumber(nextItem.certificationNumber)
+      setNotes(nextItem.notes)
     } else {
       if (quantity === prevItem.quantity && nextItem.quantity !== prevItem.quantity) {
         setQuantity(nextItem.quantity)
@@ -427,10 +491,47 @@ function CollectionEditModal({ item, onClose }) {
         setCustomImageUrl(nextItem.customImageUrl)
         setSavedCustomImageUrl(nextItem.customImageUrl)
       }
+      if (acquisitionSource === prevItem.acquisitionSource && nextItem.acquisitionSource !== prevItem.acquisitionSource) {
+        setAcquisitionSource(nextItem.acquisitionSource)
+      }
+      if (storageType === prevItem.storageType && nextItem.storageType !== prevItem.storageType) {
+        setStorageType(nextItem.storageType)
+      }
+      if (storageDetail === prevItem.storageDetail && nextItem.storageDetail !== prevItem.storageDetail) {
+        setStorageDetail(nextItem.storageDetail)
+      }
+      if (grader === prevItem.grader && nextItem.grader !== prevItem.grader) {
+        setGrader(nextItem.grader)
+      }
+      if (grade === prevItem.grade && nextItem.grade !== prevItem.grade) {
+        setGrade(nextItem.grade)
+      }
+      if (certificationNumber === prevItem.certificationNumber && nextItem.certificationNumber !== prevItem.certificationNumber) {
+        setCertificationNumber(nextItem.certificationNumber)
+      }
+      if (notes === prevItem.notes && nextItem.notes !== prevItem.notes) {
+        setNotes(nextItem.notes)
+      }
     }
 
     prevItemRef.current = nextItem
-  }, [item.id, item.quantity, item.condition, item.variant, item.lang, item.purchase_price, itemPriceInput, card?.custom_image_url])
+  }, [
+    item.id,
+    item.quantity,
+    item.condition,
+    item.variant,
+    item.lang,
+    item.purchase_price,
+    itemPriceInput,
+    card?.custom_image_url,
+    item.acquisition_source,
+    item.storage_type,
+    item.storage_detail,
+    item.grader,
+    item.grade,
+    item.certification_number,
+    item.notes
+  ])
 
   const { data: binders = [] } = useQuery({
     queryKey: ['binders'],
@@ -452,6 +553,13 @@ function CollectionEditModal({ item, onClose }) {
       variant,
       lang,
       purchase_price: parseMoneyInputValue(price, exchangeRate, null),
+      acquisition_source: acquisitionSource || null,
+      storage_type: storageType || null,
+      storage_detail: storageDetail || null,
+      grader: grader || null,
+      grade: grade || null,
+      certification_number: certificationNumber || null,
+      notes: notes || null,
     }),
     onSuccess: () => {
       toast.success(t('collection.updated'))
@@ -485,6 +593,13 @@ function CollectionEditModal({ item, onClose }) {
       variant: newVersionVariant,
       lang: newVersionLang,
       purchase_price: parseMoneyInputValue(newVersionPrice, exchangeRate),
+      acquisition_source: newVersionAcquisitionSource || null,
+      storage_type: newVersionStorageType || null,
+      storage_detail: newVersionStorageDetail || null,
+      grader: newVersionGrader || null,
+      grade: newVersionGrade || null,
+      certification_number: newVersionCertificationNumber || null,
+      notes: newVersionNotes || null,
     }),
     onSuccess: () => {
       toast.success(t('collection.versionAdded'))
@@ -539,6 +654,13 @@ function CollectionEditModal({ item, onClose }) {
     setNewVersionVariant(variant)
     setNewVersionLang(lang)
     setNewVersionPrice('')
+    setNewVersionAcquisitionSource(acquisitionSource)
+    setNewVersionStorageType(storageType)
+    setNewVersionStorageDetail(storageDetail)
+    setNewVersionGrader(grader)
+    setNewVersionGrade(grade)
+    setNewVersionCertificationNumber(certificationNumber)
+    setNewVersionNotes(notes)
     setShowAddVersionForm(true)
   }
 
@@ -686,6 +808,88 @@ function CollectionEditModal({ item, onClose }) {
                 />
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-text-muted mb-1 block">Acquisition Source</label>
+                  <select
+                    value={acquisitionSource}
+                    onChange={e => handleAcquisitionSourceChange(e.target.value)}
+                    className="select"
+                  >
+                    <option value="">Select source</option>
+                    {ACQUISITION_SOURCES.map(src => (
+                      <option key={src.value} value={src.value}>{src.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-text-muted mb-1 block">Storage Type</label>
+                  <input
+                    type="text"
+                    value={storageType}
+                    placeholder="e.g. Binder, Slab, Toploader"
+                    onChange={e => setStorageType(e.target.value)}
+                    className="input w-full"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-text-muted mb-1 block">Storage Detail</label>
+                  <input
+                    type="text"
+                    value={storageDetail}
+                    placeholder="e.g. Row 2, Shelf B"
+                    onChange={e => setStorageDetail(e.target.value)}
+                    className="input w-full"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-text-muted mb-1 block">Grader</label>
+                  <input
+                    type="text"
+                    value={grader}
+                    placeholder="e.g. PSA, BGS"
+                    onChange={e => setGrader(e.target.value)}
+                    className="input w-full"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-text-muted mb-1 block">Grade</label>
+                  <input
+                    type="text"
+                    value={grade}
+                    placeholder="e.g. 10, 9.5, Raw"
+                    onChange={e => setGrade(e.target.value)}
+                    className="input w-full"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-text-muted mb-1 block">Certification #</label>
+                  <input
+                    type="text"
+                    value={certificationNumber}
+                    placeholder="e.g. 12345678"
+                    onChange={e => setCertificationNumber(e.target.value)}
+                    className="input w-full"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-text-muted mb-1 block">Notes</label>
+                <textarea
+                  value={notes}
+                  placeholder="Notes about acquisition or condition..."
+                  onChange={e => setNotes(e.target.value)}
+                  className="input w-full h-16 resize-none py-1"
+                />
+              </div>
+
               {canEditCustomImage && (
                 <div className="bg-bg-card rounded-xl p-3 space-y-2 border border-border">
                   <div>
@@ -821,6 +1025,88 @@ function CollectionEditModal({ item, onClose }) {
                   placeholder={t('card.purchasePricePlaceholder')}
                   value={newVersionPrice}
                   onChange={e => setNewVersionPrice(e.target.value)}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-text-muted mb-1 block">Acquisition Source</label>
+                  <select
+                    value={newVersionAcquisitionSource}
+                    onChange={e => handleNewVersionAcquisitionSourceChange(e.target.value)}
+                    className="select"
+                  >
+                    <option value="">Select source</option>
+                    {ACQUISITION_SOURCES.map(src => (
+                      <option key={src.value} value={src.value}>{src.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-text-muted mb-1 block">Storage Type</label>
+                  <input
+                    type="text"
+                    value={newVersionStorageType}
+                    placeholder="e.g. Binder, Slab, Toploader"
+                    onChange={e => setNewVersionStorageType(e.target.value)}
+                    className="input w-full"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-text-muted mb-1 block">Storage Detail</label>
+                  <input
+                    type="text"
+                    value={newVersionStorageDetail}
+                    placeholder="e.g. Row 2, Shelf B"
+                    onChange={e => setNewVersionStorageDetail(e.target.value)}
+                    className="input w-full"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-text-muted mb-1 block">Grader</label>
+                  <input
+                    type="text"
+                    value={newVersionGrader}
+                    placeholder="e.g. PSA, BGS"
+                    onChange={e => setNewVersionGrader(e.target.value)}
+                    className="input w-full"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-text-muted mb-1 block">Grade</label>
+                  <input
+                    type="text"
+                    value={newVersionGrade}
+                    placeholder="e.g. 10, 9.5, Raw"
+                    onChange={e => setNewVersionGrade(e.target.value)}
+                    className="input w-full"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-text-muted mb-1 block">Certification #</label>
+                  <input
+                    type="text"
+                    value={newVersionCertificationNumber}
+                    placeholder="e.g. 12345678"
+                    onChange={e => setNewVersionCertificationNumber(e.target.value)}
+                    className="input w-full"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-text-muted mb-1 block">Notes</label>
+                <textarea
+                  value={newVersionNotes}
+                  placeholder="Notes about acquisition or condition..."
+                  onChange={e => setNewVersionNotes(e.target.value)}
+                  className="input w-full h-16 resize-none py-1"
                 />
               </div>
 
@@ -1105,7 +1391,7 @@ export default function Collection() {
       {/* ─── Header ───────────────────────────────────────────────── */}
       <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
         <div className="min-w-0">
-          <h1 className="text-xl font-bold text-text-primary">{t('collection.title')}</h1>
+          <h1 className="text-5xl font-bold text-text-primary mag-heading uppercase leading-none mt-2"><SplitText text="{t('collection.title')}" delay={40} /></h1>
           <p className="text-sm text-text-secondary mt-1">
             {totalCards.toLocaleString()} {t('collection.cards')} · {formatPrice(totalValue)} {t('collection.totalValue')}
           </p>
@@ -1150,6 +1436,7 @@ export default function Collection() {
           >
             <Upload size={14} />CSV
           </button>
+          <button onClick={() => exportXLSX(exportParams)} className="btn-ghost text-sm py-1.5 px-2" title="Excel" aria-label="Excel"><Download size={14} />Excel</button>
           <button onClick={() => exportCSV(exportParams)} className="btn-ghost text-sm py-1.5 px-2" title="CSV" aria-label="CSV"><Download size={14} />CSV</button>
           <button onClick={() => exportPDF(exportParams)} className="btn-ghost text-sm py-1.5"><Download size={14} />PDF</button>
         </div>

@@ -1,0 +1,71 @@
+.color-bends-wrapper {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+}
+
+.color-bends-bg {
+  position: absolute;
+  inset: -20%;
+  z-index: 0;
+  pointer-events: none;
+  filter: blur(80px);
+  opacity: 0.15;
+}
+
+.color-bends-content {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  height: 100%;
+}
+
+.bend-1, .bend-2, .bend-3, .bend-4 {
+  position: absolute;
+  border-radius: 50%;
+  animation: jjSpectrumFlow 20s infinite alternate ease-in-out;
+}
+
+.bend-1 {
+  background: var(--jj-red);
+  width: 50%;
+  height: 50%;
+  top: 10%;
+  left: 10%;
+  animation-delay: 0s;
+}
+
+.bend-2 {
+  background: var(--jj-lightblue);
+  width: 40%;
+  height: 40%;
+  bottom: 10%;
+  right: 10%;
+  animation-delay: -5s;
+}
+
+.bend-3 {
+  background: var(--jj-purple);
+  width: 60%;
+  height: 60%;
+  top: 30%;
+  left: 20%;
+  animation-delay: -10s;
+}
+
+.bend-4 {
+  background: var(--jj-yellow);
+  width: 45%;
+  height: 45%;
+  bottom: 20%;
+  left: 40%;
+  animation-delay: -15s;
+}
+
+@keyframes jjSpectrumFlow {
+  0% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(15%, -15%) scale(1.1); }
+  66% { transform: translate(-10%, 20%) scale(0.9); }
+  100% { transform: translate(5%, 10%) scale(1.2); }
+}

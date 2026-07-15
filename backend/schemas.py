@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Literal
 from datetime import datetime, date
 
 
@@ -129,6 +129,13 @@ class CollectionItemCreate(BaseModel):
     condition: str = "NM"
     variant: Optional[str] = "Normal"
     purchase_price: Optional[float] = None
+    acquisition_source: Optional[Literal["pulled", "bulk_before_tracking", "purchased", "trade", "gift", "other"]] = None
+    storage_type: Optional[str] = None
+    storage_detail: Optional[str] = None
+    grader: Optional[str] = None
+    grade: Optional[str] = None
+    certification_number: Optional[str] = None
+    notes: Optional[str] = None
     lang: str = "en"  # fixed TCGdex language of this card item
 
 
@@ -137,6 +144,13 @@ class CollectionItemUpdate(BaseModel):
     condition: Optional[str] = None
     variant: Optional[str] = None
     purchase_price: Optional[float] = None
+    acquisition_source: Optional[Literal["pulled", "bulk_before_tracking", "purchased", "trade", "gift", "other"]] = None
+    storage_type: Optional[str] = None
+    storage_detail: Optional[str] = None
+    grader: Optional[str] = None
+    grade: Optional[str] = None
+    certification_number: Optional[str] = None
+    notes: Optional[str] = None
     lang: Optional[str] = None
 
 
@@ -169,6 +183,13 @@ class CollectionItemResponse(BaseModel):
     condition: str
     variant: str = "Normal"
     purchase_price: Optional[float] = None
+    acquisition_source: Optional[str] = None
+    storage_type: Optional[str] = None
+    storage_detail: Optional[str] = None
+    grader: Optional[str] = None
+    grade: Optional[str] = None
+    certification_number: Optional[str] = None
+    notes: Optional[str] = None
     lang: str = "en"
     added_at: Optional[datetime] = None
     standard_legal: bool = False
@@ -276,6 +297,8 @@ class ProductPurchaseCreate(BaseModel):
     purchase_date: date
     sold_date: Optional[date] = None
     notes: Optional[str] = None
+    storage_type: Optional[str] = None
+    storage_detail: Optional[str] = None
 
 
 class ProductPurchaseUpdate(BaseModel):
@@ -287,6 +310,8 @@ class ProductPurchaseUpdate(BaseModel):
     purchase_date: Optional[date] = None
     sold_date: Optional[date] = None
     notes: Optional[str] = None
+    storage_type: Optional[str] = None
+    storage_detail: Optional[str] = None
 
 
 class ProductCardLinkCreate(BaseModel):
@@ -366,6 +391,8 @@ class ProductPurchaseResponse(BaseModel):
     purchase_date: date
     sold_date: Optional[date] = None
     notes: Optional[str] = None
+    storage_type: Optional[str] = None
+    storage_detail: Optional[str] = None
     created_at: Optional[datetime] = None
     pnl: Optional[float] = None
     pnl_percent: Optional[float] = None

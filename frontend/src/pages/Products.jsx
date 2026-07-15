@@ -1,3 +1,4 @@
+import SplitText from '../components/reactbits/SplitText'
 import { Fragment, useEffect, useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -29,6 +30,8 @@ function ProductForm({ initial = {}, onSubmit, onCancel, loading }) {
     purchase_date: initial.purchase_date || today,
     sold_date: initial.sold_date || '',
     notes: initial.notes || '',
+    storage_type: initial.storage_type || '',
+    storage_detail: initial.storage_detail || '',
   })
   const [moneyTouched, setMoneyTouched] = useState(false)
 
@@ -90,6 +93,16 @@ function ProductForm({ initial = {}, onSubmit, onCancel, loading }) {
         <label className="text-xs text-text-muted mb-1 block">{t('products.soldDate')}</label>
         <input type="date" value={form.sold_date} onChange={(e) => set('sold_date', e.target.value)} className="input" />
       </div>
+      <div>
+        <label className="text-xs text-text-muted mb-1 block">Storage Type</label>
+        <input type="text" placeholder="e.g. Sealed Box, Shelf"
+          value={form.storage_type} onChange={(e) => set('storage_type', e.target.value)} className="input" />
+      </div>
+      <div>
+        <label className="text-xs text-text-muted mb-1 block">Storage Detail</label>
+        <input type="text" placeholder="e.g. Row A, Shelf 1"
+          value={form.storage_detail} onChange={(e) => set('storage_detail', e.target.value)} className="input" />
+      </div>
       <div className="col-span-2">
         <label className="text-xs text-text-muted mb-1 block">{t('products.notes')}</label>
         <input type="text" placeholder={t('products.notesHint')} value={form.notes}
@@ -102,6 +115,8 @@ function ProductForm({ initial = {}, onSubmit, onCancel, loading }) {
           current_value: parseMoneyInputValue(form.current_value, exchangeRate, null),
           sold_price: parseMoneyInputValue(form.sold_price, exchangeRate, null),
           sold_date: form.sold_date || null,
+          storage_type: form.storage_type || null,
+          storage_detail: form.storage_detail || null,
         })} disabled={!canSubmit || loading || !exchangeRateReady} className="btn-primary flex-1">
           <Check size={14} /> {loading ? t('common.saving') : t('common.save')}
         </button>
@@ -310,7 +325,7 @@ function ProductLedgerPanel({ product, products, collectionItems, formatPrice, t
           })}
         </div>
       ) : (
-        <p className="text-sm text-text-muted">{t('products.noLinkedCards')}</p>
+        <span className="mag-issue">{T('PRODUCTS.NOLINKEDCARDS')}</span>
       )}
 
       <div className="grid gap-2 md:grid-cols-[0.8fr_0.8fr_1fr_auto] pt-3 border-t border-border">
@@ -497,7 +512,7 @@ export default function Products() {
       <TabNav tabs={ANALYTICS_TABS} />
       <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
         <div className="min-w-0">
-          <h1 className="text-xl font-bold text-text-primary">{t('products.title')}</h1>
+          <h1 className="text-5xl font-bold text-text-primary mag-heading uppercase leading-none mt-2"><SplitText text="{t('products.title')}" delay={40} /></h1>
           <p className="text-sm text-text-secondary mt-1">{t('products.subtitle')}</p>
         </div>
         <div className="flex items-center gap-3">

@@ -8,7 +8,7 @@ import { forceChangePassword } from './api/client'
 import ArchiveShell from './components/ArchiveShell'
 import { useSettings } from './contexts/SettingsContext'
 
-const Archive = lazy(() => import('./pages/Archive'))
+const Home = lazy(() => import('./pages/Home'))
 const Boxes = lazy(() => import('./pages/Boxes'))
 const Discover = lazy(() => import('./pages/Discover'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
@@ -148,7 +148,7 @@ function ProtectedRoutes() {
   return (
     <Routes>
       <Route path="/" element={<ArchiveShell />}>
-        <Route index element={lazyRoute(<Archive />)} />
+        <Route index element={lazyRoute(<Home />)} />
         <Route path="dashboard" element={<Navigate replace to="/" />} />
         <Route path="search" element={lazyRoute(<CardSearch />)} />
         <Route path="discover" element={lazyRoute(<Discover />)} />

@@ -156,6 +156,8 @@ def _product_response(
         purchase_date=product.purchase_date,
         sold_date=product.sold_date,
         notes=product.notes,
+        storage_type=product.storage_type,
+        storage_detail=product.storage_detail,
         created_at=product.created_at,
         pnl=pnl,
         pnl_percent=pnl_percent,
@@ -232,6 +234,8 @@ def create_product(
         purchase_date=product.purchase_date,
         sold_date=product.sold_date,
         notes=product.notes,
+        storage_type=product.storage_type,
+        storage_detail=product.storage_detail,
         user_id=current_user.id,
         created_at=datetime.datetime.utcnow(),
     )

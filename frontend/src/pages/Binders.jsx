@@ -1,3 +1,4 @@
+import SplitText from '../components/reactbits/SplitText'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
@@ -190,7 +191,7 @@ export default function Binders() {
       <TabNav tabs={COLLECTION_TABS} />
       <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
         <div className="min-w-0">
-          <h1 className="text-xl font-bold text-text-primary">{t('binders.title')}</h1>
+          <h1 className="text-5xl font-bold text-text-primary mag-heading uppercase leading-none mt-2"><SplitText text="{t('binders.title')}" delay={40} /></h1>
           <p className="text-sm text-text-secondary mt-1">{t('binders.subtitle')}</p>
         </div>
         <button onClick={() => setCreating(true)} className="btn-primary">
