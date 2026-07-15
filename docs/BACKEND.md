@@ -291,6 +291,8 @@ Gemini error handling:
 - Transient `502`, `503`, and `504` responses are retried with backoff
 - `429` is returned as a rate-limit/capacity message
 - Invalid API keys get a dedicated user-facing message
+- The scanner model defaults to `gemini-flash-latest` and can be changed with `GEMINI_MODEL`
+- Retired or unavailable Gemini models return a clear model-unavailable message with the upstream Google detail
 - Temporary Gemini outages are returned clearly instead of leaking as generic backend `500` errors
 - Gemini requests send the API key via header instead of the request URL
 

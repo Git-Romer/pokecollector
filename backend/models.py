@@ -143,7 +143,7 @@ class CollectionItem(Base):
     __tablename__ = "collection"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    card_id = Column(String, ForeignKey("cards.id"), nullable=False)
+    card_id = Column(String, ForeignKey("cards.id", ondelete="SET NULL"), nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     quantity = Column(Integer, default=1)
     condition = Column(String, default="NM")  # Mint/NM/LP/MP/HP
@@ -159,7 +159,7 @@ class WishlistItem(Base):
     __tablename__ = "wishlist"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    card_id = Column(String, ForeignKey("cards.id"), nullable=False)
+    card_id = Column(String, ForeignKey("cards.id", ondelete="SET NULL"), nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     quantity = Column(Integer, default=1, nullable=False)
     price_alert_above = Column(Float)
@@ -247,7 +247,7 @@ class ProductCard(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     product_id = Column(Integer, ForeignKey("product_purchases.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    card_id = Column(String, ForeignKey("cards.id"), nullable=False)
+    card_id = Column(String, ForeignKey("cards.id", ondelete="SET NULL"), nullable=True)
     # Historical source row only. Intentionally not a FK so sold-card history
     # survives when the active collection row is reduced/deleted after sale.
     collection_item_id = Column(Integer, nullable=True)
@@ -284,7 +284,7 @@ class ProductLedgerEntry(Base):
     product_id = Column(Integer, ForeignKey("product_purchases.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     entry_type = Column(String, nullable=False, default="card_sale")  # card_sale / flat_gain / adjustment
-    card_id = Column(String, ForeignKey("cards.id"), nullable=True)
+    card_id = Column(String, ForeignKey("cards.id", ondelete="SET NULL"), nullable=True)
     original_collection_item_id = Column(Integer, nullable=True)
     quantity = Column(Integer, default=1, nullable=False)
     amount = Column(Float, nullable=False)  # Flat total for this ledger event
@@ -306,7 +306,67 @@ class ProductLedgerEntry(Base):
     __table_args__ = (
         CheckConstraint("quantity >= 1", name="ck_product_ledger_quantity_positive"),
         CheckConstraint("amount >= 0", name="ck_product_ledger_amount_non_negative"),
-        CheckConstraint("entry_type IN ('card_sale', 'flat_gain', 'adjustment')", name="ck_product_ledger_entry_type"),
+        CheckConstraint("entry_type IN ('card_sale', 'flat_gain', 'adjustment', 'trade_out')", name="ck_product_ledger_entry_type"),
+    )
+
+
+class Trade(Base):
+    __tablename__ = "trades"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    partner_name = Column(String, nullable=True)
+    trade_date = Column(Date, nullable=False)
+    notes = Column(Text)
+    outgoing_value = Column(Float, default=0, nullable=False)
+    incoming_value = Column(Float, default=0, nullable=False)
+    value_delta = Column(Float, default=0, nullable=False)
+    created_at = Column(DateTime, default=func.now())
+
+    items = relationship(
+        "TradeItem",
+        back_populates="trade",
+        cascade="all, delete-orphan",
+        order_by="TradeItem.id.asc()",
+    )
+
+    __table_args__ = (
+        CheckConstraint("outgoing_value >= 0", name="ck_trades_outgoing_value_non_negative"),
+        CheckConstraint("incoming_value >= 0", name="ck_trades_incoming_value_non_negative"),
+    )
+
+
+class TradeItem(Base):
+    __tablename__ = "trade_items"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    trade_id = Column(Integer, ForeignKey("trades.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    direction = Column(String, nullable=False)
+    card_id = Column(String, ForeignKey("cards.id", ondelete="SET NULL"), nullable=True)
+    original_collection_item_id = Column(Integer, nullable=True)
+    created_collection_item_id = Column(Integer, nullable=True)
+    product_card_id = Column(Integer, nullable=True)
+    quantity = Column(Integer, default=1, nullable=False)
+    value_per_card = Column(Float, default=0, nullable=False)
+    value_total = Column(Float, default=0, nullable=False)
+    card_name = Column(String, nullable=True)
+    set_id = Column(String, nullable=True)
+    card_number = Column(String, nullable=True)
+    variant = Column(String, nullable=True)
+    condition = Column(String, nullable=True)
+    lang = Column(String, nullable=True)
+    notes = Column(Text)
+    created_at = Column(DateTime, default=func.now())
+
+    trade = relationship("Trade", back_populates="items")
+    card = relationship("Card")
+
+    __table_args__ = (
+        CheckConstraint("direction IN ('outgoing', 'incoming')", name="ck_trade_items_direction"),
+        CheckConstraint("quantity >= 1", name="ck_trade_items_quantity_positive"),
+        CheckConstraint("value_per_card >= 0", name="ck_trade_items_value_per_card_non_negative"),
+        CheckConstraint("value_total >= 0", name="ck_trade_items_value_total_non_negative"),
     )
 
 

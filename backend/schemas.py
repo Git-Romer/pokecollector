@@ -337,7 +337,7 @@ class ProductLedgerEntryResponse(BaseModel):
 class ProductCardResponse(BaseModel):
     id: int
     product_id: int
-    card_id: str
+    card_id: Optional[str] = None
     collection_item_id: Optional[int] = None
     initial_quantity: int
     active_quantity: int
@@ -381,6 +381,85 @@ class ProductPurchaseResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class TradeOutgoingItemCreate(BaseModel):
+    collection_item_id: int
+    quantity: int = Field(default=1, ge=1, le=999)
+    value_per_card: Optional[float] = Field(default=None, ge=0)
+    notes: Optional[str] = None
+
+
+class TradeIncomingItemCreate(BaseModel):
+    card_id: str
+    quantity: int = Field(default=1, ge=1, le=999)
+    condition: str = "NM"
+    variant: Optional[str] = "Normal"
+    lang: str = "en"
+    value_per_card: Optional[float] = Field(default=None, ge=0)
+    purchase_price: Optional[float] = Field(default=None, ge=0)
+    notes: Optional[str] = None
+
+
+class TradeCreate(BaseModel):
+    partner_name: Optional[str] = None
+    trade_date: date
+    notes: Optional[str] = None
+    outgoing_cash: Optional[float] = Field(default=0, ge=0)
+    incoming_cash: Optional[float] = Field(default=0, ge=0)
+    outgoing: List[TradeOutgoingItemCreate] = Field(default_factory=list)
+    incoming: List[TradeIncomingItemCreate] = Field(default_factory=list)
+
+
+class TradeItemResponse(BaseModel):
+    id: int
+    trade_id: int
+    direction: str
+    card_id: Optional[str] = None
+    original_collection_item_id: Optional[int] = None
+    created_collection_item_id: Optional[int] = None
+    product_card_id: Optional[int] = None
+    quantity: int
+    value_per_card: float
+    value_total: float
+    card_name: Optional[str] = None
+    set_id: Optional[str] = None
+    card_number: Optional[str] = None
+    variant: Optional[str] = None
+    condition: Optional[str] = None
+    lang: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: Optional[datetime] = None
+    card: Optional[CardWithSet] = None
+
+    class Config:
+        from_attributes = True
+
+
+class TradeResponse(BaseModel):
+    id: int
+    partner_name: Optional[str] = None
+    trade_date: date
+    notes: Optional[str] = None
+    outgoing_value: float
+    incoming_value: float
+    value_delta: float
+    created_at: Optional[datetime] = None
+    items: List[TradeItemResponse] = Field(default_factory=list)
+
+    class Config:
+        from_attributes = True
+
+
+class TradeValuationItem(BaseModel):
+    card_id: str
+    variant: Optional[str] = "Normal"
+    quantity: int = Field(default=1, ge=1, le=999)
+
+
+class TradeValuationRequest(BaseModel):
+    outgoing: List[TradeValuationItem] = Field(default_factory=list)
+    incoming: List[TradeValuationItem] = Field(default_factory=list)
 
 
 class SyncLogResponse(BaseModel):

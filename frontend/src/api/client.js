@@ -187,6 +187,7 @@ export const getDuplicates = (params = {}) => api.get('/analytics/duplicates', {
 export const getTopMovers = (days, params = {}) => api.get('/analytics/top-movers', { params: { ...params, days } })
 export const getRarityStats = (params = {}) => api.get('/analytics/rarity-stats', { params })
 export const getInvestmentTracker = (params = {}) => api.get('/analytics/investment-tracker', { params })
+export const getTradeStats = () => api.get('/analytics/trades-summary')
 export const getAnalyticsNewSets = () => api.get('/analytics/new-sets')
 
 // Sync
@@ -208,6 +209,11 @@ export const linkProductCard = (productId, data) => api.post(`/products/${produc
 export const unlinkProductCard = (productId, productCardId) => api.delete(`/products/${productId}/cards/${productCardId}`).then(r => r.data)
 export const sellProductCard = (productId, productCardId, data) => api.post(`/products/${productId}/cards/${productCardId}/sell`, data).then(r => r.data)
 export const addProductLedgerEntry = (productId, data) => api.post(`/products/${productId}/ledger`, data).then(r => r.data)
+
+export const getTrades = () => api.get('/trades/').then(r => r.data)
+export const getTrade = (id) => api.get(`/trades/${id}`).then(r => r.data)
+export const createTrade = (data, params = {}) => api.post('/trades/', data, { params }).then(r => r.data)
+export const valueTrade = (data, params = {}) => api.post('/trades/value', data, { params }).then(r => r.data)
 
 // Export
 export const exportCSV = (params = {}) => {

@@ -121,7 +121,7 @@ async def debug_request_logging(request: Request, call_next):
     return response
 
 # Include routers
-from api import auth, cards, collection, sets, wishlist, binders, dashboard, analytics, sync, products, export, backup, settings, images, social
+from api import auth, cards, collection, sets, wishlist, binders, dashboard, analytics, sync, products, trades, export, backup, settings, images, social
 from api.github import router as github_router
 from api.recognize import router as recognize_router
 
@@ -163,6 +163,7 @@ app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"]
 app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"])
 app.include_router(sync.router, prefix="/api/sync", tags=["sync"])
 app.include_router(products.router, prefix="/api/products", tags=["products"])
+app.include_router(trades.router, prefix="/api/trades", tags=["trades"])
 app.include_router(export.router, prefix="/api/export", tags=["export"])
 app.include_router(backup.router, prefix="/api/backup", tags=["backup"])
 app.include_router(settings.router, prefix="/api/settings", tags=["settings"])

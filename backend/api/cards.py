@@ -5,7 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from typing import Optional, List
 from api.auth import get_current_user
 from database import get_db
-from models import Card, Set, PriceHistory, CustomCardMatch, CollectionItem, WishlistItem, BinderCard, User, ImageCache
+from models import Card, Set, PriceHistory, CustomCardMatch, CollectionItem, WishlistItem, BinderCard, User, ImageCache, ProductCard, ProductLedgerEntry, TradeItem
 from schemas import CardBase, CardWithSet, PriceHistoryResponse, CardCustomCreate, CustomCardUpdate, CardCustomImageUpdate
 from services import pokemon_api
 from services.card_fallbacks import (
@@ -365,12 +365,25 @@ def delete_custom_card(
     if not card.is_custom:
         raise HTTPException(status_code=400, detail="Card is not custom")
 
+    active_product_links = db.query(ProductCard).filter(
+        ProductCard.card_id == card_id,
+        ProductCard.active_quantity > 0,
+    ).count()
+    if active_product_links:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot delete a custom card while it is actively linked to a product. Unlink or trade/sell the linked copy first.",
+        )
+
     try:
         db.query(CollectionItem).filter(CollectionItem.card_id == card_id).delete(synchronize_session=False)
         db.query(WishlistItem).filter(WishlistItem.card_id == card_id).delete(synchronize_session=False)
         db.query(BinderCard).filter(BinderCard.card_id == card_id).delete(synchronize_session=False)
         db.query(PriceHistory).filter(PriceHistory.card_id == card_id).delete(synchronize_session=False)
         db.query(CustomCardMatch).filter(CustomCardMatch.custom_card_id == card_id).delete(synchronize_session=False)
+        db.query(ProductCard).filter(ProductCard.card_id == card_id).update({"card_id": None}, synchronize_session=False)
+        db.query(ProductLedgerEntry).filter(ProductLedgerEntry.card_id == card_id).update({"card_id": None}, synchronize_session=False)
+        db.query(TradeItem).filter(TradeItem.card_id == card_id).update({"card_id": None}, synchronize_session=False)
         db.delete(card)
         db.commit()
     except Exception as e:

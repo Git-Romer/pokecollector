@@ -6,11 +6,23 @@ from database import get_db
 from services.card_values import effective_market_price, normalize_price_field
 from services.card_visibility import visible_card_filter, visible_set_filter
 from services.analytics import sort_top_movers
-from models import CollectionItem, Card, PriceHistory, PortfolioSnapshot, Set, ProductPurchase, User
+from models import CollectionItem, Card, PriceHistory, PortfolioSnapshot, Set, ProductPurchase, ProductLedgerEntry, Trade, TradeItem, User
 from typing import Optional
 import datetime
 
 router = APIRouter()
+
+
+def _is_cash_trade_item(item: TradeItem) -> bool:
+    """Cash rows are marker rows, not just any deleted card with card_id NULL."""
+    if item.card_id is not None:
+        return False
+    if (item.card_name or "").lower() != "cash":
+        return False
+    if (item.set_id or "").lower() == "cash" and (item.card_number or "").lower() == "cash":
+        return True
+    return (item.notes or "").lower() in {"cash added to trade", "cash received in trade"}
+
 
 def _get_item_price(item, price_field="price_trend"):
     """Return the selected market price for a collection item, respecting holo variant."""
@@ -158,6 +170,77 @@ def get_rarity_stats(
 
     result.sort(key=lambda x: x["count"], reverse=True)
     return result
+
+
+@router.get("/trades-summary")
+def get_trades_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Summarize logged trades for the Analytics investment view."""
+    trades = db.query(Trade).filter(Trade.user_id == current_user.id).all()
+    items = db.query(TradeItem).filter(TradeItem.user_id == current_user.id).all()
+
+    summary = {
+        "trade_count": len(trades),
+        "item_count": len(items),
+        "outgoing_value": 0.0,
+        "incoming_value": 0.0,
+        "value_delta": 0.0,
+        "outgoing_card_value": 0.0,
+        "incoming_card_value": 0.0,
+        "card_value_delta": 0.0,
+        "outgoing_cash": 0.0,
+        "incoming_cash": 0.0,
+        "cash_delta": 0.0,
+        "outgoing_card_quantity": 0,
+        "incoming_card_quantity": 0,
+        "product_locked_value": 0.0,
+        "product_locked_quantity": 0,
+    }
+
+    for trade in trades:
+        summary["outgoing_value"] += trade.outgoing_value or 0
+        summary["incoming_value"] += trade.incoming_value or 0
+
+    for item in items:
+        value = item.value_total or 0
+        quantity = int(item.quantity or 0)
+        is_cash = _is_cash_trade_item(item)
+
+        if item.direction == "outgoing":
+            if is_cash:
+                summary["outgoing_cash"] += value
+            else:
+                summary["outgoing_card_value"] += value
+                summary["outgoing_card_quantity"] += quantity
+        elif item.direction == "incoming":
+            if is_cash:
+                summary["incoming_cash"] += value
+            else:
+                summary["incoming_card_value"] += value
+                summary["incoming_card_quantity"] += quantity
+
+    locked_rows = db.query(ProductLedgerEntry).filter(
+        ProductLedgerEntry.user_id == current_user.id,
+        ProductLedgerEntry.entry_type == "trade_out",
+    ).all()
+    summary["product_locked_value"] = sum(row.amount or 0 for row in locked_rows)
+    summary["product_locked_quantity"] = sum(int(row.quantity or 0) for row in locked_rows)
+
+    summary["value_delta"] = summary["incoming_value"] - summary["outgoing_value"]
+    summary["card_value_delta"] = summary["incoming_card_value"] - summary["outgoing_card_value"]
+    summary["cash_delta"] = summary["incoming_cash"] - summary["outgoing_cash"]
+
+    money_fields = [
+        "outgoing_value", "incoming_value", "value_delta",
+        "outgoing_card_value", "incoming_card_value", "card_value_delta",
+        "outgoing_cash", "incoming_cash", "cash_delta", "product_locked_value",
+    ]
+    for field in money_fields:
+        summary[field] = round(summary[field], 2)
+
+    return summary
 
 
 def _calc_products_cost(db: Session, user_id: int):
