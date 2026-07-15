@@ -22,6 +22,7 @@ from services.tcgdex_languages import (
     supported_tcgdex_language_payload,
     validate_tcgdex_sync_languages,
 )
+from services.settings_defaults import DEFAULT_APP_LANGUAGE
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -49,7 +50,7 @@ DEFAULT_SETTINGS = {
     "telegram_chat_id": "",
     "price_alerts_enabled": "false",
     "price_alert_threshold": "10",
-    "language": "de",
+    "language": DEFAULT_APP_LANGUAGE,
     "currency": "EUR",
     "price_primary": "trend",
     "price_display": '["trend", "avg", "avg1", "avg7", "avg30", "low"]',

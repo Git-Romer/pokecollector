@@ -8,7 +8,7 @@ import toast from 'react-hot-toast'
 import { resolveSetImageUrl } from '../utils/imageUrl'
 import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
 import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
-import { tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
+import { normalizeTcgdexLanguage, tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { textIncludes } from '../utils/textSearch'
 
 const DEFAULT_SET_FILTERS = {
@@ -37,7 +37,7 @@ const parseJsonSetting = (value, fallback) => {
   }
 }
 
-const normalizeSetFilters = (value) => {
+const normalizeSetFilters = (value, defaultLangFilter = DEFAULT_SET_FILTERS.langFilter) => {
   const parsed = parseJsonSetting(value, {})
   return {
     search: typeof parsed.search === 'string' ? parsed.search : DEFAULT_SET_FILTERS.search,
@@ -45,7 +45,7 @@ const normalizeSetFilters = (value) => {
     sortBy: SET_FILTER_OPTIONS.sortBy.has(parsed.sortBy) ? parsed.sortBy : DEFAULT_SET_FILTERS.sortBy,
     sortOrder: SET_FILTER_OPTIONS.sortOrder.has(parsed.sortOrder) ? parsed.sortOrder : DEFAULT_SET_FILTERS.sortOrder,
     progressFilter: SET_FILTER_OPTIONS.progressFilter.has(parsed.progressFilter) ? parsed.progressFilter : DEFAULT_SET_FILTERS.progressFilter,
-    langFilter: typeof parsed.langFilter === 'string' && parsed.langFilter ? parsed.langFilter : DEFAULT_SET_FILTERS.langFilter,
+    langFilter: typeof parsed.langFilter === 'string' && parsed.langFilter ? parsed.langFilter : defaultLangFilter,
     showHiddenSets: parsed.showHiddenSets === true,
   }
 }
@@ -76,6 +76,7 @@ export default function Sets() {
   const { data: sets = [], isLoading } = useQuery({
     queryKey: ['sets', langFilter],
     queryFn: () => getSets({ lang: langFilter }).then(r => r.data),
+    enabled: filtersHydrated,
   })
 
   const markSeenMutation = useMutation({
@@ -88,20 +89,24 @@ export default function Sets() {
   })
 
   const visibleLanguageCodes = useMemo(() => visibleLanguages.map(language => language.code), [visibleLanguages])
+  const preferredCatalogueLanguage = normalizeTcgdexLanguage(settings.language || 'en', 'en')
+  const defaultLangFilter = visibleLanguageCodes.includes(preferredCatalogueLanguage)
+    ? preferredCatalogueLanguage
+    : DEFAULT_SET_FILTERS.langFilter
 
   useEffect(() => {
     if (!visibleLanguages.isLoading && langFilter !== 'all' && !visibleLanguageCodes.includes(langFilter)) {
-      setLangFilter('all')
+      setLangFilter(defaultLangFilter)
     }
-  }, [langFilter, visibleLanguageCodes, visibleLanguages.isLoading])
+  }, [defaultLangFilter, langFilter, visibleLanguageCodes, visibleLanguages.isLoading])
 
   useEffect(() => {
     if (!settingsLoaded) setFiltersHydrated(false)
   }, [settingsLoaded])
 
   useEffect(() => {
-    if (!settingsLoaded || filtersHydrated) return
-    const savedFilters = normalizeSetFilters(settings.set_overview_filters)
+    if (!settingsLoaded || visibleLanguages.isLoading || filtersHydrated) return
+    const savedFilters = normalizeSetFilters(settings.set_overview_filters, defaultLangFilter)
     const savedHiddenIds = normalizeHiddenSetIds(settings.hidden_set_ids)
     setSearch(savedFilters.search)
     setSeries(savedFilters.series)
@@ -114,7 +119,7 @@ export default function Sets() {
     savedFilterStateRef.current = JSON.stringify(savedFilters)
     savedHiddenSetIdsRef.current = JSON.stringify(savedHiddenIds)
     setFiltersHydrated(true)
-  }, [filtersHydrated, settings, settingsLoaded])
+  }, [defaultLangFilter, filtersHydrated, settings, settingsLoaded, visibleLanguages.isLoading])
 
   useEffect(() => {
     if (!settingsLoaded || !filtersHydrated) return
@@ -197,7 +202,7 @@ export default function Sets() {
     setSortBy(DEFAULT_SET_FILTERS.sortBy)
     setSortOrder(DEFAULT_SET_FILTERS.sortOrder)
     setProgressFilter(DEFAULT_SET_FILTERS.progressFilter)
-    setLangFilter(DEFAULT_SET_FILTERS.langFilter)
+    setLangFilter(defaultLangFilter)
     setShowHiddenSets(DEFAULT_SET_FILTERS.showHiddenSets)
   }
   const toggleHiddenSet = (setId) => {
@@ -208,7 +213,7 @@ export default function Sets() {
         : [...current, normalizedId].sort()
     ))
   }
-  const hasActiveFilters = search || series || sortBy !== DEFAULT_SET_FILTERS.sortBy || sortOrder !== DEFAULT_SET_FILTERS.sortOrder || progressFilter !== DEFAULT_SET_FILTERS.progressFilter || langFilter !== DEFAULT_SET_FILTERS.langFilter || showHiddenSets !== DEFAULT_SET_FILTERS.showHiddenSets
+  const hasActiveFilters = search || series || sortBy !== DEFAULT_SET_FILTERS.sortBy || sortOrder !== DEFAULT_SET_FILTERS.sortOrder || progressFilter !== DEFAULT_SET_FILTERS.progressFilter || langFilter !== defaultLangFilter || showHiddenSets !== DEFAULT_SET_FILTERS.showHiddenSets
 
   return (
     <div className="space-y-4 pb-2">

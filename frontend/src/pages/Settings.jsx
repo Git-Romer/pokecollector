@@ -568,7 +568,7 @@ export default function Settings() {
     }
   }
 
-  const currentLang = settings.language || 'de'
+  const currentLang = settings.language || 'en'
   const currentAppLang = currentLang === 'zh' ? 'zh-cn' : currentLang
   const currentCurrency = settings.currency || 'EUR'
   const currentPriceType = settings.price_primary || 'trend'

@@ -1,0 +1,120 @@
+import unittest
+from unittest.mock import patch
+
+try:
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from api.cards import get_card, search_cards
+    from api.sets import get_sets
+    from api.settings import _get_user_settings
+    from database import Base
+    from models import Card, Set, Setting, User, UserSetting
+    from services.user_language import get_user_tcgdex_language
+
+    API_TEST_DEPS_AVAILABLE = True
+except ModuleNotFoundError:
+    API_TEST_DEPS_AVAILABLE = False
+
+
+@unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "Backend dependencies are not installed in this lightweight test environment")
+class CatalogLanguageTests(unittest.TestCase):
+    def setUp(self):
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        Session = sessionmaker(bind=engine)
+        self.db = Session()
+        self.user = User(username="ash", hashed_password="x", role="admin", is_active=True)
+        self.db.add_all([
+            self.user,
+            Setting(key="language", value="de"),
+            Setting(key="tcgdex_sync_languages", value="en,de"),
+            Setting(key="tcgdex_digital_sets_enabled", value="true"),
+        ])
+        self.db.commit()
+        self.db.refresh(self.user)
+
+    def tearDown(self):
+        self.db.close()
+
+    def test_settings_default_language_ignores_legacy_global_language_row(self):
+        self.db.query(UserSetting).delete()
+        self.db.commit()
+
+        settings = _get_user_settings(self.db, self.user.id)
+
+        self.assertEqual(settings["language"], "en")
+        self.assertEqual(get_user_tcgdex_language(self.db, self.user.id), "en")
+
+    def test_sets_refresh_uses_user_language_instead_of_global_language(self):
+        self.db.add(UserSetting(user_id=self.user.id, key="language", value="en"))
+        self.db.commit()
+
+        with patch("api.sets.pokemon_api.get_all_sets", return_value=[]) as get_all_sets:
+            get_sets(db=self.db, current_user=self.user, refresh=True, lang=None)
+
+        self.assertGreaterEqual(get_all_sets.call_count, 1)
+        for call in get_all_sets.call_args_list:
+            self.assertEqual(call.kwargs["languages"], ["en"])
+
+    def test_card_search_without_lang_uses_user_language(self):
+        self.db.add_all([
+            UserSetting(user_id=self.user.id, key="language", value="en"),
+            Set(id="base1_en", tcg_set_id="base1", name="Base Set", lang="en"),
+            Set(id="base1_de", tcg_set_id="base1", name="Grundset", lang="de"),
+            Card(id="base1-1_en", tcg_card_id="base1-1", name="Alakazam", set_id="base1", number="1", lang="en", is_custom=False),
+            Card(id="base1-1_de", tcg_card_id="base1-1", name="Simsala", set_id="base1", number="1", lang="de", is_custom=False),
+        ])
+        self.db.commit()
+
+        result = search_cards(type_filter=None, db=self.db, current_user=self.user)
+
+        self.assertEqual([card["id"] for card in result["data"]], ["base1-1_en"])
+
+    def test_card_search_explicit_all_still_returns_all_visible_languages(self):
+        self.db.add_all([
+            UserSetting(user_id=self.user.id, key="language", value="en"),
+            Set(id="base1_en", tcg_set_id="base1", name="Base Set", lang="en"),
+            Set(id="base1_de", tcg_set_id="base1", name="Grundset", lang="de"),
+            Card(id="base1-1_en", tcg_card_id="base1-1", name="Alakazam", set_id="base1", number="1", lang="en", is_custom=False),
+            Card(id="base1-1_de", tcg_card_id="base1-1", name="Simsala", set_id="base1", number="1", lang="de", is_custom=False),
+        ])
+        self.db.commit()
+
+        result = search_cards(type_filter=None, lang="all", db=self.db, current_user=self.user)
+
+        self.assertEqual(
+            {card["id"] for card in result["data"]},
+            {"base1-1_en", "base1-1_de"},
+        )
+
+    def test_get_card_without_lang_fetches_user_language(self):
+        self.db.add(UserSetting(user_id=self.user.id, key="language", value="en"))
+        self.db.commit()
+        card_payload = {
+            "id": "base1-1",
+            "name": "Alakazam",
+            "localId": "1",
+            "set": {"id": "base1", "name": "Base Set", "cardCount": {"total": 102}},
+        }
+        parsed_card = {
+            "id": "base1-1_en",
+            "tcg_card_id": "base1-1",
+            "name": "Alakazam",
+            "set_id": "base1",
+            "number": "1",
+            "lang": "en",
+            "is_custom": False,
+        }
+
+        with patch("api.cards.pokemon_api.get_card", return_value=card_payload) as get_card_api, \
+             patch("api.cards.pokemon_api.parse_card_for_db", return_value=parsed_card), \
+             patch("api.cards.apply_cross_language_fallbacks", side_effect=lambda _db, parsed: parsed):
+            card = get_card("base1-1", lang=None, db=self.db, current_user=self.user)
+
+        get_card_api.assert_called_once_with("base1-1", lang="en")
+        self.assertEqual(card.id, "base1-1_en")
+
+
+if __name__ == "__main__":
+    unittest.main()

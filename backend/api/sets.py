@@ -1,13 +1,13 @@
 import re
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import text, func
 from api.auth import get_current_user
 from database import get_db
-from models import Set, Card, CollectionItem, Setting, User
+from models import Set, Card, CollectionItem, User
 from schemas import SetBase
 from services import pokemon_api
 from services.card_fallbacks import (
@@ -19,6 +19,7 @@ from services.card_upsert import upsert_card
 from services.card_visibility import get_configured_sync_languages, visible_set_filter
 from services.digital_sets import digital_sets_enabled
 from services.tcgdex_languages import DEFAULT_TCGDEX_SYNC_LANGUAGES, has_lang_suffix, is_supported_tcgdex_language, normalize_tcgdex_language
+from services.user_language import get_user_tcgdex_language
 
 router = APIRouter()
 
@@ -49,10 +50,18 @@ def _natural_card_number_key(number: Optional[str]) -> tuple:
     return tuple(parts) or ((2, ""),)
 
 
-def _get_language(db: Session) -> str:
-    """Get display language from settings."""
-    row = db.query(Setting).filter(Setting.key == "language").first()
-    return row.value if row else "de"
+def _get_language(db: Session, user_id: int) -> str:
+    """Get this user's preferred TCGdex catalogue language."""
+    return get_user_tcgdex_language(db, user_id)
+
+
+def _resolve_lang_filter(db: Session, user_id: int, lang: Optional[str]) -> str:
+    """Resolve an optional language filter; explicit 'all' still means all."""
+    raw_lang = str(lang or "").strip()
+    if not raw_lang:
+        return _get_language(db, user_id)
+    requested_lang = normalize_tcgdex_language(raw_lang)
+    return requested_lang if is_supported_tcgdex_language(requested_lang) else "all"
 
 
 def _refresh_sets(db: Session, display_lang: str):
@@ -86,18 +95,18 @@ def get_sets(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     refresh: bool = False,
-    lang: Optional[str] = Query("all", description="Language filter: supported TCGdex language code or 'all'"),
+    lang: Optional[str] = None,
 ):
     """Get all sets, optionally refresh from TCGdex API.
 
-    lang: filter by set language code or 'all'.
+    lang: filter by set language code or 'all'. If omitted, the current user's
+    selected catalogue language is used.
     Sets are stored separately per language, with no 'both' entries.
     """
-    requested_lang = normalize_tcgdex_language(lang or "all")
-    lang_filter = requested_lang if is_supported_tcgdex_language(requested_lang) else "all"
+    lang_filter = _resolve_lang_filter(db, current_user.id, lang)
 
     # Determine display language for API calls
-    display_lang = lang_filter if lang_filter != "all" else _get_language(db)
+    display_lang = lang_filter if lang_filter != "all" else _get_language(db, current_user.id)
 
     # Always refresh if empty DB or explicitly requested
     if refresh or db.query(Set).count() == 0:

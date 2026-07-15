@@ -851,7 +851,7 @@ function CollectionEditModal({ item, onClose }) {
 }
 
 export default function Collection() {
-  const { t, formatPrice, pricePrimaryField, currency, exchangeRate } = useSettings()
+  const { t, formatPrice, pricePrimaryField, currency, exchangeRate, settings } = useSettings()
   const visibleLanguages = useVisibleTcgdexLanguages()
   const [viewMode, setViewMode] = useState('grid')
   const [editingCollectionItem, setEditingCollectionItem] = useState(null) // for CollectionEditModal
@@ -897,7 +897,7 @@ export default function Collection() {
   ]
 
   const { data: allSets = [] } = useQuery({
-    queryKey: ['sets'],
+    queryKey: ['sets', settings.language || 'en'],
     queryFn: () => getSets().then(r => r.data),
     staleTime: 5 * 60 * 1000,
   })

@@ -10,6 +10,7 @@ from services.tcgdex_languages import (
     normalize_tcgdex_sync_languages,
     strip_lang_suffix,
 )
+from services.settings_defaults import DEFAULT_APP_LANGUAGE
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
@@ -31,7 +32,7 @@ def get_db():
 
 
 DEFAULT_SETTINGS = {
-    "language": "de",
+    "language": DEFAULT_APP_LANGUAGE,
     "price_display": '["trend", "avg", "avg1", "avg7", "avg30", "low"]',
     "price_primary": "trend",
     "multi_user_mode": "false",
