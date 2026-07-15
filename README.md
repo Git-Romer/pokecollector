@@ -18,9 +18,9 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - 👤 **Creator:** [Gilles Romer](https://romerg.de/)
 - ✉️ **Contact:** [info@romerg.de](mailto:info@romerg.de)
 
-![Version](https://img.shields.io/badge/version-v1.23.0-e3000b?style=flat-square) ![Dark Theme](https://img.shields.io/badge/theme-dark-1a1a2e?style=flat-square) ![TCGdex](https://img.shields.io/badge/card%20data-TCGdex-e3000b?style=flat-square) ![Docker](https://img.shields.io/badge/deploy-Docker-2496ed?style=flat-square) ![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square) ![React](https://img.shields.io/badge/frontend-React%2018-61dafb?style=flat-square) [![Ko-fi](https://img.shields.io/badge/support-Ko--fi-ff5e5b?style=flat-square&logo=ko-fi&logoColor=white)](https://ko-fi.com/gillesromer)
+![Version](https://img.shields.io/badge/version-v1.23.1-e3000b?style=flat-square) ![Dark Theme](https://img.shields.io/badge/theme-dark-1a1a2e?style=flat-square) ![TCGdex](https://img.shields.io/badge/card%20data-TCGdex-e3000b?style=flat-square) ![Docker](https://img.shields.io/badge/deploy-Docker-2496ed?style=flat-square) ![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square) ![React](https://img.shields.io/badge/frontend-React%2018-61dafb?style=flat-square) [![Ko-fi](https://img.shields.io/badge/support-Ko--fi-ff5e5b?style=flat-square&logo=ko-fi&logoColor=white)](https://ko-fi.com/gillesromer)
 
-**Current version:** `v1.23.0` · Releases are tracked on the [GitHub Releases page](https://github.com/Git-Romer/pokecollector/releases).
+**Current version:** `v1.23.1` · Releases are tracked on the [GitHub Releases page](https://github.com/Git-Romer/pokecollector/releases).
 
 ![WebApp Preview](preview-homescreen.png)
 
@@ -153,6 +153,7 @@ JWT_SECRET_KEY=some_long_random_string
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=your_admin_password
 GEMINI_API_KEY=your_gemini_key
+GEMINI_MODEL=gemini-flash-latest
 TELEGRAM_BOT_TOKEN=your_bot_token
 TELEGRAM_CHAT_ID=your_chat_id
 TCGDEX_SYNC_LANGUAGES=en,de
@@ -228,6 +229,7 @@ The **Users** tab is only visible to admin users and only while multi-user mode 
 | `ADMIN_USERNAME` | Username for the bootstrap admin account | `admin` |
 | `ADMIN_PASSWORD` | Password for the bootstrap admin account | Random, optionally logged |
 | `GEMINI_API_KEY` | Initial Gemini key for the admin user; other users configure their own key in Settings | *(empty)* |
+| `GEMINI_MODEL` | Gemini model used by the card scanner. Change this if Google retires the default model for new API keys. | `gemini-flash-latest` |
 | `TELEGRAM_BOT_TOKEN` | Initial Telegram bot token for the admin user | *(empty)* |
 | `TELEGRAM_CHAT_ID` | Initial Telegram chat ID for the admin user | *(empty)* |
 | `TCGDEX_SYNC_LANGUAGES` | Initial admin default for TCGdex set/card sync languages on first launch only. After bootstrap, the DB setting in Settings is authoritative. Comma-separated TCGdex language codes, or `all` to enable every supported TCGdex language. Empty or invalid values safely fall back to `en,de`. Extra languages increase sync time, API calls, and database size. | `en,de` |
@@ -279,7 +281,7 @@ The old nested `pokemon-tcg-collection/` layout is no longer used.
 | Backend | Python 3.11, FastAPI, SQLAlchemy, APScheduler, Pydantic |
 | Database | PostgreSQL 18 |
 | Card Data | [TCGdex](https://tcgdex.dev/) |
-| AI Scanner | Google Gemini 2.5 Flash |
+| AI Scanner | Google Gemini, configurable via `GEMINI_MODEL` |
 | Deploy | Docker + Docker Compose |
 
 ---

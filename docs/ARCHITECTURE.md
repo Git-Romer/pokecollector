@@ -217,8 +217,9 @@ Current frontend state layers:
 
 - Used for smart scanner recognition
 - Key is read per user from `user_settings`
+- Scanner model is configurable through `GEMINI_MODEL` and defaults to `gemini-flash-latest`
 - Scanner calls use the API-key header rather than putting the key in the request URL
-- Transient capacity failures are retried; rate limits and invalid keys are reported separately
+- Transient capacity failures are retried; rate limits, invalid keys, and unavailable models are reported separately
 
 ### Telegram
 
