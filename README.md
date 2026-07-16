@@ -264,6 +264,8 @@ Supported `TCGDEX_SYNC_LANGUAGES` codes: `en`, `fr`, `es`, `es-mx`, `it`, `pt`, 
 
 English is used as the preferred fallback source for missing synced data, images, and prices when the same TCGdex card or set ID exists in English. Regional-only cards that do not exist in English are kept in their native language data instead of being guessed by name.
 
+For Pokédex metadata only, full Pokémon card details can infer a missing TCGdex `dexId` from an exact English or German base species name. This covers cards like Mega Charizard / Mega-Glurak when TCGdex omits `dexId`, while avoiding non-Pokémon cards and unclear names.
+
 The app UI language selector includes the supported TCGdex language set plus Swedish. The TCGdex sync-language selector controls card/set data sync only; changing the app UI language does not automatically sync additional card languages.
 
 ---

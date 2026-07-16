@@ -12,9 +12,10 @@ A multi-Pokémon card can contain several `dex_ids` and counts toward each speci
 
 - The bundled `backend/data/pokedex.json` contains National Dex #001–1025, English and German names, generation, region, and types.
 - Full TCGdex card enrichment stores `dexId` as `cards.dex_ids`.
+- If TCGdex omits `dexId` for a full Pokémon card, PokéCollector conservatively infers the National Dex number from an exact English or German base species name, such as `Mega-Glurak Y-ex` -> `Glurak` -> `006`.
 - TCGdex variant-level Cardmarket catalogue IDs are stored in `cards.cardmarket_products` without collapsing foil variants.
 
-Existing set-list rows only contain brief card data. After upgrading, the backend starts a one-time background backfill and records completion in the `pokedex_metadata_backfill_completed` setting. To retry or inspect the backfill manually:
+Existing set-list rows only contain brief card data. After upgrading, the backend starts a one-time background backfill and records completion in the `pokedex_metadata_backfill_completed` setting. Parser revisions, such as improved missing-`dexId` inference, can advance the internal backfill revision so previously attempted empty mappings are retried once. To retry or inspect the backfill manually:
 
 ```bash
 docker compose exec backend \
