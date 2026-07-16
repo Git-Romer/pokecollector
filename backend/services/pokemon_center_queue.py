@@ -24,6 +24,9 @@ BROWSER_PROBE_INTERVAL_MINUTES = 5
 BROWSER_PROBE_LAST_SETTING = "pokemon_center_queue_last_browser_probe_at"
 NOTIFICATION_COOLDOWN_MINUTES = 60
 _CHECK_LOCK = Lock()
+_BROWSER_LOCK = Lock()
+_BROWSER_PLAYWRIGHT: Any | None = None
+_BROWSER_INSTANCE: Any | None = None
 
 QUEUE_STRONG_MARKERS = (
     "queue-it",
@@ -297,11 +300,65 @@ def classify_browser_snapshot(
     return result
 
 
+def _close_browser_runtime() -> None:
+    global _BROWSER_INSTANCE, _BROWSER_PLAYWRIGHT
+
+    for item in (_BROWSER_INSTANCE, _BROWSER_PLAYWRIGHT):
+        if item is None:
+            continue
+        try:
+            if item is _BROWSER_PLAYWRIGHT:
+                item.stop()
+            else:
+                item.close()
+        except Exception:
+            pass
+    _BROWSER_INSTANCE = None
+    _BROWSER_PLAYWRIGHT = None
+
+
+def _browser_launch_kwargs() -> dict[str, Any]:
+    executable_path = os.getenv("POKEMON_CENTER_BROWSER_EXECUTABLE", "/usr/bin/chromium")
+    launch_kwargs: dict[str, Any] = {
+        "headless": True,
+        "args": ["--no-sandbox", "--disable-dev-shm-usage"],
+    }
+    if os.path.exists(executable_path):
+        launch_kwargs["executable_path"] = executable_path
+    return launch_kwargs
+
+
+def _get_browser() -> Any:
+    global _BROWSER_INSTANCE, _BROWSER_PLAYWRIGHT
+
+    if _BROWSER_INSTANCE is not None and not _BROWSER_INSTANCE.is_connected():
+        _close_browser_runtime()
+
+    if _BROWSER_INSTANCE is not None:
+        return _BROWSER_INSTANCE
+
+    from playwright.sync_api import sync_playwright
+
+    _BROWSER_PLAYWRIGHT = sync_playwright().start()
+    _BROWSER_INSTANCE = _BROWSER_PLAYWRIGHT.chromium.launch(**_browser_launch_kwargs())
+    return _BROWSER_INSTANCE
+
+
+def _new_browser_context(browser: Any) -> Any:
+    return browser.new_context(
+        user_agent=(
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+        ),
+        locale="en-US",
+        viewport={"width": 1365, "height": 900},
+    )
+
+
 def fetch_browser_queue_status(url: str = POKEMON_CENTER_URL) -> QueueDetectionResult:
     """Render Pokemon Center in Chromium and inspect page/network signals."""
     try:
         from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
-        from playwright.sync_api import sync_playwright
     except Exception as exc:
         return QueueDetectionResult(
             status="error",
@@ -313,26 +370,11 @@ def fetch_browser_queue_status(url: str = POKEMON_CENTER_URL) -> QueueDetectionR
     timeout_ms = int(DEFAULT_BROWSER_TIMEOUT_SECONDS * 1000)
     network_evidence: list[dict[str, Any]] = []
     try:
-        with sync_playwright() as playwright:
-            executable_path = os.getenv("POKEMON_CENTER_BROWSER_EXECUTABLE", "/usr/bin/chromium")
-            launch_kwargs: dict[str, Any] = {
-                "headless": True,
-                "args": ["--no-sandbox", "--disable-dev-shm-usage"],
-            }
-            if os.path.exists(executable_path):
-                launch_kwargs["executable_path"] = executable_path
-            browser = playwright.chromium.launch(**launch_kwargs)
+        with _BROWSER_LOCK:
+            browser = _get_browser()
+            context = _new_browser_context(browser)
+            page = context.new_page()
             try:
-                context = browser.new_context(
-                    user_agent=(
-                        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                        "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-                    ),
-                    locale="en-US",
-                    viewport={"width": 1365, "height": 900},
-                )
-                page = context.new_page()
-
                 def inspect_response(response) -> None:
                     response_url = response.url or ""
                     if INCAPSULA_RESOURCE_MARKER not in response_url.lower():
@@ -382,8 +424,16 @@ def fetch_browser_queue_status(url: str = POKEMON_CENTER_URL) -> QueueDetectionR
                     network_evidence=network_evidence,
                 )
             finally:
-                browser.close()
+                try:
+                    page.close()
+                except Exception:
+                    pass
+                try:
+                    context.close()
+                except Exception:
+                    pass
     except Exception as exc:
+        _close_browser_runtime()
         return QueueDetectionResult(
             status="error",
             evidence={

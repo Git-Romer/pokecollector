@@ -2,11 +2,13 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import services.pokemon_center_queue as queue_service
 from services.pokemon_center_queue import (
     QueueDetectionResult,
     classify_browser_snapshot,
     classify_incapsula_resource_response,
     classify_queue_response,
+    fetch_browser_queue_status,
     fetch_queue_status,
 )
 
@@ -321,6 +323,88 @@ class PokemonCenterQueueDetectionTests(unittest.TestCase):
         self.assertEqual(result.status, "queue")
         self.assertTrue(result.evidence["browser_probe"]["browser_rendered"])
         self.assertEqual(client.get.call_count, 1)
+
+    def test_browser_probe_reuses_browser_with_fresh_contexts(self):
+        queue_service._BROWSER_INSTANCE = None
+        queue_service._BROWSER_PLAYWRIGHT = None
+
+        class FakeLocator:
+            def count(self):
+                return 1
+
+            def inner_text(self, timeout=None):
+                return "Pokemon Center featured products"
+
+        class FakePage:
+            url = "https://www.pokemoncenter.com/"
+
+            def __init__(self):
+                self.closed = False
+
+            def on(self, event, handler):
+                pass
+
+            def goto(self, url, wait_until=None, timeout=None):
+                return SimpleNamespace(status=200)
+
+            def wait_for_timeout(self, timeout):
+                pass
+
+            def locator(self, selector):
+                return FakeLocator()
+
+            def close(self):
+                self.closed = True
+
+        class FakeContext:
+            def __init__(self):
+                self.page = FakePage()
+                self.closed = False
+
+            def new_page(self):
+                return self.page
+
+            def close(self):
+                self.closed = True
+
+        class FakeBrowser:
+            def __init__(self):
+                self.contexts = []
+
+            def is_connected(self):
+                return True
+
+            def new_context(self, **kwargs):
+                context = FakeContext()
+                self.contexts.append(context)
+                return context
+
+        browser = FakeBrowser()
+        fake_playwright = SimpleNamespace(
+            chromium=SimpleNamespace(launch=Mock(return_value=browser)),
+            stop=Mock(),
+        )
+        fake_sync_api = SimpleNamespace(
+            TimeoutError=TimeoutError,
+            sync_playwright=Mock(return_value=SimpleNamespace(start=Mock(return_value=fake_playwright))),
+        )
+
+        try:
+            with patch.dict("sys.modules", {
+                "playwright": SimpleNamespace(sync_api=fake_sync_api),
+                "playwright.sync_api": fake_sync_api,
+            }):
+                first = fetch_browser_queue_status()
+                second = fetch_browser_queue_status()
+
+            self.assertEqual(first.status, "normal")
+            self.assertEqual(second.status, "normal")
+            self.assertEqual(fake_playwright.chromium.launch.call_count, 1)
+            self.assertEqual(len(browser.contexts), 2)
+            self.assertTrue(all(context.closed for context in browser.contexts))
+            self.assertTrue(all(context.page.closed for context in browser.contexts))
+        finally:
+            queue_service._close_browser_runtime()
 
 
 class PokemonCenterQueueSchedulerTests(unittest.TestCase):
