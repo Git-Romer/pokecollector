@@ -271,6 +271,34 @@ class PokemonCenterQueueDetectionTests(unittest.TestCase):
         self.assertEqual(result.status, "queue")
         self.assertTrue(result.evidence["browser_probe"]["browser_rendered"])
 
+    def test_fetch_uses_browser_fallback_when_http_looks_normal(self):
+        responses = [
+            SimpleNamespace(
+                url="https://www.pokemoncenter.com/",
+                status_code=200,
+                headers={"Content-Type": "text/html"},
+                text="<html><title>Pokemon Center</title><main>Featured products</main></html>",
+            ),
+        ]
+        client = Mock()
+        client.__enter__ = Mock(return_value=client)
+        client.__exit__ = Mock(return_value=None)
+        client.get = Mock(side_effect=responses)
+        fake_httpx = SimpleNamespace(Client=Mock(return_value=client))
+        browser_result = QueueDetectionResult(
+            status="queue",
+            evidence={"browser_rendered": True, "queue_body_markers": ["waiting room"]},
+            http_status=200,
+        )
+
+        with patch.dict("sys.modules", {"httpx": fake_httpx}), \
+                patch("services.pokemon_center_queue.fetch_browser_queue_status", return_value=browser_result):
+            result = fetch_queue_status()
+
+        self.assertEqual(result.status, "queue")
+        self.assertTrue(result.evidence["browser_probe"]["browser_rendered"])
+        self.assertEqual(client.get.call_count, 1)
+
 
 class PokemonCenterQueueSchedulerTests(unittest.TestCase):
     def test_one_minute_interval_uses_thirty_second_jitter_window(self):

@@ -447,9 +447,10 @@ def fetch_queue_status(url: str = POKEMON_CENTER_URL) -> QueueDetectionResult:
                         result.evidence["incapsula_resource_probe_error"] = type(exc).__name__
                         break
 
+            if result.status in {"bot_protection", "normal", "unknown"}:
                 browser_result = fetch_browser_queue_status(url)
                 result.evidence["browser_probe"] = browser_result.evidence
-                if browser_result.status in {"queue", "normal"}:
+                if browser_result.status in {"queue", "normal", "bot_protection"}:
                     browser_result.evidence = _merge_evidence(
                         result.evidence,
                         "browser_probe",
