@@ -3,13 +3,13 @@ from __future__ import annotations
 import datetime
 import json
 import logging
-import secrets
+import os
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from threading import Lock
 from typing import TYPE_CHECKING
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -19,8 +19,8 @@ logger = logging.getLogger(__name__)
 
 POKEMON_CENTER_URL = "https://www.pokemoncenter.com/"
 DEFAULT_TIMEOUT_SECONDS = 20.0
+DEFAULT_BROWSER_TIMEOUT_SECONDS = 30.0
 NOTIFICATION_COOLDOWN_MINUTES = 60
-BROWSER_REPORT_TOKEN_SETTING = "pokemon_center_queue_browser_report_token"
 _CHECK_LOCK = Lock()
 
 QUEUE_STRONG_MARKERS = (
@@ -78,6 +78,21 @@ class QueueDetectionResult:
 def _contains_any(value: str, markers: tuple[str, ...]) -> list[str]:
     haystack = (value or "").lower()
     return [marker for marker in markers if marker in haystack]
+
+
+def _has_confident_queue_url(value: str) -> bool:
+    parsed = urlparse(value or "")
+    host = parsed.netloc.lower()
+    path = parsed.path.lower()
+    return (
+        host.startswith("queue.")
+        or "queue-it" in host
+        or "queueit" in host
+        or "queue-it" in path
+        or "queueit" in path
+        or "waitingroom" in path
+        or "waiting-room" in path
+    )
 
 
 class _IncapsulaResourceParser(HTMLParser):
@@ -161,6 +176,13 @@ def classify_incapsula_resource_response(
     )
 
 
+def _merge_evidence(primary: dict[str, Any], secondary_key: str, secondary: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **(primary or {}),
+        secondary_key: secondary,
+    }
+
+
 def classify_queue_response(
     *,
     url: str,
@@ -175,6 +197,7 @@ def classify_queue_response(
     body_sample = (body or "")[:2000]
 
     queue_url_markers = _contains_any(final_url, QUEUE_URL_MARKERS)
+    queue_url_confident = _has_confident_queue_url(final_url)
     queue_header_markers = _contains_any(header_blob, QUEUE_STRONG_MARKERS)
     queue_body_markers = _contains_any(body, QUEUE_STRONG_MARKERS)
 
@@ -190,6 +213,7 @@ def classify_queue_response(
         "final_url": final_url,
         "http_status": status_code,
         "queue_url_markers": queue_url_markers,
+        "queue_url_confident": queue_url_confident,
         "queue_header_markers": queue_header_markers,
         "queue_body_markers": queue_body_markers,
         "bot_header_markers": bot_header_markers,
@@ -198,17 +222,17 @@ def classify_queue_response(
     }
 
     if bot_header_markers or bot_body_markers:
-        # A blocked/protection page can still have a queue-looking URL. Avoid a
-        # false queue alert unless the response itself contains queue markers.
-        if not queue_header_markers and not queue_body_markers:
-            return QueueDetectionResult(
-                status="bot_protection",
-                evidence=evidence,
-                final_url=final_url,
-                http_status=status_code,
-            )
+        # Bot-protection pages often contain queue-like URLs or text snippets.
+        # Only explicit Incapsula queue-position JSON is allowed to promote
+        # those responses, and that is handled outside this classifier.
+        return QueueDetectionResult(
+            status="bot_protection",
+            evidence=evidence,
+            final_url=final_url,
+            http_status=status_code,
+        )
 
-    if queue_url_markers or queue_header_markers or queue_body_markers:
+    if queue_url_confident or queue_header_markers or queue_body_markers:
         return QueueDetectionResult(
             status="queue",
             evidence=evidence,
@@ -238,6 +262,137 @@ def classify_queue_response(
         final_url=final_url,
         http_status=status_code,
     )
+
+
+def classify_browser_snapshot(
+    *,
+    url: str,
+    final_url: str,
+    status_code: int | None,
+    body: str,
+    network_evidence: list[dict[str, Any]] | None = None,
+) -> QueueDetectionResult:
+    result = classify_queue_response(
+        url=url,
+        final_url=final_url,
+        status_code=status_code,
+        headers={},
+        body=body,
+    )
+    result.evidence["browser_rendered"] = True
+    if network_evidence:
+        result.evidence["browser_network"] = network_evidence[:10]
+        for item in network_evidence:
+            position = _coerce_positive_int(item.get("queue_position"))
+            if position is not None:
+                result.evidence["queue_position"] = position
+                return QueueDetectionResult(
+                    status="queue",
+                    evidence=result.evidence,
+                    final_url=final_url,
+                    http_status=status_code,
+                )
+    return result
+
+
+def fetch_browser_queue_status(url: str = POKEMON_CENTER_URL) -> QueueDetectionResult:
+    """Render Pokemon Center in Chromium and inspect page/network signals."""
+    try:
+        from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+        from playwright.sync_api import sync_playwright
+    except Exception as exc:
+        return QueueDetectionResult(
+            status="error",
+            evidence={"url": url, "browser_rendered": True, "exception": type(exc).__name__},
+            final_url=url,
+            error_message=f"Browser queue check unavailable: {exc}",
+        )
+
+    timeout_ms = int(DEFAULT_BROWSER_TIMEOUT_SECONDS * 1000)
+    network_evidence: list[dict[str, Any]] = []
+    try:
+        with sync_playwright() as playwright:
+            executable_path = os.getenv("POKEMON_CENTER_BROWSER_EXECUTABLE", "/usr/bin/chromium")
+            launch_kwargs: dict[str, Any] = {
+                "headless": True,
+                "args": ["--no-sandbox", "--disable-dev-shm-usage"],
+            }
+            if os.path.exists(executable_path):
+                launch_kwargs["executable_path"] = executable_path
+            browser = playwright.chromium.launch(**launch_kwargs)
+            try:
+                context = browser.new_context(
+                    user_agent=(
+                        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                        "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+                    ),
+                    locale="en-US",
+                    viewport={"width": 1365, "height": 900},
+                )
+                page = context.new_page()
+
+                def inspect_response(response) -> None:
+                    response_url = response.url or ""
+                    if INCAPSULA_RESOURCE_MARKER not in response_url.lower():
+                        return
+                    try:
+                        body = response.text()
+                    except Exception as exc:
+                        network_evidence.append(
+                            {
+                                "url": response_url,
+                                "http_status": response.status,
+                                "error": type(exc).__name__,
+                            }
+                        )
+                        return
+                    resource_result = classify_incapsula_resource_response(
+                        url=response_url,
+                        status_code=response.status,
+                        headers=response.headers,
+                        body=body,
+                    )
+                    evidence = {
+                        "url": response_url,
+                        "http_status": response.status,
+                        "status": resource_result.status,
+                        "content_type": resource_result.evidence.get("content_type"),
+                    }
+                    if "queue_position" in resource_result.evidence:
+                        evidence["queue_position"] = resource_result.evidence["queue_position"]
+                    network_evidence.append(evidence)
+
+                page.on("response", inspect_response)
+                response = None
+                try:
+                    response = page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+                    page.wait_for_timeout(7000)
+                except PlaywrightTimeoutError:
+                    pass
+                body = page.locator("body").inner_text(timeout=5000) if page.locator("body").count() else ""
+                final_url = page.url or url
+                status_code = response.status if response is not None else None
+                return classify_browser_snapshot(
+                    url=url,
+                    final_url=final_url,
+                    status_code=status_code,
+                    body=body,
+                    network_evidence=network_evidence,
+                )
+            finally:
+                browser.close()
+    except Exception as exc:
+        return QueueDetectionResult(
+            status="error",
+            evidence={
+                "url": url,
+                "browser_rendered": True,
+                "exception": type(exc).__name__,
+                "browser_network": network_evidence[:10],
+            },
+            final_url=url,
+            error_message=f"Browser queue check failed: {exc}",
+        )
 
 
 def fetch_queue_status(url: str = POKEMON_CENTER_URL) -> QueueDetectionResult:
@@ -282,14 +437,27 @@ def fetch_queue_status(url: str = POKEMON_CENTER_URL) -> QueueDetectionResult:
                         )
                         result.evidence["incapsula_resource_probe"] = resource_result.evidence
                         if resource_result.status == "queue":
-                            resource_result.evidence = {
-                                **result.evidence,
-                                "incapsula_resource_probe": resource_result.evidence,
-                            }
+                            resource_result.evidence = _merge_evidence(
+                                result.evidence,
+                                "incapsula_resource_probe",
+                                resource_result.evidence,
+                            )
                             return resource_result
                     except Exception as exc:
                         result.evidence["incapsula_resource_probe_error"] = type(exc).__name__
                         break
+
+                browser_result = fetch_browser_queue_status(url)
+                result.evidence["browser_probe"] = browser_result.evidence
+                if browser_result.status in {"queue", "normal"}:
+                    browser_result.evidence = _merge_evidence(
+                        result.evidence,
+                        "browser_probe",
+                        browser_result.evidence,
+                    )
+                    return browser_result
+                if browser_result.status == "error":
+                    result.evidence["browser_probe_error"] = browser_result.error_message
 
         return result
     except Exception as exc:
@@ -312,30 +480,6 @@ def _get_or_create_status_row(db: Session) -> PokemonCenterQueueStatus:
     db.add(row)
     db.flush()
     return row
-
-
-def get_or_create_browser_report_token(db: Session) -> str:
-    from models import Setting
-
-    row = db.query(Setting).filter(Setting.key == BROWSER_REPORT_TOKEN_SETTING).first()
-    if row and row.value:
-        return row.value
-
-    token = secrets.token_urlsafe(32)
-    if row:
-        row.value = token
-    else:
-        row = Setting(key=BROWSER_REPORT_TOKEN_SETTING, value=token)
-        db.add(row)
-    db.commit()
-    return token
-
-
-def _get_browser_report_token(db: Session) -> str | None:
-    from models import Setting
-
-    row = db.query(Setting).filter(Setting.key == BROWSER_REPORT_TOKEN_SETTING).first()
-    return row.value if row and row.value else None
 
 
 def _user_setting_map(db: Session, user_id: int) -> dict[str, str]:
@@ -380,86 +524,6 @@ def _notify_queue_started(db: Session, users: list[User]) -> int:
         if telegram.send_message(message, db=db, user_id=user.id):
             sent += 1
     return sent
-
-
-def record_queue_observation(
-    db: Session,
-    *,
-    source: str,
-    position: int | None = None,
-    note: str | None = None,
-) -> dict[str, Any]:
-    """Record a trusted external observation that the queue is visible."""
-    subscribers = _queue_alert_users(db)
-    row = _get_or_create_status_row(db)
-    previous_status = row.status
-    now = datetime.datetime.utcnow()
-
-    evidence = {
-        "source": source,
-        "reported_queue": True,
-    }
-    if position is not None and position > 0:
-        evidence["queue_position"] = position
-    if note:
-        evidence["note"] = note[:500]
-
-    row.previous_status = previous_status
-    row.status = "queue"
-    row.checked_at = now
-    row.url = POKEMON_CENTER_URL
-    row.final_url = POKEMON_CENTER_URL
-    row.http_status = None
-    row.evidence = evidence
-    row.error_message = None
-
-    cooldown_cutoff = now - datetime.timedelta(minutes=NOTIFICATION_COOLDOWN_MINUTES)
-    cooldown_allows_alert = row.notified_at is None or row.notified_at < cooldown_cutoff
-
-    notified_count = 0
-    if previous_status != "queue" and subscribers and cooldown_allows_alert:
-        notified_count = _notify_queue_started(db, subscribers)
-        if notified_count > 0:
-            row.notified_at = now
-
-    db.commit()
-
-    logger.warning(
-        "Pokemon Center queue reported externally: %s",
-        {
-            "source": source,
-            "previous_status": previous_status,
-            "notified_count": notified_count,
-            "notification_cooldown_allows_alert": cooldown_allows_alert,
-            "evidence": evidence,
-        },
-    )
-
-    return {
-        "status": "queue",
-        "previous_status": previous_status,
-        "checked_at": row.checked_at.isoformat() if row.checked_at else None,
-        "notified_at": row.notified_at.isoformat() if row.notified_at else None,
-        "notified_count": notified_count,
-        "notification_cooldown_minutes": NOTIFICATION_COOLDOWN_MINUTES,
-        "notification_cooldown_allows_alert": cooldown_allows_alert,
-        "evidence": evidence,
-    }
-
-
-def record_queue_observation_with_token(
-    db: Session,
-    *,
-    token: str,
-    source: str,
-    position: int | None = None,
-    note: str | None = None,
-) -> dict[str, Any] | None:
-    expected_token = _get_browser_report_token(db)
-    provided_token = token if isinstance(token, str) else ""
-    if not expected_token or not provided_token.isascii() or not secrets.compare_digest(provided_token, expected_token):
-        return None
-    return record_queue_observation(db, source=source, position=position, note=note)
 
 
 def check_pokemon_center_queue(db: Session, *, force: bool = False) -> dict[str, Any]:
@@ -511,7 +575,8 @@ def check_pokemon_center_queue(db: Session, *, force: bool = False) -> dict[str,
         notified_count = 0
         if previous_status != "queue" and result.status == "queue" and subscribers and cooldown_allows_alert:
             notified_count = _notify_queue_started(db, subscribers)
-            row.notified_at = now
+            if notified_count > 0:
+                row.notified_at = now
 
         db.commit()
 

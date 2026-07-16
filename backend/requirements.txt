@@ -15,3 +15,4 @@ alembic==1.13.1
 bcrypt
 python-jose[cryptography]
 slowapi==0.1.9
+playwright==1.57.0
