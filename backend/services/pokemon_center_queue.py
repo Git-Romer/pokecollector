@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import datetime
+import json
 import logging
 from dataclasses import dataclass, field
+from html.parser import HTMLParser
 from threading import Lock
 from typing import TYPE_CHECKING
 from typing import Any
+from urllib.parse import urljoin
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -58,6 +61,8 @@ BOT_PROTECTION_HEADER_MARKERS = (
     "incap_ses",
 )
 
+INCAPSULA_RESOURCE_MARKER = "_incapsula_resource"
+
 
 @dataclass
 class QueueDetectionResult:
@@ -71,6 +76,87 @@ class QueueDetectionResult:
 def _contains_any(value: str, markers: tuple[str, ...]) -> list[str]:
     haystack = (value or "").lower()
     return [marker for marker in markers if marker in haystack]
+
+
+class _IncapsulaResourceParser(HTMLParser):
+    def __init__(self, base_url: str):
+        super().__init__()
+        self.base_url = base_url
+        self.urls: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() not in {"iframe", "script"}:
+            return
+        attr_map = {str(key).lower(): value for key, value in attrs}
+        src = attr_map.get("src")
+        if not src or INCAPSULA_RESOURCE_MARKER not in src.lower():
+            return
+        self.urls.append(urljoin(self.base_url, src))
+
+
+def _incapsula_resource_urls(body: str, base_url: str) -> list[str]:
+    parser = _IncapsulaResourceParser(base_url)
+    try:
+        parser.feed(body or "")
+    except Exception:
+        return []
+    return parser.urls
+
+
+def _coerce_positive_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        number = value
+    elif isinstance(value, str) and value.strip().isdigit():
+        number = int(value.strip())
+    else:
+        return None
+    return number if number > 0 else None
+
+
+def classify_incapsula_resource_response(
+    *,
+    url: str,
+    status_code: int | None,
+    headers: dict[str, str],
+    body: str,
+) -> QueueDetectionResult:
+    """Inspect an Incapsula resource for explicit queue-position JSON."""
+    normalized_headers = {str(key).lower(): str(value) for key, value in (headers or {}).items()}
+    body_sample = (body or "")[:1000]
+    evidence = {
+        "url": url,
+        "http_status": status_code,
+        "content_type": normalized_headers.get("content-type"),
+        "body_sample": body_sample,
+    }
+
+    try:
+        payload = json.loads(body or "")
+    except (TypeError, ValueError):
+        payload = None
+
+    if isinstance(payload, dict):
+        position = _coerce_positive_int(payload.get("pos"))
+        if position is None:
+            position = _coerce_positive_int(payload.get("position"))
+        evidence["json_keys"] = sorted(str(key) for key in payload.keys())[:20]
+        if position is not None:
+            evidence["queue_position"] = position
+            return QueueDetectionResult(
+                status="queue",
+                evidence=evidence,
+                final_url=url,
+                http_status=status_code,
+            )
+
+    return QueueDetectionResult(
+        status="unknown",
+        evidence=evidence,
+        final_url=url,
+        http_status=status_code,
+    )
 
 
 def classify_queue_response(
@@ -166,13 +252,44 @@ def fetch_queue_status(url: str = POKEMON_CENTER_URL) -> QueueDetectionResult:
     try:
         with httpx.Client(timeout=DEFAULT_TIMEOUT_SECONDS, follow_redirects=True, headers=headers) as client:
             response = client.get(url)
-        return classify_queue_response(
-            url=url,
-            final_url=str(response.url),
-            status_code=response.status_code,
-            headers=dict(response.headers),
-            body=response.text or "",
-        )
+            result = classify_queue_response(
+                url=url,
+                final_url=str(response.url),
+                status_code=response.status_code,
+                headers=dict(response.headers),
+                body=response.text or "",
+            )
+
+            if result.status == "bot_protection":
+                resource_urls = _incapsula_resource_urls(response.text or "", str(response.url))
+                result.evidence["incapsula_resource_urls"] = resource_urls[:3]
+                for resource_url in resource_urls[:1]:
+                    try:
+                        resource_response = client.get(
+                            resource_url,
+                            headers={
+                                "Accept": "application/json,text/plain,*/*",
+                                "Referer": str(response.url),
+                            },
+                        )
+                        resource_result = classify_incapsula_resource_response(
+                            url=str(resource_response.url),
+                            status_code=resource_response.status_code,
+                            headers=dict(resource_response.headers),
+                            body=resource_response.text or "",
+                        )
+                        result.evidence["incapsula_resource_probe"] = resource_result.evidence
+                        if resource_result.status == "queue":
+                            resource_result.evidence = {
+                                **result.evidence,
+                                "incapsula_resource_probe": resource_result.evidence,
+                            }
+                            return resource_result
+                    except Exception as exc:
+                        result.evidence["incapsula_resource_probe_error"] = type(exc).__name__
+                        break
+
+        return result
     except Exception as exc:
         evidence = {"url": url, "exception": type(exc).__name__}
         return QueueDetectionResult(

@@ -1,7 +1,13 @@
 import unittest
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from services.pokemon_center_queue import QueueDetectionResult, classify_queue_response
+from services.pokemon_center_queue import (
+    QueueDetectionResult,
+    classify_incapsula_resource_response,
+    classify_queue_response,
+    fetch_queue_status,
+)
 
 try:
     import datetime
@@ -86,6 +92,74 @@ class PokemonCenterQueueDetectionTests(unittest.TestCase):
         )
 
         self.assertEqual(result.status, "normal")
+
+    def test_detects_incapsula_queue_position_json(self):
+        result = classify_incapsula_resource_response(
+            url="https://www.pokemoncenter.com/_Incapsula_Resource",
+            status_code=200,
+            headers={"Content-Type": "application/json"},
+            body='{"pos": 4812}',
+        )
+
+        self.assertEqual(result.status, "queue")
+        self.assertEqual(result.evidence["queue_position"], 4812)
+        self.assertIn("pos", result.evidence["json_keys"])
+
+    def test_rejects_non_integer_incapsula_queue_positions(self):
+        for body in ('{"pos": true}', '{"pos": 1.9}', '{"pos": 0}', '{"pos": -3}'):
+            with self.subTest(body=body):
+                result = classify_incapsula_resource_response(
+                    url="https://www.pokemoncenter.com/_Incapsula_Resource",
+                    status_code=200,
+                    headers={"Content-Type": "application/json"},
+                    body=body,
+                )
+
+                self.assertEqual(result.status, "unknown")
+                self.assertNotIn("queue_position", result.evidence)
+
+    def test_ignores_incapsula_captcha_html_without_queue_position(self):
+        result = classify_incapsula_resource_response(
+            url="https://www.pokemoncenter.com/_Incapsula_Resource",
+            status_code=200,
+            headers={"Content-Type": "text/html"},
+            body="<html><title>[Error Title]</title><div class='h-captcha'></div></html>",
+        )
+
+        self.assertEqual(result.status, "unknown")
+        self.assertNotIn("queue_position", result.evidence)
+
+    def test_fetch_promotes_incapsula_resource_position_to_queue(self):
+        main_body = (
+            "<html><body><iframe src=\"/_Incapsula_Resource?incident_id=abc\"></iframe>"
+            "Request unsuccessful. Incapsula incident ID: abc</body></html>"
+        )
+        responses = [
+            SimpleNamespace(
+                url="https://www.pokemoncenter.com/",
+                status_code=200,
+                headers={"X-Iinfo": "62-22952704-0 0NNN"},
+                text=main_body,
+            ),
+            SimpleNamespace(
+                url="https://www.pokemoncenter.com/_Incapsula_Resource?incident_id=abc",
+                status_code=200,
+                headers={"Content-Type": "application/json"},
+                text='{"pos": "42"}',
+            ),
+        ]
+        client = Mock()
+        client.__enter__ = Mock(return_value=client)
+        client.__exit__ = Mock(return_value=None)
+        client.get = Mock(side_effect=responses)
+        fake_httpx = SimpleNamespace(Client=Mock(return_value=client))
+
+        with patch.dict("sys.modules", {"httpx": fake_httpx}):
+            result = fetch_queue_status()
+
+        self.assertEqual(result.status, "queue")
+        self.assertEqual(result.evidence["incapsula_resource_probe"]["queue_position"], 42)
+        self.assertEqual(client.get.call_count, 2)
 
 
 class PokemonCenterQueueSchedulerTests(unittest.TestCase):
