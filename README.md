@@ -34,6 +34,7 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - [Environment Variables](#-environment-variables)
 - [Architecture](#-architecture)
 - [Tech Stack](#-tech-stack)
+- [External Sources](#-external-sources)
 - [Documentation](#-documentation)
 - [Configuration Reference](#-configuration-reference)
 - [Updating](#-updating)
@@ -294,6 +295,24 @@ The old nested `pokemon-tcg-collection/` layout is no longer used.
 | Card Data | [TCGdex](https://tcgdex.dev/) |
 | AI Scanner | Google Gemini, configurable via `GEMINI_MODEL` |
 | Deploy | Docker + Docker Compose |
+
+---
+
+## 🌐 External Sources
+
+PokéCollector is self-hosted, but it can call these external sources depending on enabled features and user actions:
+
+| Source | Host(s) | Used for | When it is called |
+|--------|---------|----------|-------------------|
+| TCGdex | `api.tcgdex.net`, `assets.tcgdex.net` | Set/card catalogue data, images, prices, localized card metadata, Pokédex `dexId`, and Cardmarket product metadata | Initial sync, manual/admin sync, search fallbacks, metadata backfills, and card image display |
+| PokeAPI sprites | `raw.githubusercontent.com/PokeAPI/sprites` | Profile/avatar GIFs, achievement badges, binder icons, National Pokédex sprites, and official artwork cache | Browser image display, Pokédex image cache misses, and `scripts.cache_pokedex_images` |
+| Google Gemini | `generativelanguage.googleapis.com` | AI card scanner recognition | Only when scanner recognition is used and `GEMINI_API_KEY` is configured |
+| Telegram Bot API | `api.telegram.org` | Telegram notifications and alerts | Only when Telegram settings are configured and an alert/notification is sent |
+| Frankfurter | `api.frankfurter.dev` | Currency exchange rates | Currency conversion and Telegram price formatting when non-EUR values are needed |
+| GitHub | `api.github.com`, `raw.githubusercontent.com`, `avatars.githubusercontent.com`, `github.com` | Community contributor/supporter data, GitHub avatars, project links, and release/source links | Settings community section and linked project metadata |
+| Cardmarket | `www.cardmarket.com` | Product/search links for cards | Browser opens outbound links only; PokéCollector does not call a Cardmarket API |
+
+Build and dependency installation also contact package/distribution registries such as npm and the PostgreSQL apt repository when Docker images are built.
 
 ---
 
