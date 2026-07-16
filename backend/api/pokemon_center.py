@@ -8,7 +8,6 @@ from services.pokemon_center_queue import (
     check_pokemon_center_queue,
     get_or_create_browser_report_token,
     get_queue_status,
-    record_queue_observation,
     record_queue_observation_with_token,
 )
 
@@ -36,15 +35,6 @@ def pokemon_center_queue_check(
 ):
     _require_admin(current_user)
     return check_pokemon_center_queue(db, force=True)
-
-
-@router.post("/queue-report-visible")
-def pokemon_center_queue_report_visible(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    _require_admin(current_user)
-    return record_queue_observation(db, source="admin_manual")
 
 
 @router.get("/queue-browser-report-config")

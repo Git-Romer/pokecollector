@@ -8,7 +8,8 @@ import {
   getSetting, setSetting, getTelegramStatus, saveSettings, setAuthMode,
   getUsers, createUser, updateUser, deleteUser, changePassword, changeAvatar, changeUsername,
   getContributors, getSupporters, getRescueDonations, getCustomMatches, downloadDebugLog,
-  getPokemonCenterQueueStatus, checkPokemonCenterQueue, reportPokemonCenterQueueVisible,
+  getPokemonCenterQueueStatus, checkPokemonCenterQueue,
+  getPokemonCenterQueueBrowserReportConfig,
 } from '../api/client'
 import api from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
@@ -94,6 +95,35 @@ function SelectControl({ value, options, onChange }) {
       ))}
     </select>
   )
+}
+
+function buildPokemonCenterQueueBookmarklet(config) {
+  if (!config?.report_url || !config?.token) return ''
+  const script = [
+    `(function(){`,
+    `if(window.__pokeCollectorQueueMonitor){alert('PokeCollector queue monitor is already running.');return;}`,
+    `window.__pokeCollectorQueueMonitor=true;`,
+    `var endpoint=${JSON.stringify(config.report_url)};`,
+    `var token=${JSON.stringify(config.token)};`,
+    `var sent=false;`,
+    `var observer=null;`,
+    `var intervalId=null;`,
+    `var markers=['queue-it','queueit','waiting room','virtual waiting room','estimated wait','estimated wait time','you are now in line','you are in line','line is paused','queue position'];`,
+    `function positionValue(value){if(typeof value==='number'&&Number.isInteger(value)&&value>0)return value;if(typeof value==='string'&&/^\\d+$/.test(value.trim())){var parsed=parseInt(value.trim(),10);return parsed>0?parsed:0;}return 0;}`,
+    `function report(reason,position){if(sent)return;sent=true;if(observer)observer.disconnect();if(intervalId)clearInterval(intervalId);var url=endpoint+'?token='+encodeURIComponent(token)+'&source=bookmarklet&note='+encodeURIComponent(reason);if(position)url+='&position='+encodeURIComponent(String(position));(new Image()).src=url;setTimeout(function(){alert('PokeCollector queue alert sent.');},50);}`,
+    `function textPosition(value){var match=String(value||'').match(/(?:queue position|position|place in line|in line)\\D{0,30}(\\d{1,8})/i);return match?positionValue(match[1]):0;}`,
+    `function inspectText(){if(sent)return;var body=(document.body&&document.body.innerText||'');var lowerBody=body.toLowerCase();var lowerUrl=location.href.toLowerCase();var position=textPosition(body);if(position){report('queue position text',position);return;}for(var i=0;i<markers.length;i++){if(lowerBody.indexOf(markers[i])!==-1||lowerUrl.indexOf(markers[i])!==-1){report('queue marker '+markers[i]);return;}}}`,
+    `function inspectResourceUrl(src){if(sent||!src||src.toLowerCase().indexOf('_incapsula_resource')===-1)return;var resourceUrl;try{resourceUrl=new URL(src,location.href);}catch(error){return;}if(resourceUrl.origin!==location.origin)return;fetch(resourceUrl.href,{credentials:'include'}).then(function(response){return response.text();}).then(function(text){if(sent)return;try{var data=JSON.parse(text);var position=positionValue(data.pos)||positionValue(data.position);if(position)report('incapsula queue position',position);}catch(error){}}).catch(function(){});}`,
+    `function scanResources(){if(sent)return;document.querySelectorAll('iframe[src],script[src]').forEach(function(element){inspectResourceUrl(element.src);});}`,
+    `observer=new MutationObserver(function(){inspectText();scanResources();});`,
+    `observer.observe(document.documentElement,{childList:true,subtree:true,characterData:true});`,
+    `inspectText();`,
+    `scanResources();`,
+    `intervalId=setInterval(function(){inspectText();scanResources();},5000);`,
+    `alert('PokeCollector queue monitor is running.');`,
+    `})();`,
+  ].join('')
+  return `javascript:${encodeURIComponent(script)}`
 }
 
 function TcgdexLanguageControl({ value, onChange, selectedLabel, fallbackNote }) {
@@ -362,6 +392,12 @@ export default function Settings() {
     refetchInterval: 60000,
   })
 
+  const { data: pokemonCenterQueueBrowserReportConfig } = useQuery({
+    queryKey: ['pokemon-center-queue-browser-report-config'],
+    queryFn: () => getPokemonCenterQueueBrowserReportConfig(),
+    enabled: user?.role === 'admin',
+  })
+
   const { data: geminiKeyData } = useQuery({
     queryKey: ['setting', 'gemini_api_key'],
     queryFn: () => getSetting('gemini_api_key').catch(() => ({ value: '' })),
@@ -486,14 +522,7 @@ export default function Settings() {
     onError: () => toast.error(t('settings.pokemonCenterQueueCheckFailed')),
   })
 
-  const queueReportVisibleMutation = useMutation({
-    mutationFn: reportPokemonCenterQueueVisible,
-    onSuccess: () => {
-      toast.success(t('settings.pokemonCenterQueueReportComplete'))
-      queryClient.invalidateQueries({ queryKey: ['pokemon-center-queue-status'] })
-    },
-    onError: () => toast.error(t('settings.pokemonCenterQueueReportFailed')),
-  })
+  const pokemonCenterQueueBookmarklet = buildPokemonCenterQueueBookmarklet(pokemonCenterQueueBrowserReportConfig)
 
   const isRunning = syncStatus?.is_running || syncStatus?.is_price_sync_running || syncMutation.isPending || allPriceSyncMutation.isPending
 
@@ -1316,7 +1345,7 @@ export default function Settings() {
                     last
                   >
                     <div className="flex flex-col items-end gap-2 min-w-0 w-full max-w-md">
-                      <div className="flex flex-wrap items-center justify-end gap-2">
+                      <div className="flex items-center gap-2">
                         <span className="text-xs font-bold px-2.5 py-1 rounded-full border border-white/10 bg-white/5 text-text-primary">
                           {pokemonCenterQueueStatus?.status || 'unknown'}
                         </span>
@@ -1328,23 +1357,35 @@ export default function Settings() {
                         >
                           {queueCheckMutation.isPending ? t('common.loading') : t('settings.pokemonCenterQueueCheckNow')}
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (window.confirm(t('settings.pokemonCenterQueueReportConfirm'))) {
-                              queueReportVisibleMutation.mutate()
-                            }
-                          }}
-                          disabled={queueReportVisibleMutation.isPending}
-                          className="btn-ghost-sm"
-                        >
-                          {queueReportVisibleMutation.isPending ? t('common.loading') : t('settings.pokemonCenterQueueReportVisible')}
-                        </button>
                       </div>
                       {pokemonCenterQueueStatus?.checked_at && (
                         <span className="text-[11px] text-text-muted">
                           {t('settings.pokemonCenterQueueLastChecked')}: {new Date(pokemonCenterQueueStatus.checked_at).toLocaleString()}
                         </span>
+                      )}
+                      {pokemonCenterQueueBookmarklet && (
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <a
+                            href={pokemonCenterQueueBookmarklet}
+                            className="btn-ghost-sm"
+                          >
+                            {t('settings.pokemonCenterQueueBrowserMonitor')}
+                          </a>
+                          <button
+                            type="button"
+                            className="btn-ghost-sm"
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(pokemonCenterQueueBookmarklet)
+                                toast.success(t('settings.pokemonCenterQueueBrowserMonitorCopied'))
+                              } catch {
+                                toast.error(t('settings.saveFailed'))
+                              }
+                            }}
+                          >
+                            {t('common.copy')}
+                          </button>
+                        </div>
                       )}
                       <div className="w-full grid grid-cols-1 gap-1 text-[11px] text-text-muted text-left">
                         <div>

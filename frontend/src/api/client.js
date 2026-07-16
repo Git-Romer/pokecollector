@@ -288,7 +288,6 @@ export const setSetting = (key, value) => api.post(`/settings/${key}`, { value }
 export const getTelegramStatus = () => api.get('/settings/telegram_status').then(r => r.data)
 export const getPokemonCenterQueueStatus = () => api.get('/pokemon-center/queue-status').then(r => r.data)
 export const checkPokemonCenterQueue = () => api.post('/pokemon-center/queue-check').then(r => r.data)
-export const reportPokemonCenterQueueVisible = () => api.post('/pokemon-center/queue-report-visible').then(r => r.data)
 export const getPokemonCenterQueueBrowserReportConfig = () => api.get('/pokemon-center/queue-browser-report-config').then(r => r.data)
 
 export const downloadDebugLog = () => {
