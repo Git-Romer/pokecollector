@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 import json
 import logging
+import secrets
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from threading import Lock
@@ -19,6 +20,7 @@ logger = logging.getLogger(__name__)
 POKEMON_CENTER_URL = "https://www.pokemoncenter.com/"
 DEFAULT_TIMEOUT_SECONDS = 20.0
 NOTIFICATION_COOLDOWN_MINUTES = 60
+BROWSER_REPORT_TOKEN_SETTING = "pokemon_center_queue_browser_report_token"
 _CHECK_LOCK = Lock()
 
 QUEUE_STRONG_MARKERS = (
@@ -312,6 +314,30 @@ def _get_or_create_status_row(db: Session) -> PokemonCenterQueueStatus:
     return row
 
 
+def get_or_create_browser_report_token(db: Session) -> str:
+    from models import Setting
+
+    row = db.query(Setting).filter(Setting.key == BROWSER_REPORT_TOKEN_SETTING).first()
+    if row and row.value:
+        return row.value
+
+    token = secrets.token_urlsafe(32)
+    if row:
+        row.value = token
+    else:
+        row = Setting(key=BROWSER_REPORT_TOKEN_SETTING, value=token)
+        db.add(row)
+    db.commit()
+    return token
+
+
+def _get_browser_report_token(db: Session) -> str | None:
+    from models import Setting
+
+    row = db.query(Setting).filter(Setting.key == BROWSER_REPORT_TOKEN_SETTING).first()
+    return row.value if row and row.value else None
+
+
 def _user_setting_map(db: Session, user_id: int) -> dict[str, str]:
     from models import UserSetting
 
@@ -354,6 +380,86 @@ def _notify_queue_started(db: Session, users: list[User]) -> int:
         if telegram.send_message(message, db=db, user_id=user.id):
             sent += 1
     return sent
+
+
+def record_queue_observation(
+    db: Session,
+    *,
+    source: str,
+    position: int | None = None,
+    note: str | None = None,
+) -> dict[str, Any]:
+    """Record a trusted external observation that the queue is visible."""
+    subscribers = _queue_alert_users(db)
+    row = _get_or_create_status_row(db)
+    previous_status = row.status
+    now = datetime.datetime.utcnow()
+
+    evidence = {
+        "source": source,
+        "reported_queue": True,
+    }
+    if position is not None and position > 0:
+        evidence["queue_position"] = position
+    if note:
+        evidence["note"] = note[:500]
+
+    row.previous_status = previous_status
+    row.status = "queue"
+    row.checked_at = now
+    row.url = POKEMON_CENTER_URL
+    row.final_url = POKEMON_CENTER_URL
+    row.http_status = None
+    row.evidence = evidence
+    row.error_message = None
+
+    cooldown_cutoff = now - datetime.timedelta(minutes=NOTIFICATION_COOLDOWN_MINUTES)
+    cooldown_allows_alert = row.notified_at is None or row.notified_at < cooldown_cutoff
+
+    notified_count = 0
+    if previous_status != "queue" and subscribers and cooldown_allows_alert:
+        notified_count = _notify_queue_started(db, subscribers)
+        if notified_count > 0:
+            row.notified_at = now
+
+    db.commit()
+
+    logger.warning(
+        "Pokemon Center queue reported externally: %s",
+        {
+            "source": source,
+            "previous_status": previous_status,
+            "notified_count": notified_count,
+            "notification_cooldown_allows_alert": cooldown_allows_alert,
+            "evidence": evidence,
+        },
+    )
+
+    return {
+        "status": "queue",
+        "previous_status": previous_status,
+        "checked_at": row.checked_at.isoformat() if row.checked_at else None,
+        "notified_at": row.notified_at.isoformat() if row.notified_at else None,
+        "notified_count": notified_count,
+        "notification_cooldown_minutes": NOTIFICATION_COOLDOWN_MINUTES,
+        "notification_cooldown_allows_alert": cooldown_allows_alert,
+        "evidence": evidence,
+    }
+
+
+def record_queue_observation_with_token(
+    db: Session,
+    *,
+    token: str,
+    source: str,
+    position: int | None = None,
+    note: str | None = None,
+) -> dict[str, Any] | None:
+    expected_token = _get_browser_report_token(db)
+    provided_token = token if isinstance(token, str) else ""
+    if not expected_token or not provided_token.isascii() or not secrets.compare_digest(provided_token, expected_token):
+        return None
+    return record_queue_observation(db, source=source, position=position, note=note)
 
 
 def check_pokemon_center_queue(db: Session, *, force: bool = False) -> dict[str, Any]:

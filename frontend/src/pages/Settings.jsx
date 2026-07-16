@@ -8,7 +8,7 @@ import {
   getSetting, setSetting, getTelegramStatus, saveSettings, setAuthMode,
   getUsers, createUser, updateUser, deleteUser, changePassword, changeAvatar, changeUsername,
   getContributors, getSupporters, getRescueDonations, getCustomMatches, downloadDebugLog,
-  getPokemonCenterQueueStatus, checkPokemonCenterQueue,
+  getPokemonCenterQueueStatus, checkPokemonCenterQueue, reportPokemonCenterQueueVisible,
 } from '../api/client'
 import api from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
@@ -484,6 +484,15 @@ export default function Settings() {
       queryClient.invalidateQueries({ queryKey: ['pokemon-center-queue-status'] })
     },
     onError: () => toast.error(t('settings.pokemonCenterQueueCheckFailed')),
+  })
+
+  const queueReportVisibleMutation = useMutation({
+    mutationFn: reportPokemonCenterQueueVisible,
+    onSuccess: () => {
+      toast.success(t('settings.pokemonCenterQueueReportComplete'))
+      queryClient.invalidateQueries({ queryKey: ['pokemon-center-queue-status'] })
+    },
+    onError: () => toast.error(t('settings.pokemonCenterQueueReportFailed')),
   })
 
   const isRunning = syncStatus?.is_running || syncStatus?.is_price_sync_running || syncMutation.isPending || allPriceSyncMutation.isPending
@@ -1307,7 +1316,7 @@ export default function Settings() {
                     last
                   >
                     <div className="flex flex-col items-end gap-2 min-w-0 w-full max-w-md">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center justify-end gap-2">
                         <span className="text-xs font-bold px-2.5 py-1 rounded-full border border-white/10 bg-white/5 text-text-primary">
                           {pokemonCenterQueueStatus?.status || 'unknown'}
                         </span>
@@ -1318,6 +1327,18 @@ export default function Settings() {
                           className="btn-primary-sm"
                         >
                           {queueCheckMutation.isPending ? t('common.loading') : t('settings.pokemonCenterQueueCheckNow')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(t('settings.pokemonCenterQueueReportConfirm'))) {
+                              queueReportVisibleMutation.mutate()
+                            }
+                          }}
+                          disabled={queueReportVisibleMutation.isPending}
+                          className="btn-ghost-sm"
+                        >
+                          {queueReportVisibleMutation.isPending ? t('common.loading') : t('settings.pokemonCenterQueueReportVisible')}
                         </button>
                       </div>
                       {pokemonCenterQueueStatus?.checked_at && (

@@ -16,8 +16,14 @@ try:
     from sqlalchemy.orm import sessionmaker
 
     from database import Base
-    from models import PokemonCenterQueueStatus, User, UserSetting
-    from services.pokemon_center_queue import _queue_alert_users, check_pokemon_center_queue
+    from models import PokemonCenterQueueStatus, Setting, User, UserSetting
+    from services.pokemon_center_queue import (
+        _queue_alert_users,
+        check_pokemon_center_queue,
+        get_or_create_browser_report_token,
+        record_queue_observation,
+        record_queue_observation_with_token,
+    )
 
     DB_TEST_DEPS_AVAILABLE = True
 except ModuleNotFoundError:
@@ -280,6 +286,80 @@ class PokemonCenterQueueWorkflowTests(unittest.TestCase):
         row = self.db.query(PokemonCenterQueueStatus).one()
         self.assertEqual(row.evidence["reason"], "no opted-in Telegram users")
         self.assertEqual(row.error_message, "no opted-in Telegram users")
+
+    def test_manual_queue_observation_notifies_subscribers(self):
+        self._setting(self.trainer, "pokemon_center_queue_alerts_enabled", "true")
+        self._setting(self.trainer, "telegram_bot_token", "token")
+        self._setting(self.trainer, "telegram_chat_id", "123")
+        self.db.add(PokemonCenterQueueStatus(status="bot_protection"))
+        self.db.commit()
+
+        notify = Mock(return_value=1)
+        with patch("services.pokemon_center_queue._notify_queue_started", notify):
+            response = record_queue_observation(self.db, source="admin_manual")
+
+        self.assertEqual(response["status"], "queue")
+        self.assertEqual(response["previous_status"], "bot_protection")
+        self.assertEqual(response["notified_count"], 1)
+        notify.assert_called_once()
+        row = self.db.query(PokemonCenterQueueStatus).one()
+        self.assertEqual(row.status, "queue")
+        self.assertEqual(row.evidence["source"], "admin_manual")
+
+    def test_failed_manual_queue_notification_does_not_start_cooldown(self):
+        self._setting(self.trainer, "pokemon_center_queue_alerts_enabled", "true")
+        self._setting(self.trainer, "telegram_bot_token", "token")
+        self._setting(self.trainer, "telegram_chat_id", "123")
+        self.db.add(PokemonCenterQueueStatus(status="bot_protection"))
+        self.db.commit()
+
+        with patch("services.pokemon_center_queue._notify_queue_started", Mock(return_value=0)):
+            response = record_queue_observation(self.db, source="admin_manual")
+
+        self.assertEqual(response["notified_count"], 0)
+        self.assertIsNone(response["notified_at"])
+        row = self.db.query(PokemonCenterQueueStatus).one()
+        self.assertIsNone(row.notified_at)
+
+    def test_browser_report_token_required(self):
+        self.db.add(Setting(key="pokemon_center_queue_browser_report_token", value="expected-token"))
+        self.db.commit()
+
+        self.assertIsNone(
+            record_queue_observation_with_token(
+                self.db,
+                token="wrong-token",
+                source="browser_report",
+            )
+        )
+
+        result = record_queue_observation_with_token(
+            self.db,
+            token="expected-token",
+            source="browser_report",
+            position=123,
+        )
+
+        self.assertEqual(result["status"], "queue")
+        self.assertEqual(result["evidence"]["queue_position"], 123)
+
+    def test_invalid_browser_report_does_not_create_token_or_raise(self):
+        result = record_queue_observation_with_token(
+            self.db,
+            token="falscher-token-ä",
+            source="browser_report",
+        )
+
+        self.assertIsNone(result)
+        row = self.db.query(Setting).filter(Setting.key == "pokemon_center_queue_browser_report_token").first()
+        self.assertIsNone(row)
+
+    def test_browser_report_token_is_created_once(self):
+        first = get_or_create_browser_report_token(self.db)
+        second = get_or_create_browser_report_token(self.db)
+
+        self.assertTrue(first)
+        self.assertEqual(first, second)
 
 
 if __name__ == "__main__":
