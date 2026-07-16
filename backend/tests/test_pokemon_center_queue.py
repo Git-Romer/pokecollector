@@ -17,7 +17,7 @@ try:
     from sqlalchemy.orm import sessionmaker
 
     from database import Base
-    from models import PokemonCenterQueueStatus, User, UserSetting
+    from models import PokemonCenterQueueStatus, Setting, User, UserSetting
     from services.pokemon_center_queue import (
         _queue_alert_users,
         check_pokemon_center_queue,
@@ -234,7 +234,7 @@ class PokemonCenterQueueDetectionTests(unittest.TestCase):
         self.assertEqual(result.evidence["queue_position"], 321)
         self.assertTrue(result.evidence["browser_rendered"])
 
-    def test_fetch_uses_browser_fallback_when_http_stays_bot_protected(self):
+    def test_fetch_uses_browser_fallback_when_http_stays_bot_protected_if_requested(self):
         main_body = (
             "<html><body><iframe src=\"/_Incapsula_Resource?incident_id=abc\"></iframe>"
             "Request unsuccessful. Incapsula incident ID: abc</body></html>"
@@ -266,12 +266,35 @@ class PokemonCenterQueueDetectionTests(unittest.TestCase):
 
         with patch.dict("sys.modules", {"httpx": fake_httpx}), \
                 patch("services.pokemon_center_queue.fetch_browser_queue_status", return_value=browser_result):
-            result = fetch_queue_status()
+            result = fetch_queue_status(browser_probe=True)
 
         self.assertEqual(result.status, "queue")
         self.assertTrue(result.evidence["browser_probe"]["browser_rendered"])
 
-    def test_fetch_uses_browser_fallback_when_http_looks_normal(self):
+    def test_fetch_skips_browser_fallback_when_http_looks_normal_by_default(self):
+        responses = [
+            SimpleNamespace(
+                url="https://www.pokemoncenter.com/",
+                status_code=200,
+                headers={"Content-Type": "text/html"},
+                text="<html><title>Pokemon Center</title><main>Featured products</main></html>",
+            ),
+        ]
+        client = Mock()
+        client.__enter__ = Mock(return_value=client)
+        client.__exit__ = Mock(return_value=None)
+        client.get = Mock(side_effect=responses)
+        fake_httpx = SimpleNamespace(Client=Mock(return_value=client))
+        browser_fetch = Mock()
+
+        with patch.dict("sys.modules", {"httpx": fake_httpx}), \
+                patch("services.pokemon_center_queue.fetch_browser_queue_status", browser_fetch):
+            result = fetch_queue_status()
+
+        self.assertEqual(result.status, "normal")
+        browser_fetch.assert_not_called()
+
+    def test_fetch_uses_browser_fallback_when_http_looks_normal_if_requested(self):
         responses = [
             SimpleNamespace(
                 url="https://www.pokemoncenter.com/",
@@ -293,7 +316,7 @@ class PokemonCenterQueueDetectionTests(unittest.TestCase):
 
         with patch.dict("sys.modules", {"httpx": fake_httpx}), \
                 patch("services.pokemon_center_queue.fetch_browser_queue_status", return_value=browser_result):
-            result = fetch_queue_status()
+            result = fetch_queue_status(browser_probe=True)
 
         self.assertEqual(result.status, "queue")
         self.assertTrue(result.evidence["browser_probe"]["browser_rendered"])
@@ -387,6 +410,56 @@ class PokemonCenterQueueWorkflowTests(unittest.TestCase):
 
         self.assertEqual(response["status"], "bot_protection")
         notify.assert_not_called()
+
+    def test_manual_queue_check_requests_browser_probe(self):
+        self._setting(self.trainer, "pokemon_center_queue_alerts_enabled", "true")
+        self._setting(self.trainer, "telegram_bot_token", "token")
+        self._setting(self.trainer, "telegram_chat_id", "123")
+        result = QueueDetectionResult(status="normal", evidence={}, http_status=200)
+
+        with patch("services.pokemon_center_queue.fetch_queue_status", return_value=result) as fetch:
+            response = check_pokemon_center_queue(self.db, force=True)
+
+        fetch.assert_called_once_with(browser_probe=True)
+        self.assertTrue(response["evidence"]["browser_probe_requested"])
+        self.assertEqual(response["evidence"]["browser_probe_reason"], "manual_check")
+
+    def test_scheduled_queue_check_throttles_browser_probe(self):
+        self._setting(self.trainer, "pokemon_center_queue_alerts_enabled", "true")
+        self._setting(self.trainer, "telegram_bot_token", "token")
+        self._setting(self.trainer, "telegram_chat_id", "123")
+        self.db.add(Setting(key="pokemon_center_queue_last_browser_probe_at", value=datetime.datetime.utcnow().isoformat()))
+        self.db.commit()
+        result = QueueDetectionResult(status="normal", evidence={}, http_status=200)
+
+        with patch("services.pokemon_center_queue.fetch_queue_status", return_value=result) as fetch:
+            response = check_pokemon_center_queue(self.db)
+
+        fetch.assert_called_once_with(browser_probe=False)
+        self.assertFalse(response["evidence"]["browser_probe_requested"])
+        self.assertEqual(response["evidence"]["browser_probe_reason"], "scheduled_throttled")
+
+    def test_scheduled_queue_check_requests_due_browser_probe(self):
+        self._setting(self.trainer, "pokemon_center_queue_alerts_enabled", "true")
+        self._setting(self.trainer, "telegram_bot_token", "token")
+        self._setting(self.trainer, "telegram_chat_id", "123")
+        old_probe = datetime.datetime.utcnow() - datetime.timedelta(minutes=10)
+        self.db.add(Setting(key="pokemon_center_queue_last_browser_probe_at", value=old_probe.isoformat()))
+        self.db.commit()
+        result = QueueDetectionResult(
+            status="normal",
+            evidence={"browser_probe": {"browser_probe_executed": True}},
+            http_status=200,
+        )
+
+        with patch("services.pokemon_center_queue.fetch_queue_status", return_value=result) as fetch:
+            response = check_pokemon_center_queue(self.db)
+
+        fetch.assert_called_once_with(browser_probe=True)
+        self.assertTrue(response["evidence"]["browser_probe_requested"])
+        self.assertEqual(response["evidence"]["browser_probe_reason"], "scheduled_due")
+        row = self.db.query(Setting).filter(Setting.key == "pokemon_center_queue_last_browser_probe_at").one()
+        self.assertGreater(datetime.datetime.fromisoformat(row.value), old_probe)
 
     def test_queue_notification_respects_cooldown(self):
         self._setting(self.trainer, "pokemon_center_queue_alerts_enabled", "true")

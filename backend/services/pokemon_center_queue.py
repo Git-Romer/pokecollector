@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 POKEMON_CENTER_URL = "https://www.pokemoncenter.com/"
 DEFAULT_TIMEOUT_SECONDS = 20.0
 DEFAULT_BROWSER_TIMEOUT_SECONDS = 30.0
+BROWSER_PROBE_INTERVAL_MINUTES = 5
+BROWSER_PROBE_LAST_SETTING = "pokemon_center_queue_last_browser_probe_at"
 NOTIFICATION_COOLDOWN_MINUTES = 60
 _CHECK_LOCK = Lock()
 
@@ -395,7 +397,7 @@ def fetch_browser_queue_status(url: str = POKEMON_CENTER_URL) -> QueueDetectionR
         )
 
 
-def fetch_queue_status(url: str = POKEMON_CENTER_URL) -> QueueDetectionResult:
+def fetch_queue_status(url: str = POKEMON_CENTER_URL, *, browser_probe: bool = False) -> QueueDetectionResult:
     import httpx
 
     headers = {
@@ -447,8 +449,9 @@ def fetch_queue_status(url: str = POKEMON_CENTER_URL) -> QueueDetectionResult:
                         result.evidence["incapsula_resource_probe_error"] = type(exc).__name__
                         break
 
-            if result.status in {"bot_protection", "normal", "unknown"}:
+            if browser_probe and result.status in {"bot_protection", "normal", "unknown"}:
                 browser_result = fetch_browser_queue_status(url)
+                browser_result.evidence["browser_probe_executed"] = True
                 result.evidence["browser_probe"] = browser_result.evidence
                 if browser_result.status in {"queue", "normal", "bot_protection"}:
                     browser_result.evidence = _merge_evidence(
@@ -481,6 +484,42 @@ def _get_or_create_status_row(db: Session) -> PokemonCenterQueueStatus:
     db.add(row)
     db.flush()
     return row
+
+
+def _get_setting_value(db: Session, key: str) -> str | None:
+    from models import Setting
+
+    row = db.query(Setting).filter(Setting.key == key).first()
+    return row.value if row else None
+
+
+def _set_setting_value(db: Session, key: str, value: str) -> None:
+    from models import Setting
+
+    row = db.query(Setting).filter(Setting.key == key).first()
+    if row:
+        row.value = value
+    else:
+        db.add(Setting(key=key, value=value))
+
+
+def _parse_datetime(value: str | None) -> datetime.datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is not None:
+        return parsed.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+    return parsed
+
+
+def _browser_probe_due(db: Session, now: datetime.datetime) -> bool:
+    last_probe = _parse_datetime(_get_setting_value(db, BROWSER_PROBE_LAST_SETTING))
+    if last_probe is None:
+        return True
+    return last_probe <= now - datetime.timedelta(minutes=BROWSER_PROBE_INTERVAL_MINUTES)
 
 
 def _user_setting_map(db: Session, user_id: int) -> dict[str, str]:
@@ -556,10 +595,30 @@ def check_pokemon_center_queue(db: Session, *, force: bool = False) -> dict[str,
                 "error_message": row.error_message,
             }
 
-        result = fetch_queue_status()
+        now = datetime.datetime.utcnow()
+        browser_probe = force or _browser_probe_due(db, now)
+        browser_probe_reason = (
+            "manual_check"
+            if force
+            else "scheduled_due"
+            if browser_probe
+            else "scheduled_throttled"
+        )
+
+        result = fetch_queue_status(browser_probe=browser_probe)
+        result.evidence = {
+            **(result.evidence or {}),
+            "browser_probe_requested": browser_probe,
+            "browser_probe_reason": browser_probe_reason,
+            "browser_probe_interval_minutes": BROWSER_PROBE_INTERVAL_MINUTES,
+        }
+
+        browser_probe_evidence = result.evidence.get("browser_probe")
+        if isinstance(browser_probe_evidence, dict) and browser_probe_evidence.get("browser_probe_executed"):
+            _set_setting_value(db, BROWSER_PROBE_LAST_SETTING, now.isoformat())
+
         row = _get_or_create_status_row(db)
         previous_status = row.status
-        now = datetime.datetime.utcnow()
 
         row.previous_status = previous_status
         row.status = result.status
