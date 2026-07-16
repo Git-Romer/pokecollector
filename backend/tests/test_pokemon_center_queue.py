@@ -495,6 +495,73 @@ class PokemonCenterQueueWorkflowTests(unittest.TestCase):
         self.assertEqual(response["status"], "bot_protection")
         notify.assert_not_called()
 
+    def test_security_challenge_after_normal_sends_possible_queue_alert(self):
+        self._setting(self.trainer, "pokemon_center_queue_alerts_enabled", "true")
+        self._setting(self.trainer, "telegram_bot_token", "token")
+        self._setting(self.trainer, "telegram_chat_id", "123")
+        self.db.add(PokemonCenterQueueStatus(status="normal"))
+        self.db.commit()
+
+        result = QueueDetectionResult(
+            status="bot_protection",
+            evidence={
+                "bot_body_markers": ["captcha", "imperva"],
+                "body_sample": "www.pokemoncenter.com - Additional security check is required. hCaptcha",
+            },
+            http_status=200,
+        )
+        notify = Mock(return_value=1)
+        with patch("services.pokemon_center_queue.fetch_queue_status", return_value=result), \
+                patch("services.pokemon_center_queue._notify_possible_queue_started", notify):
+            response = check_pokemon_center_queue(self.db)
+
+        self.assertEqual(response["status"], "possible_queue")
+        self.assertEqual(response["notified_count"], 1)
+        self.assertEqual(response["evidence"]["possible_queue_signal"], "normal_to_security_challenge")
+        notify.assert_called_once()
+
+    def test_security_challenge_does_not_repeat_possible_queue_alert(self):
+        self._setting(self.trainer, "pokemon_center_queue_alerts_enabled", "true")
+        self._setting(self.trainer, "telegram_bot_token", "token")
+        self._setting(self.trainer, "telegram_chat_id", "123")
+        self.db.add(PokemonCenterQueueStatus(status="possible_queue"))
+        self.db.commit()
+
+        result = QueueDetectionResult(
+            status="bot_protection",
+            evidence={"bot_body_markers": ["captcha"], "body_sample": "hCaptcha"},
+            http_status=200,
+        )
+        notify = Mock(return_value=1)
+        with patch("services.pokemon_center_queue.fetch_queue_status", return_value=result), \
+                patch("services.pokemon_center_queue._notify_possible_queue_started", notify):
+            response = check_pokemon_center_queue(self.db)
+
+        self.assertEqual(response["status"], "bot_protection")
+        self.assertEqual(response["notified_count"], 0)
+        notify.assert_not_called()
+
+    def test_generic_captcha_after_normal_does_not_send_possible_queue_alert(self):
+        self._setting(self.trainer, "pokemon_center_queue_alerts_enabled", "true")
+        self._setting(self.trainer, "telegram_bot_token", "token")
+        self._setting(self.trainer, "telegram_chat_id", "123")
+        self.db.add(PokemonCenterQueueStatus(status="normal"))
+        self.db.commit()
+
+        result = QueueDetectionResult(
+            status="bot_protection",
+            evidence={"bot_body_markers": ["captcha"], "body_sample": "captcha"},
+            http_status=200,
+        )
+        notify = Mock(return_value=1)
+        with patch("services.pokemon_center_queue.fetch_queue_status", return_value=result), \
+                patch("services.pokemon_center_queue._notify_possible_queue_started", notify):
+            response = check_pokemon_center_queue(self.db)
+
+        self.assertEqual(response["status"], "bot_protection")
+        self.assertEqual(response["notified_count"], 0)
+        notify.assert_not_called()
+
     def test_manual_queue_check_requests_browser_probe(self):
         self._setting(self.trainer, "pokemon_center_queue_alerts_enabled", "true")
         self._setting(self.trainer, "telegram_bot_token", "token")
@@ -566,6 +633,32 @@ class PokemonCenterQueueWorkflowTests(unittest.TestCase):
         self.assertEqual(response["status"], "queue")
         self.assertEqual(response["notified_count"], 0)
         notify.assert_not_called()
+
+    def test_confirmed_queue_after_possible_queue_bypasses_possible_alert_cooldown(self):
+        self._setting(self.trainer, "pokemon_center_queue_alerts_enabled", "true")
+        self._setting(self.trainer, "telegram_bot_token", "token")
+        self._setting(self.trainer, "telegram_chat_id", "123")
+        self.db.add(
+            PokemonCenterQueueStatus(
+                status="possible_queue",
+                notified_at=datetime.datetime.utcnow(),
+            )
+        )
+        self.db.commit()
+
+        result = QueueDetectionResult(
+            status="queue",
+            evidence={"queue_body_markers": ["waiting room"]},
+            http_status=200,
+        )
+        notify = Mock(return_value=1)
+        with patch("services.pokemon_center_queue.fetch_queue_status", return_value=result), \
+                patch("services.pokemon_center_queue._notify_queue_started", notify):
+            response = check_pokemon_center_queue(self.db)
+
+        self.assertEqual(response["status"], "queue")
+        self.assertEqual(response["notified_count"], 1)
+        notify.assert_called_once()
 
     def test_skipped_check_persists_reason_for_admin_diagnostics(self):
         response = check_pokemon_center_queue(self.db)

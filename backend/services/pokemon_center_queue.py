@@ -62,6 +62,13 @@ BOT_PROTECTION_MARKERS = (
     "bot detection",
 )
 
+SECURITY_CHALLENGE_MARKERS = (
+    "h-captcha",
+    "hcaptcha",
+    "additional security check",
+    "i am human",
+)
+
 BOT_PROTECTION_HEADER_MARKERS = (
     "x-iinfo",
     "visid_incap",
@@ -186,6 +193,47 @@ def _merge_evidence(primary: dict[str, Any], secondary_key: str, secondary: dict
         **(primary or {}),
         secondary_key: secondary,
     }
+
+
+def _evidence_contains_text(value: Any, markers: tuple[str, ...]) -> bool:
+    if isinstance(value, str):
+        haystack = value.lower()
+        return any(marker in haystack for marker in markers)
+    if isinstance(value, dict):
+        return any(_evidence_contains_text(item, markers) for item in value.values())
+    if isinstance(value, list):
+        return any(_evidence_contains_text(item, markers) for item in value)
+    return False
+
+
+def _is_security_challenge_result(result: QueueDetectionResult) -> bool:
+    if result.status != "bot_protection":
+        return False
+    return _evidence_contains_text(result.evidence, SECURITY_CHALLENGE_MARKERS)
+
+
+def _promote_security_challenge_transition(
+    result: QueueDetectionResult,
+    previous_status: str | None,
+) -> QueueDetectionResult:
+    if previous_status != "normal" or not _is_security_challenge_result(result):
+        return result
+    evidence = {
+        **(result.evidence or {}),
+        "possible_queue_signal": "normal_to_security_challenge",
+        "possible_queue_reason": (
+            "Pokemon Center changed from a normal response to an Imperva/hCaptcha "
+            "security challenge. This can happen during queue/high-traffic mode, "
+            "but it is not confirmed queue-page content."
+        ),
+    }
+    return QueueDetectionResult(
+        status="possible_queue",
+        evidence=evidence,
+        final_url=result.final_url,
+        http_status=result.http_status,
+        error_message=result.error_message,
+    )
 
 
 def classify_queue_response(
@@ -616,6 +664,25 @@ def _notify_queue_started(db: Session, users: list[User]) -> int:
     return sent
 
 
+def _notify_possible_queue_started(db: Session, users: list[User]) -> int:
+    from services import telegram
+
+    message = (
+        "⚠️ <b>Pokemon Center Possible Queue</b>\n\n"
+        "Pokemon Center changed from a normal response to an Imperva/hCaptcha "
+        "security challenge. This can happen when a queue or high-traffic mode starts, "
+        "but the queue page was not directly visible to the checker.\n\n"
+        "Open the site manually and check whether you can join the queue:\n"
+        f"{POKEMON_CENTER_URL}\n\n"
+        "This alert does not join, bypass, or reserve a queue spot."
+    )
+    sent = 0
+    for user in users:
+        if telegram.send_message(message, db=db, user_id=user.id):
+            sent += 1
+    return sent
+
+
 def check_pokemon_center_queue(db: Session, *, force: bool = False) -> dict[str, Any]:
     if not _CHECK_LOCK.acquire(blocking=False):
         logger.info("Pokemon Center queue check skipped: another check is already running")
@@ -669,6 +736,7 @@ def check_pokemon_center_queue(db: Session, *, force: bool = False) -> dict[str,
 
         row = _get_or_create_status_row(db)
         previous_status = row.status
+        result = _promote_security_challenge_transition(result, previous_status)
 
         row.previous_status = previous_status
         row.status = result.status
@@ -683,8 +751,23 @@ def check_pokemon_center_queue(db: Session, *, force: bool = False) -> dict[str,
         cooldown_allows_alert = row.notified_at is None or row.notified_at < cooldown_cutoff
 
         notified_count = 0
-        if previous_status != "queue" and result.status == "queue" and subscribers and cooldown_allows_alert:
+        queue_alert_follows_possible_queue = previous_status == "possible_queue" and result.status == "queue"
+        if (
+            previous_status != "queue"
+            and result.status == "queue"
+            and subscribers
+            and (cooldown_allows_alert or queue_alert_follows_possible_queue)
+        ):
             notified_count = _notify_queue_started(db, subscribers)
+            if notified_count > 0:
+                row.notified_at = now
+        elif (
+            previous_status not in {"queue", "possible_queue"}
+            and result.status == "possible_queue"
+            and subscribers
+            and cooldown_allows_alert
+        ):
+            notified_count = _notify_possible_queue_started(db, subscribers)
             if notified_count > 0:
                 row.notified_at = now
 
@@ -703,6 +786,8 @@ def check_pokemon_center_queue(db: Session, *, force: bool = False) -> dict[str,
         }
         if result.status == "queue":
             logger.warning("Pokemon Center queue detected: %s", log_payload)
+        elif result.status == "possible_queue":
+            logger.warning("Pokemon Center possible queue signal detected: %s", log_payload)
         elif result.status in {"bot_protection", "unknown", "error"}:
             logger.info("Pokemon Center queue monitor diagnostic: %s", log_payload)
         else:
