@@ -7,7 +7,7 @@ try:
 
     from api.binders import add_owned_set_to_binder, add_collection_item_to_binder
     from database import Base
-    from models import Binder, BinderCard, Card, CollectionItem, User
+    from models import Binder, BinderCard, Card, CollectionItem, Set, User
     API_TEST_DEPS_AVAILABLE = True
 except ModuleNotFoundError:
     HTTPException = Exception
@@ -25,7 +25,8 @@ class AddOwnedSetToBinderTests(unittest.TestCase):
         self.card_a = Card(id="sv1-1_en", tcg_card_id="sv1-1", name="Sprigatito", set_id="sv1", number="1", lang="en", variants_normal=True)
         self.card_b = Card(id="sv1-2_en", tcg_card_id="sv1-2", name="Floragato", set_id="sv1", number="2", lang="en", variants_normal=True)
         self.foreign_card = Card(id="sv2-1_en", tcg_card_id="sv2-1", name="Charmander", set_id="sv2", number="1", lang="en", variants_normal=True)
-        self.db.add_all([self.user, self.card_a, self.card_b, self.foreign_card])
+        self.set_obj = Set(id="sv1_en", tcg_set_id="sv1", name="Scarlet & Violet", lang="en")
+        self.db.add_all([self.user, self.card_a, self.card_b, self.foreign_card, self.set_obj])
         self.db.commit()
         self.db.refresh(self.user)
 
@@ -51,7 +52,7 @@ class AddOwnedSetToBinderTests(unittest.TestCase):
         self._own(self.card_a.id, variant="Reverse Holo")
         binder = self._collection_binder()
 
-        result = add_owned_set_to_binder(binder.id, set_id="sv1", current_user=self.user, db=self.db)
+        result = add_owned_set_to_binder(binder.id, set_id="sv1_en", current_user=self.user, db=self.db)
 
         self.assertEqual(result["added"], 2)
         self.assertEqual(result["skipped_present"], 0)
@@ -63,7 +64,7 @@ class AddOwnedSetToBinderTests(unittest.TestCase):
         self._own(self.card_a.id, variant="Normal", quantity=3)
         binder = self._collection_binder()
 
-        result = add_owned_set_to_binder(binder.id, set_id="sv1", current_user=self.user, db=self.db)
+        result = add_owned_set_to_binder(binder.id, set_id="sv1_en", current_user=self.user, db=self.db)
 
         self.assertEqual(result["added"], 1)
         self.assertEqual(result["owned_total"], 1)
@@ -75,7 +76,7 @@ class AddOwnedSetToBinderTests(unittest.TestCase):
         binder = self._collection_binder()
         add_collection_item_to_binder(binder.id, item.id, current_user=self.user, db=self.db)
 
-        result = add_owned_set_to_binder(binder.id, set_id="sv1", current_user=self.user, db=self.db)
+        result = add_owned_set_to_binder(binder.id, set_id="sv1_en", current_user=self.user, db=self.db)
 
         self.assertEqual(result["added"], 1)
         self.assertEqual(result["skipped_present"], 1)
@@ -85,9 +86,9 @@ class AddOwnedSetToBinderTests(unittest.TestCase):
     def test_rerun_adds_nothing(self):
         self._own(self.card_a.id, variant="Normal")
         binder = self._collection_binder()
-        add_owned_set_to_binder(binder.id, set_id="sv1", current_user=self.user, db=self.db)
+        add_owned_set_to_binder(binder.id, set_id="sv1_en", current_user=self.user, db=self.db)
 
-        result = add_owned_set_to_binder(binder.id, set_id="sv1", current_user=self.user, db=self.db)
+        result = add_owned_set_to_binder(binder.id, set_id="sv1_en", current_user=self.user, db=self.db)
 
         self.assertEqual(result["added"], 0)
         self.assertEqual(result["skipped_present"], 1)
@@ -99,7 +100,7 @@ class AddOwnedSetToBinderTests(unittest.TestCase):
         add_collection_item_to_binder(other.id, item.id, current_user=self.user, db=self.db)
         target = self._collection_binder(name="Target")
 
-        result = add_owned_set_to_binder(target.id, set_id="sv1", current_user=self.user, db=self.db)
+        result = add_owned_set_to_binder(target.id, set_id="sv1_en", current_user=self.user, db=self.db)
 
         self.assertEqual(result["added"], 0)
         self.assertEqual(result["skipped_no_capacity"], 1)
@@ -112,7 +113,7 @@ class AddOwnedSetToBinderTests(unittest.TestCase):
         add_collection_item_to_binder(other.id, item.id, current_user=self.user, db=self.db)
         target = self._collection_binder(name="Target")
 
-        result = add_owned_set_to_binder(target.id, set_id="sv1", current_user=self.user, db=self.db)
+        result = add_owned_set_to_binder(target.id, set_id="sv1_en", current_user=self.user, db=self.db)
 
         self.assertEqual(result["added"], 1)
         self.assertEqual(result["skipped_no_capacity"], 0)
@@ -125,14 +126,14 @@ class AddOwnedSetToBinderTests(unittest.TestCase):
         self.db.refresh(binder)
 
         with self.assertRaises(HTTPException) as ctx:
-            add_owned_set_to_binder(binder.id, set_id="sv1", current_user=self.user, db=self.db)
+            add_owned_set_to_binder(binder.id, set_id="sv1_en", current_user=self.user, db=self.db)
         self.assertEqual(ctx.exception.status_code, 400)
 
     def test_foreign_set_adds_nothing(self):
         self._own(self.foreign_card.id, variant="Normal")
         binder = self._collection_binder()
 
-        result = add_owned_set_to_binder(binder.id, set_id="sv1", current_user=self.user, db=self.db)
+        result = add_owned_set_to_binder(binder.id, set_id="sv1_en", current_user=self.user, db=self.db)
 
         self.assertEqual(result, {"added": 0, "skipped_present": 0, "skipped_no_capacity": 0, "owned_total": 0})
 
@@ -140,7 +141,7 @@ class AddOwnedSetToBinderTests(unittest.TestCase):
         self._own(self.card_a.id, variant="Normal", quantity=0)
         binder = self._collection_binder()
 
-        result = add_owned_set_to_binder(binder.id, set_id="sv1", current_user=self.user, db=self.db)
+        result = add_owned_set_to_binder(binder.id, set_id="sv1_en", current_user=self.user, db=self.db)
 
         self.assertEqual(result["added"], 0)
         self.assertEqual(result["owned_total"], 0)
@@ -148,8 +149,29 @@ class AddOwnedSetToBinderTests(unittest.TestCase):
 
     def test_missing_binder_raises_404(self):
         with self.assertRaises(HTTPException) as ctx:
-            add_owned_set_to_binder(999, set_id="sv1", current_user=self.user, db=self.db)
+            add_owned_set_to_binder(999, set_id="sv1_en", current_user=self.user, db=self.db)
         self.assertEqual(ctx.exception.status_code, 404)
+
+    def test_unknown_set_raises_404(self):
+        binder = self._collection_binder()
+        with self.assertRaises(HTTPException) as ctx:
+            add_owned_set_to_binder(binder.id, set_id="does-not-exist_en", current_user=self.user, db=self.db)
+        self.assertEqual(ctx.exception.status_code, 404)
+
+    def test_other_language_of_set_is_not_added(self):
+        fr_card = Card(id="sv1-1_fr", tcg_card_id="sv1-1", name="Sprigatito", set_id="sv1", number="1", lang="fr", variants_normal=True)
+        self.db.add(fr_card)
+        self.db.commit()
+        item = CollectionItem(card_id=fr_card.id, user_id=self.user.id, quantity=1, condition="NM", variant="Normal", lang="fr")
+        self.db.add(item)
+        self.db.commit()
+        binder = self._collection_binder()
+
+        result = add_owned_set_to_binder(binder.id, set_id="sv1_en", current_user=self.user, db=self.db)
+
+        self.assertEqual(result["added"], 0)
+        self.assertEqual(result["owned_total"], 0)
+        self.assertEqual(self.db.query(BinderCard).filter(BinderCard.binder_id == binder.id).count(), 0)
 
 
 if __name__ == "__main__":
