@@ -6,14 +6,14 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List
 from api.auth import get_current_user
 from database import get_db
-from models import Binder, BinderCard, Card, CollectionItem, User, WishlistItem
+from models import Binder, BinderCard, Card, CollectionItem, Set, User, WishlistItem
 from schemas import BinderCreate, BinderUpdate, BinderResponse, BinderCardUpdate, BinderCardSwitch, BinderPrintOptimizationApply
 from api.collection import ensure_card_exists, _find_card_by_code
 from services import pokemon_api
 from services.card_fallbacks import apply_cross_language_fallbacks
 from services.card_upsert import upsert_card
 from services.card_values import effective_market_price, normalize_price_field
-from services.card_visibility import visible_card_filter
+from services.card_visibility import visible_card_filter, visible_set_filter
 from services.binder_csv import BINDER_CSV_DUPLICATE_QUANTITY_ERROR, combine_binder_required_quantity
 from services.wishlist_missing import plan_missing_wishlist_additions
 from services.tcgdex_languages import SUPPORTED_TCGDEX_LANGUAGES, is_supported_tcgdex_language, normalize_tcgdex_language
@@ -926,9 +926,19 @@ def add_owned_set_to_binder(
     if (binder.binder_type or "collection") != "collection":
         raise HTTPException(status_code=400, detail="Owned cards can only be added to collection binders")
 
+    set_obj = db.query(Set).filter(
+        Set.id == set_id,
+        visible_set_filter(db, current_user.id, "all"),
+    ).first()
+    if not set_obj:
+        raise HTTPException(status_code=404, detail="Set not found")
+    tcg_id = set_obj.tcg_set_id or set_obj.id
+    set_lang = set_obj.lang or "en"
+
     owned_items = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).filter(
         CollectionItem.user_id == current_user.id,
-        Card.set_id == set_id,
+        Card.set_id == tcg_id,
+        Card.lang == set_lang,
         CollectionItem.quantity > 0,
         visible_card_filter(db, current_user.id, "all"),
     ).order_by(CollectionItem.id.asc()).all()
