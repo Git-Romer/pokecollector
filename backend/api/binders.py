@@ -929,6 +929,7 @@ def add_owned_set_to_binder(
     owned_items = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).filter(
         CollectionItem.user_id == current_user.id,
         Card.set_id == set_id,
+        CollectionItem.quantity > 0,
         visible_card_filter(db, current_user.id, "all"),
     ).order_by(CollectionItem.id.asc()).all()
 

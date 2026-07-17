@@ -136,6 +136,16 @@ class AddOwnedSetToBinderTests(unittest.TestCase):
 
         self.assertEqual(result, {"added": 0, "skipped_present": 0, "skipped_no_capacity": 0, "owned_total": 0})
 
+    def test_zero_quantity_row_is_not_added(self):
+        self._own(self.card_a.id, variant="Normal", quantity=0)
+        binder = self._collection_binder()
+
+        result = add_owned_set_to_binder(binder.id, set_id="sv1", current_user=self.user, db=self.db)
+
+        self.assertEqual(result["added"], 0)
+        self.assertEqual(result["owned_total"], 0)
+        self.assertEqual(self.db.query(BinderCard).filter(BinderCard.binder_id == binder.id).count(), 0)
+
     def test_missing_binder_raises_404(self):
         with self.assertRaises(HTTPException) as ctx:
             add_owned_set_to_binder(999, set_id="sv1", current_user=self.user, db=self.db)
