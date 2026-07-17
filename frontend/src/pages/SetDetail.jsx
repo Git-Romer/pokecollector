@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Plus, Check, Trash2, X, Heart } from 'lucide-react'
-import { getSetChecklist, addToCollection, addToWishlist, updateCollectionItem, removeFromCollection } from '../api/client'
+import { ArrowLeft, Plus, Check, Trash2, X, Heart, BookMarked } from 'lucide-react'
+import { getSetChecklist, addToCollection, addToWishlist, updateCollectionItem, removeFromCollection, getBinders, createBinder, addOwnedSetToBinder } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
@@ -286,6 +286,7 @@ export default function SetDetail() {
   const [sortBy, setSortBy] = useState('number')
   const [rarityFilter, setRarityFilter] = useState('all')
   const [selectedCard, setSelectedCard] = useState(null)
+  const [binderPickerOpen, setBinderPickerOpen] = useState(false)
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['set-checklist', setId],
@@ -354,6 +355,30 @@ export default function SetDetail() {
       queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'card-search' })
     },
     onError: () => toast.error(t('collection.updateFailed')),
+  })
+
+  const bindersQuery = useQuery({
+    queryKey: ['binders'],
+    queryFn: () => getBinders().then(r => r.data),
+    enabled: binderPickerOpen,
+  })
+
+  const addOwnedMutation = useMutation({
+    mutationFn: async ({ binderId, setId }) => {
+      let targetId = binderId
+      if (!targetId) {
+        const created = await createBinder({ name: `${set?.name || setId} (owned)`, binder_type: 'collection' })
+        targetId = created.data.id
+      }
+      return addOwnedSetToBinder(targetId, setId)
+    },
+    onSuccess: (result) => {
+      const skipped = (result.skipped_present || 0) + (result.skipped_no_capacity || 0)
+      toast.success(t('setDetail.addOwnedToBinderResult').replace('{added}', result.added).replace('{skipped}', skipped))
+      queryClient.invalidateQueries({ queryKey: ['binders'] })
+      setBinderPickerOpen(false)
+    },
+    onError: () => toast.error(t('setDetail.addOwnedToBinderFailed')),
   })
 
   if (isLoading) {
@@ -431,7 +456,13 @@ export default function SetDetail() {
             </div>
           </div>
 
-          <div className="text-right hidden md:block flex-shrink-0">
+          <div className="hidden md:flex flex-col items-end gap-3 flex-shrink-0">
+            <button
+              onClick={() => setBinderPickerOpen(true)}
+              className="btn-ghost flex items-center gap-1.5 text-sm whitespace-nowrap"
+            >
+              <BookMarked size={14} /> {t('setDetail.addOwnedToBinder')}
+            </button>
             <div className="flex gap-4">
               <div>
                 <p className="text-2xl font-bold text-green">{owned_count}</p>
@@ -562,6 +593,47 @@ export default function SetDetail() {
         isRemoving={removeMutation.isPending}
         t={t}
       />
+
+      {binderPickerOpen && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setBinderPickerOpen(false)}>
+          <div className="card w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-bold text-text-primary">{t('setDetail.addOwnedToBinderTitle')}</h2>
+              <button onClick={() => setBinderPickerOpen(false)} className="text-text-muted hover:text-text-primary"><X size={18} /></button>
+            </div>
+            {owned_count === 0 ? (
+              <p className="text-sm text-text-secondary">{t('setDetail.addOwnedToBinderEmpty')}</p>
+            ) : (
+              <>
+                <p className="text-xs font-semibold text-text-muted mb-2 uppercase tracking-wide">{t('setDetail.addOwnedToBinderPick')}</p>
+                <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+                  {(bindersQuery.data || []).filter(b => (b.binder_type || 'collection') === 'collection').length === 0 && (
+                    <p className="text-sm text-text-secondary">{t('setDetail.addOwnedToBinderNoBinders')}</p>
+                  )}
+                  {(bindersQuery.data || []).filter(b => (b.binder_type || 'collection') === 'collection').map(b => (
+                    <button
+                      key={b.id}
+                      disabled={addOwnedMutation.isPending}
+                      onClick={() => addOwnedMutation.mutate({ binderId: b.id, setId: set.id })}
+                      className="text-left px-3 py-2 rounded-lg bg-bg-elevated hover:bg-brand-red/10 text-sm text-text-primary disabled:opacity-50"
+                    >
+                      {b.name}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  disabled={addOwnedMutation.isPending}
+                  onClick={() => addOwnedMutation.mutate({ binderId: null, setId: set.id })}
+                  className="btn-primary w-full mt-3 flex items-center justify-center gap-1.5 text-sm disabled:opacity-50"
+                >
+                  <Plus size={14} /> {t('setDetail.addOwnedToBinderNew')}
+                </button>
+              </>
+            )}
+          </div>
+        </div>,
+        document.body,
+      )}
     </div>
   )
 }
