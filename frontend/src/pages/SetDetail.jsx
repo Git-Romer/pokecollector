@@ -457,12 +457,6 @@ export default function SetDetail() {
           </div>
 
           <div className="hidden md:flex flex-col items-end gap-3 flex-shrink-0">
-            <button
-              onClick={() => setBinderPickerOpen(true)}
-              className="btn-ghost flex items-center gap-1.5 text-sm whitespace-nowrap"
-            >
-              <BookMarked size={14} /> {t('setDetail.addOwnedToBinder')}
-            </button>
             <div className="flex gap-4">
               <div>
                 <p className="text-2xl font-bold text-green">{owned_count}</p>
@@ -475,6 +469,13 @@ export default function SetDetail() {
             </div>
           </div>
         </div>
+
+        <button
+          onClick={() => setBinderPickerOpen(true)}
+          className="btn-ghost flex items-center justify-center gap-1.5 text-sm whitespace-nowrap w-full mt-3 md:w-auto md:ml-auto md:mt-3"
+        >
+          <BookMarked size={14} /> {t('setDetail.addOwnedToBinder')}
+        </button>
       </div>
 
       {/* Filter Tabs */}
@@ -607,7 +608,10 @@ export default function SetDetail() {
               <>
                 <p className="text-xs font-semibold text-text-muted mb-2 uppercase tracking-wide">{t('setDetail.addOwnedToBinderPick')}</p>
                 <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
-                  {(bindersQuery.data || []).filter(b => (b.binder_type || 'collection') === 'collection').length === 0 && (
+                  {bindersQuery.isLoading && (
+                    <p className="text-sm text-text-secondary">{t('common.loading')}</p>
+                  )}
+                  {!bindersQuery.isLoading && (bindersQuery.data || []).filter(b => (b.binder_type || 'collection') === 'collection').length === 0 && (
                     <p className="text-sm text-text-secondary">{t('setDetail.addOwnedToBinderNoBinders')}</p>
                   )}
                   {(bindersQuery.data || []).filter(b => (b.binder_type || 'collection') === 'collection').map(b => (
