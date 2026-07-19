@@ -293,3 +293,15 @@ class LeaderboardHandleTests(unittest.TestCase):
         stats = _load_user_stats(db)
         self.assertIn(u.id, stats)
         self.assertEqual(stats[u.id]["public_handle"], "ash")
+
+    def test_row_hides_handle_when_profile_not_public(self):
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        db = sessionmaker(bind=engine)()
+        u = User(username="ghost", hashed_password="x", role="trainer", is_active=True,
+                 public_handle="ghost", is_profile_public=False)
+        db.add(u)
+        db.commit()
+        stats = _load_user_stats(db)
+        self.assertIn(u.id, stats)
+        self.assertIsNone(stats[u.id]["public_handle"])
