@@ -359,6 +359,7 @@ def _load_user_stats(db: Session, user_ids: list[int] | None = None, price_field
             "sold_products_count": sold_product_counts.get(user.id, 0),
             "positive_pnl_flag": 1 if pnl > 0 else 0,
             "illustration_rare_flag": 1 if has_illustration_rare else 0,
+            "public_handle": user.public_handle if user.is_profile_public else None,
         }
 
     return stats

@@ -271,3 +271,25 @@ class BinderPublicToggleTests(unittest.TestCase):
         db.commit()
         resp = update_binder(binder.id, BinderUpdate(is_public=True), db=db, current_user=user)
         self.assertTrue(resp.is_public)
+
+
+try:
+    from api.social import _load_user_stats
+    SOCIAL_DEPS = True
+except ModuleNotFoundError:
+    SOCIAL_DEPS = False
+
+
+@unittest.skipUnless(SOCIAL_DEPS, "social deps unavailable")
+class LeaderboardHandleTests(unittest.TestCase):
+    def test_row_includes_public_handle(self):
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        db = sessionmaker(bind=engine)()
+        u = User(username="ash", hashed_password="x", role="trainer", is_active=True,
+                 public_handle="ash", is_profile_public=True)
+        db.add(u)
+        db.commit()
+        stats = _load_user_stats(db)
+        self.assertIn(u.id, stats)
+        self.assertEqual(stats[u.id]["public_handle"], "ash")
