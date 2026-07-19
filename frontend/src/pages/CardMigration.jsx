@@ -134,7 +134,7 @@ export default function CardMigration() {
   return (
     <div className="space-y-4 pb-2 max-w-2xl">
       <div>
-        <h1 className="text-5xl font-bold text-text-primary mag-heading uppercase leading-none mt-2"><SplitText text="{t('migration.title')}" delay={40} /></h1>
+        <h1 className="text-5xl font-bold text-text-primary mag-heading uppercase leading-none mt-2"><SplitText text={t('migration.title')} delay={40} /></h1>
         <p className="text-sm text-text-secondary mt-1">{t('migration.subtitle')}</p>
       </div>
 

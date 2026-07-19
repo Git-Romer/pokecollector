@@ -55,6 +55,8 @@ DEFAULT_SETTINGS = {
     "price_display": '["trend", "avg", "avg1", "avg7", "avg30", "low"]',
     "set_overview_filters": "{}",
     "hidden_set_ids": "[]",
+    "telegram_bot_token": "",
+    "gemini_api_key": "",
     "tcgdex_sync_languages": "en,de",
     DIGITAL_SETS_SETTING_KEY: "true",
     "cross_language_price_fallback": "true",

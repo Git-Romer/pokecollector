@@ -10,9 +10,9 @@ Fork, branch, and submit a focused PR. Add or update tests and docs as needed. E
 
 Be kind. Be clear. Assume good intent. Keep feedback constructive.
 
-# 🃏 PokéCollector
+# 🃏 John John's PC
 
-> A self-hosted, full-stack Pokémon TCG collection manager for cards, sealed products, binders, analytics, scanning, and multi-user collections.
+> A local-first Pokémon TCG collection platform where the collection remains the source of truth and John John acts as a quiet, faceless curator.
 
 - 🌐 **Website:** [pokecollector.romerg.de](https://pokecollector.romerg.de/)
 - 👤 **Creator:** [Gilles Romer](https://romerg.de/)
@@ -45,8 +45,11 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 
 ## ✨ Features
 
-### 📦 Collection Management
+### 📦 John John's PC Collection Management
 - Add cards with quantity, condition, variant, and purchase price
+- Track acquisition source, protection/storage, location notes, grader, grade, certification number, and collection notes
+- Pulled cards can use a $4.49 editable cost basis; pre-tracking bulk can use a $0 basis
+- Sealed product is tracked as collection-adjacent inventory with storage details
 - Variants are now limited to `Normal`, `Holo`, `Reverse Holo`, and `First Edition`
 - Card rarity is read-only from TCGdex and displayed separately from variant
 - Track localized TCGdex card rows separately by language code, including all supported TCGdex languages
@@ -87,16 +90,25 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - Community section in Settings with GitHub contributors and Ko-fi supporters
 
 ### 🎨 UX & Localization
-- Compact portal navigation with 6 primary home items and grouped tab navigation
+- Fluent-inspired John John's PC shell with five primary sections: Collection, Card Search, Sets, Analytics, and Settings
 - App UI translations for all supported TCGdex languages, plus Swedish
-- 9 Pokemon-type color themes: Default, Fire, Water, Grass, Electric, Psychic, Dragon, Dark, Fairy
+- Accessible dark/light archive themes with purposeful motion and reduced-motion support
 
 ### ⚙️ Utilities
-- CSV and PDF export
+- Excel, CSV, and PDF export
+- Weekly local Excel backups are written under the mounted backup directory and the newest eight are retained per active user
 - Strict CSV collection import with a downloadable template; required row values are `set_code` and `number`, while `quantity`, `condition`, `variant`, `lang`, and `purchase_price` may be blank
 - Admin-only sync endpoints and scheduler controls
 - Backup and restore, including selective backup groups for collection, users, cards, products, system data, and images
 - Backend image proxy/cache for cards and sets
+
+### John John's PC local-first boundary
+
+- Visible product identity and browser/PWA metadata are **John John's PC**.
+- The root route is Collection Overview, not a finance dashboard.
+- John John is a local, faceless presence. He is not a chatbot, mascot, or external AI service.
+- HoloDex, Collectr, PSA, and CSV data are supplementary manual/reviewed inputs. They do not automatically overwrite tracker records.
+- Excel `.xlsx` is the official portable backup format with Cards, Sealed Product, and Acquisition & Storage worksheets.
 
 ### CSV Collection Import
 

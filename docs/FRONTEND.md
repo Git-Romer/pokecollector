@@ -9,8 +9,8 @@ Routes are defined in `frontend/src/App.jsx`.
 | Route | Component File | Notes |
 |------|----------------|-------|
 | `/login` | `pages/Login.jsx` | Multi-user login screen |
-| `/` | `pages/HomeScreen.jsx` | Portal-style home screen |
-| `/dashboard` | `pages/Dashboard.jsx` | Portfolio summary |
+| `/` | `pages/Home.jsx` | Collection Overview with recent additions, set shelf, and John John’s Notes |
+| `/dashboard` | Redirects to `/` | Legacy route |
 | `/search` | `pages/CardSearch.jsx` | Card search, scanner entry, and multi-select bulk add |
 | `/collection` | `pages/Collection.jsx` | User collection |
 | `/collection/user/:userId` | `pages/UserCollection.jsx` | Read-only view of another user's collection |
@@ -27,6 +27,32 @@ Routes are defined in `frontend/src/App.jsx`.
 | `/achievements/:userId` | `pages/Achievements.jsx` | Another user's achievements |
 | `/settings` | `pages/Settings.jsx` | App settings and admin tools |
 | `/migration` | `pages/CardMigration.jsx` | Custom card migration queue |
+
+## John John's PC Shell
+
+The active shell is `components/ArchiveShell.jsx`. Its primary navigation is
+intentionally fixed to five familiar destinations:
+
+1. Collection
+2. Card Search
+3. Sets
+4. Analytics
+5. Settings
+
+Older routes such as `/binders`, `/products`, `/wishlist`, `/leaderboard`, and
+`/achievements` remain reachable as contextual or legacy surfaces, but they are
+not primary navigation items. The root route is Collection Overview, not a
+portfolio dashboard.
+
+## Privacy & Data UI
+
+Settings includes a **Privacy & Data** panel backed by
+`src/utils/privacyData.js`. It states the local-first operating boundary:
+
+- John John’s Notes are derived locally from tracker data.
+- External AI is disabled by default and requires explicit opt-in.
+- HoloDex, Collectr, PSA, and CSV data are manual/reviewed imports.
+- Excel export is the local portable backup format.
 
 ## Auth Flow
 

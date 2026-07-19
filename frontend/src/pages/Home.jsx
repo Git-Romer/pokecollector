@@ -10,6 +10,13 @@ import AnimatedCard from '../components/reactbits/AnimatedCard'
 import OrbitImages from '../components/reactbits/OrbitImages'
 import ColorBends from '../components/reactbits/ColorBends'
 
+export const COLLECTION_OVERVIEW_COPY = {
+  kicker: 'COLLECTION OVERVIEW',
+  title: 'Collection Overview',
+  subtitle: 'Everything you’ve chosen to keep, right where it belongs.',
+  notesTitle: 'John John’s Notes',
+}
+
 const setTotal = (set) => set.total || set.total_cards || 0
 
 export default function Home() {
@@ -37,7 +44,7 @@ export default function Home() {
   const loading = dashboardQuery.isLoading || setsQuery.isLoading
 
   return <section className="archive-card-reveal space-y-10">
-    <header><span className="mag-issue">THE ARCHIVE</span><h1 className="text-5xl font-bold text-text-primary mag-heading uppercase leading-none mt-2"><SplitText text="John John's PC" delay={40} /></h1><p className="mt-2 text-text-secondary">Everything you’ve chosen to keep, right where it belongs.</p></header>
+    <header><span className="mag-issue">{COLLECTION_OVERVIEW_COPY.kicker}</span><h1 className="text-5xl font-bold text-text-primary mag-heading uppercase leading-none mt-2"><SplitText text={COLLECTION_OVERVIEW_COPY.title} delay={40} /></h1><p className="mt-2 text-text-secondary">{COLLECTION_OVERVIEW_COPY.subtitle}</p></header>
     {loading && <div className="archive-loading" role="status" aria-live="polite"><span className="archive-loading-orbit" aria-hidden="true" /><SplitText text="John John is opening the collection..." delay={30} /></div>}
     
 {recent.length > 0 && (
@@ -66,7 +73,7 @@ export default function Home() {
 
     <section><div className="section-header"><h2 className="section-title">Recent additions</h2><Link to="/collection">View collection</Link></div><div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">{recent.slice(0, 6).map((card) => <Link key={card.id || card.card_id} to="/collection" className="polaroid-card block w-full" style={{ '--rand': Math.random() }}><div className="aspect-[2/3] overflow-hidden border-2 border-black"><CardImage src={card.image_url || card.image} alt={card.name} /></div><div className="mt-4 font-bold text-center text-sm uppercase tracking-wide truncate px-2">{card.name}</div></Link>)}</div></section>
     <section><div className="section-header"><h2 className="section-title">Set shelf</h2><Link to="/sets">All sets</Link></div><div className="grid gap-3 lg:grid-cols-3">{near.map((set) => { const total = setTotal(set); const owned = set.owned_count || 0; return <AnimatedCard key={set.id} className="p-4 flex flex-col gap-2"><Text weight="semibold">{set.name}</Text><p className="my-2 text-sm text-text-secondary">{Math.max(total - owned, 0)} cards left</p><ProgressBar value={total ? owned / total : 0} /><p className="mt-2 text-xs text-text-muted">{owned} of {total} filed</p></AnimatedCard> })}</div></section>
-    {notes.length > 0 && <section><div className="section-header"><h2 className="section-title"><SplitText text="John John’s Notes" delay={80} /></h2><span className="text-sm text-text-muted">John John is keeping watch.</span></div><div className="grid gap-3 lg:grid-cols-3">{notes.map((note) => <ArchiveNote key={note.id} note={note} />)}</div></section>}
+    {notes.length > 0 && <section><div className="section-header"><h2 className="section-title"><SplitText text={COLLECTION_OVERVIEW_COPY.notesTitle} delay={80} /></h2><span className="text-sm text-text-muted">John John is keeping watch.</span></div><div className="grid gap-3 lg:grid-cols-3">{notes.map((note) => <ArchiveNote key={note.id} note={note} />)}</div></section>}
   </section>
 }
 

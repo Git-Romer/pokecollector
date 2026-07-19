@@ -37,6 +37,7 @@ pokecollector/
 │   │   ├── sets.py
 │   │   ├── social.py
 │   │   ├── sync.py
+│   │   ├── agent.py
 │   │   └── wishlist.py
 │   └── services/
 │       ├── auth.py
@@ -46,7 +47,8 @@ pokecollector/
 │       ├── scheduler.py
 │       ├── sync_service.py
 │       ├── tcgdex_languages.py
-│       └── telegram.py
+│       ├── telegram.py
+│       └── weekly_excel_backup.py
 ├── frontend/
 │   ├── src/
 │   │   ├── api/client.js
@@ -85,10 +87,30 @@ Removed from the current architecture:
 
 Important modules added since the older docs:
 
+- `api/agent.py`
 - `api/auth.py`
 - `api/github.py`
 - `api/images.py`
 - `api/products.py`
+
+## John John's PC Product Boundary
+
+The deployed local app is branded **John John's PC** and keeps the user's
+collection as the source of truth. The primary navigation is fixed to
+Collection, Card Search, Sets, Analytics, and Settings. Legacy surfaces remain
+reachable through existing routes, but the root route is Collection Overview and
+does not use portfolio or P&L metrics as hero content.
+
+John John is represented as a faceless local presence. Notes and observations
+are derived from in-app collection data and do not call external AI services by
+default. Gemini remains an explicit scanner configuration option in Settings.
+
+## Local Backup Boundary
+
+`GET /api/export/xlsx` is the portable workbook export. It contains the Cards,
+Sealed Product, and Acquisition & Storage sheets. The scheduler also registers
+`weekly_excel_backup_job`, which writes local Excel backups under
+`/app/backups/excel` and keeps the newest eight files per active user.
 
 ### Data Model
 

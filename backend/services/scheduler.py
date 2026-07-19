@@ -70,6 +70,13 @@ def run_price_sync():
         db.close()
 
 
+def run_weekly_excel_backup():
+    """Create local Excel backups and keep the newest eight files per user."""
+    from services.weekly_excel_backup import run_weekly_excel_backup as create_backup
+
+    create_backup()
+
+
 # Keep legacy alias
 def run_sync():
     """Legacy alias for run_full_sync."""
@@ -111,11 +118,23 @@ def start_scheduler():
             next_run_time=now_utc + datetime.timedelta(minutes=price_interval_minutes),
         )
 
+        # Job 3: Official portable local backup, retained as the newest eight
+        # XLSX workbooks per active user in /app/backups/excel.
+        scheduler.add_job(
+            run_weekly_excel_backup,
+            trigger=IntervalTrigger(weeks=1),
+            id="weekly_excel_backup_job",
+            name="John John's PC Weekly Excel Backup",
+            replace_existing=True,
+            next_run_time=now_utc + datetime.timedelta(weeks=1),
+        )
+
         scheduler.start()
         logger.info(
             f"Scheduler started — full sync every {full_interval_days} days "
             f"({'immediately' if needs_initial_sync else f'in {full_interval_days} days'}), "
-            f"small price sync every {price_interval_minutes} minutes"
+            f"small price sync every {price_interval_minutes} minutes, "
+            "weekly Excel backups retained locally"
         )
     else:
         logger.info("Scheduler already running")

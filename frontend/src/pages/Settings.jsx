@@ -21,6 +21,7 @@ import toast from 'react-hot-toast'
 import { TCGDEX_LANGUAGES, normalizeTcgdexLanguageCsv, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { APP_LANGUAGES } from '../utils/appLanguages'
 import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
+import { PRIVACY_DATA_POINTS } from '../utils/privacyData'
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -60,6 +61,28 @@ function SettingsRow({ label, description, children, last }) {
       </div>
       <div className="flex-shrink-0 w-full sm:w-auto">{children}</div>
     </div>
+  )
+}
+
+function PrivacyDataGrid({ t }) {
+  return (
+    <section className="space-y-1">
+      <SectionHeader title={t('settings.privacyDataTitle')} />
+      <SettingsCard>
+        <div className="px-4 py-4">
+          <h2 className="text-sm font-semibold text-text-primary">{t('settings.privacyDataTitle')}</h2>
+          <p className="mt-1 text-xs text-text-muted">{t('settings.privacyDataDesc')}</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {PRIVACY_DATA_POINTS.map((point) => (
+              <div key={point.title} className="rounded-xl border border-border bg-bg-primary/70 p-3">
+                <p className="text-xs font-semibold text-text-primary">{point.title}</p>
+                <p className="mt-1 text-xs text-text-muted">{point.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </SettingsCard>
+    </section>
   )
 }
 
@@ -603,7 +626,7 @@ export default function Settings() {
   return (
     <div className="space-y-6 py-6">
       <div className="px-1">
-        <h1 className="text-5xl font-bold text-text-primary mag-heading uppercase leading-none mt-2"><SplitText text="{t('settings.title')}" delay={40} /></h1>
+        <h1 className="text-5xl font-bold text-text-primary mag-heading uppercase leading-none mt-2"><SplitText text={t('settings.title')} delay={40} /></h1>
         <p className="text-sm text-text-muted mt-1">{t('settings.appConfig')}</p>
       </div>
       <div className="flex border-b border-border overflow-x-auto scrollbar-none -mx-4 px-4" style={{WebkitOverflowScrolling:"touch"}}>
@@ -875,6 +898,7 @@ export default function Settings() {
               </p>
             </div>
           </section>
+          <PrivacyDataGrid t={t} />
         </>
       )}
 
@@ -1061,6 +1085,18 @@ export default function Settings() {
                   {t('settings.aiControlBadge')}
                 </span>
               </SettingsRow>
+              <div className="px-4 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                <h2 className="text-sm font-semibold text-text-primary">{t('settings.privacyDataTitle')}</h2>
+                <p className="mt-1 text-xs text-text-muted">{t('settings.privacyDataDesc')}</p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {PRIVACY_DATA_POINTS.map((point) => (
+                    <div key={point.title} className="rounded-xl border border-border bg-bg-primary/70 p-3">
+                      <p className="text-xs font-semibold text-text-primary">{point.title}</p>
+                      <p className="mt-1 text-xs text-text-muted">{point.body}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
               <SettingsRow label={t('settings.backupDownload')} description={t('settings.backupDownloadDesc')}>
                 <div className="flex flex-col gap-2 items-end">
                   <div className="flex flex-wrap gap-1.5 justify-end">

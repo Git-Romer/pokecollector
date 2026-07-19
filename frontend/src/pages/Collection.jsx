@@ -1391,9 +1391,9 @@ export default function Collection() {
       {/* ─── Header ───────────────────────────────────────────────── */}
       <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
         <div className="min-w-0">
-          <h1 className="text-5xl font-bold text-text-primary mag-heading uppercase leading-none mt-2"><SplitText text="{t('collection.title')}" delay={40} /></h1>
+          <h1 className="text-5xl font-bold text-text-primary mag-heading uppercase leading-none mt-2"><SplitText text={t('collection.title')} delay={40} /></h1>
           <p className="text-sm text-text-secondary mt-1">
-            {totalCards.toLocaleString()} {t('collection.cards')} · {formatPrice(totalValue)} {t('collection.totalValue')}
+            {totalCards.toLocaleString()} {t('collection.cards')} · {filtered.length.toLocaleString()} {t('collection.filtered')}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -1451,9 +1451,6 @@ export default function Collection() {
               <option value="added_at">{t('collection.sortDateAdded')}</option>
               <option value="name">{t('common.name')}</option>
               <option value="quantity">{t('collection.sortQuantity')}</option>
-              <option value="purchase_price">{t('collection.sortPurchasePrice')}</option>
-              <option value="market_price">{t('collection.sortMarketPrice')}</option>
-              <option value="price_trend">{t('collection.sortTrend')}</option>
               <option value="set">{t('collection.sortSet')}</option>
               <option value="card_id">{t('collection.sortCardId')}</option>
             </select>
@@ -1678,7 +1675,7 @@ export default function Collection() {
           {filtered.length > 0 && (
             <div className="flex items-center justify-between text-sm pt-1 px-1">
               <span className="text-text-muted">{filtered.length} {t('collection.filtered')}</span>
-              <span className="font-bold text-gold">{formatPrice(totalValue)}</span>
+              <span className="font-bold text-gold">Gallery Showcase</span>
             </div>
           )}
         </>
@@ -1706,19 +1703,16 @@ export default function Collection() {
                       <th className="text-center px-4 py-3 text-text-muted font-medium">{t('collection.qty')}</th>
                       <th className="text-center px-4 py-3 text-text-muted font-medium">{t('common.condition')}</th>
                       <th className="text-left px-4 py-3 text-text-muted font-medium">✨ {t('variants.label')}</th>
-                      <th className="text-right px-4 py-3 text-text-muted font-medium">{t('collection.buyPrice')}</th>
-                      <th className="text-right px-4 py-3 text-text-muted font-medium">{t('collection.marketPrice')}</th>
-                      <th className="text-right px-4 py-3 text-text-muted font-medium">{t('collection.totalVal')}</th>
-                      <th className="text-right px-4 py-3 text-text-muted font-medium">P&amp;L</th>
+                      <th className="text-left px-4 py-3 text-text-muted font-medium">Source</th>
+                      <th className="text-left px-4 py-3 text-text-muted font-medium">Storage</th>
+                      <th className="text-left px-4 py-3 text-text-muted font-medium">Grading</th>
+                      <th className="text-left px-4 py-3 text-text-muted font-medium">Notes</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filtered.map((item) => {
                       const card = item.card
-                      const marketPrice = getEffectivePrice(card, item.variant)
-                      const totalVal = marketPrice * item.quantity
-                      const buyTotal = (item.purchase_price || 0) * item.quantity
-                      const pnl = item.purchase_price ? totalVal - buyTotal : null
+                      const grading = [item.grader, item.grade].filter(Boolean).join(' ')
 
                       return (
                         <tr
@@ -1775,21 +1769,17 @@ export default function Collection() {
                               <span className="text-text-muted text-xs">—</span>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-right text-text-secondary">
-                            {item.purchase_price ? formatPrice(item.purchase_price) : '-'}
+                          <td className="px-4 py-3 text-text-secondary text-xs">
+                            {item.acquisition_source || '—'}
                           </td>
-                          <td className="px-4 py-3 text-right text-text-primary font-medium">
-                            {marketPrice > 0 ? formatPrice(marketPrice) : '-'}
+                          <td className="px-4 py-3 text-text-secondary text-xs">
+                            {[item.storage_type, item.storage_detail].filter(Boolean).join(' · ') || '—'}
                           </td>
-                          <td className="px-4 py-3 text-right font-semibold text-green">
-                            {marketPrice > 0 ? formatPrice(totalVal) : '-'}
+                          <td className="px-4 py-3 text-text-secondary text-xs">
+                            {grading || '—'}
                           </td>
-                          <td className="px-4 py-3 text-right text-xs font-medium">
-                            {pnl !== null ? (
-                              <span className={pnl >= 0 ? 'text-green' : 'text-brand-red'}>
-                                {pnl >= 0 ? '+' : ''}{formatPrice(pnl)}
-                              </span>
-                            ) : '-'}
+                          <td className="px-4 py-3 text-text-secondary text-xs max-w-[180px] truncate">
+                            {item.notes || '—'}
                           </td>
                         </tr>
                       )
@@ -1797,9 +1787,7 @@ export default function Collection() {
                   </tbody>
                   <tfoot>
                     <tr className="border-t border-border bg-bg/50">
-                      <td colSpan={8} className="px-4 py-3 text-text-muted text-sm">{filtered.length} {t('collection.filtered')}</td>
-                      <td className="px-4 py-3 text-right font-bold text-green">{formatPrice(totalValue)}</td>
-                      <td />
+                      <td colSpan={10} className="px-4 py-3 text-text-muted text-sm">{filtered.length} {t('collection.filtered')}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -1809,16 +1797,14 @@ export default function Collection() {
               <div className="md:hidden space-y-2 p-2">
                 {filtered.map((item) => {
                   const card = item.card
-                  const marketPrice = getEffectivePrice(card, item.variant)
-                  const totalVal = marketPrice * item.quantity
-                  const buyTotal = (item.purchase_price || 0) * item.quantity
-                  const pnl = item.purchase_price ? totalVal - buyTotal : null
 
                   const badges = []
                   if (item.lang) badges.push({ label: tcgdexLanguageLabel(item.lang), variant: 'blue' })
                   if (item.variant) badges.push({ label: item.variant, variant: 'purple' })
                   if (item.condition) badges.push({ label: item.condition, variant: item.condition === 'Mint' ? 'green' : item.condition === 'NM' ? 'blue' : 'yellow' })
                   if (item.quantity > 1) badges.push({ label: `×${item.quantity}`, variant: 'red' })
+                  if (item.acquisition_source) badges.push({ label: item.acquisition_source, variant: 'gold' })
+                  if (item.storage_type) badges.push({ label: item.storage_type, variant: 'blue' })
                   const sourceSummary = getProductSourceSummary(item)
                   if (sourceSummary) badges.push({ label: `${t('collection.foundIn')}: ${sourceSummary.label}`, variant: 'gold' })
                   if (card?.is_custom) badges.push({ label: '✏️', variant: 'yellow' })
@@ -1830,15 +1816,15 @@ export default function Collection() {
                       name={card?.name}
                       subtext={[card?.set_ref?.name, card?.number ? `#${card.number}` : null].filter(Boolean).join(' · ') || '-'}
                       badges={badges}
-                      value={marketPrice > 0 ? formatPrice(marketPrice) : '-'}
-                      valueSecondary={pnl !== null ? `${pnl >= 0 ? '+' : ''}${formatPrice(pnl)}` : undefined}
+                      value={`${item.quantity} × ${item.condition}`}
+                      valueSecondary={[item.storage_type, item.storage_detail].filter(Boolean).join(' · ') || undefined}
                       onClick={() => setEditingCollectionItem(item)}
                     />
                   )
                 })}
                 <div className="border-t border-border pt-2 px-1 flex items-center justify-between text-sm">
                   <span className="text-text-muted">{filtered.length} {t('collection.filtered')}</span>
-                  <span className="font-bold text-green">{formatPrice(totalValue)}</span>
+                  <span className="font-bold text-green">Owned archive</span>
                 </div>
               </div>
             </div>

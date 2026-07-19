@@ -680,6 +680,8 @@ const de = {
     aiControlTitle: 'John John Präsenz',
     aiControlDesc: 'John John kann Sammlungskontext zeigen, aber das Archiv bleibt transparent und unter deiner Kontrolle.',
     aiControlBadge: 'Sichtbar',
+    privacyDataTitle: 'Privacy & Data',
+    privacyDataDesc: 'Die AI-Beziehung ist transparent, lokal zuerst und vollständig unter deiner Kontrolle.',
     backupDownload: 'Backup herunterladen',
     backupDownloadDesc: 'Vollständige Datenbank-Sicherung',
     backupFull: 'Alles (ohne Bilder)',
