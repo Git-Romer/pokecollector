@@ -42,8 +42,8 @@
 - `frontend/src/utils/publicHandle.test.js` *(new)*.
 - `frontend/src/api/publicClient.js` *(new)* — token-less axios instance + public API calls.
 - `frontend/src/api/client.js` — add `updateProfile`, `checkHandleAvailable`, and `is_public` on binder update.
+- `frontend/src/utils/formatEur.js` *(new)* + `frontend/src/utils/formatEur.test.js` *(new)* — shared EUR formatter used by both public pages (returns null when a value is hidden).
 - `frontend/src/pages/PublicProfile.jsx` *(new)*, `frontend/src/pages/PublicBinderView.jsx` *(new)*.
-- `frontend/src/pages/PublicBinderView.test.jsx` *(new)*.
 - `frontend/src/App.jsx` — public routes outside `ProtectedRoutes`.
 - `frontend/src/pages/Settings.jsx` — "Public profile" section.
 - `frontend/src/pages/Binders.jsx` — per-binder "Share publicly" toggle.
@@ -1044,62 +1044,65 @@ git commit -m "feat(public-binders): frontend handle validator + token-less publ
 ## Task 9: Public pages + routes
 
 **Files:**
+- Create: `frontend/src/utils/formatEur.js`
+- Create: `frontend/src/utils/formatEur.test.js`
 - Create: `frontend/src/pages/PublicProfile.jsx`
 - Create: `frontend/src/pages/PublicBinderView.jsx`
-- Create: `frontend/src/pages/PublicBinderView.test.jsx`
 - Modify: `frontend/src/App.jsx`
+
+**Environment note (read before starting):** This frontend has NO DOM test infrastructure — no `@testing-library`, no `jsdom`, no vitest `environment` config; the only existing tests are pure-JS (node env). Do NOT add those dependencies. Component rendering is verified here by `npm run build` (a compile/import check) plus the Task 11 manual pass; the vitest unit test covers the shared `formatEur` value-hiding logic that both pages depend on.
 
 **Interfaces:**
 - Consumes: `getPublicProfile`, `getPublicBinder` from `../api/publicClient`.
-- Produces: routes `/u/:handle`, `/u/:handle/binder/:binderId` rendered outside `ProtectedRoutes`.
+- Produces: `formatEur(value)` from `../utils/formatEur` (returns null when hidden); routes `/u/:handle`, `/u/:handle/binder/:binderId` rendered outside `ProtectedRoutes`.
 
 - [ ] **Step 1: Write the failing test**
 
-Create `frontend/src/pages/PublicBinderView.test.jsx`:
+Create `frontend/src/utils/formatEur.test.js`:
 
 ```javascript
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter, Routes, Route } from 'react-router-dom'
+import { describe, it, expect } from 'vitest'
+import { formatEur } from './formatEur'
 
-vi.mock('../api/publicClient', () => ({
-  getPublicBinder: vi.fn(),
-}))
-import { getPublicBinder } from '../api/publicClient'
-import PublicBinderView from './PublicBinderView'
-
-function renderAt(path) {
-  return render(
-    <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route path="/u/:handle/binder/:binderId" element={<PublicBinderView />} />
-      </Routes>
-    </MemoryRouter>
-  )
-}
-
-describe('PublicBinderView', () => {
-  beforeEach(() => vi.clearAllMocks())
-
-  it('renders cards read-only and hides value when null', async () => {
-    getPublicBinder.mockResolvedValue({
-      id: 1, name: 'Starters', card_count: 1, unique_card_count: 1, total_value: null,
-      cards: [{ id: 'sv1-1_en', name: 'Sprigatito', image: null, set_name: 'SV', number: '1', rarity: 'Common', quantity: 2, market_value: null }],
-    })
-    renderAt('/u/ash/binder/1')
-    await waitFor(() => expect(screen.getByText('Sprigatito')).toBeInTheDocument())
-    expect(screen.queryByRole('button', { name: /add|edit|remove/i })).toBeNull()
-    expect(screen.queryByText(/€/)).toBeNull()
+describe('formatEur', () => {
+  it('returns null for null/undefined so callers can hide the value', () => {
+    expect(formatEur(null)).toBeNull()
+    expect(formatEur(undefined)).toBeNull()
+  })
+  it('formats a number as EUR', () => {
+    expect(formatEur(10)).toBe('€10.00')
+  })
+  it('returns null for non-numeric input', () => {
+    expect(formatEur('abc')).toBeNull()
   })
 })
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `docker run --rm -v "$PWD/frontend":/app -w /app node:20 npx vitest run src/pages/PublicBinderView.test.jsx`
-Expected: FAIL — module not found.
+Run: `docker run --rm -v "$PWD/frontend":/app -w /app node:20 npx vitest run src/utils/formatEur.test.js`
+Expected: FAIL — `./formatEur` module not found.
 
-- [ ] **Step 3: Create `PublicBinderView.jsx`**
+- [ ] **Step 3: Create the shared formatter**
+
+Create `frontend/src/utils/formatEur.js`:
+
+```javascript
+// Shared EUR formatter for the public pages. Returns null when there is nothing to
+// show (null/undefined/non-numeric) so a caller can conditionally render — a market
+// value hidden by the owner arrives as null from the API and stays hidden in the UI.
+export function formatEur(value) {
+  if (value == null || Number.isNaN(Number(value))) return null
+  return new Intl.NumberFormat('en', { style: 'currency', currency: 'EUR' }).format(Number(value))
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `docker run --rm -v "$PWD/frontend":/app -w /app node:20 npx vitest run src/utils/formatEur.test.js`
+Expected: PASS (3 tests).
+
+- [ ] **Step 5: Create `PublicBinderView.jsx`**
 
 Create `frontend/src/pages/PublicBinderView.jsx`:
 
@@ -1107,11 +1110,7 @@ Create `frontend/src/pages/PublicBinderView.jsx`:
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { getPublicBinder } from '../api/publicClient'
-
-function formatEur(value) {
-  if (value == null) return null
-  return new Intl.NumberFormat('en', { style: 'currency', currency: 'EUR' }).format(value)
-}
+import { formatEur } from '../utils/formatEur'
 
 export default function PublicBinderView() {
   const { handle, binderId } = useParams()
@@ -1159,7 +1158,7 @@ export default function PublicBinderView() {
 }
 ```
 
-- [ ] **Step 4: Create `PublicProfile.jsx`**
+- [ ] **Step 6: Create `PublicProfile.jsx`**
 
 Create `frontend/src/pages/PublicProfile.jsx`:
 
@@ -1167,11 +1166,7 @@ Create `frontend/src/pages/PublicProfile.jsx`:
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { getPublicProfile } from '../api/publicClient'
-
-function formatEur(value) {
-  if (value == null) return null
-  return new Intl.NumberFormat('en', { style: 'currency', currency: 'EUR' }).format(value)
-}
+import { formatEur } from '../utils/formatEur'
 
 export default function PublicProfile() {
   const { handle } = useParams()
@@ -1218,7 +1213,7 @@ export default function PublicProfile() {
 }
 ```
 
-- [ ] **Step 5: Wire the routes outside the auth wall**
+- [ ] **Step 7: Wire the routes outside the auth wall**
 
 In `frontend/src/App.jsx`: add lazy imports near the other page imports:
 
@@ -1234,15 +1229,19 @@ Then in the top-level `<Routes>` (the one containing `/login` and `/*`), add the
             <Route path="/u/:handle/binder/:binderId" element={lazyRoute(<PublicBinderView />)} />
 ```
 
-- [ ] **Step 6: Run test to verify it passes**
+- [ ] **Step 8: Build to verify components compile and imports resolve**
 
-Run: `docker run --rm -v "$PWD/frontend":/app -w /app node:20 npx vitest run src/pages/PublicBinderView.test.jsx`
-Expected: PASS.
+Run: `docker run --rm -v "$PWD/frontend":/app -w /app node:20 npm run build`
+Expected: build succeeds. This is the compile/import safety net that replaces a DOM render test (none available in this environment).
 
-- [ ] **Step 7: Commit**
+Then run the full util test suite to confirm no regression:
+Run: `docker run --rm -v "$PWD/frontend":/app -w /app node:20 npx vitest run`
+Expected: all pass (formatEur + publicHandle).
+
+- [ ] **Step 9: Commit**
 
 ```bash
-git add frontend/src/pages/PublicProfile.jsx frontend/src/pages/PublicBinderView.jsx frontend/src/pages/PublicBinderView.test.jsx frontend/src/App.jsx
+git add frontend/src/utils/formatEur.js frontend/src/utils/formatEur.test.js frontend/src/pages/PublicProfile.jsx frontend/src/pages/PublicBinderView.jsx frontend/src/App.jsx
 git commit -m "feat(public-binders): public profile + binder pages and routes"
 ```
 
