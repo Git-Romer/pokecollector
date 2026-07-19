@@ -29,3 +29,36 @@ class PublicBindersModelTests(unittest.TestCase):
         self.assertFalse(user.is_profile_public)
         self.assertFalse(user.public_show_values)
         self.assertFalse(binder.is_public)
+
+
+try:
+    from services.public_profile import validate_handle, HandleError
+    SERVICE_DEPS = True
+except ModuleNotFoundError:
+    SERVICE_DEPS = False
+
+
+@unittest.skipUnless(SERVICE_DEPS, "service deps unavailable")
+class HandleValidationTests(unittest.TestCase):
+    def test_valid_handle_is_normalized(self):
+        self.assertEqual(validate_handle("  Ash-Ketchum "), "ash-ketchum")
+
+    def test_too_short_rejected(self):
+        with self.assertRaises(HandleError):
+            validate_handle("ab")
+
+    def test_bad_chars_rejected(self):
+        with self.assertRaises(HandleError):
+            validate_handle("ash_ketchum")
+
+    def test_leading_hyphen_rejected(self):
+        with self.assertRaises(HandleError):
+            validate_handle("-ash")
+
+    def test_double_hyphen_rejected(self):
+        with self.assertRaises(HandleError):
+            validate_handle("ash--ketchum")
+
+    def test_reserved_rejected(self):
+        with self.assertRaises(HandleError):
+            validate_handle("admin")
