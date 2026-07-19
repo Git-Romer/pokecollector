@@ -238,6 +238,7 @@ class BinderUpdate(BaseModel):
     binder_type: Optional[str] = None
     format: Optional[str] = None
     icon_pokemon_id: Optional[int] = None
+    is_public: Optional[bool] = None
 
 
 class BinderCardUpdate(BaseModel):
@@ -264,6 +265,7 @@ class BinderResponse(BaseModel):
     created_at: Optional[datetime] = None
     card_count: int = 0
     unique_card_count: int = 0
+    is_public: bool = False
 
     class Config:
         from_attributes = True

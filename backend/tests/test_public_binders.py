@@ -243,3 +243,31 @@ class ProfileControlTests(unittest.TestCase):
         u = self._user(db)
         self.assertTrue(handle_available("brand-new", db=db, current_user=u)["available"])
         self.assertFalse(handle_available("ADMIN", db=db, current_user=u)["available"])
+
+
+try:
+    from api.binders import update_binder
+    from schemas import BinderUpdate
+    BINDER_DEPS = True
+except ModuleNotFoundError:
+    BINDER_DEPS = False
+
+
+@unittest.skipUnless(BINDER_DEPS, "binder api deps unavailable")
+class BinderPublicToggleTests(unittest.TestCase):
+    def _db(self):
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        return sessionmaker(bind=engine)()
+
+    def test_update_binder_sets_is_public(self):
+        db = self._db()
+        user = User(username="ash", hashed_password="x", role="trainer", is_active=True)
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        binder = Binder(name="B", user_id=user.id, binder_type="collection")
+        db.add(binder)
+        db.commit()
+        resp = update_binder(binder.id, BinderUpdate(is_public=True), db=db, current_user=user)
+        self.assertTrue(resp.is_public)

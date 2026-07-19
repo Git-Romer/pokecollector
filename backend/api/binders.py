@@ -97,6 +97,7 @@ def _binder_response(binder: Binder, card_count: int = 0, unique_card_count: int
         created_at=binder.created_at,
         card_count=card_count,
         unique_card_count=unique_card_count,
+        is_public=binder.is_public or False,
     )
 
 
@@ -520,6 +521,8 @@ def update_binder(
         binder.format = _clean_binder_format(update.format)
     if "icon_pokemon_id" in update.model_fields_set:
         binder.icon_pokemon_id = update.icon_pokemon_id
+    if update.is_public is not None:
+        binder.is_public = update.is_public
 
     db.commit()
     db.refresh(binder)
