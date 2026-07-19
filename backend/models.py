@@ -140,6 +140,9 @@ class User(Base):
     role = Column(String, default="trainer")  # "admin" or "trainer"
     is_active = Column(Boolean, default=True)
     avatar_id = Column(Integer, nullable=True)  # Pokemon number (1-151) for avatar sprite
+    public_handle = Column(String, unique=True, nullable=True)
+    is_profile_public = Column(Boolean, default=False, nullable=False)
+    public_show_values = Column(Boolean, default=False, nullable=False)
     must_change_password = Column(Boolean, default=False)
     created_at = Column(DateTime, default=func.now())
 
@@ -208,6 +211,7 @@ class Binder(Base):
     binder_type = Column(String, default="collection")  # "collection" or "wishlist"
     format = Column(String, nullable=True)  # "Standard", "Expanded", "Unlimited", "Casual"
     icon_pokemon_id = Column(Integer, nullable=True)
+    is_public = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=func.now())
 
     binder_cards = relationship("BinderCard", back_populates="binder", cascade="all, delete-orphan")

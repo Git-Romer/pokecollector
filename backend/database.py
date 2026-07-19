@@ -375,6 +375,12 @@ def _run_migrations(conn):
                  AND sets.tcg_set_id = cards.set_id
                  AND sets.lang = cards.lang
              )""",
+        # Public binders feature: user profile sharing settings
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS public_handle VARCHAR",
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_public_handle ON users (public_handle)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_profile_public BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS public_show_values BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE binders ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT FALSE",
     ]
     for stmt in migrations:
         try:
