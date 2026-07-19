@@ -133,3 +133,60 @@ class SerializationTests(unittest.TestCase):
         card = detail["cards"][0]
         for banned in ("purchase_price", "condition", "user_id", "username"):
             self.assertNotIn(banned, card)
+
+
+try:
+    from fastapi import HTTPException
+    from api.public import get_public_profile, get_public_binder
+    API_DEPS = True
+except ModuleNotFoundError:
+    API_DEPS = False
+
+
+@unittest.skipUnless(API_DEPS, "api deps unavailable")
+class PublicApiTests(unittest.TestCase):
+    def _db(self):
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        return sessionmaker(bind=engine)()
+
+    def _seed(self, db, **kw):
+        return SerializationTests()._seed(db, **kw)
+
+    def test_unknown_handle_404(self):
+        db = self._db()
+        with self.assertRaises(HTTPException) as ctx:
+            get_public_profile("nobody", db=db)
+        self.assertEqual(ctx.exception.status_code, 404)
+
+    def test_private_profile_404(self):
+        db = self._db()
+        self._seed(db, profile_public=False)
+        with self.assertRaises(HTTPException) as ctx:
+            get_public_profile("ash", db=db)
+        self.assertEqual(ctx.exception.status_code, 404)
+
+    def test_public_profile_returns_binders(self):
+        db = self._db()
+        self._seed(db)
+        result = get_public_profile("ash", db=db)
+        self.assertEqual(result["handle"], "ash")
+        self.assertEqual(len(result["binders"]), 1)
+
+    def test_private_binder_404(self):
+        db = self._db()
+        _, binder = self._seed(db, binder_public=False)
+        with self.assertRaises(HTTPException) as ctx:
+            get_public_binder("ash", binder.id, db=db)
+        self.assertEqual(ctx.exception.status_code, 404)
+
+    def test_cross_owner_binder_404(self):
+        db = self._db()
+        self._seed(db)
+        # A public binder id that belongs to a different (nonexistent) handle path
+        other = Binder(name="Other", user_id=999, binder_type="collection", is_public=True)
+        db.add(other)
+        db.commit()
+        with self.assertRaises(HTTPException) as ctx:
+            get_public_binder("ash", other.id, db=db)
+        self.assertEqual(ctx.exception.status_code, 404)
