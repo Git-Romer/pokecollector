@@ -1,9 +1,10 @@
 import logging
 import datetime
 import math
+from contextlib import contextmanager
 from typing import Any, Mapping
 from sqlalchemy.orm import Session, load_only
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, text
 from models import Card, Set, CollectionItem, WishlistItem, BinderCard, PriceHistory, SyncLog, PortfolioSnapshot, CustomCardMatch, ProductPurchase, User, UserSetting
 from services import pokemon_api, telegram
 from services.card_fallbacks import apply_cross_language_fallbacks, build_missing_language_cards_for_set
@@ -506,6 +507,7 @@ def check_custom_card_matches(db: Session):
 # treated as orphaned (left by a crash or container restart) so a stale row can
 # never block future syncs forever.
 FULL_SYNC_STALE_AFTER = datetime.timedelta(minutes=60)
+FULL_SYNC_ADVISORY_LOCK_ID = 0x506F6B6546756C6C  # "PokeFull" as a signed 64-bit int.
 
 
 def _full_sync_in_progress(db: Session) -> bool:
@@ -523,11 +525,61 @@ def _full_sync_in_progress(db: Session) -> bool:
     ).first() is not None
 
 
+def _db_dialect_name(db: Session) -> str | None:
+    bind = db.get_bind()
+    dialect = getattr(bind, "dialect", None)
+    return getattr(dialect, "name", None)
+
+
+@contextmanager
+def _full_sync_lock(db: Session):
+    """Yield True only when this process owns the full-sync lock.
+
+    PostgreSQL advisory locks are atomic across connections and processes. Keep
+    the lock on a dedicated connection because perform_full_sync intentionally
+    commits throughout a long-running sync, which would release a transaction
+    lock or return a session-level lock to the pool too early.
+    """
+    if _db_dialect_name(db) != "postgresql":
+        yield not _full_sync_in_progress(db)
+        return
+
+    bind = db.get_bind()
+    lock_conn = bind.connect()
+    acquired = False
+    try:
+        acquired = bool(lock_conn.execute(
+            text("SELECT pg_try_advisory_lock(:lock_id)"),
+            {"lock_id": FULL_SYNC_ADVISORY_LOCK_ID},
+        ).scalar())
+        yield acquired
+    finally:
+        if acquired:
+            unlocked = False
+            try:
+                unlocked = bool(lock_conn.execute(
+                    text("SELECT pg_advisory_unlock(:lock_id)"),
+                    {"lock_id": FULL_SYNC_ADVISORY_LOCK_ID},
+                ).scalar())
+                if not unlocked:
+                    logger.warning("Full sync advisory lock was not held at release time")
+            except Exception:
+                logger.exception("Failed to release full sync advisory lock")
+            if not unlocked:
+                lock_conn.invalidate()
+        lock_conn.close()
+
+
 def perform_full_sync(db: Session) -> dict:
     """Perform a full sync cycle: sets + cards + prices."""
-    if _full_sync_in_progress(db):
-        logger.info("Full sync skipped: another full sync is already running")
-        return {"cards_updated": 0, "sets_updated": 0, "status": "skipped"}
+    with _full_sync_lock(db) as lock_acquired:
+        if not lock_acquired or _full_sync_in_progress(db):
+            logger.info("Full sync skipped: another full sync is already running")
+            return {"cards_updated": 0, "sets_updated": 0, "status": "skipped"}
+        return _perform_full_sync_locked(db)
+
+
+def _perform_full_sync_locked(db: Session) -> dict:
     log = SyncLog(started_at=datetime.datetime.utcnow(), status="running", sync_type="full")
     db.add(log)
     db.commit()
@@ -785,6 +837,7 @@ def perform_full_sync(db: Session) -> dict:
 
     except Exception as e:
         logger.error(f"Full sync failed: {e}")
+        db.rollback()
         log.finished_at = datetime.datetime.utcnow()
         log.status = "error"
         log.error_message = str(e)

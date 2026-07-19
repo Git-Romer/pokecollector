@@ -1,5 +1,6 @@
 import datetime
 import unittest
+from unittest.mock import patch
 
 try:
     from sqlalchemy import create_engine
@@ -8,7 +9,9 @@ try:
     from database import Base
     from models import SyncLog
     from services.sync_service import (
+        FULL_SYNC_ADVISORY_LOCK_ID,
         FULL_SYNC_STALE_AFTER,
+        _full_sync_lock,
         _full_sync_in_progress,
         perform_full_sync,
     )
@@ -75,6 +78,135 @@ class FullSyncGuardTests(unittest.TestCase):
         result = perform_full_sync(db)
         self.assertEqual(result["status"], "skipped")
         self.assertEqual(db.query(SyncLog).count(), before)
+
+    def test_postgres_advisory_lock_is_released(self):
+        conn = FakeLockConnection(acquire_result=True)
+        db = FakePostgresDb(conn)
+
+        with _full_sync_lock(db) as acquired:
+            self.assertTrue(acquired)
+
+        self.assertEqual(
+            conn.statements,
+            [
+                ("SELECT pg_try_advisory_lock(:lock_id)", {"lock_id": FULL_SYNC_ADVISORY_LOCK_ID}),
+                ("SELECT pg_advisory_unlock(:lock_id)", {"lock_id": FULL_SYNC_ADVISORY_LOCK_ID}),
+            ],
+        )
+        self.assertTrue(conn.closed)
+
+    def test_postgres_advisory_lock_busy_skips_without_unlock(self):
+        conn = FakeLockConnection(acquire_result=False)
+        db = FakePostgresDb(conn)
+
+        with _full_sync_lock(db) as acquired:
+            self.assertFalse(acquired)
+
+        self.assertEqual(
+            conn.statements,
+            [("SELECT pg_try_advisory_lock(:lock_id)", {"lock_id": FULL_SYNC_ADVISORY_LOCK_ID})],
+        )
+        self.assertTrue(conn.closed)
+        self.assertFalse(conn.invalidated)
+
+    def test_postgres_advisory_lock_invalidates_connection_when_unlock_fails(self):
+        conn = FakeLockConnection(acquire_result=True, unlock_raises=True)
+        db = FakePostgresDb(conn)
+
+        with patch("services.sync_service.logger.exception") as log_exception:
+            with _full_sync_lock(db) as acquired:
+                self.assertTrue(acquired)
+
+        log_exception.assert_called_once()
+        self.assertTrue(conn.invalidated)
+        self.assertTrue(conn.closed)
+
+    def test_postgres_advisory_lock_invalidates_connection_when_unlock_returns_false(self):
+        conn = FakeLockConnection(acquire_result=True, unlock_result=False)
+        db = FakePostgresDb(conn)
+
+        with patch("services.sync_service.logger.warning") as log_warning:
+            with _full_sync_lock(db) as acquired:
+                self.assertTrue(acquired)
+
+        log_warning.assert_called_once()
+        self.assertTrue(conn.invalidated)
+        self.assertTrue(conn.closed)
+
+    def test_perform_full_sync_rolls_back_before_marking_log_error(self):
+        db = self._db()
+        with patch.object(db, "rollback", wraps=db.rollback) as rollback, \
+             patch("services.sync_service.logger.error"), \
+             patch("services.sync_service._get_tcgdex_sync_languages", return_value=["en"]), \
+             patch("services.sync_service.digital_sets_enabled", return_value=False), \
+             patch("services.sync_service.refresh_digital_catalogue_flags", return_value={"sets_marked": 0, "cards_marked": 0}), \
+             patch("services.sync_service.get_pinned_set_language_pairs", return_value=set()), \
+             patch("services.sync_service.pokemon_api.get_all_sets", side_effect=RuntimeError("catalogue failed")):
+            with self.assertRaises(RuntimeError):
+                perform_full_sync(db)
+
+        rollback.assert_called_once()
+        log = db.query(SyncLog).one()
+        self.assertEqual(log.sync_type, "full")
+        self.assertEqual(log.status, "error")
+        self.assertEqual(log.error_message, "catalogue failed")
+
+
+class FakeResult:
+    def __init__(self, value):
+        self.value = value
+
+    def scalar(self):
+        return self.value
+
+
+class FakeLockConnection:
+    def __init__(self, acquire_result, unlock_result=True, unlock_raises=False):
+        self.acquire_result = acquire_result
+        self.unlock_result = unlock_result
+        self.unlock_raises = unlock_raises
+        self.statements = []
+        self.closed = False
+        self.invalidated = False
+
+    def execute(self, statement, params):
+        sql = str(statement)
+        self.statements.append((sql, params))
+        if "pg_try_advisory_lock" in sql:
+            return FakeResult(self.acquire_result)
+        if "pg_advisory_unlock" in sql:
+            if self.unlock_raises:
+                raise RuntimeError("unlock failed")
+            return FakeResult(self.unlock_result)
+        raise AssertionError(f"Unexpected SQL: {sql}")
+
+    def invalidate(self):
+        self.invalidated = True
+
+    def close(self):
+        self.closed = True
+
+
+class FakePostgresDialect:
+    name = "postgresql"
+
+
+class FakePostgresBind:
+    dialect = FakePostgresDialect()
+
+    def __init__(self, conn):
+        self.conn = conn
+
+    def connect(self):
+        return self.conn
+
+
+class FakePostgresDb:
+    def __init__(self, conn):
+        self.bind = FakePostgresBind(conn)
+
+    def get_bind(self):
+        return self.bind
 
 
 if __name__ == "__main__":
