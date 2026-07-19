@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Plus, Check, Trash2, X, Heart, BookMarked } from 'lucide-react'
 import { getSetChecklist, addToCollection, addToWishlist, updateCollectionItem, removeFromCollection, getBinders, createBinder, addOwnedSetToBinder } from '../api/client'
+import { ownedBinderName, findOwnedBinderForSet } from '../utils/ownedBinder'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
@@ -363,12 +364,25 @@ export default function SetDetail() {
     enabled: binderPickerOpen,
   })
 
+  // Synchronous re-entry lock. `disabled={isPending}` is async React state and
+  // does not block a rapid second click before the re-render, which would create
+  // a duplicate binder; this ref blocks it immediately.
+  const addOwnedSubmittingRef = useRef(false)
+
   const addOwnedMutation = useMutation({
     mutationFn: async ({ binderId, setId }) => {
       let targetId = binderId
       if (!targetId) {
-        const created = await createBinder({ name: `${set?.name || setId} (owned)`, binder_type: 'collection' })
-        targetId = created.data.id
+        // Reuse an existing auto-named collection binder for this set instead of
+        // creating another duplicate on repeated use.
+        const name = ownedBinderName(set?.name, setId)
+        const existing = findOwnedBinderForSet(bindersQuery.data, name)
+        if (existing) {
+          targetId = existing.id
+        } else {
+          const created = await createBinder({ name, binder_type: 'collection' })
+          targetId = created.data.id
+        }
       }
       return addOwnedSetToBinder(targetId, setId)
     },
@@ -379,7 +393,14 @@ export default function SetDetail() {
       setBinderPickerOpen(false)
     },
     onError: () => toast.error(t('setDetail.addOwnedToBinderFailed')),
+    onSettled: () => { addOwnedSubmittingRef.current = false },
   })
+
+  const submitAddOwned = (args) => {
+    if (addOwnedSubmittingRef.current) return
+    addOwnedSubmittingRef.current = true
+    addOwnedMutation.mutate(args)
+  }
 
   if (isLoading) {
     return (
@@ -618,7 +639,7 @@ export default function SetDetail() {
                     <button
                       key={b.id}
                       disabled={addOwnedMutation.isPending}
-                      onClick={() => addOwnedMutation.mutate({ binderId: b.id, setId: set.id })}
+                      onClick={() => submitAddOwned({ binderId: b.id, setId: set.id })}
                       className="text-left px-3 py-2 rounded-lg bg-bg-elevated hover:bg-brand-red/10 text-sm text-text-primary disabled:opacity-50"
                     >
                       {b.name}
@@ -627,7 +648,7 @@ export default function SetDetail() {
                 </div>
                 <button
                   disabled={addOwnedMutation.isPending}
-                  onClick={() => addOwnedMutation.mutate({ binderId: null, setId: set.id })}
+                  onClick={() => submitAddOwned({ binderId: null, setId: set.id })}
                   className="btn-primary w-full mt-3 flex items-center justify-center gap-1.5 text-sm disabled:opacity-50"
                 >
                   <Plus size={14} /> {t('setDetail.addOwnedToBinderNew')}
