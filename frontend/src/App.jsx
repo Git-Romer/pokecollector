@@ -29,6 +29,8 @@ const Leaderboard = lazy(() => import('./pages/Leaderboard'))
 const Compare = lazy(() => import('./pages/Compare'))
 const Achievements = lazy(() => import('./pages/Achievements'))
 const UserCollection = lazy(() => import('./pages/UserCollection'))
+const PublicProfile = lazy(() => import('./pages/PublicProfile'))
+const PublicBinderView = lazy(() => import('./pages/PublicBinderView'))
 
 function RouteLoader() {
   return (
@@ -172,6 +174,8 @@ export default function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={lazyRoute(<Login />)} />
+            <Route path="/u/:handle" element={lazyRoute(<PublicProfile />)} />
+            <Route path="/u/:handle/binder/:binderId" element={lazyRoute(<PublicBinderView />)} />
             <Route path="/*" element={<ProtectedRoutes />} />
           </Routes>
         </BrowserRouter>
