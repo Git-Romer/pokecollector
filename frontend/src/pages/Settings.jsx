@@ -1,13 +1,14 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Crown, RefreshCw, Download, Upload, Plus, Pencil, Trash2, User, UserCheck, UserX, Zap } from 'lucide-react'
+import { Crown, RefreshCw, Download, Upload, Plus, Pencil, Trash2, User, UserCheck, UserX, Zap, Copy } from 'lucide-react'
 import {
   getSyncStatus, triggerSync, triggerAllPriceSync, rescheduleFullSync, reschedulePriceSync,
   downloadBackup, restoreBackup, exportCSV,
   getSetting, setSetting, getTelegramStatus, saveSettings, setAuthMode,
   getUsers, createUser, updateUser, deleteUser, changePassword, changeAvatar, changeUsername,
   getContributors, getSupporters, getRescueDonations, getCustomMatches, downloadDebugLog,
+  getProfile, updateProfile, checkHandleAvailable,
 } from '../api/client'
 import api from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
@@ -346,6 +347,34 @@ export default function Settings() {
     queryFn: () => getSetting('gemini_api_key').catch(() => ({ value: '' })),
   })
 
+  // Public profile
+  const [publicHandle, setPublicHandle] = useState('')
+  const [profilePublic, setProfilePublic] = useState(false)
+  const [publicShowValues, setPublicShowValues] = useState(false)
+  const [profileDirty, setProfileDirty] = useState(false)
+  const [handleStatus, setHandleStatus] = useState(null)
+
+  const { data: profileData } = useQuery({
+    queryKey: ['profile'],
+    queryFn: () => getProfile(),
+  })
+
+  useEffect(() => {
+    if (profileData && !profileDirty) {
+      setPublicHandle(profileData.public_handle || '')
+      setProfilePublic(!!profileData.is_profile_public)
+      setPublicShowValues(!!profileData.public_show_values)
+    }
+  }, [profileData])
+
+  useEffect(() => {
+    if (!publicHandle) { setHandleStatus(null); return }
+    const timer = setTimeout(() => {
+      checkHandleAvailable(publicHandle).then(setHandleStatus).catch(() => setHandleStatus(null))
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [publicHandle])
+
 
   const [telegramBotToken, setTelegramBotToken] = useState('')
   const [telegramBotTokenDirty, setTelegramBotTokenDirty] = useState(false)
@@ -443,6 +472,32 @@ export default function Settings() {
     },
     onError: (err) => toast.error(err.response?.data?.detail || t('common.error')),
   })
+
+  const profileMutation = useMutation({
+    mutationFn: (data) => updateProfile(data),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['profile'], data)
+      queryClient.invalidateQueries({ queryKey: ['leaderboard'] })
+      setProfileDirty(false)
+      toast.success(t('settings.saved'))
+    },
+    onError: (err) => toast.error(err.response?.data?.detail || t('settings.saveFailed')),
+  })
+
+  const savePublicProfile = () => {
+    profileMutation.mutate({
+      public_handle: publicHandle || null,
+      is_profile_public: profilePublic,
+      public_show_values: publicShowValues,
+    })
+  }
+
+  const publicProfileUrl = publicHandle ? `${window.location.origin}/u/${publicHandle}` : ''
+
+  const copyPublicProfileUrl = () => {
+    navigator.clipboard.writeText(publicProfileUrl)
+    toast.success(t('settings.linkCopied'))
+  }
 
   const isRunning = syncStatus?.is_running || syncStatus?.is_price_sync_running || syncMutation.isPending || allPriceSyncMutation.isPending
 
@@ -687,6 +742,57 @@ export default function Settings() {
               </SettingsRow>
 
             </SettingsCard>
+          </section>
+
+          {/* ── PUBLIC PROFILE ── */}
+          <section className="space-y-1">
+            <SectionHeader title={t('settings.sectionPublicProfile')} />
+            <SettingsCard>
+              <SettingsRow label={t('settings.publicHandle')} description={t('settings.publicHandleDesc')}>
+                <div className="flex flex-col items-end gap-1 w-full sm:w-56">
+                  <input
+                    type="text"
+                    value={publicHandle}
+                    onChange={(e) => { setPublicHandle(e.target.value.toLowerCase()); setProfileDirty(true) }}
+                    placeholder="ash-ketchum"
+                    className="input text-xs font-mono w-full"
+                    maxLength={32}
+                  />
+                  {handleStatus && (
+                    <span className={`text-[11px] font-semibold ${handleStatus.available ? 'text-green' : 'text-brand-red'}`}>
+                      {handleStatus.available ? t('settings.handleAvailable') : (handleStatus.reason || t('settings.handleTaken'))}
+                    </span>
+                  )}
+                </div>
+              </SettingsRow>
+              <SettingsRow label={t('settings.publicProfileToggle')} description={t('settings.publicProfileToggleDesc')}>
+                <Toggle value={profilePublic} onChange={(val) => { setProfilePublic(val); setProfileDirty(true) }} />
+              </SettingsRow>
+              <SettingsRow label={t('settings.publicShowValues')} description={t('settings.publicShowValuesDesc')} last={!(profilePublic && publicHandle)}>
+                <Toggle value={publicShowValues} onChange={(val) => { setPublicShowValues(val); setProfileDirty(true) }} />
+              </SettingsRow>
+              {profilePublic && publicHandle && (
+                <SettingsRow label={t('settings.publicProfileLink')} description={publicProfileUrl} last>
+                  <button
+                    type="button"
+                    onClick={copyPublicProfileUrl}
+                    className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity flex-shrink-0"
+                    style={{ background: 'rgba(255,255,255,0.07)', color: '#90a4ae', border: '1px solid rgba(255,255,255,0.1)' }}
+                  >
+                    <Copy size={13} /> {t('common.copy')}
+                  </button>
+                </SettingsRow>
+              )}
+            </SettingsCard>
+            <div className="flex justify-end px-1">
+              <button
+                onClick={savePublicProfile}
+                disabled={profileMutation.isPending}
+                className="btn-primary-sm"
+              >
+                {profileMutation.isPending ? t('common.saving') : t('common.save')}
+              </button>
+            </div>
           </section>
 
           {/* ── 2. THEME ── */}

@@ -94,6 +94,7 @@ const en = {
     no: 'No',
     ok: 'OK',
     close: 'Close',
+    copy: 'Copy',
     new: 'NEW',
     seen: 'Seen',
     all: 'All',
@@ -441,6 +442,10 @@ const en = {
     createFailed: 'Failed to create binder',
     updateFailed: 'Failed to update binder',
     deleteConfirm: 'Delete binder?',
+    sharePublicly: 'Share publicly',
+    publicUpdated: 'Sharing setting updated',
+    enablePublicProfileHint: 'Enable your public profile in Settings to share',
+    copyPublicLink: 'Copy public link',
   },
 
   // Analytics
@@ -701,6 +706,17 @@ const en = {
     sectionData: 'Data',
     sectionAI: 'AI / Card Scanner',
     sectionAbout: 'About the App',
+    sectionPublicProfile: 'Public Profile',
+    publicHandle: 'Handle',
+    publicHandleDesc: 'Your public URL slug (letters, numbers, hyphens)',
+    handleAvailable: 'Available',
+    handleTaken: 'Handle is taken',
+    publicProfileToggle: 'Make my profile public',
+    publicProfileToggleDesc: 'Anyone with the link can view your public binders',
+    publicShowValues: 'Show card market values',
+    publicShowValuesDesc: 'Include estimated prices on your public profile',
+    publicProfileLink: 'Public link',
+    linkCopied: 'Link copied',
     // Settings page row labels
     multiUserMode: 'Multi-User Mode',
     multiUserModeDesc: 'Enable login screen and user management',
@@ -1144,6 +1160,7 @@ const en = {
     noTrainers: 'No trainers found.',
     compare: 'Compare trainers',
     viewCollection: 'View Collection',
+    viewPublicProfile: 'View public profile',
   },
 
   trainerCard: {

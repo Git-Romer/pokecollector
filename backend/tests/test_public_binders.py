@@ -193,7 +193,7 @@ class PublicApiTests(unittest.TestCase):
 
 
 try:
-    from api.profile import update_profile, handle_available
+    from api.profile import update_profile, handle_available, get_profile
     from schemas import ProfileUpdate
     PROFILE_DEPS = True
 except ModuleNotFoundError:
@@ -243,6 +243,16 @@ class ProfileControlTests(unittest.TestCase):
         u = self._user(db)
         self.assertTrue(handle_available("brand-new", db=db, current_user=u)["available"])
         self.assertFalse(handle_available("ADMIN", db=db, current_user=u)["available"])
+
+    def test_get_profile_returns_current_user_values(self):
+        db = self._db()
+        u = self._user(db)
+        update_profile(ProfileUpdate(public_handle="Ash-K", is_profile_public=True, public_show_values=True),
+                       db=db, current_user=u)
+        result = get_profile(current_user=u)
+        self.assertEqual(result["public_handle"], "ash-k")
+        self.assertTrue(result["is_profile_public"])
+        self.assertTrue(result["public_show_values"])
 
 
 try:

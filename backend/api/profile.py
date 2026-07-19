@@ -18,6 +18,11 @@ def _serialize_owner(user: User) -> dict:
     }
 
 
+@router.get("/")
+def get_profile(current_user: User = Depends(get_current_user)):
+    return _serialize_owner(current_user)
+
+
 @router.get("/handle-available")
 def handle_available(handle: str = Query(...), db: Session = Depends(get_db),
                      current_user: User = Depends(get_current_user)):
