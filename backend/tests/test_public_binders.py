@@ -190,3 +190,56 @@ class PublicApiTests(unittest.TestCase):
         with self.assertRaises(HTTPException) as ctx:
             get_public_binder("ash", other.id, db=db)
         self.assertEqual(ctx.exception.status_code, 404)
+
+
+try:
+    from api.profile import update_profile, handle_available
+    from schemas import ProfileUpdate
+    PROFILE_DEPS = True
+except ModuleNotFoundError:
+    PROFILE_DEPS = False
+
+
+@unittest.skipUnless(PROFILE_DEPS, "profile api deps unavailable")
+class ProfileControlTests(unittest.TestCase):
+    def _db(self):
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        return sessionmaker(bind=engine)()
+
+    def _user(self, db, username="ash"):
+        u = User(username=username, hashed_password="x", role="trainer", is_active=True)
+        db.add(u)
+        db.commit()
+        db.refresh(u)
+        return u
+
+    def test_set_handle_and_publish(self):
+        db = self._db()
+        u = self._user(db)
+        result = update_profile(ProfileUpdate(public_handle="Ash-K", is_profile_public=True),
+                                db=db, current_user=u)
+        self.assertEqual(result["public_handle"], "ash-k")
+        self.assertTrue(result["is_profile_public"])
+
+    def test_invalid_handle_422(self):
+        db = self._db()
+        u = self._user(db)
+        with self.assertRaises(HTTPException) as ctx:
+            update_profile(ProfileUpdate(public_handle="a"), db=db, current_user=u)
+        self.assertEqual(ctx.exception.status_code, 422)
+
+    def test_duplicate_handle_409(self):
+        db = self._db()
+        taken = self._user(db, "misty")
+        update_profile(ProfileUpdate(public_handle="star"), db=db, current_user=taken)
+        me = self._user(db, "ash")
+        with self.assertRaises(HTTPException) as ctx:
+            update_profile(ProfileUpdate(public_handle="star"), db=db, current_user=me)
+        self.assertEqual(ctx.exception.status_code, 409)
+
+    def test_handle_available_check(self):
+        db = self._db()
+        u = self._user(db)
+        self.assertTrue(handle_available("brand-new", db=db, current_user=u)["available"])
+        self.assertFalse(handle_available("ADMIN", db=db, current_user=u)["available"])
