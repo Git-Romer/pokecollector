@@ -16,6 +16,7 @@ from services.card_fallbacks import (
     build_missing_language_cards_for_set,
     missing_language_fallback_enabled,
 )
+from services.card_numbers import natural_card_number_key
 from services.card_upsert import upsert_card
 from services.card_visibility import get_configured_sync_languages, visible_set_filter
 from services.digital_sets import digital_sets_enabled
@@ -24,31 +25,9 @@ from services.tcgdex_languages import DEFAULT_TCGDEX_SYNC_LANGUAGES, has_lang_su
 
 router = APIRouter()
 
-_NATURAL_SORT_RE = re.compile(r"(\d+|\D+)")
-
 
 class MarkSetsSeenRequest(BaseModel):
     set_ids: Optional[List[str]] = None
-
-
-def _natural_card_number_key(number: Optional[str]) -> tuple:
-    """Sort card numbers naturally while preserving alphanumeric formats.
-
-    Examples:
-    - 1, 2, 10 instead of 1, 10, 2
-    - 001, 002, 010 still sort correctly
-    - 74, 74a, 74b and H04 are handled without converting the display value
-    """
-    if number is None:
-        return ((2, ""),)
-
-    parts = []
-    for part in _NATURAL_SORT_RE.findall(str(number).strip()):
-        if part.isdigit():
-            parts.append((0, int(part), len(part), part))
-        else:
-            parts.append((1, part.casefold()))
-    return tuple(parts) or ((2, ""),)
 
 
 def _refresh_sets(db: Session, display_lang: str):
@@ -257,7 +236,7 @@ def get_set_checklist(
             db.rollback()
         cards = query_set_cards()
 
-    cards.sort(key=lambda card: _natural_card_number_key(card.number))
+    cards.sort(key=lambda card: natural_card_number_key(card.number))
 
     # Get exact owned collection rows so the UI can safely remove/decrement the
     # right variant/condition instead of treating ownership as a single boolean.

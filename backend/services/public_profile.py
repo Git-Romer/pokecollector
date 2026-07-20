@@ -31,6 +31,7 @@ def validate_handle(raw: str) -> str:
 from sqlalchemy.orm import joinedload
 
 from models import User, Binder, BinderCard, Card, UserSetting
+from services.card_numbers import natural_card_number_key
 from services.card_values import effective_market_price
 
 _DEFAULT_TRAINER_NAME = "TRAINER"
@@ -70,19 +71,28 @@ def public_collection_binders(db, user: User) -> list[Binder]:
 
 
 def _binder_cards(db, binder: Binder) -> list[BinderCard]:
-    # Order matches the owner's own binder view (api/binders.get_binder_cards):
-    # newest-added first. Eager-load the card, its set, and the linked collection
-    # item so per-card variant/value reads don't issue a query each.
-    return (
+    # Present cards in natural collector order: by set, then card number
+    # (1, 2, 10 — not 1, 10, 2), then variant so same-number prints stay grouped.
+    # Natural number ordering can't be expressed in SQL, so sort in Python;
+    # eager-load the card, its set, and the linked collection item so per-card
+    # number/variant/value reads don't issue a query each.
+    cards = (
         db.query(BinderCard)
         .options(
             joinedload(BinderCard.card).joinedload(Card.set_ref),
             joinedload(BinderCard.collection_item),
         )
         .filter(BinderCard.binder_id == binder.id)
-        .order_by(BinderCard.added_at.desc())
         .all()
     )
+    return sorted(cards, key=_card_sort_key)
+
+
+def _card_sort_key(bc: BinderCard) -> tuple:
+    card = bc.card
+    set_id = (card.set_id or "") if card else ""
+    number_key = natural_card_number_key(card.number if card else None)
+    return (set_id, number_key, _card_variant(bc) or "")
 
 
 def _card_variant(bc: BinderCard) -> str | None:

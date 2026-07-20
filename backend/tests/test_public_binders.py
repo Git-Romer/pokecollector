@@ -155,22 +155,25 @@ class SerializationTests(unittest.TestCase):
         detail = pp.serialize_binder_detail(db, binder, show_values=False)
         self.assertIsNone(detail["cards"][0]["variant"])
 
-    def test_binder_detail_orders_by_added_at_desc(self):
-        from datetime import datetime, timedelta
+    def test_binder_detail_orders_by_card_number_naturally(self):
+        from datetime import datetime
         db = self._db()
-        _, binder = self._seed(db)
-        db.add(Card(id="sv1-2_en", tcg_card_id="sv1-2", name="Floragato", set_id="sv1",
-                    number="2", lang="en", rarity="Common", price_trend=6.0))
+        _, binder = self._seed(db)  # seed card is number "1", added first
+        # Add cards whose numbers, sorted as strings, would interleave wrongly
+        # (10 before 2), and whose add order is the reverse of number order.
+        db.add_all([
+            Card(id="sv1-10_en", tcg_card_id="sv1-10", name="Ten", set_id="sv1",
+                 number="10", lang="en", rarity="Common", price_trend=1.0),
+            Card(id="sv1-2_en", tcg_card_id="sv1-2", name="Two", set_id="sv1",
+                 number="2", lang="en", rarity="Common", price_trend=1.0),
+        ])
         db.commit()
-        # Existing seed card was added first; add a newer card explicitly.
-        old = db.query(BinderCard).filter(BinderCard.binder_id == binder.id).first()
-        old.added_at = datetime(2026, 1, 1)
-        db.add(BinderCard(binder_id=binder.id, card_id="sv1-2_en", required_quantity=1,
-                          added_at=datetime(2026, 6, 1)))
+        db.query(BinderCard).filter(BinderCard.binder_id == binder.id).first().added_at = datetime(2026, 1, 1)
+        db.add(BinderCard(binder_id=binder.id, card_id="sv1-10_en", required_quantity=1, added_at=datetime(2026, 2, 1)))
+        db.add(BinderCard(binder_id=binder.id, card_id="sv1-2_en", required_quantity=1, added_at=datetime(2026, 3, 1)))
         db.commit()
         detail = pp.serialize_binder_detail(db, binder, show_values=False)
-        names = [c["name"] for c in detail["cards"]]
-        self.assertEqual(names, ["Floragato", "Sprigatito"])  # newest first
+        self.assertEqual([c["number"] for c in detail["cards"]], ["1", "2", "10"])
 
 
 try:
