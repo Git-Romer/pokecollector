@@ -1,7 +1,15 @@
 import { webDarkTheme, webLightTheme } from '@fluentui/react-components'
 
+// Shared across both themes. These carry the values that index.css
+// previously forced onto .fui-Button / .fui-Input with !important.
+const archiveBase = {
+  fontFamilyBase: "'Inter', system-ui, sans-serif",
+  borderRadiusMedium: '8px',
+}
+
 export const archiveDarkTheme = {
   ...webDarkTheme,
+  ...archiveBase,
   colorBrandBackground: '#F58220',
   colorBrandBackgroundHover: '#FF9B4A',
   colorBrandBackgroundPressed: '#C55E10',
@@ -19,6 +27,7 @@ export const archiveDarkTheme = {
 
 export const archiveLightTheme = {
   ...webLightTheme,
+  ...archiveBase,
   colorBrandBackground: '#C55E10',
   colorBrandBackgroundHover: '#A54E0D',
   colorBrandBackgroundPressed: '#7C3909',

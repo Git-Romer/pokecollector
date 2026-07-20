@@ -95,27 +95,31 @@ h1, h2, h3, .mag-heading {
   }
 }
 
-/* Buttons */
+/* Buttons
+   font-family and border-radius now come from archiveTheme.js
+   (fontFamilyBase, borderRadiusMedium). text-transform and the hover
+   transform were no-ops — Fluent v9 applies neither.
+
+   The remaining declarations still need !important to outrank Griffel's
+   injected styles. Retiring them means reconciling the app's surface
+   model with Fluent's: buttons want #0A0A0A while the canvas is #000000,
+   but Fluent draws both from colorNeutralBackground1. That is a design
+   decision, not a mechanical refactor — see the audit's finding F3. */
 .fui-Button {
   background-color: var(--color-surface) !important;
   color: var(--color-text-primary) !important;
-  border-radius: 8px !important;
   border: 1px solid var(--color-border) !important;
-  font-family: 'Inter', sans-serif !important;
   font-weight: 600 !important;
-  text-transform: none !important;
   box-shadow: none !important;
 }
 
 .fui-Button:hover {
   background-color: rgba(255,255,255,0.1) !important;
-  transform: none !important;
   box-shadow: none !important;
 }
 
 /* Input */
 .fui-Input {
-  border-radius: 8px !important;
   border: 1px solid var(--color-border) !important;
   box-shadow: none !important;
   background: var(--color-surface) !important;
