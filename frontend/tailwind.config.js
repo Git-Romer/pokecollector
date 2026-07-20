@@ -20,23 +20,15 @@ export default {
           subtle: 'rgba(255,255,255,0.03)',
         },
         text: {
-          primary: '#ffffff',
-          secondary: '#a0a0b8',
-          muted: '#606078',
+          primary: 'var(--color-text-primary)',
+          secondary: 'var(--color-text-secondary)',
+          muted: 'var(--color-text-muted)',
         },
         // Archive semantic aliases retained while existing spaces are refit.
         brand: {
           red: 'rgb(var(--color-brand-red-rgb) / <alpha-value>)',
           'red-light': 'var(--color-brand-red-light)',
           'red-dark': 'var(--color-brand-red-dark)',
-        },
-        // Dark theme legacy aliases
-        dark: {
-          bg: '#08080f',
-          surface: '#0f0f1a',
-          card: '#141422',
-          border: 'rgba(255,255,255,0.07)',
-          hover: '#1a1a2e',
         },
         // Semantic status colors
         green: {

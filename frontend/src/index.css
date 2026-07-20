@@ -8,9 +8,12 @@
   --color-bg: #000000;
   --color-surface: #0A0A0A;
   --color-border: #333333;
+  /* Text ramp. tailwind.config.js reads these rather than holding literals,
+     which previously meant .text-text-primary was a hardcoded white with no
+     light-theme counterpart. Dark values match those former literals. */
   --color-text-primary: #FFFFFF;
-  --color-text-secondary: #CCCCCC;
-  --color-text-muted: #888888;
+  --color-text-secondary: #a0a0b8;
+  --color-text-muted: #606078;
 
   /* Surfaces referenced by tailwind.config.js (bg-card, bg-elevated).
      Aliased onto the archive palette so the light theme switches with it. */
@@ -38,6 +41,12 @@
   --color-brand-red-rgb: 197 94 16;
   --color-brand-red-light: #A54E0D;
   --color-brand-red-dark: #7C3909;
+
+  /* Warm ink drawn from the archive light palette. Contrast on the
+     #FFF9F4 canvas: primary ~15:1, secondary ~7.8:1, muted ~5:1. */
+  --color-text-primary: #241E19;
+  --color-text-secondary: #594D42;
+  --color-text-muted: #7A6A5C;
 }
 
 body {
