@@ -232,6 +232,24 @@ class PublicApiTests(unittest.TestCase):
             get_public_binder("ash", other.id, db=db)
         self.assertEqual(ctx.exception.status_code, 404)
 
+    def test_success_sets_short_revalidating_cache(self):
+        from fastapi import Response
+        db = self._db()
+        _, binder = self._seed(db)
+        resp = Response()
+        get_public_binder("ash", binder.id, db=db, response=resp)
+        cc = resp.headers["Cache-Control"]
+        self.assertIn("max-age=30", cc)
+        self.assertIn("must-revalidate", cc)
+
+    def test_not_found_does_not_set_cache(self):
+        from fastapi import Response
+        db = self._db()  # no seed → unknown handle
+        resp = Response()
+        with self.assertRaises(HTTPException):
+            get_public_binder("ash", 1, db=db, response=resp)
+        self.assertNotIn("Cache-Control", resp.headers)
+
 
 try:
     from api.profile import update_profile, handle_available, get_profile
