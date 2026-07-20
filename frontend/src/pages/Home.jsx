@@ -48,20 +48,21 @@ export default function Home() {
     {loading && <div className="archive-loading" role="status" aria-live="polite"><span className="archive-loading-orbit" aria-hidden="true" /><SplitText text="John John is opening the collection..." delay={30} /></div>}
     
 {recent.length > 0 && (
-  <div className="flex flex-col md:flex-row items-center gap-12 my-12 relative overflow-hidden p-8 border-4 border-black bg-white" style={{boxShadow: '10px 10px 0 #00B4D8'}}>
-    <div className="flex-1 z-10 relative">
-      <span className="mag-issue">VOL. 01</span>
-      <h2 className="text-6xl font-bold text-text-primary mag-heading uppercase leading-none mt-2">
+  <div className="archive-featured">
+    <div className="archive-featured-copy">
+      <span className="mag-issue">VOL. 01 · THE LATEST DROPS</span>
+      <h2 className="text-5xl font-bold text-text-primary mag-heading uppercase leading-none mt-2">
         <SplitText text="THE LATEST DROPS" delay={40} />
       </h2>
-      <p className="mt-4 text-xl font-bold border-l-4 border-black pl-4">
+      <p className="archive-featured-note">
         Fresh ink. New arrivals straight to the archive.
       </p>
-      <Link className="mt-6 inline-block bg-black text-white px-6 py-3 font-bold uppercase tracking-wider hover:-translate-y-1 transition-transform" style={{boxShadow: '4px 4px 0 #03045E'}} to="/collection">
+      {featured?.name && <p className="archive-featured-card">John John filed <strong>{featured.name}</strong> first.</p>}
+      <Link className="archive-featured-action" to="/collection">
         Access Full Archive
       </Link>
     </div>
-    <ColorBends className="flex-1 relative hidden md:block min-h-[300px]" opacity={0.6}>
+    <ColorBends className="archive-featured-orbit" opacity={0.6}>
       <div className="mag-barcode">7390284719204</div>
       <OrbitImages 
         images={recent.slice(0, 5).map(c => c.image_url || c.image || '/cardback.jpg')} 

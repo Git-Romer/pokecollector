@@ -6,7 +6,6 @@ import clsx from 'clsx'
 import ArchiveCommandBar from './ArchiveCommandBar'
 import JohnJohnSignal from './JohnJohnSignal'
 import { PRIMARY_ARCHIVE_DESTINATIONS } from './archiveNavigation'
-import Grainient from './reactbits/Grainient'
 import ShinyText from './reactbits/ShinyText'
 
 const ICONS = { collection: CollectionsRegular, search: SearchRegular, sets: TableRegular, analytics: DataBarVerticalRegular, settings: SettingsRegular }
@@ -33,7 +32,8 @@ export default function ArchiveShell() {
   }, [])
 
   return (
-    <Grainient className="archive-shell min-h-dvh">
+    <div className="archive-shell min-h-dvh">
+      <div className="archive-ambient" aria-hidden="true" />
       <aside className="archive-rail hidden lg:flex" aria-label="Primary navigation">
         <NavLink to="/collection" className="archive-wordmark" aria-label="John John's PC, Collection Overview"><span>JJ</span><strong><ShinyText text="John John's PC" speed={5} /></strong></NavLink>
         <nav className="archive-nav">
@@ -60,6 +60,6 @@ export default function ArchiveShell() {
         ))}
       </nav>
       <ArchiveCommandBar open={commandOpen} onClose={() => setCommandOpen(false)} />
-    </Grainient>
+    </div>
   )
 }
