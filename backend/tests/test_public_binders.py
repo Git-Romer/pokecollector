@@ -134,6 +134,44 @@ class SerializationTests(unittest.TestCase):
         for banned in ("purchase_price", "condition", "user_id", "username"):
             self.assertNotIn(banned, card)
 
+    def test_serialized_card_includes_variant(self):
+        from models import CollectionItem
+        db = self._db()
+        _, binder = self._seed(db)
+        # Link the binder card to a collection item carrying a variant.
+        item = CollectionItem(card_id="sv1-1_en", user_id=1, quantity=2,
+                              variant="Reverse Holo", condition="NM")
+        db.add(item)
+        db.commit()
+        bc = db.query(BinderCard).filter(BinderCard.binder_id == binder.id).first()
+        bc.collection_item_id = item.id
+        db.commit()
+        detail = pp.serialize_binder_detail(db, binder, show_values=False)
+        self.assertEqual(detail["cards"][0]["variant"], "Reverse Holo")
+
+    def test_serialized_card_variant_defaults_none_without_collection_item(self):
+        db = self._db()
+        _, binder = self._seed(db)  # seed BinderCard has no collection_item_id
+        detail = pp.serialize_binder_detail(db, binder, show_values=False)
+        self.assertIsNone(detail["cards"][0]["variant"])
+
+    def test_binder_detail_orders_by_added_at_desc(self):
+        from datetime import datetime, timedelta
+        db = self._db()
+        _, binder = self._seed(db)
+        db.add(Card(id="sv1-2_en", tcg_card_id="sv1-2", name="Floragato", set_id="sv1",
+                    number="2", lang="en", rarity="Common", price_trend=6.0))
+        db.commit()
+        # Existing seed card was added first; add a newer card explicitly.
+        old = db.query(BinderCard).filter(BinderCard.binder_id == binder.id).first()
+        old.added_at = datetime(2026, 1, 1)
+        db.add(BinderCard(binder_id=binder.id, card_id="sv1-2_en", required_quantity=1,
+                          added_at=datetime(2026, 6, 1)))
+        db.commit()
+        detail = pp.serialize_binder_detail(db, binder, show_values=False)
+        names = [c["name"] for c in detail["cards"]]
+        self.assertEqual(names, ["Floragato", "Sprigatito"])  # newest first
+
 
 try:
     from fastapi import HTTPException

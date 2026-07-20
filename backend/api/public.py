@@ -24,6 +24,7 @@ class PublicCard(BaseModel):
     set_name: Optional[str] = None
     number: Optional[str] = None
     rarity: Optional[str] = None
+    variant: Optional[str] = None
     quantity: int
     market_value: Optional[float] = None
 

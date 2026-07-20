@@ -28,6 +28,8 @@ def validate_handle(raw: str) -> str:
     return handle
 
 
+from sqlalchemy.orm import joinedload
+
 from models import User, Binder, BinderCard, Card, UserSetting
 from services.card_values import effective_market_price
 
@@ -68,13 +70,30 @@ def public_collection_binders(db, user: User) -> list[Binder]:
 
 
 def _binder_cards(db, binder: Binder) -> list[BinderCard]:
-    return db.query(BinderCard).filter(BinderCard.binder_id == binder.id).all()
+    # Order matches the owner's own binder view (api/binders.get_binder_cards):
+    # newest-added first. Eager-load the card, its set, and the linked collection
+    # item so per-card variant/value reads don't issue a query each.
+    return (
+        db.query(BinderCard)
+        .options(
+            joinedload(BinderCard.card).joinedload(Card.set_ref),
+            joinedload(BinderCard.collection_item),
+        )
+        .filter(BinderCard.binder_id == binder.id)
+        .order_by(BinderCard.added_at.desc())
+        .all()
+    )
+
+
+def _card_variant(bc: BinderCard) -> str | None:
+    return bc.collection_item.variant if bc.collection_item else None
 
 
 def _serialize_card(bc: BinderCard, show_values: bool) -> dict:
     card = bc.card
     quantity = bc.required_quantity or 1
-    value = effective_market_price(card, None, _PRICE_FIELD) if show_values else None
+    variant = _card_variant(bc)
+    value = effective_market_price(card, variant, _PRICE_FIELD) if show_values else None
     return {
         "id": card.id,
         "name": card.name,
@@ -82,6 +101,7 @@ def _serialize_card(bc: BinderCard, show_values: bool) -> dict:
         "set_name": card.set_ref.name if card.set_ref else None,
         "number": card.number,
         "rarity": card.rarity,
+        "variant": variant,
         "quantity": quantity,
         "market_value": value,
     }
@@ -94,7 +114,7 @@ def serialize_binder_summary(db, binder: Binder, show_values: bool) -> dict:
     total_value = None
     if show_values:
         total_value = round(sum(
-            effective_market_price(bc.card, None, _PRICE_FIELD) * (bc.required_quantity or 1)
+            effective_market_price(bc.card, _card_variant(bc), _PRICE_FIELD) * (bc.required_quantity or 1)
             for bc in cards if bc.card
         ), 2)
     return {

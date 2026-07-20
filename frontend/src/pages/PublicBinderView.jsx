@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { getPublicBinder } from '../api/publicClient'
 import { formatEur } from '../utils/formatEur'
+import VariantPills from '../components/VariantPills'
 
 export default function PublicBinderView() {
   const { handle, binderId } = useParams()
@@ -29,8 +30,8 @@ export default function PublicBinderView() {
         )}
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-        {binder.cards.map(card => (
-          <div key={card.id} className="rounded-lg border border-border p-2">
+        {binder.cards.map((card, i) => (
+          <div key={`${card.id}-${card.variant || ''}-${i}`} className="rounded-lg border border-border p-2">
             {card.image
               ? <img src={card.image} alt={card.name} className="w-full rounded" loading="lazy" />
               : <div className="aspect-[3/4] bg-bg-secondary rounded" />}
@@ -38,6 +39,9 @@ export default function PublicBinderView() {
             <div className="text-xs text-text-secondary">
               {card.set_name} · #{card.number}{card.quantity > 1 ? ` · ×${card.quantity}` : ''}
             </div>
+            {card.variant && (
+              <VariantPills rows={[{ variant: card.variant, quantity: card.quantity }]} className="mt-1" />
+            )}
             {card.market_value != null && (
               <div className="text-xs font-semibold">{formatEur(card.market_value)}</div>
             )}
