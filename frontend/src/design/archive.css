@@ -76,19 +76,19 @@ body {
   background-size: 48px 48px;
   mask-image: linear-gradient(to bottom, black, transparent 72%);
 }
-.archive-rail { position: sticky; top: 0; height: 100dvh; width: 17rem; flex: 0 0 17rem; flex-direction: column; padding: 1.25rem 1rem; border-right: 1px solid var(--archive-border); background: color-mix(in srgb, var(--archive-surface) 88%, transparent); backdrop-filter: blur(18px); }
-.archive-wordmark { display: flex; align-items: center; gap: .75rem; padding: .5rem .75rem 2rem; color: var(--archive-text); text-decoration: none; }
+.archive-rail { position: sticky; top: 0; z-index: 10; height: 100dvh; width: 17rem; flex: 0 0 17rem; flex-direction: column; padding: 1.25rem 1rem; border-right: 1px solid var(--archive-border); background: color-mix(in srgb, var(--archive-surface) 88%, transparent); backdrop-filter: blur(18px); }
+.archive-wordmark { display: flex; align-items: center; gap: .75rem; padding: .5rem .75rem 2rem; color: var(--archive-text); font-size: 1.5rem; font-weight: 900; text-decoration: none; }
 .archive-wordmark span, .john-john-mark { display: inline-grid; place-items: center; width: 2rem; height: 2rem; border-radius: .65rem; background: var(--archive-signal); color: #07101e; font-size: .72rem; font-weight: 800; letter-spacing: -.08em; }
-.archive-nav { display: grid; gap: .35rem; align-content: start; }
-.archive-nav-link, .archive-mobile-link { display: flex; align-items: center; gap: .75rem; border-radius: .6rem; color: var(--archive-muted); font-weight: 600; }
+.archive-nav { display: grid; flex: 1; gap: .35rem; align-content: start; }
+.archive-nav-link, .archive-mobile-link { display: flex; align-items: center; gap: .75rem; border-radius: .6rem; color: var(--archive-muted); font-weight: 600; text-decoration: none; transition: background-color 180ms ease, color 180ms ease; }
 .archive-nav-link { padding: .75rem; }
 .archive-nav-link:hover, .archive-nav-link-active { background: color-mix(in srgb, var(--archive-signal) 13%, transparent); color: var(--archive-text); }
 .archive-rail-footer { margin-top: auto; display: flex; align-items: center; gap: .5rem; color: var(--archive-muted); font-size: .75rem; padding: .75rem; }
 .john-john-signal { position: relative; min-width: 2.75rem; }
 .john-john-presence { position: absolute; width: .45rem; height: .45rem; right: .32rem; bottom: .32rem; border: 2px solid var(--archive-surface); border-radius: 999px; background: #6ccb8b; }
-.archive-content { width: min(100%, 100rem); flex: 1 1 auto; min-width: 0; min-height: 100dvh; }
-.archive-toolbar { position: sticky; top: 0; z-index: 30; min-height: 4.5rem; padding: 0 1.5rem; border-bottom: 1px solid var(--archive-border); background: color-mix(in srgb, var(--archive-canvas) 82%, transparent); backdrop-filter: blur(18px); }
-.archive-main { width: min(100%, 92rem); margin: 0 auto; padding: 2rem clamp(1.25rem, 3vw, 2.5rem); padding-bottom: 6rem; }
+.archive-content { display: flex; flex-direction: column; width: min(100%, 100rem); flex: 1 1 auto; min-width: 0; min-height: 100dvh; }
+.archive-toolbar { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; min-height: 4.5rem; padding: 0 1.5rem; border-bottom: 1px solid var(--archive-border); background: color-mix(in srgb, var(--archive-canvas) 82%, transparent); backdrop-filter: blur(18px); }
+.archive-main { width: min(100%, 92rem); margin: 0 auto; flex: 1; overflow-y: auto; padding: 2rem clamp(1.25rem, 3vw, 2.5rem); padding-bottom: 6rem; }
 .archive-mobile-nav { position: fixed; z-index: 50; right: 0; bottom: 0; left: 0; display: grid; grid-template-columns: repeat(5, 1fr); padding: .4rem max(.6rem, env(safe-area-inset-right)) calc(.4rem + env(safe-area-inset-bottom)) max(.6rem, env(safe-area-inset-left)); border-top: 1px solid var(--archive-border); background: color-mix(in srgb, var(--archive-surface) 94%, transparent); backdrop-filter: blur(18px); }
 .archive-mobile-link { min-height: 3.6rem; flex-direction: column; justify-content: center; gap: .2rem; font-size: .67rem; }
 .archive-mobile-link-active { color: var(--archive-signal); }

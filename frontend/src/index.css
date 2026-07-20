@@ -55,81 +55,9 @@ h1, h2, h3, .mag-heading {
   letter-spacing: -0.02em;
 }
 
-.archive-shell {
-  display: flex;
-  flex-direction: column;
-}
-
-@media (min-width: 1024px) {
-  .archive-shell {
-    flex-direction: row;
-  }
-}
-
-.archive-rail {
-  width: 280px;
-  background: var(--color-bg);
-  border-right: 1px solid var(--color-border);
-  padding: 2rem;
-  flex-direction: column;
-  z-index: 10;
-}
-
-.archive-wordmark {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  font-size: 1.5rem;
-  color: var(--color-text-primary);
-  text-decoration: none;
-  margin-bottom: 3rem;
-  font-weight: 900;
-}
-
-.archive-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  flex: 1;
-}
-
-.archive-nav-link {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.75rem 1rem;
-  color: var(--color-text-secondary);
-  text-decoration: none;
-  font-weight: 600;
-  border-radius: 8px;
-  transition: all 0.2s;
-}
-
-.archive-nav-link:hover, .archive-nav-link-active {
-  background: rgba(255,255,255,0.1);
-  color: var(--color-text-primary);
-}
-
-.archive-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.archive-toolbar {
-  padding: 1rem 2rem;
-  background: var(--color-bg);
-  border-bottom: 1px solid var(--color-border);
-  display: flex;
-  align-items: center;
-}
-
-.archive-main {
-  flex: 1;
-  padding: 2rem;
-  overflow-y: auto;
-}
+/* The application shell lives entirely in design/archive.css. An earlier
+   copy of these rules sat here and was overridden by import order alone;
+   its unique declarations have been folded into that file. */
 
 /* Card Updates */
 .mag-card, .card, .polaroid-card {
