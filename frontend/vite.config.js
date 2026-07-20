@@ -17,6 +17,10 @@ function readAppVersion() {
 
 export default defineConfig({
   plugins: [react()],
+  // Components use the automatic JSX runtime and never import React. Vitest
+  // did not pick that up from the plugin, so rendering any component in a
+  // test failed with "React is not defined".
+  esbuild: { jsx: 'automatic', jsxImportSource: 'react' },
   test: {
     environment: 'jsdom',
     setupFiles: './src/test/setup.js',

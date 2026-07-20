@@ -1,8 +1,12 @@
-import { useEffect } from 'react'
+import { useEffect, useId } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import Sheet from './Sheet'
+import useDialogFocus from '../../hooks/useDialogFocus'
+import useMediaQuery from '../../hooks/useMediaQuery'
 import { useSettings } from '../../contexts/SettingsContext'
+
+export const DESKTOP_MODAL_QUERY = '(min-width: 1024px)'
 
 /**
  * Modal — Centered overlay modal on desktop, Sheet on mobile.
@@ -26,14 +30,7 @@ export default function Modal({
   mobileSheet = true,
 }) {
   const { t } = useSettings()
-
-  // Close on Escape
-  useEffect(() => {
-    if (!isOpen) return
-    const handle = (e) => { if (e.key === 'Escape') onClose?.() }
-    document.addEventListener('keydown', handle)
-    return () => document.removeEventListener('keydown', handle)
-  }, [isOpen, onClose])
+  const isDesktop = useMediaQuery(DESKTOP_MODAL_QUERY)
 
   // Lock body scroll
   useEffect(() => {
@@ -54,31 +51,15 @@ export default function Modal({
     xl: 'max-w-4xl',
   }[size] || 'max-w-lg'
 
-  // On mobile — render as bottom sheet
-  if (mobileSheet) {
+  // Below the desktop breakpoint this presents as a bottom sheet. The choice
+  // is made here rather than with responsive classes because both surfaces
+  // portal into document.body, where classes on the React parent never
+  // applied — which rendered the sheet and the modal on top of each other.
+  if (mobileSheet && !isDesktop) {
     return (
-      <>
-        {/* Mobile: Sheet */}
-        <div className="lg:hidden">
-          <Sheet isOpen={isOpen} onClose={onClose} title={title} className={className}>
-            {children}
-          </Sheet>
-        </div>
-
-        {/* Desktop: centered modal */}
-        <div className="hidden lg:block">
-          <DesktopModal
-            isOpen={isOpen}
-            onClose={onClose}
-            title={title}
-            sizeClass={sizeClass}
-            className={className}
-            closeLabel={t('common.close')}
-          >
-            {children}
-          </DesktopModal>
-        </div>
-      </>
+      <Sheet isOpen={isOpen} onClose={onClose} title={title} className={className}>
+        {children}
+      </Sheet>
     )
   }
 
@@ -98,6 +79,9 @@ export default function Modal({
 }
 
 function DesktopModal({ isOpen, onClose, title, children, sizeClass, className = '', closeLabel = 'Close' }) {
+  const panelRef = useDialogFocus(isOpen, onClose)
+  const titleId = useId()
+
   if (!isOpen) return null
 
   return createPortal(
@@ -120,11 +104,14 @@ function DesktopModal({ isOpen, onClose, title, children, sizeClass, className =
           onClick={(e) => e.stopPropagation()}
           role="dialog"
           aria-modal="true"
+          aria-labelledby={title ? titleId : undefined}
+          ref={panelRef}
+          tabIndex={-1}
         >
           {/* Header */}
           {title && (
             <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
-              <h2 className="text-base font-semibold text-text-primary">{title}</h2>
+              <h2 id={titleId} className="text-base font-semibold text-text-primary">{title}</h2>
               <button
                 onClick={onClose}
                 className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-elevated transition-colors"

@@ -1,6 +1,7 @@
-import { useEffect } from 'react'
+import { useEffect, useId } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
+import useDialogFocus from '../../hooks/useDialogFocus'
 import { useSettings } from '../../contexts/SettingsContext'
 
 /**
@@ -15,6 +16,8 @@ import { useSettings } from '../../contexts/SettingsContext'
  */
 export default function Sheet({ isOpen, onClose, title, children, className = '' }) {
   const { t } = useSettings()
+  const panelRef = useDialogFocus(isOpen, onClose)
+  const titleId = useId()
 
   // Lock body scroll while sheet is open
   useEffect(() => {
@@ -49,6 +52,9 @@ export default function Sheet({ isOpen, onClose, title, children, className = ''
         ].join(' ')}
         role="dialog"
         aria-modal="true"
+        aria-labelledby={title ? titleId : undefined}
+        ref={panelRef}
+        tabIndex={-1}
       >
         {/* Drag handle */}
         <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
@@ -58,7 +64,7 @@ export default function Sheet({ isOpen, onClose, title, children, className = ''
         {/* Header */}
         {title && (
           <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-shrink-0">
-            <h2 className="text-base font-semibold text-text-primary">{title}</h2>
+            <h2 id={titleId} className="text-base font-semibold text-text-primary">{title}</h2>
             <button
               onClick={onClose}
               className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-elevated transition-colors"

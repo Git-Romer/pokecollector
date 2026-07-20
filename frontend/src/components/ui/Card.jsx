@@ -8,6 +8,21 @@
  *   padding   {string}  — 'none' | 'sm' | 'md' (default) | 'lg'
  *   children  {node}
  */
+/**
+ * An element with role="button" must respond to Space as well as Enter.
+ * Space is swallowed so it scrolls the page instead, and keystrokes that
+ * started in nested content (a search field inside the card) belong to that
+ * control, not to the card.
+ */
+function handleActivate(onClick) {
+  return (event) => {
+    if (event.target !== event.currentTarget) return
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    onClick(event)
+  }
+}
+
 export default function Card({ className = '', onClick, padding = 'md', variant = 'default', children }) {
   const paddingClass = {
     none: 'p-0',
@@ -46,7 +61,7 @@ export default function Card({ className = '', onClick, padding = 'md', variant 
       onClick={onClick}
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
-      onKeyDown={onClick ? (e) => e.key === 'Enter' && onClick(e) : undefined}
+      onKeyDown={onClick ? handleActivate(onClick) : undefined}
     >
       {children}
     </div>
