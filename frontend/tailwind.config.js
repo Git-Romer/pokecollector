@@ -11,6 +11,9 @@ export default {
         // Dark theme backgrounds — deep blue-black
         bg: {
           DEFAULT: 'var(--color-bg)',
+          // `bg-bg-primary` is used on 22 elements but was never defined
+          // here, so those surfaces resolved to nothing at all.
+          primary: 'var(--color-bg)',
           surface: 'var(--color-surface)',
           card: 'var(--color-card)',
           elevated: 'var(--color-elevated)',

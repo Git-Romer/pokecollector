@@ -18,9 +18,10 @@ function readAppVersion() {
 export default defineConfig({
   plugins: [react()],
   // Components use the automatic JSX runtime and never import React. Vitest
-  // did not pick that up from the plugin, so rendering any component in a
-  // test failed with "React is not defined".
-  esbuild: { jsx: 'automatic', jsxImportSource: 'react' },
+  // does not pick that up from the plugin, so rendering any component in a
+  // test failed with "React is not defined". Scoped to test runs: Vite's own
+  // dev and build pipelines use oxc, which ignores this and warns about it.
+  esbuild: process.env.VITEST ? { jsx: 'automatic', jsxImportSource: 'react' } : undefined,
   test: {
     environment: 'jsdom',
     setupFiles: './src/test/setup.js',

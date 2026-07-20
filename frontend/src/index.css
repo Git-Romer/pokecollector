@@ -78,6 +78,31 @@ h1, h2, h3, .mag-heading {
    copy of these rules sat here and was overridden by import order alone;
    its unique declarations have been folded into that file. */
 
+/* Text fields. `.input` is applied at 46 sites but was never defined, so
+   every field fell back to the browser's white default while inheriting
+   white text — unreadable in both themes. */
+.input {
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0.55rem 0.75rem;
+  font: inherit;
+}
+
+.input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.input:focus-visible {
+  border-color: var(--archive-signal);
+}
+
+.input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* Card Updates */
 .mag-card, .card, .polaroid-card {
   background: var(--color-surface) !important;

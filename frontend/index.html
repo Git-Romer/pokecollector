@@ -10,7 +10,11 @@
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#000000" />
   </head>
-  <body class="bg-dark-bg text-white font-sans">
+  <!-- Colour comes from design/archive.css, which is theme-aware. A
+       `text-white` class here outranked that rule and forced white text
+       through the whole tree, including the light theme. `bg-dark-bg`
+       named a token that no longer exists. -->
+  <body class="font-sans">
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
