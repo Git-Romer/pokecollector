@@ -11,7 +11,18 @@
   --color-text-primary: #FFFFFF;
   --color-text-secondary: #CCCCCC;
   --color-text-muted: #888888;
-  
+
+  /* Surfaces referenced by tailwind.config.js (bg-card, bg-elevated).
+     Aliased onto the archive palette so the light theme switches with it. */
+  --color-card: var(--archive-surface);
+  --color-elevated: var(--archive-surface-raised);
+
+  /* Brand accent. Tailwind composes this as rgb(var(...) / <alpha-value>),
+     so it must stay a bare channel triplet rather than a hex value. */
+  --color-brand-red-rgb: 245 130 32;
+  --color-brand-red-light: #FFB06D;
+  --color-brand-red-dark: #C55E10;
+
   --jj-red: #E03C31;
   --jj-orange: #F58220;
   --jj-yellow: #FFCD00;
@@ -19,6 +30,14 @@
   --jj-lightblue: #00A3E0;
   --jj-darkblue: #0033A0;
   --jj-purple: #582C83;
+}
+
+/* --color-card and --color-elevated follow --archive-* automatically.
+   The brand triplet is a literal, so the light theme restates it. */
+[data-theme='light'] {
+  --color-brand-red-rgb: 197 94 16;
+  --color-brand-red-light: #A54E0D;
+  --color-brand-red-dark: #7C3909;
 }
 
 body {
