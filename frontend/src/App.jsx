@@ -7,21 +7,21 @@ import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { forceChangePassword } from './api/client'
 import ArchiveShell from './components/ArchiveShell'
 import { useSettings } from './contexts/SettingsContext'
+import Home from './pages/Home'
+import CardSearch from './pages/CardSearch'
+import Collection from './pages/Collection'
+import Sets from './pages/Sets'
+import Analytics from './pages/Analytics'
+import Settings from './pages/Settings'
 
-const Home = lazy(() => import('./pages/Home'))
 const Boxes = lazy(() => import('./pages/Boxes'))
 const Discover = lazy(() => import('./pages/Discover'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
-const CardSearch = lazy(() => import('./pages/CardSearch'))
-const Collection = lazy(() => import('./pages/Collection'))
-const Sets = lazy(() => import('./pages/Sets'))
 const SetDetail = lazy(() => import('./pages/SetDetail'))
 const Wishlist = lazy(() => import('./pages/Wishlist'))
 const Binders = lazy(() => import('./pages/Binders'))
 const BinderDetail = lazy(() => import('./pages/BinderDetail'))
-const Analytics = lazy(() => import('./pages/Analytics'))
 const Products = lazy(() => import('./pages/Products'))
-const Settings = lazy(() => import('./pages/Settings'))
 const CardMigration = lazy(() => import('./pages/CardMigration'))
 const Login = lazy(() => import('./pages/Login'))
 const Leaderboard = lazy(() => import('./pages/Leaderboard'))
@@ -110,7 +110,7 @@ function lazyRoute(element) {
 
 function SearchRedirect() {
   const location = useLocation()
-  return <Navigate replace to={`/discover${location.search}`} />
+  return <Navigate replace to={`/search${location.search}`} />
 }
 
 function BinderRedirect() {
@@ -150,25 +150,25 @@ function ProtectedRoutes() {
       <Route path="/" element={<ArchiveShell />}>
         <Route index element={lazyRoute(<Home />)} />
         <Route path="dashboard" element={<Navigate replace to="/" />} />
-        <Route path="search" element={lazyRoute(<CardSearch />)} />
+        <Route path="search" element={<CardSearch />} />
         <Route path="discover" element={lazyRoute(<Discover />)} />
-        <Route path="card-search" element={lazyRoute(<CardSearch />)} />
-        <Route path="collection" element={lazyRoute(<Collection />)} />
+        <Route path="card-search" element={<SearchRedirect />} />
+        <Route path="collection" element={<Collection />} />
         <Route path="collection/user/:userId" element={lazyRoute(<UserCollection />)} />
-        <Route path="sets" element={lazyRoute(<Sets />)} />
+        <Route path="sets" element={<Sets />} />
         <Route path="sets/:setId" element={lazyRoute(<SetDetail />)} />
         <Route path="wishlist" element={lazyRoute(<Wishlist />)} />
         <Route path="boxes" element={lazyRoute(<Boxes />)} />
         <Route path="boxes/:binderId" element={lazyRoute(<BinderDetail />)} />
         <Route path="binders" element={<Navigate replace to="/boxes" />} />
         <Route path="binders/:binderId" element={<BinderRedirect />} />
-        <Route path="analytics" element={lazyRoute(<Analytics />)} />
+        <Route path="analytics" element={<Analytics />} />
         <Route path="products" element={lazyRoute(<Products />)} />
         <Route path="leaderboard" element={lazyRoute(<Leaderboard />)} />
         <Route path="leaderboard/compare/:userId" element={lazyRoute(<Compare />)} />
         <Route path="achievements" element={lazyRoute(<Achievements />)} />
         <Route path="achievements/:userId" element={lazyRoute(<Achievements />)} />
-        <Route path="settings" element={lazyRoute(<Settings />)} />
+        <Route path="settings" element={<Settings />} />
         <Route path="migration" element={lazyRoute(<CardMigration />)} />
       </Route>
     </Routes>

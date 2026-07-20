@@ -13,7 +13,7 @@ export default function ArchiveCommandBar({ open, onClose }) {
 
   const submit = (event) => {
     event.preventDefault()
-    navigate(`/discover${query.trim() ? `?q=${encodeURIComponent(query.trim())}` : ''}`)
+    navigate(`/search${query.trim() ? `?q=${encodeURIComponent(query.trim())}` : ''}`)
     onClose()
   }
 

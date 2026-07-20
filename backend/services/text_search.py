@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unicodedata
+import os
 
 from sqlalchemy import func, literal, text
 from sqlalchemy.orm import Session
@@ -70,9 +71,12 @@ def accent_insensitive_contains(db: Session, column, value: str | None):
     if not value:
         return None
 
-    if _postgres_unaccent_available(db):
+    if os.getenv("POKECOLLECTOR_ENABLE_UNACCENT_SEARCH", "").lower() in {"1", "true", "yes"} and _postgres_unaccent_available(db):
         pattern = f"%{value}%"
         return func.unaccent(func.lower(column)).like(func.unaccent(func.lower(literal(pattern))))
+
+    if db.get_bind().dialect.name == "postgresql":
+        return func.lower(column).like(f"%{value.casefold()}%")
 
     normalized = strip_diacritics(value)
     if not normalized:

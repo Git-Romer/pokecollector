@@ -17,7 +17,7 @@ from services.card_upsert import upsert_card
 logger = logging.getLogger(__name__)
 
 DEFAULT_METADATA_ENRICHMENT_PER_FULL_SYNC = 500
-METADATA_ENRICHMENT_PER_SEARCH_PAGE = 20
+METADATA_ENRICHMENT_PER_SEARCH_PAGE = 0
 
 _ANY_METADATA_FIELDS = (
     "rarity",
@@ -105,6 +105,9 @@ def enrich_cards_metadata(
 ) -> dict:
     """Enrich up to limit cards, isolating failures so one bad card does not abort the batch."""
     result = {"attempted": 0, "updated": 0, "missing": 0, "failed": 0, "ids": []}
+    if limit <= 0:
+        return result
+
     selected = []
     for card in cards:
         if len(selected) >= limit:

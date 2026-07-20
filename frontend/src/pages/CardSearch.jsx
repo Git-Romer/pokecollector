@@ -8,6 +8,7 @@ import { CardItem, CustomCardModal, CardModal } from '../components/CardItem'
 import { useSettings } from '../contexts/SettingsContext'
 import Sheet from '../components/ui/Sheet'
 import CardScanner from '../components/CardScanner'
+import { useSearchParams } from 'react-router-dom'
 import { getDefaultVariantOrNull } from '../utils/cardVariants'
 import { cardNumberMatches } from '../utils/cardNumbers'
 import { normalizeSearchText, textIncludes } from '../utils/textSearch'
@@ -136,6 +137,7 @@ function FilterForm({ filters, setFilter, allSeries, setsForSeries, toggleSortOr
 
 export default function CardSearch() {
   const { t } = useSettings()
+  const [searchParams, setSearchParams] = useSearchParams()
   const visibleLanguages = useVisibleTcgdexLanguages()
   const queryClient = useQueryClient()
   const [searchInput, setSearchInput] = useState('')
@@ -152,6 +154,20 @@ export default function CardSearch() {
   const [selectMode, setSelectMode] = useState(false)
   const [selectedItems, setSelectedItems] = useState(new Map()) // card.id -> { card_id, lang }
   const pageSize = 20
+  const urlQuery = searchParams.get('q') || ''
+  const scannerRequested = searchParams.get('scanner') === '1'
+
+  useEffect(() => {
+    if (urlQuery) {
+      setSearchInput(urlQuery)
+      setFilters(prev => (prev.name === urlQuery ? prev : { ...prev, name: urlQuery }))
+      setPage(1)
+    }
+
+    if (scannerRequested) {
+      setShowScanner(true)
+    }
+  }, [urlQuery, scannerRequested])
 
   const { data: recentCustomCards = [] } = useQuery({
     queryKey: ['custom-cards'],
@@ -212,8 +228,10 @@ export default function CardSearch() {
 
   const handleSearch = (e) => {
     e.preventDefault()
-    setFilters(prev => ({ ...prev, name: searchInput }))
+    const nextQuery = searchInput.trim()
+    setFilters(prev => ({ ...prev, name: nextQuery }))
     setPage(1)
+    setSearchParams(nextQuery ? { q: nextQuery } : {})
   }
 
   const setFilter = (key, value) => {
