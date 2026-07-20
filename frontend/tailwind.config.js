@@ -29,13 +29,6 @@ export default {
           red: 'rgb(var(--color-brand-red-rgb) / <alpha-value>)',
           'red-light': 'var(--color-brand-red-light)',
           'red-dark': 'var(--color-brand-red-dark)',
-          'red-glow': 'rgba(91,156,255,0.35)',
-        },
-        // Status — keeping legacy names for backward compat
-        pokemon: {
-          red: '#e3000b',
-          'red-dark': '#b80009',
-          'red-light': '#ff4d4d',
         },
         // Dark theme legacy aliases
         dark: {
@@ -58,9 +51,11 @@ export default {
           DEFAULT: '#3b82f6',
           subtle: '#0c1a2e',
         },
-        gold: '#8fc0ff',
-        'gold-muted': 'rgba(143,192,255,0.15)',
-        'gold-border': 'rgba(143,192,255,0.35)',
+        // Emphasis colour for names, prices and stat values. Was called
+        // `gold` while holding a blue; renamed to its role rather than
+        // recoloured, since moving it onto the orange signal is a visual
+        // decision. The -muted and -border variants had no usages.
+        highlight: '#8fc0ff',
         // Pokemon energy type colors
         'type-fire': '#ff6b35',
         'type-water': '#4fc3f7',
@@ -76,7 +71,10 @@ export default {
       },
 
       fontFamily: {
-        sans: ['Segoe UI Variable', 'Segoe UI', 'system-ui', 'sans-serif'],
+        // Was a Segoe stack, which never applied: both stylesheets set Inter
+        // on body, and that cascades over the html rule preflight builds from
+        // this token. The spec asks for Inter, so the token now says so.
+        sans: ['Inter', 'system-ui', 'sans-serif'],
       },
 
       fontSize: {
@@ -142,9 +140,9 @@ export default {
       boxShadow: {
         card: '0 2px 8px rgba(0,0,0,0.4)',
         elevated: '0 4px 16px rgba(0,0,0,0.5)',
-        glow: '0 0 20px rgba(227,0,11,0.15)',
-        'glow-lg': '0 0 30px rgba(227,0,11,0.25)',
-        'glow-btn': '0 0 16px rgba(227,0,11,0.3)',
+        // Follows the signal orange. The -lg and -btn variants carried the
+        // retired red and had no usages.
+        glow: '0 0 20px rgba(245,130,32,0.15)',
       },
     },
   },

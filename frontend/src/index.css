@@ -86,10 +86,13 @@ h1, h2, h3, .mag-heading {
 .split-text-char {
   display: inline-block;
   transform: translateY(100%);
-  animation: slideUp 0.5s cubic-bezier(0.075, 0.82, 0.165, 1) forwards;
+  animation: split-text-rise 0.5s cubic-bezier(0.075, 0.82, 0.165, 1) forwards;
 }
 
-@keyframes slideUp {
+/* Namespaced. This was called slideUp, which collided with the keyframe
+   Tailwind emits for animate-slide-up and silently replaced it — leaving
+   Modal and Sheet with an entrance animation that did nothing. */
+@keyframes split-text-rise {
   to {
     transform: translateY(0);
   }

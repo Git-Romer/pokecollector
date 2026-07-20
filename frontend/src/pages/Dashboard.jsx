@@ -141,7 +141,7 @@ export default function Dashboard() {
                   <CardImage src={resolveCardImageUrl(card)} alt={card.name} className="w-full h-full object-cover" />
                 </div>
                 {card.price_market > 0 && (
-                  <p className="text-[10px] font-bold text-gold mt-1 truncate">
+                  <p className="text-[10px] font-bold text-highlight mt-1 truncate">
                     {formatPrice(card.price_market)}
                   </p>
                 )}
@@ -160,7 +160,7 @@ export default function Dashboard() {
             { label: t('dashboard.sets'), value: `${ownedSets}/${totalSets}` },
           ].map(stat => (
             <div key={stat.label} className="bg-bg-card border border-border rounded-xl p-3 text-center">
-              <p className={`text-xl font-black leading-none ${stat.gold ? 'text-gold' : 'text-white'}`}>
+              <p className={`text-xl font-black leading-none ${stat.gold ? 'text-highlight' : 'text-white'}`}>
                 {stat.value}
               </p>
               <p className="text-[10px] text-text-muted uppercase tracking-wider mt-1">{stat.label}</p>
@@ -185,11 +185,11 @@ export default function Dashboard() {
                   <div className="aspect-[2.5/3.5] rounded-lg overflow-hidden shadow-lg ring-1 ring-white/5 group-hover:scale-[1.03] transition-all duration-150 group-hover:ring-gold/40 transform-gpu origin-center">
                     <CardImage src={resolveCardImageUrl(card)} alt={card.name} className="w-full h-full object-cover" />
                   </div>
-                  <span className="absolute top-1 left-1 bg-black/80 text-gold text-[9px] font-black rounded px-1 leading-4">
+                  <span className="absolute top-1 left-1 bg-black/80 text-highlight text-[9px] font-black rounded px-1 leading-4">
                     #{i + 1}
                   </span>
                 </div>
-                <p className="text-[10px] text-gold font-bold mt-1 truncate">
+                <p className="text-[10px] text-highlight font-bold mt-1 truncate">
                   {formatPrice(Number(card.total_value || 0))}
                 </p>
                 {card.quantity > 1 && (
@@ -211,7 +211,7 @@ export default function Dashboard() {
             </div>
             <div>
               <p className="text-[10px] text-text-muted uppercase tracking-wider mb-1">{t('dashboard.collectionValue')}</p>
-              <p className="text-lg font-black text-gold">{formatPrice(Number(totalValue))}</p>
+              <p className="text-lg font-black text-highlight">{formatPrice(Number(totalValue))}</p>
             </div>
             <div>
               <p className="text-[10px] text-text-muted uppercase tracking-wider mb-1">{t('dashboard.pnl')}</p>

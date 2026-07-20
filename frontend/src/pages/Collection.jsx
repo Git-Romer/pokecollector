@@ -1675,7 +1675,7 @@ export default function Collection() {
           {filtered.length > 0 && (
             <div className="flex items-center justify-between text-sm pt-1 px-1">
               <span className="text-text-muted">{filtered.length} {t('collection.filtered')}</span>
-              <span className="font-bold text-gold">Gallery Showcase</span>
+              <span className="font-bold text-highlight">Gallery Showcase</span>
             </div>
           )}
         </>

@@ -45,7 +45,7 @@ export default function TrainerCard({
 
           {/* Stats */}
           <div className="flex-1 min-w-0">
-            <p className="text-gold font-black text-xl leading-none tracking-wide mb-0.5 truncate">
+            <p className="text-highlight font-black text-xl leading-none tracking-wide mb-0.5 truncate">
               {trainerName.toUpperCase()}
             </p>
             <p className="text-text-muted text-[10px] mb-3 tracking-wider uppercase">{t('trainerCard.trainer')}</p>
@@ -57,7 +57,7 @@ export default function TrainerCard({
               </div>
               <div className="flex justify-between text-xs">
                 <span className="text-text-secondary">{t('trainerCard.value')}</span>
-                <span className="text-gold font-bold">{formatPrice(Number(totalValue))}</span>
+                <span className="text-highlight font-bold">{formatPrice(Number(totalValue))}</span>
               </div>
               <div className="flex justify-between text-xs">
                 <span className="text-text-secondary">{t('trainerCard.sets')}</span>
