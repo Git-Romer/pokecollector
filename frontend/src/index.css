@@ -5,9 +5,13 @@
 @tailwind utilities;
 
 :root {
-  --color-bg: #000000;
+  /* --archive-canvas is already #000000 here and switches on its own. */
+  --color-bg: var(--archive-canvas);
   --color-surface: #0A0A0A;
   --color-border: #333333;
+  /* Hairline rule used by the Tailwind `border` token. Kept separate from
+     --color-border because it is an alpha wash, not a solid line. */
+  --color-border-hairline: rgba(255, 255, 255, 0.07);
   /* Text ramp. tailwind.config.js reads these rather than holding literals,
      which previously meant .text-text-primary was a hardcoded white with no
      light-theme counterpart. Dark values match those former literals. */
@@ -47,6 +51,12 @@
   --color-text-primary: #241E19;
   --color-text-secondary: #594D42;
   --color-text-muted: #7A6A5C;
+
+  /* Surfaces and rules. Without these the light theme drew 25 near-black
+     panels and 123 borders of white-on-cream, which were not visible. */
+  --color-surface: #FFFFFF;
+  --color-border: #DCCFC2;
+  --color-border-hairline: rgba(61, 47, 35, 0.14);
 }
 
 body {

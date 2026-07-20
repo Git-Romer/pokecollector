@@ -15,9 +15,9 @@ export default {
           card: 'var(--color-card)',
           elevated: 'var(--color-elevated)',
         },
+        // `subtle` was a second white wash with no usages.
         border: {
-          DEFAULT: 'rgba(255,255,255,0.07)',
-          subtle: 'rgba(255,255,255,0.03)',
+          DEFAULT: 'var(--color-border-hairline)',
         },
         text: {
           primary: 'var(--color-text-primary)',
