@@ -6,6 +6,7 @@ import clsx from 'clsx'
 import ArchiveCommandBar from './ArchiveCommandBar'
 import JohnJohnSignal from './JohnJohnSignal'
 import { PRIMARY_ARCHIVE_DESTINATIONS } from './archiveNavigation'
+import { useSettings } from '../contexts/SettingsContext'
 import ShinyText from './reactbits/ShinyText'
 
 const ICONS = { collection: CollectionsRegular, search: SearchRegular, sets: TableRegular, analytics: DataBarVerticalRegular, settings: SettingsRegular }
@@ -20,6 +21,7 @@ export function shortcutHint(platform = typeof navigator === 'undefined' ? '' : 
 }
 
 export default function ArchiveShell() {
+  const { t } = useSettings()
   const [commandOpen, setCommandOpen] = useState(false)
 
   useEffect(() => {
@@ -51,7 +53,7 @@ export default function ArchiveShell() {
             </NavLink>
           ))}
         </nav>
-        <div className="archive-rail-footer"><JohnJohnSignal /><span>John John is keeping watch</span></div>
+        <div className="archive-rail-footer"><JohnJohnSignal /><span>{t('archive.keepingWatch')}</span></div>
       </aside>
       <div className="archive-content">
         <Toolbar className="archive-toolbar">
@@ -62,7 +64,7 @@ export default function ArchiveShell() {
             type="button"
             className="archive-search-trigger"
             onClick={() => setCommandOpen(true)}
-            aria-label="Search archive"
+            aria-label={t('archive.search')}
             aria-keyshortcuts="Control+K"
             aria-haspopup="dialog"
             aria-expanded={commandOpen}
