@@ -17,3 +17,5 @@ backups/
 
 # Local editor/agent tooling — machine-specific, not part of the project.
 .claude/
+.codex/
+.idea/
