@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Badge, Button, Toolbar, ToolbarButton } from '@fluentui/react-components'
+import { Badge, Button, Toolbar } from '@fluentui/react-components'
 import { CollectionsRegular, DataBarVerticalRegular, SearchRegular, SettingsRegular, TableRegular } from '@fluentui/react-icons'
 import { NavLink, Outlet } from 'react-router-dom'
 import clsx from 'clsx'
@@ -10,6 +10,14 @@ import ShinyText from './reactbits/ShinyText'
 
 const ICONS = { collection: CollectionsRegular, search: SearchRegular, sets: TableRegular, analytics: DataBarVerticalRegular, settings: SettingsRegular }
 export const PRIMARY_ARCHIVE_NAV = PRIMARY_ARCHIVE_DESTINATIONS.map((item) => ({ ...item, icon: ICONS[item.icon] }))
+
+/**
+ * The shortcut handler accepts Ctrl and Cmd alike, so the hint has to match
+ * the keyboard in front of the reader rather than always claiming Ctrl.
+ */
+export function shortcutHint(platform = typeof navigator === 'undefined' ? '' : navigator.userAgent) {
+  return /Mac|iPhone|iPad|iPod/.test(platform) ? '⌘ K' : 'Ctrl K'
+}
 
 export default function ArchiveShell() {
   const [commandOpen, setCommandOpen] = useState(false)
@@ -35,7 +43,7 @@ export default function ArchiveShell() {
     <div className="archive-shell min-h-dvh">
       <div className="archive-ambient" aria-hidden="true" />
       <aside className="archive-rail hidden lg:flex" aria-label="Primary navigation">
-        <NavLink to="/collection" className="archive-wordmark" aria-label="John John's PC, Collection Overview"><span>JJ</span><strong><ShinyText text="John John's PC" speed={5} /></strong></NavLink>
+        <NavLink to="/collection" className="archive-wordmark" aria-label="John John's PC, Collection Overview"><span aria-hidden="true">∞</span><strong><ShinyText text="John John's PC" speed={5} /></strong></NavLink>
         <nav className="archive-nav">
           {PRIMARY_ARCHIVE_NAV.map(({ to, label, icon: Icon, end }) => (
             <NavLink key={to} to={to} end={end} className={({ isActive }) => clsx('archive-nav-link', isActive && 'archive-nav-link-active')}>
@@ -47,7 +55,25 @@ export default function ArchiveShell() {
       </aside>
       <div className="archive-content">
         <Toolbar className="archive-toolbar">
-          <ToolbarButton icon={<SearchRegular />} onClick={() => setCommandOpen(true)}>Search archive <kbd>Ctrl K</kbd></ToolbarButton>
+          {/* A plain button rather than ToolbarButton: this reads as a search
+              field, and Fluent's subtle appearance sets its own background and
+              border colour that no amount of specificity would displace. */}
+          <button
+            type="button"
+            className="archive-search-trigger"
+            onClick={() => setCommandOpen(true)}
+            aria-label="Search archive"
+            aria-keyshortcuts="Control+K"
+            aria-haspopup="dialog"
+            aria-expanded={commandOpen}
+          >
+            <SearchRegular aria-hidden="true" />
+            <span className="archive-search-label">Search archive</span>
+            {/* Hidden from assistive tech: aria-keyshortcuts already carries
+                this, and reading it aloud made the button's name
+                "Search archive Ctrl K". */}
+            <kbd className="archive-kbd" aria-hidden="true">{shortcutHint()}</kbd>
+          </button>
           <div className="ml-auto"><JohnJohnSignal /></div>
         </Toolbar>
         <main className="archive-main"><Outlet /></main>

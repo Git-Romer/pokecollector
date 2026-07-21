@@ -78,7 +78,10 @@ body {
 }
 .archive-rail { position: sticky; top: 0; z-index: 10; height: 100dvh; width: 17rem; flex: 0 0 17rem; flex-direction: column; padding: 1.25rem 1rem; border-right: 1px solid var(--archive-border); background: color-mix(in srgb, var(--archive-surface) 88%, transparent); backdrop-filter: blur(18px); }
 .archive-wordmark { display: flex; align-items: center; gap: .75rem; padding: .5rem .75rem 2rem; color: var(--archive-text); font-size: 1.5rem; font-weight: 900; text-decoration: none; }
-.archive-wordmark span, .john-john-mark { display: inline-grid; place-items: center; width: 2rem; height: 2rem; border-radius: .65rem; background: var(--archive-signal); color: #07101e; font-size: .72rem; font-weight: 800; letter-spacing: -.08em; }
+/* One glyph, not two letters: the tight tracking that kept "JJ" together
+   would clip the infinity mark, and it needs the larger optical size to
+   read at the same weight. */
+.archive-wordmark span, .john-john-mark { display: inline-grid; place-items: center; width: 2rem; height: 2rem; border-radius: .65rem; background: var(--archive-signal); color: #07101e; font-size: 1.15rem; font-weight: 700; letter-spacing: 0; line-height: 1; }
 .archive-nav { display: grid; flex: 1; gap: .35rem; align-content: start; }
 .archive-nav-link, .archive-mobile-link { display: flex; align-items: center; gap: .75rem; border-radius: .6rem; color: var(--archive-muted); font-weight: 600; text-decoration: none; transition: background-color 180ms ease, color 180ms ease; }
 .archive-nav-link { padding: .75rem; }
@@ -92,6 +95,73 @@ body {
 .archive-mobile-nav { position: fixed; z-index: 50; right: 0; bottom: 0; left: 0; display: grid; grid-template-columns: repeat(5, 1fr); padding: .4rem max(.6rem, env(safe-area-inset-right)) calc(.4rem + env(safe-area-inset-bottom)) max(.6rem, env(safe-area-inset-left)); border-top: 1px solid var(--archive-border); background: color-mix(in srgb, var(--archive-surface) 94%, transparent); backdrop-filter: blur(18px); }
 .archive-mobile-link { min-height: 3.6rem; flex-direction: column; justify-content: center; gap: .2rem; font-size: .67rem; }
 .archive-mobile-link-active { color: var(--archive-signal); }
+/* ASCII wordmark on the sign-in surface. The renderer measures its container,
+   so the box needs real dimensions before it will draw anything. */
+.archive-ascii-wordmark {
+  position: relative;
+  width: 100%;
+  height: 5.5rem;
+  margin-bottom: .5rem;
+  overflow: hidden;
+}
+.archive-ascii-wordmark canvas,
+.archive-ascii-wordmark pre {
+  max-width: 100%;
+}
+
+/* Search trigger. It opens the command bar, so it stays a button, but it
+   reads as a field: a search entry point is recognised faster as a box to
+   type into than as a label to press. The shortcut sits right-aligned
+   inside it rather than running on after the text. */
+.archive-search-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: .6rem;
+  width: min(22rem, 100%);
+  padding: .5rem .6rem .5rem .75rem;
+  border: 1px solid var(--archive-border);
+  border-radius: .7rem;
+  background: color-mix(in srgb, var(--archive-surface) 70%, transparent);
+  color: var(--archive-muted);
+  font: inherit;
+  font-weight: 500;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: border-color 180ms ease, background-color 180ms ease, color 180ms ease;
+}
+.archive-search-trigger svg {
+  flex: none;
+  width: 1.05rem;
+  height: 1.05rem;
+}
+.archive-search-trigger:hover,
+.archive-search-trigger:focus-visible {
+  border-color: color-mix(in srgb, var(--archive-signal) 55%, var(--archive-border));
+  background: color-mix(in srgb, var(--archive-surface) 92%, transparent);
+  color: var(--archive-text);
+}
+.archive-search-label { flex: 1 1 auto; text-align: left; }
+.archive-kbd {
+  flex: none;
+  border: 1px solid var(--archive-border);
+  border-radius: .4rem;
+  padding: .1rem .4rem;
+  background: color-mix(in srgb, var(--archive-canvas) 60%, transparent);
+  color: var(--archive-muted);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: .7rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  /* On a narrow toolbar the hint is noise — there is no hardware keyboard. */
+  .archive-search-trigger { width: auto; }
+  .archive-kbd { display: none; }
+}
+
 .archive-featured {
   position: relative;
   display: grid;

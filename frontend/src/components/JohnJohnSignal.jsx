@@ -13,7 +13,7 @@ export default function JohnJohnSignal({ noteCount = 0, onOpenNotes }) {
         onClick={canOpenNotes ? onOpenNotes : undefined}
         className="john-john-signal"
       >
-        <span aria-hidden="true" className="john-john-mark">JJ</span>
+        <span aria-hidden="true" className="john-john-mark">∞</span>
         <span aria-hidden="true" className="john-john-presence" />
       </Button>
     </Tooltip>

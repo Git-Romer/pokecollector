@@ -3,10 +3,10 @@
 const en = {
   // Navigation
   nav: {
-    archive: 'Archive',
-    boxes: 'Boxes',
+    archive: 'Collection',
+    boxes: 'Binders',
     discover: 'Discover',
-    dashboard: 'Dashboard',
+    dashboard: 'Collection Overview',
     cardSearch: 'Card Search',
     collection: 'Collection',
     sets: 'Sets',
@@ -23,8 +23,8 @@ const en = {
   },
 
   archive: {
-    search: 'Search archive',
-    notes: 'Archive Notes',
+    search: 'Search your collection',
+    notes: 'Collection notes',
   },
 
   // Common / General
@@ -120,7 +120,7 @@ const en = {
     hello: 'Hello',
     cardsTotal: 'Cards',
     value: 'Value',
-    pnl: 'P&L',
+    pnl: 'Gain/loss',
     unique: 'Unique',
     sets: 'Sets',
     invested: 'Invested',
@@ -145,7 +145,7 @@ const en = {
     totalCards: 'Total Cards',
     uniqueCards: 'unique',
     collectionValue: 'Collection Value',
-    pnl: 'P&L',
+    pnl: 'Gain/loss',
     invested: 'invested',
     sets: 'Sets',
     setsOwned: 'sets with cards',
@@ -164,7 +164,7 @@ const en = {
   // Card Search
   cardSearch: {
     title: 'Card Search',
-    subtitle: 'Search the TCGdex API for cards',
+    subtitle: 'Find cards to add to your collection',
     searchPlaceholder: 'Card name or set code + number (e.g. MEP 022)...',
     trySearch: 'Search for Pokemon cards above',
     trySearchHint: 'Try "Charizard", "Pikachu", "MEP 022" or any card name',
@@ -277,6 +277,8 @@ const en = {
     marketPrice: 'Market',
     totalVal: 'Value',
     filtered: 'cards (filtered)',
+    unique: 'unique',
+    ofTotal: 'of',
     removeConfirm: 'Remove {name} from your collection? Your purchase details for it are removed too.',
     updateFailed: 'Update failed',
     removeFailed: 'Failed to remove',
@@ -321,7 +323,7 @@ const en = {
     newSetsDetected: 'New sets detected!',
     markAllSeen: 'Mark All Seen',
     filterSets: 'Filter sets...',
-    noSetsFound: 'No sets found. Click Refresh to load sets from the API.',
+    noSetsFound: 'No sets loaded yet. Refresh to fetch them from TCGdex.',
     refreshed: 'Sets refreshed from API',
     refreshFailed: 'Failed to refresh sets',
     markedSeen: 'New sets marked as seen',
@@ -416,7 +418,7 @@ const en = {
   // Analytics
   analytics: {
     title: 'Analytics',
-    subtitle: 'Deep insights into your collection',
+    subtitle: 'Duplicates, rarity, completion and activity.',
     newSetsDetected: 'new sets detected',
     newSet: 'new set',
     newSets: 'new sets',
@@ -446,7 +448,7 @@ const en = {
     count: 'Count',
     cost: 'Cost',
     value: 'Value',
-    pnl: 'P&L',
+    pnl: 'Gain/loss',
     // Expense modal & product list
     logExpense: 'Log Expense',
     logFirst: 'Log First Expense',
@@ -1066,7 +1068,7 @@ const en = {
     cards: 'Cards',
     uniqueCards: 'Unique',
     bestCard: 'Best Card',
-    pnl: 'P&L',
+    pnl: 'Gain/loss',
     setsCompleted: 'Sets Complete',
     sortBy: 'Sort by',
     trainers: 'trainers',

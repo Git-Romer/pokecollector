@@ -50,23 +50,23 @@ export default function Home() {
 {recent.length > 0 && (
   <div className="archive-featured">
     <div className="archive-featured-copy">
-      <span className="mag-issue">VOL. 01 · THE LATEST DROPS</span>
+      <span className="mag-issue">LATEST ADDITION</span>
       <h2 className="text-5xl font-bold text-text-primary mag-heading uppercase leading-none mt-2">
-        <SplitText text="THE LATEST DROPS" delay={40} />
+        <SplitText text="Latest addition" delay={40} />
       </h2>
       <p className="archive-featured-note">
-        Fresh ink. New arrivals straight to the archive.
+        The newest card in your collection, and the five before it.
       </p>
-      {featured?.name && <p className="archive-featured-card">John John filed <strong>{featured.name}</strong> first.</p>}
+      {featured?.name && <p className="archive-featured-card">The last thing John John filed was <strong>{featured.name}</strong>.</p>}
       <Link className="archive-featured-action" to="/collection">
-        Access Full Archive
+        View collection
       </Link>
     </div>
     <ColorBends className="archive-featured-orbit" opacity={0.6}>
       <div className="mag-barcode">7390284719204</div>
       <OrbitImages 
         images={recent.slice(0, 5).map(c => c.image_url || c.image || '/cardback.jpg')} 
-        centralText="JJ" 
+        centralText="∞" 
       />
     </ColorBends>
   </div>

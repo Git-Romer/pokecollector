@@ -1,4 +1,5 @@
 import SplitText from '../components/reactbits/SplitText'
+import ASCIIText from '../components/reactbits/ASCIIText'
 import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { User } from 'lucide-react'
@@ -6,6 +7,14 @@ import toast from 'react-hot-toast'
 import { login } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { useSettings } from '../contexts/SettingsContext'
+
+// Warm white from the archive palette (--archive-muted). The canvas cannot
+// read CSS variables, so the token value is mirrored here.
+const ASCII_INK = '#d8c9bd'
+
+const reduceMotion =
+  typeof window !== 'undefined' &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 export default function Login() {
   const [lastUser] = useState(() => localStorage.getItem('lastUser') || '')
@@ -49,7 +58,32 @@ export default function Login() {
           className="w-full max-w-md rounded-[2rem] border border-border bg-bg-card p-6 shadow-2xl backdrop-blur-xl sm:p-8"
         >
           <div className="mb-8 text-center">
-            <p className="text-xs font-semibold uppercase tracking-[0.35em] text-text-muted">John John&rsquo;s PC</p>
+            {/* Decorative rendering of the wordmark. The readable name lives in
+                the sr-only text below, so the canvas stays out of the
+                accessibility tree entirely. Static by default — see
+                ASCIIText's animateContinuously prop. */}
+            <div
+              className="archive-ascii-wordmark"
+              aria-hidden="true"
+              hidden={reduceMotion}
+            >
+              <ASCIIText
+                text="John John's PC"
+                asciiFontSize={6}
+                textFontSize={150}
+                textColor={ASCII_INK}
+                planeBaseHeight={6}
+                enableWaves={false}
+                animateContinuously={false}
+              />
+            </div>
+            <p
+              className={reduceMotion
+                ? 'text-xs font-semibold uppercase tracking-[0.35em] text-text-muted'
+                : 'sr-only'}
+            >
+              John John&rsquo;s PC
+            </p>
             <h1 className="text-5xl font-bold text-text-primary mag-heading uppercase leading-none mt-2">
               <SplitText
                 text={lastUser && !showSwitchUser ? t('auth.welcomeBack') : t('auth.login')}

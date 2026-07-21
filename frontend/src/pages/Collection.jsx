@@ -1365,6 +1365,8 @@ export default function Collection() {
 
   const totalValue = filtered.reduce((sum, item) => sum + (getEffectivePrice(item.card, item.variant) * item.quantity), 0)
   const totalCards = filtered.reduce((sum, item) => sum + item.quantity, 0)
+  // Unfiltered total, so the header can say "12 of 78" while a filter is on.
+  const allCards = items.reduce((sum, item) => sum + item.quantity, 0)
   const exportParams = { price_field: pricePrimaryField, currency, exchange_rate: exchangeRate }
 
   const resetFilters = () => {
@@ -1393,7 +1395,15 @@ export default function Collection() {
         <div className="min-w-0">
           <h1 className="text-5xl font-bold text-text-primary mag-heading uppercase leading-none mt-2"><SplitText text={t('collection.title')} delay={40} /></h1>
           <p className="text-sm text-text-secondary mt-1">
-            {totalCards.toLocaleString()} {t('collection.cards')} · {filtered.length.toLocaleString()} {t('collection.filtered')}
+            {/* Both numbers derive from the filtered set, so labelling the
+                second one "filtered" read as redundant when nothing was
+                filtered. Name what each actually counts, and only mention
+                the total when a filter is narrowing it. */}
+            {hasActiveFilters
+              ? `${totalCards.toLocaleString()} ${t('collection.ofTotal')} ${allCards.toLocaleString()} ${t('collection.cards')}`
+              : `${totalCards.toLocaleString()} ${t('collection.cards')}`}
+            {' · '}
+            {filtered.length.toLocaleString()} {t('collection.unique')}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
