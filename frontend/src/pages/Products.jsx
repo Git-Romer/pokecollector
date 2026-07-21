@@ -729,7 +729,7 @@ export default function Products() {
                               <Edit2 size={14} />
                             </button>
                             <button onClick={() => {
-                              if (confirm(`${t('products.deleteConfirm')} "${p.product_name}"?`)) deleteMutation.mutate(p.id)
+                              if (confirm(t('products.deleteConfirm', { name: p.product_name }))) deleteMutation.mutate(p.id)
                             }} className="text-text-muted hover:text-brand-red p-1 transition-colors">
                               <Trash2 size={14} />
                             </button>
@@ -799,7 +799,7 @@ export default function Products() {
                         </button>
                         <button onClick={(e) => {
                           e.stopPropagation()
-                          if (confirm(`${t('products.deleteConfirm')} "${p.product_name}"?`)) deleteMutation.mutate(p.id)
+                          if (confirm(t('products.deleteConfirm', { name: p.product_name }))) deleteMutation.mutate(p.id)
                         }} className="text-text-muted hover:text-brand-red p-1 transition-colors">
                           <Trash2 size={12} />
                         </button>

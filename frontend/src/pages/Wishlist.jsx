@@ -363,7 +363,7 @@ export default function Wishlist() {
                                 <Check size={14} />
                               </button>
                               <button onClick={() => {
-                                if (confirm(`${card?.name} ${t('wishlist.removeConfirm')}`)) removeMutation.mutate(item.id)
+                                if (confirm(t('wishlist.removeConfirm', { name: card?.name || t('common.thisCard') }))) removeMutation.mutate(item.id)
                               }} className="text-text-muted hover:text-brand-red transition-colors p-1">
                                 <Trash2 size={14} />
                               </button>
@@ -422,7 +422,7 @@ export default function Wishlist() {
                           </button>
                           <button onClick={(e) => {
                             e.stopPropagation()
-                            if (confirm(`${card?.name} ${t('wishlist.removeConfirm')}`)) removeMutation.mutate(item.id)
+                            if (confirm(t('wishlist.removeConfirm', { name: card?.name || t('common.thisCard') }))) removeMutation.mutate(item.id)
                           }} className="text-text-muted hover:text-brand-red transition-colors p-1">
                             <Trash2 size={12} />
                           </button>

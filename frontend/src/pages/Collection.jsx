@@ -643,7 +643,7 @@ function CollectionEditModal({ item, onClose }) {
   })
 
   const handleDelete = () => {
-    if (confirm(`${card?.name || 'Karte'} ${t('collection.removeConfirm')}`)) {
+    if (confirm(t('collection.removeConfirm', { name: card?.name || t('common.thisCard') }))) {
       deleteMutation.mutate()
     }
   }

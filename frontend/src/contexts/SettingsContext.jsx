@@ -47,7 +47,10 @@ const translations = {
 }
 
 const DEFAULT_SETTINGS = {
-  language: 'de',
+  // Applies to fresh installs and to the login screen, which renders before
+  // any saved preference can be read. A German default there is what #285
+  // reported. A saved language still wins for existing users.
+  language: 'en',
   price_display: '["trend", "avg", "avg1", "avg7", "avg30", "low"]',
   price_primary: 'trend',
   tcgdex_sync_languages: 'en,de',
@@ -176,27 +179,35 @@ export function SettingsProvider({ children }) {
     }
   }, [settings, multiUser])
 
-  const lang = settings.language || 'de'
-  const msgs = translations[lang] || translations.de
+  const lang = settings.language || 'en'
+  const msgs = translations[lang] || translations.en
 
-  // Translation helper
-  const t = useCallback((path) => {
-    const parts = path.split('.')
-    let val = msgs
-    for (const part of parts) {
-      val = val?.[part]
-      if (val === undefined) break
-    }
-    if (val === undefined) {
-      // Fallback to German
-      let fallback = translations.de
-      for (const part of parts) {
-        fallback = fallback?.[part]
-        if (fallback === undefined) break
+  /**
+   * Translate `path`, optionally filling {placeholders} from `params`.
+   *
+   * Falls back to English and then to the key path itself. It previously fell
+   * back to German, so any key missing from a locale served German text to
+   * that user whatever language they had chosen — reported as #283 and #285.
+   * Returning the path makes a gap visible instead of silently wrong.
+   */
+  const t = useCallback((path, params) => {
+    const read = (source) => {
+      let val = source
+      for (const part of path.split('.')) {
+        val = val?.[part]
+        if (val === undefined) return undefined
       }
-      return fallback ?? path
+      return val
     }
-    return val
+
+    const val = read(msgs) ?? read(translations.en) ?? path
+    if (typeof val !== 'string' || !params) return val
+
+    // Word order differs by language, so the name belongs inside the
+    // translated sentence rather than concatenated onto it by the caller.
+    return val.replace(/\{(\w+)\}/g, (match, key) =>
+      key in params ? String(params[key]) : match
+    )
   }, [msgs])
 
   // Parse price_display JSON safely

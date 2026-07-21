@@ -281,7 +281,7 @@ export default function Binders() {
                       </button>
                       <button onClick={(e) => {
                         e.stopPropagation()
-                        if (confirm(`${t('binders.deleteConfirm')} "${binder.name}"?`)) deleteMutation.mutate(binder.id)
+                        if (confirm(t('binders.deleteConfirm', { name: binder.name }))) deleteMutation.mutate(binder.id)
                       }} className="text-text-muted hover:text-brand-red bg-bg/80 rounded p-1 transition-colors">
                         <Trash2 size={12} />
                       </button>
