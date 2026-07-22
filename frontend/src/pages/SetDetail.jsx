@@ -10,6 +10,7 @@ import clsx from 'clsx'
 import { resolveCardImageUrl, resolveSetImageUrl } from '../utils/imageUrl'
 import { CARD_VARIANTS, getAvailableVariants, getDefaultVariantOrNull } from '../utils/cardVariants'
 import FallbackBadges from '../components/FallbackBadges'
+import VariantPills from '../components/VariantPills'
 import { HOLO_FIELD_MAP } from '../utils/prices'
 import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
 import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
@@ -515,14 +516,16 @@ export default function SetDetail() {
               </div>
             )}
 
-            <FallbackBadges
-              card={card}
-              className="absolute left-1 right-1 bottom-5 z-10 justify-center pointer-events-none"
-              compact
-              variant="overlay"
-            />
+            {/* Both overlays share one column so a card with a fallback badge and owned
+                prints stacks them instead of colliding at the same offset. */}
+            <div className="absolute left-1 right-1 bottom-6 z-10 flex flex-col items-center gap-1 pointer-events-none">
+              <FallbackBadges card={card} className="justify-center" compact variant="overlay" />
+              <VariantPills rows={card.owned_items || []} className="justify-center" />
+            </div>
 
-            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex flex-col items-center justify-center gap-1 opacity-0 group-hover:opacity-100">
+            {/* Above the pills (z-10) so hovering dims them along with the art, rather
+                than leaving them lit on top of the overlay. */}
+            <div className="absolute inset-0 z-20 bg-black/0 group-hover:bg-black/40 transition-all flex flex-col items-center justify-center gap-1 opacity-0 group-hover:opacity-100">
               <p className="text-white text-xs font-medium text-center px-1 line-clamp-2">{card.name}</p>
               <button onClick={(e) => { e.stopPropagation(); setSelectedCard(card) }}
                 className="bg-brand-red text-white rounded-full p-1">
