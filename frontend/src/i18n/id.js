@@ -19,6 +19,11 @@ const id = {
     more: 'Lainnya',
   },
 
+  pokedex: {
+    sortLowToHigh: 'rendah ke tinggi',
+    sortHighToLow: 'tinggi ke rendah',
+  },
+
   // Common / General
   fallback: {
     data: 'Data',

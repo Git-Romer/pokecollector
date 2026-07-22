@@ -19,6 +19,11 @@ const ru = {
     more: 'Еще',
   },
 
+  pokedex: {
+    sortLowToHigh: 'по возрастанию',
+    sortHighToLow: 'по убыванию',
+  },
+
   // Common / General
   fallback: {
     data: 'Данные',

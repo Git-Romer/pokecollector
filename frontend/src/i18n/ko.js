@@ -19,6 +19,11 @@ const ko = {
     more: '더보기',
   },
 
+  pokedex: {
+    sortLowToHigh: '낮은 순',
+    sortHighToLow: '높은 순',
+  },
+
   // Common / General
   fallback: {
     data: '데이터',

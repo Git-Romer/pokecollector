@@ -17,6 +17,11 @@ const sv = {
     more: 'Mer',
   },
 
+  pokedex: {
+    sortLowToHigh: 'lågt till högt',
+    sortHighToLow: 'högt till lågt',
+  },
+
   // Common / General
   fallback: {
     data: 'Data',
