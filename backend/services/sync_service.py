@@ -18,12 +18,14 @@ from services.tcgdex_languages import with_lang_suffix
 
 logger = logging.getLogger(__name__)
 
-MIN_CARDS_PER_SYNC = 500
-MAX_CARDS_PER_SYNC = 2000  # TCGdex has no published rate limit; keep a hard safety cap.
-PRICE_SYNC_COLLECTION_FRACTION = 0.5
+MIN_PRICE_CARDS_PER_SYNC = 1000
+MAX_PRICE_CARDS_PER_SYNC = 5000  # TCGdex has no published rate limit; keep a hard safety cap.
+MAX_METADATA_CARDS_PER_FULL_SYNC = 2000
+PRICE_SYNC_COLLECTION_FRACTION = 0.75
 MISSING_PRICE_SYNC_RATIO = 0.7
 NO_PRICE_RETRY_COOLDOWN = datetime.timedelta(hours=24)
 PRICE_SYNC_DB_CHUNK_SIZE = 400  # Stay below SQLite's common 999-parameter limit.
+COMPLETE_SET_CARD_REFRESH_LIMIT = 25
 
 
 def _user_price_field(db: Session, user_id: int | None) -> str:
@@ -76,7 +78,11 @@ def _price_sync_collection_size(db: Session) -> int:
 def _price_sync_limit(db: Session) -> int:
     collection_size = _price_sync_collection_size(db)
     scaled_limit = math.ceil(collection_size * PRICE_SYNC_COLLECTION_FRACTION)
-    return min(MAX_CARDS_PER_SYNC, max(MIN_CARDS_PER_SYNC, scaled_limit))
+    return min(MAX_PRICE_CARDS_PER_SYNC, max(MIN_PRICE_CARDS_PER_SYNC, scaled_limit))
+
+
+def _metadata_enrichment_limit(db: Session) -> int:
+    return min(MAX_METADATA_CARDS_PER_FULL_SYNC, _price_sync_limit(db))
 
 
 def _empty_price_sync_plan(sync_limit: int) -> dict:
@@ -344,6 +350,112 @@ def _parse_unique_sync_sets(sets_data: list[dict]) -> tuple[list[dict], int]:
     return list(parsed_by_id.values()), duplicate_count
 
 
+def _build_set_card_list_cache(sets_data: list[dict]) -> dict[tuple[str, str], list[dict]]:
+    """Keep card lists already fetched with set details for the card sync pass."""
+    cache: dict[tuple[str, str], list[dict]] = {}
+    for set_data in sets_data:
+        tcg_id = set_data.get("id")
+        cards = set_data.get("cards")
+        if not tcg_id or not isinstance(cards, list):
+            continue
+        cache[(tcg_id, set_data.get("_lang", "en"))] = cards
+    return cache
+
+
+def _get_set_cards_for_sync(
+    tcg_id: str,
+    set_lang: str,
+    card_list_cache: dict[tuple[str, str], list[dict]],
+) -> list[dict]:
+    cached_cards = card_list_cache.get((tcg_id, set_lang))
+    if cached_cards is not None:
+        return cached_cards
+    set_detail = pokemon_api.get_set_cards(tcg_id, lang=set_lang)
+    cards_data = set_detail.get("cards", [])
+    return cards_data if isinstance(cards_data, list) else []
+
+
+def _sync_set_card_catalogue(
+    db: Session,
+    sets_to_sync: list[Set],
+    *,
+    card_list_cache: dict[tuple[str, str], list[dict]],
+    complete_set_refresh_limit: int = COMPLETE_SET_CARD_REFRESH_LIMIT,
+) -> dict[str, int]:
+    """Refresh incomplete/fallback set card lists plus a bounded complete-set batch."""
+    result = {
+        "sets_refreshed": 0,
+        "complete_sets_refreshed": 0,
+        "complete_sets_skipped": 0,
+    }
+    complete_refresh_remaining = max(0, complete_set_refresh_limit)
+
+    for set_obj in sets_to_sync:
+        tcg_id = set_obj.tcg_set_id or set_obj.id
+        set_lang = set_obj.lang or "en"
+        existing_card_count = db.query(Card).filter(
+            Card.set_id == tcg_id, Card.lang == set_lang
+        ).count()
+        has_fallback_cards = db.query(Card.id).filter(
+            Card.set_id == tcg_id,
+            Card.lang == set_lang,
+            or_(
+                Card.data_source_lang.isnot(None),
+                Card.image_source_lang.isnot(None),
+                Card.price_source_lang.isnot(None),
+            ),
+        ).first() is not None
+        set_total = set_obj.total or 0
+        is_complete_native_set = (
+            existing_card_count >= set_total
+            and existing_card_count > 0
+            and not has_fallback_cards
+        )
+        if is_complete_native_set:
+            if complete_refresh_remaining <= 0:
+                result["complete_sets_skipped"] += 1
+                continue
+            complete_refresh_remaining -= 1
+            result["complete_sets_refreshed"] += 1
+
+        try:
+            cards_data = _get_set_cards_for_sync(tcg_id, set_lang, card_list_cache)
+            # Update set total if needed
+            if cards_data and not set_obj.total:
+                set_obj.total = len(cards_data)
+            for card_data in cards_data:
+                parsed = pokemon_api.parse_card_for_db(card_data, default_set_id=tcg_id, lang=set_lang)
+                parsed = apply_cross_language_fallbacks(db, parsed)
+                upsert_card(db, parsed)
+            if set_total and len(cards_data) < set_total:
+                for parsed in build_missing_language_cards_for_set(db, tcg_id, set_lang, expected_total=set_total):
+                    upsert_card(db, parsed)
+            set_obj.updated_at = datetime.datetime.utcnow()
+            result["sets_refreshed"] += 1
+            db.commit()
+        except Exception as e:
+            logger.warning(f"Failed to sync cards for set {set_obj.id}: {e}")
+            db.rollback()
+            try:
+                fallback_cards = build_missing_language_cards_for_set(db, tcg_id, set_lang, expected_total=set_total)
+                if fallback_cards:
+                    for parsed in fallback_cards:
+                        upsert_card(db, parsed)
+                    set_obj.updated_at = datetime.datetime.utcnow()
+                    result["sets_refreshed"] += 1
+                    db.commit()
+            except Exception as fallback_error:
+                logger.warning(f"Failed to create fallback cards for set {set_obj.id}: {fallback_error}")
+                db.rollback()
+
+    return result
+
+
+def _sets_for_card_catalogue_sync(db: Session) -> list[Set]:
+    """Return syncable sets oldest-first so complete-set refreshes rotate."""
+    return db.query(Set).filter(sync_set_filter(db)).order_by(Set.updated_at.asc(), Set.id.asc()).all()
+
+
 def record_price_history(db: Session, card: Card):
     """Record today's price for a card."""
     today = datetime.date.today()
@@ -603,6 +715,7 @@ def _perform_full_sync_locked(db: Session) -> dict:
         pinned_set_pairs = get_pinned_set_language_pairs(db)
         logger.info("Syncing sets for languages: %s", ", ".join(sync_languages))
         sets_data = pokemon_api.get_all_sets(languages=sync_languages, include_digital=include_digital)
+        set_card_list_cache = _build_set_card_list_cache(sets_data)
         parsed_sets, duplicate_sets = _parse_unique_sync_sets(sets_data)
         if duplicate_sets:
             logger.warning(
@@ -656,62 +769,29 @@ def _perform_full_sync_locked(db: Session) -> dict:
         # disabled-language set that is pinned by collection, wishlist, or binder
         # cards. This keeps tracked localized sets complete without making the
         # entire disabled language visible again.
-        sets_to_sync = db.query(Set).filter(sync_set_filter(db)).all()
+        sets_to_sync = _sets_for_card_catalogue_sync(db)
         logger.info(
             "Syncing full card catalogue for %s sets (%s pinned set-language pairs)...",
             len(sets_to_sync),
             len(pinned_set_pairs),
         )
-        for set_obj in sets_to_sync:
-            tcg_id = set_obj.tcg_set_id or set_obj.id
-            set_lang = set_obj.lang or "en"
-            existing_card_count = db.query(Card).filter(
-                Card.set_id == tcg_id, Card.lang == set_lang
-            ).count()
-            has_fallback_cards = db.query(Card.id).filter(
-                Card.set_id == tcg_id,
-                Card.lang == set_lang,
-                or_(
-                    Card.data_source_lang.isnot(None),
-                    Card.image_source_lang.isnot(None),
-                    Card.price_source_lang.isnot(None),
-                ),
-            ).first() is not None
-            set_total = set_obj.total or 0
-            if existing_card_count >= set_total and existing_card_count > 0 and not has_fallback_cards:
-                continue  # Already have all native cards for this lang
-            try:
-                set_detail = pokemon_api.get_set_cards(tcg_id, lang=set_lang)
-                cards_data = set_detail.get("cards", [])
-                # Update set total if needed
-                if cards_data and not set_obj.total:
-                    set_obj.total = len(cards_data)
-                for card_data in cards_data:
-                    parsed = pokemon_api.parse_card_for_db(card_data, default_set_id=tcg_id, lang=set_lang)
-                    parsed = apply_cross_language_fallbacks(db, parsed)
-                    upsert_card(db, parsed)
-                if set_total and len(cards_data) < set_total:
-                    for parsed in build_missing_language_cards_for_set(db, tcg_id, set_lang, expected_total=set_total):
-                        upsert_card(db, parsed)
-                db.commit()
-            except Exception as e:
-                logger.warning(f"Failed to sync cards for set {set_obj.id}: {e}")
-                db.rollback()
-                try:
-                    fallback_cards = build_missing_language_cards_for_set(db, tcg_id, set_lang, expected_total=set_total)
-                    if fallback_cards:
-                        for parsed in fallback_cards:
-                            upsert_card(db, parsed)
-                        db.commit()
-                except Exception as fallback_error:
-                    logger.warning(f"Failed to create fallback cards for set {set_obj.id}: {fallback_error}")
-                    db.rollback()
-        logger.info("Full card catalogue sync complete")
+        catalogue_result = _sync_set_card_catalogue(
+            db,
+            sets_to_sync,
+            card_list_cache=set_card_list_cache,
+        )
+        logger.info(
+            "Full card catalogue sync complete: refreshed %s set card lists "
+            "(%s complete-set refreshes, %s complete sets deferred by refresh limit)",
+            catalogue_result["sets_refreshed"],
+            catalogue_result["complete_sets_refreshed"],
+            catalogue_result["complete_sets_skipped"],
+        )
 
         # 2b. Set card lists only contain brief card data. Enrich a bounded
         # batch with full card detail so global search filters can work on
         # unowned catalogue cards without making every full sync unbounded.
-        metadata_limit = _price_sync_limit(db)
+        metadata_limit = _metadata_enrichment_limit(db)
         metadata_result = enrich_missing_card_metadata(db, limit=metadata_limit)
         if metadata_result["attempted"]:
             logger.info(
