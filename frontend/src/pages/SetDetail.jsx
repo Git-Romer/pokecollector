@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Plus, Check, Trash2, X, Heart } from 'lucide-react'
-import { getSetChecklist, addToCollection, addToWishlist, updateCollectionItem, removeFromCollection } from '../api/client'
+import { ArrowLeft, Plus, Check, Trash2, X, Heart, BookMarked } from 'lucide-react'
+import { getSetChecklist, addToCollection, addToWishlist, updateCollectionItem, removeFromCollection, getBinders, createBinder, addOwnedSetToBinder } from '../api/client'
+import { ownedBinderName, findOwnedBinderForSet } from '../utils/ownedBinder'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
@@ -286,6 +287,7 @@ export default function SetDetail() {
   const [sortBy, setSortBy] = useState('number')
   const [rarityFilter, setRarityFilter] = useState('all')
   const [selectedCard, setSelectedCard] = useState(null)
+  const [binderPickerOpen, setBinderPickerOpen] = useState(false)
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['set-checklist', setId],
@@ -355,6 +357,50 @@ export default function SetDetail() {
     },
     onError: () => toast.error(t('collection.updateFailed')),
   })
+
+  const bindersQuery = useQuery({
+    queryKey: ['binders'],
+    queryFn: () => getBinders().then(r => r.data),
+    enabled: binderPickerOpen,
+  })
+
+  // Synchronous re-entry lock. `disabled={isPending}` is async React state and
+  // does not block a rapid second click before the re-render, which would create
+  // a duplicate binder; this ref blocks it immediately.
+  const addOwnedSubmittingRef = useRef(false)
+
+  const addOwnedMutation = useMutation({
+    mutationFn: async ({ binderId, setId }) => {
+      let targetId = binderId
+      if (!targetId) {
+        // Reuse an existing auto-named collection binder for this set instead of
+        // creating another duplicate on repeated use.
+        const name = ownedBinderName(set?.name, setId)
+        const existing = findOwnedBinderForSet(bindersQuery.data, name)
+        if (existing) {
+          targetId = existing.id
+        } else {
+          const created = await createBinder({ name, binder_type: 'collection' })
+          targetId = created.data.id
+        }
+      }
+      return addOwnedSetToBinder(targetId, setId)
+    },
+    onSuccess: (result) => {
+      const skipped = (result.skipped_present || 0) + (result.skipped_no_capacity || 0)
+      toast.success(t('setDetail.addOwnedToBinderResult').replace('{added}', result.added).replace('{skipped}', skipped))
+      queryClient.invalidateQueries({ queryKey: ['binders'] })
+      setBinderPickerOpen(false)
+    },
+    onError: () => toast.error(t('setDetail.addOwnedToBinderFailed')),
+    onSettled: () => { addOwnedSubmittingRef.current = false },
+  })
+
+  const submitAddOwned = (args) => {
+    if (addOwnedSubmittingRef.current) return
+    addOwnedSubmittingRef.current = true
+    addOwnedMutation.mutate(args)
+  }
 
   if (isLoading) {
     return (
@@ -431,7 +477,7 @@ export default function SetDetail() {
             </div>
           </div>
 
-          <div className="text-right hidden md:block flex-shrink-0">
+          <div className="hidden md:flex flex-col items-end gap-3 flex-shrink-0">
             <div className="flex gap-4">
               <div>
                 <p className="text-2xl font-bold text-green">{owned_count}</p>
@@ -444,6 +490,13 @@ export default function SetDetail() {
             </div>
           </div>
         </div>
+
+        <button
+          onClick={() => setBinderPickerOpen(true)}
+          className="btn-ghost flex items-center justify-center gap-1.5 text-sm whitespace-nowrap w-full mt-3 md:w-auto md:ml-auto md:mt-3"
+        >
+          <BookMarked size={14} /> {t('setDetail.addOwnedToBinder')}
+        </button>
       </div>
 
       {/* Filter Tabs */}
@@ -562,6 +615,50 @@ export default function SetDetail() {
         isRemoving={removeMutation.isPending}
         t={t}
       />
+
+      {binderPickerOpen && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setBinderPickerOpen(false)}>
+          <div className="card w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-bold text-text-primary">{t('setDetail.addOwnedToBinderTitle')}</h2>
+              <button onClick={() => setBinderPickerOpen(false)} className="text-text-muted hover:text-text-primary"><X size={18} /></button>
+            </div>
+            {owned_count === 0 ? (
+              <p className="text-sm text-text-secondary">{t('setDetail.addOwnedToBinderEmpty')}</p>
+            ) : (
+              <>
+                <p className="text-xs font-semibold text-text-muted mb-2 uppercase tracking-wide">{t('setDetail.addOwnedToBinderPick')}</p>
+                <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+                  {bindersQuery.isLoading && (
+                    <p className="text-sm text-text-secondary">{t('common.loading')}</p>
+                  )}
+                  {!bindersQuery.isLoading && (bindersQuery.data || []).filter(b => (b.binder_type || 'collection') === 'collection').length === 0 && (
+                    <p className="text-sm text-text-secondary">{t('setDetail.addOwnedToBinderNoBinders')}</p>
+                  )}
+                  {(bindersQuery.data || []).filter(b => (b.binder_type || 'collection') === 'collection').map(b => (
+                    <button
+                      key={b.id}
+                      disabled={addOwnedMutation.isPending}
+                      onClick={() => submitAddOwned({ binderId: b.id, setId: set.id })}
+                      className="text-left px-3 py-2 rounded-lg bg-bg-elevated hover:bg-brand-red/10 text-sm text-text-primary disabled:opacity-50"
+                    >
+                      {b.name}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  disabled={addOwnedMutation.isPending}
+                  onClick={() => submitAddOwned({ binderId: null, setId: set.id })}
+                  className="btn-primary w-full mt-3 flex items-center justify-center gap-1.5 text-sm disabled:opacity-50"
+                >
+                  <Plus size={14} /> {t('setDetail.addOwnedToBinderNew')}
+                </button>
+              </>
+            )}
+          </div>
+        </div>,
+        document.body,
+      )}
     </div>
   )
 }

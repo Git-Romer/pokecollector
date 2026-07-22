@@ -6,14 +6,14 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List
 from api.auth import get_current_user
 from database import get_db
-from models import Binder, BinderCard, Card, CollectionItem, User, WishlistItem
+from models import Binder, BinderCard, Card, CollectionItem, Set, User, WishlistItem
 from schemas import BinderCreate, BinderUpdate, BinderResponse, BinderCardUpdate, BinderCardSwitch, BinderPrintOptimizationApply
 from api.collection import ensure_card_exists, _find_card_by_code
 from services import pokemon_api
 from services.card_fallbacks import apply_cross_language_fallbacks
 from services.card_upsert import upsert_card
 from services.card_values import effective_market_price, normalize_price_field
-from services.card_visibility import visible_card_filter
+from services.card_visibility import visible_card_filter, visible_set_filter
 from services.binder_csv import BINDER_CSV_DUPLICATE_QUANTITY_ERROR, combine_binder_required_quantity
 from services.wishlist_missing import plan_missing_wishlist_additions
 from services.tcgdex_languages import SUPPORTED_TCGDEX_LANGUAGES, is_supported_tcgdex_language, normalize_tcgdex_language
@@ -902,6 +902,81 @@ def add_collection_item_to_binder(
     db.add(bc)
     db.commit()
     return {"message": "Collection item added to binder"}
+
+
+@router.post("/{binder_id}/add-owned-set")
+def add_owned_set_to_binder(
+    binder_id: int,
+    set_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Bulk-add every owned collection item from a set into a collection binder.
+
+    One entry per owned collection item (variant); copies of a variant stack into
+    that single entry. Skips items already in this binder, and items whose copies
+    are all allocated across collection binders.
+    """
+    binder = db.query(Binder).filter(
+        Binder.id == binder_id,
+        Binder.user_id == current_user.id,
+    ).first()
+    if not binder:
+        raise HTTPException(status_code=404, detail="Binder not found")
+    if (binder.binder_type or "collection") != "collection":
+        raise HTTPException(status_code=400, detail="Owned cards can only be added to collection binders")
+
+    set_obj = db.query(Set).filter(
+        Set.id == set_id,
+        visible_set_filter(db, current_user.id, "all"),
+    ).first()
+    if not set_obj:
+        raise HTTPException(status_code=404, detail="Set not found")
+    tcg_id = set_obj.tcg_set_id or set_obj.id
+    set_lang = set_obj.lang or "en"
+
+    owned_items = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).filter(
+        CollectionItem.user_id == current_user.id,
+        Card.set_id == tcg_id,
+        Card.lang == set_lang,
+        CollectionItem.quantity > 0,
+        visible_card_filter(db, current_user.id, "all"),
+    ).order_by(CollectionItem.id.asc()).all()
+
+    usage_counts = _collection_binder_usage_counts(db, current_user)
+    existing_item_ids = {
+        item_id for (item_id,) in db.query(BinderCard.collection_item_id).filter(
+            BinderCard.binder_id == binder_id,
+            BinderCard.collection_item_id.isnot(None),
+        ).all()
+    }
+
+    added = 0
+    skipped_present = 0
+    skipped_no_capacity = 0
+    for item in owned_items:
+        if item.id in existing_item_ids:
+            skipped_present += 1
+            continue
+        if usage_counts.get(item.id, 0) >= (item.quantity or 1):
+            skipped_no_capacity += 1
+            continue
+        db.add(BinderCard(
+            binder_id=binder_id,
+            card_id=item.card_id,
+            collection_item_id=item.id,
+            required_quantity=1,
+            added_at=datetime.datetime.utcnow(),
+        ))
+        added += 1
+
+    db.commit()
+    return {
+        "added": added,
+        "skipped_present": skipped_present,
+        "skipped_no_capacity": skipped_no_capacity,
+        "owned_total": len(owned_items),
+    }
 
 
 @router.put("/{binder_id}/entries/{binder_card_id}")
