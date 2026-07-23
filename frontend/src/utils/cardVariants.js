@@ -57,8 +57,16 @@ export const getOwnedVariants = (rows = []) => {
   // gets a pill rather than vanishing.
   const unknown = [...totals.keys()]
     .filter(variant => !CARD_VARIANTS.includes(variant) && totals.get(variant) > 0)
-    .sort()
     .map(variant => ({ variant, quantity: totals.get(variant) }))
 
   return [...ordered, ...unknown]
 }
+
+// Tile payloads use owned_variants while collection/action payloads expose
+// owned_items.  Keep their normalization in one place so both displays behave
+// identically and detailed variants always take precedence over a total.
+export const getCardOwnedVariants = (card = {}) => getOwnedVariants(
+  Array.isArray(card.owned_variants) ? card.owned_variants : (card.owned_items || [])
+)
+
+export const hasGenericOwnership = (card = {}) => Boolean(card.owned || Number(card.owned_quantity) > 0)

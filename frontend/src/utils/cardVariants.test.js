@@ -72,3 +72,23 @@ describe('getOwnedVariants', () => {
     expect(getOwnedVariants([])).toEqual([])
   })
 })
+
+import { getCardOwnedVariants, hasGenericOwnership } from './cardVariants'
+
+describe('card tile ownership normalization', () => {
+  it('prefers owned_variants over owned_items', () => {
+    expect(getCardOwnedVariants({ owned_variants: [{ variant: 'Holo', quantity: 2 }], owned_items: [row({ variant: 'Normal' })] }))
+      .toEqual([{ variant: 'Holo', quantity: 2 }])
+  })
+
+  it('uses owned_items when detailed summary variants are absent', () => {
+    expect(getCardOwnedVariants({ owned_items: [row({ variant: 'Reverse Holo' })] }))
+      .toEqual([{ variant: 'Reverse Holo', quantity: 1 }])
+  })
+
+  it('recognizes generic owned and quantity fallbacks without inventing a variant', () => {
+    expect(getCardOwnedVariants({ owned: true })).toEqual([])
+    expect(hasGenericOwnership({ owned: true })).toBe(true)
+    expect(hasGenericOwnership({ owned_quantity: 3 })).toBe(true)
+  })
+})

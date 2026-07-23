@@ -4,6 +4,7 @@ import { Search, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, SortAsc, 
 import toast from 'react-hot-toast'
 import { searchCards, getSets, getCustomCards, bulkAddToCollection } from '../api/client'
 import { CardItem, CustomCardModal, CardModal } from '../components/CardItem'
+import CardStateIndicators from '../components/CardStateIndicators'
 import { useSettings } from '../contexts/SettingsContext'
 import Sheet from '../components/ui/Sheet'
 import CardScanner from '../components/CardScanner'
@@ -653,33 +654,33 @@ export default function CardSearch() {
                     className={`card-3d group relative ${selectMode && isSelected ? 'ring-2 ring-brand-red rounded-xl' : ''}`}
                     onClick={() => (selectMode ? toggleSelected(card) : setSelectedCard(card))}
                   >
-                    <div className="aspect-[2.5/3.5] rounded-xl overflow-hidden bg-bg-elevated ring-1 ring-white/5 group-hover:ring-brand-red/40">
+                    <div className="relative aspect-[2.5/3.5] rounded-xl overflow-hidden bg-bg-elevated ring-1 ring-white/5 group-hover:ring-brand-red/40">
                       {imgSrc
                         ? <img src={imgSrc} alt={card.name} className="w-full h-full object-cover" loading="lazy" />
                         : <div className="w-full h-full flex flex-col items-center justify-center gap-1 p-2">
                             <span className="text-[10px] text-text-muted text-center leading-tight">{card.name}</span>
                           </div>
                       }
+                      {selectMode && (
+                        <div
+                          className={`absolute bottom-1.5 left-1.5 w-6 h-6 rounded-md flex items-center justify-center border-2 transition-colors pointer-events-none ${
+                            isSelected
+                              ? 'bg-brand-red border-brand-red text-white'
+                              : 'bg-bg-elevated/80 border-white/40 backdrop-blur'
+                          }`}
+                        >
+                          {isSelected && <Check size={14} strokeWidth={3} />}
+                        </div>
+                      )}
                     </div>
                     {card.rarity?.toLowerCase().includes('holo') && (
                       <div className="absolute inset-0 rounded-xl pointer-events-none card-holo" />
                     )}
-                    {selectMode && (
-                      <div
-                        className={`absolute top-1.5 left-1.5 w-6 h-6 rounded-md flex items-center justify-center border-2 transition-colors pointer-events-none ${
-                          isSelected
-                            ? 'bg-brand-red border-brand-red text-white'
-                            : 'bg-bg-elevated/80 border-white/40 backdrop-blur'
-                        }`}
-                      >
-                        {isSelected && <Check size={14} strokeWidth={3} />}
-                      </div>
-                    )}
-                    {card.owned_quantity > 0 && (
-                      <div className="absolute top-1.5 right-1.5 rounded-full bg-green/90 text-white text-[10px] font-bold px-1.5 py-0.5 shadow">
-                        ✓ {card.owned_quantity}x
-                      </div>
-                    )}
+                    <CardStateIndicators
+                      card={card}
+                      compact
+                      className="absolute left-1.5 right-1.5 top-1.5 z-10"
+                    />
                     <div className="mt-1.5 px-0.5">
                       <div className="flex items-center gap-1">
                         <p className="text-[11px] font-semibold text-text-primary truncate leading-tight flex-1">{card.name}</p>

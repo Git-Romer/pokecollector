@@ -8,6 +8,7 @@ from sqlalchemy import text, func
 from api.auth import get_current_user
 from database import get_db
 from models import Set, Card, CollectionItem, User
+from services.card_state import card_state_summaries
 from schemas import SetBase
 from services import pokemon_api
 from services.card_fallbacks import (
@@ -267,16 +268,20 @@ def get_set_checklist(
     owned_by_card: dict[str, list[CollectionItem]] = {}
     for item in collection_items:
         owned_by_card.setdefault(item.card_id, []).append(item)
-    owned_card_ids = set(owned_by_card.keys())
-
-    owned_count = len(owned_card_ids)
+    summaries = card_state_summaries(
+        db,
+        current_user.id,
+        [card.id for card in cards],
+        collection_items=collection_items,
+    )
+    owned_count = sum(1 for summary in summaries.values() if summary["owned"])
     total_count = len(cards)
 
     checklist = []
     for card in cards:
-        owned = card.id in owned_card_ids
         owned_items = owned_by_card.get(card.id, [])
-        qty = sum(item.quantity or 0 for item in owned_items)
+        summary = summaries[card.id]
+        qty = summary["owned_quantity"]
 
         checklist.append({
             "id": card.id,
@@ -297,7 +302,10 @@ def get_set_checklist(
             "image_source_lang": getattr(card, "image_source_lang", None),
             "data_source_lang": getattr(card, "data_source_lang", None),
             "price_source_lang": getattr(card, "price_source_lang", None),
-            "owned": owned,
+            "owned": summary["owned"],
+            "owned_quantity": qty,
+            "owned_variants": summary["owned_variants"],
+            "wishlisted": summary["wishlisted"],
             "quantity": qty,
             "owned_items": [
                 {

@@ -24,6 +24,7 @@ from services.image_url_security import validate_public_https_image_url
 from services.card_numbers import card_number_matches
 from services.tcgdex_languages import english_fallback_languages, has_lang_suffix, is_supported_tcgdex_language, normalize_tcgdex_language
 from services.text_search import accent_insensitive_contains
+from services.card_state import card_state_summaries
 import datetime
 import re
 from uuid import uuid4
@@ -106,31 +107,27 @@ def _card_to_dict(card: Card) -> dict:
 
 
 def _with_collection_summary(db: Session, current_user: User, card_dicts: List[dict]) -> List[dict]:
-    """Attach exact ownership info for the current user to search results."""
+    """Attach collector-scoped tile state; keep rows only for existing action modals."""
     if not card_dicts:
         return card_dicts
 
-    card_ids = [card["id"] for card in card_dicts if card.get("id")]
+    card_ids = [card["id"] for card in card_dicts]
     items = db.query(CollectionItem).filter(
         CollectionItem.user_id == current_user.id,
         CollectionItem.card_id.in_(card_ids),
     ).all()
+    summaries = card_state_summaries(
+        db,
+        current_user.id,
+        card_ids,
+        collection_items=items,
+    )
     by_card: dict[str, list[CollectionItem]] = {}
     for item in items:
         by_card.setdefault(item.card_id, []).append(item)
-
-    wishlist_card_ids = {
-        row[0]
-        for row in db.query(WishlistItem.card_id).filter(
-            WishlistItem.user_id == current_user.id,
-            WishlistItem.card_id.in_(card_ids),
-        ).all()
-    }
-
     for card in card_dicts:
-        owned_items = by_card.get(card.get("id"), [])
-        card["owned"] = bool(owned_items)
-        card["owned_quantity"] = sum(item.quantity or 0 for item in owned_items)
+        card.update(summaries.get(card.get("id"), {}))
+        # CardModal edits exact rows, so retain this existing action payload.
         card["owned_items"] = [
             {
                 "id": item.id,
@@ -140,11 +137,9 @@ def _with_collection_summary(db: Session, current_user: User, card_dicts: List[d
                 "lang": item.lang,
                 "purchase_price": item.purchase_price,
             }
-            for item in owned_items
+            for item in by_card.get(card.get("id"), [])
         ]
-        card["wishlisted"] = card.get("id") in wishlist_card_ids
     return card_dicts
-
 
 def _enrich_search_page_metadata(db: Session, cards: List[Card]) -> List[Card]:
     """Opportunistically enrich visible search results that only have brief set-list data."""
