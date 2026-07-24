@@ -13,6 +13,14 @@ const readSavedPosition = (key) => {
   }
 }
 
+export const getSavedListScrollPosition = (key) => readSavedPosition(key)
+
+export const isSavedPositionForLocation = (saved, location) => (
+  saved?.locationKey === location.key
+  && saved.pathname === location.pathname
+  && saved.search === location.search
+)
+
 const clearSavedPosition = (key) => {
   try {
     sessionStorage.removeItem(storageKey(key))
@@ -30,13 +38,14 @@ export function useListScrollRestoration({ key, isReady }) {
   const navigationType = useNavigationType()
   const restoredLocationKey = useRef(null)
 
-  const saveScrollPosition = useCallback((anchorId) => {
+  const saveScrollPosition = useCallback((anchorId, listState) => {
     const position = {
       scrollY: window.scrollY,
       anchorId,
       pathname: location.pathname,
       search: location.search,
       locationKey: location.key,
+      listState,
     }
     try {
       sessionStorage.setItem(storageKey(key), JSON.stringify(position))
@@ -55,7 +64,7 @@ export function useListScrollRestoration({ key, isReady }) {
     if (!isReady || navigationType !== 'POP' || restoredLocationKey.current === location.key) return
 
     const saved = readSavedPosition(key)
-    if (!saved || saved.locationKey !== location.key || saved.pathname !== location.pathname || saved.search !== location.search) return
+    if (!isSavedPositionForLocation(saved, location)) return
 
     let frame
     let nestedFrame
