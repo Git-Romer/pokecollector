@@ -58,6 +58,7 @@ export function useListScrollRestoration({ key, isReady }) {
     fromList: key,
     returnPath: `${location.pathname}${location.search}`,
     anchorId,
+    detailHistoryDepth: 0,
   }), [key, location.pathname, location.search])
 
   useEffect(() => {
@@ -97,7 +98,8 @@ export function useDetailBackNavigation(listKey, fallbackPath) {
 
   const goBack = useCallback(() => {
     if (location.state?.fromList === listKey) {
-      navigate(-1)
+      const detailHistoryDepth = Number(location.state.detailHistoryDepth)
+      navigate(-(Number.isInteger(detailHistoryDepth) && detailHistoryDepth >= 0 ? detailHistoryDepth + 1 : 1))
       return
     }
     navigate(fallbackPath)

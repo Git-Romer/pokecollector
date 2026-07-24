@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, ChevronLeft, ChevronRight, SortAsc } from 'lucide-react'
 import { getPokedexSpecies, searchCards } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
@@ -61,6 +61,7 @@ function compareCardPrice(a, b, priceField, direction = 'asc') {
 export default function PokedexSpecies() {
   const { dexId } = useParams()
   const dexNumber = Number(dexId)
+  const location = useLocation()
   const goBack = useDetailBackNavigation('pokedex', '/pokedex')
   useScrollToTopOnPush()
   const [searchParams] = useSearchParams()
@@ -115,6 +116,12 @@ export default function PokedexSpecies() {
   const secondaryName = language === 'de' ? species.name_en : species.name_de
   const generationQuery = searchParams.get('generation')
   const suffix = generationQuery ? `?generation=${generationQuery}` : ''
+  const detailNavigationState = location.state?.fromList === 'pokedex'
+    ? {
+        ...location.state,
+        detailHistoryDepth: (Number(location.state.detailHistoryDepth) || 0) + 1,
+      }
+    : undefined
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 px-4 pb-28 pt-2 sm:px-6 lg:px-8">
@@ -148,10 +155,10 @@ export default function PokedexSpecies() {
 
         <div className="mt-6 grid grid-cols-2 gap-3 border-t border-border pt-5">
           {species.previous_dex_id ? (
-            <Link to={`/pokedex/${species.previous_dex_id}${suffix}`} className="btn-ghost justify-start gap-2"><ChevronLeft size={17} /> {t('pokedex.previous')}</Link>
+            <Link to={`/pokedex/${species.previous_dex_id}${suffix}`} state={detailNavigationState} className="btn-ghost justify-start gap-2"><ChevronLeft size={17} /> {t('pokedex.previous')}</Link>
           ) : <span />}
           {species.next_dex_id ? (
-            <Link to={`/pokedex/${species.next_dex_id}${suffix}`} className="btn-ghost justify-end gap-2">{t('pokedex.next')} <ChevronRight size={17} /></Link>
+            <Link to={`/pokedex/${species.next_dex_id}${suffix}`} state={detailNavigationState} className="btn-ghost justify-end gap-2">{t('pokedex.next')} <ChevronRight size={17} /></Link>
           ) : <span />}
         </div>
       </section>
