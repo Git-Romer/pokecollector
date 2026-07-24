@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, ChevronLeft, ChevronRight, SortAsc } from 'lucide-react'
 import { getPokedexSpecies, searchCards } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
@@ -9,6 +9,7 @@ import CardItem from '../components/CardItem'
 import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { getEffectiveCardPrice } from '../utils/prices'
+import { useDetailBackNavigation, useScrollToTopOnPush } from '../hooks/useListScrollRestoration'
 
 function SpeciesArtwork({ species, name }) {
   const handleError = (event) => {
@@ -60,7 +61,8 @@ function compareCardPrice(a, b, priceField, direction = 'asc') {
 export default function PokedexSpecies() {
   const { dexId } = useParams()
   const dexNumber = Number(dexId)
-  const navigate = useNavigate()
+  const goBack = useDetailBackNavigation('pokedex', '/pokedex')
+  useScrollToTopOnPush()
   const [searchParams] = useSearchParams()
   const { t, settings, pricePrimary, pricePrimaryField } = useSettings()
   const language = settings.language === 'de' ? 'de' : 'en'
@@ -116,7 +118,7 @@ export default function PokedexSpecies() {
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 px-4 pb-28 pt-2 sm:px-6 lg:px-8">
-      <button type="button" onClick={() => navigate(`/pokedex${generationQuery ? `?generation=${generationQuery}` : ''}`)} className="btn-ghost inline-flex items-center gap-2">
+      <button type="button" onClick={goBack} className="btn-ghost inline-flex items-center gap-2">
         <ArrowLeft size={16} /> {t('common.back')}
       </button>
 

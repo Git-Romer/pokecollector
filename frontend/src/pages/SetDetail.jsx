@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Plus, Trash2, X, Heart, BookMarked, HelpCircle } from 'lucide-react'
 import { getSetChecklist, addToCollection, addToWishlist, updateCollectionItem, removeFromCollection, getBinders, addOwnedSetToBinder, addOwnedSetToAutoBinder } from '../api/client'
@@ -17,6 +17,7 @@ import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/q
 import MoneyInput from '../components/MoneyInput'
 import { parseMoneyInputValue } from '../utils/moneyInput'
 import { getCardRarityEffectClass } from '../utils/cardRarity'
+import { useDetailBackNavigation, useScrollToTopOnPush } from '../hooks/useListScrollRestoration'
 
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
 
@@ -281,7 +282,8 @@ function SetCardActionModal({ card, setLang, onClose, onAdd, onAddWishlist, onQu
 
 export default function SetDetail() {
   const { setId } = useParams()
-  const navigate = useNavigate()
+  const goBack = useDetailBackNavigation('sets', '/sets')
+  useScrollToTopOnPush()
   const { t, pricePrimaryField } = useSettings()
   const queryClient = useQueryClient()
   const [filter, setFilter] = useState('all')
@@ -399,7 +401,7 @@ export default function SetDetail() {
     return (
       <div className="card text-center py-12">
         <p className="text-brand-red">{t('setDetail.loadFailed')} {error.message}</p>
-        <button onClick={() => navigate(-1)} className="btn-ghost mt-4 mx-auto">
+        <button onClick={goBack} className="btn-ghost mt-4 mx-auto">
           <ArrowLeft size={16} /> {t('setDetail.goBack')}
         </button>
       </div>
@@ -424,7 +426,7 @@ export default function SetDetail() {
 
   return (
     <div className="space-y-4 pb-2">
-      <button onClick={() => navigate('/sets')} className="btn-ghost text-sm py-1.5">
+      <button onClick={goBack} className="btn-ghost text-sm py-1.5">
         <ArrowLeft size={14} /> {t('nav.sets')}
       </button>
 

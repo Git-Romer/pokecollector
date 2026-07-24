@@ -6,6 +6,7 @@ import clsx from 'clsx'
 import { getPokedex } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import PokeBallLoader from '../components/PokeBallLoader'
+import { useListScrollRestoration } from '../hooks/useListScrollRestoration'
 
 const GENERATIONS = [
   { id: 1, region: 'Kanto', range: '#001–151' },
@@ -52,6 +53,8 @@ function PokemonTile({ entry, onClick, language, t }) {
   return (
     <button
       type="button"
+      id={`pokemon-${entry.dex_id}`}
+      data-scroll-anchor={`pokemon-${entry.dex_id}`}
       onClick={onClick}
       className={clsx(
         'group relative rounded-2xl border p-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-brand-red',
@@ -118,6 +121,10 @@ export default function Pokedex() {
   })
 
   const entries = data?.entries || []
+  const { saveScrollPosition, createDetailNavigationState } = useListScrollRestoration({
+    key: 'pokedex',
+    isReady: !isLoading && !isError && entries.length > 0,
+  })
   const grouped = useMemo(() => {
     if (generation || search.trim()) return [{ generation, entries }]
     return GENERATIONS.map((item) => ({
@@ -227,7 +234,13 @@ export default function Pokedex() {
                   entry={entry}
                   language={language}
                   t={t}
-                  onClick={() => navigate(`/pokedex/${entry.dex_id}${generation ? `?generation=${generation}` : ''}`)}
+                  onClick={() => {
+                    const anchorId = `pokemon-${entry.dex_id}`
+                    saveScrollPosition(anchorId)
+                    navigate(`/pokedex/${entry.dex_id}${generation ? `?generation=${generation}` : ''}`, {
+                      state: createDetailNavigationState(anchorId),
+                    })
+                  }}
                 />
               ))}
             </div>

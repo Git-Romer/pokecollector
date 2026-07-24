@@ -10,6 +10,7 @@ import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
 import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import { normalizeTcgdexLanguage, tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { textIncludes } from '../utils/textSearch'
+import { useListScrollRestoration } from '../hooks/useListScrollRestoration'
 
 const DEFAULT_SET_FILTERS = {
   search: '',
@@ -78,6 +79,16 @@ export default function Sets() {
     queryFn: () => getSets({ lang: langFilter }).then(r => r.data),
     enabled: filtersHydrated,
   })
+  const { saveScrollPosition, createDetailNavigationState } = useListScrollRestoration({
+    key: 'sets',
+    isReady: filtersHydrated && !isLoading && sets.length > 0,
+  })
+
+  const openSet = (set) => {
+    const anchorId = `set-${set.id}`
+    saveScrollPosition(anchorId)
+    navigate(`/sets/${set.id}`, { state: createDetailNavigationState(anchorId) })
+  }
 
   const markSeenMutation = useMutation({
     mutationFn: markSetsSeen,
@@ -354,7 +365,7 @@ export default function Sets() {
         return (
           <div
             className="set-hero cursor-pointer mb-6 group"
-            onClick={() => navigate(`/sets/${hero.id}`)}
+            onClick={() => openSet(hero)}
           >
             <div className="set-hero-glow" />
             <div className="relative z-10 flex items-center justify-between p-6 gap-4">
@@ -407,10 +418,12 @@ export default function Sets() {
             return (
               <div
                 key={set.id}
+                id={`set-${set.id}`}
+                data-scroll-anchor={`set-${set.id}`}
                 className={`bg-bg-card border rounded-2xl overflow-hidden cursor-pointer hover:border-brand-red/40 transition-all duration-200 hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)] group relative ${
                   isHidden ? 'border-border/70 opacity-60' : 'border-border'
                 }`}
-                onClick={() => navigate(`/sets/${set.id}`)}
+                onClick={() => openSet(set)}
               >
                 {set.is_new && (
                   <span className="absolute top-2 left-2 z-10 badge badge-red">{t('common.new')}</span>
