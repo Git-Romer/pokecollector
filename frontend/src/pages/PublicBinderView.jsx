@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { getPublicBinder } from '../api/publicClient'
 import { formatEur } from '../utils/formatEur'
-import VariantPills from '../components/VariantPills'
+import { groupCardsByPrint } from '../utils/groupCardsByPrint'
+import CardStateIndicators from '../components/CardStateIndicators'
 
 export default function PublicBinderView() {
   const { handle, binderId } = useParams()
@@ -20,6 +21,8 @@ export default function PublicBinderView() {
   if (error) return <div className="min-h-screen flex items-center justify-center text-text-secondary">{error}</div>
   if (!binder) return <div className="min-h-screen flex items-center justify-center text-text-secondary">Loading…</div>
 
+  const tiles = groupCardsByPrint(binder.cards)
+
   return (
     <div className="max-w-5xl mx-auto p-4">
       <Link to={`/u/${handle}`} className="text-sm text-text-secondary">← {handle}</Link>
@@ -30,23 +33,38 @@ export default function PublicBinderView() {
         )}
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-        {binder.cards.map((card, i) => (
-          <div key={`${card.id}-${card.variant || ''}-${i}`} className="rounded-lg border border-border p-2">
-            {card.image
-              ? <img src={card.image} alt={card.name} className="w-full rounded" loading="lazy" />
-              : <div className="aspect-[3/4] bg-bg-secondary rounded" />}
-            <div className="mt-1 text-sm font-medium truncate">{card.name}</div>
-            <div className="text-xs text-text-secondary">
-              {card.set_name} · #{card.number}{card.quantity > 1 ? ` · ×${card.quantity}` : ''}
+        {tiles.map(tile => {
+          // Depth follows distinct prints: 1 layer behind for 2 variants, 2 for 3+.
+          const backLayers = Math.min(tile.variantCount - 1, 2)
+          return (
+            <div key={tile.id} className="rounded-lg border border-border p-2">
+              <div className="relative" style={{ marginRight: backLayers * 5, marginBottom: backLayers * 5 }}>
+                {Array.from({ length: backLayers }).map((_, idx) => {
+                  const depth = idx + 1
+                  return (
+                    <div
+                      key={idx}
+                      aria-hidden
+                      className="absolute inset-0 rounded border border-border bg-bg-secondary shadow-sm"
+                      style={{ transform: `translate(${depth * 5}px, ${depth * 5}px) rotate(${depth * 2}deg)`, zIndex: 0 }}
+                    />
+                  )
+                })}
+                <div className="relative z-10 rounded overflow-hidden aspect-[5/7] bg-bg-secondary">
+                  {tile.image
+                    ? <img src={tile.image} alt={tile.name} className="w-full h-full object-cover" loading="lazy" />
+                    : <div className="w-full h-full" />}
+                </div>
+              </div>
+              <div className="mt-1 text-sm font-medium truncate">{tile.name}</div>
+              <div className="text-xs text-text-secondary">{tile.set_name} · #{tile.number}</div>
+              <CardStateIndicators card={{ owned_items: tile.prints }} showWishlist={false} className="mt-1" />
+              {tile.total_value != null && (
+                <div className="text-xs font-semibold">{formatEur(tile.total_value)}</div>
+              )}
             </div>
-            {card.variant && (
-              <VariantPills rows={[{ variant: card.variant, quantity: card.quantity }]} className="mt-1" />
-            )}
-            {card.market_value != null && (
-              <div className="text-xs font-semibold">{formatEur(card.market_value)}</div>
-            )}
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )
