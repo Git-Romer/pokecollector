@@ -155,6 +155,7 @@ export default function Binders() {
   })
   const profileIsPublic = !!profileData?.is_profile_public
   const publicHandle = profileData?.public_handle
+  const publicProfilesEnabled = !!profileData?.feature_enabled
 
   const COLLECTION_TABS = [
     { to: '/collection', label: t('nav.collection'), icon: Library },
@@ -181,7 +182,7 @@ export default function Binders() {
       invalidateTcgdexFilterLanguages(queryClient)
       setEditingId(null)
     },
-    onError: () => toast.error(t('binders.updateFailed')),
+    onError: (error) => toast.error(error.response?.data?.detail || t('binders.updateFailed')),
   })
 
   const deleteMutation = useMutation({
@@ -199,7 +200,7 @@ export default function Binders() {
       toast.success(t('binders.publicUpdated'))
       queryClient.invalidateQueries({ queryKey: ['binders'] })
     },
-    onError: () => toast.error(t('binders.updateFailed')),
+    onError: (error) => toast.error(error.response?.data?.detail || t('binders.updateFailed')),
   })
 
   const copyPublicBinderLink = (binderId) => {
@@ -294,7 +295,7 @@ export default function Binders() {
                           {uniqueCount} {uniqueCount === 1 ? t('binders.uniqueCard') : t('binders.uniqueCards')}
                         </p>
                       )}
-                      {!isWishlist && (
+                      {!isWishlist && publicProfilesEnabled && (
                         <div className="mt-2 pt-2 border-t border-border/50" onClick={(e) => e.stopPropagation()}>
                           {profileIsPublic ? (
                             <div className="flex items-center justify-between gap-2">
@@ -306,6 +307,8 @@ export default function Binders() {
                                 type="button"
                                 onClick={() => publicToggleMutation.mutate({ id: binder.id, is_public: !binder.is_public })}
                                 disabled={publicToggleMutation.isPending}
+                                aria-label={t('binders.sharePublicly')}
+                                aria-pressed={!!binder.is_public}
                                 className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${
                                   binder.is_public ? 'bg-brand-red' : 'bg-bg-elevated border border-border'
                                 }`}

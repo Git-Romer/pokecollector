@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, String, Integer, Float, DateTime, Date, Boolean,
-    CheckConstraint, ForeignKey, Text, JSON, UniqueConstraint, LargeBinary
+    CheckConstraint, ForeignKey, Text, JSON, UniqueConstraint, LargeBinary, Index
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -133,6 +133,9 @@ class Card(Base):
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        Index("ix_users_public_handle", "public_handle", unique=True),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String, unique=True, nullable=False)
@@ -140,7 +143,7 @@ class User(Base):
     role = Column(String, default="trainer")  # "admin" or "trainer"
     is_active = Column(Boolean, default=True)
     avatar_id = Column(Integer, nullable=True)  # Pokemon number (1-151) for avatar sprite
-    public_handle = Column(String, unique=True, nullable=True)
+    public_handle = Column(String, nullable=True)
     is_profile_public = Column(Boolean, default=False, nullable=False)
     public_show_values = Column(Boolean, default=False, nullable=False)
     must_change_password = Column(Boolean, default=False)

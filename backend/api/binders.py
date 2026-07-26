@@ -17,6 +17,7 @@ from services.card_visibility import visible_card_filter, visible_set_filter
 from services.binder_csv import BINDER_CSV_DUPLICATE_QUANTITY_ERROR, combine_binder_required_quantity
 from services.wishlist_missing import plan_missing_wishlist_additions
 from services.tcgdex_languages import SUPPORTED_TCGDEX_LANGUAGES, is_supported_tcgdex_language, normalize_tcgdex_language
+from services.public_profile_feature import public_profiles_enabled
 import datetime
 import csv
 import io
@@ -521,7 +522,11 @@ def update_binder(
         binder.format = _clean_binder_format(update.format)
     if "icon_pokemon_id" in update.model_fields_set:
         binder.icon_pokemon_id = update.icon_pokemon_id
-    if update.is_public is not None:
+    if "is_public" in update.model_fields_set:
+        if not public_profiles_enabled(db):
+            raise HTTPException(status_code=403, detail="Public profiles are disabled by the administrator")
+        if update.is_public is None:
+            raise HTTPException(status_code=422, detail="Public sharing must be true or false")
         binder.is_public = update.is_public
 
     db.commit()

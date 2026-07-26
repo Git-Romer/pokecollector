@@ -21,6 +21,7 @@ import toast from 'react-hot-toast'
 import { TCGDEX_LANGUAGES, normalizeTcgdexLanguageCsv, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { APP_LANGUAGES } from '../utils/appLanguages'
 import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
+import { isValidHandleFormat, normalizeHandle } from '../utils/publicHandle'
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -63,13 +64,17 @@ function SettingsRow({ label, description, children, last }) {
   )
 }
 
-function Toggle({ value, onChange }) {
+function Toggle({ value, onChange, label, disabled = false }) {
   return (
     <button
+      type="button"
       onClick={() => onChange(!value)}
+      disabled={disabled}
       className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${
         value ? 'bg-brand-red' : 'bg-bg-elevated border border-border'
-      }`}
+      } ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
+      aria-pressed={value}
+      aria-label={label}
     >
       <span
         className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${
@@ -305,6 +310,7 @@ export default function Settings() {
   const navigate = useNavigate()
   const { user, updateCurrentUser, multiUser } = useAuth()
   const { settings, updateSettings, t, pricePrimaryField, exchangeRate } = useSettings()
+  const publicProfilesEnabled = settings.public_profiles_enabled === 'true'
   const { theme, setTheme, themes } = useTheme()
   const [activeTab, setActiveTab] = useState('general')
 
@@ -353,6 +359,7 @@ export default function Settings() {
   const [publicShowValues, setPublicShowValues] = useState(false)
   const [profileDirty, setProfileDirty] = useState(false)
   const [handleStatus, setHandleStatus] = useState(null)
+  const [publicFeatureSaving, setPublicFeatureSaving] = useState(false)
 
   const { data: profileData } = useQuery({
     queryKey: ['profile'],
@@ -365,15 +372,25 @@ export default function Settings() {
       setProfilePublic(!!profileData.is_profile_public)
       setPublicShowValues(!!profileData.public_show_values)
     }
-  }, [profileData])
+  }, [profileData, profileDirty])
 
   useEffect(() => {
-    if (!publicHandle) { setHandleStatus(null); return }
+    const normalized = normalizeHandle(publicHandle)
+    if (!publicProfilesEnabled || !normalized || !isValidHandleFormat(normalized)) {
+      setHandleStatus(null)
+      return
+    }
+    let cancelled = false
     const timer = setTimeout(() => {
-      checkHandleAvailable(publicHandle).then(setHandleStatus).catch(() => setHandleStatus(null))
+      checkHandleAvailable(normalized)
+        .then(status => { if (!cancelled) setHandleStatus(status) })
+        .catch(() => { if (!cancelled) setHandleStatus(null) })
     }, 400)
-    return () => clearTimeout(timer)
-  }, [publicHandle])
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [publicHandle, publicProfilesEnabled])
 
 
   const [telegramBotToken, setTelegramBotToken] = useState('')
@@ -478,6 +495,10 @@ export default function Settings() {
     onSuccess: (data) => {
       queryClient.setQueryData(['profile'], data)
       queryClient.invalidateQueries({ queryKey: ['leaderboard'] })
+      setPublicHandle(data.public_handle || '')
+      setProfilePublic(!!data.is_profile_public)
+      setPublicShowValues(!!data.public_show_values)
+      setHandleStatus(null)
       setProfileDirty(false)
       toast.success(t('settings.saved'))
     },
@@ -485,14 +506,37 @@ export default function Settings() {
   })
 
   const savePublicProfile = () => {
+    const normalized = normalizeHandle(publicHandle)
     profileMutation.mutate({
-      public_handle: publicHandle || null,
-      is_profile_public: profilePublic,
+      public_handle: normalized || null,
+      is_profile_public: normalized ? profilePublic : false,
       public_show_values: publicShowValues,
     })
   }
 
-  const publicProfileUrl = publicHandle ? `${window.location.origin}/u/${publicHandle}` : ''
+  const normalizedPublicHandle = normalizeHandle(publicHandle)
+  const publicProfileUrl = normalizedPublicHandle ? `${window.location.origin}/u/${normalizedPublicHandle}` : ''
+
+  const publicHandleInvalid = Boolean(normalizedPublicHandle) && !isValidHandleFormat(normalizedPublicHandle)
+  const publicHandleTaken = Boolean(handleStatus && !handleStatus.available)
+  const publicProfileSaveDisabled = profileMutation.isPending || publicHandleInvalid || publicHandleTaken
+
+  const handlePublicProfilesToggle = async (enabled) => {
+    setPublicFeatureSaving(true)
+    try {
+      await updateSettings({ public_profiles_enabled: enabled ? 'true' : 'false' })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['profile'] }),
+        queryClient.invalidateQueries({ queryKey: ['binders'] }),
+        queryClient.invalidateQueries({ queryKey: ['leaderboard'] }),
+      ])
+      toast.success(t('settings.saved'))
+    } catch {
+      toast.error(t('settings.saveFailed'))
+    } finally {
+      setPublicFeatureSaving(false)
+    }
+  }
 
   const copyPublicProfileUrl = () => {
     navigator.clipboard.writeText(publicProfileUrl)
@@ -745,33 +789,67 @@ export default function Settings() {
           </section>
 
           {/* ── PUBLIC PROFILE ── */}
-          <section className="space-y-1">
+          {(user?.role === 'admin' || publicProfilesEnabled) && <section className="space-y-1">
             <SectionHeader title={t('settings.sectionPublicProfile')} />
             <SettingsCard>
-              <SettingsRow label={t('settings.publicHandle')} description={t('settings.publicHandleDesc')}>
+              {user?.role === 'admin' && (
+                <SettingsRow
+                  label={t('settings.publicProfilesGlobal')}
+                  description={publicProfilesEnabled
+                    ? t('settings.publicProfilesGlobalEnabledDesc')
+                    : t('settings.publicProfilesGlobalDisabledDesc')}
+                  last={!publicProfilesEnabled}
+                >
+                  <Toggle
+                    value={publicProfilesEnabled}
+                    onChange={handlePublicProfilesToggle}
+                    label={t('settings.publicProfilesGlobal')}
+                    disabled={publicFeatureSaving}
+                  />
+                </SettingsRow>
+              )}
+              {publicProfilesEnabled && <SettingsRow label={t('settings.publicHandle')} description={t('settings.publicHandleDesc')}>
                 <div className="flex flex-col items-end gap-1 w-full sm:w-56">
                   <input
                     type="text"
                     value={publicHandle}
-                    onChange={(e) => { setPublicHandle(e.target.value.toLowerCase()); setProfileDirty(true) }}
+                    onChange={(e) => {
+                      const next = e.target.value.toLowerCase()
+                      setPublicHandle(next)
+                      if (!normalizeHandle(next)) setProfilePublic(false)
+                      setProfileDirty(true)
+                    }}
                     placeholder="ash-ketchum"
                     className="input text-xs font-mono w-full"
-                    maxLength={32}
+                    maxLength={30}
                   />
+                  {publicHandleInvalid && (
+                    <span className="text-[11px] font-semibold text-brand-red">
+                      {t('settings.handleInvalid')}
+                    </span>
+                  )}
                   {handleStatus && (
                     <span className={`text-[11px] font-semibold ${handleStatus.available ? 'text-green' : 'text-brand-red'}`}>
                       {handleStatus.available ? t('settings.handleAvailable') : (handleStatus.reason || t('settings.handleTaken'))}
                     </span>
                   )}
                 </div>
-              </SettingsRow>
-              <SettingsRow label={t('settings.publicProfileToggle')} description={t('settings.publicProfileToggleDesc')}>
-                <Toggle value={profilePublic} onChange={(val) => { setProfilePublic(val); setProfileDirty(true) }} />
-              </SettingsRow>
-              <SettingsRow label={t('settings.publicShowValues')} description={t('settings.publicShowValuesDesc')} last={!(profilePublic && publicHandle)}>
-                <Toggle value={publicShowValues} onChange={(val) => { setPublicShowValues(val); setProfileDirty(true) }} />
-              </SettingsRow>
-              {profilePublic && publicHandle && (
+              </SettingsRow>}
+              {publicProfilesEnabled && <SettingsRow label={t('settings.publicProfileToggle')} description={t('settings.publicProfileToggleDesc')}>
+                <Toggle
+                  value={profilePublic}
+                  onChange={(val) => { setProfilePublic(val); setProfileDirty(true) }}
+                  label={t('settings.publicProfileToggle')}
+                />
+              </SettingsRow>}
+              {publicProfilesEnabled && <SettingsRow label={t('settings.publicShowValues')} description={t('settings.publicShowValuesDesc')} last={!(profilePublic && normalizedPublicHandle)}>
+                <Toggle
+                  value={publicShowValues}
+                  onChange={(val) => { setPublicShowValues(val); setProfileDirty(true) }}
+                  label={t('settings.publicShowValues')}
+                />
+              </SettingsRow>}
+              {publicProfilesEnabled && profilePublic && normalizedPublicHandle && (
                 <SettingsRow label={t('settings.publicProfileLink')} description={publicProfileUrl} last>
                   <button
                     type="button"
@@ -784,16 +862,16 @@ export default function Settings() {
                 </SettingsRow>
               )}
             </SettingsCard>
-            <div className="flex justify-end px-1">
+            {publicProfilesEnabled && <div className="flex justify-end px-1">
               <button
                 onClick={savePublicProfile}
-                disabled={profileMutation.isPending}
+                disabled={publicProfileSaveDisabled}
                 className="btn-primary-sm"
               >
                 {profileMutation.isPending ? t('common.saving') : t('common.save')}
               </button>
-            </div>
-          </section>
+            </div>}
+          </section>}
 
           {/* ── 2. THEME ── */}
           <section className="space-y-1">
@@ -837,6 +915,7 @@ export default function Settings() {
                 >
                   <Toggle
                     value={multiUser}
+                    label={t('settings.multiUserMode')}
                     onChange={async (val) => {
                       try {
                         await setAuthMode(val)
@@ -1019,18 +1098,21 @@ export default function Settings() {
                   <SettingsRow label={t('settings.digitalSets')} description={t('settings.digitalSetsDesc')}>
                     <Toggle
                       value={digitalSetsEnabled}
+                      label={t('settings.digitalSets')}
                       onChange={(val) => handleAdminBooleanSettingToggle('tcgdex_digital_sets_enabled', val)}
                     />
                   </SettingsRow>
                   <SettingsRow label={t('settings.crossLanguagePriceFallback')} description={t('settings.crossLanguagePriceFallbackDesc')}>
                     <Toggle
                       value={crossLanguagePriceFallback}
+                      label={t('settings.crossLanguagePriceFallback')}
                       onChange={(val) => handleAdminBooleanSettingToggle('cross_language_price_fallback', val)}
                     />
                   </SettingsRow>
                   <SettingsRow label={t('settings.crossLanguageImageFallback')} description={t('settings.crossLanguageImageFallbackDesc')}>
                     <Toggle
                       value={crossLanguageImageFallback}
+                      label={t('settings.crossLanguageImageFallback')}
                       onChange={(val) => handleAdminBooleanSettingToggle('cross_language_image_fallback', val)}
                     />
                   </SettingsRow>
@@ -1113,7 +1195,7 @@ export default function Settings() {
                     >
                       <Download size={13} /> {t('settings.debugLogDownload')}
                     </button>
-                    <Toggle value={debugModeEnabled} onChange={handleDebugModeToggle} />
+                    <Toggle value={debugModeEnabled} onChange={handleDebugModeToggle} label={t('settings.debugMode')} />
                   </div>
                 </SettingsRow>
               )}
@@ -1299,7 +1381,7 @@ export default function Settings() {
                 label={t('settings.priceAlerts')}
                 description={t('settings.priceAlertsDesc')}
               >
-                <Toggle value={priceAlertsEnabled} onChange={handlePriceAlertsToggle} />
+                <Toggle value={priceAlertsEnabled} onChange={handlePriceAlertsToggle} label={t('settings.priceAlerts')} />
               </SettingsRow>
               {priceAlertsEnabled && (
                 <SettingsRow

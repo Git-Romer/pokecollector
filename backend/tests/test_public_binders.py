@@ -4,7 +4,7 @@ try:
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
     from database import Base
-    from models import User, Binder
+    from models import User, Binder, Setting
     DEPS = True
 except ModuleNotFoundError:
     DEPS = False
@@ -115,9 +115,16 @@ class SerializationTests(unittest.TestCase):
         _, binder = self._seed(db, show_values=False)
         detail = pp.serialize_binder_detail(db, binder, show_values=False)
         self.assertEqual(detail["cards"][0]["name"], "Sprigatito")
+        self.assertEqual(detail["cards"][0]["image"], "/api/images/card/sv1-1_en/small")
         self.assertEqual(detail["cards"][0]["quantity"], 2)
         self.assertIsNone(detail["cards"][0]["market_value"])
         self.assertIsNone(detail["total_value"])
+
+    def test_public_card_proxy_url_encodes_custom_identifiers(self):
+        self.assertEqual(
+            pp._public_card_image_url("custom card#1"),
+            "/api/images/card/custom%20card%231/small",
+        )
 
     def test_binder_detail_shows_values_when_on(self):
         db = self._db()
@@ -186,10 +193,14 @@ except ModuleNotFoundError:
 
 @unittest.skipUnless(API_DEPS, "api deps unavailable")
 class PublicApiTests(unittest.TestCase):
-    def _db(self):
+    def _db(self, enabled=True):
         engine = create_engine("sqlite:///:memory:")
         Base.metadata.create_all(engine)
-        return sessionmaker(bind=engine)()
+        db = sessionmaker(bind=engine)()
+        if enabled:
+            db.add(Setting(key="public_profiles_enabled", value="true"))
+            db.commit()
+        return db
 
     def _seed(self, db, **kw):
         return SerializationTests()._seed(db, **kw)
@@ -199,6 +210,14 @@ class PublicApiTests(unittest.TestCase):
         with self.assertRaises(HTTPException) as ctx:
             get_public_profile("nobody", db=db)
         self.assertEqual(ctx.exception.status_code, 404)
+
+    def test_feature_is_disabled_when_setting_is_missing(self):
+        db = self._db(enabled=False)
+        self._seed(db)
+        with self.assertRaises(HTTPException) as ctx:
+            get_public_profile("ash", db=db)
+        self.assertEqual(ctx.exception.status_code, 404)
+        self.assertEqual(ctx.exception.headers["Cache-Control"], "no-store")
 
     def test_private_profile_404(self):
         db = self._db()
@@ -239,16 +258,16 @@ class PublicApiTests(unittest.TestCase):
         resp = Response()
         get_public_binder("ash", binder.id, db=db, response=resp)
         cc = resp.headers["Cache-Control"]
-        self.assertIn("max-age=30", cc)
+        self.assertIn("max-age=0", cc)
         self.assertIn("must-revalidate", cc)
 
-    def test_not_found_does_not_set_cache(self):
+    def test_not_found_explicitly_disables_caching(self):
         from fastapi import Response
         db = self._db()  # no seed → unknown handle
         resp = Response()
-        with self.assertRaises(HTTPException):
+        with self.assertRaises(HTTPException) as ctx:
             get_public_binder("ash", 1, db=db, response=resp)
-        self.assertNotIn("Cache-Control", resp.headers)
+        self.assertEqual(ctx.exception.headers["Cache-Control"], "no-store")
 
 
 try:
@@ -261,10 +280,14 @@ except ModuleNotFoundError:
 
 @unittest.skipUnless(PROFILE_DEPS, "profile api deps unavailable")
 class ProfileControlTests(unittest.TestCase):
-    def _db(self):
+    def _db(self, enabled=True):
         engine = create_engine("sqlite:///:memory:")
         Base.metadata.create_all(engine)
-        return sessionmaker(bind=engine)()
+        db = sessionmaker(bind=engine)()
+        if enabled:
+            db.add(Setting(key="public_profiles_enabled", value="true"))
+            db.commit()
+        return db
 
     def _user(self, db, username="ash"):
         u = User(username=username, hashed_password="x", role="trainer", is_active=True)
@@ -297,6 +320,64 @@ class ProfileControlTests(unittest.TestCase):
             update_profile(ProfileUpdate(public_handle="star"), db=db, current_user=me)
         self.assertEqual(ctx.exception.status_code, 409)
 
+    def test_concurrent_unique_constraint_is_returned_as_409(self):
+        from sqlalchemy.exc import IntegrityError
+        from unittest.mock import patch
+        db = self._db()
+        u = self._user(db)
+        with (
+            patch.object(pp, "is_handle_available", return_value=True),
+            patch.object(
+                db,
+                "commit",
+                side_effect=IntegrityError("insert", {}, Exception("duplicate public_handle")),
+            ),
+            patch.object(db, "rollback") as rollback,
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                update_profile(ProfileUpdate(public_handle="racing"), db=db, current_user=u)
+        self.assertEqual(ctx.exception.status_code, 409)
+        rollback.assert_called_once()
+
+    def test_unrelated_integrity_error_is_not_mislabeled_as_handle_conflict(self):
+        from sqlalchemy.exc import IntegrityError
+        from unittest.mock import patch
+        db = self._db()
+        u = self._user(db)
+        failure = IntegrityError("insert", {}, Exception("unrelated check constraint"))
+        with (
+            patch.object(pp, "is_handle_available", return_value=True),
+            patch.object(db, "commit", side_effect=failure),
+            patch.object(db, "rollback") as rollback,
+        ):
+            with self.assertRaises(IntegrityError):
+                update_profile(ProfileUpdate(public_handle="racing"), db=db, current_user=u)
+        rollback.assert_called_once()
+
+    def test_handle_can_be_cleared_and_profile_becomes_private(self):
+        db = self._db()
+        u = self._user(db)
+        update_profile(ProfileUpdate(public_handle="ash-k", is_profile_public=True), db=db, current_user=u)
+        result = update_profile(ProfileUpdate(public_handle=None), db=db, current_user=u)
+        self.assertIsNone(result["public_handle"])
+        self.assertFalse(result["is_profile_public"])
+
+    def test_profile_cannot_be_published_without_handle(self):
+        db = self._db()
+        u = self._user(db)
+        with self.assertRaises(HTTPException) as ctx:
+            update_profile(ProfileUpdate(is_profile_public=True), db=db, current_user=u)
+        self.assertEqual(ctx.exception.status_code, 422)
+
+    def test_profile_controls_are_read_only_while_feature_disabled(self):
+        db = self._db(enabled=False)
+        u = self._user(db)
+        result = get_profile(db=db, current_user=u)
+        self.assertFalse(result["feature_enabled"])
+        with self.assertRaises(HTTPException) as ctx:
+            update_profile(ProfileUpdate(public_handle="ash-k"), db=db, current_user=u)
+        self.assertEqual(ctx.exception.status_code, 403)
+
     def test_handle_available_check(self):
         db = self._db()
         u = self._user(db)
@@ -308,7 +389,7 @@ class ProfileControlTests(unittest.TestCase):
         u = self._user(db)
         update_profile(ProfileUpdate(public_handle="Ash-K", is_profile_public=True, public_show_values=True),
                        db=db, current_user=u)
-        result = get_profile(current_user=u)
+        result = get_profile(db=db, current_user=u)
         self.assertEqual(result["public_handle"], "ash-k")
         self.assertTrue(result["is_profile_public"])
         self.assertTrue(result["public_show_values"])
@@ -324,10 +405,14 @@ except ModuleNotFoundError:
 
 @unittest.skipUnless(BINDER_DEPS, "binder api deps unavailable")
 class BinderPublicToggleTests(unittest.TestCase):
-    def _db(self):
+    def _db(self, enabled=True):
         engine = create_engine("sqlite:///:memory:")
         Base.metadata.create_all(engine)
-        return sessionmaker(bind=engine)()
+        db = sessionmaker(bind=engine)()
+        if enabled:
+            db.add(Setting(key="public_profiles_enabled", value="true"))
+            db.commit()
+        return db
 
     def test_update_binder_sets_is_public(self):
         db = self._db()
@@ -340,6 +425,44 @@ class BinderPublicToggleTests(unittest.TestCase):
         db.commit()
         resp = update_binder(binder.id, BinderUpdate(is_public=True), db=db, current_user=user)
         self.assertTrue(resp.is_public)
+
+    def test_public_toggle_is_rejected_while_feature_disabled(self):
+        db = self._db(enabled=False)
+        user = User(username="ash", hashed_password="x", role="trainer", is_active=True)
+        db.add(user)
+        db.commit()
+        binder = Binder(name="B", user_id=user.id, binder_type="collection", is_public=True)
+        db.add(binder)
+        db.commit()
+        with self.assertRaises(HTTPException) as ctx:
+            update_binder(binder.id, BinderUpdate(is_public=False), db=db, current_user=user)
+        self.assertEqual(ctx.exception.status_code, 403)
+        db.refresh(binder)
+        self.assertTrue(binder.is_public)
+
+    def test_public_toggle_requires_a_boolean(self):
+        db = self._db()
+        user = User(username="ash", hashed_password="x", role="trainer", is_active=True)
+        db.add(user)
+        db.commit()
+        binder = Binder(name="B", user_id=user.id, binder_type="collection")
+        db.add(binder)
+        db.commit()
+        with self.assertRaises(HTTPException) as ctx:
+            update_binder(binder.id, BinderUpdate(is_public=None), db=db, current_user=user)
+        self.assertEqual(ctx.exception.status_code, 422)
+
+    def test_unrelated_binder_edit_still_works_while_feature_disabled(self):
+        db = self._db(enabled=False)
+        user = User(username="ash", hashed_password="x", role="trainer", is_active=True)
+        db.add(user)
+        db.commit()
+        binder = Binder(name="Before", user_id=user.id, binder_type="collection", is_public=True)
+        db.add(binder)
+        db.commit()
+        response = update_binder(binder.id, BinderUpdate(name="After"), db=db, current_user=user)
+        self.assertEqual(response.name, "After")
+        self.assertTrue(response.is_public)
 
 
 try:
@@ -357,7 +480,7 @@ class LeaderboardHandleTests(unittest.TestCase):
         db = sessionmaker(bind=engine)()
         u = User(username="ash", hashed_password="x", role="trainer", is_active=True,
                  public_handle="ash", is_profile_public=True)
-        db.add(u)
+        db.add_all([u, Setting(key="public_profiles_enabled", value="true")])
         db.commit()
         stats = _load_user_stats(db)
         self.assertIn(u.id, stats)
@@ -369,8 +492,73 @@ class LeaderboardHandleTests(unittest.TestCase):
         db = sessionmaker(bind=engine)()
         u = User(username="ghost", hashed_password="x", role="trainer", is_active=True,
                  public_handle="ghost", is_profile_public=False)
-        db.add(u)
+        db.add_all([u, Setting(key="public_profiles_enabled", value="true")])
         db.commit()
         stats = _load_user_stats(db)
         self.assertIn(u.id, stats)
         self.assertIsNone(stats[u.id]["public_handle"])
+
+    def test_row_hides_handle_when_feature_disabled(self):
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        db = sessionmaker(bind=engine)()
+        u = User(username="ash", hashed_password="x", role="trainer", is_active=True,
+                 public_handle="ash", is_profile_public=True)
+        db.add(u)
+        db.commit()
+        self.assertIsNone(_load_user_stats(db)[u.id]["public_handle"])
+
+
+try:
+    from api.settings import _get_user_settings, set_setting, update_settings
+    SETTINGS_DEPS = True
+except ModuleNotFoundError:
+    SETTINGS_DEPS = False
+
+
+@unittest.skipUnless(SETTINGS_DEPS, "settings api deps unavailable")
+class PublicProfilesGlobalSettingTests(unittest.TestCase):
+    def _db(self):
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        return sessionmaker(bind=engine)()
+
+    def _user(self, db, username, role):
+        user = User(username=username, hashed_password="x", role=role, is_active=True)
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        return user
+
+    def test_global_feature_defaults_disabled(self):
+        db = self._db()
+        admin = self._user(db, "admin-user", "admin")
+        self.assertEqual(_get_user_settings(db, admin.id)["public_profiles_enabled"], "false")
+
+    def test_admin_can_enable_global_feature(self):
+        db = self._db()
+        admin = self._user(db, "admin-user", "admin")
+        result = set_setting(
+            "public_profiles_enabled", {"value": "true"}, db=db, current_user=admin
+        )
+        self.assertEqual(result["value"], "true")
+        self.assertEqual(_get_user_settings(db, admin.id)["public_profiles_enabled"], "true")
+
+    def test_trainer_cannot_change_global_feature(self):
+        db = self._db()
+        trainer = self._user(db, "trainer-user", "trainer")
+        with self.assertRaises(HTTPException) as ctx:
+            set_setting(
+                "public_profiles_enabled", {"value": "true"}, db=db, current_user=trainer
+            )
+        self.assertEqual(ctx.exception.status_code, 403)
+
+    def test_trainer_cannot_change_global_feature_through_bulk_settings(self):
+        db = self._db()
+        trainer = self._user(db, "trainer-user", "trainer")
+        with self.assertRaises(HTTPException) as ctx:
+            update_settings(
+                {"public_profiles_enabled": "true"}, db=db, current_user=trainer
+            )
+        self.assertEqual(ctx.exception.status_code, 403)
+        self.assertEqual(_get_user_settings(db, trainer.id)["public_profiles_enabled"], "false")

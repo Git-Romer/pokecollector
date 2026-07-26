@@ -1,4 +1,5 @@
 import re
+from urllib.parse import quote
 
 HANDLE_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,28}[a-z0-9]$")
 
@@ -38,6 +39,10 @@ _DEFAULT_TRAINER_NAME = "TRAINER"
 _PRICE_FIELD = "price_trend"
 
 
+def _public_card_image_url(card_id: str) -> str:
+    return f"/api/images/card/{quote(card_id, safe='')}/small"
+
+
 def is_handle_available(db, handle: str, exclude_user_id: int | None = None) -> bool:
     query = db.query(User.id).filter(User.public_handle == handle)
     if exclude_user_id is not None:
@@ -70,6 +75,15 @@ def public_collection_binders(db, user: User) -> list[Binder]:
     ).order_by(Binder.created_at.asc()).all()
 
 
+def get_public_collection_binder(db, user_id: int, binder_id: int) -> Binder | None:
+    return db.query(Binder).filter(
+        Binder.id == binder_id,
+        Binder.user_id == user_id,
+        Binder.is_public.is_(True),
+        Binder.binder_type == "collection",
+    ).first()
+
+
 def _binder_cards(db, binder: Binder) -> list[BinderCard]:
     # Present cards in natural collector order: by set, then card number
     # (1, 2, 10 — not 1, 10, 2), then variant so same-number prints stay grouped.
@@ -86,6 +100,27 @@ def _binder_cards(db, binder: Binder) -> list[BinderCard]:
         .all()
     )
     return sorted(cards, key=_card_sort_key)
+
+
+def _binder_cards_for_binders(db, binders: list[Binder]) -> dict[int, list[BinderCard]]:
+    binder_ids = [binder.id for binder in binders]
+    if not binder_ids:
+        return {}
+    rows = (
+        db.query(BinderCard)
+        .options(
+            joinedload(BinderCard.card).joinedload(Card.set_ref),
+            joinedload(BinderCard.collection_item),
+        )
+        .filter(BinderCard.binder_id.in_(binder_ids))
+        .all()
+    )
+    grouped = {binder_id: [] for binder_id in binder_ids}
+    for row in rows:
+        grouped[row.binder_id].append(row)
+    for binder_id in grouped:
+        grouped[binder_id].sort(key=_card_sort_key)
+    return grouped
 
 
 def _card_sort_key(bc: BinderCard) -> tuple:
@@ -107,7 +142,7 @@ def _serialize_card(bc: BinderCard, show_values: bool) -> dict:
     return {
         "id": card.id,
         "name": card.name,
-        "image": card.images_small or card.images_large,
+        "image": _public_card_image_url(card.id),
         "set_name": card.set_ref.name if card.set_ref else None,
         "number": card.number,
         "rarity": card.rarity,
@@ -117,8 +152,8 @@ def _serialize_card(bc: BinderCard, show_values: bool) -> dict:
     }
 
 
-def serialize_binder_summary(db, binder: Binder, show_values: bool) -> dict:
-    cards = _binder_cards(db, binder)
+def serialize_binder_summary(db, binder: Binder, show_values: bool, cards: list[BinderCard] | None = None) -> dict:
+    cards = _binder_cards(db, binder) if cards is None else cards
     unique = {bc.card_id for bc in cards}
     total_count = sum((bc.required_quantity or 1) for bc in cards)
     total_value = None
@@ -139,8 +174,8 @@ def serialize_binder_summary(db, binder: Binder, show_values: bool) -> dict:
 
 
 def serialize_binder_detail(db, binder: Binder, show_values: bool) -> dict:
-    summary = serialize_binder_summary(db, binder, show_values)
     cards = _binder_cards(db, binder)
+    summary = serialize_binder_summary(db, binder, show_values, cards=cards)
     summary["cards"] = [_serialize_card(bc, show_values) for bc in cards if bc.card]
     return summary
 
@@ -148,10 +183,14 @@ def serialize_binder_detail(db, binder: Binder, show_values: bool) -> dict:
 def serialize_profile(db, user: User) -> dict:
     show_values = bool(user.public_show_values)
     binders = public_collection_binders(db, user)
+    cards_by_binder = _binder_cards_for_binders(db, binders)
     return {
         "handle": user.public_handle,
         "trainer_name": trainer_name_for(db, user),
         "avatar_id": user.avatar_id,
         "show_values": show_values,
-        "binders": [serialize_binder_summary(db, b, show_values) for b in binders],
+        "binders": [
+            serialize_binder_summary(db, binder, show_values, cards=cards_by_binder.get(binder.id, []))
+            for binder in binders
+        ],
     }

@@ -707,10 +707,14 @@ const en = {
     sectionAI: 'AI / Card Scanner',
     sectionAbout: 'About the App',
     sectionPublicProfile: 'Public Profile',
+    publicProfilesGlobal: 'Public profiles and shared binders',
+    publicProfilesGlobalEnabledDesc: 'Enabled for this installation. Users can publish a profile and selected collection binders.',
+    publicProfilesGlobalDisabledDesc: 'Disabled for this installation. Existing handles and sharing choices are preserved but unavailable.',
     publicHandle: 'Handle',
-    publicHandleDesc: 'Your public URL slug (letters, numbers, hyphens)',
+    publicHandleDesc: 'Your public URL slug. Publishing exposes your trainer name, avatar, handle, and selected collection binders to anyone with the link.',
     handleAvailable: 'Available',
     handleTaken: 'Handle is taken',
+    handleInvalid: 'Use 3–30 lowercase letters, numbers, or single hyphens',
     publicProfileToggle: 'Make my profile public',
     publicProfileToggleDesc: 'Anyone with the link can view your public binders',
     publicShowValues: 'Show card market values',
@@ -881,6 +885,14 @@ const en = {
     min360: 'Every 6 hours',
     min720: 'Every 12 hours',
     min1440: 'Every 24 hours',
+  },
+
+  publicProfiles: {
+    publicCollection: 'Public collection',
+    sharedBinder: 'Shared binder',
+    noSharedBinders: 'No shared binders yet.',
+    profileUnavailable: 'This profile is not available.',
+    binderUnavailable: 'This binder is not available.',
   },
 
   // Period selector

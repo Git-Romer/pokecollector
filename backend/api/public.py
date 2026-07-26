@@ -5,6 +5,7 @@ from typing import Optional, List
 
 from database import get_db
 from services import public_profile as pp
+from services.public_profile_feature import public_profiles_enabled
 
 router = APIRouter()
 
@@ -51,10 +52,11 @@ class PublicBinderDetail(PublicBinderSummary):
     cards: List[PublicCard]
 
 
-# Short TTL with revalidation: public pages get light caching to blunt load bursts,
-# but owner edits (unshare, reorder, value toggle) and deploys become visible within
-# seconds rather than being pinned for minutes by a stale browser copy.
-_PUBLIC_CACHE_CONTROL = "public, max-age=30, must-revalidate"
+# Public sharing can be disabled globally or per owner. Require revalidation so a
+# previously opened profile cannot remain visible from a browser cache after either
+# control is switched off. Reverse proxies may still validate their stored response.
+_PUBLIC_CACHE_CONTROL = "public, max-age=0, must-revalidate"
+_PUBLIC_NOT_FOUND_HEADERS = {"Cache-Control": "no-store"}
 
 
 def _set_public_cache(response: Response | None) -> None:
@@ -62,22 +64,41 @@ def _set_public_cache(response: Response | None) -> None:
         response.headers["Cache-Control"] = _PUBLIC_CACHE_CONTROL
 
 
+def _require_public_profiles_enabled(db: Session) -> None:
+    if not public_profiles_enabled(db):
+        raise HTTPException(
+            status_code=404,
+            detail="Profile not found",
+            headers=_PUBLIC_NOT_FOUND_HEADERS,
+        )
+
+
+def _not_found(detail: str) -> HTTPException:
+    return HTTPException(
+        status_code=404,
+        detail=detail,
+        headers=_PUBLIC_NOT_FOUND_HEADERS,
+    )
+
+
 @router.get("/profiles/{handle}", response_model=PublicProfile)
 def get_public_profile(handle: str, db: Session = Depends(get_db), response: Response = None):
+    _require_public_profiles_enabled(db)
     user = pp.get_live_profile(db, handle.lower())
     if not user:
-        raise HTTPException(status_code=404, detail="Profile not found")
+        raise _not_found("Profile not found")
     _set_public_cache(response)
     return pp.serialize_profile(db, user)
 
 
 @router.get("/profiles/{handle}/binders/{binder_id}", response_model=PublicBinderDetail)
 def get_public_binder(handle: str, binder_id: int, db: Session = Depends(get_db), response: Response = None):
+    _require_public_profiles_enabled(db)
     user = pp.get_live_profile(db, handle.lower())
     if not user:
-        raise HTTPException(status_code=404, detail="Profile not found")
-    binder = next((b for b in pp.public_collection_binders(db, user) if b.id == binder_id), None)
+        raise _not_found("Profile not found")
+    binder = pp.get_public_collection_binder(db, user.id, binder_id)
     if not binder:
-        raise HTTPException(status_code=404, detail="Binder not found")
+        raise _not_found("Binder not found")
     _set_public_cache(response)
     return pp.serialize_binder_detail(db, binder, show_values=bool(user.public_show_values))

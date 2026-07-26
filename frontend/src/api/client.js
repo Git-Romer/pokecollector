@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { isPublicSharePath } from '../utils/publicRoutes'
 
 const api = axios.create({
   baseURL: '/api',
@@ -23,7 +24,7 @@ api.interceptors.response.use(
       const token = localStorage.getItem('token')
       localStorage.removeItem('token')
       localStorage.removeItem('user')
-      if (token && window.location.pathname !== '/login') {
+      if (token && window.location.pathname !== '/login' && !isPublicSharePath(window.location.pathname)) {
         window.location.href = '/login'
       }
     }

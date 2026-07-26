@@ -441,6 +441,10 @@ const de = {
     createFailed: 'Fehler beim Erstellen',
     updateFailed: 'Fehler beim Aktualisieren',
     deleteConfirm: 'Binder löschen?',
+    sharePublicly: 'Öffentlich teilen',
+    publicUpdated: 'Freigabe aktualisiert',
+    enablePublicProfileHint: 'Aktiviere dein öffentliches Profil in den Einstellungen',
+    copyPublicLink: 'Öffentlichen Link kopieren',
   },
 
   // Analytics
@@ -701,6 +705,21 @@ const de = {
     sectionData: 'Daten',
     sectionAI: 'KI / Karten-Scanner',
     sectionAbout: 'Über die App',
+    sectionPublicProfile: 'Öffentliches Profil',
+    publicProfilesGlobal: 'Öffentliche Profile und geteilte Binder',
+    publicProfilesGlobalEnabledDesc: 'Für diese Installation aktiviert. Benutzer können ein Profil und ausgewählte Sammlungs-Binder veröffentlichen.',
+    publicProfilesGlobalDisabledDesc: 'Für diese Installation deaktiviert. Bestehende Handles und Freigaben bleiben gespeichert, sind aber nicht erreichbar.',
+    publicHandle: 'Handle',
+    publicHandleDesc: 'Dein öffentlicher URL-Name. Beim Veröffentlichen sind Trainername, Avatar, Handle und ausgewählte Sammlungs-Binder für jeden mit dem Link sichtbar.',
+    handleAvailable: 'Verfügbar',
+    handleTaken: 'Handle ist bereits vergeben',
+    handleInvalid: 'Nutze 3–30 Kleinbuchstaben, Zahlen oder einzelne Bindestriche',
+    publicProfileToggle: 'Mein Profil veröffentlichen',
+    publicProfileToggleDesc: 'Jeder mit dem Link kann deine öffentlichen Binder ansehen',
+    publicShowValues: 'Kartenmarktwerte anzeigen',
+    publicShowValuesDesc: 'Geschätzte Preise in deinem öffentlichen Profil anzeigen',
+    publicProfileLink: 'Öffentlicher Link',
+    linkCopied: 'Link kopiert',
     // Settings page row labels
     multiUserMode: 'Mehrspieler-Modus',
     multiUserModeDesc: 'Login-Bildschirm und Benutzerverwaltung aktivieren',
@@ -865,6 +884,14 @@ const de = {
     min360: 'Alle 6 Stunden',
     min720: 'Alle 12 Stunden',
     min1440: 'Alle 24 Stunden',
+  },
+
+  publicProfiles: {
+    publicCollection: 'Öffentliche Sammlung',
+    sharedBinder: 'Geteilter Binder',
+    noSharedBinders: 'Noch keine geteilten Binder.',
+    profileUnavailable: 'Dieses Profil ist nicht verfügbar.',
+    binderUnavailable: 'Dieser Binder ist nicht verfügbar.',
   },
 
   // Period selector

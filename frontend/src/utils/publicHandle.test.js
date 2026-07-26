@@ -16,4 +16,8 @@ describe('publicHandle', () => {
     expect(isValidHandleFormat('-ash')).toBe(false)
     expect(isValidHandleFormat('ash--k')).toBe(false)
   })
+  it('rejects routes and reserved words', () => {
+    expect(isValidHandleFormat('admin')).toBe(false)
+    expect(isValidHandleFormat('settings')).toBe(false)
+  })
 })
