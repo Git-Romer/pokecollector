@@ -213,6 +213,10 @@ def _run_migrations(conn):
         "ALTER TABLE binders ADD COLUMN IF NOT EXISTS icon_pokemon_id INTEGER",
         "ALTER TABLE binder_cards ADD COLUMN IF NOT EXISTS collection_item_id INTEGER REFERENCES collection(id)",
         "ALTER TABLE binders ADD COLUMN IF NOT EXISTS format VARCHAR",
+        "ALTER TABLE binders ADD COLUMN IF NOT EXISTS auto_owned_set_id VARCHAR",
+        """CREATE UNIQUE INDEX IF NOT EXISTS uq_binders_user_auto_owned_set
+           ON binders(user_id, auto_owned_set_id)
+           WHERE auto_owned_set_id IS NOT NULL""",
         "ALTER TABLE binder_cards ADD COLUMN IF NOT EXISTS required_quantity INTEGER DEFAULT 1",
         # v47: Store gameplay data for playable-equivalent print matching.
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS stage VARCHAR",

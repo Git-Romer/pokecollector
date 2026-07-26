@@ -208,6 +208,7 @@ class Binder(Base):
     binder_type = Column(String, default="collection")  # "collection" or "wishlist"
     format = Column(String, nullable=True)  # "Standard", "Expanded", "Unlimited", "Casual"
     icon_pokemon_id = Column(Integer, nullable=True)
+    auto_owned_set_id = Column(String, nullable=True)
     created_at = Column(DateTime, default=func.now())
 
     binder_cards = relationship("BinderCard", back_populates="binder", cascade="all, delete-orphan")

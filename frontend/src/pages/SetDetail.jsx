@@ -3,8 +3,7 @@ import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Plus, Trash2, X, Heart, BookMarked } from 'lucide-react'
-import { getSetChecklist, addToCollection, addToWishlist, updateCollectionItem, removeFromCollection, getBinders, createBinder, addOwnedSetToBinder } from '../api/client'
-import { ownedBinderName, findOwnedBinderForSet } from '../utils/ownedBinder'
+import { getSetChecklist, addToCollection, addToWishlist, updateCollectionItem, removeFromCollection, getBinders, addOwnedSetToBinder, addOwnedSetToAutoBinder } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
@@ -363,22 +362,8 @@ export default function SetDetail() {
 
   const addOwnedMutation = useMutation({
     mutationFn: async ({ binderId, setId }) => {
-      let targetId = binderId
-      if (!targetId) {
-        // Check the server instead of relying on possibly stale cached data.
-        // This prevents a quick close/reopen/retry from creating another
-        // auto-named binder before the invalidated binder query has refreshed.
-        const name = ownedBinderName(set?.name, setId)
-        const freshBinders = await getBinders().then(r => r.data)
-        const existing = findOwnedBinderForSet(freshBinders, name)
-        if (existing) {
-          targetId = existing.id
-        } else {
-          const created = await createBinder({ name, binder_type: 'collection' })
-          targetId = created.data.id
-        }
-      }
-      return addOwnedSetToBinder(targetId, setId)
+      if (!binderId) return addOwnedSetToAutoBinder(setId)
+      return addOwnedSetToBinder(binderId, setId)
     },
     onSuccess: (result) => {
       const skipped = (result.skipped_present || 0) + (result.skipped_no_capacity || 0)
@@ -602,10 +587,22 @@ export default function SetDetail() {
 
       {binderPickerOpen && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setBinderPickerOpen(false)}>
-          <div className="card w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="add-owned-to-binder-title"
+            className="card w-full max-w-md"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-bold text-text-primary">{t('setDetail.addOwnedToBinderTitle')}</h2>
-              <button onClick={() => setBinderPickerOpen(false)} className="text-text-muted hover:text-text-primary"><X size={18} /></button>
+              <h2 id="add-owned-to-binder-title" className="text-lg font-bold text-text-primary">{t('setDetail.addOwnedToBinderTitle')}</h2>
+              <button
+                onClick={() => setBinderPickerOpen(false)}
+                className="text-text-muted hover:text-text-primary"
+                aria-label={t('common.close')}
+              >
+                <X size={18} />
+              </button>
             </div>
             {owned_count === 0 ? (
               <p className="text-sm text-text-secondary">{t('setDetail.addOwnedToBinderEmpty')}</p>
@@ -616,7 +613,10 @@ export default function SetDetail() {
                   {bindersQuery.isLoading && (
                     <p className="text-sm text-text-secondary">{t('common.loading')}</p>
                   )}
-                  {!bindersQuery.isLoading && (bindersQuery.data || []).filter(b => (b.binder_type || 'collection') === 'collection').length === 0 && (
+                  {bindersQuery.isError && (
+                    <p className="text-sm text-brand-red">{t('setDetail.addOwnedToBinderLoadFailed')}</p>
+                  )}
+                  {!bindersQuery.isLoading && !bindersQuery.isError && (bindersQuery.data || []).filter(b => (b.binder_type || 'collection') === 'collection').length === 0 && (
                     <p className="text-sm text-text-secondary">{t('setDetail.addOwnedToBinderNoBinders')}</p>
                   )}
                   {(bindersQuery.data || []).filter(b => (b.binder_type || 'collection') === 'collection').map(b => (

@@ -911,6 +911,7 @@ const en = {
     addOwnedToBinderPick: 'Choose a collection binder',
     addOwnedToBinderNew: 'New binder from this set',
     addOwnedToBinderNoBinders: 'No collection binders yet — create one below.',
+    addOwnedToBinderLoadFailed: 'Could not load your binders. You can still create or reuse the set binder below.',
     addOwnedToBinderEmpty: 'You do not own any cards in this set yet.',
     addOwnedToBinderResult: 'Added {added}, skipped {skipped}.',
     addOwnedToBinderFailed: 'Failed to add owned cards to binder.',
