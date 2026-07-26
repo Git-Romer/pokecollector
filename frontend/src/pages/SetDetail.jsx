@@ -586,59 +586,77 @@ export default function SetDetail() {
       />
 
       {binderPickerOpen && createPortal(
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setBinderPickerOpen(false)}>
+        <div
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm md:flex md:items-center md:justify-center md:bg-black/80"
+          onClick={() => setBinderPickerOpen(false)}
+        >
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="add-owned-to-binder-title"
-            className="card w-full max-w-md"
+            className={[
+              'fixed bottom-0 left-0 right-0 rounded-t-2xl max-h-[90dvh] overflow-y-auto',
+              'bg-bg-surface border-t border-border more-sheet-enter',
+              'md:static md:w-full md:max-w-md md:rounded-2xl md:border md:max-h-[85vh] md:animate-none',
+            ].join(' ')}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between mb-3">
-              <h2 id="add-owned-to-binder-title" className="text-lg font-bold text-text-primary">{t('setDetail.addOwnedToBinderTitle')}</h2>
-              <button
-                onClick={() => setBinderPickerOpen(false)}
-                className="text-text-muted hover:text-text-primary"
-                aria-label={t('common.close')}
-              >
-                <X size={18} />
-              </button>
+            <div className="flex justify-center pt-3 pb-1 md:hidden">
+              <div className="w-10 h-1 bg-border rounded-full" />
             </div>
-            {owned_count === 0 ? (
-              <p className="text-sm text-text-secondary">{t('setDetail.addOwnedToBinderEmpty')}</p>
-            ) : (
-              <>
-                <p className="text-xs font-semibold text-text-muted mb-2 uppercase tracking-wide">{t('setDetail.addOwnedToBinderPick')}</p>
-                <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
-                  {bindersQuery.isLoading && (
-                    <p className="text-sm text-text-secondary">{t('common.loading')}</p>
-                  )}
-                  {bindersQuery.isError && (
-                    <p className="text-sm text-brand-red">{t('setDetail.addOwnedToBinderLoadFailed')}</p>
-                  )}
-                  {!bindersQuery.isLoading && !bindersQuery.isError && (bindersQuery.data || []).filter(b => (b.binder_type || 'collection') === 'collection').length === 0 && (
-                    <p className="text-sm text-text-secondary">{t('setDetail.addOwnedToBinderNoBinders')}</p>
-                  )}
-                  {(bindersQuery.data || []).filter(b => (b.binder_type || 'collection') === 'collection').map(b => (
-                    <button
-                      key={b.id}
-                      disabled={addOwnedMutation.isPending}
-                      onClick={() => submitAddOwned({ binderId: b.id, setId: set.id })}
-                      className="text-left px-3 py-2 rounded-lg bg-bg-elevated hover:bg-brand-red/10 text-sm text-text-primary disabled:opacity-50"
-                    >
-                      {b.name}
-                    </button>
-                  ))}
-                </div>
+
+            <div className="p-5">
+              <div className="flex items-start justify-between gap-3 mb-4">
+                <h2 id="add-owned-to-binder-title" className="text-lg font-bold text-text-primary">
+                  {t('setDetail.addOwnedToBinderTitle')}
+                </h2>
                 <button
-                  disabled={addOwnedMutation.isPending}
-                  onClick={() => submitAddOwned({ binderId: null, setId: set.id })}
-                  className="btn-primary w-full mt-3 flex items-center justify-center gap-1.5 text-sm disabled:opacity-50"
+                  onClick={() => setBinderPickerOpen(false)}
+                  className="text-text-muted hover:text-text-primary flex-shrink-0 p-1"
+                  aria-label={t('common.close')}
                 >
-                  <Plus size={14} /> {t('setDetail.addOwnedToBinderNew')}
+                  <X size={18} />
                 </button>
-              </>
-            )}
+              </div>
+
+              {owned_count === 0 ? (
+                <p className="text-sm text-text-secondary">{t('setDetail.addOwnedToBinderEmpty')}</p>
+              ) : (
+                <>
+                  <p className="text-xs font-semibold text-text-muted mb-2 uppercase tracking-wide">
+                    {t('setDetail.addOwnedToBinderPick')}
+                  </p>
+                  <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+                    {bindersQuery.isLoading && (
+                      <p className="text-sm text-text-secondary">{t('common.loading')}</p>
+                    )}
+                    {bindersQuery.isError && (
+                      <p className="text-sm text-brand-red">{t('setDetail.addOwnedToBinderLoadFailed')}</p>
+                    )}
+                    {!bindersQuery.isLoading && !bindersQuery.isError && (bindersQuery.data || []).filter(b => (b.binder_type || 'collection') === 'collection').length === 0 && (
+                      <p className="text-sm text-text-secondary">{t('setDetail.addOwnedToBinderNoBinders')}</p>
+                    )}
+                    {(bindersQuery.data || []).filter(b => (b.binder_type || 'collection') === 'collection').map(b => (
+                      <button
+                        key={b.id}
+                        disabled={addOwnedMutation.isPending}
+                        onClick={() => submitAddOwned({ binderId: b.id, setId: set.id })}
+                        className="text-left px-3 py-2.5 rounded-xl border border-border bg-bg-card hover:border-brand-red/40 hover:bg-brand-red/10 text-sm text-text-primary transition-colors disabled:opacity-50"
+                      >
+                        {b.name}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    disabled={addOwnedMutation.isPending}
+                    onClick={() => submitAddOwned({ binderId: null, setId: set.id })}
+                    className="btn-primary w-full mt-3 flex items-center justify-center gap-1.5 text-sm disabled:opacity-50"
+                  >
+                    <Plus size={14} /> {t('setDetail.addOwnedToBinderNew')}
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>,
         document.body,
