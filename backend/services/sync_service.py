@@ -5,6 +5,8 @@ from contextlib import contextmanager
 from typing import Any, Mapping
 from sqlalchemy.orm import Session, load_only
 from sqlalchemy import func, or_, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from models import Card, Set, CollectionItem, WishlistItem, BinderCard, PriceHistory, SyncLog, PortfolioSnapshot, CustomCardMatch, ProductPurchase, User, UserSetting
 from services import pokemon_api, telegram
 from services.card_fallbacks import apply_cross_language_fallbacks, build_missing_language_cards_for_set
@@ -457,24 +459,29 @@ def _sets_for_card_catalogue_sync(db: Session) -> list[Set]:
 
 
 def record_price_history(db: Session, card: Card):
-    """Record today's price for a card."""
-    today = datetime.date.today()
-    existing = db.query(PriceHistory).filter(
-        PriceHistory.card_id == card.id,
-        PriceHistory.date == today
-    ).first()
+    """Record today's price for a card.
 
-    if not existing:
-        history = PriceHistory(
-            card_id=card.id,
-            date=today,
-            price_low=card.price_low,
-            price_mid=card.price_mid,
-            price_high=card.price_high,
-            price_market=card.price_market,
-            price_trend=card.price_trend,
-        )
-        db.add(history)
+    Atomic upsert, not check-then-insert: perform_price_sync has no lock
+    guarding it against perform_full_sync (only full-vs-full is guarded via
+    _full_sync_lock), and both accumulate their whole card+price batch in one
+    session that only commits once at the end of a run that can take 15+
+    minutes. A plain SELECT-then-INSERT is blind to a same-day row the other
+    sync commits in the meantime, so the eventual final commit fails with a
+    UniqueViolation on (card_id, date) -- discarding the whole batch, not just
+    the colliding row.
+    """
+    today = datetime.date.today()
+    insert_fn = pg_insert if _db_dialect_name(db) == "postgresql" else sqlite_insert
+    stmt = insert_fn(PriceHistory).values(
+        card_id=card.id,
+        date=today,
+        price_low=card.price_low,
+        price_mid=card.price_mid,
+        price_high=card.price_high,
+        price_market=card.price_market,
+        price_trend=card.price_trend,
+    ).on_conflict_do_nothing(index_elements=["card_id", "date"])
+    db.execute(stmt)
 
 
 def check_wishlist_alerts(db: Session, updated_card_ids: list):
