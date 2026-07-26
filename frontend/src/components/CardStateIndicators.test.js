@@ -1,5 +1,21 @@
-import { describe, expect, it } from 'vitest'
-import { getCardState } from './CardStateIndicators'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { describe, expect, it, vi } from 'vitest'
+import { CardStateLegend, getCardState } from './CardStateIndicators'
+
+vi.mock('../contexts/SettingsContext', () => ({
+  useSettings: () => ({
+    t: key => ({
+      'variants.Normal': 'Normal',
+      'variants.Holo': 'Holo',
+      'variants.Reverse Holo': 'Reverse Holo',
+      'variants.First Edition': 'First Edition',
+      'setDetail.ownedVariantUnknown': 'Owned (variant unknown)',
+      'setDetail.badgeQuantity': 'Quantity owned',
+      'nav.wishlist': 'Wishlist',
+    })[key] || key,
+  }),
+}))
 
 describe('getCardState', () => {
   it('uses detailed variants instead of the generic owned fallback', () => {
@@ -11,5 +27,24 @@ describe('getCardState', () => {
   it('supports generic ownership and both wishlist contract shapes independently', () => {
     expect(getCardState({ owned_quantity: 1, wishlisted: true })).toMatchObject({ genericOwned: true, wishlisted: true })
     expect(getCardState({ wishlist_count: 2 })).toMatchObject({ genericOwned: false, wishlisted: true })
+  })
+})
+
+describe('CardStateLegend', () => {
+  it('explains variants, generic ownership, wishlist, and quantity', () => {
+    const markup = renderToStaticMarkup(createElement(CardStateLegend))
+
+    for (const label of [
+      'Normal',
+      'Holo',
+      'Reverse Holo',
+      'First Edition',
+      'Owned (variant unknown)',
+      'Wishlist',
+      'Quantity owned',
+      '×2',
+    ]) {
+      expect(markup).toContain(label)
+    }
   })
 })

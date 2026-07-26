@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Plus, Trash2, X, Heart, BookMarked } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, X, Heart, BookMarked, HelpCircle } from 'lucide-react'
 import { getSetChecklist, addToCollection, addToWishlist, updateCollectionItem, removeFromCollection, getBinders, addOwnedSetToBinder, addOwnedSetToAutoBinder } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
@@ -10,12 +10,13 @@ import clsx from 'clsx'
 import { resolveCardImageUrl, resolveSetImageUrl } from '../utils/imageUrl'
 import { CARD_VARIANTS, getAvailableVariants, getDefaultVariantOrNull } from '../utils/cardVariants'
 import FallbackBadges from '../components/FallbackBadges'
-import CardStateIndicators from '../components/CardStateIndicators'
+import CardStateIndicators, { CardStateLegend } from '../components/CardStateIndicators'
 import { HOLO_FIELD_MAP } from '../utils/prices'
 import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import MoneyInput from '../components/MoneyInput'
 import { parseMoneyInputValue } from '../utils/moneyInput'
+import { getCardRarityEffectClass } from '../utils/cardRarity'
 
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
 
@@ -288,6 +289,7 @@ export default function SetDetail() {
   const [rarityFilter, setRarityFilter] = useState('all')
   const [selectedCard, setSelectedCard] = useState(null)
   const [binderPickerOpen, setBinderPickerOpen] = useState(false)
+  const [badgeLegendOpen, setBadgeLegendOpen] = useState(false)
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['set-checklist', setId],
@@ -405,6 +407,10 @@ export default function SetDetail() {
   }
 
   const { set, cards = [], owned_count, total_count, progress } = data || {}
+  const numericProgress = Number(progress)
+  const safeProgress = Number.isFinite(numericProgress)
+    ? Math.min(100, Math.max(0, numericProgress))
+    : 0
 
   const rarityOptions = [...new Set(cards.map(card => card.rarity).filter(Boolean))]
     .sort((a, b) => String(a).localeCompare(String(b), undefined, { sensitivity: 'base' }))
@@ -433,14 +439,19 @@ export default function SetDetail() {
             <p className="text-sm text-text-secondary">{set?.series} · {total_count} {t('setDetail.cards')}</p>
 
             <div className="mt-3">
-              <div className="flex justify-between text-sm mb-1">
+              <div className="mb-1 flex items-baseline gap-2 text-sm">
                 <span className="text-text-secondary">
                   {owned_count} / {total_count} {t('setDetail.ownedOf')}
                 </span>
-                <span className="font-bold text-brand-red">{progress}%</span>
+                <span className="shrink-0 whitespace-nowrap font-bold tabular-nums text-brand-red">
+                  {safeProgress}%
+                </span>
               </div>
-              <div className="progress-bar">
-                <div className="progress-fill" style={{ width: `${progress}%` }} />
+              <div className="hp-bar-track">
+                <div
+                  className={`hp-bar-fill ${safeProgress >= 66 ? 'healthy' : safeProgress >= 33 ? 'medium' : 'low'}`}
+                  style={{ width: `${safeProgress}%` }}
+                />
               </div>
             </div>
 
@@ -479,23 +490,48 @@ export default function SetDetail() {
       </div>
 
       {/* Filter Tabs */}
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        {[
-          { key: 'all', label: `${t('setDetail.all')} (${cards.length})` },
-          { key: 'owned', label: `${t('setDetail.owned')} (${owned_count})` },
-          { key: 'missing', label: `${t('setDetail.missing')} (${total_count - owned_count})` },
-        ].map(({ key, label }) => (
-          <button key={key} onClick={() => setFilter(key)}
-            className={clsx(
-              'px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap',
-              filter === key
-                ? 'bg-brand-red/20 text-brand-red border border-brand-red/30'
-                : 'text-text-secondary hover:text-text-primary hover:bg-bg-elevated'
-            )}>
-            {label}
-          </button>
-        ))}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex w-full min-w-0 gap-2 overflow-x-auto pb-1 sm:w-auto">
+          {[
+            { key: 'all', label: `${t('setDetail.all')} (${cards.length})` },
+            { key: 'owned', label: `${t('setDetail.owned')} (${owned_count})` },
+            { key: 'missing', label: `${t('setDetail.missing')} (${total_count - owned_count})` },
+          ].map(({ key, label }) => (
+            <button key={key} onClick={() => setFilter(key)}
+              className={clsx(
+                'px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap',
+                filter === key
+                  ? 'bg-brand-red/20 text-brand-red border border-brand-red/30'
+                  : 'text-text-secondary hover:text-text-primary hover:bg-bg-elevated'
+              )}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => setBadgeLegendOpen(open => !open)}
+          className={clsx(
+            'btn-ghost flex-shrink-0 self-start px-3 py-2 text-sm sm:self-auto',
+            badgeLegendOpen && 'border-brand-red/30 bg-brand-red/10 text-brand-red'
+          )}
+          aria-expanded={badgeLegendOpen}
+          aria-controls="card-badge-legend"
+          aria-label={t('setDetail.badgeLegend')}
+        >
+          <HelpCircle size={15} />
+          <span>{t('setDetail.badgeLegend')}</span>
+        </button>
       </div>
+
+      {badgeLegendOpen && (
+        <div id="card-badge-legend" className="card p-3">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
+            {t('setDetail.badgeLegend')}
+          </p>
+          <CardStateLegend />
+        </div>
+      )}
 
       {/* Sort and rarity controls */}
       <div className="card p-3">
@@ -535,6 +571,7 @@ export default function SetDetail() {
             tabIndex={0}
             className={clsx(
               'relative group rounded-lg overflow-hidden transition-all duration-200',
+              getCardRarityEffectClass(card.rarity, card.lang || setLang),
               card.owned
                 ? 'ring-2 ring-green/50 hover:ring-green cursor-pointer'
                 : 'opacity-60 hover:opacity-90 ring-1 ring-brand-red/30 hover:ring-brand-red/60 cursor-pointer'

@@ -23,6 +23,7 @@ import { tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLa
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import { formatMoneyInputValue, parseMoneyInputValue } from '../utils/moneyInput'
+import { getCardRarityEffectClass } from '../utils/cardRarity'
 
 function TiltBinderCard({ className, onClick, children }) {
   const { ref, onMouseMove, onMouseEnter, onMouseLeave } = useTilt(10)
@@ -1307,20 +1308,7 @@ export default function Collection() {
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
                 {filtered.map(item => {
                   const card = item.card
-                  const rarityLower = (card?.rarity || '').toLowerCase()
-                  let rarityClass = ''
-                  if (rarityLower.includes('secret') || rarityLower.includes('rainbow')) {
-                    rarityClass = 'card-secret'
-                  } else if (
-                    rarityLower.includes('ultra') ||
-                    rarityLower.includes('vmax') ||
-                    rarityLower.includes('v max') ||
-                    rarityLower.includes('full art')
-                  ) {
-                    rarityClass = 'card-holo'
-                  } else if (rarityLower.includes('holo') || rarityLower.includes('rare')) {
-                    rarityClass = 'card-holo'
-                  }
+                  const rarityClass = getCardRarityEffectClass(card?.rarity, card?.lang || card?.set_ref?.lang)
 
                   return (
                     <TiltBinderCard

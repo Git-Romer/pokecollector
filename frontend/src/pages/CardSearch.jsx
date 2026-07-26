@@ -16,6 +16,7 @@ import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
 import { normalizeTcgdexLanguage, tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
+import { getCardRarityEffectClass } from '../utils/cardRarity'
 
 function TiltCardWrapper({ children, className, onClick }) {
   const { ref, onMouseMove, onMouseEnter, onMouseLeave } = useTilt(12)
@@ -652,7 +653,7 @@ export default function CardSearch() {
                     className={`card-3d group relative ${selectMode && isSelected ? 'ring-2 ring-brand-red rounded-xl' : ''}`}
                     onClick={() => (selectMode ? toggleSelected(card) : setSelectedCard(card))}
                   >
-                    <div className="relative aspect-[2.5/3.5] rounded-xl overflow-hidden bg-bg-elevated ring-1 ring-white/5 group-hover:ring-brand-red/40">
+                    <div className={`relative aspect-[2.5/3.5] rounded-xl overflow-hidden bg-bg-elevated ring-1 ring-white/5 group-hover:ring-brand-red/40 ${getCardRarityEffectClass(card.rarity, card.lang || card.set_ref?.lang)}`}>
                       {imgSrc
                         ? <img src={imgSrc} alt={card.name} className="w-full h-full object-cover" loading="lazy" />
                         : <div className="w-full h-full flex flex-col items-center justify-center gap-1 p-2">
@@ -671,9 +672,6 @@ export default function CardSearch() {
                         </div>
                       )}
                     </div>
-                    {card.rarity?.toLowerCase().includes('holo') && (
-                      <div className="absolute inset-0 rounded-xl pointer-events-none card-holo" />
-                    )}
                     <CardStateIndicators
                       card={card}
                       compact
