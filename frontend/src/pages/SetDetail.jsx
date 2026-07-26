@@ -365,10 +365,12 @@ export default function SetDetail() {
     mutationFn: async ({ binderId, setId }) => {
       let targetId = binderId
       if (!targetId) {
-        // Reuse an existing auto-named collection binder for this set instead of
-        // creating another duplicate on repeated use.
+        // Check the server instead of relying on possibly stale cached data.
+        // This prevents a quick close/reopen/retry from creating another
+        // auto-named binder before the invalidated binder query has refreshed.
         const name = ownedBinderName(set?.name, setId)
-        const existing = findOwnedBinderForSet(bindersQuery.data, name)
+        const freshBinders = await getBinders().then(r => r.data)
+        const existing = findOwnedBinderForSet(freshBinders, name)
         if (existing) {
           targetId = existing.id
         } else {

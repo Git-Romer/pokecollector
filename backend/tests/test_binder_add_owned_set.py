@@ -173,6 +173,43 @@ class AddOwnedSetToBinderTests(unittest.TestCase):
         self.assertEqual(result["owned_total"], 0)
         self.assertEqual(self.db.query(BinderCard).filter(BinderCard.binder_id == binder.id).count(), 0)
 
+    def test_other_users_collection_items_are_not_added(self):
+        other_user = User(username="misty", hashed_password="x", role="trainer", is_active=True)
+        self.db.add(other_user)
+        self.db.commit()
+        self.db.refresh(other_user)
+        self.db.add(CollectionItem(
+            card_id=self.card_a.id,
+            user_id=other_user.id,
+            quantity=1,
+            condition="NM",
+            variant="Normal",
+            lang="en",
+        ))
+        self.db.commit()
+        binder = self._collection_binder()
+
+        result = add_owned_set_to_binder(binder.id, set_id="sv1_en", current_user=self.user, db=self.db)
+
+        self.assertEqual(result["added"], 0)
+        self.assertEqual(result["owned_total"], 0)
+        self.assertEqual(self.db.query(BinderCard).filter(BinderCard.binder_id == binder.id).count(), 0)
+
+    def test_other_users_binder_is_not_accessible(self):
+        other_user = User(username="brock", hashed_password="x", role="trainer", is_active=True)
+        self.db.add(other_user)
+        self.db.commit()
+        self.db.refresh(other_user)
+        binder = Binder(name="Private", user_id=other_user.id, binder_type="collection")
+        self.db.add(binder)
+        self.db.commit()
+        self.db.refresh(binder)
+
+        with self.assertRaises(HTTPException) as ctx:
+            add_owned_set_to_binder(binder.id, set_id="sv1_en", current_user=self.user, db=self.db)
+
+        self.assertEqual(ctx.exception.status_code, 404)
+
 
 if __name__ == "__main__":
     unittest.main()
