@@ -1,7 +1,7 @@
 {
   "name": "pokemon-tcg-collection",
   "private": true,
-  "version": "1.24.0",
+  "version": "1.25.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -19,7 +19,7 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-hot-toast": "^2.4.1",
-    "react-router-dom": "^6.30.4",
+    "react-router-dom": "^7.18.1",
     "recharts": "^2.12.0"
   },
   "devDependencies": {
