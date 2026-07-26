@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Plus, Trash2, X, Heart } from 'lucide-react'
-import { getSetChecklist, addToCollection, addToWishlist, updateCollectionItem, removeFromCollection } from '../api/client'
+import { ArrowLeft, Plus, Trash2, X, Heart, BookMarked } from 'lucide-react'
+import { getSetChecklist, addToCollection, addToWishlist, updateCollectionItem, removeFromCollection, getBinders, addOwnedSetToBinder, addOwnedSetToAutoBinder } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
@@ -287,6 +287,7 @@ export default function SetDetail() {
   const [sortBy, setSortBy] = useState('number')
   const [rarityFilter, setRarityFilter] = useState('all')
   const [selectedCard, setSelectedCard] = useState(null)
+  const [binderPickerOpen, setBinderPickerOpen] = useState(false)
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['set-checklist', setId],
@@ -347,6 +348,38 @@ export default function SetDetail() {
     },
     onError: () => toast.error(t('collection.updateFailed')),
   })
+
+  const bindersQuery = useQuery({
+    queryKey: ['binders'],
+    queryFn: () => getBinders().then(r => r.data),
+    enabled: binderPickerOpen,
+  })
+
+  // Synchronous re-entry lock. `disabled={isPending}` is async React state and
+  // does not block a rapid second click before the re-render, which would create
+  // a duplicate binder; this ref blocks it immediately.
+  const addOwnedSubmittingRef = useRef(false)
+
+  const addOwnedMutation = useMutation({
+    mutationFn: async ({ binderId, setId }) => {
+      if (!binderId) return addOwnedSetToAutoBinder(setId)
+      return addOwnedSetToBinder(binderId, setId)
+    },
+    onSuccess: (result) => {
+      const skipped = (result.skipped_present || 0) + (result.skipped_no_capacity || 0)
+      toast.success(t('setDetail.addOwnedToBinderResult').replace('{added}', result.added).replace('{skipped}', skipped))
+      queryClient.invalidateQueries({ queryKey: ['binders'] })
+      setBinderPickerOpen(false)
+    },
+    onError: () => toast.error(t('setDetail.addOwnedToBinderFailed')),
+    onSettled: () => { addOwnedSubmittingRef.current = false },
+  })
+
+  const submitAddOwned = (args) => {
+    if (addOwnedSubmittingRef.current) return
+    addOwnedSubmittingRef.current = true
+    addOwnedMutation.mutate(args)
+  }
 
   if (isLoading) {
     return (
@@ -423,7 +456,7 @@ export default function SetDetail() {
             </div>
           </div>
 
-          <div className="text-right hidden md:block flex-shrink-0">
+          <div className="hidden md:flex flex-col items-end gap-3 flex-shrink-0">
             <div className="flex gap-4">
               <div>
                 <p className="text-2xl font-bold text-green">{owned_count}</p>
@@ -436,6 +469,13 @@ export default function SetDetail() {
             </div>
           </div>
         </div>
+
+        <button
+          onClick={() => setBinderPickerOpen(true)}
+          className="btn-ghost flex items-center justify-center gap-1.5 text-sm whitespace-nowrap w-full mt-3 md:w-auto md:ml-auto md:mt-3"
+        >
+          <BookMarked size={14} /> {t('setDetail.addOwnedToBinder')}
+        </button>
       </div>
 
       {/* Filter Tabs */}
@@ -544,6 +584,83 @@ export default function SetDetail() {
         isRemoving={removeMutation.isPending}
         t={t}
       />
+
+      {binderPickerOpen && createPortal(
+        <div
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm md:flex md:items-center md:justify-center md:bg-black/80"
+          onClick={() => setBinderPickerOpen(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="add-owned-to-binder-title"
+            className={[
+              'fixed bottom-0 left-0 right-0 rounded-t-2xl max-h-[90dvh] overflow-y-auto',
+              'bg-bg-surface border-t border-border more-sheet-enter',
+              'md:static md:w-full md:max-w-md md:rounded-2xl md:border md:max-h-[85vh] md:animate-none',
+            ].join(' ')}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-center pt-3 pb-1 md:hidden">
+              <div className="w-10 h-1 bg-border rounded-full" />
+            </div>
+
+            <div className="p-5">
+              <div className="flex items-start justify-between gap-3 mb-4">
+                <h2 id="add-owned-to-binder-title" className="text-lg font-bold text-text-primary">
+                  {t('setDetail.addOwnedToBinderTitle')}
+                </h2>
+                <button
+                  onClick={() => setBinderPickerOpen(false)}
+                  className="text-text-muted hover:text-text-primary flex-shrink-0 p-1"
+                  aria-label={t('common.close')}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {owned_count === 0 ? (
+                <p className="text-sm text-text-secondary">{t('setDetail.addOwnedToBinderEmpty')}</p>
+              ) : (
+                <>
+                  <p className="text-xs font-semibold text-text-muted mb-2 uppercase tracking-wide">
+                    {t('setDetail.addOwnedToBinderPick')}
+                  </p>
+                  <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+                    {bindersQuery.isLoading && (
+                      <p className="text-sm text-text-secondary">{t('common.loading')}</p>
+                    )}
+                    {bindersQuery.isError && (
+                      <p className="text-sm text-brand-red">{t('setDetail.addOwnedToBinderLoadFailed')}</p>
+                    )}
+                    {!bindersQuery.isLoading && !bindersQuery.isError && (bindersQuery.data || []).filter(b => (b.binder_type || 'collection') === 'collection').length === 0 && (
+                      <p className="text-sm text-text-secondary">{t('setDetail.addOwnedToBinderNoBinders')}</p>
+                    )}
+                    {(bindersQuery.data || []).filter(b => (b.binder_type || 'collection') === 'collection').map(b => (
+                      <button
+                        key={b.id}
+                        disabled={addOwnedMutation.isPending}
+                        onClick={() => submitAddOwned({ binderId: b.id, setId: set.id })}
+                        className="text-left px-3 py-2.5 rounded-xl border border-border bg-bg-card hover:border-brand-red/40 hover:bg-brand-red/10 text-sm text-text-primary transition-colors disabled:opacity-50"
+                      >
+                        {b.name}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    disabled={addOwnedMutation.isPending}
+                    onClick={() => submitAddOwned({ binderId: null, setId: set.id })}
+                    className="btn-primary w-full mt-3 flex items-center justify-center gap-1.5 text-sm disabled:opacity-50"
+                  >
+                    <Plus size={14} /> {t('setDetail.addOwnedToBinderNew')}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
     </div>
   )
 }
