@@ -18,6 +18,7 @@ import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/q
 import { parseMoneyInputValue } from '../utils/moneyInput'
 import { cardmarketLinks } from '../utils/cardmarket'
 import CardStateIndicators from './CardStateIndicators'
+import { getCardRarityEffectClass } from '../utils/cardRarity'
 
 function askWishlistQuantity(t, defaultQuantity = 1) {
   const initialQuantity = Math.max(1, Math.min(99, parseInt(defaultQuantity, 10) || 1))
@@ -425,12 +426,13 @@ export const CardItem = memo(function CardItem({ card, showActions = true, onAdd
       ?? card.price_trend)
 
   const rarityColor = RARITY_COLORS[cardRarity] || 'text-text-secondary'
+  const rarityEffectClass = getCardRarityEffectClass(cardRarity, card.lang || card.set_ref?.lang)
   const { ref: tiltRef, onMouseMove: tiltMove, onMouseLeave: tiltLeave } = useTilt(10)
 
   if (compact) {
     return (
       <div ref={tiltRef} className="card cursor-pointer group p-2 hover:border-brand-red/20 transition-all" onClick={() => setShowModal(true)} onMouseMove={tiltMove} onMouseLeave={tiltLeave}>
-        <div className="relative aspect-[2.5/3.5] w-full rounded-xl overflow-hidden ring-1 ring-white/5 group-hover:ring-2 group-hover:ring-brand-red/30 transition-all duration-200">
+        <div className={clsx('relative aspect-[2.5/3.5] w-full rounded-xl overflow-hidden ring-1 ring-white/5 group-hover:ring-2 group-hover:ring-brand-red/30 transition-all duration-200', rarityEffectClass)}>
           <CardStateIndicators card={card} compact className="absolute left-1.5 right-1.5 top-1.5 z-10" />
           {cardImage ? (
             <img src={cardImage} alt={cardName} className="w-full h-full object-cover shadow-lg group-hover:scale-[1.02] transition-transform duration-300" loading="lazy" />
@@ -447,7 +449,7 @@ export const CardItem = memo(function CardItem({ card, showActions = true, onAdd
   return (
     <>
       <div ref={tiltRef} className="card cursor-pointer group hover:border-brand-red/20 transition-all" onClick={() => setShowModal(true)} onMouseMove={tiltMove} onMouseLeave={tiltLeave}>
-        <div className="relative aspect-[2.5/3.5] w-full mb-3 rounded-xl overflow-hidden ring-1 ring-white/5 group-hover:ring-2 group-hover:ring-brand-red/30 transition-all duration-200">
+        <div className={clsx('relative aspect-[2.5/3.5] w-full mb-3 rounded-xl overflow-hidden ring-1 ring-white/5 group-hover:ring-2 group-hover:ring-brand-red/30 transition-all duration-200', rarityEffectClass)}>
           <CardStateIndicators card={card} className="absolute left-2 right-2 top-2 z-10" />
           {cardImage ? (
             <img src={cardImage} alt={cardName} className="w-full h-full object-cover shadow-lg group-hover:scale-[1.02] transition-transform duration-300" loading="lazy" />

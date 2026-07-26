@@ -915,6 +915,9 @@ const en = {
     addOwnedToBinderEmpty: 'You do not own any cards in this set yet.',
     addOwnedToBinderResult: 'Added {added}, skipped {skipped}.',
     addOwnedToBinderFailed: 'Failed to add owned cards to binder.',
+    badgeLegend: 'Badge legend',
+    badgeQuantity: 'Quantity owned',
+    ownedVariantUnknown: 'Owned (variant unknown)',
     sortBy: 'Sort by',
     sort: {
       number: 'Collector number',
