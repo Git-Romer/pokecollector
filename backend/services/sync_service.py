@@ -397,6 +397,7 @@ def _sync_set_card_catalogue(
     for set_obj in sets_to_sync:
         tcg_id = set_obj.tcg_set_id or set_obj.id
         set_lang = set_obj.lang or "en"
+        set_log_id = set_obj.id
         existing_card_count = db.query(Card).filter(
             Card.set_id == tcg_id, Card.lang == set_lang
         ).count()
@@ -427,30 +428,99 @@ def _sync_set_card_catalogue(
             # Update set total if needed
             if cards_data and not set_obj.total:
                 set_obj.total = len(cards_data)
+                set_total = len(cards_data)
+
+            native_card_ids: set[str] = set()
             for card_data in cards_data:
-                parsed = pokemon_api.parse_card_for_db(card_data, default_set_id=tcg_id, lang=set_lang)
+                parsed = pokemon_api.parse_card_for_db(
+                    card_data,
+                    default_set_id=tcg_id,
+                    lang=set_lang,
+                )
                 parsed = apply_cross_language_fallbacks(db, parsed)
+                card_id = parsed["id"]
+                if card_id in native_card_ids:
+                    logger.warning(
+                        "Skipping duplicate native card %s while syncing set %s",
+                        card_id,
+                        set_log_id,
+                    )
+                    continue
                 upsert_card(db, parsed)
-            if set_total and len(cards_data) < set_total:
-                for parsed in build_missing_language_cards_for_set(db, tcg_id, set_lang, expected_total=set_total):
+                native_card_ids.add(card_id)
+
+            # SessionLocal uses autoflush=False. Make native rows visible to the
+            # missing-language fallback query before it decides which IDs to add.
+            db.flush()
+
+            if set_total and len(native_card_ids) < set_total:
+                fallback_cards = build_missing_language_cards_for_set(
+                    db,
+                    tcg_id,
+                    set_lang,
+                    expected_total=set_total,
+                )
+                fallback_card_ids: set[str] = set()
+                for parsed in fallback_cards:
+                    card_id = parsed["id"]
+                    if card_id in native_card_ids:
+                        logger.warning(
+                            "Skipping fallback card %s because a native card "
+                            "is already queued for set %s",
+                            card_id,
+                            set_log_id,
+                        )
+                        continue
+                    if card_id in fallback_card_ids:
+                        logger.warning(
+                            "Skipping duplicate fallback card %s while syncing set %s",
+                            card_id,
+                            set_log_id,
+                        )
+                        continue
                     upsert_card(db, parsed)
+                    fallback_card_ids.add(card_id)
+
             set_obj.updated_at = datetime.datetime.utcnow()
             result["sets_refreshed"] += 1
             db.commit()
-        except Exception as e:
-            logger.warning(f"Failed to sync cards for set {set_obj.id}: {e}")
+        except Exception as exc:
             db.rollback()
+            logger.warning(
+                "Failed to sync cards for set %s: %s",
+                set_log_id,
+                exc,
+            )
             try:
-                fallback_cards = build_missing_language_cards_for_set(db, tcg_id, set_lang, expected_total=set_total)
+                fallback_cards = build_missing_language_cards_for_set(
+                    db,
+                    tcg_id,
+                    set_lang,
+                    expected_total=set_total,
+                )
                 if fallback_cards:
+                    fallback_card_ids: set[str] = set()
                     for parsed in fallback_cards:
+                        card_id = parsed["id"]
+                        if card_id in fallback_card_ids:
+                            logger.warning(
+                                "Skipping duplicate fallback card %s while recovering set %s",
+                                card_id,
+                                set_log_id,
+                            )
+                            continue
                         upsert_card(db, parsed)
+                        fallback_card_ids.add(card_id)
                     set_obj.updated_at = datetime.datetime.utcnow()
                     result["sets_refreshed"] += 1
                     db.commit()
-            except Exception as fallback_error:
-                logger.warning(f"Failed to create fallback cards for set {set_obj.id}: {fallback_error}")
+            except Exception as fallback_exc:
                 db.rollback()
+                logger.warning(
+                    "Failed to create fallback cards for set %s: %s",
+                    set_log_id,
+                    fallback_exc,
+                )
 
     return result
 
