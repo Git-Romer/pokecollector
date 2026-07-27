@@ -16,6 +16,7 @@
   --color-selected: rgb(var(--color-accent-rgb) / .12); --color-shadow: rgba(0,0,0,.4); --color-shadow-elevated: rgba(0,0,0,.5);
   --color-chart-grid: rgba(255,255,255,.14); --color-chart-axis: #8d8da3; --color-chart-cost: #9ca3af;
   --color-gold: #f5c842;
+  --color-positive: #66bb6a; --color-negative: #e3000b;
   --color-green: #22c55e; --color-yellow: #eab308; --color-blue: #3b82f6;
   --safe-area-bottom: env(safe-area-inset-bottom, 0px); --safe-area-top: env(safe-area-inset-top, 0px); --bottom-nav-height: 4rem;
 }
@@ -29,7 +30,12 @@
   --color-shadow: rgba(15,23,42,.10); --color-shadow-elevated: rgba(15,23,42,.18);
   --color-chart-grid: rgba(20,30,50,.20); --color-chart-axis: #526077; --color-chart-cost: #667085;
   --color-gold: #8a5a00;
+  --color-positive: #257a38; --color-negative: #b80009;
 }
+
+/* Ambient glows are tuned for the dark canvas and look like stains on paper. */
+[data-color-mode="light"] #root::before,
+[data-color-mode="light"] .home-ambient-orbs { display: none; }
 
 /* Safari autofill override */
 input:-webkit-autofill,

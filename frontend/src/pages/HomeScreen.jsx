@@ -40,10 +40,9 @@ function ChartTooltip({ active, payload, label, formatPrice }) {
   if (!active || !payload?.length) return null
   const tooltipLabel = payload[0]?.payload?.tooltipLabel || label
   return (
-    <div className="rounded-xl px-3 py-2 text-xs shadow-xl"
-      style={{ background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.12)' }}>
+    <div className="rounded-xl px-3 py-2 text-xs shadow-xl bg-bg-elevated border border-border">
       <p className="text-text-muted mb-1">{tooltipLabel}</p>
-      <p className="font-black" style={{ color: '#f5c842' }}>
+      <p className="font-black text-gold">
         {formatPrice(Number(payload[0].value))}
       </p>
     </div>
@@ -58,7 +57,7 @@ function CardThumb({ card, onClick }) {
     <div ref={ref} className="flex-shrink-0 w-[110px] cursor-pointer group" onClick={onClick} onMouseMove={onMouseMove} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
       <div className="aspect-[2.5/3.5] rounded-xl overflow-hidden shadow-lg transition-all duration-150
         group-hover:shadow-brand-red/20"
-        style={{ border: '1px solid rgba(255,255,255,0.07)', boxShadow: '0 4px 16px rgba(0,0,0,0.5)' }}>
+        style={{ border: '1px solid var(--color-border)', boxShadow: '0 4px 16px var(--color-shadow-elevated)' }}>
         <CardImage src={img} alt={card.name} className="w-full h-full object-cover" />
       </div>
     </div>
@@ -140,10 +139,10 @@ export default function HomeScreen() {
 
   // Determine chart color based on trend
   const chartColor = useMemo(() => {
-    if (chartData.length < 2) return '#f5c842'
+    if (chartData.length < 2) return 'var(--color-gold)'
     const first = chartData[0]?.value ?? 0
     const last = chartData[chartData.length - 1]?.value ?? 0
-    return last >= first ? '#66bb6a' : '#e3000b'
+    return last >= first ? 'var(--color-positive)' : 'var(--color-negative)'
   }, [chartData])
 
   // Portal navigation items — defined inside component so t() works
@@ -163,25 +162,25 @@ export default function HomeScreen() {
       icon: <Layers size={16} />,
       value: compactNum(data?.total_cards ?? 0),
       label: t('home.cardsTotal'),
-      color: '#4fc3f7',
+      color: '#1684c5',
     },
     {
       icon: <Grid2X2 size={16} />,
       value: compactNum(data?.owned_sets ?? 0),
       label: t('home.sets'),
-      color: '#ce93d8',
+      color: '#9c4dcc',
     },
     {
       icon: <Star size={16} />,
       value: compactNum(data?.unique_cards ?? 0),
       label: t('home.unique'),
-      color: '#81c784',
+      color: 'var(--color-positive)',
     },
     {
       icon: <Wallet size={16} />,
       value: formatPrice(netInvested),
       label: t('home.invested'),
-      color: '#f5c842',
+      color: 'var(--color-gold)',
     },
   ]
 
@@ -189,7 +188,7 @@ export default function HomeScreen() {
     <div className="min-h-dvh flex flex-col relative overflow-x-hidden">
 
       {/* Ambient orbs */}
-      <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
+      <div className="home-ambient-orbs absolute inset-0 pointer-events-none" aria-hidden="true">
         <div style={{ position:'absolute', top:'3%', left:'8%', width:300, height:300, borderRadius:'50%',
           background:'radial-gradient(circle, rgba(227,0,11,0.07) 0%, transparent 70%)',
           animation:'float-orb 9s ease-in-out infinite' }} />
@@ -205,8 +204,7 @@ export default function HomeScreen() {
           {multiUser ? (
             <button
               onClick={() => { logout(); navigate('/login') }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-text-muted hover:text-brand-red transition-colors"
-              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-text-muted hover:text-brand-red transition-colors bg-bg-card border border-border"
             >
               <LogOut size={12} />
               {t('auth.logout')}
@@ -220,9 +218,9 @@ export default function HomeScreen() {
             disabled={isRunning}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
             style={{
-              background: isRunning ? 'rgba(255,255,255,0.05)' : 'rgba(227,0,11,0.12)',
-              color: isRunning ? '#888' : '#e3000b',
-              border: isRunning ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(227,0,11,0.25)',
+              background: isRunning ? 'var(--color-elevated)' : 'var(--color-selected)',
+              color: isRunning ? 'var(--color-text-muted)' : 'var(--color-accent)',
+              border: isRunning ? '1px solid var(--color-border)' : '1px solid rgb(var(--color-accent-rgb) / .3)',
             }}
           >
             <RefreshCw size={12} className={isRunning ? 'animate-spin' : ''} />
@@ -242,16 +240,15 @@ export default function HomeScreen() {
                 className="h-6 w-6 pixelated"
               />
             ) : null}
-            <p className="text-sm font-semibold truncate" style={{ color: 'rgba(255,255,255,0.55)' }}>
-              {t('home.hello')}, <span className="font-black" style={{ color: '#f5c842' }}>{trainerName}</span>! 👋
+            <p className="text-sm font-semibold truncate text-text-secondary">
+              {t('home.hello')}, <span className="font-black text-gold">{trainerName}</span>! 👋
             </p>
           </div>
           <p className="text-[11px] text-text-muted uppercase tracking-[0.2em] mb-2">{t('home.portfolioValue')}</p>
           {isLoading ? (
             <div className="skeleton h-14 w-48 mx-auto rounded-xl" />
           ) : (
-            <p className="text-4xl sm:text-5xl font-black tracking-tight"
-              style={{ color: '#f5c842', textShadow: '0 0 40px rgba(245,200,66,0.25)' }}>
+            <p className="text-4xl sm:text-5xl font-black tracking-tight text-gold">
               {formatPrice(totalValue)}
             </p>
           )}
@@ -265,7 +262,7 @@ export default function HomeScreen() {
                   style={{
                     background: pnlPositive ? 'rgba(102,187,106,0.12)' : 'rgba(227,0,11,0.12)',
                     border: `1px solid ${pnlPositive ? 'rgba(102,187,106,0.3)' : 'rgba(227,0,11,0.3)'}`,
-                    color: pnlPositive ? '#66bb6a' : '#e3000b',
+                    color: pnlPositive ? 'var(--color-positive)' : 'var(--color-negative)',
                   }}
                 >
                   {pnlPositive
@@ -290,7 +287,7 @@ export default function HomeScreen() {
                     style={{
                       background: productsRealizedPnl >= 0 ? 'rgba(102,187,106,0.1)' : 'rgba(227,0,11,0.1)',
                       border: `1px solid ${productsRealizedPnl >= 0 ? 'rgba(102,187,106,0.25)' : 'rgba(227,0,11,0.25)'}`,
-                      color: productsRealizedPnl >= 0 ? '#66bb6a' : '#e3000b',
+                      color: productsRealizedPnl >= 0 ? 'var(--color-positive)' : 'var(--color-negative)',
                     }}
                   >
                     {t('common.sold')}: {formatPrice(productsSoldRevenue)} ({productsRealizedPnl >= 0 ? '+' : ''}{formatPrice(productsRealizedPnl)})
@@ -309,11 +306,7 @@ export default function HomeScreen() {
           {STAT_CARDS.map(stat => (
             <div
               key={stat.label}
-              className="rounded-2xl p-3 flex flex-col items-center text-center gap-1.5"
-              style={{
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.07)',
-              }}
+              className="rounded-2xl p-3 flex flex-col items-center text-center gap-1.5 bg-bg-card border border-border"
             >
               <span style={{ color: stat.color }}>{stat.icon}</span>
               <p className="text-sm sm:text-base font-black leading-none truncate max-w-full" style={{ color: stat.color }}>
@@ -325,12 +318,11 @@ export default function HomeScreen() {
         </div>
 
         {/* ── PORTFOLIO CHART ── */}
-        <div className="rounded-2xl p-4"
-          style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+        <div className="rounded-2xl p-4 bg-bg-card border border-border">
 
           {/* Header row */}
           <div className="flex items-center justify-between mb-3">
-            <p className="text-xs font-bold text-white uppercase tracking-wider">{t('home.portfolioHistory')}</p>
+            <p className="text-xs font-bold text-text-primary uppercase tracking-wider">{t('home.portfolioHistory')}</p>
             <div className="flex gap-1">
               {PERIODS.map(p => (
                 <button
@@ -338,8 +330,8 @@ export default function HomeScreen() {
                   onClick={() => setChartPeriod(p.key)}
                   className="px-2 py-1 rounded-lg text-[10px] font-bold transition-all"
                   style={{
-                    background: chartPeriod === p.key ? 'rgba(245,200,66,0.15)' : 'rgba(255,255,255,0.04)',
-                    color: chartPeriod === p.key ? '#f5c842' : '#666',
+                    background: chartPeriod === p.key ? 'rgba(245,200,66,0.15)' : 'var(--color-elevated)',
+                    color: chartPeriod === p.key ? 'var(--color-gold)' : 'var(--color-text-secondary)',
                     border: chartPeriod === p.key ? '1px solid rgba(245,200,66,0.3)' : '1px solid transparent',
                   }}
                 >
@@ -352,9 +344,9 @@ export default function HomeScreen() {
           {/* Chart area */}
           {chartData.length < 2 ? (
             <div className="flex flex-col items-center justify-center h-24 gap-2">
-              <BarChart3 size={24} style={{ color: 'rgba(255,255,255,0.15)' }} />
+              <BarChart3 size={24} className="text-text-muted opacity-60" />
               <p className="text-[11px] text-text-muted">{t('home.noData')}</p>
-              <p className="text-[10px]" style={{ color: 'rgba(255,255,255,0.25)' }}>
+              <p className="text-[10px] text-text-muted">
                 {t('home.startSyncHint')}
               </p>
             </div>
@@ -369,7 +361,7 @@ export default function HomeScreen() {
                 </defs>
                 <XAxis
                   dataKey="date"
-                  tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 9 }}
+                  tick={{ fill: 'var(--color-chart-axis)', fontSize: 9 }}
                   axisLine={false}
                   tickLine={false}
                   interval="preserveStartEnd"
@@ -377,7 +369,7 @@ export default function HomeScreen() {
                 <YAxis hide domain={['auto', 'auto']} />
                 <Tooltip
                   content={<ChartTooltip formatPrice={formatPrice} />}
-                  cursor={{ stroke: 'rgba(255,255,255,0.12)', strokeWidth: 1 }}
+                  cursor={{ stroke: 'var(--color-chart-grid)', strokeWidth: 1 }}
                 />
                 <Area
                   type="monotone"
@@ -395,18 +387,13 @@ export default function HomeScreen() {
 
         {/* ── NAVIGATION PORTAL GRID ── */}
         <div>
-          <p className="text-xs font-bold text-white uppercase tracking-wider mb-3">{t('home.navigation')}</p>
+          <p className="text-xs font-bold text-text-primary uppercase tracking-wider mb-3">{t('home.navigation')}</p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
             {PORTAL_ITEMS.map(({ to, icon: Icon, label, color }) => (
               <button
                 key={to}
                 onClick={() => navigate(to)}
-                className="flex flex-col items-center gap-2 py-4 px-2 rounded-2xl transition-all
-                  active:scale-95 group"
-                style={{
-                  background: 'rgba(255,255,255,0.04)',
-                  border: '1px solid rgba(255,255,255,0.07)',
-                }}
+                className="flex flex-col items-center gap-2 py-4 px-2 rounded-2xl transition-all active:scale-95 group bg-bg-card border border-border hover:bg-bg-elevated"
               >
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center transition-all
                   group-hover:scale-110"
@@ -416,8 +403,7 @@ export default function HomeScreen() {
                   }}>
                   <Icon size={18} style={{ color }} />
                 </div>
-                <span className="text-[10px] font-semibold text-center leading-tight"
-                  style={{ color: 'rgba(255,255,255,0.65)' }}>
+                <span className="text-[10px] font-semibold text-center leading-tight text-text-secondary">
                   {label}
                 </span>
               </button>
@@ -429,7 +415,7 @@ export default function HomeScreen() {
         {recentCards.length > 0 && (
           <div>
             <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-bold text-white uppercase tracking-wider">{t('home.recentlyAdded')}</p>
+              <p className="text-xs font-bold text-text-primary uppercase tracking-wider">{t('home.recentlyAdded')}</p>
               <button onClick={() => navigate('/collection')}
                 className="text-[11px] font-semibold hover:opacity-80 transition-opacity"
                 style={{ color:'#e3000b' }}>{t('home.viewAll')} →</button>
@@ -446,7 +432,7 @@ export default function HomeScreen() {
         {topCards.length > 0 && (
           <div>
             <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-bold text-white uppercase tracking-wider">{t('home.topCards')}</p>
+              <p className="text-xs font-bold text-text-primary uppercase tracking-wider">{t('home.topCards')}</p>
               <button onClick={() => navigate('/analytics')}
                 className="text-[11px] font-semibold hover:opacity-80 transition-opacity"
                 style={{ color:'#f5c842' }}>{t('home.details')} →</button>
