@@ -20,7 +20,7 @@ class FullSyncCardCatalogueTests(unittest.TestCase):
     def setUp(self):
         engine = create_engine("sqlite:///:memory:")
         Base.metadata.create_all(engine)
-        Session = sessionmaker(bind=engine)
+        Session = sessionmaker(bind=engine, autoflush=False)
         self.db = Session()
 
     def tearDown(self):
@@ -81,6 +81,79 @@ class FullSyncCardCatalogueTests(unittest.TestCase):
         self.assertEqual(card.images_small, "https://assets.example/base1/1/low.webp")
         self.assertEqual(card.images_large, "https://assets.example/base1/1/high.webp")
         self.assertIsNone(card.custom_image_url)
+
+    def test_native_cards_are_flushed_before_missing_language_fallbacks(self):
+        set_obj = Set(
+            id="smp_de",
+            tcg_set_id="smp",
+            name="SM Black Star Promos",
+            total=2,
+            lang="de",
+        )
+        self.db.add(set_obj)
+        self.db.commit()
+
+        cache = {
+            ("smp", "de"): [
+                {
+                    "id": "smp-SM01",
+                    "localId": "SM01",
+                    "name": "Native Pikachu",
+                    "set": {"id": "smp"},
+                }
+            ]
+        }
+
+        def build_fallbacks(db, tcg_set_id, set_lang, expected_total):
+            self.assertEqual(
+                (tcg_set_id, set_lang, expected_total),
+                ("smp", "de", 2),
+            )
+            visible_native = db.query(Card.id).filter(Card.id == "smp-SM01_de").first()
+            self.assertIsNotNone(visible_native)
+            return [
+                {
+                    "id": "smp-SM01_de",
+                    "tcg_card_id": "smp-SM01",
+                    "name": "Duplicate fallback",
+                    "set_id": "smp",
+                    "number": "SM01",
+                    "lang": "de",
+                    "data_source_lang": "en",
+                },
+                {
+                    "id": "smp-SM02_de",
+                    "tcg_card_id": "smp-SM02",
+                    "name": "Fallback card",
+                    "set_id": "smp",
+                    "number": "SM02",
+                    "lang": "de",
+                    "data_source_lang": "en",
+                },
+            ]
+
+        with patch(
+            "services.sync_service.apply_cross_language_fallbacks",
+            side_effect=lambda db, parsed: parsed,
+        ), patch(
+            "services.sync_service.build_missing_language_cards_for_set",
+            side_effect=build_fallbacks,
+        ) as build_missing:
+            result = _sync_set_card_catalogue(
+                self.db,
+                [set_obj],
+                card_list_cache=cache,
+                complete_set_refresh_limit=0,
+            )
+
+        build_missing.assert_called_once()
+        cards = self.db.query(Card).order_by(Card.id).all()
+        self.assertEqual(result["sets_refreshed"], 1)
+        self.assertEqual(
+            [card.id for card in cards],
+            ["smp-SM01_de", "smp-SM02_de"],
+        )
+        self.assertEqual(cards[0].name, "Native Pikachu")
 
     def test_complete_set_refresh_limit_defers_remaining_complete_sets(self):
         oldest_timestamp = datetime.datetime(2026, 1, 1)
