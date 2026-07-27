@@ -11,36 +11,7 @@
     <!-- PWA Manifest -->
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#e3000b" />
-    <script>
-      (() => { try {
-        const modes = ['system', 'light', 'dark'];
-        const accents = ['default', 'fire', 'water', 'grass', 'electric', 'psychic', 'dragon', 'dark', 'fairy'];
-        const storedMode = localStorage.getItem('pokecollector-color-mode');
-        const mode = modes.includes(storedMode) ? storedMode : 'system';
-        let accent = localStorage.getItem('pokecollector-accent');
-        if (!accents.includes(accent)) {
-          const legacy = localStorage.getItem('theme');
-          accent = accents.includes(legacy) ? legacy : 'default';
-          localStorage.setItem('pokecollector-accent', accent);
-        }
-        const resolved = mode === 'system'
-          ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-          : mode;
-        const root = document.documentElement;
-        root.dataset.colorMode = resolved;
-        root.dataset.accent = accent;
-        root.dataset.theme = accent;
-        root.classList.toggle('dark', resolved === 'dark');
-        root.style.colorScheme = resolved;
-      } catch (_) {
-        const root = document.documentElement;
-        const resolved = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-        root.dataset.colorMode = resolved;
-        root.dataset.accent = 'default';
-        root.classList.toggle('dark', resolved === 'dark');
-        root.style.colorScheme = resolved;
-      } })();
-    </script>
+    <script src="/appearance-init.js"></script>
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
