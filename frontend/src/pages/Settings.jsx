@@ -8,7 +8,7 @@ import {
   getSetting, setSetting, getTelegramStatus, saveSettings, setAuthMode,
   getUsers, createUser, updateUser, deleteUser, changePassword, changeAvatar, changeUsername,
   getContributors, getSupporters, getRescueDonations, getCustomMatches, downloadDebugLog,
-  getProfile, updateProfile, checkHandleAvailable,
+  getProfile, updateProfile,
 } from '../api/client'
 import api from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
@@ -21,7 +21,6 @@ import toast from 'react-hot-toast'
 import { TCGDEX_LANGUAGES, normalizeTcgdexLanguageCsv, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { APP_LANGUAGES } from '../utils/appLanguages'
 import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
-import { isValidHandleFormat, normalizeHandle } from '../utils/publicHandle'
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -354,11 +353,9 @@ export default function Settings() {
   })
 
   // Public profile
-  const [publicHandle, setPublicHandle] = useState('')
   const [profilePublic, setProfilePublic] = useState(false)
   const [publicShowValues, setPublicShowValues] = useState(false)
   const [profileDirty, setProfileDirty] = useState(false)
-  const [handleStatus, setHandleStatus] = useState(null)
   const [publicFeatureSaving, setPublicFeatureSaving] = useState(false)
 
   const { data: profileData } = useQuery({
@@ -368,29 +365,10 @@ export default function Settings() {
 
   useEffect(() => {
     if (profileData && !profileDirty) {
-      setPublicHandle(profileData.public_handle || '')
       setProfilePublic(!!profileData.is_profile_public)
       setPublicShowValues(!!profileData.public_show_values)
     }
   }, [profileData, profileDirty])
-
-  useEffect(() => {
-    const normalized = normalizeHandle(publicHandle)
-    if (!publicProfilesEnabled || !normalized || !isValidHandleFormat(normalized)) {
-      setHandleStatus(null)
-      return
-    }
-    let cancelled = false
-    const timer = setTimeout(() => {
-      checkHandleAvailable(normalized)
-        .then(status => { if (!cancelled) setHandleStatus(status) })
-        .catch(() => { if (!cancelled) setHandleStatus(null) })
-    }, 400)
-    return () => {
-      cancelled = true
-      clearTimeout(timer)
-    }
-  }, [publicHandle, publicProfilesEnabled])
 
 
   const [telegramBotToken, setTelegramBotToken] = useState('')
@@ -495,10 +473,8 @@ export default function Settings() {
     onSuccess: (data) => {
       queryClient.setQueryData(['profile'], data)
       queryClient.invalidateQueries({ queryKey: ['leaderboard'] })
-      setPublicHandle(data.public_handle || '')
       setProfilePublic(!!data.is_profile_public)
       setPublicShowValues(!!data.public_show_values)
-      setHandleStatus(null)
       setProfileDirty(false)
       toast.success(t('settings.saved'))
     },
@@ -506,20 +482,16 @@ export default function Settings() {
   })
 
   const savePublicProfile = () => {
-    const normalized = normalizeHandle(publicHandle)
     profileMutation.mutate({
-      public_handle: normalized || null,
-      is_profile_public: normalized ? profilePublic : false,
+      is_profile_public: profilePublic,
       public_show_values: publicShowValues,
     })
   }
 
-  const normalizedPublicHandle = normalizeHandle(publicHandle)
-  const publicProfileUrl = normalizedPublicHandle ? `${window.location.origin}/u/${normalizedPublicHandle}` : ''
-
-  const publicHandleInvalid = Boolean(normalizedPublicHandle) && !isValidHandleFormat(normalizedPublicHandle)
-  const publicHandleTaken = Boolean(handleStatus && !handleStatus.available)
-  const publicProfileSaveDisabled = profileMutation.isPending || publicHandleInvalid || publicHandleTaken
+  const publicHandle = profileData?.public_handle || ''
+  const publicHandleError = profileData?.public_handle_error || ''
+  const publicProfileUrl = publicHandle ? `${window.location.origin}/u/${publicHandle}` : ''
+  const publicProfileSaveDisabled = profileMutation.isPending || (profilePublic && !publicHandle)
 
   const handlePublicProfilesToggle = async (enabled) => {
     setPublicFeatureSaving(true)
@@ -681,10 +653,12 @@ export default function Settings() {
     mutationFn: (username) => changeUsername(username),
     onSuccess: (updatedUser) => {
       updateCurrentUser(updatedUser)
+      queryClient.invalidateQueries({ queryKey: ['profile'] })
+      queryClient.invalidateQueries({ queryKey: ['leaderboard'] })
       setEditingUsername(false)
       toast.success(t('common.saved'))
     },
-    onError: () => toast.error(t('common.error')),
+    onError: (error) => toast.error(error.response?.data?.detail || t('common.error')),
   })
 
   const handleAvatarSelect = (avatarId) => {
@@ -808,29 +782,19 @@ export default function Settings() {
                   />
                 </SettingsRow>
               )}
-              {publicProfilesEnabled && <SettingsRow label={t('settings.publicHandle')} description={t('settings.publicHandleDesc')}>
-                <div className="flex flex-col items-end gap-1 w-full sm:w-56">
-                  <input
-                    type="text"
-                    value={publicHandle}
-                    onChange={(e) => {
-                      const next = e.target.value.toLowerCase()
-                      setPublicHandle(next)
-                      if (!normalizeHandle(next)) setProfilePublic(false)
-                      setProfileDirty(true)
-                    }}
-                    placeholder="ash-ketchum"
-                    className="input text-xs font-mono w-full"
-                    maxLength={30}
-                  />
-                  {publicHandleInvalid && (
-                    <span className="text-[11px] font-semibold text-brand-red">
-                      {t('settings.handleInvalid')}
+              {publicProfilesEnabled && <SettingsRow label={t('settings.publicTrainerName')} description={t('settings.publicTrainerNameDesc')}>
+                <div className="flex w-full flex-col items-end gap-1 sm:w-64">
+                  <span className="w-full truncate rounded-lg border border-border bg-bg-primary px-3 py-2 text-xs font-semibold text-text-primary">
+                    {profileData?.trainer_name || user?.username || t('settings.username')}
+                  </span>
+                  {publicProfileUrl && (
+                    <span className="w-full truncate text-right font-mono text-[10px] text-text-muted">
+                      {publicProfileUrl}
                     </span>
                   )}
-                  {handleStatus && (
-                    <span className={`text-[11px] font-semibold ${handleStatus.available ? 'text-green' : 'text-brand-red'}`}>
-                      {handleStatus.available ? t('settings.handleAvailable') : (handleStatus.reason || t('settings.handleTaken'))}
+                  {publicHandleError && (
+                    <span className="w-full text-right text-[11px] font-semibold text-brand-red">
+                      {publicHandleError}
                     </span>
                   )}
                 </div>
@@ -842,14 +806,14 @@ export default function Settings() {
                   label={t('settings.publicProfileToggle')}
                 />
               </SettingsRow>}
-              {publicProfilesEnabled && <SettingsRow label={t('settings.publicShowValues')} description={t('settings.publicShowValuesDesc')} last={!(profilePublic && normalizedPublicHandle)}>
+              {publicProfilesEnabled && <SettingsRow label={t('settings.publicShowValues')} description={t('settings.publicShowValuesDesc')} last={!(profilePublic && publicHandle)}>
                 <Toggle
                   value={publicShowValues}
                   onChange={(val) => { setPublicShowValues(val); setProfileDirty(true) }}
                   label={t('settings.publicShowValues')}
                 />
               </SettingsRow>}
-              {publicProfilesEnabled && profilePublic && normalizedPublicHandle && (
+              {publicProfilesEnabled && profilePublic && publicHandle && (
                 <SettingsRow label={t('settings.publicProfileLink')} description={publicProfileUrl} last>
                   <button
                     type="button"

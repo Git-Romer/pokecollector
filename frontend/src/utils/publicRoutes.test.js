@@ -3,6 +3,7 @@ import { isPublicSharePath } from './publicRoutes'
 
 describe('isPublicSharePath', () => {
   it('recognizes public profile and binder routes', () => {
+    expect(isPublicSharePath('/u')).toBe(true)
     expect(isPublicSharePath('/u/ash')).toBe(true)
     expect(isPublicSharePath('/u/ash/binder/12')).toBe(true)
   })

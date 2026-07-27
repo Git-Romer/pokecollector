@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { getPublicProfile } from '../api/publicClient'
 import { formatEur } from '../utils/formatEur'
 import { useSettings } from '../contexts/SettingsContext'
+import PublicHomeButton from '../components/PublicHomeButton'
 
 export default function PublicProfile() {
   const { handle } = useParams()
@@ -20,11 +21,12 @@ export default function PublicProfile() {
     return () => { cancelled = true }
   }, [handle])
 
-  if (error) return <div className="min-h-screen flex items-center justify-center text-text-secondary">{t('publicProfiles.profileUnavailable')}</div>
-  if (!profile) return <div className="min-h-screen flex items-center justify-center text-text-secondary">{t('common.loading')}</div>
+  if (error) return <><PublicHomeButton /><div className="min-h-screen flex items-center justify-center text-text-secondary">{t('publicProfiles.profileUnavailable')}</div></>
+  if (!profile) return <><PublicHomeButton /><div className="min-h-screen flex items-center justify-center text-text-secondary">{t('common.loading')}</div></>
 
   return (
     <main className="min-h-screen bg-bg-primary px-4 py-8 text-text-primary">
+      <PublicHomeButton />
       <div className="mx-auto max-w-4xl">
         <div className="mb-6 flex items-center gap-4 rounded-2xl border border-border bg-bg-secondary p-5 shadow-lg">
           {profile.avatar_id && (

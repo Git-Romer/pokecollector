@@ -3,7 +3,7 @@ import { groupCardsByPrint } from './groupCardsByPrint'
 
 const card = (over = {}) => ({
   id: 'sv1-1', name: 'Sprigatito', image: 'a.webp', set_name: 'S&V',
-  number: '1', variant: 'Normal', quantity: 1, market_value: null, ...over,
+  number: '1', rarity: 'Rare', lang: 'en', variant: 'Normal', quantity: 1, market_value: null, ...over,
 })
 
 describe('groupCardsByPrint', () => {
@@ -14,6 +14,7 @@ describe('groupCardsByPrint', () => {
     ])
     expect(out).toHaveLength(1)
     expect(out[0].id).toBe('sv1-1')
+    expect(out[0]).toMatchObject({ rarity: 'Rare', lang: 'en' })
     expect(out[0].variantCount).toBe(2)
     expect(out[0].prints).toEqual([
       { variant: 'Normal', quantity: 2, market_value: null },

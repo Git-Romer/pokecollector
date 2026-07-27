@@ -86,8 +86,6 @@ export const getTcgdexFilterLanguages = () => api.get('/settings/tcgdex-filter-l
 // Public profile (owner controls)
 export const getProfile = () => api.get('/profile/').then(r => r.data)
 export const updateProfile = (data) => api.put('/profile/', data).then(r => r.data)
-export const checkHandleAvailable = (handle) =>
-  api.get('/profile/handle-available', { params: { handle } }).then(r => r.data)
 
 // Cards
 export const searchCards = (params) => api.get('/cards/search', { params })

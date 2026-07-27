@@ -44,7 +44,12 @@ export default function CardStateIndicators({ card, compact = false, showOwnersh
   </div>
 }
 
-export function CardStateLegend({ className = '' }) {
+export function CardStateLegend({
+  className = '',
+  showOwnershipFallback = true,
+  showWishlist = true,
+  showQuantity = true,
+}) {
   const { t } = useSettings()
 
   return (
@@ -63,30 +68,30 @@ export function CardStateLegend({ className = '' }) {
           </div>
         )
       })}
-      <div className="flex items-center gap-2 min-w-0">
+      {showOwnershipFallback && <div className="flex items-center gap-2 min-w-0">
         <span className="inline-flex flex-shrink-0 items-center rounded-full border border-green/40 bg-green/90 p-1 text-white shadow-lg">
           <Check size={11} strokeWidth={3} aria-hidden />
         </span>
         <span className="text-xs leading-tight text-text-secondary" title={t('setDetail.ownedVariantUnknown')}>
           {t('setDetail.ownedVariantUnknown')}
         </span>
-      </div>
-      <div className="flex items-center gap-2 min-w-0">
+      </div>}
+      {showWishlist && <div className="flex items-center gap-2 min-w-0">
         <span className="inline-flex flex-shrink-0 items-center rounded-full border border-pink-400/40 bg-pink-500/90 p-1 text-white shadow-lg">
           <Heart size={11} fill="currentColor" aria-hidden />
         </span>
         <span className="text-xs leading-tight text-text-secondary" title={t('nav.wishlist')}>
           {t('nav.wishlist')}
         </span>
-      </div>
-      <div className="flex items-center gap-2 min-w-0">
+      </div>}
+      {showQuantity && <div className="flex items-center gap-2 min-w-0">
         <span className="inline-flex flex-shrink-0 items-center rounded border border-white/20 bg-bg-elevated px-1 py-0.5 text-[10px] font-bold leading-none text-text-primary shadow-sm">
           ×2
         </span>
         <span className="text-xs leading-tight text-text-secondary" title={t('setDetail.badgeQuantity')}>
           {t('setDetail.badgeQuantity')}
         </span>
-      </div>
+      </div>}
     </div>
   )
 }

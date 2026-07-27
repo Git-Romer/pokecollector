@@ -87,7 +87,7 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 ### 🏆 Social & Community
 - Leaderboard, trainer comparison, and achievements in multi-user mode
 - View other trainers' collections from the Leaderboard
-- Optional public trainer profiles with individually shared collection binders and opt-in market values
+- Optional public trainer profiles with trainer-name URLs, a public directory, individually shared collection binders, and opt-in market values
 - Admin-controlled public sharing switch, disabled by default on new and upgraded installations
 - Community section in Settings with GitHub contributors and Ko-fi supporters
 

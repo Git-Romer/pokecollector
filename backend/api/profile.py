@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -20,9 +20,20 @@ def _is_public_handle_conflict(exc: IntegrityError) -> bool:
     return "public_handle" in str(original).lower()
 
 
-def _serialize_owner(user: User, feature_enabled: bool) -> dict:
+def _serialize_owner(db: Session, user: User, feature_enabled: bool) -> dict:
+    handle = None
+    handle_error = None
+    try:
+        handle = pp.public_handle_from_trainer_name(user.username)
+        if not pp.is_handle_available(db, handle, exclude_user_id=user.id):
+            handle_error = "Another public profile already uses this trainer name"
+            handle = None
+    except pp.HandleError as exc:
+        handle_error = str(exc)
     return {
-        "public_handle": user.public_handle,
+        "trainer_name": user.username,
+        "public_handle": handle,
+        "public_handle_error": handle_error,
         "is_profile_public": bool(user.is_profile_public),
         "public_show_values": bool(user.public_show_values),
         "feature_enabled": feature_enabled,
@@ -31,7 +42,7 @@ def _serialize_owner(user: User, feature_enabled: bool) -> dict:
 
 @router.get("/")
 def get_profile(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return _serialize_owner(current_user, public_profiles_enabled(db))
+    return _serialize_owner(db, current_user, public_profiles_enabled(db))
 
 
 def _require_public_profiles_enabled(db: Session) -> None:
@@ -39,38 +50,23 @@ def _require_public_profiles_enabled(db: Session) -> None:
         raise HTTPException(status_code=403, detail="Public profiles are disabled by the administrator")
 
 
-@router.get("/handle-available")
-def handle_available(handle: str = Query(...), db: Session = Depends(get_db),
-                     current_user: User = Depends(get_current_user)):
-    _require_public_profiles_enabled(db)
-    try:
-        normalized = pp.validate_handle(handle)
-    except pp.HandleError as exc:
-        return {"available": False, "reason": str(exc)}
-    available = pp.is_handle_available(db, normalized, exclude_user_id=current_user.id)
-    return {"available": available, "reason": None if available else "Handle is taken"}
-
-
 @router.put("/")
 def update_profile(payload: ProfileUpdate, db: Session = Depends(get_db),
                    current_user: User = Depends(get_current_user)):
     _require_public_profiles_enabled(db)
-    if "public_handle" in payload.model_fields_set:
-        if payload.public_handle is None or not payload.public_handle.strip():
-            current_user.public_handle = None
-            current_user.is_profile_public = False
-        else:
-            try:
-                normalized = pp.validate_handle(payload.public_handle)
-            except pp.HandleError as exc:
-                raise HTTPException(status_code=422, detail=str(exc)) from None
-            if not pp.is_handle_available(db, normalized, exclude_user_id=current_user.id):
-                raise HTTPException(status_code=409, detail="Handle is taken")
-            current_user.public_handle = normalized
     if payload.is_profile_public is not None:
-        if payload.is_profile_public and not current_user.public_handle:
-            raise HTTPException(status_code=422, detail="A public handle is required before publishing the profile")
         current_user.is_profile_public = payload.is_profile_public
+    if current_user.is_profile_public:
+        try:
+            pp.assign_public_handle(db, current_user)
+        except pp.HandleConflictError as exc:
+            db.rollback()
+            raise HTTPException(status_code=409, detail=str(exc)) from None
+        except pp.HandleError as exc:
+            db.rollback()
+            raise HTTPException(status_code=422, detail=str(exc)) from None
+    else:
+        current_user.public_handle = None
     if payload.public_show_values is not None:
         current_user.public_show_values = payload.public_show_values
     try:
@@ -79,6 +75,6 @@ def update_profile(payload: ProfileUpdate, db: Session = Depends(get_db),
         db.rollback()
         if not _is_public_handle_conflict(exc):
             raise
-        raise HTTPException(status_code=409, detail="Handle is taken") from None
+        raise HTTPException(status_code=409, detail="Another public profile already uses this trainer name") from None
     db.refresh(current_user)
-    return _serialize_owner(current_user, public_profiles_enabled(db))
+    return _serialize_owner(db, current_user, public_profiles_enabled(db))

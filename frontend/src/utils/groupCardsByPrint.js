@@ -13,6 +13,8 @@ export function groupCardsByPrint(cards) {
         image: c.image,
         set_name: c.set_name,
         number: c.number,
+        rarity: c.rarity,
+        lang: c.lang,
         prints: [],
       }
       byId.set(c.id, tile)

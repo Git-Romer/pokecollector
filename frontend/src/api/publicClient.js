@@ -11,5 +11,8 @@ const publicApi = axios.create({
 export const getPublicProfile = (handle) =>
   publicApi.get(`/profiles/${encodeURIComponent(handle)}`).then(r => r.data)
 
+export const getPublicProfiles = () =>
+  publicApi.get('/profiles').then(r => r.data)
+
 export const getPublicBinder = (handle, binderId) =>
   publicApi.get(`/profiles/${encodeURIComponent(handle)}/binders/${binderId}`).then(r => r.data)

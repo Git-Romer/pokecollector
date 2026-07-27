@@ -25,6 +25,7 @@ class PublicCard(BaseModel):
     set_name: Optional[str] = None
     number: Optional[str] = None
     rarity: Optional[str] = None
+    lang: Optional[str] = None
     variant: Optional[str] = None
     quantity: int
     market_value: Optional[float] = None
@@ -46,6 +47,13 @@ class PublicProfile(BaseModel):
     avatar_id: Optional[int] = None
     show_values: bool
     binders: List[PublicBinderSummary]
+
+
+class PublicProfileSummary(BaseModel):
+    handle: str
+    trainer_name: str
+    avatar_id: Optional[int] = None
+    binder_count: int
 
 
 class PublicBinderDetail(PublicBinderSummary):
@@ -79,6 +87,13 @@ def _not_found(detail: str) -> HTTPException:
         detail=detail,
         headers=_PUBLIC_NOT_FOUND_HEADERS,
     )
+
+
+@router.get("/profiles", response_model=List[PublicProfileSummary])
+def list_public_profiles(db: Session = Depends(get_db), response: Response = None):
+    _require_public_profiles_enabled(db)
+    _set_public_cache(response)
+    return pp.public_profile_directory(db)
 
 
 @router.get("/profiles/{handle}", response_model=PublicProfile)

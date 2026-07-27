@@ -47,4 +47,16 @@ describe('CardStateLegend', () => {
       expect(markup).toContain(label)
     }
   })
+
+  it('can show the public binder subset without private-state markers', () => {
+    const markup = renderToStaticMarkup(createElement(CardStateLegend, {
+      showOwnershipFallback: false,
+      showWishlist: false,
+    }))
+
+    expect(markup).toContain('Reverse Holo')
+    expect(markup).toContain('Quantity owned')
+    expect(markup).not.toContain('Owned (variant unknown)')
+    expect(markup).not.toContain('Wishlist')
+  })
 })

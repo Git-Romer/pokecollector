@@ -1,5 +1,13 @@
 import re
+import unicodedata
 from urllib.parse import quote
+
+from sqlalchemy import func
+from sqlalchemy.orm import joinedload
+
+from models import User, Binder, BinderCard, Card, Setting
+from services.card_numbers import natural_card_number_key
+from services.card_values import effective_market_price
 
 HANDLE_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,28}[a-z0-9]$")
 
@@ -10,6 +18,10 @@ RESERVED_HANDLES = {
 
 
 class HandleError(ValueError):
+    pass
+
+
+class HandleConflictError(HandleError):
     pass
 
 
@@ -29,14 +41,26 @@ def validate_handle(raw: str) -> str:
     return handle
 
 
-from sqlalchemy.orm import joinedload
-
-from models import User, Binder, BinderCard, Card, UserSetting
-from services.card_numbers import natural_card_number_key
-from services.card_values import effective_market_price
+def public_handle_from_trainer_name(raw: str) -> str:
+    """Create an ASCII URL handle, normalizing common Latin diacritics."""
+    ascii_name = (
+        unicodedata.normalize("NFKD", raw or "")
+        .encode("ascii", "ignore")
+        .decode("ascii")
+        .lower()
+    )
+    handle = re.sub(r"[^a-z0-9]+", "-", ascii_name).strip("-")
+    handle = handle[:30].rstrip("-")
+    try:
+        return validate_handle(handle)
+    except HandleError as exc:
+        raise HandleError(
+            "Trainer name must produce a 3–30 character public URL using Latin letters or numbers"
+        ) from exc
 
 _DEFAULT_TRAINER_NAME = "TRAINER"
 _PRICE_FIELD = "price_trend"
+_TRAINER_NAME_HANDLE_MIGRATION_KEY = "public_trainer_name_handles_migrated"
 
 
 def _public_card_image_url(card_id: str) -> str:
@@ -50,6 +74,62 @@ def is_handle_available(db, handle: str, exclude_user_id: int | None = None) -> 
     return query.first() is None
 
 
+def assign_public_handle(db, user: User, trainer_name: str | None = None) -> str:
+    """Assign the derived trainer-name handle, rejecting reserved or conflicting URLs."""
+    handle = public_handle_from_trainer_name(trainer_name if trainer_name is not None else user.username)
+    if not is_handle_available(db, handle, exclude_user_id=user.id):
+        raise HandleConflictError("Another public profile already uses this trainer name")
+    user.public_handle = handle
+    return handle
+
+
+def migrate_public_profile_handles(db) -> dict:
+    """Replace editable legacy handles with trainer-name handles on upgrade.
+
+    Invalid or colliding profiles are disabled rather than exposed under a stale
+    URL. Users can fix their trainer name and opt in again from Settings.
+    """
+    migration_marker = db.query(Setting).filter(
+        Setting.key == _TRAINER_NAME_HANDLE_MIGRATION_KEY
+    ).first()
+    if migration_marker and str(migration_marker.value).lower() == "true":
+        return {"migrated": 0, "disabled": 0}
+
+    public_users = db.query(User).filter(
+        User.is_profile_public.is_(True)
+    ).order_by(User.id.asc()).all()
+    previous_handles = {user.id: user.public_handle for user in public_users}
+    db.query(User).update({User.public_handle: None}, synchronize_session="fetch")
+    db.flush()
+
+    migrated = 0
+    disabled = 0
+    claimed: set[str] = set()
+    for user in public_users:
+        try:
+            handle = public_handle_from_trainer_name(user.username)
+        except HandleError:
+            user.public_handle = None
+            user.is_profile_public = False
+            disabled += 1
+            continue
+        if handle in claimed:
+            user.public_handle = None
+            user.is_profile_public = False
+            disabled += 1
+            continue
+        claimed.add(handle)
+        user.public_handle = handle
+        if previous_handles.get(user.id) != handle:
+            migrated += 1
+    if migration_marker:
+        migration_marker.value = "true"
+    else:
+        db.add(Setting(key=_TRAINER_NAME_HANDLE_MIGRATION_KEY, value="true"))
+    db.commit()
+    return {"migrated": migrated, "disabled": disabled}
+
+
 def get_live_profile(db, handle: str) -> User | None:
     if not handle:
         return None
@@ -61,10 +141,39 @@ def get_live_profile(db, handle: str) -> User | None:
 
 
 def trainer_name_for(db, user: User) -> str:
-    row = db.query(UserSetting).filter(
-        UserSetting.user_id == user.id, UserSetting.key == "trainer_name"
-    ).first()
-    return (row.value if row and row.value else _DEFAULT_TRAINER_NAME)
+    return user.username or _DEFAULT_TRAINER_NAME
+
+
+def public_profile_directory(db) -> list[dict]:
+    rows = (
+        db.query(
+            User,
+            func.count(Binder.id).label("binder_count"),
+        )
+        .outerjoin(
+            Binder,
+            (Binder.user_id == User.id)
+            & (Binder.is_public.is_(True))
+            & (Binder.binder_type == "collection"),
+        )
+        .filter(
+            User.is_profile_public.is_(True),
+            User.is_active.is_(True),
+        )
+        .group_by(User.id)
+        .order_by(User.username.asc(), User.id.asc())
+        .all()
+    )
+    return [
+        {
+            "handle": user.public_handle,
+            "trainer_name": trainer_name_for(db, user),
+            "avatar_id": user.avatar_id,
+            "binder_count": int(binder_count or 0),
+        }
+        for user, binder_count in rows
+        if user.public_handle
+    ]
 
 
 def public_collection_binders(db, user: User) -> list[Binder]:
@@ -146,6 +255,7 @@ def _serialize_card(bc: BinderCard, show_values: bool) -> dict:
         "set_name": card.set_ref.name if card.set_ref else None,
         "number": card.number,
         "rarity": card.rarity,
+        "lang": card.lang,
         "variant": variant,
         "quantity": quantity,
         "market_value": value,

@@ -32,7 +32,12 @@ class PublicBindersModelTests(unittest.TestCase):
 
 
 try:
-    from services.public_profile import validate_handle, HandleError
+    from services.public_profile import (
+        HandleError,
+        migrate_public_profile_handles,
+        public_handle_from_trainer_name,
+        validate_handle,
+    )
     SERVICE_DEPS = True
 except ModuleNotFoundError:
     SERVICE_DEPS = False
@@ -63,10 +68,21 @@ class HandleValidationTests(unittest.TestCase):
         with self.assertRaises(HandleError):
             validate_handle("admin")
 
+    def test_trainer_name_normalizes_common_latin_diacritics(self):
+        self.assertEqual(public_handle_from_trainer_name("  Gilles Romér!  "), "gilles-romer")
+
+    def test_problematic_trainer_name_is_rejected(self):
+        with self.assertRaises(HandleError):
+            public_handle_from_trainer_name("🔥")
+
+    def test_reserved_trainer_name_is_rejected(self):
+        with self.assertRaises(HandleError):
+            public_handle_from_trainer_name("Admin")
+
 
 try:
     from services import public_profile as pp
-    from models import BinderCard, Card, Set, UserSetting
+    from models import BinderCard, Card, Set
     PP_DEPS = True
 except ModuleNotFoundError:
     PP_DEPS = False
@@ -84,7 +100,6 @@ class SerializationTests(unittest.TestCase):
                     public_handle="ash", is_profile_public=profile_public, public_show_values=show_values)
         db.add_all([
             user,
-            UserSetting(user_id=1, key="trainer_name", value="Ash K."),
             Set(id="sv1_en", tcg_set_id="sv1", name="Scarlet & Violet", lang="en", total=1),
             Card(id="sv1-1_en", tcg_card_id="sv1-1", name="Sprigatito", set_id="sv1",
                  number="1", lang="en", rarity="Common", images_small="https://img/s.webp",
@@ -107,7 +122,7 @@ class SerializationTests(unittest.TestCase):
         db = self._db()
         user, _ = self._seed(db, binder_public=False)
         data = pp.serialize_profile(db, user)
-        self.assertEqual(data["trainer_name"], "Ash K.")
+        self.assertEqual(data["trainer_name"], "ash")
         self.assertEqual(data["binders"], [])
 
     def test_binder_detail_hides_values_when_off(self):
@@ -155,6 +170,7 @@ class SerializationTests(unittest.TestCase):
         db.commit()
         detail = pp.serialize_binder_detail(db, binder, show_values=False)
         self.assertEqual(detail["cards"][0]["variant"], "Reverse Holo")
+        self.assertEqual(detail["cards"][0]["lang"], "en")
 
     def test_serialized_card_variant_defaults_none_without_collection_item(self):
         db = self._db()
@@ -185,7 +201,7 @@ class SerializationTests(unittest.TestCase):
 
 try:
     from fastapi import HTTPException
-    from api.public import get_public_profile, get_public_binder
+    from api.public import get_public_profile, get_public_binder, list_public_profiles
     API_DEPS = True
 except ModuleNotFoundError:
     API_DEPS = False
@@ -233,6 +249,31 @@ class PublicApiTests(unittest.TestCase):
         self.assertEqual(result["handle"], "ash")
         self.assertEqual(len(result["binders"]), 1)
 
+    def test_directory_lists_only_live_public_profiles_with_public_binder_counts(self):
+        db = self._db()
+        self._seed(db)
+        private = User(username="misty", hashed_password="x", role="trainer", is_active=True,
+                       public_handle="misty", is_profile_public=False)
+        inactive = User(username="brock", hashed_password="x", role="trainer", is_active=False,
+                        public_handle="brock", is_profile_public=True)
+        db.add_all([private, inactive])
+        db.commit()
+        result = list_public_profiles(db=db)
+        self.assertEqual(result, [{
+            "handle": "ash",
+            "trainer_name": "ash",
+            "avatar_id": None,
+            "binder_count": 1,
+        }])
+
+    def test_directory_excludes_public_wishlist_binders(self):
+        db = self._db()
+        user, _ = self._seed(db)
+        db.add(Binder(name="Wishlist", user_id=user.id, binder_type="wishlist", is_public=True))
+        db.commit()
+        result = list_public_profiles(db=db)
+        self.assertEqual(result[0]["binder_count"], 1)
+
     def test_private_binder_404(self):
         db = self._db()
         _, binder = self._seed(db, binder_public=False)
@@ -271,7 +312,7 @@ class PublicApiTests(unittest.TestCase):
 
 
 try:
-    from api.profile import update_profile, handle_available, get_profile
+    from api.profile import update_profile, get_profile
     from schemas import ProfileUpdate
     PROFILE_DEPS = True
 except ModuleNotFoundError:
@@ -296,29 +337,35 @@ class ProfileControlTests(unittest.TestCase):
         db.refresh(u)
         return u
 
-    def test_set_handle_and_publish(self):
+    def test_publish_uses_trainer_name_handle(self):
         db = self._db()
-        u = self._user(db)
-        result = update_profile(ProfileUpdate(public_handle="Ash-K", is_profile_public=True),
-                                db=db, current_user=u)
-        self.assertEqual(result["public_handle"], "ash-k")
+        u = self._user(db, "Ash Ketchum")
+        result = update_profile(ProfileUpdate(is_profile_public=True), db=db, current_user=u)
+        self.assertEqual(result["public_handle"], "ash-ketchum")
+        self.assertEqual(result["trainer_name"], "Ash Ketchum")
         self.assertTrue(result["is_profile_public"])
 
-    def test_invalid_handle_422(self):
+    def test_invalid_trainer_name_422(self):
         db = self._db()
-        u = self._user(db)
+        u = self._user(db, "🔥")
         with self.assertRaises(HTTPException) as ctx:
-            update_profile(ProfileUpdate(public_handle="a"), db=db, current_user=u)
+            update_profile(ProfileUpdate(is_profile_public=True), db=db, current_user=u)
         self.assertEqual(ctx.exception.status_code, 422)
+        db.refresh(u)
+        self.assertFalse(u.is_profile_public)
+        self.assertIsNone(u.public_handle)
 
-    def test_duplicate_handle_409(self):
+    def test_duplicate_derived_handle_409(self):
         db = self._db()
-        taken = self._user(db, "misty")
-        update_profile(ProfileUpdate(public_handle="star"), db=db, current_user=taken)
-        me = self._user(db, "ash")
+        taken = self._user(db, "Misty Star")
+        update_profile(ProfileUpdate(is_profile_public=True), db=db, current_user=taken)
+        me = self._user(db, "Misty-Star")
         with self.assertRaises(HTTPException) as ctx:
-            update_profile(ProfileUpdate(public_handle="star"), db=db, current_user=me)
+            update_profile(ProfileUpdate(is_profile_public=True), db=db, current_user=me)
         self.assertEqual(ctx.exception.status_code, 409)
+        db.refresh(me)
+        self.assertFalse(me.is_profile_public)
+        self.assertIsNone(me.public_handle)
 
     def test_concurrent_unique_constraint_is_returned_as_409(self):
         from sqlalchemy.exc import IntegrityError
@@ -335,7 +382,7 @@ class ProfileControlTests(unittest.TestCase):
             patch.object(db, "rollback") as rollback,
         ):
             with self.assertRaises(HTTPException) as ctx:
-                update_profile(ProfileUpdate(public_handle="racing"), db=db, current_user=u)
+                update_profile(ProfileUpdate(is_profile_public=True), db=db, current_user=u)
         self.assertEqual(ctx.exception.status_code, 409)
         rollback.assert_called_once()
 
@@ -351,23 +398,18 @@ class ProfileControlTests(unittest.TestCase):
             patch.object(db, "rollback") as rollback,
         ):
             with self.assertRaises(IntegrityError):
-                update_profile(ProfileUpdate(public_handle="racing"), db=db, current_user=u)
+                update_profile(ProfileUpdate(is_profile_public=True), db=db, current_user=u)
         rollback.assert_called_once()
 
-    def test_handle_can_be_cleared_and_profile_becomes_private(self):
+    def test_disabling_profile_releases_stored_handle(self):
         db = self._db()
         u = self._user(db)
-        update_profile(ProfileUpdate(public_handle="ash-k", is_profile_public=True), db=db, current_user=u)
-        result = update_profile(ProfileUpdate(public_handle=None), db=db, current_user=u)
-        self.assertIsNone(result["public_handle"])
+        update_profile(ProfileUpdate(is_profile_public=True), db=db, current_user=u)
+        result = update_profile(ProfileUpdate(is_profile_public=False), db=db, current_user=u)
+        db.refresh(u)
+        self.assertIsNone(u.public_handle)
+        self.assertEqual(result["public_handle"], "ash")
         self.assertFalse(result["is_profile_public"])
-
-    def test_profile_cannot_be_published_without_handle(self):
-        db = self._db()
-        u = self._user(db)
-        with self.assertRaises(HTTPException) as ctx:
-            update_profile(ProfileUpdate(is_profile_public=True), db=db, current_user=u)
-        self.assertEqual(ctx.exception.status_code, 422)
 
     def test_profile_controls_are_read_only_while_feature_disabled(self):
         db = self._db(enabled=False)
@@ -375,24 +417,57 @@ class ProfileControlTests(unittest.TestCase):
         result = get_profile(db=db, current_user=u)
         self.assertFalse(result["feature_enabled"])
         with self.assertRaises(HTTPException) as ctx:
-            update_profile(ProfileUpdate(public_handle="ash-k"), db=db, current_user=u)
+            update_profile(ProfileUpdate(is_profile_public=True), db=db, current_user=u)
         self.assertEqual(ctx.exception.status_code, 403)
-
-    def test_handle_available_check(self):
-        db = self._db()
-        u = self._user(db)
-        self.assertTrue(handle_available("brand-new", db=db, current_user=u)["available"])
-        self.assertFalse(handle_available("ADMIN", db=db, current_user=u)["available"])
 
     def test_get_profile_returns_current_user_values(self):
         db = self._db()
-        u = self._user(db)
-        update_profile(ProfileUpdate(public_handle="Ash-K", is_profile_public=True, public_show_values=True),
+        u = self._user(db, "Ash K")
+        update_profile(ProfileUpdate(is_profile_public=True, public_show_values=True),
                        db=db, current_user=u)
         result = get_profile(db=db, current_user=u)
         self.assertEqual(result["public_handle"], "ash-k")
+        self.assertEqual(result["trainer_name"], "Ash K")
+        self.assertIsNone(result["public_handle_error"])
         self.assertTrue(result["is_profile_public"])
         self.assertTrue(result["public_show_values"])
+
+    def test_get_profile_explains_invalid_trainer_name(self):
+        db = self._db()
+        u = self._user(db, "🔥")
+        result = get_profile(db=db, current_user=u)
+        self.assertIsNone(result["public_handle"])
+        self.assertIn("Trainer name", result["public_handle_error"])
+
+
+@unittest.skipUnless(SERVICE_DEPS, "service deps unavailable")
+class PublicHandleMigrationTests(unittest.TestCase):
+    def test_migration_replaces_legacy_handles_and_disables_collisions(self):
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        db = sessionmaker(bind=engine)()
+        first = User(username="Ash K", hashed_password="x", role="trainer", is_active=True,
+                     public_handle="custom-one", is_profile_public=True)
+        collision = User(username="Ash-K", hashed_password="x", role="trainer", is_active=True,
+                         public_handle="custom-two", is_profile_public=True)
+        private = User(username="Misty", hashed_password="x", role="trainer", is_active=True,
+                       public_handle="legacy", is_profile_public=False)
+        db.add_all([first, collision, private])
+        db.commit()
+        result = migrate_public_profile_handles(db)
+        db.refresh(first)
+        db.refresh(collision)
+        db.refresh(private)
+        self.assertEqual(result, {"migrated": 1, "disabled": 1})
+        self.assertEqual(first.public_handle, "ash-k")
+        self.assertFalse(collision.is_profile_public)
+        self.assertIsNone(collision.public_handle)
+        self.assertIsNone(private.public_handle)
+
+        repeat = migrate_public_profile_handles(db)
+        db.refresh(first)
+        self.assertEqual(repeat, {"migrated": 0, "disabled": 0})
+        self.assertEqual(first.public_handle, "ash-k")
 
 
 try:

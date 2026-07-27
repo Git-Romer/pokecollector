@@ -31,6 +31,7 @@ const Achievements = lazy(() => import('./pages/Achievements'))
 const UserCollection = lazy(() => import('./pages/UserCollection'))
 const PublicProfile = lazy(() => import('./pages/PublicProfile'))
 const PublicBinderView = lazy(() => import('./pages/PublicBinderView'))
+const PublicDirectory = lazy(() => import('./pages/PublicDirectory'))
 
 function RouteLoader() {
   return (
@@ -174,6 +175,7 @@ export default function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={lazyRoute(<Login />)} />
+            <Route path="/u" element={lazyRoute(<PublicDirectory />)} />
             <Route path="/u/:handle" element={lazyRoute(<PublicProfile />)} />
             <Route path="/u/:handle/binder/:binderId" element={lazyRoute(<PublicBinderView />)} />
             <Route path="/*" element={<ProtectedRoutes />} />
