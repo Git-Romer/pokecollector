@@ -7,6 +7,7 @@ import { getPokedex } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import PokeBallLoader from '../components/PokeBallLoader'
 import { getSavedListScrollPosition, isSavedPositionForLocation, useListScrollRestoration } from '../hooks/useListScrollRestoration'
+import { getPokedexGeneration } from '../utils/pokedexUrlState'
 
 const GENERATIONS = [
   { id: 1, region: 'Kanto', range: '#001–151' },
@@ -100,12 +101,9 @@ export default function Pokedex() {
   const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
   const { t, settings } = useSettings()
-  const requestedGeneration = Number(searchParams.get('generation'))
-  const [generation, setGeneration] = useState(
-    Number.isInteger(requestedGeneration) && requestedGeneration >= 1 && requestedGeneration <= 9
-      ? requestedGeneration
-      : null
-  )
+  // Keep the URL as the source of truth so browser Back/Forward updates both
+  // the active filter and the query without requiring the page to remount.
+  const generation = getPokedexGeneration(searchParams)
   // The list remounts after Back. Restore non-URL filters before its query runs
   // so the saved Pokémon anchor is present when scroll restoration occurs.
   const savedPosition = getSavedListScrollPosition('pokedex')
@@ -150,7 +148,6 @@ export default function Pokedex() {
   const progress = summary.total ? Math.round((summary.owned / summary.total) * 100) : 0
   const scope = generation ? GENERATIONS.find((item) => item.id === generation) : null
   const selectGeneration = (value) => {
-    setGeneration(value)
     if (value) setSearchParams({ generation: String(value) })
     else setSearchParams({})
   }
