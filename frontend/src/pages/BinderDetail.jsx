@@ -11,6 +11,9 @@ import { cardNumberMatches } from '../utils/cardNumbers'
 import { normalizeSearchText, textIncludes } from '../utils/textSearch'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
+import CardStateIndicators from '../components/CardStateIndicators'
+import { getCardRarityEffectClass } from '../utils/cardRarity'
+import { BINDER_SORT_OPTIONS, sortBinderCards } from '../utils/binderCards'
 
 const SPRITE_BASE_URL = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated'
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
@@ -143,6 +146,7 @@ export default function BinderDetail() {
   const [binderFilterSet, setBinderFilterSet] = useState('')
   const [binderFilterStatus, setBinderFilterStatus] = useState('')
   const [binderFilterQuery, setBinderFilterQuery] = useState('')
+  const [binderSortBy, setBinderSortBy] = useState('recent')
   const [selectedCard, setSelectedCard] = useState(null)
   const [showCsvImportModal, setShowCsvImportModal] = useState(false)
   const [showPrintOptimizer, setShowPrintOptimizer] = useState(false)
@@ -397,14 +401,14 @@ export default function BinderDetail() {
     0
   )
   const allPrintOptimizationsSelected = printOptimizationRecommendations.length > 0 && selectedPrintOptimizationCount === printOptimizationRecommendations.length
-  const visibleCards = cards.filter(card => {
+  const visibleCards = sortBinderCards(cards.filter(card => {
     const query = normalizeSearchText(binderFilterQuery)
     if (query && ![card.name, card.set_name, card.set_id, card.number].some(value => textIncludes(value, query))) return false
     if (binderFilterSet && (card.set_name || card.set_id) !== binderFilterSet) return false
     if (binderFilterStatus === 'owned' && (card.missing_quantity || 0) > 0) return false
     if (binderFilterStatus === 'missing' && (card.missing_quantity || 0) === 0) return false
     return true
-  })
+  }), binderSortBy, { isWishlist })
 
   const changeRequiredQuantity = (card, delta) => {
     const next = Math.max(1, Math.min(99, (card.required_quantity || 1) + delta))
@@ -666,7 +670,7 @@ export default function BinderDetail() {
       )}
 
       {cards.length > 0 && (
-        <div className="card p-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <div className="card p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
           <input
             type="text"
             value={binderFilterQuery}
@@ -682,6 +686,18 @@ export default function BinderDetail() {
             <option value="">{t('binderTypes.allStatuses')}</option>
             <option value="owned">{t('binderTypes.ownedComplete')}</option>
             <option value="missing">{t('binderTypes.missingCards')}</option>
+          </select>
+          <select
+            className="select text-sm py-2"
+            value={binderSortBy}
+            onChange={(e) => setBinderSortBy(e.target.value)}
+            aria-label={t('binderTypes.sortBy')}
+          >
+            {BINDER_SORT_OPTIONS
+              .filter(option => isCollection || option !== 'variant_asc')
+              .map(option => (
+                <option key={option} value={option}>{t(`binderTypes.sort.${option}`)}</option>
+              ))}
           </select>
         </div>
       )}
@@ -705,15 +721,42 @@ export default function BinderDetail() {
 
             return (
               <TiltBinderCard key={card.binder_card_id || card.id} className="relative group rounded-xl overflow-hidden card p-0 cursor-pointer" onClick={() => setSelectedCard(card)}>
-                {resolveCardImageUrl(card) ? (
-                  <img src={resolveCardImageUrl(card)} alt={card.name}
-                    className={`w-full aspect-[2.5/3.5] object-cover transition-all ${isMissing ? 'grayscale opacity-60' : ''}`}
-                    loading="lazy" />
-                ) : (
-                  <div className={`w-full aspect-[2.5/3.5] bg-bg-card flex items-center justify-center text-xs text-text-muted p-1 text-center ${isMissing ? 'grayscale opacity-60' : ''}`}>
-                    {card.name}
-                  </div>
-                )}
+                <div className={`relative w-full aspect-[2.5/3.5] overflow-hidden ${getCardRarityEffectClass(card.rarity, card.lang)}`}>
+                  {resolveCardImageUrl(card) ? (
+                    <img src={resolveCardImageUrl(card)} alt={card.name}
+                      className={`w-full h-full object-cover transition-all ${isMissing ? 'grayscale opacity-60' : ''}`}
+                      loading="lazy" />
+                  ) : (
+                    <div className={`w-full h-full bg-bg-card flex items-center justify-center text-xs text-text-muted p-1 text-center ${isMissing ? 'grayscale opacity-60' : ''}`}>
+                      {card.name}
+                    </div>
+                  )}
+
+                  {isWishlist && (
+                    <div className={`absolute top-1 left-1 z-20 rounded-full text-white text-xs px-1.5 py-0.5 font-medium ${
+                      isComplete ? 'bg-green/90' : 'bg-bg-elevated/90 text-text-secondary'
+                    }`}>
+                      {(card.owned_quantity || 0) >= (card.required_quantity || 1) ? `✓ ${card.owned_quantity || 0}/${card.required_quantity || 1}` : `${card.owned_quantity || 0}/${card.required_quantity || 1}`}
+                    </div>
+                  )}
+
+                  {!isWishlist && card.in_collection && (
+                    <div className="absolute top-1 left-1 z-20 bg-green/80 rounded-full text-white text-xs px-1">
+                      {card.quantity}x
+                    </div>
+                  )}
+
+                  {isCollection && card.variant && (
+                    <CardStateIndicators
+                      card={{ owned_variants: [{ variant: card.variant, quantity: card.quantity || 1 }] }}
+                      compact
+                      showWishlist={false}
+                      showQuantity={false}
+                      className="absolute right-1 top-1 z-20"
+                    />
+                  )}
+                </div>
+
                 <div className="p-1.5">
                   <p className="text-xs text-text-primary font-medium truncate">{card.name}</p>
                   {card.price_market > 0 ? (
@@ -722,20 +765,6 @@ export default function BinderDetail() {
                     <p className="text-xs text-text-muted">{t('binderTypes.noPriceDataShort')}</p>
                   )}
                 </div>
-
-                {isWishlist && (
-                  <div className={`absolute top-1 left-1 rounded-full text-white text-xs px-1.5 py-0.5 font-medium ${
-                    isComplete ? 'bg-green/90' : 'bg-bg-elevated/90 text-text-secondary'
-                  }`}>
-                    {(card.owned_quantity || 0) >= (card.required_quantity || 1) ? `✓ ${card.owned_quantity || 0}/${card.required_quantity || 1}` : `${card.owned_quantity || 0}/${card.required_quantity || 1}`}
-                  </div>
-                )}
-
-                {!isWishlist && card.in_collection && (
-                  <div className="absolute top-1 left-1 bg-green/80 rounded-full text-white text-xs px-1">
-                    {card.quantity}x
-                  </div>
-                )}
               </TiltBinderCard>
             )
           })}

@@ -21,7 +21,15 @@ export const getCardState = (card = {}, showOwnership = true, showWishlist = tru
 }
 
 /** Reusable, non-positioned ownership and wishlist indicators for card art. */
-export default function CardStateIndicators({ card, compact = false, showOwnership = true, showWishlist = true, className = '' }) {
+export default function CardStateIndicators({
+  card,
+  compact = false,
+  showOwnership = true,
+  showWishlist = true,
+  showQuantity = true,
+  alwaysShowQuantity = false,
+  className = '',
+}) {
   const { t } = useSettings()
   const { variants, genericOwned, wishlisted } = getCardState(card, showOwnership, showWishlist)
   if (!variants.length && !genericOwned && !wishlisted) return null
@@ -32,10 +40,11 @@ export default function CardStateIndicators({ card, compact = false, showOwnersh
         const Icon = VARIANT_ICONS[variant]
         const meta = VARIANT_PILL_META[variant]
         const label = translatedVariantLabel(t, variant)
-        const title = quantity > 1 ? `${label} ×${quantity}` : label
+        const quantityVisible = showQuantity && (alwaysShowQuantity || quantity > 1)
+        const title = quantityVisible ? `${label} ×${quantity}` : label
         return <span key={variant} title={title} aria-label={title} className={clsx('inline-flex items-center gap-0.5 rounded border px-1 py-0.5 text-[10px] font-bold leading-none shadow-sm', meta?.className || 'bg-zinc-700 text-white border-zinc-500')}>
           {Icon ? <Icon size={compact ? 10 : 11} strokeWidth={2.5} aria-hidden /> : (meta?.code || variant.slice(0, 3).toUpperCase())}
-          {quantity > 1 && <span>×{quantity}</span>}
+          {quantityVisible && <span>×{quantity}</span>}
         </span>
       })}
       {genericOwned && <span title={t('pokedex.owned')} aria-label={t('pokedex.owned')} className="inline-flex items-center rounded-full border border-green/40 bg-green/90 p-1 text-white shadow-lg"><Check size={compact ? 10 : 11} strokeWidth={3} aria-hidden /></span>}

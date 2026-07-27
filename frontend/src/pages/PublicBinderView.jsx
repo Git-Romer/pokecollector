@@ -105,6 +105,7 @@ export default function PublicBinderView() {
                     card={{ owned_variants: tile.prints }}
                     compact
                     showWishlist={false}
+                    alwaysShowQuantity
                     className="absolute left-1 right-1 top-1 z-20"
                   />
                 </div>
