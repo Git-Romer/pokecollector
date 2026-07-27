@@ -203,10 +203,14 @@ export default function Binders() {
     onError: (error) => toast.error(error.response?.data?.detail || t('binders.updateFailed')),
   })
 
-  const copyPublicBinderLink = (binderId) => {
+  const copyPublicBinderLink = async (binderId) => {
     const url = `${window.location.origin}/u/${publicHandle}/binder/${binderId}`
-    navigator.clipboard.writeText(url)
-    toast.success(t('settings.linkCopied'))
+    try {
+      await navigator.clipboard.writeText(url)
+      toast.success(t('settings.linkCopied'))
+    } catch {
+      toast.error(t('settings.linkCopyFailed'))
+    }
   }
 
   return (

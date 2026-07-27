@@ -504,6 +504,26 @@ def update_binder(
     if not binder:
         raise HTTPException(status_code=404, detail="Binder not found")
 
+    current_type = binder.binder_type or "collection"
+    requested_type = (
+        (update.binder_type or "collection")
+        if update.binder_type is not None
+        else current_type
+    )
+    type_changed = requested_type != current_type
+    if type_changed:
+        has_cards = db.query(BinderCard.id).filter(BinderCard.binder_id == binder_id).first() is not None
+        if has_cards:
+            raise HTTPException(status_code=400, detail="Binder type cannot be changed after cards are added")
+
+    if "is_public" in update.model_fields_set:
+        if not public_profiles_enabled(db):
+            raise HTTPException(status_code=403, detail="Public profiles are disabled by the administrator")
+        if update.is_public is None:
+            raise HTTPException(status_code=422, detail="Public sharing must be true or false")
+        if update.is_public and requested_type != "collection":
+            raise HTTPException(status_code=422, detail="Only collection binders can be shared publicly")
+
     if update.name is not None:
         binder.name = update.name
     if update.description is not None:
@@ -511,22 +531,15 @@ def update_binder(
     if update.color is not None:
         binder.color = update.color
     if update.binder_type is not None:
-        requested_type = update.binder_type or "collection"
-        current_type = binder.binder_type or "collection"
-        if requested_type != current_type:
-            has_cards = db.query(BinderCard.id).filter(BinderCard.binder_id == binder_id).first() is not None
-            if has_cards:
-                raise HTTPException(status_code=400, detail="Binder type cannot be changed after cards are added")
-        binder.binder_type = update.binder_type
+        binder.binder_type = requested_type
+        if type_changed:
+            # A type conversion always requires a fresh sharing decision.
+            binder.is_public = False
     if "format" in update.model_fields_set:
         binder.format = _clean_binder_format(update.format)
     if "icon_pokemon_id" in update.model_fields_set:
         binder.icon_pokemon_id = update.icon_pokemon_id
     if "is_public" in update.model_fields_set:
-        if not public_profiles_enabled(db):
-            raise HTTPException(status_code=403, detail="Public profiles are disabled by the administrator")
-        if update.is_public is None:
-            raise HTTPException(status_code=422, detail="Public sharing must be true or false")
         binder.is_public = update.is_public
 
     db.commit()

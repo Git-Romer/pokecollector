@@ -717,6 +717,7 @@ const de = {
     publicShowValuesDesc: 'Geschätzte Preise in deinem öffentlichen Profil anzeigen',
     publicProfileLink: 'Öffentlicher Link',
     linkCopied: 'Link kopiert',
+    linkCopyFailed: 'Link konnte nicht kopiert werden',
     // Settings page row labels
     multiUserMode: 'Mehrspieler-Modus',
     multiUserModeDesc: 'Login-Bildschirm und Benutzerverwaltung aktivieren',

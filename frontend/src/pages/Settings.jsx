@@ -510,9 +510,13 @@ export default function Settings() {
     }
   }
 
-  const copyPublicProfileUrl = () => {
-    navigator.clipboard.writeText(publicProfileUrl)
-    toast.success(t('settings.linkCopied'))
+  const copyPublicProfileUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(publicProfileUrl)
+      toast.success(t('settings.linkCopied'))
+    } catch {
+      toast.error(t('settings.linkCopyFailed'))
+    }
   }
 
   const isRunning = syncStatus?.is_running || syncStatus?.is_price_sync_running || syncMutation.isPending || allPriceSyncMutation.isPending

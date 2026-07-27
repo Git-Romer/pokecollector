@@ -718,6 +718,7 @@ const en = {
     publicShowValuesDesc: 'Include estimated prices on your public profile',
     publicProfileLink: 'Public link',
     linkCopied: 'Link copied',
+    linkCopyFailed: 'Could not copy the link',
     // Settings page row labels
     multiUserMode: 'Multi-User Mode',
     multiUserModeDesc: 'Enable login screen and user management',

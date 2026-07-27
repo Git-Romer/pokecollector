@@ -527,6 +527,72 @@ class BinderPublicToggleTests(unittest.TestCase):
             update_binder(binder.id, BinderUpdate(is_public=None), db=db, current_user=user)
         self.assertEqual(ctx.exception.status_code, 422)
 
+    def test_wishlist_binder_cannot_be_published(self):
+        db = self._db()
+        user = User(username="ash", hashed_password="x", role="trainer", is_active=True)
+        db.add(user)
+        db.commit()
+        binder = Binder(name="Wishlist", user_id=user.id, binder_type="wishlist")
+        db.add(binder)
+        db.commit()
+        with self.assertRaises(HTTPException) as ctx:
+            update_binder(binder.id, BinderUpdate(is_public=True), db=db, current_user=user)
+        self.assertEqual(ctx.exception.status_code, 422)
+        db.refresh(binder)
+        self.assertFalse(binder.is_public)
+
+    def test_public_collection_becomes_private_when_changed_to_wishlist(self):
+        db = self._db()
+        user = User(username="ash", hashed_password="x", role="trainer", is_active=True)
+        db.add(user)
+        db.commit()
+        binder = Binder(
+            name="Collection", user_id=user.id, binder_type="collection", is_public=True
+        )
+        db.add(binder)
+        db.commit()
+        response = update_binder(
+            binder.id, BinderUpdate(binder_type="wishlist"), db=db, current_user=user
+        )
+        self.assertEqual(response.binder_type, "wishlist")
+        self.assertFalse(response.is_public)
+
+    def test_flagged_wishlist_becomes_private_when_changed_to_collection(self):
+        db = self._db()
+        user = User(username="ash", hashed_password="x", role="trainer", is_active=True)
+        db.add(user)
+        db.commit()
+        binder = Binder(
+            name="Legacy", user_id=user.id, binder_type="wishlist", is_public=True
+        )
+        db.add(binder)
+        db.commit()
+        response = update_binder(
+            binder.id, BinderUpdate(binder_type="collection"), db=db, current_user=user
+        )
+        self.assertEqual(response.binder_type, "collection")
+        self.assertFalse(response.is_public)
+
+    def test_combined_wishlist_conversion_and_publication_is_rejected(self):
+        db = self._db()
+        user = User(username="ash", hashed_password="x", role="trainer", is_active=True)
+        db.add(user)
+        db.commit()
+        binder = Binder(name="Collection", user_id=user.id, binder_type="collection")
+        db.add(binder)
+        db.commit()
+        with self.assertRaises(HTTPException) as ctx:
+            update_binder(
+                binder.id,
+                BinderUpdate(binder_type="wishlist", is_public=True),
+                db=db,
+                current_user=user,
+            )
+        self.assertEqual(ctx.exception.status_code, 422)
+        db.refresh(binder)
+        self.assertEqual(binder.binder_type, "collection")
+        self.assertFalse(binder.is_public)
+
     def test_unrelated_binder_edit_still_works_while_feature_disabled(self):
         db = self._db(enabled=False)
         user = User(username="ash", hashed_password="x", role="trainer", is_active=True)
