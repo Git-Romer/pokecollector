@@ -507,45 +507,45 @@ input:-webkit-autofill:focus {
   --card-variant-shine: linear-gradient(
     105deg,
     transparent 25%,
-    rgba(245,200,66,0.20) 45%,
-    rgba(255,230,100,0.15) 52%,
-    rgba(245,200,66,0.20) 58%,
+    rgba(245,200,66,0.8) 45%,
+    rgba(255,230,100,0.6) 52%,
+    rgba(245,200,66,0.8) 58%,
     transparent 75%
   );
   --card-variant-duration: 3.2s;
-  border-color: rgba(245,200,66,0.4) !important;
+  border-color: rgba(245,200,66,0.5) !important;
   box-shadow:
     var(--tw-ring-offset-shadow, 0 0 #0000),
     var(--tw-ring-shadow, 0 0 #0000),
     var(--tw-shadow, 0 0 #0000),
-    0 0 8px rgba(245,200,66,0.2);
+    0 0 14px 3px rgba(245,200,66,0.55);
 }
 
 .card-variant-reverse {
   --card-variant-shine: linear-gradient(
     105deg,
     transparent 30%,
-    rgba(99,179,237,0.25) 50%,
-    rgba(147,210,255,0.15) 55%,
+    rgba(99,179,237,0.7) 50%,
+    rgba(147,210,255,0.5) 55%,
     transparent 70%
   );
   --card-variant-animation: card-variant-shimmer-reverse;
   --card-variant-duration: 2.8s;
-  border-color: rgba(99,179,237,0.5) !important;
+  border-color: rgba(99,179,237,0.4) !important;
   box-shadow:
     var(--tw-ring-offset-shadow, 0 0 #0000),
     var(--tw-ring-shadow, 0 0 #0000),
     var(--tw-shadow, 0 0 #0000),
-    0 0 8px rgba(99,179,237,0.25);
+    0 0 12px 2px rgba(99,179,237,0.5);
 }
 
 .card-variant-special {
   --card-variant-shine: linear-gradient(
     105deg,
     transparent 20%,
-    rgba(167,139,250,0.20) 42%,
-    rgba(196,181,253,0.15) 50%,
-    rgba(167,139,250,0.20) 58%,
+    rgba(167,139,250,0.7) 42%,
+    rgba(196,181,253,0.5) 50%,
+    rgba(167,139,250,0.7) 58%,
     transparent 78%
   );
   --card-variant-duration: 4s;
@@ -554,31 +554,31 @@ input:-webkit-autofill:focus {
     var(--tw-ring-offset-shadow, 0 0 #0000),
     var(--tw-ring-shadow, 0 0 #0000),
     var(--tw-shadow, 0 0 #0000),
-    0 0 10px rgba(167,139,250,0.25);
+    0 0 16px 4px rgba(167,139,250,0.55);
 }
 
 .card-variant-first-edition {
   --card-variant-shine: linear-gradient(
     105deg,
     transparent 30%,
-    rgba(52,211,153,0.25) 50%,
-    rgba(110,231,183,0.15) 55%,
+    rgba(52,211,153,0.7) 50%,
+    rgba(110,231,183,0.5) 55%,
     transparent 70%
   );
   --card-variant-duration: 3.5s;
-  border-color: rgba(52,211,153,0.5) !important;
+  border-color: rgba(52,211,153,0.4) !important;
   box-shadow:
     var(--tw-ring-offset-shadow, 0 0 #0000),
     var(--tw-ring-shadow, 0 0 #0000),
     var(--tw-shadow, 0 0 #0000),
-    0 0 8px rgba(52,211,153,0.2);
+    0 0 12px 2px rgba(52,211,153,0.5);
 }
 
 .card-variant-generic {
   --card-variant-shine: linear-gradient(
     105deg,
     transparent 30%,
-    rgba(255,255,255,0.25) 50%,
+    rgba(255,255,255,0.4) 50%,
     transparent 70%
   );
   --card-variant-duration: 3s;
