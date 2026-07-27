@@ -30,6 +30,7 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 
 - [Features](#-features)
 - [Quick Start](#-quick-start)
+- [Reverse Proxy Authentication](#-reverse-proxy-authentication)
 - [Managing Users](#-managing-users)
 - [Environment Variables](#-environment-variables)
 - [Sync Behavior](#-sync-behavior)
@@ -206,6 +207,14 @@ See [National Pokédex documentation](docs/POKEDEX.md) for the data model, route
 
 ---
 
+## 🔐 Reverse Proxy Authentication
+
+If PokéCollector is protected by Authentik, Authelia, oauth2-proxy, or another forward-auth layer, the proxy checks requests before they reach PokéCollector. Enabling public profiles inside the app is therefore not enough on its own. The proxy must also allow the public pages, their public API calls, and the assets those pages use.
+
+See [Reverse proxy authentication](docs/REVERSE_PROXY_AUTH.md) for the complete route list, Authentik examples, and a verification checklist. Do not bypass authentication for all `/api` routes.
+
+---
+
 ## 👥 Managing Users
 
 User management is available from the app UI when multi-user mode is enabled.
@@ -357,6 +366,7 @@ Build and dependency installation also contact package/distribution registries s
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System structure, data flow, contexts, settings model |
 | [`docs/BACKEND.md`](docs/BACKEND.md) | API routes, models, settings scoping, backup behavior |
 | [`docs/FRONTEND.md`](docs/FRONTEND.md) | Routes, pages, components, contexts, theming, i18n |
+| [`docs/REVERSE_PROXY_AUTH.md`](docs/REVERSE_PROXY_AUTH.md) | Forward-auth exceptions for public profiles and binders |
 
 ---
 
