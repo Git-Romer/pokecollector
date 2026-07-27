@@ -40,7 +40,7 @@ export default function AppNav() {
       {/* Page title — subtle top strip with logout */}
       {title && (
         <div className="sticky top-0 z-40 px-4 pt-5 pb-3 flex items-center justify-between"
-          style={{ background: 'linear-gradient(to bottom, rgba(6,8,15,0.98) 70%, transparent)' }}>
+          style={{ background: 'linear-gradient(to bottom, var(--color-nav-strip) 70%, transparent)' }}>
           <div className="w-8" />
           <p className="text-[11px] font-black uppercase tracking-[0.2em] text-text-muted text-center truncate flex-1 min-w-0">
             {title}

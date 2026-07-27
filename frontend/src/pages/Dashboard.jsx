@@ -168,7 +168,7 @@ export default function Dashboard() {
             { label: t('dashboard.sets'), value: `${ownedSets}/${totalSets}` },
           ].map(stat => (
             <div key={stat.label} className="bg-bg-card border border-border rounded-xl p-3 text-center">
-              <p className={`text-xl font-black leading-none ${stat.gold ? 'text-gold' : 'text-white'}`}>
+              <p className={`text-xl font-black leading-none ${stat.gold ? 'text-gold' : 'text-text-primary'}`}>
                 {stat.value}
               </p>
               <p className="text-[10px] text-text-muted uppercase tracking-wider mt-1">{stat.label}</p>
@@ -215,7 +215,7 @@ export default function Dashboard() {
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div>
               <p className="text-[10px] text-text-muted uppercase tracking-wider mb-1">{t('dashboard.invested')}</p>
-              <p className="text-lg font-black text-white">{formatPrice(data.total_cost || 0)}</p>
+              <p className="text-lg font-black text-text-primary">{formatPrice(data.total_cost || 0)}</p>
             </div>
             <div>
               <p className="text-[10px] text-text-muted uppercase tracking-wider mb-1">{t('dashboard.collectionValue')}</p>
@@ -246,23 +246,23 @@ export default function Dashboard() {
               <AreaChart data={chartData}>
                 <defs>
                   <linearGradient id="valueGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#EF1515" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#EF1515" stopOpacity={0} />
+                    <stop offset="5%" stopColor="var(--color-accent)" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="var(--color-accent)" stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="costGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6b7280" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="#6b7280" stopOpacity={0} />
+                    <stop offset="5%" stopColor="var(--color-chart-cost)" stopOpacity={0.2} />
+                    <stop offset="95%" stopColor="var(--color-chart-cost)" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#2a2a3d" />
-                <XAxis dataKey="date" tick={{ fill: '#606078', fontSize: 11 }} />
-                <YAxis tick={{ fill: '#606078', fontSize: 11 }} tickFormatter={(v) => formatPrice(v)} />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-chart-grid)" />
+                <XAxis dataKey="date" tick={{ fill: 'var(--color-chart-axis)', fontSize: 11 }} axisLine={{ stroke: 'var(--color-chart-grid)' }} tickLine={{ stroke: 'var(--color-chart-grid)' }} />
+                <YAxis tick={{ fill: 'var(--color-chart-axis)', fontSize: 11 }} axisLine={{ stroke: 'var(--color-chart-grid)' }} tickLine={{ stroke: 'var(--color-chart-grid)' }} tickFormatter={(v) => formatPrice(v)} />
                 <Tooltip content={<CustomTooltip />} />
                 <Area
                   type="monotone"
                   dataKey="cost"
                   name={t('dashboard.cost')}
-                  stroke="#6b7280"
+                  stroke="var(--color-chart-cost)"
                   fill="url(#costGradient)"
                   strokeWidth={1.5}
                   strokeDasharray="4 4"
@@ -271,7 +271,7 @@ export default function Dashboard() {
                   type="monotone"
                   dataKey="value"
                   name={t('dashboard.value')}
-                  stroke="#EF1515"
+                  stroke="var(--color-accent)"
                   fill="url(#valueGradient)"
                   strokeWidth={2}
                 />

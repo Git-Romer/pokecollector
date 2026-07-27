@@ -33,13 +33,7 @@ function SectionHeader({ title }) {
 
 function SettingsCard({ children }) {
   return (
-    <div
-      className="rounded-2xl overflow-hidden"
-      style={{
-        background: 'rgba(255,255,255,0.04)',
-        border: '1px solid rgba(255,255,255,0.07)',
-      }}
-    >
+    <div className="rounded-2xl overflow-hidden bg-bg-card border border-border">
       {children}
     </div>
   )
@@ -48,8 +42,7 @@ function SettingsCard({ children }) {
 function SettingsRow({ label, description, children, last }) {
   return (
     <div
-      className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 px-4 py-3.5"
-      style={!last ? { borderBottom: '1px solid rgba(255,255,255,0.05)' } : {}}
+      className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 px-4 py-3.5 ${!last ? 'border-b border-border-subtle' : ''}`}
     >
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-text-primary">{label}</p>
@@ -304,7 +297,7 @@ export default function Settings() {
   const navigate = useNavigate()
   const { user, updateCurrentUser, multiUser } = useAuth()
   const { settings, updateSettings, t, pricePrimaryField, exchangeRate } = useSettings()
-  const { theme, setTheme, themes } = useTheme()
+  const { colorMode, resolvedColorMode, setColorMode, accent, setAccent, colorModes, accents } = useTheme()
   const [activeTab, setActiveTab] = useState('general')
 
   const [geminiKey, setGeminiKey] = useState('')
@@ -689,30 +682,43 @@ export default function Settings() {
             </SettingsCard>
           </section>
 
-          {/* ── 2. THEME ── */}
+          {/* ── 2. APPEARANCE ── */}
           <section className="space-y-1">
-            <SectionHeader title={t('settings.sectionTheme')} />
+            <SectionHeader title={t('settings.sectionAppearance')} />
             <SettingsCard>
               <div className="px-4 py-3.5">
-                <p className="text-sm font-semibold text-text-primary mb-3">{t('settings.theme')}</p>
-                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-                  {themes.map((th) => (
+                <p className="text-sm font-semibold text-text-primary">{t('settings.colorMode')}</p>
+                <p className="text-xs text-text-muted mt-0.5 mb-3">{colorMode === 'system' ? `${t('settings.followSystem')} — ${t(`settings.currently${resolvedColorMode === 'dark' ? 'Dark' : 'Light'}`)}` : t('settings.colorModeDesc')}</p>
+                <div className="grid grid-cols-3 gap-2 mb-5" role="radiogroup" aria-label={t('settings.colorMode')}>
+                  {colorModes.map((mode) => (
+                    <button key={mode} type="button" role="radio" aria-checked={colorMode === mode} onClick={() => setColorMode(mode)}
+                      className={`rounded-xl border px-3 py-2 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red ${colorMode === mode ? 'border-brand-red bg-brand-red/10 text-text-primary' : 'border-border bg-bg-surface text-text-secondary hover:bg-bg-elevated'}`}>
+                      {t(`settings.mode${mode[0].toUpperCase()}${mode.slice(1)}`)}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-sm font-semibold text-text-primary">{t('settings.accent')}</p>
+                <p className="text-xs text-text-muted mt-0.5 mb-3">{t('settings.accentDesc')}</p>
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2" role="radiogroup" aria-label={t('settings.accent')}>
+                  {accents.map((th) => (
                     <button
                       key={th.id}
-                      onClick={() => setTheme(th.id)}
+                      type="button" role="radio" aria-checked={accent === th.id}
+                      onClick={() => setAccent(th.id)}
                       className={`flex flex-col items-center gap-1.5 rounded-xl p-3 transition-all ${
-                        theme === th.id
+                        accent === th.id
                           ? 'ring-2 ring-offset-1 ring-offset-transparent'
                           : 'hover:bg-bg-elevated'
                       }`}
                       style={{
-                        background: theme === th.id ? `${th.color}15` : 'rgba(255,255,255,0.03)',
-                        border: `1px solid ${theme === th.id ? `${th.color}50` : 'rgba(255,255,255,0.05)'}`,
-                        ...(theme === th.id ? { ringColor: th.color } : {}),
+                        background: accent === th.id ? `${th.color}18` : 'var(--color-surface)',
+                        border: `1px solid ${accent === th.id ? `${th.color}80` : 'var(--color-border)'}`,
+                        ...(accent === th.id ? { ringColor: th.color } : {}),
                       }}
                     >
                       <span className="text-xl">{th.emoji}</span>
-                      <span className="text-[10px] font-semibold text-text-secondary">{th.label}</span>
+                      <span className="text-[10px] font-semibold text-text-secondary">{t(`settings.${th.labelKey}`)}</span>
+                      {accent === th.id && <span className="sr-only">{t('settings.selected')}</span>}
                     </button>
                   ))}
                 </div>
