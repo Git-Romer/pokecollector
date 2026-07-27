@@ -360,7 +360,7 @@ export default function Sets() {
             <div className="relative z-10 flex items-center justify-between p-6 gap-4">
               <div className="flex-1 min-w-0">
                 <p className="text-[10px] text-brand-red font-black uppercase tracking-[0.2em] mb-2">{t('sets.topSet')}</p>
-                <p className="text-2xl font-black text-white leading-tight mb-1 break-words">{hero.name}</p>
+                <p className="text-2xl font-black text-text-primary leading-tight mb-1 break-words">{hero.name}</p>
                 <p className="text-sm text-text-muted mb-4">{hero.series}</p>
                 <div className="flex items-center gap-3 mb-2">
                   <span className="text-sm text-text-secondary">{heroOwned}/{heroTotal} {t('sets.heroCards')}</span>

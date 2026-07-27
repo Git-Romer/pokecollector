@@ -18,6 +18,9 @@
   --color-gold: #f5c842;
   --color-positive: #66bb6a; --color-negative: #e3000b;
   --color-nav-strip: rgba(6,8,15,.98); --color-binder-bg: rgba(10,14,26,.8);
+  --color-set-hero-start: #0f1428; --color-set-hero-center: #1a0f28;
+  --color-set-hero-glow: rgb(var(--color-accent-rgb) / .12);
+  --color-set-logo-shadow: rgba(0,0,0,.8);
   --color-green: #22c55e; --color-yellow: #eab308; --color-blue: #3b82f6;
   --safe-area-bottom: env(safe-area-inset-bottom, 0px); --safe-area-top: env(safe-area-inset-top, 0px); --bottom-nav-height: 4rem;
 }
@@ -33,6 +36,9 @@
   --color-gold: #8a5a00;
   --color-positive: #257a38; --color-negative: #b80009;
   --color-nav-strip: rgba(244,246,249,.98); --color-binder-bg: #e5e9ef;
+  --color-set-hero-start: #ffffff; --color-set-hero-center: #edf1f5;
+  --color-set-hero-glow: rgb(var(--color-accent-rgb) / .08);
+  --color-set-logo-shadow: rgba(15,23,42,.22);
 }
 
 /* Ambient glows are tuned for the dark canvas and look like stains on paper. */
@@ -720,19 +726,19 @@ body {
   overflow: hidden;
   border-radius: 20px;
   border: 1px solid var(--color-border);
-  background: linear-gradient(135deg, #0f1428 0%, #1a0f28 50%, #0f1428 100%);
+  background: linear-gradient(135deg, var(--color-set-hero-start) 0%, var(--color-set-hero-center) 50%, var(--color-set-hero-start) 100%);
   min-height: 180px;
 }
 .set-hero-glow {
   position: absolute;
   inset: 0;
-  background: radial-gradient(ellipse 60% 60% at 70% 50%, rgba(227,0,11,0.12) 0%, transparent 70%);
+  background: radial-gradient(ellipse 60% 60% at 70% 50%, var(--color-set-hero-glow) 0%, transparent 70%);
 }
 .set-hero-logo {
   max-height: 100px;
   max-width: 60%;
   object-fit: contain;
-  filter: drop-shadow(0 4px 24px rgba(0,0,0,0.8));
+  filter: drop-shadow(0 4px 24px var(--color-set-logo-shadow));
 }
 
 /* ================================================ */
