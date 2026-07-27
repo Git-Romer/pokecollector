@@ -6,9 +6,9 @@ try:
     from sqlalchemy.orm import sessionmaker
 
     from api.cards import get_card, search_cards
-    from api.sets import get_sets
+    from api.sets import get_set_checklist, get_sets
     from database import Base
-    from models import Card, Set, Setting, User, UserSetting
+    from models import Card, CollectionItem, Set, Setting, User, UserSetting, WishlistItem
     from services.display_language import get_tcgdex_display_language
 
     API_TEST_DEPS_AVAILABLE = True
@@ -107,6 +107,51 @@ class CatalogLanguageTests(unittest.TestCase):
             {card["id"] for card in result["data"]},
             {"base1-1_en", "base1-1_de"},
         )
+
+    def test_card_search_includes_current_users_compact_card_state(self):
+        card = Card(id="base1-1_en", tcg_card_id="base1-1", name="Alakazam", set_id="base1", number="1", lang="en", is_custom=False)
+        other = User(username="misty", hashed_password="x", role="trainer", is_active=True)
+        self.db.add_all([UserSetting(user_id=self.user.id, key="language", value="en"), card, other])
+        self.db.commit()
+        self.db.add_all([
+            CollectionItem(card_id=card.id, user_id=self.user.id, variant="Reverse Holo", condition="NM", quantity=1),
+            CollectionItem(card_id=card.id, user_id=self.user.id, variant="Normal", condition="LP", quantity=2),
+            CollectionItem(card_id=card.id, user_id=other.id, variant="Holo", quantity=9),
+            WishlistItem(card_id=card.id, user_id=self.user.id),
+        ])
+        self.db.commit()
+
+        result = search_cards(type_filter=None, lang=None, db=self.db, current_user=self.user)
+        state = result["data"][0]
+
+        self.assertTrue(state["owned"])
+        self.assertEqual(state["owned_quantity"], 3)
+        self.assertEqual(state["owned_variants"], [{"variant": "Normal", "quantity": 2}, {"variant": "Reverse Holo", "quantity": 1}])
+        self.assertTrue(state["wishlisted"])
+
+    def test_set_checklist_uses_positive_current_user_rows_for_card_state(self):
+        set_obj = Set(id="base1_en", tcg_set_id="base1", name="Base Set", lang="en", total=2)
+        owned_card = Card(id="base1-1_en", tcg_card_id="base1-1", name="Alakazam", set_id="base1", number="1", lang="en", is_custom=False)
+        zero_card = Card(id="base1-2_en", tcg_card_id="base1-2", name="Blastoise", set_id="base1", number="2", lang="en", is_custom=False)
+        other = User(username="misty", hashed_password="x", role="trainer", is_active=True)
+        self.db.add_all([set_obj, owned_card, zero_card, other])
+        self.db.commit()
+        self.db.add_all([
+            CollectionItem(card_id=owned_card.id, user_id=self.user.id, variant="Holo", quantity=2),
+            CollectionItem(card_id=zero_card.id, user_id=self.user.id, variant="Normal", quantity=0),
+            CollectionItem(card_id=zero_card.id, user_id=other.id, variant="First Edition", quantity=5),
+            WishlistItem(card_id=zero_card.id, user_id=self.user.id),
+        ])
+        self.db.commit()
+
+        result = get_set_checklist(set_obj.id, db=self.db, current_user=self.user)
+        states = {card["id"]: card for card in result["cards"]}
+
+        self.assertEqual(result["owned_count"], 1)
+        self.assertEqual(states[owned_card.id]["owned_variants"], [{"variant": "Holo", "quantity": 2}])
+        self.assertFalse(states[zero_card.id]["owned"])
+        self.assertEqual(states[zero_card.id]["owned_quantity"], 0)
+        self.assertTrue(states[zero_card.id]["wishlisted"])
 
     def test_get_card_without_lang_fetches_user_language(self):
         self.db.add(UserSetting(user_id=self.user.id, key="language", value="en"))

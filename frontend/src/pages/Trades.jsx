@@ -17,9 +17,10 @@ import { CustomCardModal } from '../components/CardItem'
 import { useSettings } from '../contexts/SettingsContext'
 import { CARD_VARIANTS, getDefaultVariantOrNull } from '../utils/cardVariants'
 import { resolveCardImageUrl } from '../utils/imageUrl'
+import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
 import { getEffectiveCardPrice, priceFieldFromPrimary } from '../utils/prices'
 import { formatMoneyInputValue, parseMoneyInputValue } from '../utils/moneyInput'
-import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
+import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
 
@@ -135,10 +136,10 @@ function TradeHealthBar({ outgoingValue, incomingValue, scoreOutgoingValue, miss
   )
 }
 
-function MiniCardRow({ card, meta, value, rightAction }) {
+function MiniCardRow({ card, variant, meta, value, rightAction }) {
   return (
     <div className="flex items-center gap-3 rounded-lg border border-border bg-bg-card p-2 min-w-0">
-      <div className="h-14 w-10 flex-shrink-0 overflow-hidden rounded bg-bg-elevated">
+      <div className={`h-14 w-10 flex-shrink-0 overflow-hidden rounded bg-bg-elevated ${getCardVariantEffectClass(variant)}`}>
         <CardImage src={resolveCardImageUrl(card)} alt={cardTitle(card)} className="h-full w-full object-cover" />
       </div>
       <div className="min-w-0 flex-1">
@@ -160,6 +161,7 @@ function DraftItem({ item, side, onUpdate, onRemove, t, formatPrice, exchangeRat
     <div className="rounded-lg border border-border bg-bg-elevated/40 p-3 space-y-3">
       <MiniCardRow
         card={card}
+        variant={item.variant}
         meta={`${item.variant || 'Normal'} - ${item.condition || 'NM'} - ${item.lang || card?.lang || 'en'}`}
         value={formatPrice(total)}
         rightAction={
@@ -409,8 +411,7 @@ export default function Trades() {
       toast.success(t('trades.saved'))
       resetDraft()
       queryClient.invalidateQueries({ queryKey: ['trades'] })
-      queryClient.invalidateQueries({ queryKey: ['collection'] })
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      invalidateCardState(queryClient)
       queryClient.invalidateQueries({ queryKey: ['products'] })
       invalidateTcgdexFilterLanguages(queryClient)
       setTab('history')
@@ -484,6 +485,7 @@ export default function Trades() {
                     <MiniCardRow
                       key={item.id}
                       card={item.card}
+                      variant={item.variant}
                       meta={`${item.variant} - ${item.condition} - ${t('common.quantity')}: ${item.quantity}`}
                       value={formatPrice(getEffectiveCardPrice(item.card, item.variant, priceField))}
                       rightAction={
@@ -543,6 +545,7 @@ export default function Trades() {
                     <MiniCardRow
                       key={card.id}
                       card={card}
+                      variant={getDefaultVariantOrNull(card)}
                       meta={card.is_custom ? t('cardSearch.customCard') : cardSubtitle(card)}
                       value={formatPrice(getEffectiveCardPrice(card, getDefaultVariantOrNull(card), priceField))}
                       rightAction={
@@ -620,6 +623,7 @@ export default function Trades() {
                         <MiniCardRow
                           key={item.id}
                           card={snapshotCard(item)}
+                          variant={item.variant}
                           meta={`${item.quantity} - ${item.variant || 'Normal'} - ${item.condition || 'NM'}`}
                           value={formatPrice(item.value_total)}
                         />

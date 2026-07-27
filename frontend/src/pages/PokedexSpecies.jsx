@@ -62,7 +62,7 @@ export default function PokedexSpecies() {
   const dexNumber = Number(dexId)
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { t, settings, pricePrimaryField } = useSettings()
+  const { t, settings, pricePrimary, pricePrimaryField } = useSettings()
   const language = settings.language === 'de' ? 'de' : 'en'
   const [cardLanguage, setCardLanguage] = useState('all')
   const [cardSort, setCardSort] = useState('price_asc')
@@ -81,10 +81,12 @@ export default function PokedexSpecies() {
 
   const cardsQuery = useQuery({
     queryKey: ['pokedex', 'cards', dexNumber, cardLanguage],
-    queryFn: () => searchCards({ dex_id: dexNumber, lang: cardLanguage, page_size: 2000, sort_by: 'price_low' }).then(r => r.data),
+    queryFn: () => searchCards({ dex_id: dexNumber, lang: cardLanguage, page_size: 2000 }).then(r => r.data),
     enabled: Number.isInteger(dexNumber),
     staleTime: 60_000,
   })
+
+  const selectedPriceLabel = t(`prices.${pricePrimary}`)
 
   const cards = useMemo(() => {
     const rows = cardsQuery.data?.data || []
@@ -167,8 +169,8 @@ export default function PokedexSpecies() {
                 value={cardSort}
                 onChange={(event) => setCardSort(event.target.value)}
               >
-                <option value="price_asc">{t('pokedex.sortPriceAsc')}</option>
-                <option value="price_desc">{t('pokedex.sortPriceDesc')}</option>
+                <option value="price_asc">{selectedPriceLabel}: {t('pokedex.sortLowToHigh')}</option>
+                <option value="price_desc">{selectedPriceLabel}: {t('pokedex.sortHighToLow')}</option>
                 <option value="owned_first">{t('pokedex.sortOwnedFirst')}</option>
                 <option value="wishlist_first">{t('pokedex.sortWishlistFirst')}</option>
                 <option value="set_number">{t('pokedex.sortSetNumber')}</option>

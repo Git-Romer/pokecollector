@@ -17,6 +17,11 @@ const th = {
     more: 'เพิ่มเติม',
   },
 
+  pokedex: {
+    sortLowToHigh: 'ต่ำไปสูง',
+    sortHighToLow: 'สูงไปต่ำ',
+  },
+
   // Common / General
   fallback: {
     data: 'ข้อมูล',

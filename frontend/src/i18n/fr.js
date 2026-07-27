@@ -17,6 +17,11 @@ const fr = {
     more: 'Plus',
   },
 
+  pokedex: {
+    sortLowToHigh: 'du plus bas au plus haut',
+    sortHighToLow: 'du plus haut au plus bas',
+  },
+
   // Common / General
   fallback: {
     data: 'Données',

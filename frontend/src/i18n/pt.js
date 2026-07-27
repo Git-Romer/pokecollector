@@ -19,6 +19,11 @@ const pt = {
     more: 'Mais',
   },
 
+  pokedex: {
+    sortLowToHigh: 'do menor para o maior',
+    sortHighToLow: 'do maior para o menor',
+  },
+
   // Common / General
   fallback: {
     data: 'Dados',

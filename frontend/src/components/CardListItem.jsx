@@ -1,5 +1,6 @@
 import CardImage from './CardImage'
 import clsx from 'clsx'
+import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
 
 /**
  * CardListItem — Reusable card row for Collection, Wishlist, Search results, etc.
@@ -17,6 +18,7 @@ import clsx from 'clsx'
  *   onClick     {fn}        — makes row clickable
  *   rightAction {node}      — optional right-side action element (e.g. delete button)
  *   className   {string}
+ *   variantEffectSource {string|object|array} — exact/grouped variant data for shine
  */
 export default function CardListItem({
   image,
@@ -28,6 +30,7 @@ export default function CardListItem({
   onClick,
   rightAction,
   className = '',
+  variantEffectSource = null,
 }) {
   return (
     <div
@@ -44,7 +47,10 @@ export default function CardListItem({
       onKeyDown={onClick ? (e) => e.key === 'Enter' && onClick(e) : undefined}
     >
       {/* Card thumbnail */}
-      <div className="flex-shrink-0 w-12 h-[68px] rounded-lg overflow-hidden bg-bg-elevated shadow-lg ring-1 ring-white/5">
+      <div className={clsx(
+        'flex-shrink-0 w-12 h-[68px] rounded-lg overflow-hidden bg-bg-elevated shadow-lg ring-1 ring-white/5',
+        getCardVariantEffectClass(variantEffectSource)
+      )}>
         <CardImage src={image} alt={name} className="w-full h-full object-cover" />
       </div>
 

@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { isPublicSharePath } from '../utils/publicRoutes'
 
 const api = axios.create({
   baseURL: '/api',
@@ -23,7 +24,7 @@ api.interceptors.response.use(
       const token = localStorage.getItem('token')
       localStorage.removeItem('token')
       localStorage.removeItem('user')
-      if (token && window.location.pathname !== '/login') {
+      if (token && window.location.pathname !== '/login' && !isPublicSharePath(window.location.pathname)) {
         window.location.href = '/login'
       }
     }
@@ -81,6 +82,10 @@ export const getApiErrorMessage = (error, fallback = 'Request failed') => {
 
 // Settings
 export const getTcgdexFilterLanguages = () => api.get('/settings/tcgdex-filter-languages').then(r => r.data)
+
+// Public profile (owner controls)
+export const getProfile = () => api.get('/profile/').then(r => r.data)
+export const updateProfile = (data) => api.put('/profile/', data).then(r => r.data)
 
 // Cards
 export const searchCards = (params) => api.get('/cards/search', { params })
@@ -149,6 +154,8 @@ export const deleteBinder = (id) => api.delete(`/binders/${id}`)
 export const getBinderCards = (id, params = {}) => api.get(`/binders/${id}/cards`, { params })
 export const addCardToBinder = (binderId, cardId, requiredQuantity = 1) => api.post(`/binders/${binderId}/cards`, null, { params: { card_id: cardId, required_quantity: requiredQuantity } })
 export const addCollectionItemToBinder = (binderId, collectionItemId) => api.post(`/binders/${binderId}/collection-items?collection_item_id=${collectionItemId}`)
+export const addOwnedSetToBinder = (binderId, setId) => api.post(`/binders/${binderId}/add-owned-set?set_id=${encodeURIComponent(setId)}`).then(r => r.data)
+export const addOwnedSetToAutoBinder = (setId) => api.post(`/binders/add-owned-set?set_id=${encodeURIComponent(setId)}`).then(r => r.data)
 export const updateBinderEntry = (binderId, binderCardId, data) => api.put(`/binders/${binderId}/entries/${binderCardId}`, data)
 export const getBinderEntryEquivalentPrints = (binderId, binderCardId, params = {}) => api.get(`/binders/${binderId}/entries/${binderCardId}/equivalent-prints`, { params }).then(r => r.data)
 export const getBinderPrintOptimization = (binderId, params = {}) => api.get(`/binders/${binderId}/optimize-prints`, { params }).then(r => r.data)

@@ -18,9 +18,9 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - 👤 **Creator:** [Gilles Romer](https://romerg.de/)
 - ✉️ **Contact:** [info@romerg.de](mailto:info@romerg.de)
 
-![Version](https://img.shields.io/badge/version-v1.23.5-e3000b?style=flat-square) ![Dark Theme](https://img.shields.io/badge/theme-dark-1a1a2e?style=flat-square) ![TCGdex](https://img.shields.io/badge/card%20data-TCGdex-e3000b?style=flat-square) ![Docker](https://img.shields.io/badge/deploy-Docker-2496ed?style=flat-square) ![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square) ![React](https://img.shields.io/badge/frontend-React%2018-61dafb?style=flat-square) [![Ko-fi](https://img.shields.io/badge/support-Ko--fi-ff5e5b?style=flat-square&logo=ko-fi&logoColor=white)](https://ko-fi.com/gillesromer)
+![Version](https://img.shields.io/badge/version-v1.26.0-e3000b?style=flat-square) ![Dark Theme](https://img.shields.io/badge/theme-dark-1a1a2e?style=flat-square) ![TCGdex](https://img.shields.io/badge/card%20data-TCGdex-e3000b?style=flat-square) ![Docker](https://img.shields.io/badge/deploy-Docker-2496ed?style=flat-square) ![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square) ![React](https://img.shields.io/badge/frontend-React%2018-61dafb?style=flat-square) [![Ko-fi](https://img.shields.io/badge/support-Ko--fi-ff5e5b?style=flat-square&logo=ko-fi&logoColor=white)](https://ko-fi.com/gillesromer)
 
-**Current version:** `v1.23.5` · Releases are tracked on the [GitHub Releases page](https://github.com/Git-Romer/pokecollector/releases).
+**Current version:** `v1.26.0` · Releases are tracked on the [GitHub Releases page](https://github.com/Git-Romer/pokecollector/releases).
 
 ![WebApp Preview](preview-homescreen.png)
 
@@ -32,6 +32,7 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - [Quick Start](#-quick-start)
 - [Managing Users](#-managing-users)
 - [Environment Variables](#-environment-variables)
+- [Sync Behavior](#-sync-behavior)
 - [Architecture](#-architecture)
 - [Tech Stack](#-tech-stack)
 - [External Sources](#-external-sources)
@@ -86,6 +87,8 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 ### 🏆 Social & Community
 - Leaderboard, trainer comparison, and achievements in multi-user mode
 - View other trainers' collections from the Leaderboard
+- Optional public trainer profiles with trainer-name URLs, a public directory, individually shared collection binders, and opt-in market values
+- Admin-controlled public sharing switch, disabled by default on new and upgraded installations
 - Community section in Settings with GitHub contributors and Ko-fi supporters
 
 ### 🎨 UX & Localization
@@ -267,6 +270,27 @@ English is used as the preferred fallback source for missing synced data, images
 For Pokédex metadata only, full Pokémon card details can infer a missing TCGdex `dexId` from an exact English or German base species name. This covers cards like Mega Charizard / Mega-Glurak when TCGdex omits `dexId`, while avoiding non-Pokémon cards and unclear names.
 
 The app UI language selector includes the supported TCGdex language set plus Swedish. The TCGdex sync-language selector controls card/set data sync only; changing the app UI language does not automatically sync additional card languages.
+
+---
+
+## 🔄 Sync Behavior
+
+PokéCollector has separate sync paths so frequent price updates stay lightweight while catalogue updates remain controlled.
+
+| Sync | Where it runs | What it updates | Limits and schedule |
+|------|---------------|-----------------|---------------------|
+| Small price sync | Home sync button and automatic price job | Prices for tracked cards in collections, wishlists, and binders | Runs every `30` minutes by default. Updates `max(1000, 75% of tracked unique cards)`, capped at `5000` cards per run. Missing-price cards are prioritized, but cards without public prices have a retry cooldown. |
+| Forced price sync | Settings `Sync prices only` action | Prices for all tracked collection, wishlist, and binder cards | Runs on demand. It is not capped like the small automatic batch and bypasses the no-price retry cooldown. It does not sync sets, discover new cards, or refresh card images. |
+| Full sync | Settings `Sync sets/cards` action and automatic full sync job | TCGdex set metadata, card lists, missing card details, tracked-card prices, pinned-set prices, custom-card matches, portfolio snapshots, and wishlist alerts | Runs every `5` days by default. The admin setting can change this to `1`, `2`, `3`, `5`, `7`, `14`, or `30` days. |
+
+Full sync keeps heavier catalogue work bounded:
+
+- incomplete sets and fallback-language sets have their card lists refreshed every full sync
+- already-complete native sets are refreshed in a rotating batch of `25` sets per full sync, ordered by oldest set refresh time first
+- missing full-card metadata enrichment is capped separately at `2000` cards per full sync
+- normal price sync limits do not increase the full-card metadata cap
+
+With the default `en,de` sync languages, the rotating complete-set refresh covers the current catalogue in roughly `70` days at the default `5` day full-sync interval. Manual full syncs also advance the rotation.
 
 ---
 

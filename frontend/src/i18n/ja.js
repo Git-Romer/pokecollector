@@ -19,6 +19,11 @@ const ja = {
     more: 'さらに表示',
   },
 
+  pokedex: {
+    sortLowToHigh: '低い順',
+    sortHighToLow: '高い順',
+  },
+
   // Common / General
   fallback: {
     data: 'データ',

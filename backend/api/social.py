@@ -10,6 +10,7 @@ from models import Card, CollectionItem, ProductLedgerEntry, ProductPurchase, Se
 from services.card_values import effective_market_price, normalize_price_field
 from services.card_visibility import visible_card_filter
 from services.digital_sets import digital_sets_enabled
+from services.public_profile_feature import public_profiles_enabled
 
 router = APIRouter()
 
@@ -191,6 +192,7 @@ def _card_payload(card: Card | None):
 
 def _load_user_stats(db: Session, user_ids: list[int] | None = None, price_field: str = "price_trend"):
     price_field = normalize_price_field(price_field)
+    sharing_enabled = public_profiles_enabled(db)
 
     def _get_price(row):
         return effective_market_price(row, getattr(row, "variant", None), price_field)
@@ -359,6 +361,7 @@ def _load_user_stats(db: Session, user_ids: list[int] | None = None, price_field
             "sold_products_count": sold_product_counts.get(user.id, 0),
             "positive_pnl_flag": 1 if pnl > 0 else 0,
             "illustration_rare_flag": 1 if has_illustration_rare else 0,
+            "public_handle": user.public_handle if sharing_enabled and user.is_profile_public else None,
         }
 
     return stats

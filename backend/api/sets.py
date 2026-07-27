@@ -1,4 +1,3 @@
-import re
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -8,6 +7,7 @@ from sqlalchemy import text, func
 from api.auth import get_current_user
 from database import get_db
 from models import Set, Card, CollectionItem, User
+from services.card_state import card_state_summaries
 from schemas import SetBase
 from services import pokemon_api
 from services.card_fallbacks import (
@@ -15,6 +15,7 @@ from services.card_fallbacks import (
     build_missing_language_cards_for_set,
     missing_language_fallback_enabled,
 )
+from services.card_numbers import natural_card_number_key
 from services.card_upsert import upsert_card
 from services.card_visibility import get_configured_sync_languages, visible_set_filter
 from services.digital_sets import digital_sets_enabled
@@ -23,31 +24,9 @@ from services.tcgdex_languages import DEFAULT_TCGDEX_SYNC_LANGUAGES, has_lang_su
 
 router = APIRouter()
 
-_NATURAL_SORT_RE = re.compile(r"(\d+|\D+)")
-
 
 class MarkSetsSeenRequest(BaseModel):
     set_ids: Optional[List[str]] = None
-
-
-def _natural_card_number_key(number: Optional[str]) -> tuple:
-    """Sort card numbers naturally while preserving alphanumeric formats.
-
-    Examples:
-    - 1, 2, 10 instead of 1, 10, 2
-    - 001, 002, 010 still sort correctly
-    - 74, 74a, 74b and H04 are handled without converting the display value
-    """
-    if number is None:
-        return ((2, ""),)
-
-    parts = []
-    for part in _NATURAL_SORT_RE.findall(str(number).strip()):
-        if part.isdigit():
-            parts.append((0, int(part), len(part), part))
-        else:
-            parts.append((1, part.casefold()))
-    return tuple(parts) or ((2, ""),)
 
 
 def _refresh_sets(db: Session, display_lang: str):
@@ -256,7 +235,7 @@ def get_set_checklist(
             db.rollback()
         cards = query_set_cards()
 
-    cards.sort(key=lambda card: _natural_card_number_key(card.number))
+    cards.sort(key=lambda card: natural_card_number_key(card.number))
 
     # Get exact owned collection rows so the UI can safely remove/decrement the
     # right variant/condition instead of treating ownership as a single boolean.
@@ -267,16 +246,20 @@ def get_set_checklist(
     owned_by_card: dict[str, list[CollectionItem]] = {}
     for item in collection_items:
         owned_by_card.setdefault(item.card_id, []).append(item)
-    owned_card_ids = set(owned_by_card.keys())
-
-    owned_count = len(owned_card_ids)
+    summaries = card_state_summaries(
+        db,
+        current_user.id,
+        [card.id for card in cards],
+        collection_items=collection_items,
+    )
+    owned_count = sum(1 for summary in summaries.values() if summary["owned"])
     total_count = len(cards)
 
     checklist = []
     for card in cards:
-        owned = card.id in owned_card_ids
         owned_items = owned_by_card.get(card.id, [])
-        qty = sum(item.quantity or 0 for item in owned_items)
+        summary = summaries[card.id]
+        qty = summary["owned_quantity"]
 
         checklist.append({
             "id": card.id,
@@ -297,7 +280,10 @@ def get_set_checklist(
             "image_source_lang": getattr(card, "image_source_lang", None),
             "data_source_lang": getattr(card, "data_source_lang", None),
             "price_source_lang": getattr(card, "price_source_lang", None),
-            "owned": owned,
+            "owned": summary["owned"],
+            "owned_quantity": qty,
+            "owned_variants": summary["owned_variants"],
+            "wishlisted": summary["wishlisted"],
             "quantity": qty,
             "owned_items": [
                 {

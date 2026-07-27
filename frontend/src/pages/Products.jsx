@@ -14,6 +14,7 @@ import AnalyticsSectionNav from '../components/AnalyticsSectionNav'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
 import { formatMoneyInputValue, isValidMoneyInputValue, parseMoneyInputValue } from '../utils/moneyInput'
+import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 
 const PRODUCT_TYPES = ['Booster Pack', 'Booster Box', 'Elite Trainer Box', 'Tin', 'Bundle', 'Collection Box', 'Blister', 'Other']
 
@@ -423,6 +424,8 @@ export default function Products() {
     onSuccess: () => {
       toast.success(t('products.cardSold'))
       invalidateProducts()
+      invalidateCardState(queryClient)
+      invalidateTcgdexFilterLanguages(queryClient)
     },
     onError: (error) => toast.error(getApiErrorMessage(error, t('products.cardSellFailed'))),
   })

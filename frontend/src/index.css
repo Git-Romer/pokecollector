@@ -483,54 +483,128 @@ input:-webkit-autofill:focus {
   pointer-events: none;
 }
 
-/* Holo card effect — for rare+ cards in collection grid */
-.card-holo {
-}
-.card-holo::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    135deg,
-    transparent 25%,
-    rgba(255,255,255,0.025) 45%,
-    rgba(255,255,255,0.04) 50%,
-    rgba(255,255,255,0.025) 55%,
-    transparent 75%
-  );
-  background-size: 200% 200%;
-  animation: holo-shift 4s ease-in-out infinite;
-  border-radius: inherit;
-  pointer-events: none;
-}
-@keyframes holo-shift {
-  0%, 100% { background-position: 0% 0%; }
-  50% { background-position: 100% 100%; }
+/* One shared, variant-driven card shine system. */
+.card-variant-effect {
+  position: relative;
 }
 
-/* Secret rare / rainbow — for ultra rare cards */
-.card-secret {
-}
-.card-secret::after {
+.card-variant-effect::after {
   content: '';
   position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    135deg,
-    rgba(255,100,150,0.08),
-    rgba(100,150,255,0.08),
-    rgba(255,200,100,0.08),
-    rgba(100,255,180,0.08)
-  );
-  background-size: 400% 400%;
-  animation: rainbow-shift 6s ease infinite;
+  top: -20%;
+  left: 0;
+  z-index: 2;
+  width: 60%;
+  height: 140%;
+  background: var(--card-variant-shine);
+  animation: var(--card-variant-animation, card-variant-shimmer) var(--card-variant-duration, 3s) ease-in-out infinite;
   border-radius: inherit;
+  mix-blend-mode: screen;
   pointer-events: none;
 }
-@keyframes rainbow-shift {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+
+.card-variant-holo {
+  --card-variant-shine: linear-gradient(
+    105deg,
+    transparent 25%,
+    rgba(245,200,66,0.28) 45%,
+    rgba(255,230,100,0.20) 52%,
+    rgba(245,200,66,0.28) 58%,
+    transparent 75%
+  );
+  --card-variant-duration: 3.2s;
+  border-color: rgba(245,200,66,0.4) !important;
+  box-shadow:
+    var(--tw-ring-offset-shadow, 0 0 #0000),
+    var(--tw-ring-shadow, 0 0 #0000),
+    var(--tw-shadow, 0 0 #0000),
+    0 0 9px rgba(245,200,66,0.24);
+}
+
+.card-variant-reverse {
+  --card-variant-shine: linear-gradient(
+    105deg,
+    transparent 30%,
+    rgba(99,179,237,0.32) 50%,
+    rgba(147,210,255,0.20) 55%,
+    transparent 70%
+  );
+  --card-variant-animation: card-variant-shimmer-reverse;
+  --card-variant-duration: 2.8s;
+  border-color: rgba(99,179,237,0.5) !important;
+  box-shadow:
+    var(--tw-ring-offset-shadow, 0 0 #0000),
+    var(--tw-ring-shadow, 0 0 #0000),
+    var(--tw-shadow, 0 0 #0000),
+    0 0 9px rgba(99,179,237,0.28);
+}
+
+.card-variant-special {
+  --card-variant-shine: linear-gradient(
+    105deg,
+    transparent 20%,
+    rgba(167,139,250,0.28) 42%,
+    rgba(196,181,253,0.20) 50%,
+    rgba(167,139,250,0.28) 58%,
+    transparent 78%
+  );
+  --card-variant-duration: 4s;
+  border-color: rgba(167,139,250,0.5) !important;
+  box-shadow:
+    var(--tw-ring-offset-shadow, 0 0 #0000),
+    var(--tw-ring-shadow, 0 0 #0000),
+    var(--tw-shadow, 0 0 #0000),
+    0 0 11px rgba(167,139,250,0.28);
+}
+
+.card-variant-first-edition {
+  --card-variant-shine: linear-gradient(
+    105deg,
+    transparent 30%,
+    rgba(52,211,153,0.32) 50%,
+    rgba(110,231,183,0.20) 55%,
+    transparent 70%
+  );
+  --card-variant-duration: 3.5s;
+  border-color: rgba(52,211,153,0.5) !important;
+  box-shadow:
+    var(--tw-ring-offset-shadow, 0 0 #0000),
+    var(--tw-ring-shadow, 0 0 #0000),
+    var(--tw-shadow, 0 0 #0000),
+    0 0 9px rgba(52,211,153,0.24);
+}
+
+.card-variant-generic {
+  --card-variant-shine: linear-gradient(
+    105deg,
+    transparent 30%,
+    rgba(255,255,255,0.3) 50%,
+    transparent 70%
+  );
+  --card-variant-duration: 3s;
+  border-color: rgba(255,255,255,0.22) !important;
+}
+
+@keyframes card-variant-shimmer {
+  0%   { transform: translateX(-100%) rotate(25deg); opacity: 0; }
+  15%  { opacity: 0.7; }
+  50%  { opacity: 0.5; }
+  85%  { opacity: 0.7; }
+  100% { transform: translateX(200%) rotate(25deg); opacity: 0; }
+}
+
+@keyframes card-variant-shimmer-reverse {
+  0%   { transform: translateX(220%) rotate(-20deg); opacity: 0; }
+  20%  { opacity: 0.6; }
+  80%  { opacity: 0.4; }
+  100% { transform: translateX(-120%) rotate(-20deg); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-variant-effect::after {
+    animation: none;
+    opacity: 0.16;
+  }
 }
 
 /* Binder grid — looks like a real Pokemon binder */

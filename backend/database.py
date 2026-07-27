@@ -213,6 +213,10 @@ def _run_migrations(conn):
         "ALTER TABLE binders ADD COLUMN IF NOT EXISTS icon_pokemon_id INTEGER",
         "ALTER TABLE binder_cards ADD COLUMN IF NOT EXISTS collection_item_id INTEGER REFERENCES collection(id)",
         "ALTER TABLE binders ADD COLUMN IF NOT EXISTS format VARCHAR",
+        "ALTER TABLE binders ADD COLUMN IF NOT EXISTS auto_owned_set_id VARCHAR",
+        """CREATE UNIQUE INDEX IF NOT EXISTS uq_binders_user_auto_owned_set
+           ON binders(user_id, auto_owned_set_id)
+           WHERE auto_owned_set_id IS NOT NULL""",
         "ALTER TABLE binder_cards ADD COLUMN IF NOT EXISTS required_quantity INTEGER DEFAULT 1",
         # v47: Store gameplay data for playable-equivalent print matching.
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS stage VARCHAR",
@@ -375,6 +379,16 @@ def _run_migrations(conn):
                  AND sets.tcg_set_id = cards.set_id
                  AND sets.lang = cards.lang
              )""",
+        # Public binders feature: user profile sharing settings
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS public_handle VARCHAR",
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_public_handle ON users (public_handle)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_profile_public BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS public_show_values BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE binders ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT FALSE",
+        # Enforce NOT NULL on new boolean columns for upgraded installs (ADD COLUMN with DEFAULT backfills existing rows first)
+        "ALTER TABLE users ALTER COLUMN is_profile_public SET NOT NULL",
+        "ALTER TABLE users ALTER COLUMN public_show_values SET NOT NULL",
+        "ALTER TABLE binders ALTER COLUMN is_public SET NOT NULL",
     ]
     for stmt in migrations:
         try:

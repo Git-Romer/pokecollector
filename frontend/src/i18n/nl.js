@@ -17,6 +17,11 @@ const nl = {
     more: 'Meer',
   },
 
+  pokedex: {
+    sortLowToHigh: 'laag naar hoog',
+    sortHighToLow: 'hoog naar laag',
+  },
+
   // Common / General
   fallback: {
     data: 'Data',

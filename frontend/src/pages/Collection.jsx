@@ -20,9 +20,10 @@ import FallbackBadges from '../components/FallbackBadges'
 import { getEffectiveCardPrice } from '../utils/prices'
 import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
 import { tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
-import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
+import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import { formatMoneyInputValue, parseMoneyInputValue } from '../utils/moneyInput'
+import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
 
 function TiltBinderCard({ className, onClick, children }) {
   const { ref, onMouseMove, onMouseEnter, onMouseLeave } = useTilt(10)
@@ -271,85 +272,6 @@ function CsvImportModal({ t, onClose, onChooseFile, onDownloadTemplate, isImport
   )
 }
 
-// ─── Holo shimmer overlay ──────────────────────────────────────────────────
-const HOLO_KEYFRAMES = `
-@keyframes holoShimmer {
-  0%   { transform: translateX(-100%) rotate(25deg); opacity: 0; }
-  15%  { opacity: 0.7; }
-  50%  { opacity: 0.5; }
-  85%  { opacity: 0.7; }
-  100% { transform: translateX(200%) rotate(25deg); opacity: 0; }
-}
-@keyframes holoShimmerAlt {
-  0%   { transform: translateX(-120%) rotate(-20deg); opacity: 0; }
-  20%  { opacity: 0.6; }
-  80%  { opacity: 0.4; }
-  100% { transform: translateX(220%) rotate(-20deg); opacity: 0; }
-}
-`
-
-if (typeof document !== 'undefined' && !document.getElementById('holo-keyframes')) {
-  const style = document.createElement('style')
-  style.id = 'holo-keyframes'
-  style.textContent = HOLO_KEYFRAMES
-  document.head.appendChild(style)
-}
-
-function HoloOverlay({ variant }) {
-  if (!variant) return null
-  const v = variant.toLowerCase()
-
-  let gradient = null
-  let animationName = 'holoShimmer'
-  let duration = '3s'
-  let delay = '0s'
-
-  if (v.includes('reverse')) {
-    // Blue/cyan shimmer for Reverse Holo
-    gradient = 'linear-gradient(105deg, transparent 30%, rgba(99,179,237,0.25) 50%, rgba(147,210,255,0.15) 55%, transparent 70%)'
-    duration = '2.8s'
-    animationName = 'holoShimmerAlt'
-  } else if (v.includes('holo') || v === 'holo') {
-    // Gold/rainbow shimmer for Holo
-    gradient = 'linear-gradient(105deg, transparent 25%, rgba(245,200,66,0.20) 45%, rgba(255,230,100,0.15) 52%, rgba(245,200,66,0.20) 58%, transparent 75%)'
-    duration = '3.2s'
-  } else if (v.includes('alt art') || v.includes('illustration rare') || v.includes('special illustration')) {
-    // Purple shimmer for Alt Art / Special Illustration
-    gradient = 'linear-gradient(105deg, transparent 20%, rgba(167,139,250,0.20) 42%, rgba(196,181,253,0.15) 50%, rgba(167,139,250,0.20) 58%, transparent 78%)'
-    duration = '4s'
-  } else if (v.includes('first edition') || v.includes('1st edition')) {
-    // Green shimmer for 1st Edition
-    gradient = 'linear-gradient(105deg, transparent 30%, rgba(52,211,153,0.25) 50%, rgba(110,231,183,0.15) 55%, transparent 70%)'
-    duration = '3.5s'
-  } else {
-    // Generic shimmer for any other special variant
-    gradient = 'linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.25) 50%, transparent 70%)'
-    duration = '3s'
-  }
-
-  if (!gradient) return null
-
-  return (
-    <div
-      className="absolute inset-0 pointer-events-none overflow-hidden rounded-xl"
-      style={{ zIndex: 2 }}
-    >
-      <div
-        style={{
-          position: 'absolute',
-          top: '-20%',
-          left: 0,
-          width: '60%',
-          height: '140%',
-          background: gradient,
-          animation: `${animationName} ${duration} ease-in-out ${delay} infinite`,
-          mixBlendMode: 'screen',
-        }}
-      />
-    </div>
-  )
-}
-
 // ─── CollectionEditModal ────────────────────────────────────────────────────
 // Opens when clicking any card in the collection. Allows editing + deleting.
 function CollectionEditModal({ item, onClose }) {
@@ -455,10 +377,8 @@ function CollectionEditModal({ item, onClose }) {
     }),
     onSuccess: () => {
       toast.success(t('collection.updated'))
-      queryClient.invalidateQueries({ queryKey: ['collection'] })
+      invalidateCardState(queryClient)
       invalidateTcgdexFilterLanguages(queryClient)
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
-      queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'card-search' })
       onClose()
     },
     onError: () => toast.error(t('collection.updateFailed')),
@@ -468,10 +388,8 @@ function CollectionEditModal({ item, onClose }) {
     mutationFn: () => removeFromCollection(item.id),
     onSuccess: () => {
       toast.success(t('collection.removed'))
-      queryClient.invalidateQueries({ queryKey: ['collection'] })
+      invalidateCardState(queryClient)
       invalidateTcgdexFilterLanguages(queryClient)
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
-      queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'card-search' })
       onClose()
     },
     onError: () => toast.error(t('collection.removeFailed')),
@@ -488,10 +406,8 @@ function CollectionEditModal({ item, onClose }) {
     }),
     onSuccess: () => {
       toast.success(t('collection.versionAdded'))
-      queryClient.invalidateQueries({ queryKey: ['collection'] })
+      invalidateCardState(queryClient)
       invalidateTcgdexFilterLanguages(queryClient)
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
-      queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'card-search' })
       onClose()
     },
     onError: () => toast.error(t('card.addFailed')),
@@ -515,11 +431,8 @@ function CollectionEditModal({ item, onClose }) {
       setSavedCustomImageUrl(nextUrl)
       setCustomImageVersion((version) => version + 1)
       toast.success(t('card.customImageSaved'))
-      queryClient.invalidateQueries({ queryKey: ['collection'] })
+      invalidateCardState(queryClient)
       invalidateTcgdexFilterLanguages(queryClient)
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
-      queryClient.invalidateQueries({ queryKey: ['wishlist'] })
-      queryClient.invalidateQueries({ queryKey: ['set-checklist'] })
     },
     onError: (err) => {
       const detail = err?.response?.data?.detail || t('common.error')
@@ -565,7 +478,9 @@ function CollectionEditModal({ item, onClose }) {
   const renderCardHeader = () => (
     <div className="flex items-start gap-4 mb-5">
       {cardImage && (
-        <img src={cardImage} alt={card?.name} className="w-20 rounded-xl shadow-lg flex-shrink-0" />
+        <div className={`w-20 rounded-xl overflow-hidden shadow-lg flex-shrink-0 ${getCardVariantEffectClass(variant)}`}>
+          <img src={cardImage} alt={card?.name} className="w-full" />
+        </div>
       )}
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
@@ -955,9 +870,8 @@ export default function Collection() {
       } else {
         toast.success(message)
       }
-      queryClient.invalidateQueries({ queryKey: ['collection'] })
+      invalidateCardState(queryClient)
       invalidateTcgdexFilterLanguages(queryClient)
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
     },
     onError: (err) => {
       toast.error(getApiErrorMessage(err, t('collection.csvImportFailed')))
@@ -1317,32 +1231,16 @@ export default function Collection() {
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
                 {filtered.map(item => {
                   const card = item.card
-                  const rarityLower = (card?.rarity || '').toLowerCase()
-                  let rarityClass = ''
-                  if (rarityLower.includes('secret') || rarityLower.includes('rainbow')) {
-                    rarityClass = 'card-secret'
-                  } else if (
-                    rarityLower.includes('ultra') ||
-                    rarityLower.includes('vmax') ||
-                    rarityLower.includes('v max') ||
-                    rarityLower.includes('full art')
-                  ) {
-                    rarityClass = 'card-holo'
-                  } else if (rarityLower.includes('holo') || rarityLower.includes('rare')) {
-                    rarityClass = 'card-holo'
-                  }
-
                   return (
                     <TiltBinderCard
                       key={item.id}
-                      className={`binder-card ${rarityClass} cursor-pointer`}
+                      className="binder-card cursor-pointer"
                       onClick={() => setEditingCollectionItem(item)}
                     >
                       <div
-                        className="aspect-[2.5/3.5] relative rounded-xl overflow-hidden flex-shrink-0"
+                        className={`aspect-[2.5/3.5] relative rounded-xl overflow-hidden flex-shrink-0 ${getCardVariantEffectClass(item.variant)}`}
                       >
                         <CardImage src={resolveCardImageUrl(card)} alt={card?.name} className="w-full h-full object-cover" />
-                        <HoloOverlay variant={item.variant} />
                         <ProductSourceBadge item={item} t={t} compact className="absolute right-1 top-1 z-10 h-6 w-6" />
                       </div>
                       {(() => {
@@ -1441,7 +1339,7 @@ export default function Collection() {
                         >
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-3">
-                              <div className="w-8 h-10 flex-shrink-0 rounded overflow-hidden">
+                              <div className={`w-8 h-10 flex-shrink-0 rounded overflow-hidden ${getCardVariantEffectClass(item.variant)}`}>
                                 <CardImage src={resolveCardImageUrl(card)} alt={card?.name} className="w-full h-full object-cover" />
                               </div>
                               <div className="min-w-0">
@@ -1546,6 +1444,7 @@ export default function Collection() {
                       value={marketPrice > 0 ? formatPrice(marketPrice) : '-'}
                       valueSecondary={pnl !== null ? `${pnl >= 0 ? '+' : ''}${formatPrice(pnl)}` : undefined}
                       onClick={() => setEditingCollectionItem(item)}
+                      variantEffectSource={item.variant}
                     />
                   )
                 })}
@@ -1585,9 +1484,8 @@ export default function Collection() {
           onClose={() => setEditCard(null)}
           onCreated={() => {
             setEditCard(null)
-            queryClient.invalidateQueries({ queryKey: ['collection'] })
+            invalidateCardState(queryClient)
             invalidateTcgdexFilterLanguages(queryClient)
-            queryClient.invalidateQueries({ queryKey: ['dashboard'] })
           }}
           sets={allSets}
         />

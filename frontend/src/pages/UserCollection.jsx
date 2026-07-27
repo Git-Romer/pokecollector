@@ -8,6 +8,7 @@ import { useSettings } from '../contexts/SettingsContext'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 import { CardModal } from '../components/CardItem'
 import CardImage from '../components/CardImage'
+import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
 import FallbackBadges from '../components/FallbackBadges'
 import { getEffectiveCardPrice } from '../utils/prices'
 import { TCGDEX_LANGUAGES } from '../utils/tcgdexLanguages'
@@ -207,7 +208,7 @@ export default function UserCollection() {
                 className="cursor-pointer group"
                 onClick={() => setSelectedCard(card)}
               >
-                <div className="aspect-[2.5/3.5] rounded-xl overflow-hidden ring-1 ring-white/5 group-hover:ring-brand-red/30 transition-all">
+                <div className={`aspect-[2.5/3.5] rounded-xl overflow-hidden ring-1 ring-white/5 group-hover:ring-brand-red/30 transition-all ${getCardVariantEffectClass(item.variant)}`}>
                   <CardImage src={imgSrc} alt={card.name} className="w-full h-full object-cover" />
                 </div>
                 <div className="mt-1 px-0.5">

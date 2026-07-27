@@ -19,6 +19,11 @@ const zhTw = {
     more: '更多',
   },
 
+  pokedex: {
+    sortLowToHigh: '由低到高',
+    sortHighToLow: '由高到低',
+  },
+
   // Common / General
   fallback: {
     data: '資料',

@@ -10,7 +10,7 @@ import { resolveCardImageUrl } from '../utils/imageUrl'
 import FallbackBadges from '../components/FallbackBadges'
 import { getEffectiveCardPrice } from '../utils/prices'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
-import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
+import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 
 function WishlistItemEditor({ item, onDone }) {
   const [quantity, setQuantity] = useState(item.quantity || 1)
@@ -93,7 +93,7 @@ export default function Wishlist() {
     mutationFn: (id) => removeFromWishlist(id),
     onSuccess: () => {
       toast.success(t('wishlist.removed'))
-      queryClient.invalidateQueries({ queryKey: ['wishlist'] })
+      invalidateCardState(queryClient)
       invalidateTcgdexFilterLanguages(queryClient)
     },
   })
@@ -102,10 +102,8 @@ export default function Wishlist() {
     mutationFn: (cardId) => addToCollection({ card_id: cardId, quantity: 1, condition: 'NM' }),
     onSuccess: () => {
       toast.success(t('wishlist.addedToCollection'))
-      queryClient.invalidateQueries({ queryKey: ['collection'] })
+      invalidateCardState(queryClient)
       invalidateTcgdexFilterLanguages(queryClient)
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
-      queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'card-search' })
     },
   })
 
