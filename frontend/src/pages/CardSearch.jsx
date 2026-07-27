@@ -1,4 +1,5 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { Search, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, SortAsc, Hash, PenLine, SlidersHorizontal, Camera, CheckSquare, Plus, Check } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -17,6 +18,13 @@ import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
 import { normalizeTcgdexLanguage, tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
+import {
+  getLastCardSearchPage,
+  isValidCardSearchPage,
+  parseCardSearchPage,
+  resetCardSearchFilters,
+  updateCardSearchParams,
+} from '../utils/cardSearchUrlState'
 
 function TiltCardWrapper({ children, className, onClick }) {
   const { ref, onMouseMove, onMouseEnter, onMouseLeave } = useTilt(12)
@@ -136,16 +144,13 @@ function FilterForm({ filters, setFilter, allSeries, setsForSeries, toggleSortOr
 }
 
 export default function CardSearch() {
-  const { t, settings, loaded: settingsLoaded } = useSettings()
+  const { t, settings } = useSettings()
   const visibleLanguages = useVisibleTcgdexLanguages()
   const queryClient = useQueryClient()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search])
   const [searchInput, setSearchInput] = useState('')
-  const [filters, setFilters] = useState({
-    name: '', category: '', type: '', subtype: '', rarity: '', set_id: '', series: '', artist: '',
-    hp_min: '', hp_max: '', sort_by: '', sort_order: 'asc',
-  })
-  const [langFilter, setLangFilter] = useState('all')
-  const [page, setPage] = useState(1)
   const [showFilters, setShowFilters] = useState(false)
   const [showCustomModal, setShowCustomModal] = useState(false)
   const [showScanner, setShowScanner] = useState(false)
@@ -171,14 +176,54 @@ export default function CardSearch() {
   const defaultLangFilter = visibleLanguageCodes.includes(preferredCatalogueLanguage)
     ? preferredCatalogueLanguage
     : 'all'
+
+  // Search state is deliberately derived from the URL. This makes direct links,
+  // refreshes, and browser history reproduce precisely the same search.
+  const { filters, langFilter, page } = useMemo(() => {
+    const read = (key) => searchParams.get(key)?.trim() || ''
+    const enumValue = (key, values) => {
+      const value = read(key)
+      return values.includes(value) ? value : ''
+    }
+    const hpValue = (key) => {
+      const value = read(key)
+      return /^\d+$/.test(value) && Number(value) <= 999 ? value : ''
+    }
+    const selectedSeries = read('series')
+    const selectedSet = read('set_id')
+    const setIsValid = !selectedSet || !selectedSeries || !allSets.length || allSets.some((set) => set.id === selectedSet && set.series === selectedSeries)
+    const requestedLanguage = read('lang')
+    const language = requestedLanguage === 'all'
+      ? 'all'
+      : requestedLanguage && visibleLanguageCodes.includes(normalizeTcgdexLanguage(requestedLanguage, ''))
+        ? normalizeTcgdexLanguage(requestedLanguage, '')
+        : defaultLangFilter
+    return {
+      filters: {
+        name: read('q'),
+        category: enumValue('category', CATEGORIES),
+        type: enumValue('type', TYPES),
+        subtype: enumValue('subtype', SUBTYPES),
+        rarity: enumValue('rarity', RARITIES),
+        series: selectedSeries,
+        set_id: setIsValid ? selectedSet : '',
+        artist: read('artist'),
+        hp_min: hpValue('hp_min'),
+        hp_max: hpValue('hp_max'),
+        sort_by: enumValue('sort_by', ['name', 'number', 'rarity']),
+        sort_order: read('sort_order') === 'desc' ? 'desc' : 'asc',
+      },
+      langFilter: language,
+      page: parseCardSearchPage(read('page')),
+    }
+  }, [allSets, defaultLangFilter, searchParams, visibleLanguageCodes])
+
   const setsForSeries = useMemo(() => {
     if (!filters.series) return allSets
     return allSets.filter(s => s.series === filters.series)
   }, [allSets, filters.series])
 
   const setMap = useMemo(() => {
-    // Keyed by both tcg_set_id (e.g. "sv1") and composite id (e.g. "sv1_de") so
-    // card.set_id (which stores the TCGdex set ID) resolves to the correct set object.
     const map = {}
     allSets.forEach(s => {
       if (s.tcg_set_id) map[s.tcg_set_id] = s
@@ -186,6 +231,15 @@ export default function CardSearch() {
     })
     return map
   }, [allSets])
+
+  const updateSearchParams = useCallback((updates, { replace = false, resetPage = true } = {}) => {
+    const next = updateCardSearchParams(location.search, updates, { resetPage })
+    const search = next.toString()
+    navigate(
+      { pathname: location.pathname, search: search ? `?${search}` : '' },
+      { replace },
+    )
+  }, [location.pathname, location.search, navigate])
 
   const queryParams = {
     name: filters.name || undefined,
@@ -195,10 +249,10 @@ export default function CardSearch() {
     rarity: filters.rarity || undefined,
     set_id: filters.set_id || undefined,
     artist: filters.artist || undefined,
-    hp_min: filters.hp_min ? parseInt(filters.hp_min) : undefined,
-    hp_max: filters.hp_max ? parseInt(filters.hp_max) : undefined,
+    hp_min: filters.hp_min ? parseInt(filters.hp_min, 10) : undefined,
+    hp_max: filters.hp_max ? parseInt(filters.hp_max, 10) : undefined,
     sort_by: filters.sort_by || undefined,
-    sort_order: filters.sort_order || 'asc',
+    sort_order: filters.sort_order,
     lang: langFilter,
     page,
     page_size: pageSize,
@@ -207,63 +261,86 @@ export default function CardSearch() {
   const hasQuery = filters.name || filters.category || filters.type || filters.subtype || filters.rarity || filters.set_id || filters.artist || filters.hp_min || filters.hp_max || filters.series
 
   const { data, isLoading, error, isFetching } = useQuery({
-    queryKey: ['card-search', queryParams, langFilter],
+    queryKey: ['card-search', queryParams],
     queryFn: () => searchCards(queryParams).then(r => r.data),
     enabled: !!hasQuery,
     placeholderData: (prev) => prev,
   })
 
+  const totalPages = data ? getLastCardSearchPage(data.total_count, pageSize) : 0
+  const hasUrlSearchState = Array.from(searchParams.keys()).length > 0
+  const hasActiveFilters = Boolean(
+    filters.category || filters.type || filters.subtype || filters.rarity ||
+    filters.set_id || filters.series || filters.artist || filters.hp_min ||
+    filters.hp_max || filters.sort_by
+  )
+  const activeFilterCount = [
+    filters.category, filters.type, filters.subtype, filters.rarity,
+    filters.set_id, filters.series, filters.artist, filters.hp_min,
+    filters.hp_max, filters.sort_by,
+  ].filter(Boolean).length
   const isCodeNumberSearch = CODE_NUMBER_RE.test(searchInput.trim())
 
   const handleSearch = (e) => {
     e.preventDefault()
-    setFilters(prev => ({ ...prev, name: searchInput }))
-    setPage(1)
+    updateSearchParams({ q: searchInput })
   }
 
   const setFilter = (key, value) => {
-    setFilters(prev => {
-      const next = { ...prev, [key]: value }
-      if (key === 'series') {
-        const setStillValid = !value || allSets.find(s => s.id === prev.set_id && s.series === value)
-        if (!setStillValid) next.set_id = ''
-      }
-      return next
-    })
-    setPage(1)
+    const updates = { [key]: value }
+    if (key === 'series') {
+      const setStillValid = !value || allSets.some((set) => set.id === filters.set_id && set.series === value)
+      if (!setStillValid) updates.set_id = ''
+    }
+    // Text fields update URL state without creating one history entry per keystroke.
+    updateSearchParams(updates, { replace: ['artist', 'hp_min', 'hp_max'].includes(key) })
   }
 
-  const toggleSortOrder = () => {
-    setFilters(prev => ({ ...prev, sort_order: prev.sort_order === 'asc' ? 'desc' : 'asc' }))
-    setPage(1)
+  const toggleSortOrder = () => updateSearchParams({ sort_order: filters.sort_order === 'asc' ? 'desc' : 'asc' })
+
+  const clearSearch = () => navigate({ pathname: location.pathname, search: '' })
+  const resetFilters = () => {
+    const next = resetCardSearchFilters(location.search)
+    const search = next.toString()
+    navigate({ pathname: location.pathname, search: search ? `?${search}` : '' })
   }
 
-  const clearFilters = () => {
-    setFilters({ name: '', category: '', type: '', subtype: '', rarity: '', set_id: '', series: '', artist: '', hp_min: '', hp_max: '', sort_by: '', sort_order: 'asc' })
-    setSearchInput('')
-    setLangFilter(defaultLangFilter)
-    setPage(1)
-  }
-
-  const hasActiveFilters = !!(filters.category || filters.type || filters.subtype || filters.rarity || filters.set_id || filters.series || filters.artist || filters.hp_min || filters.hp_max || filters.sort_by)
-  const activeFilterCount = [filters.category, filters.type, filters.subtype, filters.rarity, filters.set_id, filters.series, filters.artist, filters.hp_min, filters.hp_max, filters.sort_by].filter(Boolean).length
-  const totalPages = data ? Math.ceil(data.total_count / pageSize) : 0
   const hasOpenOverlay = Boolean(selectedCard || showFilters || showCustomModal || showScanner)
 
   useEffect(() => {
-    if (!visibleLanguages.isLoading && langFilter !== 'all' && !visibleLanguageCodes.includes(langFilter)) {
-      setLangFilter(defaultLangFilter)
-      setPage(1)
-    }
-  }, [defaultLangFilter, langFilter, visibleLanguageCodes, visibleLanguages.isLoading])
+    setSearchInput(filters.name)
+  }, [filters.name])
 
   useEffect(() => {
-    if (!settingsLoaded || visibleLanguages.isLoading) return
-    if (langFilter === 'all' && defaultLangFilter !== 'all' && !hasQuery) {
-      setLangFilter(defaultLangFilter)
-      setPage(1)
+    // Browser history can move away and back before React commits the
+    // intermediate location. Read the URL at the popstate boundary so the
+    // editable draft never remains attached to a different search entry.
+    const syncSearchInputFromHistory = () => {
+      setSearchInput(new URLSearchParams(window.location.search).get('q')?.trim() || '')
     }
-  }, [defaultLangFilter, hasQuery, langFilter, settingsLoaded, visibleLanguages.isLoading])
+    window.addEventListener('popstate', syncSearchInputFromHistory)
+    return () => window.removeEventListener('popstate', syncSearchInputFromHistory)
+  }, [])
+
+  useEffect(() => {
+    const rawPage = searchParams.get('page')
+    if (!rawPage || isValidCardSearchPage(rawPage)) return
+    updateSearchParams({ page: '' }, { replace: true, resetPage: false })
+  }, [searchParams, updateSearchParams])
+
+  useEffect(() => {
+    if (!data || isFetching || page <= totalPages) return
+    updateSearchParams(
+      { page: totalPages > 1 ? totalPages : '' },
+      { replace: true, resetPage: false },
+    )
+  }, [data, isFetching, page, totalPages, updateSearchParams])
+
+  useEffect(() => {
+    // Once set data is available, remove a set that does not belong to its URL series.
+    if (!allSets.length || !filters.series || !searchParams.get('set_id') || filters.set_id) return
+    updateSearchParams({ set_id: '' }, { replace: true, resetPage: false })
+  }, [allSets.length, filters.series, filters.set_id, searchParams, updateSearchParams])
 
   useEffect(() => {
     const handleKeyDown = (event) => {
@@ -277,18 +354,18 @@ export default function CardSearch() {
       }
 
       if (event.key === 'ArrowLeft' && page > 1) {
-        setPage((current) => Math.max(1, current - 1))
+        updateSearchParams({ page: Math.max(1, page - 1) }, { resetPage: false })
         event.preventDefault()
       }
       if (event.key === 'ArrowRight' && totalPages > 0 && page < totalPages) {
-        setPage((current) => Math.min(totalPages, current + 1))
+        updateSearchParams({ page: Math.min(totalPages, page + 1) }, { resetPage: false })
         event.preventDefault()
       }
     }
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [hasOpenOverlay, page, totalPages])
+  }, [hasOpenOverlay, page, totalPages, updateSearchParams])
 
   const handleCustomCreated = () => {
     queryClient.invalidateQueries({ queryKey: ['custom-cards'] })
@@ -448,7 +525,7 @@ export default function CardSearch() {
           allLabel={t('lang.all')}
           compact
           languages={visibleLanguages}
-          onChange={(value) => { setLangFilter(value); setPage(1) }}
+          onChange={(value) => updateSearchParams({ lang: value === defaultLangFilter ? '' : value })}
           className="select w-full sm:w-52 text-xs py-1.5"
         />
       </div>
@@ -499,8 +576,8 @@ export default function CardSearch() {
             )}
           </button>
 
-          {hasQuery && (
-            <button type="button" onClick={clearFilters} className="btn-ghost flex-shrink-0">
+          {hasUrlSearchState && (
+            <button type="button" onClick={clearSearch} className="btn-ghost flex-shrink-0">
               <X size={16} />
               <span className="hidden sm:inline">{t('common.clear')}</span>
             </button>
@@ -515,7 +592,7 @@ export default function CardSearch() {
 
           {hasActiveFilters && (
             <button
-              onClick={() => { clearFilters(); setShowFilters(false) }}
+              onClick={() => { resetFilters(); setShowFilters(false) }}
               className="btn-ghost w-full justify-center"
             >
               <X size={14} /> {t('common.clear')}
@@ -553,7 +630,7 @@ export default function CardSearch() {
         </div>
       )}
 
-      {error && (
+      {error && hasQuery && (
         <div className="card text-center py-8">
           <p className="text-brand-red">{t('cardSearch.searchFailed')}</p>
         </div>
@@ -572,7 +649,7 @@ export default function CardSearch() {
         </div>
       )}
 
-      {data && !isLoading && (
+      {data && !isLoading && hasQuery && (
         <>
           {selectMode && (
             <div className="card flex flex-wrap items-center gap-2 sticky top-2 z-20 bg-bg-elevated/95 backdrop-blur">
@@ -621,11 +698,11 @@ export default function CardSearch() {
             </p>
             {totalPages > 1 && (
               <div className="flex items-center gap-2">
-                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="btn-ghost py-1.5 px-2 disabled:opacity-50">
+                <button onClick={() => updateSearchParams({ page: Math.max(1, page - 1) }, { resetPage: false })} disabled={page <= 1} className="btn-ghost py-1.5 px-2 disabled:opacity-50">
                   <ChevronLeft size={16} />
                 </button>
                 <span className="text-sm text-text-secondary">{page} / {totalPages}</span>
-                <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="btn-ghost py-1.5 px-2 disabled:opacity-50">
+                <button onClick={() => updateSearchParams({ page: Math.min(totalPages, page + 1) }, { resetPage: false })} disabled={page >= totalPages} className="btn-ghost py-1.5 px-2 disabled:opacity-50">
                   <ChevronRight size={16} />
                 </button>
               </div>
@@ -718,9 +795,7 @@ export default function CardSearch() {
         isOpen={showScanner}
         onClose={() => setShowScanner(false)}
         onCardSelected={(card) => {
-          setSearchInput(card.name)
-          setFilters(prev => ({ ...prev, name: card.name }))
-          setPage(1)
+          updateSearchParams({ q: card.name })
           setShowScanner(false)
         }}
       />
