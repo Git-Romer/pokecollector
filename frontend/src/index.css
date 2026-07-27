@@ -17,6 +17,7 @@
   --color-chart-grid: rgba(255,255,255,.14); --color-chart-axis: #8d8da3; --color-chart-cost: #9ca3af;
   --color-gold: #f5c842;
   --color-positive: #66bb6a; --color-negative: #e3000b;
+  --color-nav-strip: rgba(6,8,15,.98); --color-binder-bg: rgba(10,14,26,.8);
   --color-green: #22c55e; --color-yellow: #eab308; --color-blue: #3b82f6;
   --safe-area-bottom: env(safe-area-inset-bottom, 0px); --safe-area-top: env(safe-area-inset-top, 0px); --bottom-nav-height: 4rem;
 }
@@ -31,6 +32,7 @@
   --color-chart-grid: rgba(20,30,50,.20); --color-chart-axis: #526077; --color-chart-cost: #667085;
   --color-gold: #8a5a00;
   --color-positive: #257a38; --color-negative: #b80009;
+  --color-nav-strip: rgba(244,246,249,.98); --color-binder-bg: #e5e9ef;
 }
 
 /* Ambient glows are tuned for the dark canvas and look like stains on paper. */
@@ -561,8 +563,8 @@ input:-webkit-autofill:focus {
 
 /* Binder grid — looks like a real Pokemon binder */
 .binder-grid {
-  background: rgba(10,14,26,0.8);
-  border: 1px solid var(--color-divider);
+  background: var(--color-binder-bg);
+  border: 1px solid var(--color-border);
   border-radius: 16px;
   padding: 12px;
 }
