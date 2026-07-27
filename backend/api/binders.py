@@ -17,6 +17,7 @@ from services.card_visibility import visible_card_filter, visible_set_filter
 from services.binder_csv import BINDER_CSV_DUPLICATE_QUANTITY_ERROR, combine_binder_required_quantity
 from services.wishlist_missing import plan_missing_wishlist_additions
 from services.tcgdex_languages import SUPPORTED_TCGDEX_LANGUAGES, is_supported_tcgdex_language, normalize_tcgdex_language
+from services.public_profile_feature import public_profiles_enabled
 import datetime
 import csv
 import io
@@ -97,6 +98,7 @@ def _binder_response(binder: Binder, card_count: int = 0, unique_card_count: int
         created_at=binder.created_at,
         card_count=card_count,
         unique_card_count=unique_card_count,
+        is_public=binder.is_public or False,
     )
 
 
@@ -502,6 +504,26 @@ def update_binder(
     if not binder:
         raise HTTPException(status_code=404, detail="Binder not found")
 
+    current_type = binder.binder_type or "collection"
+    requested_type = (
+        (update.binder_type or "collection")
+        if update.binder_type is not None
+        else current_type
+    )
+    type_changed = requested_type != current_type
+    if type_changed:
+        has_cards = db.query(BinderCard.id).filter(BinderCard.binder_id == binder_id).first() is not None
+        if has_cards:
+            raise HTTPException(status_code=400, detail="Binder type cannot be changed after cards are added")
+
+    if "is_public" in update.model_fields_set:
+        if not public_profiles_enabled(db):
+            raise HTTPException(status_code=403, detail="Public profiles are disabled by the administrator")
+        if update.is_public is None:
+            raise HTTPException(status_code=422, detail="Public sharing must be true or false")
+        if update.is_public and requested_type != "collection":
+            raise HTTPException(status_code=422, detail="Only collection binders can be shared publicly")
+
     if update.name is not None:
         binder.name = update.name
     if update.description is not None:
@@ -509,17 +531,16 @@ def update_binder(
     if update.color is not None:
         binder.color = update.color
     if update.binder_type is not None:
-        requested_type = update.binder_type or "collection"
-        current_type = binder.binder_type or "collection"
-        if requested_type != current_type:
-            has_cards = db.query(BinderCard.id).filter(BinderCard.binder_id == binder_id).first() is not None
-            if has_cards:
-                raise HTTPException(status_code=400, detail="Binder type cannot be changed after cards are added")
-        binder.binder_type = update.binder_type
+        binder.binder_type = requested_type
+        if type_changed:
+            # A type conversion always requires a fresh sharing decision.
+            binder.is_public = False
     if "format" in update.model_fields_set:
         binder.format = _clean_binder_format(update.format)
     if "icon_pokemon_id" in update.model_fields_set:
         binder.icon_pokemon_id = update.icon_pokemon_id
+    if "is_public" in update.model_fields_set:
+        binder.is_public = update.is_public
 
     db.commit()
     db.refresh(binder)

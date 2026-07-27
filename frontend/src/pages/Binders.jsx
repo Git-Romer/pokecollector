@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Trash2, Edit2, BookOpen, Star, Package, Check, X, Library, Heart } from 'lucide-react'
-import { getBinders, createBinder, updateBinder, deleteBinder, getWishlist } from '../api/client'
+import { Plus, Trash2, Edit2, BookOpen, Star, Package, Check, X, Library, Heart, Globe, Lock, Copy } from 'lucide-react'
+import { getBinders, createBinder, updateBinder, deleteBinder, getWishlist, getProfile } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import TabNav from '../components/TabNav'
 import AvatarPicker from '../components/AvatarPicker'
@@ -148,6 +148,15 @@ export default function Binders() {
     staleTime: 60000,
   })
 
+  const { data: profileData } = useQuery({
+    queryKey: ['profile'],
+    queryFn: () => getProfile(),
+    staleTime: 60000,
+  })
+  const profileIsPublic = !!profileData?.is_profile_public
+  const publicHandle = profileData?.public_handle
+  const publicProfilesEnabled = !!profileData?.feature_enabled
+
   const COLLECTION_TABS = [
     { to: '/collection', label: t('nav.collection'), icon: Library },
     { to: '/binders', label: t('nav.binders'), icon: BookOpen },
@@ -173,7 +182,7 @@ export default function Binders() {
       invalidateTcgdexFilterLanguages(queryClient)
       setEditingId(null)
     },
-    onError: () => toast.error(t('binders.updateFailed')),
+    onError: (error) => toast.error(error.response?.data?.detail || t('binders.updateFailed')),
   })
 
   const deleteMutation = useMutation({
@@ -184,6 +193,25 @@ export default function Binders() {
       invalidateTcgdexFilterLanguages(queryClient)
     },
   })
+
+  const publicToggleMutation = useMutation({
+    mutationFn: ({ id, is_public }) => updateBinder(id, { is_public }),
+    onSuccess: () => {
+      toast.success(t('binders.publicUpdated'))
+      queryClient.invalidateQueries({ queryKey: ['binders'] })
+    },
+    onError: (error) => toast.error(error.response?.data?.detail || t('binders.updateFailed')),
+  })
+
+  const copyPublicBinderLink = async (binderId) => {
+    const url = `${window.location.origin}/u/${publicHandle}/binder/${binderId}`
+    try {
+      await navigator.clipboard.writeText(url)
+      toast.success(t('settings.linkCopied'))
+    } catch {
+      toast.error(t('settings.linkCopyFailed'))
+    }
+  }
 
   return (
     <div className="space-y-4 pb-2">
@@ -270,6 +298,47 @@ export default function Binders() {
                         <p className="text-xs text-text-muted mt-0.5">
                           {uniqueCount} {uniqueCount === 1 ? t('binders.uniqueCard') : t('binders.uniqueCards')}
                         </p>
+                      )}
+                      {!isWishlist && publicProfilesEnabled && (
+                        <div className="mt-2 pt-2 border-t border-border/50" onClick={(e) => e.stopPropagation()}>
+                          {profileIsPublic ? (
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[11px] text-text-muted flex items-center gap-1">
+                                {binder.is_public ? <Globe size={12} className="text-green" /> : <Lock size={12} />}
+                                {t('binders.sharePublicly')}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => publicToggleMutation.mutate({ id: binder.id, is_public: !binder.is_public })}
+                                disabled={publicToggleMutation.isPending}
+                                aria-label={t('binders.sharePublicly')}
+                                aria-pressed={!!binder.is_public}
+                                className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${
+                                  binder.is_public ? 'bg-brand-red' : 'bg-bg-elevated border border-border'
+                                }`}
+                              >
+                                <span
+                                  className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                                    binder.is_public ? 'translate-x-4' : 'translate-x-0'
+                                  }`}
+                                />
+                              </button>
+                            </div>
+                          ) : (
+                            <p className="text-[10px] text-text-muted leading-snug">
+                              {t('binders.enablePublicProfileHint')}
+                            </p>
+                          )}
+                          {binder.is_public && profileIsPublic && publicHandle && (
+                            <button
+                              type="button"
+                              onClick={() => copyPublicBinderLink(binder.id)}
+                              className="mt-1 flex items-center gap-1 text-[10px] text-text-muted hover:text-text-primary transition-colors"
+                            >
+                              <Copy size={10} /> {t('binders.copyPublicLink')}
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
 
