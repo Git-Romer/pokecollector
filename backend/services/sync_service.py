@@ -2,9 +2,11 @@ import logging
 import datetime
 import math
 from contextlib import contextmanager
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 from sqlalchemy.orm import Session, load_only
 from sqlalchemy import func, or_, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from models import Card, Set, CollectionItem, WishlistItem, BinderCard, PriceHistory, SyncLog, PortfolioSnapshot, CustomCardMatch, ProductPurchase, User, UserSetting
 from services import pokemon_api, telegram
 from services.card_fallbacks import apply_cross_language_fallbacks, build_missing_language_cards_for_set
@@ -25,6 +27,8 @@ PRICE_SYNC_COLLECTION_FRACTION = 0.75
 MISSING_PRICE_SYNC_RATIO = 0.7
 NO_PRICE_RETRY_COOLDOWN = datetime.timedelta(hours=24)
 PRICE_SYNC_DB_CHUNK_SIZE = 400  # Stay below SQLite's common 999-parameter limit.
+PRICE_HISTORY_UPSERT_CHUNK_SIZE = 100  # Seven bound values per row; safe for older SQLite builds.
+PRICE_HISTORY_ADVISORY_LOCK_ID = 0x506F6B6550726963  # "PokePric" as a signed 64-bit int.
 COMPLETE_SET_CARD_REFRESH_LIMIT = 25
 
 
@@ -506,25 +510,58 @@ def _sets_for_card_catalogue_sync(db: Session) -> list[Set]:
     return db.query(Set).filter(sync_set_filter(db)).order_by(Set.updated_at.asc(), Set.id.asc()).all()
 
 
-def record_price_history(db: Session, card: Card):
-    """Record today's price for a card."""
-    today = datetime.date.today()
-    existing = db.query(PriceHistory).filter(
-        PriceHistory.card_id == card.id,
-        PriceHistory.date == today
-    ).first()
+def record_price_history_batch(
+    db: Session,
+    cards: Iterable[Card],
+    *,
+    recorded_on: datetime.date | None = None,
+) -> int:
+    """Upsert one daily price-history row per card near the sync commit.
 
-    if not existing:
-        history = PriceHistory(
-            card_id=card.id,
-            date=today,
-            price_low=card.price_low,
-            price_mid=card.price_mid,
-            price_high=card.price_high,
-            price_market=card.price_market,
-            price_trend=card.price_trend,
+    Full and price syncs may overlap. Buffering their history rows until all
+    network work is complete avoids holding database locks throughout the
+    long-running sync. PostgreSQL serializes only this short final write phase;
+    sorted batches provide a deterministic lock order on every database, while
+    ON CONFLICT handles rows committed by an earlier sync.
+    """
+    cards_by_id = {
+        card.id: card
+        for card in cards
+        if card is not None and card.id
+    }
+    if not cards_by_id:
+        return 0
+
+    recorded_on = recorded_on or datetime.date.today()
+    rows = [
+        {
+            "card_id": card_id,
+            "date": recorded_on,
+            "price_low": card.price_low,
+            "price_mid": card.price_mid,
+            "price_high": card.price_high,
+            "price_market": card.price_market,
+            "price_trend": card.price_trend,
+        }
+        for card_id, card in sorted(cards_by_id.items())
+    ]
+
+    if _db_dialect_name(db) == "postgresql":
+        db.execute(
+            text("SELECT pg_advisory_xact_lock(:lock_id)"),
+            {"lock_id": PRICE_HISTORY_ADVISORY_LOCK_ID},
         )
-        db.add(history)
+
+    # Keep card inserts/updates ahead of their history rows for FK safety. The
+    # application session disables autoflush, so make that ordering explicit.
+    db.flush()
+    insert_fn = pg_insert if _db_dialect_name(db) == "postgresql" else sqlite_insert
+    for row_chunk in _chunks(rows, PRICE_HISTORY_UPSERT_CHUNK_SIZE):
+        stmt = insert_fn(PriceHistory).values(row_chunk).on_conflict_do_nothing(
+            index_elements=["card_id", "date"]
+        )
+        db.execute(stmt)
+    return len(rows)
 
 
 def check_wishlist_alerts(db: Session, updated_card_ids: list):
@@ -749,6 +786,7 @@ def _perform_full_sync_locked(db: Session) -> dict:
     cards_updated = 0
     sets_updated = 0
     updated_card_ids = []
+    price_history_cards = []
 
     try:
         # 1. Sync all sets first
@@ -928,7 +966,7 @@ def _perform_full_sync_locked(db: Session) -> dict:
                         )
                         parsed["set_id"] = None
                 card = upsert_card(db, parsed)
-                record_price_history(db, card)
+                price_history_cards.append(card)
                 logger.debug(
                     "Full sync price card saved: requested_card_id=%s saved_card_id=%s saved_prices=%s saved_price_source_lang=%s",
                     card_id,
@@ -941,6 +979,7 @@ def _perform_full_sync_locked(db: Session) -> dict:
             except Exception as e:
                 logger.warning(f"Failed to sync card {card_id}: {e}")
 
+        record_price_history_batch(db, price_history_cards)
         db.commit()
 
         # 3. Check wishlist alerts
@@ -988,6 +1027,7 @@ def perform_price_sync(db: Session, *, force: bool = False) -> dict:
 
     cards_updated = 0
     updated_card_ids = []
+    price_history_cards = []
 
     try:
         price_plan = _price_sync_plan(db, force=force)
@@ -1060,7 +1100,7 @@ def perform_price_sync(db: Session, *, force: bool = False) -> dict:
                         )
                         parsed["set_id"] = None
                 card = upsert_card(db, parsed)
-                record_price_history(db, card)
+                price_history_cards.append(card)
                 logger.debug(
                     "Price sync card saved: requested_card_id=%s saved_card_id=%s saved_prices=%s saved_price_source_lang=%s",
                     card_id,
@@ -1073,6 +1113,7 @@ def perform_price_sync(db: Session, *, force: bool = False) -> dict:
             except Exception as e:
                 logger.warning(f"Failed to sync card {card_id}: {e}")
 
+        record_price_history_batch(db, price_history_cards)
         db.commit()
 
         # Check wishlist alerts
@@ -1093,6 +1134,7 @@ def perform_price_sync(db: Session, *, force: bool = False) -> dict:
 
     except Exception as e:
         logger.error(f"Price sync failed: {e}")
+        db.rollback()
         log.finished_at = datetime.datetime.utcnow()
         log.status = "error"
         log.error_message = str(e)

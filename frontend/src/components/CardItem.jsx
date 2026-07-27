@@ -1,5 +1,6 @@
 import { useState, useEffect, useId, memo } from 'react'
 import { createPortal } from 'react-dom'
+import { useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { Plus, Heart, BookOpen, X, PenLine, Pencil, Trash2, ExternalLink } from 'lucide-react'
@@ -18,7 +19,7 @@ import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/q
 import { parseMoneyInputValue } from '../utils/moneyInput'
 import { cardmarketLinks } from '../utils/cardmarket'
 import CardStateIndicators from './CardStateIndicators'
-import { getCardRarityEffectClass } from '../utils/cardRarity'
+import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
 
 function askWishlistQuantity(t, defaultQuantity = 1) {
   const initialQuantity = Math.max(1, Math.min(99, parseInt(defaultQuantity, 10) || 1))
@@ -426,13 +427,13 @@ export const CardItem = memo(function CardItem({ card, showActions = true, onAdd
       ?? card.price_trend)
 
   const rarityColor = RARITY_COLORS[cardRarity] || 'text-text-secondary'
-  const rarityEffectClass = getCardRarityEffectClass(cardRarity, card.lang || card.set_ref?.lang)
+  const variantEffectClass = getCardVariantEffectClass(card)
   const { ref: tiltRef, onMouseMove: tiltMove, onMouseLeave: tiltLeave } = useTilt(10)
 
   if (compact) {
     return (
       <div ref={tiltRef} className="card cursor-pointer group p-2 hover:border-brand-red/20 transition-all" onClick={() => setShowModal(true)} onMouseMove={tiltMove} onMouseLeave={tiltLeave}>
-        <div className={clsx('relative aspect-[2.5/3.5] w-full rounded-xl overflow-hidden ring-1 ring-white/5 group-hover:ring-2 group-hover:ring-brand-red/30 transition-all duration-200', rarityEffectClass)}>
+        <div className={clsx('relative aspect-[2.5/3.5] w-full rounded-xl overflow-hidden ring-1 ring-white/5 group-hover:ring-2 group-hover:ring-brand-red/30 transition-all duration-200', variantEffectClass)}>
           <CardStateIndicators card={card} compact className="absolute left-1.5 right-1.5 top-1.5 z-10" />
           {cardImage ? (
             <img src={cardImage} alt={cardName} className="w-full h-full object-cover shadow-lg group-hover:scale-[1.02] transition-transform duration-300" loading="lazy" />
@@ -449,7 +450,7 @@ export const CardItem = memo(function CardItem({ card, showActions = true, onAdd
   return (
     <>
       <div ref={tiltRef} className="card cursor-pointer group hover:border-brand-red/20 transition-all" onClick={() => setShowModal(true)} onMouseMove={tiltMove} onMouseLeave={tiltLeave}>
-        <div className={clsx('relative aspect-[2.5/3.5] w-full mb-3 rounded-xl overflow-hidden ring-1 ring-white/5 group-hover:ring-2 group-hover:ring-brand-red/30 transition-all duration-200', rarityEffectClass)}>
+        <div className={clsx('relative aspect-[2.5/3.5] w-full mb-3 rounded-xl overflow-hidden ring-1 ring-white/5 group-hover:ring-2 group-hover:ring-brand-red/30 transition-all duration-200', variantEffectClass)}>
           <CardStateIndicators card={card} className="absolute left-2 right-2 top-2 z-10" />
           {cardImage ? (
             <img src={cardImage} alt={cardName} className="w-full h-full object-cover shadow-lg group-hover:scale-[1.02] transition-transform duration-300" loading="lazy" />
@@ -562,8 +563,16 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
   const [savedCustomImageUrl, setSavedCustomImageUrl] = useState(card.custom_image_url || '')
   const [customImageVersion, setCustomImageVersion] = useState(0)
   const customImageInputId = useId()
-  const { t, formatPrice, formatUsdPrice, pricePrimary, pricePrimaryField, exchangeRate, exchangeRateReady } = useSettings()
+  const { t, settings, formatPrice, formatUsdPrice, pricePrimary, pricePrimaryField, exchangeRate, exchangeRateReady } = useSettings()
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
+
+  const { data: modalSets = [] } = useQuery({
+    queryKey: ['sets', settings.language || 'en'],
+    queryFn: () => getSets().then(r => r.data),
+    enabled: Boolean(card.set_ref?.id || card.set?.id || card.set_id),
+    staleTime: 5 * 60 * 1000,
+  })
 
   // Price history chart
   const cardIdForHistory = card?.card_id || (typeof card?.id === 'string' ? card.id : null)
@@ -597,6 +606,28 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
     || resolveCardImageUrl(card, 'large')
     || resolveCardImageUrl(card)
   const setName = card.set?.name || card.set_ref?.name
+  const setCandidates = [
+    card.set_ref?.id,
+    card.set_ref?.tcg_set_id,
+    card.set?.id,
+    card.set?.tcg_set_id,
+    card.set_id,
+  ].filter(Boolean)
+  const setLanguage = card.set_ref?.lang || card.set?.lang || card.lang || defaultLang
+  const setDetailId = card.set_ref?.id
+    || modalSets.find(set => setCandidates.includes(set.id) && (!setLanguage || set.lang === setLanguage))?.id
+    || modalSets.find(set => setCandidates.includes(set.tcg_set_id) && (!setLanguage || set.lang === setLanguage))?.id
+    || modalSets.find(set => setCandidates.includes(set.id) || setCandidates.includes(set.tcg_set_id))?.id
+    || null
+  const dexIds = [...new Set(
+    (Array.isArray(card.dex_ids) ? card.dex_ids : card.dex_id != null ? [card.dex_id] : [])
+      .map(Number)
+      .filter(dexId => Number.isInteger(dexId) && dexId > 0)
+  )]
+  const navigateFromModal = (target) => {
+    onClose()
+    navigate(target)
+  }
   const modalOwnedItems = ownedItems || card.owned_items || []
   const ownedQuantity = card.owned_quantity ?? modalOwnedItems.reduce((sum, item) => sum + (item.quantity || 0), 0)
   const availableVariants = getAvailableVariants(card)
@@ -709,9 +740,9 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
         <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 p-4 sm:p-6">
           <div className="flex-shrink-0">
             <div className="flex sm:block items-start gap-4">
-              <div className="w-28 sm:w-48 flex-shrink-0">
+              <div className={`w-28 sm:w-48 flex-shrink-0 rounded-xl overflow-hidden ${getCardVariantEffectClass(variant)}`}>
                 {cardImage ? (
-                  <img src={cardImage} alt={card.name} className="w-full rounded-xl shadow-2xl" />
+                  <img src={cardImage} alt={card.name} className="w-full shadow-2xl" />
                 ) : (
                   <div className="w-full aspect-[2.5/3.5] bg-bg-card rounded-xl flex items-center justify-center text-text-muted text-sm">
                     {t('common.noImage')}
@@ -723,9 +754,20 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <h2 className="text-base font-bold text-text-primary break-words">{card.name}</h2>
-                    {setName && <p className="text-xs text-text-secondary mt-0.5">
-                      {setName}{card.number ? ` · #${card.number}` : ''}
-                    </p>}
+                    {setName && (
+                      <p className="text-xs text-text-secondary mt-0.5">
+                        {setDetailId ? (
+                          <button
+                            type="button"
+                            onClick={() => navigateFromModal(`/sets/${setDetailId}`)}
+                            className="font-medium hover:text-brand-red hover:underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/50 rounded"
+                          >
+                            {setName}
+                          </button>
+                        ) : setName}
+                        {card.number ? ` · #${card.number}` : ''}
+                      </p>
+                    )}
                     <FallbackBadges card={card} className="mt-1" />
                     {card.rarity && (
                       <p className={`text-xs mt-0.5 ${(RARITY_COLORS[card.rarity] || 'text-text-secondary')}`}>
@@ -745,9 +787,20 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
             <div className="hidden sm:flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <h2 className="text-xl font-bold text-text-primary break-words">{card.name}</h2>
-                {setName && <p className="text-sm text-text-secondary">
-                  {setName}{card.number ? ` · #${card.number}` : ''}
-                </p>}
+                {setName && (
+                  <p className="text-sm text-text-secondary">
+                    {setDetailId ? (
+                      <button
+                        type="button"
+                        onClick={() => navigateFromModal(`/sets/${setDetailId}`)}
+                        className="font-medium hover:text-brand-red hover:underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/50 rounded"
+                      >
+                        {setName}
+                      </button>
+                    ) : setName}
+                    {card.number ? ` · #${card.number}` : ''}
+                  </p>
+                )}
                 <FallbackBadges card={card} className="mt-1" />
               </div>
               <button onClick={onClose} className="text-text-muted hover:text-text-primary transition-colors flex-shrink-0">
@@ -779,7 +832,30 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
               {card.artist && (
                 <div>
                   <span className="text-text-muted text-xs">{t('card.artist')}</span>
-                  <p className="text-text-primary font-medium text-sm truncate">{card.artist}</p>
+                  <button
+                    type="button"
+                    onClick={() => navigateFromModal(`/search?${new URLSearchParams({ artist: card.artist }).toString()}`)}
+                    className="block max-w-full truncate text-left text-text-primary font-medium text-sm hover:text-brand-red hover:underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/50 rounded"
+                  >
+                    {card.artist}
+                  </button>
+                </div>
+              )}
+              {dexIds.length > 0 && (
+                <div>
+                  <span className="text-text-muted text-xs">{t('nav.pokedex')}</span>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {dexIds.map(dexId => (
+                      <button
+                        key={dexId}
+                        type="button"
+                        onClick={() => navigateFromModal(`/pokedex/${dexId}`)}
+                        className="rounded-full border border-border bg-bg-card px-2 py-1 text-xs font-semibold text-text-primary hover:border-brand-red/50 hover:text-brand-red focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/50"
+                      >
+                        #{String(dexId).padStart(3, '0')}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
