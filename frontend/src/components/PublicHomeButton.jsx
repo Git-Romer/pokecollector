@@ -8,9 +8,10 @@ export default function PublicHomeButton() {
     <Link
       to="/u"
       aria-label={t('publicProfiles.directory')}
-      className="z-50 flex h-12 w-12 items-center justify-center rounded-full transition-transform duration-200 hover:scale-110 active:scale-90"
+      className="flex h-12 w-12 items-center justify-center rounded-full transition-transform duration-200 hover:scale-110 active:scale-90"
       style={{
         position: 'fixed',
+        zIndex: 100,
         bottom: 'max(1.5rem, env(safe-area-inset-bottom))',
         left: 'max(1rem, env(safe-area-inset-left))',
         background: 'linear-gradient(180deg, #e3000b 50%, #f5f5f5 50%)',
