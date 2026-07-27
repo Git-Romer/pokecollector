@@ -39,6 +39,8 @@ services:
       dockerfile: backend/Dockerfile
     container_name: jjpc-backend
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     environment:
       DATABASE_URL: postgresql://pokemon:${POSTGRES_PASSWORD:-changeme}@postgres:5432/pokemon_tcg
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
@@ -57,9 +59,24 @@ services:
         condition: service_healthy
     volumes:
       - ./backups:/app/backups
-      - O:\:/mnt/odrive
+      - O:\:/mnt/odrive:ro
     ports:
       - "8000:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/docs', timeout=5)"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
 
   frontend:
     build:
