@@ -170,11 +170,28 @@ export default function Pokedex() {
           />
         </label>
 
-        <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+        <label className="block sm:hidden">
+          <span className="sr-only">{t('pokedex.generationFilter')}</span>
+          <select
+            value={generation ?? ''}
+            onChange={(event) => selectGeneration(event.target.value ? Number(event.target.value) : null)}
+            className="select w-full"
+            aria-label={t('pokedex.generationFilter')}
+          >
+            <option value="">{t('pokedex.national')}</option>
+            {GENERATIONS.map((item) => (
+              <option key={item.id} value={item.id}>
+                Gen {item.id} · {item.region} · {item.range}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div className="-mx-1 hidden gap-2 overflow-x-auto px-1 pb-1 sm:flex">
           <button
             type="button"
             onClick={() => selectGeneration(null)}
-            className={clsx('whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-bold', !generation ? 'border-brand-red bg-brand-red/20 text-brand-red' : 'border-border text-text-secondary')}
+            className={clsx('shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-bold', !generation ? 'border-brand-red bg-brand-red/20 text-brand-red' : 'border-border text-text-secondary')}
           >
             {t('pokedex.national')}
           </button>
@@ -183,7 +200,7 @@ export default function Pokedex() {
               type="button"
               key={item.id}
               onClick={() => selectGeneration(item.id)}
-              className={clsx('whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-bold', generation === item.id ? 'border-brand-red bg-brand-red/20 text-brand-red' : 'border-border text-text-secondary')}
+              className={clsx('shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-bold', generation === item.id ? 'border-brand-red bg-brand-red/20 text-brand-red' : 'border-border text-text-secondary')}
             >
               Gen {item.id} · {item.region}
             </button>

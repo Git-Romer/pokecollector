@@ -26,6 +26,7 @@ const de = {
     subtitle: 'Eine beliebige passende Karte vervollständigt das Pokémon.',
     searchPlaceholder: 'Name oder Pokédex-Nummer',
     national: 'National',
+    generationFilter: 'Pokédex-Region',
     generation: 'Gen {generation}',
     all: 'Alle',
     owned: 'Vorhanden',
