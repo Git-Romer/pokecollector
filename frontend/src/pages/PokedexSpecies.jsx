@@ -9,7 +9,7 @@ import CardItem from '../components/CardItem'
 import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { getEffectiveCardPrice } from '../utils/prices'
-import { useDetailBackNavigation, useScrollToTopOnPush } from '../hooks/useListScrollRestoration'
+import { getNextDetailNavigationState, useDetailBackNavigation, useScrollToTopOnPush } from '../hooks/useListScrollRestoration'
 
 function SpeciesArtwork({ species, name }) {
   const handleError = (event) => {
@@ -116,12 +116,7 @@ export default function PokedexSpecies() {
   const secondaryName = language === 'de' ? species.name_en : species.name_de
   const generationQuery = searchParams.get('generation')
   const suffix = generationQuery ? `?generation=${generationQuery}` : ''
-  const detailNavigationState = location.state?.fromList === 'pokedex'
-    ? {
-        ...location.state,
-        detailHistoryDepth: (Number(location.state.detailHistoryDepth) || 0) + 1,
-      }
-    : undefined
+  const detailNavigationState = getNextDetailNavigationState(location.state, 'pokedex')
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 px-4 pb-28 pt-2 sm:px-6 lg:px-8">

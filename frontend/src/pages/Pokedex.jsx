@@ -112,8 +112,13 @@ export default function Pokedex() {
   const savedListState = isSavedPositionForLocation(savedPosition, location)
     ? savedPosition.listState
     : null
-  const [status, setStatus] = useState(savedListState?.status || 'all')
-  const [search, setSearch] = useState(savedListState?.search || '')
+  const [status, setStatus] = useState(
+    ['all', 'owned', 'missing'].includes(savedListState?.status) ? savedListState.status : 'all'
+  )
+  const [search, setSearch] = useState(
+    typeof savedListState?.search === 'string' ? savedListState.search : ''
+  )
+  const listState = useMemo(() => ({ status, search }), [search, status])
   const language = settings.language === 'de' ? 'de' : 'en'
 
   const { data, isLoading, isError } = useQuery({
@@ -131,6 +136,7 @@ export default function Pokedex() {
   const { saveScrollPosition, createDetailNavigationState } = useListScrollRestoration({
     key: 'pokedex',
     isReady: !isLoading && !isError && entries.length > 0,
+    listState,
   })
   const grouped = useMemo(() => {
     if (generation || search.trim()) return [{ generation, entries }]
@@ -243,7 +249,7 @@ export default function Pokedex() {
                   t={t}
                   onClick={() => {
                     const anchorId = `pokemon-${entry.dex_id}`
-                    saveScrollPosition(anchorId, { status, search })
+                    saveScrollPosition(anchorId, listState)
                     navigate(`/pokedex/${entry.dex_id}${generation ? `?generation=${generation}` : ''}`, {
                       state: createDetailNavigationState(anchorId),
                     })

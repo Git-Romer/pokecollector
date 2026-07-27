@@ -21,11 +21,26 @@ export const isSavedPositionForLocation = (saved, location) => (
   && saved.search === location.search
 )
 
-const clearSavedPosition = (key) => {
+export const saveListScrollPosition = (key, position) => {
   try {
-    sessionStorage.removeItem(storageKey(key))
+    sessionStorage.setItem(storageKey(key), JSON.stringify(position))
   } catch {
     // Storage may be unavailable in private browsing contexts.
+  }
+}
+
+export const getDetailBackDelta = (state, listKey) => {
+  if (state?.fromList !== listKey) return null
+  const depth = Number(state.detailHistoryDepth)
+  return -(Number.isInteger(depth) && depth >= 0 ? depth + 1 : 1)
+}
+
+export const getNextDetailNavigationState = (state, listKey) => {
+  if (state?.fromList !== listKey) return undefined
+  const depth = Number(state.detailHistoryDepth)
+  return {
+    ...state,
+    detailHistoryDepth: (Number.isInteger(depth) && depth >= 0 ? depth : 0) + 1,
   }
 }
 
@@ -34,10 +49,17 @@ const clearSavedPosition = (key) => {
  * uses BrowserRouter. We also need to delay restoration until async list items
  * render and provide an item-anchor fallback when the layout has changed.
  */
-export function useListScrollRestoration({ key, isReady }) {
+export function useListScrollRestoration({ key, isReady, listState = null }) {
   const location = useLocation()
   const navigationType = useNavigationType()
   const restoredLocationKey = useRef(null)
+
+  useEffect(() => {
+    if (listState === null) return
+    const saved = readSavedPosition(key)
+    if (!isSavedPositionForLocation(saved, location)) return
+    saveListScrollPosition(key, { ...saved, listState })
+  }, [key, listState, location])
 
   const saveScrollPosition = useCallback((anchorId, listState) => {
     const position = {
@@ -48,11 +70,7 @@ export function useListScrollRestoration({ key, isReady }) {
       locationKey: location.key,
       listState,
     }
-    try {
-      sessionStorage.setItem(storageKey(key), JSON.stringify(position))
-    } catch {
-      // Navigating still works if session storage is unavailable.
-    }
+    saveListScrollPosition(key, position)
   }, [key, location.key, location.pathname, location.search])
 
   const createDetailNavigationState = useCallback((anchorId) => ({
@@ -78,7 +96,6 @@ export function useListScrollRestoration({ key, isReady }) {
         document.getElementById(saved.anchorId)?.scrollIntoView({ block: 'center', behavior: 'auto' })
       }
       restoredLocationKey.current = location.key
-      clearSavedPosition(key)
     }
 
     frame = requestAnimationFrame(() => {
@@ -98,9 +115,9 @@ export function useDetailBackNavigation(listKey, fallbackPath) {
   const navigate = useNavigate()
 
   const goBack = useCallback(() => {
-    if (location.state?.fromList === listKey) {
-      const detailHistoryDepth = Number(location.state.detailHistoryDepth)
-      navigate(-(Number.isInteger(detailHistoryDepth) && detailHistoryDepth >= 0 ? detailHistoryDepth + 1 : 1))
+    const delta = getDetailBackDelta(location.state, listKey)
+    if (delta !== null) {
+      navigate(delta)
       return
     }
     navigate(fallbackPath)
