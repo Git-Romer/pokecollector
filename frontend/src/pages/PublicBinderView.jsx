@@ -8,7 +8,7 @@ import { groupCardsByPrint } from '../utils/groupCardsByPrint'
 import { useSettings } from '../contexts/SettingsContext'
 import CardStateIndicators, { CardStateLegend } from '../components/CardStateIndicators'
 import PublicHomeButton from '../components/PublicHomeButton'
-import { getCardRarityEffectClass } from '../utils/cardRarity'
+import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
 
 export default function PublicBinderView() {
   const { handle, binderId } = useParams()
@@ -96,7 +96,7 @@ export default function PublicBinderView() {
                 })}
                 <div className={clsx(
                   'relative z-10 aspect-[5/7] overflow-hidden rounded bg-bg-secondary',
-                  getCardRarityEffectClass(tile.rarity, tile.lang)
+                  getCardVariantEffectClass(tile.prints)
                 )}>
                   {tile.image
                     ? <img src={tile.image} alt={tile.name} className="w-full h-full object-cover" loading="lazy" />

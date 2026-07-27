@@ -23,7 +23,7 @@ import { tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLa
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import { formatMoneyInputValue, parseMoneyInputValue } from '../utils/moneyInput'
-import { getCardRarityEffectClass } from '../utils/cardRarity'
+import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
 
 function TiltBinderCard({ className, onClick, children }) {
   const { ref, onMouseMove, onMouseEnter, onMouseLeave } = useTilt(10)
@@ -478,7 +478,9 @@ function CollectionEditModal({ item, onClose }) {
   const renderCardHeader = () => (
     <div className="flex items-start gap-4 mb-5">
       {cardImage && (
-        <img src={cardImage} alt={card?.name} className="w-20 rounded-xl shadow-lg flex-shrink-0" />
+        <div className={`w-20 rounded-xl overflow-hidden shadow-lg flex-shrink-0 ${getCardVariantEffectClass(variant)}`}>
+          <img src={cardImage} alt={card?.name} className="w-full" />
+        </div>
       )}
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
@@ -1229,16 +1231,14 @@ export default function Collection() {
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
                 {filtered.map(item => {
                   const card = item.card
-                  const rarityClass = getCardRarityEffectClass(card?.rarity, card?.lang || card?.set_ref?.lang)
-
                   return (
                     <TiltBinderCard
                       key={item.id}
-                      className={`binder-card ${rarityClass} cursor-pointer`}
+                      className="binder-card cursor-pointer"
                       onClick={() => setEditingCollectionItem(item)}
                     >
                       <div
-                        className="aspect-[2.5/3.5] relative rounded-xl overflow-hidden flex-shrink-0"
+                        className={`aspect-[2.5/3.5] relative rounded-xl overflow-hidden flex-shrink-0 ${getCardVariantEffectClass(item.variant)}`}
                       >
                         <CardImage src={resolveCardImageUrl(card)} alt={card?.name} className="w-full h-full object-cover" />
                         <ProductSourceBadge item={item} t={t} compact className="absolute right-1 top-1 z-10 h-6 w-6" />
@@ -1339,7 +1339,7 @@ export default function Collection() {
                         >
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-3">
-                              <div className="w-8 h-10 flex-shrink-0 rounded overflow-hidden">
+                              <div className={`w-8 h-10 flex-shrink-0 rounded overflow-hidden ${getCardVariantEffectClass(item.variant)}`}>
                                 <CardImage src={resolveCardImageUrl(card)} alt={card?.name} className="w-full h-full object-cover" />
                               </div>
                               <div className="min-w-0">
@@ -1444,6 +1444,7 @@ export default function Collection() {
                       value={marketPrice > 0 ? formatPrice(marketPrice) : '-'}
                       valueSecondary={pnl !== null ? `${pnl >= 0 ? '+' : ''}${formatPrice(pnl)}` : undefined}
                       onClick={() => setEditingCollectionItem(item)}
+                      variantEffectSource={item.variant}
                     />
                   )
                 })}

@@ -16,7 +16,7 @@ import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import MoneyInput from '../components/MoneyInput'
 import { parseMoneyInputValue } from '../utils/moneyInput'
-import { getCardRarityEffectClass } from '../utils/cardRarity'
+import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
 
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
 
@@ -571,7 +571,7 @@ export default function SetDetail() {
             tabIndex={0}
             className={clsx(
               'relative group rounded-lg overflow-hidden transition-all duration-200',
-              getCardRarityEffectClass(card.rarity, card.lang || setLang),
+              getCardVariantEffectClass(card),
               card.owned
                 ? 'ring-2 ring-green/50 hover:ring-green cursor-pointer'
                 : 'opacity-60 hover:opacity-90 ring-1 ring-brand-red/30 hover:ring-brand-red/60 cursor-pointer'
@@ -600,7 +600,7 @@ export default function SetDetail() {
             </div>
 
 
-            <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-center text-xs text-text-secondary py-0.5">
+            <div className="absolute bottom-0 left-0 right-0 z-10 bg-black/60 text-center text-xs text-text-secondary py-0.5">
               #{card.number}
             </div>
           </div>

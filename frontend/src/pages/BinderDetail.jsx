@@ -12,7 +12,7 @@ import { normalizeSearchText, textIncludes } from '../utils/textSearch'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import CardStateIndicators, { CardStateLegend } from '../components/CardStateIndicators'
-import { getCardRarityEffectClass } from '../utils/cardRarity'
+import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
 import { BINDER_SORT_OPTIONS, sortBinderCards } from '../utils/binderCards'
 
 const SPRITE_BASE_URL = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated'
@@ -631,7 +631,7 @@ export default function BinderDetail() {
                     const unavailable = unavailableCollectionItemIds.has(item.id)
                     return (
                       <div key={`${card.id}-${item.id}`}
-                        className={`relative rounded-lg overflow-hidden cursor-pointer group ${alreadyAdded || unavailable ? 'opacity-40' : ''}`}
+                        className={`relative rounded-lg overflow-hidden cursor-pointer group ${getCardVariantEffectClass(item.variant)} ${alreadyAdded || unavailable ? 'opacity-40' : ''}`}
                         onClick={() => !alreadyAdded && !unavailable && addCollectionItemMutation.mutate(item.id)}
                         title={`${card.name}${item.variant ? ` (${item.variant})` : ''} · ${item.quantity}x`}>
                         {resolveCardImageUrl(card) ? (
@@ -641,19 +641,19 @@ export default function BinderDetail() {
                             {card.name}
                           </div>
                         )}
-                        <div className="absolute top-0.5 left-0.5 bg-bg/80 text-text-primary text-xs rounded px-1">{item.quantity}x</div>
+                        <div className="absolute top-0.5 left-0.5 z-10 bg-bg/80 text-text-primary text-xs rounded px-1">{item.quantity}x</div>
                         {(item.variant || item.condition) && (
-                          <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-[9px] text-center truncate px-1">
+                          <div className="absolute bottom-0 left-0 right-0 z-10 bg-black/70 text-white text-[9px] text-center truncate px-1">
                             {[item.variant || 'Normal', item.condition].filter(Boolean).join(' · ')}
                           </div>
                         )}
                         {unavailable && !alreadyAdded && (
-                          <div className="absolute inset-0 bg-black/65 flex items-center justify-center text-white text-[10px] text-center px-1">
+                          <div className="absolute inset-0 z-10 bg-black/65 flex items-center justify-center text-white text-[10px] text-center px-1">
                             {t('binderTypes.alreadyUsed')}
                           </div>
                         )}
                         {!alreadyAdded && !unavailable && (
-                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
+                          <div className="absolute inset-0 z-10 bg-black/0 group-hover:bg-black/50 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
                             <Plus size={20} className="text-white" />
                           </div>
                         )}
@@ -761,7 +761,7 @@ export default function BinderDetail() {
 
             return (
               <TiltBinderCard key={card.binder_card_id || card.id} className="relative group rounded-xl overflow-hidden card p-0 cursor-pointer" onClick={() => setSelectedCard(card)}>
-                <div className={`relative w-full aspect-[2.5/3.5] overflow-hidden ${getCardRarityEffectClass(card.rarity, card.lang)}`}>
+                <div className={`relative w-full aspect-[2.5/3.5] overflow-hidden ${getCardVariantEffectClass(card.variant)}`}>
                   {resolveCardImageUrl(card) ? (
                     <img src={resolveCardImageUrl(card)} alt={card.name}
                       className={`w-full h-full object-cover transition-all ${isMissing ? 'grayscale opacity-60' : ''}`}
