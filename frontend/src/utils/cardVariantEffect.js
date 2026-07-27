@@ -8,7 +8,7 @@ const EFFECT_CLASS = {
 
 // Grouped tiles can represent several prints but must never stack animations.
 // Pick one stable representative effect while badges retain the full breakdown.
-const EFFECT_PRIORITY = ['reverse', 'special', 'holo', 'firstEdition', 'generic']
+const EFFECT_PRIORITY = ['firstEdition', 'special', 'reverse', 'holo', 'generic']
 
 const normalizeVariant = (variant) => String(variant || '')
   .normalize('NFD')
@@ -24,6 +24,7 @@ const getVariantName = (value) => (
 const getVariantEffect = (variant) => {
   const normalized = normalizeVariant(variant)
   if (!normalized || normalized === 'normal') return null
+  if (normalized.includes('first edition') || normalized.includes('1st edition')) return 'firstEdition'
   if (normalized.includes('reverse')) return 'reverse'
   if (
     normalized.includes('alt art')
@@ -32,7 +33,6 @@ const getVariantEffect = (variant) => {
     || normalized.includes('shiny')
   ) return 'special'
   if (normalized.includes('holo')) return 'holo'
-  if (normalized.includes('first edition') || normalized.includes('1st edition')) return 'firstEdition'
   return 'generic'
 }
 

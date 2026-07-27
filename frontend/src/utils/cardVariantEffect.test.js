@@ -10,6 +10,7 @@ describe('getCardVariantEffectType', () => {
     ['Reverse Holo', 'reverse'],
     ['First Edition', 'firstEdition'],
     ['1st Edition', 'firstEdition'],
+    ['First Edition Holo', 'firstEdition'],
     ['Alt Art', 'special'],
     ['Illustration Rare', 'special'],
     ['Special Illustration Rare', 'special'],
@@ -28,9 +29,12 @@ describe('getCardVariantEffectType', () => {
   })
 
   it.each([
-    [[{ variant: 'Special Illustration Rare' }, { variant: 'Holo' }], 'special'],
-    [[{ variant: 'Holo' }, { variant: 'First Edition' }], 'holo'],
+    [[{ variant: 'First Edition' }, { variant: 'Special Illustration Rare' }], 'firstEdition'],
+    [[{ variant: 'Special Illustration Rare' }, { variant: 'Reverse Holo' }], 'special'],
+    [[{ variant: 'Reverse Holo' }, { variant: 'Holo' }], 'reverse'],
+    [[{ variant: 'Holo' }, { variant: 'Unknown Foil' }], 'holo'],
     [[{ variant: 'First Edition' }, { variant: 'Unknown Foil' }], 'firstEdition'],
+    [[{ variant: 'Unknown Foil' }, { variant: 'Normal' }], 'generic'],
   ])('applies grouped priority to %j', (variants, expected) => {
     expect(getCardVariantEffectType(variants)).toBe(expected)
   })

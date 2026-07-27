@@ -80,18 +80,26 @@ export default function PublicBinderView() {
         {tiles.map(tile => {
           // Depth follows distinct prints: 1 layer behind for 2 variants, 2 for 3+.
           const backLayers = Math.min(tile.variantCount - 1, 2)
+          const layerOffset = 8
           return (
             <article key={tile.id} className="rounded-xl border border-border bg-bg-secondary p-2 shadow-sm">
-              <div className="relative" style={{ marginRight: backLayers * 5, marginBottom: backLayers * 5 }}>
+              <div className="relative" style={{ marginRight: backLayers * layerOffset, marginBottom: backLayers * layerOffset }}>
                 {Array.from({ length: backLayers }).map((_, idx) => {
                   const depth = idx + 1
                   return (
                     <div
                       key={idx}
                       aria-hidden
-                      className="absolute inset-0 rounded border border-border bg-bg-secondary shadow-sm"
-                      style={{ transform: `translate(${depth * 5}px, ${depth * 5}px) rotate(${depth * 2}deg)`, zIndex: 0 }}
-                    />
+                      className="absolute inset-0 overflow-hidden rounded border border-border bg-bg-secondary shadow-sm"
+                      style={{
+                        transform: `translate(${depth * layerOffset}px, ${depth * layerOffset}px) rotate(${depth * 2}deg)`,
+                        zIndex: backLayers - idx,
+                      }}
+                    >
+                      {tile.image && (
+                        <img src={tile.image} alt="" className="h-full w-full object-cover" loading="lazy" />
+                      )}
+                    </div>
                   )
                 })}
                 <div className={clsx(
