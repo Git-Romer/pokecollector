@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { isPublicSharePath } from '../utils/publicRoutes'
 
 const api = axios.create({
   baseURL: '/api',
@@ -23,7 +24,7 @@ api.interceptors.response.use(
       const token = localStorage.getItem('token')
       localStorage.removeItem('token')
       localStorage.removeItem('user')
-      if (token && window.location.pathname !== '/login') {
+      if (token && window.location.pathname !== '/login' && !isPublicSharePath(window.location.pathname)) {
         window.location.href = '/login'
       }
     }
@@ -81,6 +82,10 @@ export const getApiErrorMessage = (error, fallback = 'Request failed') => {
 
 // Settings
 export const getTcgdexFilterLanguages = () => api.get('/settings/tcgdex-filter-languages').then(r => r.data)
+
+// Public profile (owner controls)
+export const getProfile = () => api.get('/profile/').then(r => r.data)
+export const updateProfile = (data) => api.put('/profile/', data).then(r => r.data)
 
 // Cards
 export const searchCards = (params) => api.get('/cards/search', { params })

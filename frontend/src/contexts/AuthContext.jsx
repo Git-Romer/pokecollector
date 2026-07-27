@@ -38,6 +38,7 @@ export function AuthProvider({ children }) {
             localStorage.setItem('user', JSON.stringify(currentUser))
           })
         }
+        setUser(null)
       })
       .catch(() => {
         localStorage.removeItem('token')

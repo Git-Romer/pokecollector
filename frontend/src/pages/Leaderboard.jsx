@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowUpDown, Trophy, Award } from 'lucide-react'
+import { ArrowUpDown, Trophy, Award, Globe } from 'lucide-react'
 import { getLeaderboard } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import { useAuth } from '../contexts/AuthContext'
@@ -114,7 +114,19 @@ export default function Leaderboard() {
                     </div>
                     <TrainerAvatar avatarId={trainer.avatar_id} username={trainer.username} />
                     <div>
-                      <p className="text-lg font-semibold text-text-primary">{trainer.username}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-lg font-semibold text-text-primary">{trainer.username}</p>
+                        {trainer.public_handle && (
+                          <Link
+                            to={`/u/${trainer.public_handle}`}
+                            onClick={(e) => e.stopPropagation()}
+                            title={t('leaderboard.viewPublicProfile')}
+                            className="text-text-muted hover:text-brand-red transition-colors"
+                          >
+                            <Globe size={14} />
+                          </Link>
+                        )}
+                      </div>
                       <p className="text-xs uppercase tracking-[0.2em] text-text-muted">{trainer.role}</p>
                       {trainer.user_id !== currentUser?.id && (
                       <div className="flex gap-2 mt-1">
