@@ -5,12 +5,6 @@ import { Toaster } from 'react-hot-toast'
 import App from './App.jsx'
 import './index.css'
 
-// Apply saved theme before first paint to prevent flash
-const savedTheme = localStorage.getItem('theme')
-if (savedTheme && savedTheme !== 'default') {
-  document.documentElement.setAttribute('data-theme', savedTheme)
-}
-
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -29,9 +23,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         position="top-center"
         toastOptions={{
           style: {
-            background: '#1a1a2e',
-            color: '#fff',
-            border: '1px solid #2a2a4a',
+            background: 'var(--color-elevated)',
+            color: 'var(--color-text-primary)',
+            border: '1px solid var(--color-border)',
           },
           success: {
             iconTheme: { primary: '#10b981', secondary: '#fff' },

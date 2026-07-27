@@ -4,32 +4,27 @@
 
 /* ─── CSS Custom Properties ──────────────────────────────────────────────── */
 :root {
-  --color-bg:          #08080f;
-  --color-surface:     #0f0f1a;
-  --color-card:        #141422;
-  --color-elevated:    #1a1a2e;
-  --color-border:      rgba(255,255,255,0.07);
-  --color-border-subtle: rgba(255,255,255,0.03);
-
-  --color-text-primary:   #ffffff;
-  --color-text-secondary: #a0a0b8;
-  --color-text-muted:     #606078;
-
-  --color-brand-red:       #e3000b;
-  --color-brand-red-rgb:    227 0 11;
-  --color-brand-red-light: #ff4d4d;
-  --color-brand-red-dark:  #b80009;
-
-  --color-green:  #22c55e;
-  --color-yellow: #eab308;
-  --color-blue:   #3b82f6;
-
-  /* Safe area for notched phones */
-  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
-  --safe-area-top:    env(safe-area-inset-top, 0px);
-
-  /* Bottom nav height (used for main content padding) */
-  --bottom-nav-height: 4rem; /* 64px */
+  --color-accent: #e3000b; --color-accent-rgb: 227 0 11;
+  --color-accent-light: #ff4d4d; --color-accent-dark: #b80009;
+  --color-accent-foreground: #ffffff;
+  --color-brand-red: var(--color-accent); --color-brand-red-rgb: var(--color-accent-rgb);
+  --color-brand-red-light: var(--color-accent-light); --color-brand-red-dark: var(--color-accent-dark);
+  --color-bg: #08080f; --color-surface: #0f0f1a; --color-card: #141422; --color-elevated: #1a1a2e;
+  --color-border: rgba(255,255,255,.07); --color-border-subtle: rgba(255,255,255,.03); --color-divider: rgba(255,255,255,.06);
+  --color-text-primary: #fff; --color-text-secondary: #a0a0b8; --color-text-muted: #74748d; --color-text-inverse: #101522;
+  --color-overlay: rgba(0,0,0,.85); --color-input-bg: rgba(15,15,26,.8); --color-hover: rgba(255,255,255,.06);
+  --color-selected: rgb(var(--color-accent-rgb) / .12); --color-shadow: rgba(0,0,0,.4); --color-shadow-elevated: rgba(0,0,0,.5);
+  --color-green: #22c55e; --color-yellow: #eab308; --color-blue: #3b82f6;
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px); --safe-area-top: env(safe-area-inset-top, 0px); --bottom-nav-height: 4rem;
+}
+[data-color-mode="dark"] { color-scheme: dark; }
+[data-color-mode="light"] {
+  color-scheme: light;
+  --color-bg: #f4f6f9; --color-surface: #fff; --color-card: #fff; --color-elevated: #edf1f5;
+  --color-border: rgba(20,30,50,.14); --color-border-subtle: rgba(20,30,50,.07); --color-divider: rgba(20,30,50,.10);
+  --color-text-primary: #172033; --color-text-secondary: #526077; --color-text-muted: #6f7c90; --color-text-inverse: #fff;
+  --color-input-bg: #fff; --color-hover: rgba(20,30,50,.05); --color-overlay: rgba(15,23,42,.48);
+  --color-shadow: rgba(15,23,42,.10); --color-shadow-elevated: rgba(15,23,42,.18);
 }
 
 /* Safari autofill override */
@@ -44,7 +39,7 @@ input:-webkit-autofill:focus {
 /* ─── Scrollbar — premium dark ───────────────────────────────────────────── */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,0.08) transparent;
+  scrollbar-color: var(--color-border) transparent;
 }
 *::-webkit-scrollbar {
   width: 5px;
@@ -54,7 +49,7 @@ input:-webkit-autofill:focus {
   background: transparent;
 }
 *::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.1);
+  background: var(--color-border);
   border-radius: 3px;
 }
 *::-webkit-scrollbar-thumb:hover {
@@ -74,7 +69,7 @@ input:-webkit-autofill:focus {
   }
 
   body {
-    background: radial-gradient(ellipse 80% 40% at 50% -10%, rgba(227,0,11,0.07) 0%, transparent 60%), #08080f;
+    background: var(--color-bg);
     color: var(--color-text-primary);
     font-family: 'Inter', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
@@ -113,10 +108,10 @@ input:-webkit-autofill:focus {
 
   /* ── Card — glass morphism ── */
   .card {
-    background: rgba(20, 20, 40, 0.6);
+    background: var(--color-card);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255,255,255,0.07);
+    border: 1px solid var(--color-border);
     border-radius: 16px;
     padding: 1rem;
     transition: all 0.2s ease;
@@ -125,14 +120,14 @@ input:-webkit-autofill:focus {
     @apply card cursor-pointer;
   }
   .card-hover:hover {
-    border-color: rgba(227,0,11,0.3);
-    box-shadow: 0 0 20px rgba(227,0,11,0.1);
+    border-color: rgb(var(--color-accent-rgb) / .3);
+    box-shadow: 0 0 20px rgb(var(--color-accent-rgb) / .1);
   }
   .card-surface {
-    background: rgba(15, 15, 26, 0.8);
+    background: var(--color-input-bg);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255,255,255,0.05);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 16px;
     padding: 1rem;
   }
@@ -140,19 +135,20 @@ input:-webkit-autofill:focus {
   /* ── Buttons — bold with glow ── */
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2
-           text-white px-4 py-2.5 rounded-lg font-semibold text-sm
+           px-4 py-2.5 rounded-lg font-semibold text-sm
            transition-all duration-200
            disabled:opacity-50 disabled:cursor-not-allowed
            select-none;
-    background: #e3000b;
-    box-shadow: 0 0 16px rgba(227,0,11,0.3);
+    background: var(--color-accent);
+    color: var(--color-accent-foreground);
+    box-shadow: 0 0 16px rgb(var(--color-accent-rgb) / .3);
   }
   .btn-primary:hover {
-    box-shadow: 0 0 24px rgba(227,0,11,0.45);
-    background: #cc000a;
+    box-shadow: 0 0 24px rgb(var(--color-accent-rgb) / .45);
+    background: var(--color-accent-dark);
   }
   .btn-primary:active {
-    background: #b80009;
+    background: var(--color-accent-dark);
   }
   .btn-primary-sm {
     @apply btn-primary px-3 py-1.5 text-xs;
@@ -166,11 +162,11 @@ input:-webkit-autofill:focus {
            transition-all duration-200
            disabled:opacity-50 disabled:cursor-not-allowed
            select-none;
-    border: 1px solid rgba(255,255,255,0.07);
+    border: 1px solid var(--color-border);
   }
   .btn-ghost:hover {
-    background: rgba(26, 26, 46, 0.8);
-    border-color: rgba(255,255,255,0.12);
+    background: var(--color-hover);
+    border-color: var(--color-border);
   }
   .btn-ghost-sm {
     @apply btn-ghost px-3 py-1.5 text-xs;
@@ -186,8 +182,8 @@ input:-webkit-autofill:focus {
 
   /* ── Inputs — sleek dark ── */
   .input {
-    background: rgba(15, 15, 26, 0.8);
-    border: 1px solid rgba(255,255,255,0.07);
+    background: var(--color-input-bg);
+    border: 1px solid var(--color-border);
     border-radius: 0.75rem;
     padding: 0.625rem 0.75rem;
     color: var(--color-text-primary);
@@ -200,20 +196,20 @@ input:-webkit-autofill:focus {
     color: var(--color-text-muted);
   }
   .input:focus {
-    border-color: rgba(227,0,11,0.4);
-    box-shadow: 0 0 0 3px rgba(227,0,11,0.1);
+    border-color: rgb(var(--color-accent-rgb) / .4);
+    box-shadow: 0 0 0 3px rgb(var(--color-accent-rgb) / .1);
   }
   .input-sm {
     @apply input py-2 text-xs;
   }
 
   .select {
-    background-color: rgba(15, 15, 26, 0.8);
+    background-color: var(--color-input-bg);
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23f5f5f7' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 0.75rem center;
     background-size: 1rem 1rem;
-    border: 1px solid rgba(255,255,255,0.07);
+    border: 1px solid var(--color-border);
     border-radius: 0.75rem;
     padding: 0.625rem 2.25rem 0.625rem 0.75rem;
     color: var(--color-text-primary);
@@ -233,8 +229,8 @@ input:-webkit-autofill:focus {
     padding-right: 0.75rem;
   }
   .select:focus {
-    border-color: rgba(227,0,11,0.4);
-    box-shadow: 0 0 0 3px rgba(227,0,11,0.1);
+    border-color: rgb(var(--color-accent-rgb) / .4);
+    box-shadow: 0 0 0 3px rgb(var(--color-accent-rgb) / .1);
   }
   .select-sm {
     @apply select py-2 text-xs;
@@ -288,10 +284,10 @@ input:-webkit-autofill:focus {
            flex items-stretch
            pb-[env(safe-area-inset-bottom,0px)]
            lg:hidden;
-    background: rgba(15, 15, 26, 0.85);
+    background: color-mix(in srgb, var(--color-surface) 85%, transparent);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
-    border-top: 1px solid rgba(255,255,255,0.06);
+    border-top: 1px solid var(--color-divider);
   }
   .bottom-nav-item {
     @apply flex flex-col items-center justify-center gap-0.5
@@ -320,11 +316,11 @@ input:-webkit-autofill:focus {
 
   /* ── Stat Card — glass with top highlight ── */
   .stat-card {
-    background: rgba(20, 20, 40, 0.5);
+    background: var(--color-card);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255,255,255,0.06);
-    border-top: 1px solid rgba(255,255,255,0.12);
+    border: 1px solid var(--color-divider);
+    border-top: 1px solid var(--color-border);
     border-radius: 16px;
     padding: 0.75rem;
     display: flex;
@@ -335,7 +331,7 @@ input:-webkit-autofill:focus {
     font-size: 1.5rem;
     font-weight: 800;
     line-height: 1;
-    color: white;
+    color: var(--color-text-primary);
   }
   .stat-label {
     @apply text-xs text-text-muted;
@@ -344,20 +340,20 @@ input:-webkit-autofill:focus {
   /* ── List Item ── */
   .list-item {
     @apply flex items-center gap-3 p-3 rounded-xl;
-    background: rgba(20, 20, 40, 0.6);
-    border: 1px solid rgba(255,255,255,0.07);
+    background: var(--color-card);
+    border: 1px solid var(--color-border);
   }
   .list-item-hover {
     @apply list-item transition-all duration-150 cursor-pointer;
   }
   .list-item-hover:hover {
-    background: rgba(26, 26, 46, 0.8);
-    border-color: rgba(255,255,255,0.1);
+    background: var(--color-hover);
+    border-color: var(--color-border);
   }
 
   /* ── Divider ── */
   .divider {
-    border-top: 1px solid rgba(255,255,255,0.06);
+    border-top: 1px solid var(--color-divider);
     margin: 0.75rem 0;
   }
 
@@ -374,7 +370,7 @@ input:-webkit-autofill:focus {
 
   /* ── Skeleton ── */
   .skeleton {
-    background: linear-gradient(90deg, rgba(20,20,40,0.5) 25%, rgba(30,30,50,0.5) 50%, rgba(20,20,40,0.5) 75%);
+    background: linear-gradient(90deg, rgba(20,20,40,0.5) 25%, var(--color-elevated) 50%, rgba(20,20,40,0.5) 75%);
     background-size: 200% 100%;
     animation: shimmer 1.5s ease-in-out infinite;
   }
@@ -443,8 +439,8 @@ input:-webkit-autofill:focus {
   /* Scrollbar styling */
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
-  ::-webkit-scrollbar-thumb:hover { background: rgba(227,0,11,0.4); }
+  ::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgb(var(--color-accent-rgb) / .4); }
 
   /* No scrollbar utility */
   .no-scrollbar::-webkit-scrollbar { display: none; }
@@ -500,9 +496,9 @@ input:-webkit-autofill:focus {
   background: linear-gradient(
     135deg,
     transparent 25%,
-    rgba(255,255,255,0.06) 45%,
-    rgba(255,255,255,0.1) 50%,
-    rgba(255,255,255,0.06) 55%,
+    var(--color-divider) 45%,
+    var(--color-border) 50%,
+    var(--color-divider) 55%,
     transparent 75%
   );
   background-size: 200% 200%;
@@ -556,7 +552,7 @@ input:-webkit-autofill:focus {
 /* Binder grid — looks like a real Pokemon binder */
 .binder-grid {
   background: rgba(10,14,26,0.8);
-  border: 1px solid rgba(255,255,255,0.06);
+  border: 1px solid var(--color-divider);
   border-radius: 16px;
   padding: 12px;
 }
@@ -599,7 +595,7 @@ input:-webkit-autofill:focus {
   height: 8px;
   background: rgba(0,0,0,0.4);
   border-radius: 4px;
-  border: 1px solid rgba(255,255,255,0.05);
+  border: 1px solid var(--color-border-subtle);
   overflow: hidden;
 }
 .hp-bar-fill {
@@ -620,7 +616,7 @@ input:-webkit-autofill:focus {
 }
 
 body {
-  background: linear-gradient(-45deg, #06080f, #08060e, #060c0e, #080810);
+  background: var(--color-bg);
   background-size: 400% 400%;
   animation: bg-breathe 25s ease infinite;
 }
@@ -664,7 +660,7 @@ body {
   transition: background 0.3s ease;
 }
 .card-detail-overlay.open {
-  background: rgba(0,0,0,0.85);
+  background: var(--color-overlay);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }
@@ -673,8 +669,8 @@ body {
   max-width: 640px;
   max-height: 90dvh;
   overflow-y: auto;
-  background: linear-gradient(180deg, #0f1224 0%, #0a0d1a 100%);
-  border: 1px solid rgba(255,255,255,0.1);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-bottom: none;
   border-radius: 24px 24px 0 0;
   transform: translateY(100%);
@@ -693,7 +689,7 @@ body {
   .card-detail-panel {
     max-height: 85dvh;
     border-radius: 24px;
-    border: 1px solid rgba(255,255,255,0.12);
+    border: 1px solid var(--color-border);
     transform: scale(0.92) translateY(16px);
     opacity: 0;
     transition: transform 0.3s ease, opacity 0.3s ease;
@@ -711,7 +707,7 @@ body {
   position: relative;
   overflow: hidden;
   border-radius: 20px;
-  border: 1px solid rgba(255,255,255,0.1);
+  border: 1px solid var(--color-border);
   background: linear-gradient(135deg, #0f1428 0%, #1a0f28 50%, #0f1428 100%);
   min-height: 180px;
 }
@@ -761,90 +757,11 @@ body {
 .energy-ultra   { background: rgba(227,0,11,0.15); color: #ff5252; border: 1px solid rgba(227,0,11,0.35); }
 
 /* ─── Pokemon Type Themes ────────────────────────────────────────────────── */
-[data-theme="fire"] {
-  --color-bg:          #0f0805;
-  --color-surface:     #1a0f08;
-  --color-card:        #221408;
-  --color-elevated:    #2e1a0a;
-  --color-brand-red:   #ff6b35;
-  --color-brand-red-rgb:    255 107 53;
-  --color-brand-red-light: #ff9466;
-  --color-brand-red-dark:  #cc5528;
-}
-
-[data-theme="water"] {
-  --color-bg:          #050a10;
-  --color-surface:     #081220;
-  --color-card:        #0c1a2e;
-  --color-elevated:    #10223a;
-  --color-brand-red:   #4fc3f7;
-  --color-brand-red-rgb:    79 195 247;
-  --color-brand-red-light: #81d4fa;
-  --color-brand-red-dark:  #2196f3;
-}
-
-[data-theme="grass"] {
-  --color-bg:          #050f08;
-  --color-surface:     #081a0f;
-  --color-card:        #0c2214;
-  --color-elevated:    #102e1a;
-  --color-brand-red:   #66bb6a;
-  --color-brand-red-rgb:    102 187 106;
-  --color-brand-red-light: #81c784;
-  --color-brand-red-dark:  #43a047;
-}
-
-[data-theme="electric"] {
-  --color-bg:          #0f0d05;
-  --color-surface:     #1a1608;
-  --color-card:        #221e0a;
-  --color-elevated:    #2e280e;
-  --color-brand-red:   #fdd835;
-  --color-brand-red-rgb:    253 216 53;
-  --color-brand-red-light: #ffee58;
-  --color-brand-red-dark:  #f9a825;
-}
-
-[data-theme="psychic"] {
-  --color-bg:          #0d050f;
-  --color-surface:     #16081a;
-  --color-card:        #1e0c22;
-  --color-elevated:    #28102e;
-  --color-brand-red:   #ce93d8;
-  --color-brand-red-rgb:    206 147 216;
-  --color-brand-red-light: #e1bee7;
-  --color-brand-red-dark:  #ab47bc;
-}
-
-[data-theme="dragon"] {
-  --color-bg:          #08050f;
-  --color-surface:     #100a1a;
-  --color-card:        #180f24;
-  --color-elevated:    #20142e;
-  --color-brand-red:   #9575cd;
-  --color-brand-red-rgb:    149 117 205;
-  --color-brand-red-light: #b39ddb;
-  --color-brand-red-dark:  #7e57c2;
-}
-
-[data-theme="dark"] {
-  --color-bg:          #050505;
-  --color-surface:     #0a0a0a;
-  --color-card:        #121212;
-  --color-elevated:    #1a1a1a;
-  --color-brand-red:   #78909c;
-  --color-brand-red-rgb:    120 144 156;
-  --color-brand-red-light: #90a4ae;
-  --color-brand-red-dark:  #546e7a;
-}
-
-[data-theme="fairy"] {
-  --color-bg:          #0f050a;
-  --color-surface:     #1a0812;
-  --color-card:        #220c18;
-  --color-elevated:    #2e1020;
-  --color-brand-red:   #f48fb1;
-  --color-brand-red-rgb:    244 143 177;
-  --color-brand-red-light: #f8bbd0;
-  --color-brand-red-dark:  #ec407a;
-}
+[data-accent="fire"] { --color-accent: #f05a24; --color-accent-rgb: 240 90 36; --color-accent-light: #ff9466; --color-accent-dark: #c7471b; }
+[data-accent="water"] { --color-accent: #1684c5; --color-accent-rgb: 22 132 197; --color-accent-light: #4fc3f7; --color-accent-dark: #0e6ea8; }
+[data-accent="grass"] { --color-accent: #3d9645; --color-accent-rgb: 61 150 69; --color-accent-light: #66bb6a; --color-accent-dark: #2e7435; }
+[data-accent="electric"] { --color-accent: #fdd835; --color-accent-rgb: 253 216 53; --color-accent-light: #ffee58; --color-accent-dark: #d39c00; --color-accent-foreground: #332b00; }
+[data-accent="psychic"] { --color-accent: #ab47bc; --color-accent-rgb: 171 71 188; --color-accent-light: #ce93d8; --color-accent-dark: #873497; }
+[data-accent="dragon"] { --color-accent: #7e57c2; --color-accent-rgb: 126 87 194; --color-accent-light: #b39ddb; --color-accent-dark: #62429c; }
+[data-accent="dark"] { --color-accent: #607d8b; --color-accent-rgb: 96 125 139; --color-accent-light: #90a4ae; --color-accent-dark: #455a64; }
+[data-accent="fairy"] { --color-accent: #ec407a; --color-accent-rgb: 236 64 122; --color-accent-light: #f48fb1; --color-accent-dark: #c72e62; }

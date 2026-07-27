@@ -1,30 +1,72 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
-const THEMES = [
-  { id: 'default', label: 'Pokémon Red', color: '#e3000b', emoji: '🔴' },
-  { id: 'fire', label: 'Fire', color: '#ff6b35', emoji: '🔥' },
-  { id: 'water', label: 'Water', color: '#4fc3f7', emoji: '💧' },
-  { id: 'grass', label: 'Grass', color: '#66bb6a', emoji: '🌿' },
-  { id: 'electric', label: 'Electric', color: '#fdd835', emoji: '⚡' },
-  { id: 'psychic', label: 'Psychic', color: '#ce93d8', emoji: '🔮' },
-  { id: 'dragon', label: 'Dragon', color: '#9575cd', emoji: '🐉' },
-  { id: 'dark', label: 'Dark', color: '#78909c', emoji: '🌑' },
-  { id: 'fairy', label: 'Fairy', color: '#f48fb1', emoji: '🧚' },
+export const COLOR_MODES = ['system', 'light', 'dark']
+export const ACCENTS = [
+  { id: 'default', labelKey: 'accentDefault', color: '#e3000b', emoji: '🔴' },
+  { id: 'fire', labelKey: 'accentFire', color: '#ff6b35', emoji: '🔥' },
+  { id: 'water', labelKey: 'accentWater', color: '#1684c5', emoji: '💧' },
+  { id: 'grass', labelKey: 'accentGrass', color: '#43a047', emoji: '🌿' },
+  { id: 'electric', labelKey: 'accentElectric', color: '#fdd835', emoji: '⚡' },
+  { id: 'psychic', labelKey: 'accentPsychic', color: '#ab47bc', emoji: '🔮' },
+  { id: 'dragon', labelKey: 'accentDragon', color: '#7e57c2', emoji: '🐉' },
+  { id: 'dark', labelKey: 'accentDark', color: '#607d8b', emoji: '🌑' },
+  { id: 'fairy', labelKey: 'accentFairy', color: '#ec407a', emoji: '🧚' },
 ]
 
-export function useTheme() {
-  const [theme, setThemeState] = useState(() => localStorage.getItem('theme') || 'default')
+const MODE_KEY = 'pokecollector-color-mode'
+const ACCENT_KEY = 'pokecollector-accent'
+const validAccent = (value) => ACCENTS.some(({ id }) => id === value)
+const read = (key) => { try { return localStorage.getItem(key) } catch { return null } }
+const write = (key, value) => { try { localStorage.setItem(key, value) } catch { /* Preferences remain usable in-memory. */ } }
+const resolveMode = (mode) => mode === 'system'
+  ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+  : mode
+
+function applyAppearance(mode, accent) {
+  const resolved = resolveMode(mode)
+  const root = document.documentElement
+  root.dataset.colorMode = resolved
+  root.dataset.accent = accent
+  root.dataset.theme = accent // Temporary compatibility for third-party/custom styles.
+  root.classList.toggle('dark', resolved === 'dark')
+  root.style.colorScheme = resolved
+  return resolved
+}
+
+export function useAppearance() {
+  const [colorMode, setColorModeState] = useState(() => {
+    const saved = read(MODE_KEY)
+    return COLOR_MODES.includes(saved) ? saved : 'system'
+  })
+  const [accent, setAccentState] = useState(() => {
+    const saved = read(ACCENT_KEY)
+    if (validAccent(saved)) return saved
+    const legacy = read('theme')
+    return validAccent(legacy) ? legacy : 'default'
+  })
+  const [resolvedColorMode, setResolvedColorMode] = useState(() => resolveMode(colorMode))
 
   useEffect(() => {
-    if (theme === 'default') {
-      document.documentElement.removeAttribute('data-theme')
-    } else {
-      document.documentElement.setAttribute('data-theme', theme)
-    }
-    localStorage.setItem('theme', theme)
-  }, [theme])
+    write(MODE_KEY, colorMode)
+    write(ACCENT_KEY, accent)
+    setResolvedColorMode(applyAppearance(colorMode, accent))
 
-  const setTheme = useCallback((t) => setThemeState(t), [])
+    if (colorMode !== 'system') return undefined
+    const query = window.matchMedia('(prefers-color-scheme: dark)')
+    const update = () => setResolvedColorMode(applyAppearance('system', accent))
+    query.addEventListener?.('change', update)
+    return () => query.removeEventListener?.('change', update)
+  }, [colorMode, accent])
 
-  return { theme, setTheme, themes: THEMES }
+  const setColorMode = useCallback((value) => {
+    if (COLOR_MODES.includes(value)) setColorModeState(value)
+  }, [])
+  const setAccent = useCallback((value) => {
+    if (validAccent(value)) setAccentState(value)
+  }, [])
+
+  return { colorMode, resolvedColorMode, setColorMode, accent, setAccent, colorModes: COLOR_MODES, accents: ACCENTS }
 }
+
+// Keep the old export name while exposing the independent appearance API.
+export const useTheme = useAppearance

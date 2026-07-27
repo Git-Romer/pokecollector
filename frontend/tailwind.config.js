@@ -16,20 +16,20 @@ export default {
           elevated: 'var(--color-elevated)',
         },
         border: {
-          DEFAULT: 'rgba(255,255,255,0.07)',
-          subtle: 'rgba(255,255,255,0.03)',
+          DEFAULT: 'var(--color-border)',
+          subtle: 'var(--color-border-subtle)',
         },
         text: {
-          primary: '#ffffff',
-          secondary: '#a0a0b8',
-          muted: '#606078',
+          primary: 'var(--color-text-primary)',
+          secondary: 'var(--color-text-secondary)',
+          muted: 'var(--color-text-muted)',
         },
         // Pokemon brand — richer, more saturated
         brand: {
           red: 'rgb(var(--color-brand-red-rgb) / <alpha-value>)',
           'red-light': 'var(--color-brand-red-light)',
           'red-dark': 'var(--color-brand-red-dark)',
-          'red-glow': 'rgba(227,0,11,0.35)',
+          'red-glow': 'rgb(var(--color-brand-red-rgb) / 0.35)',
         },
         // Status — keeping legacy names for backward compat
         pokemon: {
@@ -37,13 +37,13 @@ export default {
           'red-dark': '#b80009',
           'red-light': '#ff4d4d',
         },
-        // Dark theme legacy aliases
+        // Legacy aliases resolve through the active base mode
         dark: {
-          bg: '#08080f',
-          surface: '#0f0f1a',
-          card: '#141422',
-          border: 'rgba(255,255,255,0.07)',
-          hover: '#1a1a2e',
+          bg: 'var(--color-bg)',
+          surface: 'var(--color-surface)',
+          card: 'var(--color-card)',
+          border: 'var(--color-border)',
+          hover: 'var(--color-hover)',
         },
         // Semantic status colors
         green: {
@@ -141,8 +141,8 @@ export default {
       },
 
       boxShadow: {
-        card: '0 2px 8px rgba(0,0,0,0.4)',
-        elevated: '0 4px 16px rgba(0,0,0,0.5)',
+        card: '0 2px 8px var(--color-shadow)',
+        elevated: '0 4px 16px var(--color-shadow-elevated)',
         glow: '0 0 20px rgba(227,0,11,0.15)',
         'glow-lg': '0 0 30px rgba(227,0,11,0.25)',
         'glow-btn': '0 0 16px rgba(227,0,11,0.3)',
