@@ -453,23 +453,33 @@ def _sync_set_card_catalogue(
             # missing-language fallback query before it decides which IDs to add.
             db.flush()
 
-            if set_total and len(cards_data) < set_total:
+            if set_total and len(native_card_ids) < set_total:
                 fallback_cards = build_missing_language_cards_for_set(
                     db,
                     tcg_id,
                     set_lang,
                     expected_total=set_total,
                 )
+                fallback_card_ids: set[str] = set()
                 for parsed in fallback_cards:
-                    if parsed["id"] in native_card_ids:
+                    card_id = parsed["id"]
+                    if card_id in native_card_ids:
                         logger.warning(
                             "Skipping fallback card %s because a native card "
                             "is already queued for set %s",
-                            parsed["id"],
+                            card_id,
+                            set_log_id,
+                        )
+                        continue
+                    if card_id in fallback_card_ids:
+                        logger.warning(
+                            "Skipping duplicate fallback card %s while syncing set %s",
+                            card_id,
                             set_log_id,
                         )
                         continue
                     upsert_card(db, parsed)
+                    fallback_card_ids.add(card_id)
 
             set_obj.updated_at = datetime.datetime.utcnow()
             result["sets_refreshed"] += 1
@@ -489,8 +499,18 @@ def _sync_set_card_catalogue(
                     expected_total=set_total,
                 )
                 if fallback_cards:
+                    fallback_card_ids: set[str] = set()
                     for parsed in fallback_cards:
+                        card_id = parsed["id"]
+                        if card_id in fallback_card_ids:
+                            logger.warning(
+                                "Skipping duplicate fallback card %s while recovering set %s",
+                                card_id,
+                                set_log_id,
+                            )
+                            continue
                         upsert_card(db, parsed)
+                        fallback_card_ids.add(card_id)
                     set_obj.updated_at = datetime.datetime.utcnow()
                     result["sets_refreshed"] += 1
                     db.commit()
