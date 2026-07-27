@@ -30,8 +30,9 @@ const clearSavedPosition = (key) => {
 }
 
 /**
- * Persists a list's position across a list/detail history traversal.  The
- * location key prevents an old request from being applied to a fresh visit.
+ * React Router's <ScrollRestoration /> requires a data router, while this app
+ * uses BrowserRouter. We also need to delay restoration until async list items
+ * render and provide an item-anchor fallback when the layout has changed.
  */
 export function useListScrollRestoration({ key, isReady }) {
   const location = useLocation()
