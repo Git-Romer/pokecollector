@@ -26,3 +26,15 @@ export function updateCardSearchParams(currentSearch, updates, { resetPage = tru
   if (resetPage) next.delete('page')
   return next
 }
+
+export function resetCardSearchFilters(currentSearch) {
+  const current = new URLSearchParams(currentSearch)
+  const next = new URLSearchParams()
+
+  for (const key of ['q', 'lang']) {
+    const value = current.get(key)?.trim()
+    if (value) next.set(key, value)
+  }
+
+  return next
+}

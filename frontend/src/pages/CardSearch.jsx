@@ -22,6 +22,7 @@ import {
   getLastCardSearchPage,
   isValidCardSearchPage,
   parseCardSearchPage,
+  resetCardSearchFilters,
   updateCardSearchParams,
 } from '../utils/cardSearchUrlState'
 
@@ -297,7 +298,12 @@ export default function CardSearch() {
 
   const toggleSortOrder = () => updateSearchParams({ sort_order: filters.sort_order === 'asc' ? 'desc' : 'asc' })
 
-  const clearFilters = () => navigate({ pathname: location.pathname, search: '' })
+  const clearSearch = () => navigate({ pathname: location.pathname, search: '' })
+  const resetFilters = () => {
+    const next = resetCardSearchFilters(location.search)
+    const search = next.toString()
+    navigate({ pathname: location.pathname, search: search ? `?${search}` : '' })
+  }
 
   const hasOpenOverlay = Boolean(selectedCard || showFilters || showCustomModal || showScanner)
 
@@ -571,7 +577,7 @@ export default function CardSearch() {
           </button>
 
           {hasUrlSearchState && (
-            <button type="button" onClick={clearFilters} className="btn-ghost flex-shrink-0">
+            <button type="button" onClick={clearSearch} className="btn-ghost flex-shrink-0">
               <X size={16} />
               <span className="hidden sm:inline">{t('common.clear')}</span>
             </button>
@@ -586,7 +592,7 @@ export default function CardSearch() {
 
           {hasActiveFilters && (
             <button
-              onClick={() => { clearFilters(); setShowFilters(false) }}
+              onClick={() => { resetFilters(); setShowFilters(false) }}
               className="btn-ghost w-full justify-center"
             >
               <X size={14} /> {t('common.clear')}

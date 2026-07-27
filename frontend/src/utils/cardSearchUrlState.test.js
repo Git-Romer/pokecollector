@@ -3,6 +3,7 @@ import {
   getLastCardSearchPage,
   isValidCardSearchPage,
   parseCardSearchPage,
+  resetCardSearchFilters,
   updateCardSearchParams,
 } from './cardSearchUrlState'
 
@@ -41,5 +42,18 @@ describe('card search URL state', () => {
   it('can retain pagination for explicit page navigation', () => {
     const next = updateCardSearchParams('q=Pikachu&page=2', { page: 3 }, { resetPage: false })
     expect(next.toString()).toBe('q=Pikachu&page=3')
+  })
+
+  it('resets filters without clearing the search term or language', () => {
+    const next = resetCardSearchFilters(
+      'q=Pikachu&lang=de&rarity=Rare&artist=Ken+Sugimori&sort_by=name&sort_order=desc&page=4',
+    )
+
+    expect(next.toString()).toBe('q=Pikachu&lang=de')
+  })
+
+  it('returns an empty search when only filters were active', () => {
+    const next = resetCardSearchFilters('rarity=Rare&page=2')
+    expect(next.toString()).toBe('')
   })
 })
