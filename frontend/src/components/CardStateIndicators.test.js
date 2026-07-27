@@ -59,6 +59,20 @@ describe('CardStateLegend', () => {
     expect(markup).not.toContain('Owned (variant unknown)')
     expect(markup).not.toContain('Wishlist')
   })
+
+  it('can explain private binder variants without duplicating its separate amount badge', () => {
+    const markup = renderToStaticMarkup(createElement(CardStateLegend, {
+      showOwnershipFallback: false,
+      showWishlist: false,
+      showQuantity: false,
+    }))
+
+    for (const label of ['Normal', 'Holo', 'Reverse Holo', 'First Edition']) {
+      expect(markup).toContain(label)
+    }
+    expect(markup).not.toContain('Quantity owned')
+    expect(markup).not.toContain('×2')
+  })
 })
 
 describe('CardStateIndicators', () => {

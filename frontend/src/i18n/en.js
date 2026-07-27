@@ -1116,6 +1116,7 @@ const en = {
     ownedComplete: 'Owned complete',
     missingCards: 'Missing cards',
     sortBy: 'Sort binder cards',
+    amountInBinder: 'Copies in this binder',
     sort: {
       recent: 'Recently added',
       number: 'Collector number',

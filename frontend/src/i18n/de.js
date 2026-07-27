@@ -1106,6 +1106,7 @@ const de = {
     ownedComplete: 'Vollständig vorhanden',
     missingCards: 'Fehlende Karten',
     sortBy: 'Binderkarten sortieren',
+    amountInBinder: 'Exemplare in diesem Binder',
     sort: {
       recent: 'Zuletzt hinzugefügt',
       number: 'Sammlernummer',

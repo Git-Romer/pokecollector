@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Plus, Trash2, Package, Star, Download, Upload, X, Heart, Minus } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Package, Star, Download, Upload, X, Heart, Minus, HelpCircle } from 'lucide-react'
 import { getBinderCards, removeCardFromBinder, removeBinderEntry, addCardToBinder, addCollectionItemToBinder, searchCards, getCollection, updateBinderEntry, getBinderEntryEquivalentPrints, getBinderPrintOptimization, applyBinderPrintOptimization, switchBinderEntryCard, addBinderEntryToWishlist, addBinderCardsToWishlist, importBinderCsv, exportBinderCsv, getApiErrorMessage } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
@@ -11,7 +11,7 @@ import { cardNumberMatches } from '../utils/cardNumbers'
 import { normalizeSearchText, textIncludes } from '../utils/textSearch'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
-import CardStateIndicators from '../components/CardStateIndicators'
+import CardStateIndicators, { CardStateLegend } from '../components/CardStateIndicators'
 import { getCardRarityEffectClass } from '../utils/cardRarity'
 import { BINDER_SORT_OPTIONS, sortBinderCards } from '../utils/binderCards'
 
@@ -147,6 +147,7 @@ export default function BinderDetail() {
   const [binderFilterStatus, setBinderFilterStatus] = useState('')
   const [binderFilterQuery, setBinderFilterQuery] = useState('')
   const [binderSortBy, setBinderSortBy] = useState('recent')
+  const [badgeLegendOpen, setBadgeLegendOpen] = useState(false)
   const [selectedCard, setSelectedCard] = useState(null)
   const [showCsvImportModal, setShowCsvImportModal] = useState(false)
   const [showPrintOptimizer, setShowPrintOptimizer] = useState(false)
@@ -667,6 +668,45 @@ export default function BinderDetail() {
             </>
           )}
         </div>
+      )}
+
+      {isCollection && cards.length > 0 && (
+        <>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => setBadgeLegendOpen(open => !open)}
+              className={`btn-ghost px-3 py-2 text-sm ${
+                badgeLegendOpen ? 'border-brand-red/30 bg-brand-red/10 text-brand-red' : ''
+              }`}
+              aria-expanded={badgeLegendOpen}
+              aria-controls="private-binder-card-badge-legend"
+            >
+              <HelpCircle size={15} />
+              <span>{t('setDetail.badgeLegend')}</span>
+            </button>
+          </div>
+          {badgeLegendOpen && (
+            <div id="private-binder-card-badge-legend" className="card p-3">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
+                {t('setDetail.badgeLegend')}
+              </p>
+              <CardStateLegend
+                showOwnershipFallback={false}
+                showWishlist={false}
+                showQuantity={false}
+              />
+              <div className="mt-3 flex items-center gap-2 border-t border-border pt-3">
+                <span className="inline-flex flex-shrink-0 items-center rounded-full bg-green/80 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white shadow-sm">
+                  2x
+                </span>
+                <span className="text-xs leading-tight text-text-secondary">
+                  {t('binderTypes.amountInBinder')}
+                </span>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {cards.length > 0 && (
