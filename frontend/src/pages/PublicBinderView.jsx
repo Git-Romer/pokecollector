@@ -7,7 +7,6 @@ import { formatEur } from '../utils/formatEur'
 import { groupCardsByPrint } from '../utils/groupCardsByPrint'
 import { useSettings } from '../contexts/SettingsContext'
 import CardStateIndicators, { CardStateLegend } from '../components/CardStateIndicators'
-import PublicHomeButton from '../components/PublicHomeButton'
 import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
 
 export default function PublicBinderView() {
@@ -27,14 +26,13 @@ export default function PublicBinderView() {
     return () => { cancelled = true }
   }, [handle, binderId])
 
-  if (error) return <><PublicHomeButton /><div className="min-h-screen flex items-center justify-center text-text-secondary">{t('publicProfiles.binderUnavailable')}</div></>
-  if (!binder) return <><PublicHomeButton /><div className="min-h-screen flex items-center justify-center text-text-secondary">{t('common.loading')}</div></>
+  if (error) return <div className="min-h-screen flex items-center justify-center text-text-secondary">{t('publicProfiles.binderUnavailable')}</div>
+  if (!binder) return <div className="min-h-screen flex items-center justify-center text-text-secondary">{t('common.loading')}</div>
 
   const tiles = groupCardsByPrint(binder.cards)
 
   return (
     <main className="min-h-screen bg-bg-primary px-3 py-6 text-text-primary sm:px-4">
-      <PublicHomeButton />
       <div className="mx-auto max-w-5xl">
         <Link to={`/u/${handle}`} className="btn-ghost inline-flex py-1.5 text-sm">
           <ArrowLeft size={14} /> {t('publicProfiles.backToProfile')}
