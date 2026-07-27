@@ -56,6 +56,14 @@ async def lifespan(app: FastAPI):
     db = SessionLocal()
     try:
         bootstrap_admin(db)
+        from services.public_profile import migrate_public_profile_handles
+        public_handle_migration = migrate_public_profile_handles(db)
+        if public_handle_migration["migrated"] or public_handle_migration["disabled"]:
+            logger.info(
+                "Public trainer-name URL migration updated %s profiles and disabled %s invalid/conflicting profiles",
+                public_handle_migration["migrated"],
+                public_handle_migration["disabled"],
+            )
         from models import Setting
         from services.debug_logging import configure_debug_logging
         debug_setting = db.query(Setting).filter(Setting.key == "debug_mode").first()
@@ -85,6 +93,15 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
+
+
+@app.middleware("http")
+async def prevent_failed_public_response_caching(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/api/public") and response.status_code >= 400:
+        response.headers["Cache-Control"] = "no-store"
+    return response
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -121,7 +138,7 @@ async def debug_request_logging(request: Request, call_next):
     return response
 
 # Include routers
-from api import auth, cards, collection, sets, wishlist, binders, dashboard, analytics, sync, products, trades, export, backup, settings, images, social, pokedex
+from api import auth, cards, collection, sets, wishlist, binders, dashboard, analytics, sync, products, trades, export, backup, settings, images, social, pokedex, public, profile
 from api.github import router as github_router
 from api.recognize import router as recognize_router
 
@@ -170,6 +187,8 @@ app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 app.include_router(images.router, prefix="/api/images", tags=["images"])
 app.include_router(social.router, prefix="/api/social", tags=["social"])
 app.include_router(pokedex.router, prefix="/api/pokedex", tags=["pokedex"])
+app.include_router(public.router, prefix="/api/public", tags=["public"])
+app.include_router(profile.router, prefix="/api/profile", tags=["profile"])
 app.include_router(github_router, prefix="/api/github", tags=["github"])
 
 

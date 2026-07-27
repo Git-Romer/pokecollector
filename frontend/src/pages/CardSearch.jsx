@@ -16,7 +16,7 @@ import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
 import { normalizeTcgdexLanguage, tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
-import { getCardRarityEffectClass } from '../utils/cardRarity'
+import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
 
 function TiltCardWrapper({ children, className, onClick }) {
   const { ref, onMouseMove, onMouseEnter, onMouseLeave } = useTilt(12)
@@ -653,7 +653,7 @@ export default function CardSearch() {
                     className={`card-3d group relative ${selectMode && isSelected ? 'ring-2 ring-brand-red rounded-xl' : ''}`}
                     onClick={() => (selectMode ? toggleSelected(card) : setSelectedCard(card))}
                   >
-                    <div className={`relative aspect-[2.5/3.5] rounded-xl overflow-hidden bg-bg-elevated ring-1 ring-white/5 group-hover:ring-brand-red/40 ${getCardRarityEffectClass(card.rarity, card.lang || card.set_ref?.lang)}`}>
+                    <div className={`relative aspect-[2.5/3.5] rounded-xl overflow-hidden bg-bg-elevated ring-1 ring-white/5 group-hover:ring-brand-red/40 ${getCardVariantEffectClass(card)}`}>
                       {imgSrc
                         ? <img src={imgSrc} alt={card.name} className="w-full h-full object-cover" loading="lazy" />
                         : <div className="w-full h-full flex flex-col items-center justify-center gap-1 p-2">
@@ -662,7 +662,7 @@ export default function CardSearch() {
                       }
                       {selectMode && (
                         <div
-                          className={`absolute bottom-1.5 left-1.5 w-6 h-6 rounded-md flex items-center justify-center border-2 transition-colors pointer-events-none ${
+                          className={`absolute bottom-1.5 left-1.5 z-10 w-6 h-6 rounded-md flex items-center justify-center border-2 transition-colors pointer-events-none ${
                             isSelected
                               ? 'bg-brand-red border-brand-red text-white'
                               : 'bg-bg-elevated/80 border-white/40 backdrop-blur'

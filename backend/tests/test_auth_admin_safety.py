@@ -5,7 +5,7 @@ try:
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 
-    from api.auth import UpdateUserRequest, update_user
+    from api.auth import UpdateUserRequest, change_username, update_user
     from database import Base
     from models import User
 
@@ -108,6 +108,54 @@ class AuthAdminSafetyTests(unittest.TestCase):
         self.assertEqual(self.admin.username, "owner")
         self.assertEqual(self.admin.role, "admin")
         self.assertTrue(self.admin.is_active)
+
+    def test_public_profile_url_tracks_self_service_trainer_name_change(self):
+        self.admin.username = "Owner"
+        self.admin.public_handle = "owner"
+        self.admin.is_profile_public = True
+        self.db.commit()
+
+        result = change_username({"username": "Owner Name"}, current_user=self.admin, db=self.db)
+
+        self.assertEqual(result["username"], "Owner Name")
+        self.db.refresh(self.admin)
+        self.assertEqual(self.admin.public_handle, "owner-name")
+
+    def test_admin_user_edit_keeps_public_profile_url_in_sync(self):
+        trainer = User(
+            username="Misty",
+            hashed_password="x",
+            role="trainer",
+            is_active=True,
+            public_handle="misty",
+            is_profile_public=True,
+        )
+        self.db.add(trainer)
+        self.db.commit()
+
+        update_user(
+            trainer.id,
+            UpdateUserRequest(username="Misty Waterflower"),
+            current_user=self.admin,
+            db=self.db,
+        )
+
+        self.db.refresh(trainer)
+        self.assertEqual(trainer.public_handle, "misty-waterflower")
+
+    def test_invalid_public_trainer_name_change_is_rejected(self):
+        self.admin.username = "Owner"
+        self.admin.public_handle = "owner"
+        self.admin.is_profile_public = True
+        self.db.commit()
+
+        with self.assertRaises(HTTPException) as exc:
+            change_username({"username": "🔥🔥"}, current_user=self.admin, db=self.db)
+
+        self.assertEqual(exc.exception.status_code, 422)
+        self.db.refresh(self.admin)
+        self.assertEqual(self.admin.username, "Owner")
+        self.assertEqual(self.admin.public_handle, "owner")
 
 
 if __name__ == "__main__":
