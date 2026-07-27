@@ -59,7 +59,7 @@ export default {
           subtle: '#0c1a2e',
         },
         // Pokemon gold
-        gold: '#f5c842',
+        gold: 'var(--color-gold)',
         'gold-muted': 'rgba(245,200,66,0.15)',
         'gold-border': 'rgba(245,200,66,0.35)',
         // Pokemon energy type colors

@@ -14,6 +14,8 @@
   --color-text-primary: #fff; --color-text-secondary: #a0a0b8; --color-text-muted: #74748d; --color-text-inverse: #101522;
   --color-overlay: rgba(0,0,0,.85); --color-input-bg: rgba(15,15,26,.8); --color-hover: rgba(255,255,255,.06);
   --color-selected: rgb(var(--color-accent-rgb) / .12); --color-shadow: rgba(0,0,0,.4); --color-shadow-elevated: rgba(0,0,0,.5);
+  --color-chart-grid: rgba(255,255,255,.14); --color-chart-axis: #8d8da3; --color-chart-cost: #9ca3af;
+  --color-gold: #f5c842;
   --color-green: #22c55e; --color-yellow: #eab308; --color-blue: #3b82f6;
   --safe-area-bottom: env(safe-area-inset-bottom, 0px); --safe-area-top: env(safe-area-inset-top, 0px); --bottom-nav-height: 4rem;
 }
@@ -25,6 +27,8 @@
   --color-text-primary: #172033; --color-text-secondary: #526077; --color-text-muted: #6f7c90; --color-text-inverse: #fff;
   --color-input-bg: #fff; --color-hover: rgba(20,30,50,.05); --color-overlay: rgba(15,23,42,.48);
   --color-shadow: rgba(15,23,42,.10); --color-shadow-elevated: rgba(15,23,42,.18);
+  --color-chart-grid: rgba(20,30,50,.20); --color-chart-axis: #526077; --color-chart-cost: #667085;
+  --color-gold: #8a5a00;
 }
 
 /* Safari autofill override */
@@ -586,7 +590,7 @@ input:-webkit-autofill:focus {
 }
 
 /* Gold value text */
-.text-gold { color: #f5c842; }
+.text-gold { color: var(--color-gold); }
 .bg-gold { background-color: #f5c842; }
 .border-gold { border-color: rgba(245,200,66,0.4); }
 
