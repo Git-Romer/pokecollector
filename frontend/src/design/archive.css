@@ -5,7 +5,11 @@
   --archive-border: rgba(255, 255, 255, 0.14);
   --archive-text: #ffffff;
   --archive-muted: #d8c9bd;
+  /* --archive-signal is the fill: the orange a dark glyph sits *on*.
+     --archive-signal-text is the same accent used *as* ink on a page
+     background. The two cannot be one value — see the light theme. */
   --archive-signal: #f58220;
+  --archive-signal-text: #f58220;
   --archive-focus: #ffb06d;
   --archive-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
 }
@@ -17,7 +21,11 @@
   --archive-border: rgba(61, 47, 35, 0.18);
   --archive-text: #241e19;
   --archive-muted: #594d42;
+  /* The fill has to stay light enough for the #07101e glyph on top of it
+     (4.52:1); the ink has to go darker to clear 4.5:1 against the page
+     (#c55e10 as text is only 4.04:1 on canvas). Opposite directions. */
   --archive-signal: #c55e10;
+  --archive-signal-text: #a54e0d;
   --archive-focus: #a54e0d;
   --archive-shadow: 0 16px 40px rgba(33, 54, 85, 0.12);
 }
@@ -94,7 +102,7 @@ body {
 .archive-main { width: min(100%, 92rem); margin: 0 auto; flex: 1; overflow-y: auto; padding: 2rem clamp(1.25rem, 3vw, 2.5rem); padding-bottom: 6rem; }
 .archive-mobile-nav { position: fixed; z-index: 50; right: 0; bottom: 0; left: 0; display: grid; grid-template-columns: repeat(5, 1fr); padding: .4rem max(.6rem, env(safe-area-inset-right)) calc(.4rem + env(safe-area-inset-bottom)) max(.6rem, env(safe-area-inset-left)); border-top: 1px solid var(--archive-border); background: color-mix(in srgb, var(--archive-surface) 94%, transparent); backdrop-filter: blur(18px); }
 .archive-mobile-link { min-height: 3.6rem; flex-direction: column; justify-content: center; gap: .2rem; font-size: .67rem; }
-.archive-mobile-link-active { color: var(--archive-signal); }
+.archive-mobile-link-active { color: var(--archive-signal-text); }
 /* ASCII wordmark on the sign-in surface. The renderer measures its container,
    so the box needs real dimensions before it will draw anything. */
 .archive-ascii-wordmark {
@@ -234,7 +242,7 @@ body {
 }
 .archive-recent-card { display: grid; gap: .55rem; color: var(--archive-text); font-size: .85rem; font-weight: 600; }
 .archive-recent-card { transition: color 180ms ease, transform 180ms cubic-bezier(.16, 1, .3, 1), box-shadow 180ms ease; }
-.archive-recent-card:hover, .archive-recent-card:focus-visible { color: var(--archive-signal); transform: translateY(-4px); }
+.archive-recent-card:hover, .archive-recent-card:focus-visible { color: var(--archive-signal-text); transform: translateY(-4px); }
 .archive-recent-card:hover > div, .archive-recent-card:focus-visible > div { box-shadow: 0 16px 32px rgba(245, 130, 32, .2); }
 .archive-note { padding: 1rem; }
 .archive-box, .archive-discover-card { display: grid; gap: .8rem; min-height: 11rem; padding: 1.25rem; background: var(--archive-surface); border: 1px solid var(--archive-border); }
