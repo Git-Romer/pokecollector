@@ -15,7 +15,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session, joinedload
 
 from api.export import build_collection_workbook
-from models import Card, CollectionItem, ProductPurchase, User
+from models import Card, CollectionItem, ProductPurchase, StorageLocation, User
 from services.card_visibility import visible_card_filter
 
 logger = logging.getLogger(__name__)
@@ -69,12 +69,15 @@ def create_weekly_excel_backups(db: Session, backup_date: datetime.date | None =
         products = db.query(ProductPurchase).filter(
             ProductPurchase.user_id == user.id
         ).order_by(ProductPurchase.purchase_date.desc()).all()
+        locations = db.query(StorageLocation).filter(
+            StorageLocation.user_id == user.id
+        ).order_by(StorageLocation.is_default.desc(), StorageLocation.name).all()
 
         user_slug = f"{user.id}-{_safe_username(user.username)}"
         filename = f"john-johns-pc-{user_slug}-{backup_date.isoformat()}.xlsx"
         path = BACKUP_DIR / filename
         tmp_path = path.with_suffix(".tmp")
-        tmp_path.write_bytes(build_collection_workbook(items, products))
+        tmp_path.write_bytes(build_collection_workbook(items, products, locations))
         tmp_path.replace(path)
         created.append(path)
         removed = _prune_user_backups(BACKUP_DIR, user_slug)

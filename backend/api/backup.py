@@ -14,10 +14,17 @@ logger = logging.getLogger(__name__)
 BACKUP_DIR = "/app/backups"
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 BACKUP_GROUPS = {
-    "collection": ["collection", "wishlist", "binders", "binder_cards"],
+    "collection": ["collection", "wishlist", "binders", "binder_cards", "storage_locations", "inventory_events"],
     "users": ["users", "user_settings", "settings"],
     "cards": ["cards", "sets", "price_history", "custom_card_matches"],
-    "products": ["product_purchases", "product_cards", "product_ledger_entries", "portfolio_snapshots"],
+    "products": [
+        "product_purchases",
+        "product_cards",
+        "product_ledger_entries",
+        "portfolio_snapshots",
+        "storage_locations",
+        "inventory_events",
+    ],
     "system": ["sync_log"],
     "images": ["image_cache"],
 }

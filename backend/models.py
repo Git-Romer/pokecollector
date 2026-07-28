@@ -5,6 +5,11 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database import Base
+import uuid
+
+
+def new_record_uid():
+    return str(uuid.uuid4())
 
 
 class Set(Base):
@@ -139,27 +144,55 @@ class User(Base):
     created_at = Column(DateTime, default=func.now())
 
 
+class StorageLocation(Base):
+    __tablename__ = "storage_locations"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    record_uid = Column(String, unique=True, nullable=False, default=new_record_uid)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    name = Column(String, nullable=False)
+    description = Column(Text)
+    is_default = Column(Boolean, default=False, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_storage_location_user_name"),
+    )
+
+
 class CollectionItem(Base):
     __tablename__ = "collection"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    record_uid = Column(String, unique=True, nullable=False, default=new_record_uid)
     card_id = Column(String, ForeignKey("cards.id"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     quantity = Column(Integer, default=1)
-    condition = Column(String, default="NM")  # Mint/NM/LP/MP/HP
+    condition = Column(String, default="Unassessed")
     variant = Column(String, nullable=False, default="Normal")  # Normal/Holo/Reverse Holo/First Edition
     purchase_price = Column(Float)
     acquisition_source = Column(String)
+    inventory_kind = Column(String, default="owned", nullable=False)
+    protection_type = Column(String, default="raw", nullable=False)
+    storage_location_id = Column(Integer, ForeignKey("storage_locations.id"), nullable=True)
     storage_type = Column(String)
     storage_detail = Column(String)
     grader = Column(String)
     grade = Column(String)
     certification_number = Column(String)
     notes = Column(Text)
+    status = Column(String, default="owned", nullable=False)
+    removed_at = Column(DateTime)
+    removal_reason = Column(String)
+    removal_notes = Column(Text)
     lang = Column(String, default="en")  # fixed TCGdex card language
     added_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
     card = relationship("Card", back_populates="collection_items")
+    storage_location = relationship("StorageLocation")
 
 
 class WishlistItem(Base):
@@ -236,18 +269,50 @@ class ProductPurchase(Base):
     __tablename__ = "product_purchases"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    record_uid = Column(String, unique=True, nullable=False, default=new_record_uid)
     product_name = Column(String, nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     product_type = Column(String)  # Booster, Display, ETB, Tin, Bundle, etc.
+    quantity = Column(Integer, default=1, nullable=False)
+    sealed_condition = Column(String, default="factory_sealed", nullable=False)
+    acquisition_source = Column(String)
     purchase_price = Column(Float, nullable=False)
     current_value = Column(Float)
     sold_price = Column(Float)
     purchase_date = Column(Date, nullable=False)
     sold_date = Column(Date)
     notes = Column(Text)
+    storage_location_id = Column(Integer, ForeignKey("storage_locations.id"), nullable=True)
     storage_type = Column(String)
     storage_detail = Column(String)
+    status = Column(String, default="active", nullable=False)
+    removed_at = Column(DateTime)
+    removal_reason = Column(String)
     created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    storage_location = relationship("StorageLocation")
+
+
+class InventoryEvent(Base):
+    __tablename__ = "inventory_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    entity_type = Column(String, nullable=False)
+    entity_id = Column(Integer, nullable=False)
+    entity_uid = Column(String, nullable=False)
+    action = Column(String, nullable=False)
+    changes = Column(JSON)
+    notes = Column(Text)
+    occurred_at = Column(DateTime, default=func.now(), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "entity_type IN ('collection_item', 'sealed_product', 'storage_location')",
+            name="ck_inventory_event_entity_type",
+        ),
+    )
 
 
 class ProductCard(Base):

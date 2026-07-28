@@ -48,7 +48,7 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 ### 📦 John John's PC Collection Management
 - Add cards with quantity, condition, variant, and purchase price
 - Track acquisition source, protection/storage, location notes, grader, grade, certification number, and collection notes
-- Pulled cards can use a $4.49 editable cost basis; pre-tracking bulk can use a $0 basis
+- Pulled cards default to an editable $4.49 cost basis; pre-tracking bulk has no per-card cost basis
 - Sealed product is tracked as collection-adjacent inventory with storage details
 - Variants are now limited to `Normal`, `Holo`, `Reverse Holo`, and `First Edition`
 - Card rarity is read-only from TCGdex and displayed separately from variant
@@ -95,7 +95,7 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - Accessible dark/light archive themes with purposeful motion and reduced-motion support
 
 ### ⚙️ Utilities
-- Excel, CSV, and PDF export
+- Excel, CSV, and PDF export; Excel is the primary portable collection ledger
 - Weekly local Excel backups are written under the mounted backup directory and the newest eight are retained per active user
 - Strict CSV collection import with a downloadable template; required row values are `set_code` and `number`, while `quantity`, `condition`, `variant`, `lang`, and `purchase_price` may be blank
 - Admin-only sync endpoints and scheduler controls
@@ -108,7 +108,8 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - The root route is Collection Overview, not a finance dashboard.
 - John John is a local, faceless presence. He is not a chatbot, mascot, or external AI service.
 - HoloDex, Collectr, PSA, and CSV data are supplementary manual/reviewed inputs. They do not automatically overwrite tracker records.
-- Excel `.xlsx` is the official portable backup format with Cards, Sealed Product, and Acquisition & Storage worksheets.
+- Excel `.xlsx` is the official portable backup format with `Owned Cards`, `Bulk`, `Sealed Products`, `Storage Locations`, and `Import Errors` worksheets.
+- Excel imports are reviewed before writing and use stable record IDs so a round trip updates records without duplicating them.
 
 ### CSV Collection Import
 
@@ -125,7 +126,7 @@ All columns must be present, but only `set_code` and `number` need values in eac
 | `set_code` | Yes | First part of the card code shown in the app, e.g. `ASC` from `ASC 152`. |
 | `number` | Yes | Second part of the card code shown in the app, e.g. `152` from `ASC 152`. |
 | `quantity` | No | Defaults to `1`; must be `1`-`999` when provided. |
-| `condition` | No | Defaults to `NM`; allowed: `Mint`, `NM`, `LP`, `MP`, `HP`. |
+| `condition` | No | Defaults to `NM`; allowed: `Mint`, `NM`, `LP`, `MP`, `HP`, `Damaged`, `Unassessed`. |
 | `variant` | No | Leave blank or use `Normal`, `Holo`, `Reverse Holo`, `First Edition`. |
 | `lang` | No | Defaults to `en`; accepts any supported TCGdex language code. |
 | `purchase_price` | No | Optional per-card purchase price. |

@@ -16,6 +16,7 @@ import { useTheme } from '../hooks/useTheme'
 import { useSettings } from '../contexts/SettingsContext'
 import Modal from '../components/ui/Modal'
 import AvatarPicker from '../components/AvatarPicker'
+import StorageLocationsPanel from '../components/StorageLocationsPanel'
 import { formatDistanceToNow } from 'date-fns'
 import toast from 'react-hot-toast'
 import { TCGDEX_LANGUAGES, normalizeTcgdexLanguageCsv, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
@@ -1019,6 +1020,7 @@ export default function Settings() {
           {/* ── 5. DATEN ── */}
           <section className="space-y-1">
             <SectionHeader title={t('settings.sectionData')} />
+            <StorageLocationsPanel />
             <SettingsCard>
               {user?.role === 'admin' && (
                 <SettingsRow label={t('settings.debugMode')} description={t('settings.debugModeDesc')}>

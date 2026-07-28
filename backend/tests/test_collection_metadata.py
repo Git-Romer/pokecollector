@@ -47,11 +47,10 @@ class CollectionMetadataTests(unittest.TestCase):
         self.assertEqual(item.certification_number, "12345")
         self.assertEqual(item.notes, "Pulled at home")
 
-    def test_bulk_before_tracking_defaults_cost_basis_to_zero(self):
+    def test_bulk_before_tracking_has_no_per_card_cost_basis(self):
         item = add_to_collection(
             CollectionItemCreate(card_id=self.card.id, acquisition_source="bulk_before_tracking"),
             current_user=self.user,
             db=self.db,
         )
-        self.assertEqual(item.purchase_price, 0.0)
-
+        self.assertIsNone(item.purchase_price)

@@ -1,19 +1,35 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from api.auth import get_current_user
 from database import get_db
 from models import CollectionItem, Card, ProductCard, ProductPurchase, Set, User
-from schemas import CollectionItemCreate, CollectionItemUpdate, CollectionItemResponse, BulkCollectionAddRequest, BulkCollectionAddResponse
+from schemas import (
+    BulkCollectionAddRequest,
+    BulkCollectionAddResponse,
+    CollectionItemCreate,
+    CollectionItemRemovalRequest,
+    CollectionItemResponse,
+    CollectionItemUpdate,
+)
 from services import pokemon_api
 from services.card_fallbacks import apply_cross_language_fallbacks, build_missing_language_card
 from services.card_numbers import card_number_matches
+from services.card_values import effective_market_price, normalize_price_field
 from services.card_visibility import visible_card_filter
 from services.digital_sets import digital_sets_enabled
 from services.standard_legality import is_standard_legal_card, is_standard_regulation_mark
 from services.tcgdex_languages import SUPPORTED_TCGDEX_LANGUAGES, has_lang_suffix, is_supported_tcgdex_language, normalize_tcgdex_language
-from services.collection_csv import collection_import_key, is_valid_collection_purchase_price, merge_collection_import_item, normalize_collection_variant
+from services.collection_csv import collection_import_key, is_valid_collection_purchase_price, merge_collection_import_item
+from services.inventory import (
+    CARD_VARIANTS,
+    RAW_CONDITIONS,
+    changed_values,
+    normalize_card_variant,
+    record_inventory_event,
+    resolve_storage_location,
+)
 import datetime
 import csv
 import io
@@ -25,13 +41,13 @@ logger = logging.getLogger(__name__)
 CSV_IMPORT_COLUMNS = ["set_code", "number", "quantity", "condition", "variant", "lang", "purchase_price"]
 CSV_IMPORT_MAX_BYTES = 256 * 1024
 CSV_IMPORT_MAX_ROWS = 1000
-ALLOWED_CONDITIONS = {"Mint", "NM", "LP", "MP", "HP"}
-ALLOWED_VARIANTS = {"Normal", "Holo", "Reverse Holo", "First Edition"}
+ALLOWED_CONDITIONS = set(RAW_CONDITIONS)
+ALLOWED_VARIANTS = set(CARD_VARIANTS)
 ALLOWED_LANGS = set(SUPPORTED_TCGDEX_LANGUAGES)
 
 
 def _normalize_collection_variant(variant: Optional[str]) -> str:
-    return normalize_collection_variant(variant)
+    return normalize_card_variant(variant)
 
 _SET_CODE_API_CACHE: Optional[dict[str, dict[str, List[dict]]]] = None
 
@@ -210,11 +226,22 @@ def ensure_card_exists(db: Session, card_id: str, lang: str = "en") -> Card:
     return card
 
 
-def _add_collection_item(db: Session, current_user: User, item: CollectionItemCreate, commit: bool = True) -> str:
-    """Add one item and return "added" or "updated"."""
+def _upsert_collection_item(
+    db: Session,
+    current_user: User,
+    item: CollectionItemCreate,
+    *,
+    commit: bool = True,
+) -> tuple[str, CollectionItem]:
+    """Add or increment one exact physical inventory record."""
     _, detected_lang = pokemon_api.strip_lang_suffix(item.card_id)
     item_lang = _normalize_request_lang(item.lang or detected_lang or "en")
     item_variant = _normalize_collection_variant(item.variant)
+    if item_variant not in ALLOWED_VARIANTS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"variant must be one of: {', '.join(CARD_VARIANTS)}",
+        )
 
     if item.card_id.startswith("custom-"):
         effective_card_id = item.card_id
@@ -226,34 +253,118 @@ def _add_collection_item(db: Session, current_user: User, item: CollectionItemCr
         effective_card_id = f"{tcg_card_id}_{item_lang}"
         ensure_card_exists(db, effective_card_id, lang=item_lang)
 
+    inventory_kind = "bulk" if item.acquisition_source == "bulk_before_tracking" else item.inventory_kind
+    purchase_price = item.purchase_price
+    if purchase_price is not None and not is_valid_collection_purchase_price(purchase_price):
+        raise HTTPException(status_code=422, detail="purchase_price must be a finite, non-negative number")
+    if purchase_price is None and item.acquisition_source == "pulled":
+        purchase_price = 4.49
+    if inventory_kind == "bulk":
+        purchase_price = None
+
+    if item.condition not in ALLOWED_CONDITIONS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"condition must be one of: {', '.join(RAW_CONDITIONS)}",
+        )
+    if item.protection_type == "psa_slab" and not (item.grader or "PSA").strip():
+        raise HTTPException(status_code=422, detail="A grading company is required for slabbed cards")
+
+    location = resolve_storage_location(db, current_user.id, item.storage_location_id)
+    grader = item.grader
+    if item.protection_type == "psa_slab" and not grader:
+        grader = "PSA"
+
     existing = db.query(CollectionItem).filter(
         CollectionItem.card_id == effective_card_id,
         CollectionItem.variant == item_variant,
         CollectionItem.lang == item_lang,
         CollectionItem.condition == item.condition,
-        CollectionItem.purchase_price == item.purchase_price,
+        CollectionItem.purchase_price == purchase_price,
         CollectionItem.user_id == current_user.id,
+        CollectionItem.inventory_kind == inventory_kind,
+        CollectionItem.protection_type == item.protection_type,
+        CollectionItem.storage_location_id == location.id,
+        CollectionItem.acquisition_source == item.acquisition_source,
+        CollectionItem.grader == grader,
+        CollectionItem.grade == item.grade,
+        CollectionItem.certification_number == item.certification_number,
+        CollectionItem.status == "owned",
     ).first()
 
     if existing:
+        before_quantity = int(existing.quantity or 0)
+        before_notes = existing.notes
         existing.quantity += item.quantity or 1
+        if item.notes and item.notes != existing.notes:
+            existing.notes = item.notes
+        existing.updated_at = datetime.datetime.utcnow()
+        db.flush()
+        changes = {
+            "quantity": {"before": before_quantity, "after": existing.quantity},
+        }
+        if before_notes != existing.notes:
+            changes["notes"] = {"before": before_notes, "after": existing.notes}
+        record_inventory_event(
+            db,
+            user_id=current_user.id,
+            entity_type="collection_item",
+            entity_id=existing.id,
+            entity_uid=existing.record_uid,
+            action="quantity_increased",
+            changes=changes,
+        )
         if commit:
             db.commit()
-        return "updated"
+            db.refresh(existing)
+        return "updated", existing
 
-    db.add(CollectionItem(
+    db_item = CollectionItem(
         card_id=effective_card_id,
         quantity=item.quantity,
         condition=item.condition,
         variant=item_variant,
-        purchase_price=item.purchase_price,
+        purchase_price=purchase_price,
+        acquisition_source=item.acquisition_source,
+        inventory_kind=inventory_kind,
+        protection_type=item.protection_type,
+        storage_location_id=location.id,
+        storage_type=item.storage_type,
+        storage_detail=item.storage_detail,
+        grader=grader,
+        grade=item.grade,
+        certification_number=item.certification_number,
+        notes=item.notes,
+        status="owned",
         lang=item_lang,
         user_id=current_user.id,
         added_at=datetime.datetime.utcnow(),
-    ))
+        updated_at=datetime.datetime.utcnow(),
+    )
+    db.add(db_item)
+    db.flush()
+    record_inventory_event(
+        db,
+        user_id=current_user.id,
+        entity_type="collection_item",
+        entity_id=db_item.id,
+        entity_uid=db_item.record_uid,
+        action="added",
+        changes={
+            "quantity": {"before": None, "after": db_item.quantity},
+            "storage_location_id": {"before": None, "after": location.id},
+            "inventory_kind": {"before": None, "after": inventory_kind},
+        },
+    )
     if commit:
         db.commit()
-    return "added"
+        db.refresh(db_item)
+    return "added", db_item
+
+
+def _add_collection_item(db: Session, current_user: User, item: CollectionItemCreate, commit: bool = True) -> str:
+    status, _ = _upsert_collection_item(db, current_user, item, commit=commit)
+    return status
 
 
 def _get_api_sets_by_code(include_digital: bool = False) -> dict[str, List[dict]]:
@@ -426,6 +537,8 @@ def get_user_collection(
         joinedload(CollectionItem.card).joinedload(Card.set_ref)
     ).filter(
         CollectionItem.user_id == user_id,
+        CollectionItem.status == "owned",
+        CollectionItem.inventory_kind == "owned",
         visible_card_filter(db, user_id, "all"),
     )
     return _annotate_standard_legality(query.all(), _collection_standard_legal_fingerprints(db))
@@ -437,14 +550,26 @@ def get_collection(
     db: Session = Depends(get_db),
     sort_by: Optional[str] = "added_at",
     order: Optional[str] = "desc",
+    inventory_kind: Optional[str] = Query(default=None, pattern="^(owned|bulk)$"),
+    status: str = Query(default="owned", pattern="^(owned|removed|all)$"),
 ):
     """Get all collection items."""
+    # FastAPI parameter descriptors are passed through when route functions are
+    # called directly in unit tests.
+    if status not in {"owned", "removed", "all"}:
+        status = "owned"
+    if inventory_kind not in {"owned", "bulk"}:
+        inventory_kind = None
     query = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).options(
         joinedload(CollectionItem.card).joinedload(Card.set_ref)
     ).filter(
         CollectionItem.user_id == current_user.id,
         visible_card_filter(db, current_user.id, "all"),
     )
+    if status != "all":
+        query = query.filter(CollectionItem.status == status)
+    if inventory_kind:
+        query = query.filter(CollectionItem.inventory_kind == inventory_kind)
 
     sort_col = {
         "added_at": CollectionItem.added_at,
@@ -467,67 +592,9 @@ def add_to_collection(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Add a card to the collection. Cards with identical card_id+variant+lang+condition+purchase_price are grouped."""
-    _, detected_lang = pokemon_api.strip_lang_suffix(item.card_id)
-    item_lang = _normalize_request_lang(item.lang or detected_lang or "en")
-    item_variant = _normalize_collection_variant(item.variant)
-
-    # Resolve the correct language-variant card_id
-    if item.card_id.startswith("custom-"):
-        # Custom cards keep their original ID (no language suffix)
-        effective_card_id = item.card_id
-        # Always derive lang from the custom card record itself
-        custom_card = db.query(Card).filter(Card.id == item.card_id).first()
-        if custom_card and custom_card.lang:
-            item_lang = custom_card.lang
-    else:
-        tcg_card_id, _ = pokemon_api.strip_lang_suffix(item.card_id)
-        effective_card_id = f"{tcg_card_id}_{item_lang}"
-        ensure_card_exists(db, effective_card_id, lang=item_lang)
-
-    purchase_price = item.purchase_price
-    if purchase_price is None and item.acquisition_source == "pulled":
-        purchase_price = 4.49
-    elif purchase_price is None and item.acquisition_source == "bulk_before_tracking":
-        purchase_price = 0.0
-
-    # Find existing entry for same card + variant + lang + condition + purchase_price combination
-    existing = db.query(CollectionItem).filter(
-        CollectionItem.card_id == effective_card_id,
-        CollectionItem.variant == item_variant,
-        CollectionItem.lang == item_lang,
-        CollectionItem.condition == item.condition,
-        CollectionItem.purchase_price == purchase_price,
-        CollectionItem.user_id == current_user.id,
-    ).first()
-
-    if existing:
-        existing.quantity += item.quantity or 1
-        db.commit()
-        db.refresh(existing)
-        return _annotate_collection_item(db, current_user, existing)
-    else:
-        db_item = CollectionItem(
-            card_id=effective_card_id,
-            quantity=item.quantity,
-            condition=item.condition,
-            variant=item_variant,
-            purchase_price=purchase_price,
-            acquisition_source=item.acquisition_source,
-            storage_type=item.storage_type,
-            storage_detail=item.storage_detail,
-            grader=item.grader,
-            grade=item.grade,
-            certification_number=item.certification_number,
-            notes=item.notes,
-            lang=item_lang,
-            user_id=current_user.id,
-            added_at=datetime.datetime.utcnow(),
-        )
-        db.add(db_item)
-        db.commit()
-        db.refresh(db_item)
-        return _annotate_collection_item(db, current_user, db_item)
+    """Add an exact physical card record, assigning a required storage location."""
+    _, db_item = _upsert_collection_item(db, current_user, item, commit=True)
+    return _annotate_collection_item(db, current_user, db_item)
 
 
 @router.post("/bulk-add", response_model=BulkCollectionAddResponse)
@@ -550,58 +617,11 @@ def bulk_add_to_collection(
 
     for item in request.items:
         try:
-            _, detected_lang = pokemon_api.strip_lang_suffix(item.card_id)
-            item_lang = _normalize_request_lang(item.lang or detected_lang or "en")
-            item_variant = _normalize_collection_variant(item.variant)
-            purchase_price = item.purchase_price
-            if purchase_price is None and item.acquisition_source == "pulled":
-                purchase_price = 4.49
-            elif purchase_price is None and item.acquisition_source == "bulk_before_tracking":
-                purchase_price = 0.0
-
-            if item.card_id.startswith("custom-"):
-                effective_card_id = item.card_id
-                custom_card = db.query(Card).filter(Card.id == item.card_id).first()
-                if custom_card and custom_card.lang:
-                    item_lang = custom_card.lang
-            else:
-                tcg_card_id, _ = pokemon_api.strip_lang_suffix(item.card_id)
-                effective_card_id = f"{tcg_card_id}_{item_lang}"
-                ensure_card_exists(db, effective_card_id, lang=item_lang)
-
-            existing = db.query(CollectionItem).filter(
-                CollectionItem.card_id == effective_card_id,
-                CollectionItem.variant == item_variant,
-                CollectionItem.lang == item_lang,
-                CollectionItem.condition == item.condition,
-                CollectionItem.purchase_price == purchase_price,
-                CollectionItem.user_id == current_user.id,
-            ).first()
-
-            if existing:
-                existing.quantity += item.quantity or 1
-                db.commit()
-                updated += 1
-            else:
-                db.add(CollectionItem(
-                    card_id=effective_card_id,
-                    quantity=item.quantity,
-                    condition=item.condition,
-                    variant=item_variant,
-                    purchase_price=purchase_price,
-                    acquisition_source=item.acquisition_source,
-                    storage_type=item.storage_type,
-                    storage_detail=item.storage_detail,
-                    grader=item.grader,
-                    grade=item.grade,
-                    certification_number=item.certification_number,
-                    notes=item.notes,
-                    lang=item_lang,
-                    user_id=current_user.id,
-                    added_at=datetime.datetime.utcnow(),
-                ))
-                db.commit()
+            result, _ = _upsert_collection_item(db, current_user, item, commit=True)
+            if result == "added":
                 added += 1
+            else:
+                updated += 1
         except HTTPException as exc:
             db.rollback()
             failed += 1
@@ -725,6 +745,7 @@ def update_collection_item(
     item = db.query(CollectionItem).filter(
         CollectionItem.id == item_id,
         CollectionItem.user_id == current_user.id,
+        CollectionItem.status == "owned",
     ).first()
     if not item:
         raise HTTPException(status_code=404, detail="Collection item not found")
@@ -732,8 +753,46 @@ def update_collection_item(
     # Use exclude_unset so only fields explicitly sent in the request are updated.
     # Null/blank variants are normalized to Normal; purchase_price may still be cleared with null.
     update_data = update.model_dump(exclude_unset=True)
+    before = {
+        field: getattr(item, field)
+        for field in (
+            "quantity", "condition", "variant", "lang", "purchase_price",
+            "acquisition_source", "inventory_kind", "protection_type",
+            "storage_location_id", "grader", "grade", "certification_number",
+            "notes",
+        )
+    }
     if "variant" in update_data:
         update_data["variant"] = _normalize_collection_variant(update_data.get("variant"))
+        if update_data["variant"] not in ALLOWED_VARIANTS:
+            raise HTTPException(
+                status_code=422,
+                detail=f"variant must be one of: {', '.join(CARD_VARIANTS)}",
+            )
+    if "condition" in update_data and update_data["condition"] not in ALLOWED_CONDITIONS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"condition must be one of: {', '.join(RAW_CONDITIONS)}",
+        )
+    if "storage_location_id" in update_data:
+        location = resolve_storage_location(
+            db,
+            current_user.id,
+            update_data.get("storage_location_id"),
+        )
+        update_data["storage_location_id"] = location.id
+    if update_data.get("purchase_price") is not None and not is_valid_collection_purchase_price(
+        update_data["purchase_price"]
+    ):
+        raise HTTPException(status_code=422, detail="purchase_price must be a finite, non-negative number")
+    if update_data.get("inventory_kind") == "bulk":
+        update_data["purchase_price"] = None
+    if update_data.get("protection_type") == "psa_slab" and not (
+        update_data.get("grader") or item.grader or "PSA"
+    ):
+        raise HTTPException(status_code=422, detail="A grading company is required for slabbed cards")
+    if update_data.get("protection_type") == "psa_slab" and "grader" not in update_data and not item.grader:
+        update_data["grader"] = "PSA"
     active_linked_quantity = _active_product_link_quantity(db, current_user, item.id)
     if "quantity" in update_data and update_data["quantity"] is not None:
         if update_data["quantity"] < active_linked_quantity:
@@ -766,6 +825,21 @@ def update_collection_item(
     for field, value in update_data.items():
         setattr(item, field, value)
 
+    item.updated_at = datetime.datetime.utcnow()
+    db.flush()
+    after = {field: getattr(item, field) for field in before}
+    changes = changed_values(before, after)
+    if changes:
+        action = "moved" if "storage_location_id" in changes else "updated"
+        record_inventory_event(
+            db,
+            user_id=current_user.id,
+            entity_type="collection_item",
+            entity_id=item.id,
+            entity_uid=item.record_uid,
+            action=action,
+            changes=changes,
+        )
     db.commit()
     db.refresh(item)
     return _annotate_collection_item(db, current_user, item)
@@ -774,13 +848,15 @@ def update_collection_item(
 @router.delete("/{item_id}")
 def remove_from_collection(
     item_id: int,
+    removal: CollectionItemRemovalRequest = Body(default_factory=CollectionItemRemovalRequest),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Remove a card from collection."""
+    """Soft-remove a card while preserving local collection history."""
     item = db.query(CollectionItem).filter(
         CollectionItem.id == item_id,
         CollectionItem.user_id == current_user.id,
+        CollectionItem.status == "owned",
     ).first()
     if not item:
         raise HTTPException(status_code=404, detail="Collection item not found")
@@ -792,9 +868,26 @@ def remove_from_collection(
             detail="This collection item is linked to a product. Sell or unlink the product card before removing it from the active collection.",
         )
 
-    db.delete(item)
+    item.status = "removed"
+    item.removed_at = datetime.datetime.utcnow()
+    item.removal_reason = removal.reason
+    item.removal_notes = removal.notes
+    item.updated_at = datetime.datetime.utcnow()
+    record_inventory_event(
+        db,
+        user_id=current_user.id,
+        entity_type="collection_item",
+        entity_id=item.id,
+        entity_uid=item.record_uid,
+        action="removed",
+        changes={
+            "status": {"before": "owned", "after": "removed"},
+            "removal_reason": {"before": None, "after": removal.reason},
+        },
+        notes=removal.notes,
+    )
     db.commit()
-    return {"message": "Removed from collection"}
+    return {"message": "Removed from collection", "status": "removed", "id": item.id}
 
 
 @router.get("/stats/summary")
@@ -808,6 +901,8 @@ def get_collection_stats(
         joinedload(CollectionItem.card)
     ).filter(
         CollectionItem.user_id == current_user.id,
+        CollectionItem.status == "owned",
+        CollectionItem.inventory_kind == "owned",
         visible_card_filter(db, current_user.id, "all"),
     ).all()
 

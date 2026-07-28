@@ -5,53 +5,147 @@ from api.auth import get_current_user
 from database import get_db
 from services.card_values import effective_market_price, normalize_price_field
 from services.card_visibility import visible_card_filter
-from models import CollectionItem, Card, ProductPurchase, User
+from models import CollectionItem, Card, ProductPurchase, StorageLocation, User
 import io
 import csv
 import datetime
 from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
 
 router = APIRouter()
 
 
-def build_collection_workbook(items, products) -> bytes:
-    workbook = Workbook()
-    cards = workbook.active
-    cards.title = "Cards"
-    cards.append(["Card ID", "Name", "Set", "Number", "Rarity", "Quantity", "Condition", "Variant", "Language", "Cost Basis", "Added At"])
-    for item in items:
-        card = item.card
-        if not card:
-            continue
-        cards.append([
-            card.id, card.name, card.set_ref.name if card.set_ref else "", card.number or "", card.rarity or "",
-            item.quantity, item.condition, item.variant, item.lang, item.purchase_price,
-            item.added_at.date().isoformat() if item.added_at else "",
-        ])
+CARD_HEADERS = [
+    "Record UID", "Card ID", "Name", "Set", "Number", "Rarity", "Quantity",
+    "Condition", "Variant", "Language", "Cost Basis", "Acquisition Source",
+    "Protection", "Storage Location UID", "Storage Location", "Grading Company",
+    "Grade", "Certification Number", "Notes", "Status", "Added At", "Updated At",
+    "Removal Reason",
+]
+SEALED_HEADERS = [
+    "Record UID", "Product Name", "Product Type", "Acquisition Source", "Quantity", "Condition",
+    "Cost Basis", "Acquisition Date", "Storage Location UID", "Storage Location",
+    "Notes", "Status", "Updated At", "Removal Reason",
+]
+LOCATION_HEADERS = [
+    "Record UID", "Name", "Description", "Default", "Active", "Created At", "Updated At",
+]
+ERROR_HEADERS = ["Sheet", "Row", "Record UID", "Error"]
 
-    sealed = workbook.create_sheet("Sealed Product")
-    sealed.append(["Product Name", "Product Type", "Cost Basis", "Acquisition Date", "Storage Type", "Storage Detail", "Notes"])
-    for product in products:
-        sealed.append([
-            product.product_name, product.product_type or "", product.purchase_price,
-            product.purchase_date.isoformat() if product.purchase_date else "",
-            product.storage_type or "", product.storage_detail or "", product.notes or "",
-        ])
 
-    care = workbook.create_sheet("Acquisition & Storage")
-    care.append(["Card ID", "Name", "Acquisition Source", "Storage Type", "Storage Detail", "Grader", "Grade", "Certification Number", "Notes"])
-    for item in items:
-        if not item.card:
-            continue
-        care.append([
-            item.card.id, item.card.name, item.acquisition_source or "", item.storage_type or "",
-            item.storage_detail or "", item.grader or "", item.grade or "",
-            item.certification_number or "", item.notes or "",
-        ])
+def _date_cell(value):
+    if value is None:
+        return ""
+    return value.isoformat()
+
+
+def _card_row(item):
+    card = item.card
+    location = getattr(item, "storage_location", None)
+    return [
+        item.record_uid,
+        card.id,
+        card.name,
+        card.set_ref.name if card.set_ref else "",
+        card.number or "",
+        card.rarity or "",
+        item.quantity,
+        item.condition,
+        item.variant,
+        item.lang,
+        item.purchase_price,
+        item.acquisition_source or "",
+        item.protection_type or "raw",
+        location.record_uid if location else "",
+        location.name if location else "",
+        item.grader or "",
+        item.grade or "",
+        item.certification_number or "",
+        item.notes or "",
+        getattr(item, "status", None) or "owned",
+        _date_cell(getattr(item, "added_at", None)),
+        _date_cell(getattr(item, "updated_at", None)),
+        getattr(item, "removal_reason", None) or "",
+    ]
+
+
+def _style_workbook(workbook):
+    header_fill = PatternFill("solid", fgColor="111111")
+    header_font = Font(color="FFFFFF", bold=True)
+    accent_fill = PatternFill("solid", fgColor="00A3E0")
 
     for sheet in workbook.worksheets:
         sheet.freeze_panes = "A2"
         sheet.auto_filter.ref = sheet.dimensions
+        sheet.sheet_view.showGridLines = False
+        sheet.row_dimensions[1].height = 26
+        for cell in sheet[1]:
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(vertical="center")
+        if sheet.max_column:
+            sheet["A1"].fill = accent_fill
+        for column in range(1, sheet.max_column + 1):
+            values = [
+                str(sheet.cell(row=row, column=column).value or "")
+                for row in range(1, min(sheet.max_row, 100) + 1)
+            ]
+            width = min(max(max((len(value) for value in values), default=8) + 2, 11), 34)
+            sheet.column_dimensions[get_column_letter(column)].width = width
+
+
+def build_collection_workbook(items, products, locations=()) -> bytes:
+    workbook = Workbook()
+    owned = workbook.active
+    owned.title = "Owned Cards"
+    owned.append(CARD_HEADERS)
+    bulk = workbook.create_sheet("Bulk")
+    bulk.append(CARD_HEADERS)
+
+    for item in items:
+        if not item.card:
+            continue
+        target = bulk if getattr(item, "inventory_kind", "owned") == "bulk" else owned
+        target.append(_card_row(item))
+
+    sealed = workbook.create_sheet("Sealed Products")
+    sealed.append(SEALED_HEADERS)
+    for product in products:
+        location = getattr(product, "storage_location", None)
+        sealed.append([
+            product.record_uid,
+            product.product_name,
+            product.product_type or "",
+            product.acquisition_source or "",
+            product.quantity,
+            product.sealed_condition,
+            product.purchase_price,
+            _date_cell(product.purchase_date),
+            location.record_uid if location else "",
+            location.name if location else "",
+            product.notes or "",
+            product.status or "active",
+            _date_cell(product.updated_at),
+            product.removal_reason or "",
+        ])
+
+    location_sheet = workbook.create_sheet("Storage Locations")
+    location_sheet.append(LOCATION_HEADERS)
+    for location in locations:
+        location_sheet.append([
+            location.record_uid,
+            location.name,
+            location.description or "",
+            bool(location.is_default),
+            bool(location.is_active),
+            _date_cell(location.created_at),
+            _date_cell(location.updated_at),
+        ])
+
+    errors = workbook.create_sheet("Import Errors")
+    errors.append(ERROR_HEADERS)
+    _style_workbook(workbook)
     output = io.BytesIO()
     workbook.save(output)
     return output.getvalue()
@@ -68,10 +162,17 @@ def export_xlsx(
         CollectionItem.user_id == current_user.id,
         visible_card_filter(db, current_user.id, "all"),
     ).all()
-    products = db.query(ProductPurchase).filter(ProductPurchase.user_id == current_user.id).order_by(ProductPurchase.purchase_date.desc()).all()
+    products = db.query(ProductPurchase).options(
+        joinedload(ProductPurchase.storage_location)
+    ).filter(
+        ProductPurchase.user_id == current_user.id
+    ).order_by(ProductPurchase.purchase_date.desc()).all()
+    locations = db.query(StorageLocation).filter(
+        StorageLocation.user_id == current_user.id
+    ).order_by(StorageLocation.is_default.desc(), StorageLocation.name).all()
     filename = f"john-johns-pc-{datetime.date.today().isoformat()}.xlsx"
     return StreamingResponse(
-        io.BytesIO(build_collection_workbook(items, products)),
+        io.BytesIO(build_collection_workbook(items, products, locations)),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )

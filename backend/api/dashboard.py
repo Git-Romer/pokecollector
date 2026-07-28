@@ -25,6 +25,8 @@ def get_dashboard(
         joinedload(CollectionItem.card)
     ).filter(
         CollectionItem.user_id == current_user.id,
+        CollectionItem.status == "owned",
+        CollectionItem.inventory_kind == "owned",
         visible_card_filter(db, current_user.id, "all"),
     ).all()
 
@@ -44,7 +46,8 @@ def get_dashboard(
     # Product purchases (booster packs, displays, ETB, etc.)
     # Only count UNSOLD products — sold ones are no longer actively invested
     all_products = db.query(ProductPurchase).filter(
-        ProductPurchase.user_id == current_user.id
+        ProductPurchase.user_id == current_user.id,
+        ProductPurchase.status == "active",
     ).all()
     # A product is "sold" when sold_price is explicitly set, including zero-value write-offs.
     unsold_products = [p for p in all_products if p.sold_price is None]
@@ -137,6 +140,8 @@ def get_dashboard(
         joinedload(CollectionItem.card).joinedload(Card.set_ref)
     ).filter(
         CollectionItem.user_id == current_user.id,
+        CollectionItem.status == "owned",
+        CollectionItem.inventory_kind == "owned",
         visible_card_filter(db, current_user.id, "all"),
     ).order_by(CollectionItem.added_at.desc()).limit(12).all()
 

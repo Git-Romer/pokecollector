@@ -3,8 +3,8 @@ import { useState, useMemo, useId, useRef, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Trash2, Check, X, Filter, SortAsc, Download, Upload, ChevronUp, ChevronDown, Search, PenLine, Grid2X2, List, Library, BookOpen, Heart, Copy, ArrowLeft, Package } from 'lucide-react'
-import { getCollection, updateCollectionItem, updateCardCustomImage, removeFromCollection, importCollectionCsv, exportCSV, exportPDF, exportXLSX, getSets, addToCollection, getBinders, addCollectionItemToBinder, getWishlist, getApiErrorMessage } from '../api/client'
+import { Trash2, Check, X, Filter, SortAsc, Download, ChevronUp, ChevronDown, Search, PenLine, Grid2X2, List, Library, BookOpen, Heart, Copy, ArrowLeft, Package, Plus, FileSpreadsheet, Boxes, ArchiveRestore } from 'lucide-react'
+import { getCollection, updateCollectionItem, updateCardCustomImage, removeFromCollection, exportCSV, exportPDF, exportXLSX, getSets, addToCollection, getBinders, addCollectionItemToBinder, getWishlist, getStorageLocations } from '../api/client'
 import { CustomCardModal } from '../components/CardItem'
 import { useSettings } from '../contexts/SettingsContext'
 import CardImage from '../components/CardImage'
@@ -24,7 +24,11 @@ import { tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLa
 import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import { formatMoneyInputValue, parseMoneyInputValue } from '../utils/moneyInput'
-import { defaultPurchasePrice, ACQUISITION_SOURCES } from '../utils/collectionMetadata'
+import { defaultPurchasePrice, ACQUISITION_SOURCES, PROTECTION_TYPES, RAW_CONDITIONS, REMOVAL_REASONS } from '../utils/collectionMetadata'
+import InventoryIntakeModal from '../components/InventoryIntakeModal'
+import ExcelImportModal from '../components/ExcelImportModal'
+import SealedCollectionView from '../components/SealedCollectionView'
+import InventoryHistoryView from '../components/InventoryHistoryView'
 
 function TiltBinderCard({ className, onClick, children }) {
   const { ref, onMouseMove, onMouseEnter, onMouseLeave } = useTilt(10)
@@ -42,7 +46,7 @@ function TiltBinderCard({ className, onClick, children }) {
   )
 }
 
-const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
+const CONDITIONS = RAW_CONDITIONS
 const CONDITION_COLORS = {
   Mint: 'badge-green',
   NM: 'badge-blue',
@@ -160,122 +164,12 @@ function ProductSourceBadge({ item, t, compact = false, className = '' }) {
 }
 
 
-const CSV_IMPORT_HEADER = 'set_code,number,quantity,condition,variant,lang,purchase_price'
-const CSV_IMPORT_TEMPLATE = `${CSV_IMPORT_HEADER}\nASC,152,1,NM,Normal,en,\n`
-
 const naturalCardNumberKey = (number) => String(number || '').trim().split(/(\d+)/).map(part => /^\d+$/.test(part) ? part.padStart(8, '0') : part.toLowerCase()).join('')
 
 const collectionCardIdKey = (item) => {
   const card = item.card || {}
   const setKey = (card.set_ref?.abbreviation || card.set_id || '').toLowerCase()
   return `${setKey}|${naturalCardNumberKey(card.number)}|${card.name || ''}`
-}
-
-const downloadCsvImportTemplate = () => {
-  const blob = new Blob([CSV_IMPORT_TEMPLATE], { type: 'text/csv;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = 'collection-import-template.csv'
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  URL.revokeObjectURL(url)
-}
-
-function CsvImportModal({ t, onClose, onChooseFile, onDownloadTemplate, isImporting }) {
-  return createPortal(
-    <div
-      className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm md:flex md:items-center md:justify-center md:bg-black/80"
-      onClick={onClose}
-    >
-      <div
-        className={[
-          'fixed bottom-0 left-0 right-0 rounded-t-2xl max-h-[90dvh] overflow-y-auto',
-          'bg-bg-surface border-t border-border more-sheet-enter',
-          'md:static md:rounded-2xl md:border md:max-w-lg md:w-full md:max-h-[85vh] md:animate-none',
-        ].join(' ')}
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="flex justify-center pt-3 pb-1 md:hidden">
-          <div className="w-10 h-1 bg-border rounded-full" />
-        </div>
-
-        <div className="p-5 space-y-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h2 className="text-base font-bold text-text-primary">{t('collection.csvImportFormatTitle')}</h2>
-              <p className="text-xs text-text-secondary mt-1">{t('collection.csvImportFormatDescription')}</p>
-            </div>
-            <button onClick={onClose} className="text-text-muted hover:text-text-primary flex-shrink-0 p-1">
-              <X size={18} />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={onChooseFile}
-              disabled={isImporting}
-              className="btn-primary justify-center"
-            >
-              <Upload size={16} /> {isImporting ? t('collection.importingCsv') : t('collection.importCsv')}
-            </button>
-            <button
-              type="button"
-              onClick={onDownloadTemplate}
-              className="btn-ghost justify-center"
-            >
-              <Download size={16} /> {t('collection.downloadCsvTemplate')}
-            </button>
-          </div>
-
-          <div className="rounded-xl border border-light-blue/25 bg-light-blue/10 px-3 py-2 text-xs text-text-secondary">
-            <p className="font-semibold text-text-primary">{t('collection.importReviewTitle')}</p>
-            <p className="mt-1">{t('collection.importReviewDescription')}</p>
-          </div>
-
-          <div className="rounded-xl bg-bg-elevated/35 p-3 text-xs text-text-secondary space-y-3">
-            <div className="space-y-1">
-              <p className="font-semibold text-text-primary">{t('collection.csvImportSectionCardCode')}</p>
-              <p>{t('collection.csvImportValueHelp')}</p>
-              <p className="font-mono text-[11px] text-text-primary">
-                <span className="text-brand-red">ASC</span> → set_code · <span className="text-brand-red">152</span> → number
-              </p>
-            </div>
-
-            <div className="border-t border-white/5 pt-3 space-y-2">
-              <p className="font-semibold text-text-primary">{t('collection.csvImportSectionColumns')}</p>
-              <code className="block overflow-x-auto rounded-lg bg-bg/70 px-3 py-2 text-[11px] text-text-primary font-mono">
-                {CSV_IMPORT_HEADER}
-              </code>
-              <p className="rounded-lg bg-brand-red/10 px-3 py-2 text-[11px] text-text-secondary">
-                {t('collection.csvImportRequiredOptionalHint')}
-              </p>
-            </div>
-
-            <div className="border-t border-white/5 pt-3 space-y-2">
-              <p className="font-semibold text-text-primary">{t('collection.csvImportSectionValues')}</p>
-              <div className="rounded-lg bg-bg/60 px-3 py-2">
-                <p className="text-[11px] font-semibold text-text-primary mb-1">{t('collection.csvImportDefaultsTitle')}</p>
-                <div className="grid grid-cols-3 gap-2 text-[11px]">
-                  <div><span className="font-mono text-text-primary">quantity</span><br /><span className="text-text-muted">1</span></div>
-                  <div><span className="font-mono text-text-primary">condition</span><br /><span className="text-text-muted">NM</span></div>
-                  <div><span className="font-mono text-text-primary">lang</span><br /><span className="text-text-muted">en</span></div>
-                </div>
-              </div>
-              <p>{t('collection.csvImportBlankOptionalHint')}</p>
-            </div>
-          </div>
-
-          <p className="text-[11px] text-yellow/90 bg-yellow/10 rounded-lg px-3 py-2">
-            {t('collection.csvImportErrorBehavior')}
-          </p>
-        </div>
-      </div>
-    </div>,
-    document.body
-  )
 }
 
 // ─── Holo shimmer overlay ──────────────────────────────────────────────────
@@ -372,12 +266,17 @@ function CollectionEditModal({ item, onClose }) {
   const [lang, setLang] = useState(item.lang || 'en')
   const [price, setPrice] = useState(itemPriceInput)
   const [acquisitionSource, setAcquisitionSource] = useState(item.acquisition_source || '')
+  const [protectionType, setProtectionType] = useState(item.protection_type || 'raw')
+  const [storageLocationId, setStorageLocationId] = useState(String(item.storage_location_id || ''))
   const [storageType, setStorageType] = useState(item.storage_type || '')
   const [storageDetail, setStorageDetail] = useState(item.storage_detail || '')
   const [grader, setGrader] = useState(item.grader || '')
   const [grade, setGrade] = useState(item.grade || '')
   const [certificationNumber, setCertificationNumber] = useState(item.certification_number || '')
   const [notes, setNotes] = useState(item.notes || '')
+  const [showRemoveForm, setShowRemoveForm] = useState(false)
+  const [removalReason, setRemovalReason] = useState('other')
+  const [removalNotes, setRemovalNotes] = useState('')
 
   const [showAddVersionForm, setShowAddVersionForm] = useState(false)
   const [newVersionQuantity, setNewVersionQuantity] = useState(1)
@@ -386,6 +285,8 @@ function CollectionEditModal({ item, onClose }) {
   const [newVersionLang, setNewVersionLang] = useState(item.lang || 'en')
   const [newVersionPrice, setNewVersionPrice] = useState('')
   const [newVersionAcquisitionSource, setNewVersionAcquisitionSource] = useState('')
+  const [newVersionProtectionType, setNewVersionProtectionType] = useState(item.protection_type || 'raw')
+  const [newVersionStorageLocationId, setNewVersionStorageLocationId] = useState(String(item.storage_location_id || ''))
   const [newVersionStorageType, setNewVersionStorageType] = useState('')
   const [newVersionStorageDetail, setNewVersionStorageDetail] = useState('')
   const [newVersionGrader, setNewVersionGrader] = useState('')
@@ -397,6 +298,11 @@ function CollectionEditModal({ item, onClose }) {
   const [savedCustomImageUrl, setSavedCustomImageUrl] = useState(card?.custom_image_url || '')
   const [customImageVersion, setCustomImageVersion] = useState(0)
   const customImageInputId = useId()
+
+  const { data: storageLocations = [] } = useQuery({
+    queryKey: ['storage-locations'],
+    queryFn: () => getStorageLocations(),
+  })
 
   const handleAcquisitionSourceChange = (newSource) => {
     setAcquisitionSource(newSource)
@@ -427,6 +333,8 @@ function CollectionEditModal({ item, onClose }) {
     price: itemPriceInput,
     customImageUrl: card?.custom_image_url || '',
     acquisitionSource: item.acquisition_source || '',
+    protectionType: item.protection_type || 'raw',
+    storageLocationId: String(item.storage_location_id || ''),
     storageType: item.storage_type || '',
     storageDetail: item.storage_detail || '',
     grader: item.grader || '',
@@ -445,6 +353,8 @@ function CollectionEditModal({ item, onClose }) {
       price: itemPriceInput,
       customImageUrl: card?.custom_image_url || '',
       acquisitionSource: item.acquisition_source || '',
+      protectionType: item.protection_type || 'raw',
+      storageLocationId: String(item.storage_location_id || ''),
       storageType: item.storage_type || '',
       storageDetail: item.storage_detail || '',
       grader: item.grader || '',
@@ -465,6 +375,8 @@ function CollectionEditModal({ item, onClose }) {
       setCustomImageUrl(nextItem.customImageUrl)
       setSavedCustomImageUrl(nextItem.customImageUrl)
       setAcquisitionSource(nextItem.acquisitionSource)
+      setProtectionType(nextItem.protectionType)
+      setStorageLocationId(nextItem.storageLocationId)
       setStorageType(nextItem.storageType)
       setStorageDetail(nextItem.storageDetail)
       setGrader(nextItem.grader)
@@ -493,6 +405,12 @@ function CollectionEditModal({ item, onClose }) {
       }
       if (acquisitionSource === prevItem.acquisitionSource && nextItem.acquisitionSource !== prevItem.acquisitionSource) {
         setAcquisitionSource(nextItem.acquisitionSource)
+      }
+      if (protectionType === prevItem.protectionType && nextItem.protectionType !== prevItem.protectionType) {
+        setProtectionType(nextItem.protectionType)
+      }
+      if (storageLocationId === prevItem.storageLocationId && nextItem.storageLocationId !== prevItem.storageLocationId) {
+        setStorageLocationId(nextItem.storageLocationId)
       }
       if (storageType === prevItem.storageType && nextItem.storageType !== prevItem.storageType) {
         setStorageType(nextItem.storageType)
@@ -525,6 +443,8 @@ function CollectionEditModal({ item, onClose }) {
     itemPriceInput,
     card?.custom_image_url,
     item.acquisition_source,
+    item.protection_type,
+    item.storage_location_id,
     item.storage_type,
     item.storage_detail,
     item.grader,
@@ -554,6 +474,8 @@ function CollectionEditModal({ item, onClose }) {
       lang,
       purchase_price: parseMoneyInputValue(price, exchangeRate, null),
       acquisition_source: acquisitionSource || null,
+      protection_type: protectionType,
+      storage_location_id: storageLocationId ? Number(storageLocationId) : null,
       storage_type: storageType || null,
       storage_detail: storageDetail || null,
       grader: grader || null,
@@ -573,7 +495,10 @@ function CollectionEditModal({ item, onClose }) {
   })
 
   const deleteMutation = useMutation({
-    mutationFn: () => removeFromCollection(item.id),
+    mutationFn: () => removeFromCollection(item.id, {
+      reason: removalReason,
+      notes: removalNotes.trim() || null,
+    }),
     onSuccess: () => {
       toast.success(t('collection.removed'))
       queryClient.invalidateQueries({ queryKey: ['collection'] })
@@ -594,6 +519,8 @@ function CollectionEditModal({ item, onClose }) {
       lang: newVersionLang,
       purchase_price: parseMoneyInputValue(newVersionPrice, exchangeRate),
       acquisition_source: newVersionAcquisitionSource || null,
+      protection_type: newVersionProtectionType,
+      storage_location_id: newVersionStorageLocationId ? Number(newVersionStorageLocationId) : null,
       storage_type: newVersionStorageType || null,
       storage_detail: newVersionStorageDetail || null,
       grader: newVersionGrader || null,
@@ -643,9 +570,7 @@ function CollectionEditModal({ item, onClose }) {
   })
 
   const handleDelete = () => {
-    if (confirm(t('collection.removeConfirm', { name: card?.name || t('common.thisCard') }))) {
-      deleteMutation.mutate()
-    }
+    setShowRemoveForm(true)
   }
 
   const openAddVersionForm = () => {
@@ -655,6 +580,8 @@ function CollectionEditModal({ item, onClose }) {
     setNewVersionLang(lang)
     setNewVersionPrice('')
     setNewVersionAcquisitionSource(acquisitionSource)
+    setNewVersionProtectionType(protectionType)
+    setNewVersionStorageLocationId(storageLocationId)
     setNewVersionStorageType(storageType)
     setNewVersionStorageDetail(storageDetail)
     setNewVersionGrader(grader)
@@ -823,36 +750,30 @@ function CollectionEditModal({ item, onClose }) {
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-text-muted mb-1 block">Storage Type</label>
-                  <input
-                    type="text"
-                    value={storageType}
-                    placeholder="e.g. Binder, Slab, Toploader"
-                    onChange={e => setStorageType(e.target.value)}
-                    className="input w-full"
-                  />
+                  <label className="text-xs text-text-muted mb-1 block">Protection</label>
+                  <select value={protectionType} onChange={e => setProtectionType(e.target.value)} className="select w-full">
+                    {PROTECTION_TYPES.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-text-muted mb-1 block">Storage Detail</label>
-                  <input
-                    type="text"
-                    value={storageDetail}
-                    placeholder="e.g. Row 2, Shelf B"
-                    onChange={e => setStorageDetail(e.target.value)}
-                    className="input w-full"
-                  />
+                  <label className="text-xs text-text-muted mb-1 block">Storage Location</label>
+                  <select value={storageLocationId} onChange={e => setStorageLocationId(e.target.value)} className="select w-full" required>
+                    <option value="">Choose a location</option>
+                    {storageLocations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label className="text-xs text-text-muted mb-1 block">Grader</label>
                   <input
                     type="text"
                     value={grader}
-                    placeholder="e.g. PSA, BGS"
+                    placeholder={protectionType === 'psa_slab' ? 'PSA, BGS, CGC…' : 'Only for graded slabs'}
                     onChange={e => setGrader(e.target.value)}
                     className="input w-full"
+                    disabled={protectionType !== 'psa_slab'}
                   />
                 </div>
               </div>
@@ -863,9 +784,10 @@ function CollectionEditModal({ item, onClose }) {
                   <input
                     type="text"
                     value={grade}
-                    placeholder="e.g. 10, 9.5, Raw"
+                    placeholder="e.g. Gem Mint 10"
                     onChange={e => setGrade(e.target.value)}
                     className="input w-full"
+                    disabled={protectionType !== 'psa_slab'}
                   />
                 </div>
                 <div>
@@ -876,6 +798,7 @@ function CollectionEditModal({ item, onClose }) {
                     placeholder="e.g. 12345678"
                     onChange={e => setCertificationNumber(e.target.value)}
                     className="input w-full"
+                    disabled={protectionType !== 'psa_slab'}
                   />
                 </div>
               </div>
@@ -966,6 +889,34 @@ function CollectionEditModal({ item, onClose }) {
                 <Trash2 size={16} />
               </button>
             </div>
+            {showRemoveForm && (
+              <div className="mt-3 space-y-3 rounded-xl border border-brand-red/25 bg-brand-red/10 p-3 archive-card-reveal">
+                <div>
+                  <p className="text-sm font-semibold text-text-primary">Move this card to history?</p>
+                  <p className="mt-0.5 text-xs text-text-secondary">The record is kept locally with its removal date and reason.</p>
+                </div>
+                <select className="select w-full" value={removalReason} onChange={e => setRemovalReason(e.target.value)}>
+                  {REMOVAL_REASONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+                <textarea
+                  className="input min-h-16 w-full"
+                  value={removalNotes}
+                  onChange={e => setRemovalNotes(e.target.value)}
+                  placeholder="Optional note"
+                />
+                <div className="flex justify-end gap-2">
+                  <button type="button" className="btn-ghost" onClick={() => setShowRemoveForm(false)}>Keep card</button>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    disabled={deleteMutation.isPending}
+                    onClick={() => deleteMutation.mutate()}
+                  >
+                    Move to history
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <form
@@ -1043,27 +994,20 @@ function CollectionEditModal({ item, onClose }) {
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-text-muted mb-1 block">Storage Type</label>
-                  <input
-                    type="text"
-                    value={newVersionStorageType}
-                    placeholder="e.g. Binder, Slab, Toploader"
-                    onChange={e => setNewVersionStorageType(e.target.value)}
-                    className="input w-full"
-                  />
+                  <label className="text-xs text-text-muted mb-1 block">Protection</label>
+                  <select value={newVersionProtectionType} onChange={e => setNewVersionProtectionType(e.target.value)} className="select w-full">
+                    {PROTECTION_TYPES.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-text-muted mb-1 block">Storage Detail</label>
-                  <input
-                    type="text"
-                    value={newVersionStorageDetail}
-                    placeholder="e.g. Row 2, Shelf B"
-                    onChange={e => setNewVersionStorageDetail(e.target.value)}
-                    className="input w-full"
-                  />
+                  <label className="text-xs text-text-muted mb-1 block">Storage Location</label>
+                  <select value={newVersionStorageLocationId} onChange={e => setNewVersionStorageLocationId(e.target.value)} className="select w-full" required>
+                    <option value="">Choose a location</option>
+                    {storageLocations.map(location => <option key={location.id} value={location.id}>{location.name}</option>)}
+                  </select>
                 </div>
                 <div>
                   <label className="text-xs text-text-muted mb-1 block">Grader</label>
@@ -1073,6 +1017,7 @@ function CollectionEditModal({ item, onClose }) {
                     placeholder="e.g. PSA, BGS"
                     onChange={e => setNewVersionGrader(e.target.value)}
                     className="input w-full"
+                    disabled={newVersionProtectionType !== 'psa_slab'}
                   />
                 </div>
               </div>
@@ -1086,6 +1031,7 @@ function CollectionEditModal({ item, onClose }) {
                     placeholder="e.g. 10, 9.5, Raw"
                     onChange={e => setNewVersionGrade(e.target.value)}
                     className="input w-full"
+                    disabled={newVersionProtectionType !== 'psa_slab'}
                   />
                 </div>
                 <div>
@@ -1096,6 +1042,7 @@ function CollectionEditModal({ item, onClose }) {
                     placeholder="e.g. 12345678"
                     onChange={e => setNewVersionCertificationNumber(e.target.value)}
                     className="input w-full"
+                    disabled={newVersionProtectionType !== 'psa_slab'}
                   />
                 </div>
               </div>
@@ -1159,14 +1106,32 @@ export default function Collection() {
   const [filterDuplicates, setFilterDuplicates] = useState(false)
   const [searchText, setSearchText] = useState('')
   const [showFilters, setShowFilters] = useState(false)
-  const [showCsvImportModal, setShowCsvImportModal] = useState(false)
-  const csvImportInputRef = useRef(null)
+  const [showInventoryIntake, setShowInventoryIntake] = useState(false)
+  const [showExcelImport, setShowExcelImport] = useState(false)
+  const [intakeKind, setIntakeKind] = useState('owned')
+  const [intakeSource, setIntakeSource] = useState(null)
   const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
+  const requestedView = searchParams.get('view') || 'owned'
+  const activeView = ['owned', 'bulk', 'sealed', 'history'].includes(requestedView) ? requestedView : 'owned'
+  const setActiveView = (view) => {
+    const next = new URLSearchParams(searchParams)
+    if (view === 'owned') next.delete('view')
+    else next.set('view', view)
+    next.delete('itemId')
+    next.delete('cardId')
+    setSearchParams(next, { replace: true })
+    setEditingCollectionItem(null)
+    setSearchText('')
+  }
 
   const { data: items = [], isLoading, error } = useQuery({
-    queryKey: ['collection'],
-    queryFn: () => getCollection({}).then(r => r.data),
+    queryKey: ['collection', activeView],
+    queryFn: () => getCollection({
+      status: 'owned',
+      inventory_kind: activeView,
+    }).then(r => r.data),
+    enabled: activeView === 'owned' || activeView === 'bulk',
     refetchInterval: 60000,
   })
 
@@ -1225,40 +1190,6 @@ export default function Collection() {
   const closeCollectionItemModal = () => {
     setEditingCollectionItem(null)
     if (targetItemId || targetCardId) clearTargetParams()
-  }
-
-  const csvImportMutation = useMutation({
-    mutationFn: (file) => importCollectionCsv(file),
-    onSuccess: (result) => {
-      const parts = [
-        `${result.added} ${t('collection.csvImportAdded')}`,
-        `${result.updated} ${t('collection.csvImportUpdated')}`,
-      ]
-      if (result.failed > 0) parts.push(`${result.failed} ${t('collection.csvImportFailedRows')}`)
-      const message = parts.join(' · ')
-      if (result.failed > 0 && result.errors?.length) {
-        toast.error(`${message}: ${result.errors.slice(0, 2).join('; ')}`)
-      } else {
-        toast.success(message)
-      }
-      queryClient.invalidateQueries({ queryKey: ['collection'] })
-      invalidateTcgdexFilterLanguages(queryClient)
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
-    },
-    onError: (err) => {
-      toast.error(getApiErrorMessage(err, t('collection.csvImportFailed')))
-    },
-    onSettled: () => {
-      if (csvImportInputRef.current) csvImportInputRef.current.value = ''
-    },
-  })
-
-  const handleCsvImport = (event) => {
-    const file = event.target.files?.[0]
-    if (file) {
-      setShowCsvImportModal(false)
-      csvImportMutation.mutate(file)
-    }
   }
 
   function getEffectivePrice(card, variant, primaryField = pricePrimaryField) {
@@ -1363,7 +1294,6 @@ export default function Collection() {
     return result
   }, [items, filterRarity, filterCondition, filterVariant, filterSet, filterType, filterCategories, filterSubtypes, filterLegality, filterLang, filterMinPrice, filterMaxPrice, filterDuplicates, searchText, sortBy, sortOrder, pricePrimaryField])
 
-  const totalValue = filtered.reduce((sum, item) => sum + (getEffectivePrice(item.card, item.variant) * item.quantity), 0)
   const totalCards = filtered.reduce((sum, item) => sum + item.quantity, 0)
   // Unfiltered total, so the header can say "12 of 78" while a filter is on.
   const allCards = items.reduce((sum, item) => sum + item.quantity, 0)
@@ -1391,25 +1321,25 @@ export default function Collection() {
         <TabNav tabs={COLLECTION_TABS} />
 
       {/* ─── Header ───────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
+      <div className="collection-hero">
         <div className="min-w-0">
-          <h1 className="text-5xl font-bold text-text-primary mag-heading uppercase leading-none mt-2"><SplitText text={t('collection.title')} delay={40} /></h1>
-          <p className="text-sm text-text-secondary mt-1">
-            {/* Both numbers derive from the filtered set, so labelling the
-                second one "filtered" read as redundant when nothing was
-                filtered. Name what each actually counts, and only mention
-                the total when a filter is narrowing it. */}
-            {hasActiveFilters
+          <span className="archive-eyebrow">My Pokémon databank</span>
+          <h1 className="mt-2 text-5xl font-bold text-text-primary mag-heading uppercase leading-none"><SplitText text={t('collection.title')} delay={40} /></h1>
+          <p className="mt-2 text-sm text-text-secondary">
+            {activeView === 'sealed'
+              ? 'Sealed product, filed alongside the cards it belongs with.'
+              : activeView === 'history'
+                ? 'Every collection change, kept locally and in order.'
+              : hasActiveFilters
               ? `${totalCards.toLocaleString()} ${t('collection.ofTotal')} ${allCards.toLocaleString()} ${t('collection.cards')}`
               : `${totalCards.toLocaleString()} ${t('collection.cards')}`}
-            {' · '}
-            {filtered.length.toLocaleString()} {t('collection.unique')}
+            {(activeView === 'owned' || activeView === 'bulk') && <> · {filtered.length.toLocaleString()} {t('collection.unique')}</>}
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="collection-hero-actions">
 
           {/* VIEW TOGGLE */}
-          <div className="flex items-center gap-0.5 bg-bg-elevated rounded-lg p-1">
+          {(activeView === 'owned' || activeView === 'bulk') && <div className="flex items-center gap-0.5 bg-bg-elevated rounded-lg p-1">
             <button
               onClick={() => setViewMode('grid')}
               title={t('collection.binderView')}
@@ -1424,33 +1354,100 @@ export default function Collection() {
             >
               <List size={15} />
             </button>
-          </div>
+          </div>}
 
           <button onClick={() => setShowCustomModal(true)}
-            className="btn-ghost text-sm py-1.5 border-yellow/30 text-yellow hover:bg-yellow/10">
-            <PenLine size={14} /> {t('collection.addCustomCard')}
+            className="btn-ghost text-sm py-1.5">
+            <PenLine size={14} /> Custom
           </button>
-          <input
-            ref={csvImportInputRef}
-            type="file"
-            accept=".csv,text/csv"
-            className="hidden"
-            onChange={handleCsvImport}
-          />
           <button
-            onClick={() => setShowCsvImportModal(true)}
-            disabled={csvImportMutation.isPending}
-            title={t('collection.importCsvHint')}
-            aria-label={t('collection.importCsv')}
-            className="btn-ghost text-sm py-1.5 px-2"
+            onClick={() => setShowExcelImport(true)}
+            className="btn-ghost text-sm py-1.5"
           >
-            <Upload size={14} />CSV
+            <FileSpreadsheet size={15} /> Import
           </button>
-          <button onClick={() => exportXLSX(exportParams)} className="btn-ghost text-sm py-1.5 px-2" title="Excel" aria-label="Excel"><Download size={14} />Excel</button>
-          <button onClick={() => exportCSV(exportParams)} className="btn-ghost text-sm py-1.5 px-2" title="CSV" aria-label="CSV"><Download size={14} />CSV</button>
-          <button onClick={() => exportPDF(exportParams)} className="btn-ghost text-sm py-1.5"><Download size={14} />PDF</button>
+          <details className="relative">
+            <summary className="btn-ghost cursor-pointer list-none text-sm py-1.5">
+              <Download size={15} /> Export
+            </summary>
+            <div className="absolute right-0 z-30 mt-2 grid min-w-36 gap-1 rounded-xl border border-border bg-bg-surface p-2 shadow-xl">
+              <button type="button" onClick={() => exportXLSX(exportParams)} className="btn-ghost justify-start text-xs">Excel workbook</button>
+              <button type="button" onClick={() => exportCSV(exportParams)} className="btn-ghost justify-start text-xs">CSV</button>
+              <button type="button" onClick={() => exportPDF(exportParams)} className="btn-ghost justify-start text-xs">PDF</button>
+            </div>
+          </details>
+          <button
+            onClick={() => {
+              setIntakeKind(activeView === 'bulk' ? 'bulk' : activeView === 'sealed' ? 'sealed' : 'owned')
+              setIntakeSource(null)
+              setShowInventoryIntake(true)
+            }}
+            className="btn-primary text-sm py-2"
+          >
+            <Plus size={16} /> Add to collection
+          </button>
         </div>
       </div>
+
+      <div className="collection-ledger-tabs" role="tablist" aria-label="Collection views">
+        {[
+          { value: 'owned', label: 'Owned', icon: Library },
+          { value: 'bulk', label: 'Bulk', icon: Boxes },
+          { value: 'sealed', label: 'Sealed', icon: Package },
+          { value: 'history', label: 'History', icon: ArchiveRestore },
+        ].map(option => {
+          const Icon = option.icon
+          return (
+            <button
+              type="button"
+              role="tab"
+              id={`collection-tab-${option.value}`}
+              data-view={option.value}
+              aria-controls={`collection-panel-${option.value}`}
+              aria-selected={activeView === option.value}
+              tabIndex={activeView === option.value ? 0 : -1}
+              key={option.value}
+              className={activeView === option.value ? 'collection-ledger-tab collection-ledger-tab-active' : 'collection-ledger-tab'}
+              onClick={() => setActiveView(option.value)}
+              onKeyDown={event => {
+                const tabs = [...event.currentTarget.parentElement.querySelectorAll('[role="tab"]')]
+                const currentIndex = tabs.indexOf(event.currentTarget)
+                let nextIndex = currentIndex
+                if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % tabs.length
+                else if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + tabs.length) % tabs.length
+                else if (event.key === 'Home') nextIndex = 0
+                else if (event.key === 'End') nextIndex = tabs.length - 1
+                else return
+                event.preventDefault()
+                const nextTab = tabs[nextIndex]
+                nextTab.focus()
+                setActiveView(nextTab.dataset.view)
+              }}
+            >
+              <Icon size={15} /> {option.label}
+            </button>
+          )
+        })}
+      </div>
+
+      <div
+        id={`collection-panel-${activeView}`}
+        role="tabpanel"
+        aria-labelledby={`collection-tab-${activeView}`}
+        tabIndex={0}
+      >
+      {activeView === 'sealed' ? (
+        <SealedCollectionView
+          onAddPulledCards={() => {
+            setIntakeKind('owned')
+            setIntakeSource('pulled')
+            setShowInventoryIntake(true)
+          }}
+        />
+      ) : activeView === 'history' ? (
+        <InventoryHistoryView />
+      ) : (
+        <>
 
       {/* ─── Filter & Sort Bar ────────────────────────────────────── */}
       <div className="card space-y-3">
@@ -1630,7 +1627,7 @@ export default function Collection() {
                     <TiltBinderCard
                       key={item.id}
                       className={`binder-card ${rarityClass} cursor-pointer`}
-                      onClick={() => setEditingCollectionItem(item)}
+                      onClick={() => item.status !== 'removed' && setEditingCollectionItem(item)}
                     >
                       <div
                         className="aspect-[2.5/3.5] relative rounded-xl overflow-hidden flex-shrink-0"
@@ -1728,7 +1725,7 @@ export default function Collection() {
                         <tr
                           key={item.id}
                           className="border-b border-border/50 hover:bg-bg-elevated/50 transition-colors cursor-pointer"
-                          onClick={() => setEditingCollectionItem(item)}
+                          onClick={() => item.status !== 'removed' && setEditingCollectionItem(item)}
                         >
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-3">
@@ -1783,7 +1780,7 @@ export default function Collection() {
                             {item.acquisition_source || '—'}
                           </td>
                           <td className="px-4 py-3 text-text-secondary text-xs">
-                            {[item.storage_type, item.storage_detail].filter(Boolean).join(' · ') || '—'}
+                            {[item.storage_location?.name, PROTECTION_TYPES.find(option => option.value === item.protection_type)?.label].filter(Boolean).join(' · ') || '—'}
                           </td>
                           <td className="px-4 py-3 text-text-secondary text-xs">
                             {grading || '—'}
@@ -1814,7 +1811,7 @@ export default function Collection() {
                   if (item.condition) badges.push({ label: item.condition, variant: item.condition === 'Mint' ? 'green' : item.condition === 'NM' ? 'blue' : 'yellow' })
                   if (item.quantity > 1) badges.push({ label: `×${item.quantity}`, variant: 'red' })
                   if (item.acquisition_source) badges.push({ label: item.acquisition_source, variant: 'gold' })
-                  if (item.storage_type) badges.push({ label: item.storage_type, variant: 'blue' })
+                  if (item.storage_location?.name) badges.push({ label: item.storage_location.name, variant: 'blue' })
                   const sourceSummary = getProductSourceSummary(item)
                   if (sourceSummary) badges.push({ label: `${t('collection.foundIn')}: ${sourceSummary.label}`, variant: 'gold' })
                   if (card?.is_custom) badges.push({ label: '✏️', variant: 'yellow' })
@@ -1827,14 +1824,16 @@ export default function Collection() {
                       subtext={[card?.set_ref?.name, card?.number ? `#${card.number}` : null].filter(Boolean).join(' · ') || '-'}
                       badges={badges}
                       value={`${item.quantity} × ${item.condition}`}
-                      valueSecondary={[item.storage_type, item.storage_detail].filter(Boolean).join(' · ') || undefined}
-                      onClick={() => setEditingCollectionItem(item)}
+                      valueSecondary={[item.storage_location?.name, PROTECTION_TYPES.find(option => option.value === item.protection_type)?.label].filter(Boolean).join(' · ') || undefined}
+                      onClick={() => item.status !== 'removed' && setEditingCollectionItem(item)}
                     />
                   )
                 })}
                 <div className="border-t border-border pt-2 px-1 flex items-center justify-between text-sm">
                   <span className="text-text-muted">{filtered.length} {t('collection.filtered')}</span>
-                  <span className="font-bold text-green">Owned archive</span>
+                  <span className="font-bold text-green">
+                    {activeView === 'bulk' ? 'Bulk archive' : 'Owned archive'}
+                  </span>
                 </div>
               </div>
             </div>
@@ -1842,17 +1841,19 @@ export default function Collection() {
         </>
       )}
 
+        </>
+      )}
+      </div>
       </div>
 
-      {showCsvImportModal && (
-        <CsvImportModal
-          t={t}
-          isImporting={csvImportMutation.isPending}
-          onClose={() => setShowCsvImportModal(false)}
-          onChooseFile={() => csvImportInputRef.current?.click()}
-          onDownloadTemplate={downloadCsvImportTemplate}
-        />
-      )}
+      <InventoryIntakeModal
+        isOpen={showInventoryIntake}
+        onClose={() => setShowInventoryIntake(false)}
+        initialKind={intakeKind}
+        initialSource={intakeSource}
+        onSaved={kind => setActiveView(kind)}
+      />
+      <ExcelImportModal isOpen={showExcelImport} onClose={() => setShowExcelImport(false)} />
 
       {/* ─── CollectionEditModal ──────────────────────────────────── */}
       {editingCollectionItem && (

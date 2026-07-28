@@ -121,7 +121,7 @@ async def debug_request_logging(request: Request, call_next):
     return response
 
 # Include routers
-from api import agent, auth, cards, collection, sets, wishlist, binders, dashboard, analytics, sync, products, export, backup, settings, images, social
+from api import agent, auth, cards, collection, inventory, sets, wishlist, binders, dashboard, analytics, sync, products, export, backup, settings, images, social
 from api.github import router as github_router
 from api.recognize import router as recognize_router
 
@@ -156,6 +156,7 @@ async def login_rate_limit(request: Request, call_next):
 app.include_router(cards.router, prefix="/api/cards", tags=["cards"])
 app.include_router(recognize_router, prefix="/api/cards", tags=["recognize"])
 app.include_router(collection.router, prefix="/api/collection", tags=["collection"])
+app.include_router(inventory.router, prefix="/api/inventory", tags=["inventory"])
 app.include_router(sets.router, prefix="/api/sets", tags=["sets"])
 app.include_router(wishlist.router, prefix="/api/wishlist", tags=["wishlist"])
 app.include_router(binders.router, prefix="/api/binders", tags=["binders"])

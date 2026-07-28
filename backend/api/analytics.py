@@ -28,6 +28,8 @@ def get_duplicates(
         joinedload(CollectionItem.card).joinedload(Card.set_ref)
     ).filter(
         CollectionItem.user_id == current_user.id,
+        CollectionItem.status == "owned",
+        CollectionItem.inventory_kind == "owned",
         CollectionItem.quantity > 1,
         visible_card_filter(db, current_user.id, "all"),
     ).all()
@@ -76,6 +78,8 @@ def get_top_movers(
         item.card_id
         for item in db.query(CollectionItem.card_id).join(Card, Card.id == CollectionItem.card_id).filter(
             CollectionItem.user_id == current_user.id,
+            CollectionItem.status == "owned",
+            CollectionItem.inventory_kind == "owned",
             visible_card_filter(db, current_user.id, "all"),
         ).all()
     ]
@@ -131,6 +135,8 @@ def get_rarity_stats(
         joinedload(CollectionItem.card)
     ).filter(
         CollectionItem.user_id == current_user.id,
+        CollectionItem.status == "owned",
+        CollectionItem.inventory_kind == "owned",
         visible_card_filter(db, current_user.id, "all"),
     ).all()
 
@@ -163,7 +169,8 @@ def get_rarity_stats(
 def _calc_products_cost(db: Session, user_id: int):
     """Calculate cost of unsold products only (sold products no longer tied up)."""
     all_products = db.query(ProductPurchase).filter(
-        ProductPurchase.user_id == user_id
+        ProductPurchase.user_id == user_id,
+        ProductPurchase.status == "active",
     ).all()
     return sum(
         p.purchase_price for p in all_products
@@ -177,6 +184,8 @@ def _take_portfolio_snapshot(db: Session, user_id: int, price_field: str = "pric
 
     collection_items = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).filter(
         CollectionItem.user_id == user_id,
+        CollectionItem.status == "owned",
+        CollectionItem.inventory_kind == "owned",
         visible_card_filter(db, user_id, "all"),
     ).all()
     total_value = sum(

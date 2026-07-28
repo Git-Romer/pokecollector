@@ -107,8 +107,11 @@ default. Gemini remains an explicit scanner configuration option in Settings.
 
 ## Local Backup Boundary
 
-`GET /api/export/xlsx` is the portable workbook export. It contains the Cards,
-Sealed Product, and Acquisition & Storage sheets. The scheduler also registers
+`GET /api/export/xlsx` is the portable workbook export. It contains the
+`Owned Cards`, `Bulk`, `Sealed Products`, `Storage Locations`, and
+`Import Errors` sheets. `POST /api/inventory/import-xlsx` performs a read-only
+review by default and only writes after an explicit `commit=true` confirmation.
+Stable record IDs make export/edit/reimport round trips idempotent. The scheduler also registers
 `weekly_excel_backup_job`, which writes local Excel backups under
 `/app/backups/excel` and keeps the newest eight files per active user.
 
@@ -120,6 +123,8 @@ Key ORM models in `backend/models.py`:
 - `Card`
 - `User`
 - `CollectionItem`
+- `StorageLocation`
+- `InventoryEvent`
 - `WishlistItem`
 - `Binder`
 - `BinderCard`
@@ -137,6 +142,8 @@ Notable current model rules:
 - `Card.rarity` comes from TCGdex and is treated as read-only metadata
 - Card data, image, and price fallback source languages are tagged when English exact-ID fallback data is used
 - Collection variants are limited to physical print variants
+- Collection and sealed-product records use stable IDs, required reusable storage locations, lifecycle status, and soft-removal history
+- `InventoryEvent` records local add, update, move, import, and removal activity
 - Wishlist items store requested quantity from `1` to `99`
 - `User.must_change_password` drives the forced password change flow
 - `UserSetting` stores per-user preferences and secrets

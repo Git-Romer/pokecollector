@@ -49,8 +49,13 @@ FastAPI app entry point: `backend/main.py`.
 | POST | `/api/collection/bulk-add` | Bulk-add selected cards; commits each item independently and reports added/updated/failed counts |
 | POST | `/api/collection/import-csv` | Strict CSV collection import with all-or-nothing validation |
 | PUT | `/api/collection/{item_id}` | Update collection item |
-| DELETE | `/api/collection/{item_id}` | Delete collection item |
+| DELETE | `/api/collection/{item_id}` | Soft-remove collection item with reason and history |
 | GET | `/api/collection/stats/summary` | Collection summary |
+| GET | `/api/inventory/locations` | List reusable storage locations |
+| POST | `/api/inventory/locations` | Create storage location |
+| PUT | `/api/inventory/locations/{location_id}` | Update/default/deactivate storage location |
+| GET | `/api/inventory/history` | Local inventory change history |
+| POST | `/api/inventory/import-xlsx` | Review or confirm a stable-ID Excel workbook import |
 | GET | `/api/sets/` | List sets |
 | GET | `/api/sets/new` | Newly detected sets |
 | POST | `/api/sets/mark-seen` | Mark new-set badges seen |
@@ -104,7 +109,7 @@ FastAPI app entry point: `backend/main.py`.
 | GET | `/api/products/` | Product list |
 | POST | `/api/products/` | Create product |
 | PUT | `/api/products/{product_id}` | Update product |
-| DELETE | `/api/products/{product_id}` | Delete product |
+| DELETE | `/api/products/{product_id}` | Soft-remove sealed product with reason and history |
 | GET | `/api/products/summary` | Product summary |
 | GET | `/api/products/{product_id}` | Product detail |
 | POST | `/api/products/{product_id}/cards` | Link collection cards to product |
@@ -113,6 +118,7 @@ FastAPI app entry point: `backend/main.py`.
 | POST | `/api/products/{product_id}/ledger` | Add product ledger entry |
 | GET | `/api/export/csv` | CSV export |
 | GET | `/api/export/pdf` | PDF export |
+| GET | `/api/export/xlsx` | Five-sheet portable collection ledger |
 | GET | `/api/backup/download` | Admin-only SQL backup |
 | POST | `/api/backup/restore` | Admin-only SQL restore |
 | POST | `/api/backup/clear-image-cache` | Admin-only image cache clear |
@@ -150,10 +156,11 @@ FastAPI app entry point: `backend/main.py`.
 ### `CollectionItem`
 
 - Stores user-owned copies of cards
-- Active fields: `card_id`, `user_id`, `quantity`, `condition`, `variant`, `purchase_price`, `lang`
+- Active fields include exact card printing, quantity, condition, variant, cost basis, acquisition source, protection, storage location, grading details, notes, and lifecycle status
 - Variant values are now the physical print variants only: `Normal`, `Holo`, `Reverse Holo`, `First Edition`
-- The old grading UI is gone; the database migration history still contains a legacy `grade` column, but it is not part of the current ORM model or API schema
-- Existing rows are grouped by user, card, variant, language, condition, and purchase price when cards are added through the API
+- Graded slabs retain grading company, grade, and certification number
+- Existing rows are grouped by exact physical state and quantity is incremented for duplicates
+- Pulled cards default to an editable `$4.49`; bulk records have no per-card cost basis
 
 ### `User`
 
@@ -177,6 +184,8 @@ FastAPI app entry point: `backend/main.py`.
 - `WishlistItem`
 - `Binder` / `BinderCard`
 - `ProductPurchase`
+- `StorageLocation`
+- `InventoryEvent`
 - `PriceHistory`
 - `PortfolioSnapshot`
 - `SyncLog`
@@ -246,10 +255,10 @@ Supported groups:
 
 Current table mapping:
 
-- `collection`: `collection`, `wishlist`, `binders`, `binder_cards`
+- `collection`: `collection`, `wishlist`, `binders`, `binder_cards`, `storage_locations`, `inventory_events`
 - `users`: `users`, `user_settings`, `settings`
 - `cards`: `cards`, `sets`, `price_history`, `custom_card_matches`
-- `products`: `product_purchases`, `portfolio_snapshots`
+- `products`: `product_purchases`, `product_cards`, `product_ledger_entries`, `portfolio_snapshots`, `storage_locations`, `inventory_events`
 - `system`: `sync_log`
 - `images`: `image_cache`
 

@@ -101,6 +101,8 @@ def _run_migrations(conn):
         "ALTER TABLE collection DROP CONSTRAINT IF EXISTS uq_collection_card_variant_lang",
         # v48: Normalize missing/base prints and trim existing variant labels.
         "UPDATE collection SET variant = COALESCE(NULLIF(btrim(variant), ''), 'Normal')",
+        "UPDATE collection SET variant = 'Holo' WHERE variant = 'Holofoil'",
+        "UPDATE collection SET variant = 'Reverse Holo' WHERE variant = 'Reverse Holofoil'",
         "ALTER TABLE collection ALTER COLUMN variant SET DEFAULT 'Normal'",
         "ALTER TABLE collection ALTER COLUMN variant SET NOT NULL",
         # v32: Add grade column to collection table (PSA/BGS/CGC grade)
@@ -114,6 +116,113 @@ def _run_migrations(conn):
         "ALTER TABLE collection ADD COLUMN IF NOT EXISTS notes TEXT",
         "ALTER TABLE product_purchases ADD COLUMN IF NOT EXISTS storage_type VARCHAR",
         "ALTER TABLE product_purchases ADD COLUMN IF NOT EXISTS storage_detail VARCHAR",
+        # Inventory intake: stable IDs, reusable storage, care state, lifecycle and audit history.
+        """CREATE TABLE IF NOT EXISTS storage_locations (
+            id SERIAL PRIMARY KEY,
+            record_uid VARCHAR UNIQUE NOT NULL,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            name VARCHAR NOT NULL,
+            description TEXT,
+            is_default BOOLEAN NOT NULL DEFAULT FALSE,
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW(),
+            CONSTRAINT uq_storage_location_user_name UNIQUE (user_id, name)
+        )""",
+        """INSERT INTO storage_locations (
+            record_uid, user_id, name, description, is_default, is_active
+        )
+        SELECT
+            md5(random()::text || clock_timestamp()::text || users.id::text),
+            users.id,
+            'To organize',
+            'New intake waiting to be filed',
+            TRUE,
+            TRUE
+        FROM users
+        WHERE NOT EXISTS (
+            SELECT 1 FROM storage_locations
+            WHERE storage_locations.user_id = users.id
+              AND storage_locations.name = 'To organize'
+        )""",
+        "ALTER TABLE collection ADD COLUMN IF NOT EXISTS record_uid VARCHAR",
+        """UPDATE collection
+           SET record_uid = md5(random()::text || clock_timestamp()::text || id::text)
+           WHERE record_uid IS NULL OR btrim(record_uid) = ''""",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_collection_record_uid ON collection(record_uid)",
+        "ALTER TABLE collection ALTER COLUMN record_uid SET NOT NULL",
+        "ALTER TABLE collection ADD COLUMN IF NOT EXISTS inventory_kind VARCHAR DEFAULT 'owned'",
+        "UPDATE collection SET inventory_kind = 'owned' WHERE inventory_kind IS NULL OR btrim(inventory_kind) = ''",
+        """UPDATE collection
+           SET inventory_kind = 'bulk', purchase_price = NULL
+           WHERE acquisition_source = 'bulk_before_tracking'""",
+        """UPDATE collection
+           SET purchase_price = 4.49
+           WHERE acquisition_source = 'pulled'
+             AND purchase_price IS NULL""",
+        "ALTER TABLE collection ALTER COLUMN inventory_kind SET NOT NULL",
+        "ALTER TABLE collection ADD COLUMN IF NOT EXISTS protection_type VARCHAR DEFAULT 'raw'",
+        "UPDATE collection SET protection_type = 'raw' WHERE protection_type IS NULL OR btrim(protection_type) = ''",
+        "ALTER TABLE collection ALTER COLUMN protection_type SET NOT NULL",
+        "ALTER TABLE collection ADD COLUMN IF NOT EXISTS storage_location_id INTEGER REFERENCES storage_locations(id)",
+        """UPDATE collection
+           SET storage_location_id = storage_locations.id
+           FROM storage_locations
+           WHERE collection.storage_location_id IS NULL
+             AND storage_locations.user_id = collection.user_id
+             AND storage_locations.is_default = TRUE""",
+        "ALTER TABLE collection ADD COLUMN IF NOT EXISTS status VARCHAR DEFAULT 'owned'",
+        "UPDATE collection SET status = 'owned' WHERE status IS NULL OR btrim(status) = ''",
+        "ALTER TABLE collection ALTER COLUMN status SET NOT NULL",
+        "ALTER TABLE collection ADD COLUMN IF NOT EXISTS removed_at TIMESTAMP",
+        "ALTER TABLE collection ADD COLUMN IF NOT EXISTS removal_reason VARCHAR",
+        "ALTER TABLE collection ADD COLUMN IF NOT EXISTS removal_notes TEXT",
+        "ALTER TABLE collection ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()",
+        "UPDATE collection SET updated_at = COALESCE(updated_at, added_at, NOW())",
+        "ALTER TABLE product_purchases ADD COLUMN IF NOT EXISTS record_uid VARCHAR",
+        """UPDATE product_purchases
+           SET record_uid = md5(random()::text || clock_timestamp()::text || id::text)
+           WHERE record_uid IS NULL OR btrim(record_uid) = ''""",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_product_purchases_record_uid ON product_purchases(record_uid)",
+        "ALTER TABLE product_purchases ALTER COLUMN record_uid SET NOT NULL",
+        "ALTER TABLE product_purchases ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1",
+        "UPDATE product_purchases SET quantity = 1 WHERE quantity IS NULL OR quantity < 1",
+        "ALTER TABLE product_purchases ALTER COLUMN quantity SET NOT NULL",
+        "ALTER TABLE product_purchases ADD COLUMN IF NOT EXISTS sealed_condition VARCHAR DEFAULT 'factory_sealed'",
+        """UPDATE product_purchases
+           SET sealed_condition = 'factory_sealed'
+           WHERE sealed_condition IS NULL OR btrim(sealed_condition) = ''""",
+        "ALTER TABLE product_purchases ALTER COLUMN sealed_condition SET NOT NULL",
+        "ALTER TABLE product_purchases ADD COLUMN IF NOT EXISTS acquisition_source VARCHAR",
+        "ALTER TABLE product_purchases ADD COLUMN IF NOT EXISTS storage_location_id INTEGER REFERENCES storage_locations(id)",
+        """UPDATE product_purchases
+           SET storage_location_id = storage_locations.id
+           FROM storage_locations
+           WHERE product_purchases.storage_location_id IS NULL
+             AND storage_locations.user_id = product_purchases.user_id
+             AND storage_locations.is_default = TRUE""",
+        "ALTER TABLE product_purchases ADD COLUMN IF NOT EXISTS status VARCHAR DEFAULT 'active'",
+        "UPDATE product_purchases SET status = 'active' WHERE status IS NULL OR btrim(status) = ''",
+        "ALTER TABLE product_purchases ALTER COLUMN status SET NOT NULL",
+        "ALTER TABLE product_purchases ADD COLUMN IF NOT EXISTS removed_at TIMESTAMP",
+        "ALTER TABLE product_purchases ADD COLUMN IF NOT EXISTS removal_reason VARCHAR",
+        "ALTER TABLE product_purchases ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()",
+        "UPDATE product_purchases SET updated_at = COALESCE(updated_at, created_at, NOW())",
+        """CREATE TABLE IF NOT EXISTS inventory_events (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            entity_type VARCHAR NOT NULL,
+            entity_id INTEGER NOT NULL,
+            entity_uid VARCHAR NOT NULL,
+            action VARCHAR NOT NULL,
+            changes JSON,
+            notes TEXT,
+            occurred_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            CONSTRAINT ck_inventory_event_entity_type
+                CHECK (entity_type IN ('collection_item', 'sealed_product', 'storage_location'))
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_inventory_events_user_time ON inventory_events(user_id, occurred_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_inventory_events_entity ON inventory_events(entity_type, entity_id)",
         # v32: Add ebay_app_id to settings table
         "ALTER TABLE settings ADD COLUMN IF NOT EXISTS ebay_app_id VARCHAR",
         # v41: Add Pokemon avatar selection to users

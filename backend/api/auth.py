@@ -229,7 +229,19 @@ def delete_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     # Delete all user-owned data first (foreign key constraints)
-    from models import CollectionItem, WishlistItem, Binder, BinderCard, ProductCard, ProductLedgerEntry, ProductPurchase, PortfolioSnapshot, UserSetting
+    from models import (
+        Binder,
+        BinderCard,
+        CollectionItem,
+        InventoryEvent,
+        PortfolioSnapshot,
+        ProductCard,
+        ProductLedgerEntry,
+        ProductPurchase,
+        StorageLocation,
+        UserSetting,
+        WishlistItem,
+    )
     db.query(BinderCard).filter(
         BinderCard.binder_id.in_(db.query(Binder.id).filter(Binder.user_id == user_id))
     ).delete(synchronize_session=False)
@@ -240,6 +252,8 @@ def delete_user(
     db.query(WishlistItem).filter(WishlistItem.user_id == user_id).delete()
     db.query(ProductPurchase).filter(ProductPurchase.user_id == user_id).delete()
     db.query(PortfolioSnapshot).filter(PortfolioSnapshot.user_id == user_id).delete()
+    db.query(InventoryEvent).filter(InventoryEvent.user_id == user_id).delete()
+    db.query(StorageLocation).filter(StorageLocation.user_id == user_id).delete()
     db.query(UserSetting).filter(UserSetting.user_id == user_id).delete()
     db.delete(user)
     db.commit()

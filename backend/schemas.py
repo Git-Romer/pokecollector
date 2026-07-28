@@ -125,11 +125,14 @@ class CardWithSet(CardBase):
 
 class CollectionItemCreate(BaseModel):
     card_id: str
-    quantity: int = 1
-    condition: str = "NM"
+    quantity: int = Field(default=1, ge=1, le=999)
+    condition: str = "Unassessed"
     variant: Optional[str] = "Normal"
     purchase_price: Optional[float] = None
-    acquisition_source: Optional[Literal["pulled", "bulk_before_tracking", "purchased", "trade", "gift", "other"]] = None
+    acquisition_source: Optional[Literal["pulled", "bulk_before_tracking", "purchased", "trade", "gift", "unknown", "other"]] = None
+    inventory_kind: Literal["owned", "bulk"] = "owned"
+    protection_type: Literal["raw", "penny_sleeve", "card_saver", "top_loader", "psa_slab"] = "raw"
+    storage_location_id: Optional[int] = None
     storage_type: Optional[str] = None
     storage_detail: Optional[str] = None
     grader: Optional[str] = None
@@ -140,11 +143,14 @@ class CollectionItemCreate(BaseModel):
 
 
 class CollectionItemUpdate(BaseModel):
-    quantity: Optional[int] = None
+    quantity: Optional[int] = Field(default=None, ge=1, le=999)
     condition: Optional[str] = None
     variant: Optional[str] = None
     purchase_price: Optional[float] = None
-    acquisition_source: Optional[Literal["pulled", "bulk_before_tracking", "purchased", "trade", "gift", "other"]] = None
+    acquisition_source: Optional[Literal["pulled", "bulk_before_tracking", "purchased", "trade", "gift", "unknown", "other"]] = None
+    inventory_kind: Optional[Literal["owned", "bulk"]] = None
+    protection_type: Optional[Literal["raw", "penny_sleeve", "card_saver", "top_loader", "psa_slab"]] = None
+    storage_location_id: Optional[int] = None
     storage_type: Optional[str] = None
     storage_detail: Optional[str] = None
     grader: Optional[str] = None
@@ -178,23 +184,79 @@ class CollectionProductSourceResponse(BaseModel):
 
 class CollectionItemResponse(BaseModel):
     id: int
+    record_uid: str
     card_id: str
     quantity: int
     condition: str
     variant: str = "Normal"
     purchase_price: Optional[float] = None
     acquisition_source: Optional[str] = None
+    inventory_kind: str = "owned"
+    protection_type: str = "raw"
+    storage_location_id: Optional[int] = None
+    storage_location: Optional["StorageLocationResponse"] = None
     storage_type: Optional[str] = None
     storage_detail: Optional[str] = None
     grader: Optional[str] = None
     grade: Optional[str] = None
     certification_number: Optional[str] = None
     notes: Optional[str] = None
+    status: str = "owned"
+    removed_at: Optional[datetime] = None
+    removal_reason: Optional[str] = None
+    removal_notes: Optional[str] = None
     lang: str = "en"
     added_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     standard_legal: bool = False
     product_sources: List[CollectionProductSourceResponse] = Field(default_factory=list)
     card: Optional[CardWithSet] = None
+
+    class Config:
+        from_attributes = True
+
+
+class CollectionItemRemovalRequest(BaseModel):
+    reason: Literal["sold", "traded", "gifted", "lost_damaged", "other"] = "other"
+    notes: Optional[str] = None
+
+
+class StorageLocationCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    description: Optional[str] = Field(default=None, max_length=500)
+    is_default: bool = False
+
+
+class StorageLocationUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    description: Optional[str] = Field(default=None, max_length=500)
+    is_default: Optional[bool] = None
+    is_active: Optional[bool] = None
+
+
+class StorageLocationResponse(BaseModel):
+    id: int
+    record_uid: str
+    name: str
+    description: Optional[str] = None
+    is_default: bool = False
+    is_active: bool = True
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class InventoryEventResponse(BaseModel):
+    id: int
+    entity_type: str
+    entity_id: int
+    entity_uid: str
+    action: str
+    changes: dict = Field(default_factory=dict)
+    notes: Optional[str] = None
+    occurred_at: datetime
 
     class Config:
         from_attributes = True
@@ -291,12 +353,16 @@ class BinderResponse(BaseModel):
 class ProductPurchaseCreate(BaseModel):
     product_name: str
     product_type: Optional[str] = None
+    quantity: int = Field(default=1, ge=1, le=999)
+    sealed_condition: Literal["factory_sealed", "sealed_with_wear", "damaged_seal", "opened"] = "factory_sealed"
+    acquisition_source: Optional[Literal["pulled", "bulk_before_tracking", "purchased", "trade", "gift", "unknown", "other"]] = None
     purchase_price: float
     current_value: Optional[float] = None
     sold_price: Optional[float] = None
     purchase_date: date
     sold_date: Optional[date] = None
     notes: Optional[str] = None
+    storage_location_id: Optional[int] = None
     storage_type: Optional[str] = None
     storage_detail: Optional[str] = None
 
@@ -304,12 +370,16 @@ class ProductPurchaseCreate(BaseModel):
 class ProductPurchaseUpdate(BaseModel):
     product_name: Optional[str] = None
     product_type: Optional[str] = None
+    quantity: Optional[int] = Field(default=None, ge=1, le=999)
+    sealed_condition: Optional[Literal["factory_sealed", "sealed_with_wear", "damaged_seal", "opened"]] = None
+    acquisition_source: Optional[Literal["pulled", "bulk_before_tracking", "purchased", "trade", "gift", "unknown", "other"]] = None
     purchase_price: Optional[float] = None
     current_value: Optional[float] = None
     sold_price: Optional[float] = None
     purchase_date: Optional[date] = None
     sold_date: Optional[date] = None
     notes: Optional[str] = None
+    storage_location_id: Optional[int] = None
     storage_type: Optional[str] = None
     storage_detail: Optional[str] = None
 
@@ -383,17 +453,27 @@ class ProductCardResponse(BaseModel):
 
 class ProductPurchaseResponse(BaseModel):
     id: int
+    record_uid: str
     product_name: str
     product_type: Optional[str] = None
+    quantity: int = 1
+    sealed_condition: str = "factory_sealed"
+    acquisition_source: Optional[str] = None
     purchase_price: float
     current_value: Optional[float] = None
     sold_price: Optional[float] = None
     purchase_date: date
     sold_date: Optional[date] = None
     notes: Optional[str] = None
+    storage_location_id: Optional[int] = None
+    storage_location: Optional[StorageLocationResponse] = None
     storage_type: Optional[str] = None
     storage_detail: Optional[str] = None
+    status: str = "active"
+    removed_at: Optional[datetime] = None
+    removal_reason: Optional[str] = None
     created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     pnl: Optional[float] = None
     pnl_percent: Optional[float] = None
     value_source: Optional[str] = None

@@ -2,7 +2,7 @@ import datetime
 import logging
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
@@ -10,6 +10,7 @@ from api.auth import get_current_user
 from database import get_db
 from models import BinderCard, Card, CollectionItem, ProductCard, ProductLedgerEntry, ProductPurchase, User
 from schemas import (
+    CollectionItemRemovalRequest,
     ProductCardLinkCreate,
     ProductCardResponse,
     ProductCardSaleCreate,
@@ -20,6 +21,7 @@ from schemas import (
     ProductPurchaseUpdate,
 )
 from services.card_values import normalize_price_field
+from services.inventory import changed_values, record_inventory_event, resolve_storage_location
 from services.product_ledger import (
     entry_live_value,
     entry_realized_value,
@@ -148,17 +150,27 @@ def _product_response(
 
     return ProductPurchaseResponse(
         id=product.id,
+        record_uid=product.record_uid,
         product_name=product.product_name,
         product_type=product.product_type,
+        quantity=product.quantity,
+        sealed_condition=product.sealed_condition,
+        acquisition_source=product.acquisition_source,
         purchase_price=product.purchase_price,
         current_value=product.current_value,
         sold_price=product.sold_price,
         purchase_date=product.purchase_date,
         sold_date=product.sold_date,
         notes=product.notes,
+        storage_location_id=product.storage_location_id,
+        storage_location=product.storage_location,
         storage_type=product.storage_type,
         storage_detail=product.storage_detail,
+        status=product.status,
+        removed_at=product.removed_at,
+        removal_reason=product.removal_reason,
         created_at=product.created_at,
+        updated_at=product.updated_at,
         pnl=pnl,
         pnl_percent=pnl_percent,
         value_source=value_source,
@@ -202,12 +214,18 @@ def get_products(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
     price_field: str = Query(default="price_trend", description="Cardmarket price field for linked-card valuation"),
+    status: str = Query(default="active", pattern="^(active|removed|all)$"),
 ):
     """Get all product purchases with dynamic linked-card valuation fields."""
     price_field = normalize_price_field(price_field)
-    products = db.query(ProductPurchase).filter(
-        ProductPurchase.user_id == current_user.id
-    ).order_by(
+    if status not in {"active", "removed", "all"}:
+        status = "active"
+    query = db.query(ProductPurchase).options(
+        joinedload(ProductPurchase.storage_location)
+    ).filter(ProductPurchase.user_id == current_user.id)
+    if status != "all":
+        query = query.filter(ProductPurchase.status == status)
+    products = query.order_by(
         ProductPurchase.purchase_date.desc()
     ).all()
 
@@ -225,21 +243,42 @@ def create_product(
 ):
     """Log a new product purchase."""
     _validate_product_payload(product)
+    location = resolve_storage_location(db, current_user.id, product.storage_location_id)
     db_product = ProductPurchase(
         product_name=product.product_name.strip(),
         product_type=product.product_type,
+        quantity=product.quantity,
+        sealed_condition=product.sealed_condition,
+        acquisition_source=product.acquisition_source,
         purchase_price=product.purchase_price,
         current_value=product.current_value,
         sold_price=product.sold_price,
         purchase_date=product.purchase_date,
         sold_date=product.sold_date,
         notes=product.notes,
+        storage_location_id=location.id,
         storage_type=product.storage_type,
         storage_detail=product.storage_detail,
+        status="active",
         user_id=current_user.id,
         created_at=datetime.datetime.utcnow(),
+        updated_at=datetime.datetime.utcnow(),
     )
     db.add(db_product)
+    db.flush()
+    record_inventory_event(
+        db,
+        user_id=current_user.id,
+        entity_type="sealed_product",
+        entity_id=db_product.id,
+        entity_uid=db_product.record_uid,
+        action="added",
+        changes={
+            "quantity": {"before": None, "after": db_product.quantity},
+            "sealed_condition": {"before": None, "after": db_product.sealed_condition},
+            "storage_location_id": {"before": None, "after": location.id},
+        },
+    )
     db.commit()
     db.refresh(db_product)
     return _refresh_product_response(db, current_user, db_product, "price_trend")
@@ -254,13 +293,46 @@ def update_product(
 ):
     """Update a product purchase."""
     product = _get_product_or_404(db, current_user, product_id)
+    if product.status != "active":
+        raise HTTPException(status_code=409, detail="Removed products are read-only history records")
     _validate_product_payload(update)
 
-    for field, value in update.model_dump(exclude_unset=True).items():
+    update_data = update.model_dump(exclude_unset=True)
+    before = {
+        field: getattr(product, field)
+        for field in (
+            "product_name", "product_type", "quantity", "sealed_condition",
+            "acquisition_source", "purchase_price", "purchase_date", "notes",
+            "storage_location_id",
+        )
+    }
+    if "storage_location_id" in update_data:
+        location = resolve_storage_location(
+            db,
+            current_user.id,
+            update_data.get("storage_location_id"),
+        )
+        update_data["storage_location_id"] = location.id
+
+    for field, value in update_data.items():
         if field == "product_name" and value is not None:
             value = value.strip()
         setattr(product, field, value)
 
+    product.updated_at = datetime.datetime.utcnow()
+    after = {field: getattr(product, field) for field in before}
+    changes = changed_values(before, after)
+    if changes:
+        action = "moved" if "storage_location_id" in changes else "updated"
+        record_inventory_event(
+            db,
+            user_id=current_user.id,
+            entity_type="sealed_product",
+            entity_id=product.id,
+            entity_uid=product.record_uid,
+            action=action,
+            changes=changes,
+        )
     db.commit()
     db.refresh(product)
     return _refresh_product_response(db, current_user, product, "price_trend")
@@ -269,15 +341,14 @@ def update_product(
 @router.delete("/{product_id}")
 def delete_product(
     product_id: int,
+    removal: CollectionItemRemovalRequest = Body(default_factory=CollectionItemRemovalRequest),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Delete an empty product purchase.
-
-    Products with linked cards or realized ledger history are protected from
-    accidental deletion so sold-card history is not silently erased.
-    """
+    """Soft-remove a sealed product while preserving its history."""
     product = _get_product_or_404(db, current_user, product_id)
+    if product.status != "active":
+        raise HTTPException(status_code=409, detail="Product is already in history")
     linked_count = db.query(ProductCard).filter(
         ProductCard.product_id == product_id,
         ProductCard.user_id == current_user.id,
@@ -286,15 +357,26 @@ def delete_product(
         ProductLedgerEntry.product_id == product_id,
         ProductLedgerEntry.user_id == current_user.id,
     ).count()
-    if linked_count or ledger_count:
-        raise HTTPException(
-            status_code=409,
-            detail="Product has linked card or sale history and cannot be deleted. Unlink active cards first; sold history is kept permanently.",
-        )
-
-    db.delete(product)
+    product.status = "removed"
+    product.removed_at = datetime.datetime.utcnow()
+    product.removal_reason = removal.reason
+    product.updated_at = datetime.datetime.utcnow()
+    record_inventory_event(
+        db,
+        user_id=current_user.id,
+        entity_type="sealed_product",
+        entity_id=product.id,
+        entity_uid=product.record_uid,
+        action="removed",
+        changes={"status": {"before": "active", "after": "removed"}},
+        notes=removal.notes or (
+            "Product retained with linked card or ledger history"
+            if linked_count or ledger_count
+            else None
+        ),
+    )
     db.commit()
-    return {"message": "Product deleted"}
+    return {"message": "Product removed", "status": "removed", "id": product.id}
 
 
 @router.get("/summary")
@@ -306,7 +388,8 @@ def get_products_summary(
     """Get product investment summary (broker-style P&L)."""
     price_field = normalize_price_field(price_field)
     products = db.query(ProductPurchase).filter(
-        ProductPurchase.user_id == current_user.id
+        ProductPurchase.user_id == current_user.id,
+        ProductPurchase.status == "active",
     ).all()
 
     product_responses = [

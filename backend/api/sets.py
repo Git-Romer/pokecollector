@@ -131,7 +131,11 @@ def get_sets(
             func.count(func.distinct(CollectionItem.card_id)).label('cnt')
         )
         .join(CollectionItem, CollectionItem.card_id == Card.id)
-        .filter(CollectionItem.user_id == current_user.id)
+        .filter(
+            CollectionItem.user_id == current_user.id,
+            CollectionItem.status == "owned",
+            CollectionItem.inventory_kind == "owned",
+        )
         .group_by(Card.set_id, CollectionItem.lang)
         .all()
     )
@@ -264,6 +268,8 @@ def get_set_checklist(
     # right variant/condition instead of treating ownership as a single boolean.
     collection_items = db.query(CollectionItem).filter(
         CollectionItem.user_id == current_user.id,
+        CollectionItem.status == "owned",
+        CollectionItem.inventory_kind == "owned",
         CollectionItem.card_id.in_([c.id for c in cards])
     ).all()
     owned_by_card: dict[str, list[CollectionItem]] = {}

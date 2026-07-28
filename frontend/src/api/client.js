@@ -121,8 +121,22 @@ export const importCollectionCsv = (file) => {
   }).then(r => r.data)
 }
 export const updateCollectionItem = (id, data) => api.put(`/collection/${id}`, data)
-export const removeFromCollection = (id) => api.delete(`/collection/${id}`)
+export const removeFromCollection = (id, data = { reason: 'other' }) => api.delete(`/collection/${id}`, { data })
 export const getCollectionStats = (params = {}) => api.get('/collection/stats/summary', { params })
+
+// Inventory, storage, and portable Excel ledger
+export const getStorageLocations = (params = {}) => api.get('/inventory/locations', { params }).then(r => r.data)
+export const createStorageLocation = (data) => api.post('/inventory/locations', data).then(r => r.data)
+export const updateStorageLocation = (id, data) => api.put(`/inventory/locations/${id}`, data).then(r => r.data)
+export const getInventoryHistory = (params = {}) => api.get('/inventory/history', { params }).then(r => r.data)
+export const importInventoryXlsx = (file, commit = false) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return api.post('/inventory/import-xlsx', formData, {
+    params: { commit },
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }).then(r => r.data)
+}
 
 // Sets
 export const getSets = (params) => api.get('/sets/', { params })
@@ -202,7 +216,7 @@ export const getProducts = (params = {}) => api.get('/products/', { params })
 export const getProductTypes = () => api.get('/products/types')
 export const createProduct = (data) => api.post('/products/', data)
 export const updateProduct = (id, data) => api.put(`/products/${id}`, data)
-export const deleteProduct = (id) => api.delete(`/products/${id}`)
+export const deleteProduct = (id, data = { reason: 'other' }) => api.delete(`/products/${id}`, { data })
 export const getProductsSummary = (params = {}) => api.get('/products/summary', { params })
 export const linkProductCard = (productId, data) => api.post(`/products/${productId}/cards`, data).then(r => r.data)
 export const unlinkProductCard = (productId, productCardId) => api.delete(`/products/${productId}/cards/${productCardId}`).then(r => r.data)
