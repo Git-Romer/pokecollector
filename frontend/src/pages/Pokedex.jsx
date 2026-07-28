@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { Check, Search } from 'lucide-react'
 import clsx from 'clsx'
 import { getPokedex } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import PokeBallLoader from '../components/PokeBallLoader'
+import { getSavedListScrollPosition, isSavedPositionForLocation, useListScrollRestoration } from '../hooks/useListScrollRestoration'
+import { getPokedexGeneration } from '../utils/pokedexUrlState'
 
 const GENERATIONS = [
   { id: 1, region: 'Kanto', range: '#001–151' },
@@ -52,6 +54,8 @@ function PokemonTile({ entry, onClick, language, t }) {
   return (
     <button
       type="button"
+      id={`pokemon-${entry.dex_id}`}
+      data-scroll-anchor={`pokemon-${entry.dex_id}`}
       onClick={onClick}
       className={clsx(
         'group relative rounded-2xl border p-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-brand-red',
@@ -94,16 +98,25 @@ function PokemonTile({ entry, onClick, language, t }) {
 
 export default function Pokedex() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
   const { t, settings } = useSettings()
-  const requestedGeneration = Number(searchParams.get('generation'))
-  const [generation, setGeneration] = useState(
-    Number.isInteger(requestedGeneration) && requestedGeneration >= 1 && requestedGeneration <= 9
-      ? requestedGeneration
-      : null
+  // Keep the URL as the source of truth so browser Back/Forward updates both
+  // the active filter and the query without requiring the page to remount.
+  const generation = getPokedexGeneration(searchParams)
+  // The list remounts after Back. Restore non-URL filters before its query runs
+  // so the saved Pokémon anchor is present when scroll restoration occurs.
+  const savedPosition = getSavedListScrollPosition('pokedex')
+  const savedListState = isSavedPositionForLocation(savedPosition, location)
+    ? savedPosition.listState
+    : null
+  const [status, setStatus] = useState(
+    ['all', 'owned', 'missing'].includes(savedListState?.status) ? savedListState.status : 'all'
   )
-  const [status, setStatus] = useState('all')
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(
+    typeof savedListState?.search === 'string' ? savedListState.search : ''
+  )
+  const listState = useMemo(() => ({ status, search }), [search, status])
   const language = settings.language === 'de' ? 'de' : 'en'
 
   const { data, isLoading, isError } = useQuery({
@@ -118,6 +131,11 @@ export default function Pokedex() {
   })
 
   const entries = data?.entries || []
+  const { saveScrollPosition, createDetailNavigationState } = useListScrollRestoration({
+    key: 'pokedex',
+    isReady: !isLoading && !isError && entries.length > 0,
+    listState,
+  })
   const grouped = useMemo(() => {
     if (generation || search.trim()) return [{ generation, entries }]
     return GENERATIONS.map((item) => ({
@@ -130,7 +148,6 @@ export default function Pokedex() {
   const progress = summary.total ? Math.round((summary.owned / summary.total) * 100) : 0
   const scope = generation ? GENERATIONS.find((item) => item.id === generation) : null
   const selectGeneration = (value) => {
-    setGeneration(value)
     if (value) setSearchParams({ generation: String(value) })
     else setSearchParams({})
   }
@@ -227,7 +244,13 @@ export default function Pokedex() {
                   entry={entry}
                   language={language}
                   t={t}
-                  onClick={() => navigate(`/pokedex/${entry.dex_id}${generation ? `?generation=${generation}` : ''}`)}
+                  onClick={() => {
+                    const anchorId = `pokemon-${entry.dex_id}`
+                    saveScrollPosition(anchorId, listState)
+                    navigate(`/pokedex/${entry.dex_id}${generation ? `?generation=${generation}` : ''}`, {
+                      state: createDetailNavigationState(anchorId),
+                    })
+                  }}
                 />
               ))}
             </div>
