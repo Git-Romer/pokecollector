@@ -72,9 +72,10 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         user_id = payload.get("sub")
         if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid token")
-    except JWTError:
+        user_id_int = int(user_id)
+    except (JWTError, ValueError, TypeError):
         raise HTTPException(status_code=401, detail="Invalid token")
-    user = db.query(User).filter(User.id == int(user_id), User.is_active == True).first()
+    user = db.query(User).filter(User.id == user_id_int, User.is_active == True).first()
     if not user:
         raise HTTPException(status_code=401, detail="User not found or inactive")
     return user
@@ -89,9 +90,10 @@ def get_optional_user(token: str = Depends(oauth2_scheme), db: Session = Depends
         user_id = payload.get("sub")
         if user_id is None:
             return None
-    except JWTError:
+        user_id_int = int(user_id)
+    except (JWTError, ValueError, TypeError):
         return None
-    return db.query(User).filter(User.id == int(user_id), User.is_active == True).first()
+    return db.query(User).filter(User.id == user_id_int, User.is_active == True).first()
 
 
 @router.post("/login", response_model=TokenResponse)

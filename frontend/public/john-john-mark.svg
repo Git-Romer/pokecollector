@@ -1,4 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="John John's PC">
-  <rect width="64" height="64" rx="18" fill="#09111f"/>
-  <path d="M18 17h10v22c0 6-3 10-9 10-2 0-4-.4-6-1.4l2.3-7c.8.5 1.6.7 2.4.7.3 0 .3-.4.3-1.2V17Zm18 0h10v22c0 6-3 10-9 10-2 0-4-.4-6-1.4l2.3-7c.8.5 1.6.7 2.4.7.3 0 .3-.4.3-1.2V17Z" fill="#8fc0ff"/>
+    <defs>
+        <linearGradient id="spectrum" x1="30" y1="16" x2="50" y2="50" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#E03C31"/>
+            <stop offset=".2" stop-color="#F58220"/>
+            <stop offset=".4" stop-color="#FFCD00"/>
+            <stop offset=".6" stop-color="#009639"/>
+            <stop offset=".8" stop-color="#00A3E0"/>
+            <stop offset="1" stop-color="#582C83"/>
+        </linearGradient>
+    </defs>
+    <rect width="64" height="64" rx="18" fill="#000"/>
+    <path d="M17 16h10v23c0 5-2.8 9-8.7 9-2.1 0-4.1-.5-5.8-1.4l2.2-7c.9.5 1.8.8 2.7.8.4 0 .6-.5.6-1.5V16Z" fill="#fff"/>
+    <path d="M36 16h10v23c0 5-2.8 9-8.7 9-2.1 0-4.1-.5-5.8-1.4l2.2-7c.9.5 1.8.8 2.7.8.4 0 .6-.5.6-1.5V16Z"
+          fill="url(#spectrum)"/>
 </svg>

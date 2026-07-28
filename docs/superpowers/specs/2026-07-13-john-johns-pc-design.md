@@ -2,13 +2,16 @@
 
 ## Purpose
 
-Transform the locally hosted Pokemon TCG Tracker into **John John's PC**: a premium, collection-centric Pokemon TCG archive inspired by Bill's PC and grounded in Fluent 2.
+Transform the locally hosted Pokemon TCG Tracker into **John John's PC**: a premium, collection-centric Pokemon TCG
+archive inspired by Bill's PC and grounded in Fluent 2.
 
 The collection is the hero. John John is its subtle curator, not a chatbot, mascot, or financial analyst.
 
 ## Phase-one boundary
 
-Phase one is an archive-first Fluent transformation. It preserves the current database, API contracts, local Docker override, card data, and binder records. It does not add a generative AI service, migrate collection data, or make market value the product's central experience.
+Phase one is an archive-first Fluent transformation. It preserves the current database, API contracts, local Docker
+override, card data, and binder records. It does not add a generative AI service, migrate collection data, or make
+market value the product's central experience.
 
 The existing local Docker override remains unmodified and uncommitted.
 
@@ -16,13 +19,16 @@ The existing local Docker override remains unmodified and uncommitted.
 
 Primary navigation has five destinations:
 
-1. **Archive** — default landing experience. Shows a featured card or set, recent additions, visual set-progress moments, and sparse Archive Notes.
+1. **Archive** — default landing experience. Shows a featured card or set, recent additions, visual set-progress
+   moments, and sparse Archive Notes.
 2. **Collection** — art-forward card gallery, with a compact inventory view for archival work.
 3. **Boxes** — primary organization metaphor, implemented over existing binder data in phase one.
 4. **Sets** — visual set shelves, completion status, and missing-card discovery.
 5. **Discover** — card search, scanner, wishlist, set-completion prompts, and global archive search.
 
-Market observations, achievements, sealed products, imports, settings, and existing multi-user tools become contextual or secondary surfaces. The collection stays private by default; existing multi-user capability remains intact but is no longer part of the core experience.
+Market observations, achievements, sealed products, imports, settings, and existing multi-user tools become contextual
+or secondary surfaces. The collection stays private by default; existing multi-user capability remains intact but is no
+longer part of the core experience.
 
 Legacy URLs continue to work through redirects to their renamed destinations.
 
@@ -34,15 +40,18 @@ Desktop uses three zones:
 - A generous central collection canvas.
 - A quiet contextual panel that surfaces John John only when relevant.
 
-Mobile uses a five-item bottom navigation for Archive, Collection, Boxes, Sets, and Discover. John John appears in the Archive header rather than consuming a navigation slot.
+Mobile uses a five-item bottom navigation for Archive, Collection, Boxes, Sets, and Discover. John John appears in the
+Archive header rather than consuming a navigation slot.
 
 ## Visual direction
 
 ### Foundation
 
-- Default theme: **Midnight Archive**, using deep navy-black canvas tones, softened elevated surfaces, restrained electric-blue signal color, and Pokemon card art as the principal color source.
+- Default theme: **Midnight Archive**, using deep navy-black canvas tones, softened elevated surfaces, restrained
+  electric-blue signal color, and Pokemon card art as the principal color source.
 - Companion light theme: accessible and intentionally designed, replacing the current Pokemon-type theme picker.
-- Fluent 2 principles: spacious layouts, rounded geometry, soft depth, visible focus states, responsive behavior, strong hierarchy, and accessibility-first contrast.
+- Fluent 2 principles: spacious layouts, rounded geometry, soft depth, visible focus states, responsive behavior, strong
+  hierarchy, and accessibility-first contrast.
 - Typography: Segoe UI Variable with system fallbacks.
 
 ### Identity
@@ -50,13 +59,16 @@ Mobile uses a five-item bottom navigation for Archive, Collection, Boxes, Sets, 
 - Product name: **John John's PC**.
 - Application identity: original JJ archive mark and JOHN JOHN'S PC wordmark.
 - Pokemon imagery belongs to collection content, never to the application chrome.
-- Rename browser metadata, PWA manifest, navigation, headers, loading states, empty states, splash treatment, and API documentation title. Keep endpoints stable.
+- Rename browser metadata, PWA manifest, navigation, headers, loading states, empty states, splash treatment, and API
+  documentation title. Keep endpoints stable.
 
 ### John John presence
 
-John John is represented by an abstract JJ archive signal: light, waveform, or glyph. He is never a character illustration, human avatar, Pokemon, chat panel, or permanent assistant surface.
+John John is represented by an abstract JJ archive signal: light, waveform, or glyph. He is never a character
+illustration, human avatar, Pokemon, chat panel, or permanent assistant surface.
 
-The signal is small and persistent in the desktop context area and Archive header. It expands only for meaningful observations.
+The signal is small and persistent in the desktop context area and Archive header. It expands only for meaningful
+observations.
 
 ## Interaction model
 
@@ -75,7 +87,8 @@ The signal is small and persistent in the desktop context area and Archive heade
 
 ### Boxes
 
-Boxes are a phase-one presentation layer over binder records. The existing data model stays unchanged. Traditional binder views remain available inside the Box experience.
+Boxes are a phase-one presentation layer over binder records. The existing data model stays unchanged. Traditional
+binder views remain available inside the Box experience.
 
 ## John John and insights
 
@@ -88,21 +101,26 @@ Phase one derives John John moments solely from existing collection signals:
 
 Meaningful observations are saved in a sparse, reviewable **Archive Notes** timeline. They are not a chat log.
 
-Market information appears only in card detail, Archive Notes, or optional observation views. It must never be the hero metric on Archive.
+Market information appears only in card detail, Archive Notes, or optional observation views. It must never be the hero
+metric on Archive.
 
-Future intelligence is local-first. Any external AI or market service must require explicit opt-in and must not receive collection data by default.
+Future intelligence is local-first. Any external AI or market service must require explicit opt-in and must not receive
+collection data by default.
 
 ## Motion and accessibility
 
-Motion communicates discovery, activity, presence, and intelligence. It includes purposeful page transitions, card hover and focus feedback, loading states, collection reveals, and restrained milestone reveals.
+Motion communicates discovery, activity, presence, and intelligence. It includes purposeful page transitions, card hover
+and focus feedback, loading states, collection reveals, and restrained milestone reveals.
 
-Milestones use a brief archive-reveal moment rather than confetti or game-like rewards. Motion honors the operating system's Reduce Motion preference, with in-app subtle and full settings.
+Milestones use a brief archive-reveal moment rather than confetti or game-like rewards. Motion honors the operating
+system's Reduce Motion preference, with in-app subtle and full settings.
 
 ## Implementation approach
 
 - Introduce Fluent UI v9 as the primary component foundation.
 - Retain Tailwind only where it supports app-specific layout and archive effects.
-- Replace legacy visual/theme utilities with a compact token layer for color, typography, depth, spacing, motion, and accessibility states.
+- Replace legacy visual/theme utilities with a compact token layer for color, typography, depth, spacing, motion, and
+  accessibility states.
 - Preserve APIs and data. No phase-one backend migration is required.
 - Preserve the local Docker override and port arrangement.
 

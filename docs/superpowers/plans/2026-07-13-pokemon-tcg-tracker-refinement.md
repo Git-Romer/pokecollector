@@ -1,10 +1,14 @@
 # John John's PC Refinement Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:
+> executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Refine the local tracker into a collection-first John John's PC with John John as an ambient local-only presence, structured care data, and Excel export.
+**Goal:** Refine the local tracker into a collection-first John John's PC with John John as an ambient local-only
+presence, structured care data, and Excel export.
 
-**Architecture:** Preserve the existing FastAPI routes, SQLite migration pattern, React Router paths, collection rows, and product records. Add optional collection metadata, use the existing product model for sealed inventory, and expose those concerns through focused frontend components.
+**Architecture:** Preserve the existing FastAPI routes, SQLite migration pattern, React Router paths, collection rows,
+and product records. Add optional collection metadata, use the existing product model for sealed inventory, and expose
+those concerns through focused frontend components.
 
 **Tech Stack:** React 18, Vite, Vitest, Fluent UI v9, Tailwind CSS, FastAPI, SQLAlchemy, Pydantic, openpyxl, pytest.
 
@@ -17,14 +21,12 @@
 - John John is a local faceless JJ signal, never a chatbot, avatar, or external AI integration.
 - Use black, warm-white, and orange for chrome; reserve the spectrum for John John.
 - Use Inter, accessible dark/light themes, and reduced-motion support.
-- Use Fluent UI v9 patterns and tokens before custom primitives. Maintain
-  spacious responsive layouts, rounded soft-depth surfaces, meaningful visual
-  hierarchy, keyboard-first interaction, visible focus states, and contrast
-  that meets the quality bar of Copilot, Windows 11, Loop, and Designer.
-- Use React Bits as a motion-quality reference. Implement page transitions,
-  loading states, collection reveals, card hover/focus feedback, and the JJ
-  presence signal only where they communicate discovery, activity, presence,
-  or intelligence; never as continuous decoration.
+- Use Fluent UI v9 patterns and tokens before custom primitives. Maintain spacious responsive layouts, rounded
+  soft-depth surfaces, meaningful visual hierarchy, keyboard-first interaction, visible focus states, and contrast that
+  meets the quality bar of Copilot, Windows 11, Loop, and Designer.
+- Use React Bits as a motion-quality reference. Implement page transitions, loading states, collection reveals, card
+  hover/focus feedback, and the JJ presence signal only where they communicate discovery, activity, presence, or
+  intelligence; never as continuous decoration.
 - Imports never automatically overwrite collection data; no credentials or live integrations are added.
 - Every behavior change starts with a failing focused test.
 
@@ -33,11 +35,15 @@
 ### Task 1: Establish tracker identity and Collection Overview language
 
 **Files:**
-- Modify: `frontend/index.html`, `frontend/public/manifest.json`, `frontend/src/components/ArchiveShell.jsx`, `frontend/src/components/JohnJohnSignal.jsx`, `frontend/src/pages/Archive.jsx`, `frontend/src/design/archiveTheme.js`, `frontend/src/design/archive.css`, `frontend/src/hooks/useTheme.js`
+
+- Modify: `frontend/index.html`, `frontend/public/manifest.json`, `frontend/src/components/ArchiveShell.jsx`,
+  `frontend/src/components/JohnJohnSignal.jsx`, `frontend/src/pages/Archive.jsx`, `frontend/src/design/archiveTheme.js`,
+  `frontend/src/design/archive.css`, `frontend/src/hooks/useTheme.js`
 - Modify: `frontend/src/components/ArchiveShell.test.jsx`
 - Create: `frontend/src/pages/Archive.test.jsx`
 
-**Interfaces:** The wordmark links to `/` as John John's PC. The root renders Collection Overview and John John’s Notes. The fixed five destination labels and routes remain unchanged.
+**Interfaces:** The wordmark links to `/` as John John's PC. The root renders Collection Overview and John John’s Notes.
+The fixed five destination labels and routes remain unchanged.
 
 - [ ] **Step 1: Write the failing shell identity test.**
 
@@ -51,10 +57,14 @@ test('uses the tracker wordmark and familiar destinations', () => {
 ```
 
 - [ ] **Step 2: Run `npm --prefix frontend test -- ArchiveShell.test.jsx`.**
-Expected: FAIL because the current wordmark is John John's PC.
+  Expected: FAIL because the current wordmark is John John's PC.
 
 - [ ] **Step 3: Implement the minimal identity/token changes.**
-Set browser and PWA titles to John John's PC. Make the wordmark a `NavLink` to `/`; change passive signal copy to “John John is keeping watch.” Replace navy tokens with black canvas `#000000`, warm surface `#171513`, warm-white text `#FFFFFF`, and orange `#F58220`; retain contrast-safe light tokens and reduced-motion rules. Change the primary font stack to `Inter, system-ui, sans-serif`. Use Fluent v9 tokens for controls and surfaces; retain custom CSS only for collection-specific presentation and motion.
+  Set browser and PWA titles to John John's PC. Make the wordmark a `NavLink` to `/`; change passive signal copy to
+  “John John is keeping watch.” Replace navy tokens with black canvas `#000000`, warm surface `#171513`, warm-white text
+  `#FFFFFF`, and orange `#F58220`; retain contrast-safe light tokens and reduced-motion rules. Change the primary font
+  stack to `Inter, system-ui, sans-serif`. Use Fluent v9 tokens for controls and surfaces; retain custom CSS only for
+  collection-specific presentation and motion.
 
 - [ ] **Step 4: Write the failing root-copy test.**
 
@@ -67,7 +77,11 @@ test('calls the root Collection Overview without market copy', async () => {
 ```
 
 - [ ] **Step 5: Run `npm --prefix frontend test -- Archive.test.jsx`, then implement the minimum change.**
-Expected: FAIL because the page still renders Your Archive. Replace root-page Archive language with Collection Overview and Archive notes with John John’s Notes. Preserve existing dashboard/set queries and feature/recent/set-progress ordering. Add CSS-only entry/reveal transitions for collection content, tactile card hover/focus feedback, and an animated loading state. Keep the JJ signal still at rest and animate it only for loading/import/new-note context; every animation must be disabled by reduced-motion rules.
+  Expected: FAIL because the page still renders Your Archive. Replace root-page Archive language with Collection
+  Overview and Archive notes with John John’s Notes. Preserve existing dashboard/set queries and
+  feature/recent/set-progress ordering. Add CSS-only entry/reveal transitions for collection content, tactile card
+  hover/focus feedback, and an animated loading state. Keep the JJ signal still at rest and animate it only for
+  loading/import/new-note context; every animation must be disabled by reduced-motion rules.
 
 - [ ] **Step 6: Verify and commit.**
 
@@ -81,10 +95,15 @@ git commit -m "feat: refine John John's PC collection overview"
 ### Task 2: Add backward-compatible card care and provenance metadata
 
 **Files:**
-- Modify: `backend/models.py`, `backend/database.py`, `backend/schemas.py`, `backend/api/collection.py`, `frontend/src/pages/Collection.jsx`
-- Create: `backend/tests/test_collection_metadata.py`, `frontend/src/utils/collectionMetadata.js`, `frontend/src/utils/collectionMetadata.test.js`
 
-**Interfaces:** Collection rows gain nullable `acquisition_source`, `storage_type`, `storage_detail`, `grader`, `grade`, `certification_number`, and `notes`. Valid sources are pulled, bulk_before_tracking, purchased, trade, gift, and other. Omitted pulled cost defaults to 4.49; omitted bulk-before-tracking cost defaults to 0.0.
+- Modify: `backend/models.py`, `backend/database.py`, `backend/schemas.py`, `backend/api/collection.py`,
+  `frontend/src/pages/Collection.jsx`
+- Create: `backend/tests/test_collection_metadata.py`, `frontend/src/utils/collectionMetadata.js`,
+  `frontend/src/utils/collectionMetadata.test.js`
+
+**Interfaces:** Collection rows gain nullable `acquisition_source`, `storage_type`, `storage_detail`, `grader`, `grade`,
+`certification_number`, and `notes`. Valid sources are pulled, bulk_before_tracking, purchased, trade, gift, and other.
+Omitted pulled cost defaults to 4.49; omitted bulk-before-tracking cost defaults to 0.0.
 
 - [ ] **Step 1: Write the failing backend contract test.**
 
@@ -101,10 +120,11 @@ def test_collection_item_persists_care_and_provenance(client, seeded_card):
 ```
 
 - [ ] **Step 2: Run `pytest backend/tests/test_collection_metadata.py -v`.**
-Expected: FAIL because the request model rejects the new fields.
+  Expected: FAIL because the request model rejects the new fields.
 
 - [ ] **Step 3: Implement the smallest migration and API change.**
-Use the existing `ALTER TABLE ... ADD COLUMN` convention. Add nullable model/schema/response fields and valid-source Pydantic validation. Preserve explicit prices and existing grouping; only apply defaults when price is omitted.
+  Use the existing `ALTER TABLE ... ADD COLUMN` convention. Add nullable model/schema/response fields and valid-source
+  Pydantic validation. Preserve explicit prices and existing grouping; only apply defaults when price is omitted.
 
 - [ ] **Step 4: Run the backend test and verify it passes.**
 
@@ -119,9 +139,10 @@ test('uses source-aware default cost bases', () => {
 ```
 
 - [ ] **Step 6: Run the test, implement, and verify.**
-Run: `npm --prefix frontend test -- collectionMetadata.test.js`.
-Expected: FAIL because the helper does not exist.
-Create source/storage constants and `defaultPurchasePrice(source)`. Add acquisition, protection/storage, optional location detail, grader, grade, certification, and note controls to CollectionEditModal. Only prefill blank prices after source selection.
+  Run: `npm --prefix frontend test -- collectionMetadata.test.js`. Expected: FAIL because the helper does not exist.
+  Create source/storage constants and `defaultPurchasePrice(source)`. Add acquisition, protection/storage, optional
+  location detail, grader, grade, certification, and note controls to CollectionEditModal. Only prefill blank prices
+  after source selection.
 
 - [ ] **Step 7: Build and commit.**
 
@@ -135,11 +156,14 @@ git commit -m "feat: track card provenance and care"
 ### Task 3: Keep sealed product and Binders collection-adjacent
 
 **Files:**
-- Modify: `frontend/src/pages/Collection.jsx`, `frontend/src/pages/Products.jsx`, `frontend/src/pages/Binders.jsx`, `frontend/src/pages/BinderDetail.jsx`
+
+- Modify: `frontend/src/pages/Collection.jsx`, `frontend/src/pages/Products.jsx`, `frontend/src/pages/Binders.jsx`,
+  `frontend/src/pages/BinderDetail.jsx`
 - Modify: `backend/models.py`, `backend/database.py`, `backend/schemas.py`, `backend/api/products.py`
 - Create: `frontend/src/pages/Products.test.jsx`
 
-**Interfaces:** Collection exposes a secondary Sealed product entry to existing `/products`. Product records gain optional storage type/detail. Binders remain Binders in visible text and continue using existing binder APIs.
+**Interfaces:** Collection exposes a secondary Sealed product entry to existing `/products`. Product records gain
+optional storage type/detail. Binders remain Binders in visible text and continue using existing binder APIs.
 
 - [ ] **Step 1: Write the failing entry-point test.**
 
@@ -151,10 +175,12 @@ test('offers sealed product from Collection without a new primary nav item', () 
 ```
 
 - [ ] **Step 2: Run `npm --prefix frontend test -- Products.test.jsx`.**
-Expected: FAIL because Collection does not expose the entry.
+  Expected: FAIL because Collection does not expose the entry.
 
 - [ ] **Step 3: Implement the presentation/model delta.**
-Add optional product storage fields through the existing product model/schema/update route. Add the Collection secondary action, retain exactly five nav items, and remove Box/archive terminology from binder surfaces without changing IDs or API calls.
+  Add optional product storage fields through the existing product model/schema/update route. Add the Collection
+  secondary action, retain exactly five nav items, and remove Box/archive terminology from binder surfaces without
+  changing IDs or API calls.
 
 - [ ] **Step 4: Verify and commit.**
 
@@ -169,10 +195,13 @@ git commit -m "feat: keep sealed product and binders collection-first"
 ### Task 4: Add Excel export and manual-import review boundary
 
 **Files:**
-- Modify: `backend/api/export.py`, `frontend/src/api/client.js`, `frontend/src/pages/Collection.jsx`
-- Create: `backend/tests/test_excel_export.py`, `frontend/src/components/ImportReviewNotice.jsx`, `frontend/src/components/ImportReviewNotice.test.jsx`
 
-**Interfaces:** `GET /api/export/xlsx` streams a workbook with Cards, Sealed Product, and Acquisition & Storage worksheets. Imports show a review notice and do not introduce automatic merge/overwrite behavior.
+- Modify: `backend/api/export.py`, `frontend/src/api/client.js`, `frontend/src/pages/Collection.jsx`
+- Create: `backend/tests/test_excel_export.py`, `frontend/src/components/ImportReviewNotice.jsx`,
+  `frontend/src/components/ImportReviewNotice.test.jsx`
+
+**Interfaces:** `GET /api/export/xlsx` streams a workbook with Cards, Sealed Product, and Acquisition & Storage
+worksheets. Imports show a review notice and do not introduce automatic merge/overwrite behavior.
 
 - [ ] **Step 1: Write the failing workbook endpoint test.**
 
@@ -185,10 +214,12 @@ def test_excel_export_has_collection_and_sealed_sheets(client):
 ```
 
 - [ ] **Step 2: Run `pytest backend/tests/test_excel_export.py -v`.**
-Expected: FAIL with HTTP 404 because the endpoint does not exist.
+  Expected: FAIL with HTTP 404 because the endpoint does not exist.
 
 - [ ] **Step 3: Implement streaming export.**
-Use installed `openpyxl` and `BytesIO`. Query only the current user’s visible cards and ProductPurchase rows. Write the three named sheets, card/provenance fields, sealed product fields, and no market/P&L/API credential information. Set a date-stamped Excel attachment filename.
+  Use installed `openpyxl` and `BytesIO`. Query only the current user’s visible cards and ProductPurchase rows. Write
+  the three named sheets, card/provenance fields, sealed product fields, and no market/P&L/API credential information.
+  Set a date-stamped Excel attachment filename.
 
 - [ ] **Step 4: Run the backend test and verify it passes.**
 
@@ -201,11 +232,11 @@ test('states that imported data is reviewed before existing items change', () =>
 })
 ```
 
-Run: `npm --prefix frontend test -- ImportReviewNotice.test.jsx`.
-Expected: FAIL because the component does not exist.
+Run: `npm --prefix frontend test -- ImportReviewNotice.test.jsx`. Expected: FAIL because the component does not exist.
 
 - [ ] **Step 6: Implement and verify the frontend boundary.**
-Render the notice in the existing CSV import modal. Add `exportExcel()` next to `exportCSV()` and an Export Excel control in Collection.
+  Render the notice in the existing CSV import modal. Add `exportExcel()` next to `exportCSV()` and an Export Excel
+  control in Collection.
 
 ```bash
 npm --prefix frontend test -- ImportReviewNotice.test.jsx
@@ -217,10 +248,12 @@ git commit -m "feat: export John John's PC to Excel"
 ### Task 5: Document local-first controls and perform release verification
 
 **Files:**
+
 - Modify: `frontend/src/pages/Settings.jsx`, `docs/FRONTEND.md`, `docs/ARCHITECTURE.md`, `README.md`
 - Create: `frontend/src/pages/Settings.test.jsx`
 
-**Interfaces:** Settings has a Privacy & Data section stating that notes are local, external AI is disabled by default, imports are manual/reviewed, and Excel export is local.
+**Interfaces:** Settings has a Privacy & Data section stating that notes are local, external AI is disabled by default,
+imports are manual/reviewed, and Excel export is local.
 
 - [ ] **Step 1: Write the failing Settings test.**
 
@@ -233,10 +266,12 @@ test('explains the local Privacy & Data boundary', () => {
 ```
 
 - [ ] **Step 2: Run `npm --prefix frontend test -- Settings.test.jsx`.**
-Expected: FAIL because the section is absent.
+  Expected: FAIL because the section is absent.
 
 - [ ] **Step 3: Implement the informational settings/doc updates.**
-Add a non-networked Privacy & Data panel. Document local notes, manual/reviewed imports, explicit external-AI opt-in, Excel export, fixed primary navigation, and legacy routes. Do not schedule weekly backup automation until the export endpoint has passed live smoke checks and a visible local destination is agreed.
+  Add a non-networked Privacy & Data panel. Document local notes, manual/reviewed imports, explicit external-AI opt-in,
+  Excel export, fixed primary navigation, and legacy routes. Do not schedule weekly backup automation until the export
+  endpoint has passed live smoke checks and a visible local destination is agreed.
 
 - [ ] **Step 4: Run complete verification and commit.**
 

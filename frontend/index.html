@@ -1,21 +1,21 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<html class="dark" lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
     <title>John John's PC</title>
     <!-- Favicons -->
-    <link rel="icon" type="image/svg+xml" href="/john-john-mark.svg" />
+    <link href="/john-john-mark.svg" rel="icon" type="image/svg+xml"/>
     <!-- PWA Manifest -->
-    <link rel="manifest" href="/manifest.json" />
-    <meta name="theme-color" content="#000000" />
-  </head>
-  <!-- Colour comes from design/archive.css, which is theme-aware. A
-       `text-white` class here outranked that rule and forced white text
-       through the whole tree, including the light theme. `bg-dark-bg`
-       named a token that no longer exists. -->
-  <body class="font-sans">
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+    <link href="/manifest.json" rel="manifest"/>
+    <meta content="#000000" name="theme-color"/>
+</head>
+<!-- Colour comes from design/archive.css, which is theme-aware. A
+     `text-white` class here outranked that rule and forced white text
+     through the whole tree, including the light theme. `bg-dark-bg`
+     named a token that no longer exists. -->
+<body class="font-sans">
+<div id="root"></div>
+<script src="/src/main.jsx" type="module"></script>
+</body>
 </html>

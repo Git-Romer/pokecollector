@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import {useEffect, useState} from 'react'
 
 /**
  * useMediaQuery — subscribe to a CSS media query from JS.
@@ -8,18 +8,18 @@ import { useEffect, useState } from 'react'
  * the React parent never reach it.
  */
 export default function useMediaQuery(query) {
-  const [matches, setMatches] = useState(
-    () => typeof window !== 'undefined' && window.matchMedia(query).matches
-  )
+    const [matches, setMatches] = useState(
+        () => typeof window !== 'undefined' && window.matchMedia(query).matches
+    )
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined
-    const list = window.matchMedia(query)
-    const update = (event) => setMatches(event.matches)
-    setMatches(list.matches)
-    list.addEventListener('change', update)
-    return () => list.removeEventListener('change', update)
-  }, [query])
+    useEffect(() => {
+        if (typeof window === 'undefined') return undefined
+        const list = window.matchMedia(query)
+        const update = (event) => setMatches(event.matches)
+        setMatches(list.matches)
+        list.addEventListener('change', update)
+        return () => list.removeEventListener('change', update)
+    }, [query])
 
-  return matches
+    return matches
 }

@@ -6,32 +6,32 @@ React 18 SPA built with Vite. Source lives under `frontend/src/`.
 
 Routes are defined in `frontend/src/App.jsx`.
 
-| Route | Component File | Notes |
-|------|----------------|-------|
-| `/login` | `pages/Login.jsx` | Multi-user login screen |
-| `/` | `pages/Home.jsx` | Collection Overview with recent additions, set shelf, and John John’s Notes |
-| `/dashboard` | Redirects to `/` | Legacy route |
-| `/search` | `pages/CardSearch.jsx` | Card search, scanner entry, and multi-select bulk add |
-| `/collection` | `pages/Collection.jsx` | User collection |
-| `/collection/user/:userId` | `pages/UserCollection.jsx` | Read-only view of another user's collection |
-| `/sets` | `pages/Sets.jsx` | Set browser |
-| `/sets/:setId` | `pages/SetDetail.jsx` | Set checklist |
-| `/wishlist` | `pages/Wishlist.jsx` | Wishlist and alerts |
-| `/binders` | `pages/Binders.jsx` | Binder list |
-| `/binders/:binderId` | `pages/BinderDetail.jsx` | Binder detail |
-| `/analytics` | `pages/Analytics.jsx` | Analytics tabs |
-| `/products` | `pages/Products.jsx` | Sealed products |
-| `/leaderboard` | `pages/Leaderboard.jsx` | Multi-user leaderboard |
-| `/leaderboard/compare/:userId` | `pages/Compare.jsx` | Trainer comparison |
-| `/achievements` | `pages/Achievements.jsx` | Current user achievements |
-| `/achievements/:userId` | `pages/Achievements.jsx` | Another user's achievements |
-| `/settings` | `pages/Settings.jsx` | App settings and admin tools |
-| `/migration` | `pages/CardMigration.jsx` | Custom card migration queue |
+| Route                          | Component File             | Notes                                                                       |
+|--------------------------------|----------------------------|-----------------------------------------------------------------------------|
+| `/login`                       | `pages/Login.jsx`          | Multi-user login screen                                                     |
+| `/`                            | `pages/Home.jsx`           | Collection Overview with recent additions, set shelf, and John John’s Notes |
+| `/dashboard`                   | Redirects to `/`           | Legacy route                                                                |
+| `/search`                      | `pages/CardSearch.jsx`     | Card search, scanner entry, and multi-select bulk add                       |
+| `/collection`                  | `pages/Collection.jsx`     | User collection                                                             |
+| `/collection/user/:userId`     | `pages/UserCollection.jsx` | Read-only view of another user's collection                                 |
+| `/sets`                        | `pages/Sets.jsx`           | Set browser                                                                 |
+| `/sets/:setId`                 | `pages/SetDetail.jsx`      | Set checklist                                                               |
+| `/wishlist`                    | `pages/Wishlist.jsx`       | Wishlist and alerts                                                         |
+| `/binders`                     | `pages/Binders.jsx`        | Binder list                                                                 |
+| `/binders/:binderId`           | `pages/BinderDetail.jsx`   | Binder detail                                                               |
+| `/analytics`                   | `pages/Analytics.jsx`      | Analytics tabs                                                              |
+| `/products`                    | `pages/Products.jsx`       | Sealed products                                                             |
+| `/leaderboard`                 | `pages/Leaderboard.jsx`    | Multi-user leaderboard                                                      |
+| `/leaderboard/compare/:userId` | `pages/Compare.jsx`        | Trainer comparison                                                          |
+| `/achievements`                | `pages/Achievements.jsx`   | Current user achievements                                                   |
+| `/achievements/:userId`        | `pages/Achievements.jsx`   | Another user's achievements                                                 |
+| `/settings`                    | `pages/Settings.jsx`       | App settings and admin tools                                                |
+| `/migration`                   | `pages/CardMigration.jsx`  | Custom card migration queue                                                 |
 
 ## John John's PC Shell
 
-The active shell is `components/ArchiveShell.jsx`. Its primary navigation is
-intentionally fixed to five familiar destinations:
+The active shell is `components/ArchiveShell.jsx`. Its primary navigation is intentionally fixed to five familiar
+destinations:
 
 1. Collection
 2. Card Search
@@ -40,9 +40,8 @@ intentionally fixed to five familiar destinations:
 5. Settings
 
 Older routes such as `/binders`, `/products`, `/wishlist`, `/leaderboard`, and
-`/achievements` remain reachable as contextual or legacy surfaces, but they are
-not primary navigation items. The root route is Collection Overview, not a
-portfolio dashboard.
+`/achievements` remain reachable as contextual or legacy surfaces, but they are not primary navigation items. The root
+route is Collection Overview, not a portfolio dashboard.
 
 ## Privacy & Data UI
 
@@ -66,12 +65,12 @@ Responsibilities:
 - In single-user mode, attempts `/api/auth/me` without a token
 - In multi-user mode, restores user from stored token if present
 - Exposes:
-  - `user`
-  - `loading`
-  - `multiUser`
-  - `loginUser(token, userData)`
-  - `updateCurrentUser(updates)`
-  - `logout()`
+    - `user`
+    - `loading`
+    - `multiUser`
+    - `loginUser(token, userData)`
+    - `updateCurrentUser(updates)`
+    - `logout()`
 
 Security-related behavior:
 
@@ -109,7 +108,8 @@ Provides:
 Notes:
 
 - Translation bundles are loaded from `frontend/src/i18n/` and wired in `SettingsContext`
-- UI languages include all supported TCGdex language codes, plus Swedish. Regional variants such as `es-mx`, `pt-br`, `pt-pt`, `zh-tw`, and `zh-cn` are selectable from a compact dropdown in Settings.
+- UI languages include all supported TCGdex language codes, plus Swedish. Regional variants such as `es-mx`, `pt-br`,
+  `pt-pt`, `zh-tw`, and `zh-cn` are selectable from a compact dropdown in Settings.
 - Legacy stored `zh` settings are normalized in the frontend to `zh-cn` for display
 - USD display uses exchange rates from the backend Frankfurter endpoint
 
@@ -120,15 +120,15 @@ Defined in `frontend/src/hooks/useTheme.js`.
 - Stores the selected theme in `localStorage`
 - Applies theme via `data-theme` on `document.documentElement`
 - Available themes:
-  - `default`
-  - `fire`
-  - `water`
-  - `grass`
-  - `electric`
-  - `psychic`
-  - `dragon`
-  - `dark`
-  - `fairy`
+    - `default`
+    - `fire`
+    - `water`
+    - `grass`
+    - `electric`
+    - `psychic`
+    - `dragon`
+    - `dark`
+    - `fairy`
 
 ## Navigation
 
@@ -144,7 +144,8 @@ Defined in `frontend/src/components/TabNav.jsx`.
 
 - Reusable horizontal tab bar
 - Marks a tab active if the current pathname equals or starts with the tab path
-- Used by pages such as `Dashboard`, `Collection`, `Wishlist`, `Binders`, `Analytics`, `Products`, `Leaderboard`, and `Achievements`
+- Used by pages such as `Dashboard`, `Collection`, `Wishlist`, `Binders`, `Analytics`, `Products`, `Leaderboard`, and
+  `Achievements`
 
 ### `Layout` and `AppNav`
 
@@ -177,18 +178,19 @@ Defined in `frontend/src/components/TabNav.jsx`.
 - Mixes per-user preferences and admin-only controls
 - Admin users can enable multi-user mode from Settings
 - When multi-user mode is enabled, admin users see a **Users** tab
-- The **Users** tab supports creating users, editing usernames/roles/passwords, activating/deactivating users, deleting other users, and forcing first-login password changes
+- The **Users** tab supports creating users, editing usernames/roles/passwords, activating/deactivating users, deleting
+  other users, and forcing first-login password changes
 - Includes:
-  - profile name editing
-  - avatar picker
-  - theme picker
-  - app language dropdown and currency controls
-  - TCGdex sync-language selection for admins
-  - Telegram and Gemini keys
-  - sync controls
-  - auth mode toggle
-  - backup and restore
-  - Community sections for contributors and supporters
+    - profile name editing
+    - avatar picker
+    - theme picker
+    - app language dropdown and currency controls
+    - TCGdex sync-language selection for admins
+    - Telegram and Gemini keys
+    - sync controls
+    - auth mode toggle
+    - backup and restore
+    - Community sections for contributors and supporters
 
 ## Card UI
 
@@ -202,13 +204,13 @@ Current behavior:
 - `CardModal` displays detailed pricing, price history, metadata, and add-to-collection actions
 - Rarity is displayed as read-only API metadata
 - Variant selection is limited to:
-  - `Normal`
-  - `Holo`
-  - `Reverse Holo`
-  - `First Edition`
+    - `Normal`
+    - `Holo`
+    - `Reverse Holo`
+    - `First Edition`
 - Variant auto-preselect logic:
-  - preselects the only available variant if there is exactly one
-  - defaults to `Holo` when holo exists without normal or reverse
+    - preselects the only available variant if there is exactly one
+    - defaults to `Holo` when holo exists without normal or reverse
 - Shows available variants from TCGdex flags
 
 ### `pages/CardSearch.jsx`
@@ -216,7 +218,8 @@ Current behavior:
 - Main search UI for locally cached TCGdex cards and matched custom cards
 - Supports select mode for search results
 - Can select the current page or all matching search results
-- Bulk-add sends selected cards to `/api/collection/bulk-add` with default quantity `1`, condition `NM`, no variant, no purchase price, and the card language
+- Bulk-add sends selected cards to `/api/collection/bulk-add` with default quantity `1`, condition `NM`, no variant, no
+  purchase price, and the card language
 - Bulk-add success toast reports added, updated, and failed counts
 
 ### `CardScanner`
@@ -226,7 +229,8 @@ Defined in `frontend/src/components/CardScanner.jsx`.
 - Upload/camera capture flow
 - Calls `/api/cards/recognize`
 - Displays recognized matches, including rarity
-- Shows clearer scanner errors returned by the backend for Gemini rate limits, invalid keys, and temporary capacity outages
+- Shows clearer scanner errors returned by the backend for Gemini rate limits, invalid keys, and temporary capacity
+  outages
 - Lets the user add a matched card to the collection
 - Supports language selection in the add modal through the shared TCGdex language selector
 

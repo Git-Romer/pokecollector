@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import {createContext, useCallback, useContext, useEffect, useState} from 'react'
 import de from '../i18n/de'
 import en from '../i18n/en'
 import zh from '../i18n/zh'
@@ -19,256 +19,258 @@ import ko from '../i18n/ko'
 import id from '../i18n/id'
 import th from '../i18n/th'
 import zhTw from '../i18n/zhTw'
-import { priceFieldFromPrimary } from '../utils/prices'
-import { normalizeTcgdexLanguageCsv } from '../utils/tcgdexLanguages'
-import { useAuth } from './AuthContext'
+import {priceFieldFromPrimary} from '../utils/prices'
+import {normalizeTcgdexLanguageCsv} from '../utils/tcgdexLanguages'
+import {useAuth} from './AuthContext'
 
 const translations = {
-  de,
-  en,
-  zh,
-  'zh-cn': zhCn,
-  sv,
-  fr,
-  nl,
-  es,
-  'es-mx': esMx,
-  it,
-  pt,
-  'pt-br': ptBr,
-  'pt-pt': ptPt,
-  pl,
-  ru,
-  ja,
-  ko,
-  id,
-  th,
-  'zh-tw': zhTw,
+    de,
+    en,
+    zh,
+    'zh-cn': zhCn,
+    sv,
+    fr,
+    nl,
+    es,
+    'es-mx': esMx,
+    it,
+    pt,
+    'pt-br': ptBr,
+    'pt-pt': ptPt,
+    pl,
+    ru,
+    ja,
+    ko,
+    id,
+    th,
+    'zh-tw': zhTw,
 }
 
 const DEFAULT_SETTINGS = {
-  // Applies to fresh installs and to the login screen, which renders before
-  // any saved preference can be read. A German default there is what #285
-  // reported. A saved language still wins for existing users.
-  language: 'en',
-  price_display: '["trend", "avg", "avg1", "avg7", "avg30", "low"]',
-  price_primary: 'trend',
-  tcgdex_sync_languages: 'en,de',
-  tcgdex_digital_sets_enabled: 'true',
-  cross_language_price_fallback: 'true',
-  cross_language_image_fallback: 'true',
-  set_overview_filters: '{}',
-  hidden_set_ids: '[]',
-  debug_mode: 'false',
+    // Applies to fresh installs and to the login screen, which renders before
+    // any saved preference can be read. A German default there is what #285
+    // reported. A saved language still wins for existing users.
+    language: 'en',
+    price_display: '["trend", "avg", "avg1", "avg7", "avg30", "low"]',
+    price_primary: 'trend',
+    tcgdex_sync_languages: 'en,de',
+    tcgdex_digital_sets_enabled: 'true',
+    cross_language_price_fallback: 'true',
+    cross_language_image_fallback: 'true',
+    set_overview_filters: '{}',
+    hidden_set_ids: '[]',
+    debug_mode: 'false',
 }
 
 const SettingsContext = createContext(null)
 
-export function SettingsProvider({ children }) {
-  const { user, loading: authLoading, multiUser } = useAuth()
-  const [settings, setSettings] = useState(DEFAULT_SETTINGS)
-  const [loaded, setLoaded] = useState(false)
-  const [exchangeRate, setExchangeRate] = useState(1.0)
-  const [exchangeRateReady, setExchangeRateReady] = useState(true)
-  const [exchangeRateCurrency, setExchangeRateCurrency] = useState('EUR')
-  const [usdToEurRate, setUsdToEurRate] = useState(0.91)
+export function SettingsProvider({children}) {
+    const {user, loading: authLoading, multiUser} = useAuth()
+    const [settings, setSettings] = useState(DEFAULT_SETTINGS)
+    const [loaded, setLoaded] = useState(false)
+    const [exchangeRate, setExchangeRate] = useState(1.0)
+    const [exchangeRateReady, setExchangeRateReady] = useState(true)
+    const [exchangeRateCurrency, setExchangeRateCurrency] = useState('EUR')
+    const [usdToEurRate, setUsdToEurRate] = useState(0.91)
 
-  // Load settings from backend once auth mode is known. Single-user mode has no
-  // token, but the backend still auto-authenticates the bootstrap admin.
-  useEffect(() => {
-    if (authLoading) return
+    // Load settings from backend once auth mode is known. Single-user mode has no
+    // token, but the backend still auto-authenticates the bootstrap admin.
+    useEffect(() => {
+        if (authLoading) return
 
-    setLoaded(false)
-    const token = localStorage.getItem('token')
-    if (multiUser && !token) {
-      setSettings(DEFAULT_SETTINGS)
-      setLoaded(true)
-      return
-    }
-
-    const headers = token && multiUser ? { Authorization: `Bearer ${token}` } : {}
-    fetch('/api/settings/', { headers })
-      .then(r => {
-        if (!r.ok) throw new Error('Settings load failed')
-        return r.json()
-      })
-      .then(data => {
-        setSettings(prev => ({
-          ...prev,
-          ...data,
-          language: data.language === 'zh' ? 'zh-cn' : (data.language || prev.language),
-          tcgdex_sync_languages: normalizeTcgdexLanguageCsv(data.tcgdex_sync_languages || prev.tcgdex_sync_languages),
-        }))
-        setLoaded(true)
-      })
-      .catch(() => {
-        // Backend not available, use defaults
-        setLoaded(true)
-      })
-  }, [authLoading, multiUser, user?.id])
-
-  // Fetch exchange rates through the backend to avoid browser CORS/redirect issues.
-  // Most app prices are stored in EUR; TCGPlayer prices are stored in USD and need the inverse path.
-  useEffect(() => {
-    const token = localStorage.getItem('token')
-    if (authLoading || (multiUser && !token)) return
-
-    const fetchExchangeRate = async (from, to, fallback) => {
-      try {
-        const headers = token && multiUser ? { Authorization: `Bearer ${token}` } : {}
-        const response = await fetch(`/api/settings/exchange-rate?from=${from}&to=${to}`, {
-          headers,
-        })
-        if (!response.ok) throw new Error('Exchange rate lookup failed')
-        const data = await response.json()
-        return Number(data.rate) || fallback
-      } catch {
-        return fallback
-      }
-    }
-
-    const curr = settings.currency || 'EUR'
-    let cancelled = false
-    if (curr === 'USD') {
-      setExchangeRateReady(false)
-      setExchangeRateCurrency(null)
-      setExchangeRate(1.1)
-      fetchExchangeRate('EUR', 'USD', 1.1).then(rate => {
-        if (!cancelled) {
-          setExchangeRate(rate)
-          setExchangeRateCurrency('USD')
-          setExchangeRateReady(true)
+        setLoaded(false)
+        const token = localStorage.getItem('token')
+        if (multiUser && !token) {
+            setSettings(DEFAULT_SETTINGS)
+            setLoaded(true)
+            return
         }
-      })
-    } else {
-      setExchangeRateReady(true)
-      setExchangeRateCurrency('EUR')
-      setExchangeRate(1.0)
-      fetchExchangeRate('USD', 'EUR', 0.91).then(rate => {
-        if (!cancelled) setUsdToEurRate(rate)
-      })
-    }
-    return () => { cancelled = true }
-  }, [settings.currency, authLoading, multiUser, user?.id])
 
-  // Update one or more settings
-  const updateSettings = useCallback(async (updates) => {
-    const next = { ...settings, ...updates }
-    setSettings(next)
-    try {
-      const token = localStorage.getItem('token')
-      const headers = { 'Content-Type': 'application/json' }
-      if (token && multiUser) headers.Authorization = `Bearer ${token}`
+        const headers = token && multiUser ? {Authorization: `Bearer ${token}`} : {}
+        fetch('/api/settings/', {headers})
+            .then(r => {
+                if (!r.ok) throw new Error('Settings load failed')
+                return r.json()
+            })
+            .then(data => {
+                setSettings(prev => ({
+                    ...prev,
+                    ...data,
+                    language: data.language === 'zh' ? 'zh-cn' : (data.language || prev.language),
+                    tcgdex_sync_languages: normalizeTcgdexLanguageCsv(data.tcgdex_sync_languages || prev.tcgdex_sync_languages),
+                }))
+                setLoaded(true)
+            })
+            .catch(() => {
+                // Backend not available, use defaults
+                setLoaded(true)
+            })
+    }, [authLoading, multiUser, user?.id])
 
-      const resp = await fetch('/api/settings/', {
-        method: 'PUT',
-        headers,
-        body: JSON.stringify(updates),
-      })
-      if (!resp.ok) throw new Error('Save failed')
-      const saved = await resp.json()
-      setSettings(prev => ({
-        ...prev,
-        ...saved,
-        language: saved.language === 'zh' ? 'zh-cn' : (saved.language || prev.language),
-      }))
-    } catch (err) {
-      setSettings(settings)
-      console.error('Failed to save settings:', err)
-      throw err
-    }
-  }, [settings, multiUser])
+    // Fetch exchange rates through the backend to avoid browser CORS/redirect issues.
+    // Most app prices are stored in EUR; TCGPlayer prices are stored in USD and need the inverse path.
+    useEffect(() => {
+        const token = localStorage.getItem('token')
+        if (authLoading || (multiUser && !token)) return
 
-  const lang = settings.language || 'en'
-  const msgs = translations[lang] || translations.en
+        const fetchExchangeRate = async (from, to, fallback) => {
+            try {
+                const headers = token && multiUser ? {Authorization: `Bearer ${token}`} : {}
+                const response = await fetch(`/api/settings/exchange-rate?from=${from}&to=${to}`, {
+                    headers,
+                })
+                if (!response.ok) throw new Error('Exchange rate lookup failed')
+                const data = await response.json()
+                return Number(data.rate) || fallback
+            } catch {
+                return fallback
+            }
+        }
 
-  /**
-   * Translate `path`, optionally filling {placeholders} from `params`.
-   *
-   * Falls back to English and then to the key path itself. It previously fell
-   * back to German, so any key missing from a locale served German text to
-   * that user whatever language they had chosen — reported as #283 and #285.
-   * Returning the path makes a gap visible instead of silently wrong.
-   */
-  const t = useCallback((path, params) => {
-    const read = (source) => {
-      let val = source
-      for (const part of path.split('.')) {
-        val = val?.[part]
-        if (val === undefined) return undefined
-      }
-      return val
-    }
+        const curr = settings.currency || 'EUR'
+        let cancelled = false
+        if (curr === 'USD') {
+            setExchangeRateReady(false)
+            setExchangeRateCurrency(null)
+            setExchangeRate(1.1)
+            fetchExchangeRate('EUR', 'USD', 1.1).then(rate => {
+                if (!cancelled) {
+                    setExchangeRate(rate)
+                    setExchangeRateCurrency('USD')
+                    setExchangeRateReady(true)
+                }
+            })
+        } else {
+            setExchangeRateReady(true)
+            setExchangeRateCurrency('EUR')
+            setExchangeRate(1.0)
+            fetchExchangeRate('USD', 'EUR', 0.91).then(rate => {
+                if (!cancelled) setUsdToEurRate(rate)
+            })
+        }
+        return () => {
+            cancelled = true
+        }
+    }, [settings.currency, authLoading, multiUser, user?.id])
 
-    const val = read(msgs) ?? read(translations.en) ?? path
-    if (typeof val !== 'string' || !params) return val
+    // Update one or more settings
+    const updateSettings = useCallback(async (updates) => {
+        const next = {...settings, ...updates}
+        setSettings(next)
+        try {
+            const token = localStorage.getItem('token')
+            const headers = {'Content-Type': 'application/json'}
+            if (token && multiUser) headers.Authorization = `Bearer ${token}`
 
-    // Word order differs by language, so the name belongs inside the
-    // translated sentence rather than concatenated onto it by the caller.
-    return val.replace(/\{(\w+)\}/g, (match, key) =>
-      key in params ? String(params[key]) : match
+            const resp = await fetch('/api/settings/', {
+                method: 'PUT',
+                headers,
+                body: JSON.stringify(updates),
+            })
+            if (!resp.ok) throw new Error('Save failed')
+            const saved = await resp.json()
+            setSettings(prev => ({
+                ...prev,
+                ...saved,
+                language: saved.language === 'zh' ? 'zh-cn' : (saved.language || prev.language),
+            }))
+        } catch (err) {
+            setSettings(settings)
+            console.error('Failed to save settings:', err)
+            throw err
+        }
+    }, [settings, multiUser])
+
+    const lang = settings.language || 'en'
+    const msgs = translations[lang] || translations.en
+
+    /**
+     * Translate `path`, optionally filling {placeholders} from `params`.
+     *
+     * Falls back to English and then to the key path itself. It previously fell
+     * back to German, so any key missing from a locale served German text to
+     * that user whatever language they had chosen — reported as #283 and #285.
+     * Returning the path makes a gap visible instead of silently wrong.
+     */
+    const t = useCallback((path, params) => {
+        const read = (source) => {
+            let val = source
+            for (const part of path.split('.')) {
+                val = val?.[part]
+                if (val === undefined) return undefined
+            }
+            return val
+        }
+
+        const val = read(msgs) ?? read(translations.en) ?? path
+        if (typeof val !== 'string' || !params) return val
+
+        // Word order differs by language, so the name belongs inside the
+        // translated sentence rather than concatenated onto it by the caller.
+        return val.replace(/\{(\w+)\}/g, (match, key) =>
+            key in params ? String(params[key]) : match
+        )
+    }, [msgs])
+
+    // Parse price_display JSON safely
+    const getPriceDisplay = useCallback(() => {
+        try {
+            const val = settings.price_display
+            if (Array.isArray(val)) return val
+            return JSON.parse(val || '["trend", "avg", "avg1", "avg7", "avg30", "low"]')
+        } catch {
+            return ['trend', 'avg', 'avg1', 'avg7', 'avg30', 'low']
+        }
+    }, [settings.price_display])
+
+    const getPricePrimary = useCallback(() => {
+        return settings.price_primary || 'trend'
+    }, [settings.price_primary])
+
+    const currency = settings.currency || 'EUR'
+    const currencySymbol = currency === 'USD' ? '$' : '€'
+    const moneyExchangeRateReady = currency !== 'USD' || (exchangeRateReady && exchangeRateCurrency === 'USD')
+    const pricePrimary = getPricePrimary()
+    const pricePrimaryField = priceFieldFromPrimary(pricePrimary)
+
+    const formatPrice = useCallback((eurAmount) => {
+        if (eurAmount == null || isNaN(Number(eurAmount))) return '-'
+        const converted = Number(eurAmount) * exchangeRate
+        return `${currencySymbol}${converted.toFixed(2)}`
+    }, [exchangeRate, currencySymbol])
+
+    const formatUsdPrice = useCallback((usdAmount) => {
+        if (usdAmount == null || isNaN(Number(usdAmount))) return '-'
+        const converted = currency === 'USD' ? Number(usdAmount) : Number(usdAmount) * usdToEurRate
+        return `${currencySymbol}${converted.toFixed(2)}`
+    }, [currency, currencySymbol, usdToEurRate])
+
+    return (
+        <SettingsContext.Provider value={{
+            settings,
+            updateSettings,
+            t,
+            language: lang,
+            priceDisplay: getPriceDisplay(),
+            pricePrimary,
+            pricePrimaryField,
+            loaded,
+            currency,
+            currencySymbol,
+            exchangeRate,
+            exchangeRateReady: moneyExchangeRateReady,
+            formatPrice,
+            formatUsdPrice,
+        }}>
+            {children}
+        </SettingsContext.Provider>
     )
-  }, [msgs])
-
-  // Parse price_display JSON safely
-  const getPriceDisplay = useCallback(() => {
-    try {
-      const val = settings.price_display
-      if (Array.isArray(val)) return val
-      return JSON.parse(val || '["trend", "avg", "avg1", "avg7", "avg30", "low"]')
-    } catch {
-      return ['trend', 'avg', 'avg1', 'avg7', 'avg30', 'low']
-    }
-  }, [settings.price_display])
-
-  const getPricePrimary = useCallback(() => {
-    return settings.price_primary || 'trend'
-  }, [settings.price_primary])
-
-  const currency = settings.currency || 'EUR'
-  const currencySymbol = currency === 'USD' ? '$' : '€'
-  const moneyExchangeRateReady = currency !== 'USD' || (exchangeRateReady && exchangeRateCurrency === 'USD')
-  const pricePrimary = getPricePrimary()
-  const pricePrimaryField = priceFieldFromPrimary(pricePrimary)
-
-  const formatPrice = useCallback((eurAmount) => {
-    if (eurAmount == null || isNaN(Number(eurAmount))) return '-'
-    const converted = Number(eurAmount) * exchangeRate
-    return `${currencySymbol}${converted.toFixed(2)}`
-  }, [exchangeRate, currencySymbol])
-
-  const formatUsdPrice = useCallback((usdAmount) => {
-    if (usdAmount == null || isNaN(Number(usdAmount))) return '-'
-    const converted = currency === 'USD' ? Number(usdAmount) : Number(usdAmount) * usdToEurRate
-    return `${currencySymbol}${converted.toFixed(2)}`
-  }, [currency, currencySymbol, usdToEurRate])
-
-  return (
-    <SettingsContext.Provider value={{
-      settings,
-      updateSettings,
-      t,
-      language: lang,
-      priceDisplay: getPriceDisplay(),
-      pricePrimary,
-      pricePrimaryField,
-      loaded,
-      currency,
-      currencySymbol,
-      exchangeRate,
-      exchangeRateReady: moneyExchangeRateReady,
-      formatPrice,
-      formatUsdPrice,
-    }}>
-      {children}
-    </SettingsContext.Provider>
-  )
 }
 
 export function useSettings() {
-  const ctx = useContext(SettingsContext)
-  if (!ctx) throw new Error('useSettings must be used within SettingsProvider')
-  return ctx
+    const ctx = useContext(SettingsContext)
+    if (!ctx) throw new Error('useSettings must be used within SettingsProvider')
+    return ctx
 }
 
 export default SettingsContext

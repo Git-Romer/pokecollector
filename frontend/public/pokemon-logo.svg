@@ -1,22 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 240" role="img" aria-labelledby="title desc">
-  <title id="title">Pokémon logo fallback</title>
-  <desc id="desc">A local Pokémon-style wordmark used when a set logo or symbol is unavailable.</desc>
-  <defs>
-    <filter id="shadow" x="-20%" y="-30%" width="140%" height="160%">
-      <feDropShadow dx="0" dy="7" stdDeviation="5" flood-color="#000" flood-opacity="0.28"/>
-    </filter>
-  </defs>
-  <rect width="640" height="240" rx="36" fill="none"/>
-  <text x="320" y="136"
-        text-anchor="middle"
-        dominant-baseline="middle"
-        font-family="Arial Rounded MT Bold, Arial, Helvetica, sans-serif"
-        font-size="90"
-        font-weight="900"
-        letter-spacing="-3"
-        fill="#ffcb05"
-        stroke="#2a75bb"
-        stroke-width="12"
-        paint-order="stroke fill"
-        filter="url(#shadow)">Pokémon</text>
+    <title id="title">Pokémon logo fallback</title>
+    <desc id="desc">A local Pokémon-style wordmark used when a set logo or symbol is unavailable.</desc>
+    <defs>
+        <filter id="shadow" x="-20%" y="-30%" width="140%" height="160%">
+            <feDropShadow dx="0" dy="7" stdDeviation="5" flood-color="#000" flood-opacity="0.28"/>
+        </filter>
+    </defs>
+    <rect width="640" height="240" rx="36" fill="none"/>
+    <text x="320" y="136"
+          text-anchor="middle"
+          dominant-baseline="middle"
+          font-family="Arial Rounded MT Bold, Arial, Helvetica, sans-serif"
+          font-size="90"
+          font-weight="900"
+          letter-spacing="-3"
+          fill="#ffcb05"
+          stroke="#2a75bb"
+          stroke-width="12"
+          paint-order="stroke fill"
+          filter="url(#shadow)">Pokémon
+    </text>
 </svg>

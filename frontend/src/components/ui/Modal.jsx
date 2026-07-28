@@ -1,10 +1,10 @@
-import { useEffect, useId } from 'react'
-import { createPortal } from 'react-dom'
-import { X } from 'lucide-react'
+import {useEffect, useId} from 'react'
+import {createPortal} from 'react-dom'
+import {X} from 'lucide-react'
 import Sheet from './Sheet'
 import useDialogFocus from '../../hooks/useDialogFocus'
 import useMediaQuery from '../../hooks/useMediaQuery'
-import { useSettings } from '../../contexts/SettingsContext'
+import {useSettings} from '../../contexts/SettingsContext'
 
 export const DESKTOP_MODAL_QUERY = '(min-width: 1024px)'
 
@@ -21,114 +21,117 @@ export const DESKTOP_MODAL_QUERY = '(min-width: 1024px)'
  *   mobileSheet {boolean} — if true, renders as Sheet on mobile (default: true)
  */
 export default function Modal({
-  isOpen,
-  onClose,
-  title,
-  children,
-  size = 'md',
-  className = '',
-  mobileSheet = true,
-}) {
-  const { t } = useSettings()
-  const isDesktop = useMediaQuery(DESKTOP_MODAL_QUERY)
+                                  isOpen,
+                                  onClose,
+                                  title,
+                                  children,
+                                  size = 'md',
+                                  className = '',
+                                  mobileSheet = true,
+                              }) {
+    const {t} = useSettings()
+    const isDesktop = useMediaQuery(DESKTOP_MODAL_QUERY)
 
-  // Lock body scroll
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = ''
+    // Lock body scroll
+    useEffect(() => {
+        if (isOpen) {
+            document.body.style.overflow = 'hidden'
+        } else {
+            document.body.style.overflow = ''
+        }
+        return () => {
+            document.body.style.overflow = ''
+        }
+    }, [isOpen])
+
+    if (!isOpen) return null
+
+    const sizeClass = {
+        sm: 'max-w-sm',
+        md: 'max-w-lg',
+        lg: 'max-w-2xl',
+        xl: 'max-w-4xl',
+    }[size] || 'max-w-lg'
+
+    // Below the desktop breakpoint this presents as a bottom sheet. The choice
+    // is made here rather than with responsive classes because both surfaces
+    // portal into document.body, where classes on the React parent never
+    // applied — which rendered the sheet and the modal on top of each other.
+    if (mobileSheet && !isDesktop) {
+        return (
+            <Sheet isOpen={isOpen} onClose={onClose} title={title} className={className}>
+                {children}
+            </Sheet>
+        )
     }
-    return () => { document.body.style.overflow = '' }
-  }, [isOpen])
 
-  if (!isOpen) return null
-
-  const sizeClass = {
-    sm: 'max-w-sm',
-    md: 'max-w-lg',
-    lg: 'max-w-2xl',
-    xl: 'max-w-4xl',
-  }[size] || 'max-w-lg'
-
-  // Below the desktop breakpoint this presents as a bottom sheet. The choice
-  // is made here rather than with responsive classes because both surfaces
-  // portal into document.body, where classes on the React parent never
-  // applied — which rendered the sheet and the modal on top of each other.
-  if (mobileSheet && !isDesktop) {
+    // Always render as centered modal (no sheet)
     return (
-      <Sheet isOpen={isOpen} onClose={onClose} title={title} className={className}>
-        {children}
-      </Sheet>
+        <DesktopModal
+            isOpen={isOpen}
+            onClose={onClose}
+            title={title}
+            sizeClass={sizeClass}
+            className={className}
+            closeLabel={t('common.close')}
+        >
+            {children}
+        </DesktopModal>
     )
-  }
-
-  // Always render as centered modal (no sheet)
-  return (
-    <DesktopModal
-      isOpen={isOpen}
-      onClose={onClose}
-      title={title}
-      sizeClass={sizeClass}
-      className={className}
-      closeLabel={t('common.close')}
-    >
-      {children}
-    </DesktopModal>
-  )
 }
 
-function DesktopModal({ isOpen, onClose, title, children, sizeClass, className = '', closeLabel = 'Close' }) {
-  const panelRef = useDialogFocus(isOpen, onClose)
-  const titleId = useId()
+function DesktopModal({isOpen, onClose, title, children, sizeClass, className = '', closeLabel = 'Close'}) {
+    const panelRef = useDialogFocus(isOpen, onClose)
+    const titleId = useId()
 
-  if (!isOpen) return null
+    if (!isOpen) return null
 
-  return createPortal(
-    <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 z-50 bg-black/60 animate-fade-in flex items-end sm:items-center justify-center p-4"
-        onClick={onClose}
-      >
-        {/* Panel — stop propagation so clicks inside don't close */}
-        <div
-          className={[
-            'relative w-full mx-4',
-            sizeClass,
-            'bg-bg-card border border-border rounded-2xl',
-            'max-h-[85vh] flex flex-col',
-            'animate-slide-up',
-            className,
-          ].join(' ')}
-          onClick={(e) => e.stopPropagation()}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby={title ? titleId : undefined}
-          ref={panelRef}
-          tabIndex={-1}
-        >
-          {/* Header */}
-          {title && (
-            <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
-              <h2 id={titleId} className="text-base font-semibold text-text-primary">{title}</h2>
-              <button
+    return createPortal(
+        <>
+            {/* Backdrop */}
+            <div
+                className="fixed inset-0 z-50 bg-black/60 animate-fade-in flex items-end sm:items-center justify-center p-4"
                 onClick={onClose}
-                className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-elevated transition-colors"
-                aria-label={closeLabel}
-              >
-                <X size={18} />
-              </button>
-            </div>
-          )}
+            >
+                {/* Panel — stop propagation so clicks inside don't close */}
+                <div
+                    className={[
+                        'relative w-full mx-4',
+                        sizeClass,
+                        'bg-bg-card border border-border rounded-2xl',
+                        'max-h-[85vh] flex flex-col',
+                        'animate-slide-up',
+                        className,
+                    ].join(' ')}
+                    onClick={(e) => e.stopPropagation()}
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby={title ? titleId : undefined}
+                    ref={panelRef}
+                    tabIndex={-1}
+                >
+                    {/* Header */}
+                    {title && (
+                        <div
+                            className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
+                            <h2 id={titleId} className="text-base font-semibold text-text-primary">{title}</h2>
+                            <button
+                                onClick={onClose}
+                                className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-elevated transition-colors"
+                                aria-label={closeLabel}
+                            >
+                                <X size={18}/>
+                            </button>
+                        </div>
+                    )}
 
-          {/* Scrollable content */}
-          <div className="flex-1 overflow-y-auto">
-            {children}
-          </div>
-        </div>
-      </div>
-    </>,
-    document.body
-  )
+                    {/* Scrollable content */}
+                    <div className="flex-1 overflow-y-auto">
+                        {children}
+                    </div>
+                </div>
+            </div>
+        </>,
+        document.body
+    )
 }

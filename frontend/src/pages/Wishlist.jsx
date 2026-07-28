@@ -1,441 +1,523 @@
-import { useState, useMemo } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Trash2, Edit2, Check, X, Heart, Filter, SortAsc, ChevronUp, ChevronDown, Library, BookOpen, Minus, Plus } from 'lucide-react'
-import { getWishlist, removeFromWishlist, updateWishlistItem, addToCollection } from '../api/client'
-import { useSettings } from '../contexts/SettingsContext'
+import {useMemo, useState} from 'react'
+import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
+import {
+    BookOpen,
+    Check,
+    ChevronDown,
+    ChevronUp,
+    Edit2,
+    Filter,
+    Heart,
+    Library,
+    Minus,
+    Plus,
+    SortAsc,
+    Trash2,
+    X
+} from 'lucide-react'
+import {addToCollection, getWishlist, removeFromWishlist, updateWishlistItem} from '../api/client'
+import {useSettings} from '../contexts/SettingsContext'
 import CardListItem from '../components/CardListItem'
 import TabNav from '../components/TabNav'
 import toast from 'react-hot-toast'
-import { resolveCardImageUrl } from '../utils/imageUrl'
+import {resolveCardImageUrl} from '../utils/imageUrl'
 import FallbackBadges from '../components/FallbackBadges'
-import { getEffectiveCardPrice } from '../utils/prices'
-import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
-import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
+import {getEffectiveCardPrice} from '../utils/prices'
+import {tcgdexLanguageLabel} from '../utils/tcgdexLanguages'
+import {invalidateTcgdexFilterLanguages} from '../utils/queryInvalidation'
 
-function WishlistItemEditor({ item, onDone }) {
-  const [quantity, setQuantity] = useState(item.quantity || 1)
-  const [above, setAbove] = useState(item.price_alert_above || '')
-  const [below, setBelow] = useState(item.price_alert_below || '')
-  const { t } = useSettings()
-  const queryClient = useQueryClient()
+function WishlistItemEditor({item, onDone}) {
+    const [quantity, setQuantity] = useState(item.quantity || 1)
+    const [above, setAbove] = useState(item.price_alert_above || '')
+    const [below, setBelow] = useState(item.price_alert_below || '')
+    const {t} = useSettings()
+    const queryClient = useQueryClient()
 
-  const normalizedQuantity = Math.max(1, Math.min(99, parseInt(quantity, 10) || 1))
+    const normalizedQuantity = Math.max(1, Math.min(99, parseInt(quantity, 10) || 1))
 
-  const updateMutation = useMutation({
-    mutationFn: () => updateWishlistItem(item.id, {
-      quantity: normalizedQuantity,
-      price_alert_above: above ? parseFloat(above) : null,
-      price_alert_below: below ? parseFloat(below) : null,
-    }),
-    onSuccess: () => {
-      toast.success(t('wishlist.updated'))
-      queryClient.invalidateQueries({ queryKey: ['wishlist'] })
-      invalidateTcgdexFilterLanguages(queryClient)
-      onDone()
-    },
-  })
+    const updateMutation = useMutation({
+        mutationFn: () => updateWishlistItem(item.id, {
+            quantity: normalizedQuantity,
+            price_alert_above: above ? parseFloat(above) : null,
+            price_alert_below: below ? parseFloat(below) : null,
+        }),
+        onSuccess: () => {
+            toast.success(t('wishlist.updated'))
+            queryClient.invalidateQueries({queryKey: ['wishlist']})
+            invalidateTcgdexFilterLanguages(queryClient)
+            onDone()
+        },
+    })
 
-  return (
-    <div className="flex items-center gap-2 flex-wrap justify-center">
-      <div className="flex items-center gap-1">
-        <span className="text-xs text-text-muted">×</span>
-        <input type="number" min="1" max="99" step="1" placeholder={t('common.quantity')}
-          value={quantity}
-          onChange={(e) => setQuantity(e.target.value)} className="input w-16 py-1 text-xs" />
-      </div>
-      <div className="flex items-center gap-1">
-        <span className="text-xs text-text-muted">↑</span>
-        <input type="number" step="0.01" placeholder={t('wishlist.aboveLabel')}
-          value={above}
-          onChange={(e) => setAbove(e.target.value)} className="input w-20 py-1 text-xs" />
-      </div>
-      <div className="flex items-center gap-1">
-        <span className="text-xs text-text-muted">↓</span>
-        <input type="number" step="0.01" placeholder={t('wishlist.belowLabel')}
-          value={below}
-          onChange={(e) => setBelow(e.target.value)} className="input w-20 py-1 text-xs" />
-      </div>
-      <button onClick={() => updateMutation.mutate()} className="text-green hover:text-green/80">
-        <Check size={14} />
-      </button>
-      <button onClick={onDone} className="text-text-muted hover:text-text-primary">
-        <X size={14} />
-      </button>
-    </div>
-  )
+    return (
+        <div className="flex items-center gap-2 flex-wrap justify-center">
+            <div className="flex items-center gap-1">
+                <span className="text-xs text-text-muted">×</span>
+                <input type="number" min="1" max="99" step="1" placeholder={t('common.quantity')}
+                       value={quantity}
+                       onChange={(e) => setQuantity(e.target.value)} className="input w-16 py-1 text-xs"/>
+            </div>
+            <div className="flex items-center gap-1">
+                <span className="text-xs text-text-muted">↑</span>
+                <input type="number" step="0.01" placeholder={t('wishlist.aboveLabel')}
+                       value={above}
+                       onChange={(e) => setAbove(e.target.value)} className="input w-20 py-1 text-xs"/>
+            </div>
+            <div className="flex items-center gap-1">
+                <span className="text-xs text-text-muted">↓</span>
+                <input type="number" step="0.01" placeholder={t('wishlist.belowLabel')}
+                       value={below}
+                       onChange={(e) => setBelow(e.target.value)} className="input w-20 py-1 text-xs"/>
+            </div>
+            <button onClick={() => updateMutation.mutate()} className="text-green hover:text-green/80">
+                <Check size={14}/>
+            </button>
+            <button onClick={onDone} className="text-text-muted hover:text-text-primary">
+                <X size={14}/>
+            </button>
+        </div>
+    )
 }
 
 export default function Wishlist() {
-  const { t, formatPrice, pricePrimaryField } = useSettings()
-  const [editingId, setEditingId] = useState(null)
-  const [sortBy, setSortBy] = useState('created_at')
-  const [sortOrder, setSortOrder] = useState('desc')
-  const [filterSet, setFilterSet] = useState('')
-  const [filterRarity, setFilterRarity] = useState('')
-  const [filterMinPrice, setFilterMinPrice] = useState('')
-  const [filterMaxPrice, setFilterMaxPrice] = useState('')
-  const [filterHasAlert, setFilterHasAlert] = useState(false)
-  const [showFilters, setShowFilters] = useState(false)
-  const queryClient = useQueryClient()
+    const {t, formatPrice, pricePrimaryField} = useSettings()
+    const [editingId, setEditingId] = useState(null)
+    const [sortBy, setSortBy] = useState('created_at')
+    const [sortOrder, setSortOrder] = useState('desc')
+    const [filterSet, setFilterSet] = useState('')
+    const [filterRarity, setFilterRarity] = useState('')
+    const [filterMinPrice, setFilterMinPrice] = useState('')
+    const [filterMaxPrice, setFilterMaxPrice] = useState('')
+    const [filterHasAlert, setFilterHasAlert] = useState(false)
+    const [showFilters, setShowFilters] = useState(false)
+    const queryClient = useQueryClient()
 
-  const { data: items = [], isLoading } = useQuery({
-    queryKey: ['wishlist'],
-    queryFn: () => getWishlist().then(r => r.data),
-  })
+    const {data: items = [], isLoading} = useQuery({
+        queryKey: ['wishlist'],
+        queryFn: () => getWishlist().then(r => r.data),
+    })
 
-  const COLLECTION_TABS = [
-    { to: '/collection', label: t('nav.collection'), icon: Library },
-    { to: '/binders', label: t('nav.binders'), icon: BookOpen },
-    { to: '/wishlist', label: t('nav.wishlist'), icon: Heart, badge: items.length },
-  ]
+    const COLLECTION_TABS = [
+        {to: '/collection', label: t('nav.collection'), icon: Library},
+        {to: '/binders', label: t('nav.binders'), icon: BookOpen},
+        {to: '/wishlist', label: t('nav.wishlist'), icon: Heart, badge: items.length},
+    ]
 
-  const removeMutation = useMutation({
-    mutationFn: (id) => removeFromWishlist(id),
-    onSuccess: () => {
-      toast.success(t('wishlist.removed'))
-      queryClient.invalidateQueries({ queryKey: ['wishlist'] })
-      invalidateTcgdexFilterLanguages(queryClient)
-    },
-  })
+    const removeMutation = useMutation({
+        mutationFn: (id) => removeFromWishlist(id),
+        onSuccess: () => {
+            toast.success(t('wishlist.removed'))
+            queryClient.invalidateQueries({queryKey: ['wishlist']})
+            invalidateTcgdexFilterLanguages(queryClient)
+        },
+    })
 
-  const addToColMutation = useMutation({
-    mutationFn: (cardId) => addToCollection({ card_id: cardId, quantity: 1, condition: 'NM' }),
-    onSuccess: () => {
-      toast.success(t('wishlist.addedToCollection'))
-      queryClient.invalidateQueries({ queryKey: ['collection'] })
-      invalidateTcgdexFilterLanguages(queryClient)
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
-      queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'card-search' })
-    },
-  })
+    const addToColMutation = useMutation({
+        mutationFn: (cardId) => addToCollection({card_id: cardId, quantity: 1, condition: 'NM'}),
+        onSuccess: () => {
+            toast.success(t('wishlist.addedToCollection'))
+            queryClient.invalidateQueries({queryKey: ['collection']})
+            invalidateTcgdexFilterLanguages(queryClient)
+            queryClient.invalidateQueries({queryKey: ['dashboard']})
+            queryClient.invalidateQueries({predicate: (query) => query.queryKey[0] === 'card-search'})
+        },
+    })
 
-  const quantityMutation = useMutation({
-    mutationFn: ({ item, quantity }) => updateWishlistItem(item.id, { quantity }),
-    onSuccess: () => {
-      toast.success(t('wishlist.updated'))
-      queryClient.invalidateQueries({ queryKey: ['wishlist'] })
-      invalidateTcgdexFilterLanguages(queryClient)
-    },
-  })
+    const quantityMutation = useMutation({
+        mutationFn: ({item, quantity}) => updateWishlistItem(item.id, {quantity}),
+        onSuccess: () => {
+            toast.success(t('wishlist.updated'))
+            queryClient.invalidateQueries({queryKey: ['wishlist']})
+            invalidateTcgdexFilterLanguages(queryClient)
+        },
+    })
 
-  const changeQuantity = (item, delta) => {
-    const nextQuantity = Math.max(1, Math.min(99, (item.quantity || 1) + delta))
-    if (nextQuantity !== item.quantity) {
-      quantityMutation.mutate({ item, quantity: nextQuantity })
+    const changeQuantity = (item, delta) => {
+        const nextQuantity = Math.max(1, Math.min(99, (item.quantity || 1) + delta))
+        if (nextQuantity !== item.quantity) {
+            quantityMutation.mutate({item, quantity: nextQuantity})
+        }
     }
-  }
 
-  const sets = useMemo(() => {
-    const map = new Map()
-    items.forEach(i => {
-      const s = i.card?.set_ref
-      if (s?.id) map.set(s.id, s.name)
-    })
-    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]))
-  }, [items])
+    const sets = useMemo(() => {
+        const map = new Map()
+        items.forEach(i => {
+            const s = i.card?.set_ref
+            if (s?.id) map.set(s.id, s.name)
+        })
+        return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]))
+    }, [items])
 
-  const rarities = useMemo(() => [...new Set(items.map(i => i.card?.rarity).filter(Boolean))].sort(), [items])
-  const totalCopies = useMemo(() => items.reduce((sum, item) => sum + (item.quantity || 1), 0), [items])
+    const rarities = useMemo(() => [...new Set(items.map(i => i.card?.rarity).filter(Boolean))].sort(), [items])
+    const totalCopies = useMemo(() => items.reduce((sum, item) => sum + (item.quantity || 1), 0), [items])
 
-  const hasActiveFilters = filterSet || filterRarity || filterMinPrice || filterMaxPrice || filterHasAlert
+    const hasActiveFilters = filterSet || filterRarity || filterMinPrice || filterMaxPrice || filterHasAlert
 
-  const filtered = useMemo(() => {
-    let result = items.filter(item => {
-      const price = getEffectiveCardPrice(item.card, null, pricePrimaryField)
-      if (filterSet && item.card?.set_ref?.id !== filterSet) return false
-      if (filterRarity && item.card?.rarity !== filterRarity) return false
-      if (filterMinPrice && (price == null || price < parseFloat(filterMinPrice))) return false
-      if (filterMaxPrice && (price == null || price > parseFloat(filterMaxPrice))) return false
-      if (filterHasAlert && !item.price_alert_above && !item.price_alert_below) return false
-      return true
-    })
+    const filtered = useMemo(() => {
+        let result = items.filter(item => {
+            const price = getEffectiveCardPrice(item.card, null, pricePrimaryField)
+            if (filterSet && item.card?.set_ref?.id !== filterSet) return false
+            if (filterRarity && item.card?.rarity !== filterRarity) return false
+            if (filterMinPrice && (price == null || price < parseFloat(filterMinPrice))) return false
+            if (filterMaxPrice && (price == null || price > parseFloat(filterMaxPrice))) return false
+            if (filterHasAlert && !item.price_alert_above && !item.price_alert_below) return false
+            return true
+        })
 
-    result = [...result].sort((a, b) => {
-      let valA, valB
-      switch (sortBy) {
-        case 'price': valA = getEffectiveCardPrice(a.card, null, pricePrimaryField) || -1; valB = getEffectiveCardPrice(b.card, null, pricePrimaryField) || -1; break
-        case 'name': valA = (a.card?.name || '').toLowerCase(); valB = (b.card?.name || '').toLowerCase(); break
-        case 'created_at': valA = a.created_at || ''; valB = b.created_at || ''; break
-        default: return 0
-      }
-      if (valA < valB) return sortOrder === 'asc' ? -1 : 1
-      if (valA > valB) return sortOrder === 'asc' ? 1 : -1
-      return 0
-    })
+        result = [...result].sort((a, b) => {
+            let valA, valB
+            switch (sortBy) {
+                case 'price':
+                    valA = getEffectiveCardPrice(a.card, null, pricePrimaryField) || -1;
+                    valB = getEffectiveCardPrice(b.card, null, pricePrimaryField) || -1;
+                    break
+                case 'name':
+                    valA = (a.card?.name || '').toLowerCase();
+                    valB = (b.card?.name || '').toLowerCase();
+                    break
+                case 'created_at':
+                    valA = a.created_at || '';
+                    valB = b.created_at || '';
+                    break
+                default:
+                    return 0
+            }
+            if (valA < valB) return sortOrder === 'asc' ? -1 : 1
+            if (valA > valB) return sortOrder === 'asc' ? 1 : -1
+            return 0
+        })
 
-    return result
-  }, [items, filterSet, filterRarity, filterMinPrice, filterMaxPrice, filterHasAlert, sortBy, sortOrder, pricePrimaryField])
+        return result
+    }, [items, filterSet, filterRarity, filterMinPrice, filterMaxPrice, filterHasAlert, sortBy, sortOrder, pricePrimaryField])
 
-  const resetFilters = () => {
-    setFilterSet(''); setFilterRarity(''); setFilterMinPrice(''); setFilterMaxPrice(''); setFilterHasAlert(false)
-  }
+    const resetFilters = () => {
+        setFilterSet('');
+        setFilterRarity('');
+        setFilterMinPrice('');
+        setFilterMaxPrice('');
+        setFilterHasAlert(false)
+    }
 
-  return (
-    <div className="space-y-4 pb-2">
-      <TabNav tabs={COLLECTION_TABS} />
-      <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
-        <div className="min-w-0">
-          <h1 className="text-xl font-bold text-text-primary flex items-center gap-2">
-            <Heart size={24} className="text-brand-red" />
-            {t('wishlist.title')}
-          </h1>
-          <p className="text-sm text-text-secondary mt-1">{t('wishlist.subtitle')}</p>
-        </div>
-      </div>
-
-      {isLoading ? (
-        <div className="space-y-3">
-          {[...Array(3)].map((_, i) => <div key={i} className="skeleton h-20 rounded-xl" />)}
-        </div>
-      ) : items.length === 0 ? (
-        <div className="card text-center py-20">
-          <Heart size={48} className="mx-auto mb-4 text-text-muted" />
-          <p className="text-text-muted">{t('wishlist.empty')}</p>
-          <p className="text-xs text-text-muted mt-1">{t('wishlist.emptyHint')}</p>
-        </div>
-      ) : (
-        <>
-          {/* Sort & Filter Bar */}
-          <div className="card space-y-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-2">
-                <SortAsc size={14} className="text-text-muted" />
-                <select className="select text-sm py-1.5 w-40" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
-                  <option value="created_at">{t('wishlist.sortAdded')}</option>
-                  <option value="price">{t('wishlist.sortPrice')}</option>
-                  <option value="name">{t('wishlist.sortName')}</option>
-                </select>
-                <button onClick={() => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')} className="btn-ghost py-1.5 px-2">
-                  {sortOrder === 'asc' ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                </button>
-              </div>
-
-              <button onClick={() => setShowFilters(f => !f)}
-                className={`btn-ghost text-sm py-1.5 ${showFilters || hasActiveFilters ? 'border-brand-red/30 text-brand-red' : ''}`}>
-                <Filter size={14} /> {t('common.filter')}
-                {hasActiveFilters && <span className="ml-1 bg-brand-red text-white text-xs rounded-full w-4 h-4 flex items-center justify-center leading-none">!</span>}
-              </button>
-
-              {hasActiveFilters && (
-                <button onClick={resetFilters} className="btn-ghost text-sm py-1.5">
-                  <X size={14} /> {t('common.clear')}
-                </button>
-              )}
-
-              <span className="text-xs text-text-muted ml-auto">{filtered.length} / {items.length} · {totalCopies} {t('wishlist.copies')}</span>
+    return (
+        <div className="space-y-4 pb-2">
+            <TabNav tabs={COLLECTION_TABS}/>
+            <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
+                <div className="min-w-0">
+                    <h1 className="text-xl font-bold text-text-primary flex items-center gap-2">
+                        <Heart size={24} className="text-brand-red"/>
+                        {t('wishlist.title')}
+                    </h1>
+                    <p className="text-sm text-text-secondary mt-1">{t('wishlist.subtitle')}</p>
+                </div>
             </div>
 
-            {showFilters && (
-              <div className="pt-3 border-t border-border grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                <div>
-                  <label className="text-xs text-text-muted mb-1 block">{t('wishlist.filterSet')}</label>
-                  <select className="select text-sm py-1.5" value={filterSet} onChange={(e) => setFilterSet(e.target.value)}>
-                    <option value="">{t('wishlist.allSets')}</option>
-                    {sets.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-                  </select>
+            {isLoading ? (
+                <div className="space-y-3">
+                    {[...Array(3)].map((_, i) => <div key={i} className="skeleton h-20 rounded-xl"/>)}
                 </div>
-                <div>
-                  <label className="text-xs text-text-muted mb-1 block">{t('wishlist.filterRarity')}</label>
-                  <select className="select text-sm py-1.5" value={filterRarity} onChange={(e) => setFilterRarity(e.target.value)}>
-                    <option value="">{t('wishlist.allRarities')}</option>
-                    {rarities.map(r => <option key={r} value={r}>{r}</option>)}
-                  </select>
+            ) : items.length === 0 ? (
+                <div className="card text-center py-20">
+                    <Heart size={48} className="mx-auto mb-4 text-text-muted"/>
+                    <p className="text-text-muted">{t('wishlist.empty')}</p>
+                    <p className="text-xs text-text-muted mt-1">{t('wishlist.emptyHint')}</p>
                 </div>
-                <div>
-                  <label className="text-xs text-text-muted mb-1 block">{t('wishlist.filterMinPrice')}</label>
-                  <input type="number" min="0" step="0.01" placeholder="0" value={filterMinPrice}
-                    onChange={(e) => setFilterMinPrice(e.target.value)} className="input text-sm py-1.5" />
-                </div>
-                <div>
-                  <label className="text-xs text-text-muted mb-1 block">{t('wishlist.filterMaxPrice')}</label>
-                  <input type="number" min="0" step="0.01" placeholder="∞" value={filterMaxPrice}
-                    onChange={(e) => setFilterMaxPrice(e.target.value)} className="input text-sm py-1.5" />
-                </div>
-                <div className="flex items-center gap-2">
-                  <label className="flex items-center gap-2 cursor-pointer mt-4">
-                    <input type="checkbox" checked={filterHasAlert} onChange={(e) => setFilterHasAlert(e.target.checked)}
-                      className="w-4 h-4 accent-brand-red" />
-                    <span className="text-xs text-text-secondary">{t('wishlist.filterHasAlert')}</span>
-                  </label>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {filtered.length === 0 ? (
-            <div className="card text-center py-12">
-              <p className="text-text-muted">{t('wishlist.noResults')}</p>
-            </div>
-          ) : (
-            <div className="card p-0 overflow-hidden">
-              {/* Desktop Table */}
-              <div className="hidden md:block overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border bg-bg/50">
-                      <th className="text-left px-4 py-3 text-text-muted font-medium">{t('wishlist.card')}</th>
-                      <th className="text-center px-4 py-3 text-text-muted font-medium">{t('common.quantity')}</th>
-                      <th className="text-left px-4 py-3 text-text-muted font-medium">{t('common.set')}</th>
-                      <th className="text-right px-4 py-3 text-text-muted font-medium">{t('wishlist.marketPrice')}</th>
-                      <th className="text-center px-4 py-3 text-text-muted font-medium">{t('wishlist.priceAlerts')}</th>
-                      <th className="text-center px-4 py-3 text-text-muted font-medium">{t('wishlist.lastNotified')}</th>
-                      <th className="px-4 py-3" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filtered.map((item) => {
-                      const card = item.card
-                      const price = getEffectiveCardPrice(card, null, pricePrimaryField)
-                      const alertAbove = price && item.price_alert_above && price >= item.price_alert_above
-                      const alertBelow = price && item.price_alert_below && price <= item.price_alert_below
-
-                      return (
-                        <tr key={item.id} className="border-b border-border/50 hover:bg-bg-elevated/50 transition-colors">
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-10 flex-shrink-0 rounded overflow-hidden">
-                                {resolveCardImageUrl(card) ? (
-                                  <img src={resolveCardImageUrl(card)} alt={card?.name} className="w-full h-full object-cover" />
-                                ) : (
-                                  <div className="w-full h-full bg-border" />
-                                )}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-sm font-medium text-text-primary">{card?.name}</p>
-                                <FallbackBadges card={card} compact />
-                                {card?.rarity && <p className="text-xs text-text-muted">{card.rarity}</p>}
-                              </div>
+            ) : (
+                <>
+                    {/* Sort & Filter Bar */}
+                    <div className="card space-y-3">
+                        <div className="flex flex-wrap items-center gap-3">
+                            <div className="flex items-center gap-2">
+                                <SortAsc size={14} className="text-text-muted"/>
+                                <select className="select text-sm py-1.5 w-40" value={sortBy}
+                                        onChange={(e) => setSortBy(e.target.value)}>
+                                    <option value="created_at">{t('wishlist.sortAdded')}</option>
+                                    <option value="price">{t('wishlist.sortPrice')}</option>
+                                    <option value="name">{t('wishlist.sortName')}</option>
+                                </select>
+                                <button onClick={() => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')}
+                                        className="btn-ghost py-1.5 px-2">
+                                    {sortOrder === 'asc' ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
+                                </button>
                             </div>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <div className="inline-flex items-center gap-1 rounded-full bg-bg-surface border border-border px-1.5 py-1">
-                              <button onClick={() => changeQuantity(item, -1)} disabled={(item.quantity || 1) <= 1 || quantityMutation.isPending}
-                                className="text-text-muted hover:text-text-primary disabled:opacity-30 disabled:hover:text-text-muted transition-colors">
-                                <Minus size={12} />
-                              </button>
-                              <span className="min-w-6 text-xs font-semibold text-text-primary">×{item.quantity || 1}</span>
-                              <button onClick={() => changeQuantity(item, 1)} disabled={(item.quantity || 1) >= 99 || quantityMutation.isPending}
-                                className="text-text-muted hover:text-text-primary disabled:opacity-30 disabled:hover:text-text-muted transition-colors">
-                                <Plus size={12} />
-                              </button>
+
+                            <button onClick={() => setShowFilters(f => !f)}
+                                    className={`btn-ghost text-sm py-1.5 ${showFilters || hasActiveFilters ? 'border-brand-red/30 text-brand-red' : ''}`}>
+                                <Filter size={14}/> {t('common.filter')}
+                                {hasActiveFilters && <span
+                                    className="ml-1 bg-brand-red text-white text-xs rounded-full w-4 h-4 flex items-center justify-center leading-none">!</span>}
+                            </button>
+
+                            {hasActiveFilters && (
+                                <button onClick={resetFilters} className="btn-ghost text-sm py-1.5">
+                                    <X size={14}/> {t('common.clear')}
+                                </button>
+                            )}
+
+                            <span
+                                className="text-xs text-text-muted ml-auto">{filtered.length} / {items.length} · {totalCopies} {t('wishlist.copies')}</span>
+                        </div>
+
+                        {showFilters && (
+                            <div
+                                className="pt-3 border-t border-border grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                                <div>
+                                    <label
+                                        className="text-xs text-text-muted mb-1 block">{t('wishlist.filterSet')}</label>
+                                    <select className="select text-sm py-1.5" value={filterSet}
+                                            onChange={(e) => setFilterSet(e.target.value)}>
+                                        <option value="">{t('wishlist.allSets')}</option>
+                                        {sets.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label
+                                        className="text-xs text-text-muted mb-1 block">{t('wishlist.filterRarity')}</label>
+                                    <select className="select text-sm py-1.5" value={filterRarity}
+                                            onChange={(e) => setFilterRarity(e.target.value)}>
+                                        <option value="">{t('wishlist.allRarities')}</option>
+                                        {rarities.map(r => <option key={r} value={r}>{r}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label
+                                        className="text-xs text-text-muted mb-1 block">{t('wishlist.filterMinPrice')}</label>
+                                    <input type="number" min="0" step="0.01" placeholder="0" value={filterMinPrice}
+                                           onChange={(e) => setFilterMinPrice(e.target.value)}
+                                           className="input text-sm py-1.5"/>
+                                </div>
+                                <div>
+                                    <label
+                                        className="text-xs text-text-muted mb-1 block">{t('wishlist.filterMaxPrice')}</label>
+                                    <input type="number" min="0" step="0.01" placeholder="∞" value={filterMaxPrice}
+                                           onChange={(e) => setFilterMaxPrice(e.target.value)}
+                                           className="input text-sm py-1.5"/>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <label className="flex items-center gap-2 cursor-pointer mt-4">
+                                        <input type="checkbox" checked={filterHasAlert}
+                                               onChange={(e) => setFilterHasAlert(e.target.checked)}
+                                               className="w-4 h-4 accent-brand-red"/>
+                                        <span
+                                            className="text-xs text-text-secondary">{t('wishlist.filterHasAlert')}</span>
+                                    </label>
+                                </div>
                             </div>
-                          </td>
-                          <td className="px-4 py-3 text-text-secondary text-xs">{card?.set_ref?.name || '-'}</td>
-                          <td className="px-4 py-3 text-right">
-                            {price ? (
-                              <span className={`font-bold ${alertAbove ? 'text-yellow' : alertBelow ? 'text-blue' : 'text-green'}`}>
+                        )}
+                    </div>
+
+                    {filtered.length === 0 ? (
+                        <div className="card text-center py-12">
+                            <p className="text-text-muted">{t('wishlist.noResults')}</p>
+                        </div>
+                    ) : (
+                        <div className="card p-0 overflow-hidden">
+                            {/* Desktop Table */}
+                            <div className="hidden md:block overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                    <tr className="border-b border-border bg-bg/50">
+                                        <th className="text-left px-4 py-3 text-text-muted font-medium">{t('wishlist.card')}</th>
+                                        <th className="text-center px-4 py-3 text-text-muted font-medium">{t('common.quantity')}</th>
+                                        <th className="text-left px-4 py-3 text-text-muted font-medium">{t('common.set')}</th>
+                                        <th className="text-right px-4 py-3 text-text-muted font-medium">{t('wishlist.marketPrice')}</th>
+                                        <th className="text-center px-4 py-3 text-text-muted font-medium">{t('wishlist.priceAlerts')}</th>
+                                        <th className="text-center px-4 py-3 text-text-muted font-medium">{t('wishlist.lastNotified')}</th>
+                                        <th className="px-4 py-3"/>
+                                    </tr>
+                                    </thead>
+                                    <tbody>
+                                    {filtered.map((item) => {
+                                        const card = item.card
+                                        const price = getEffectiveCardPrice(card, null, pricePrimaryField)
+                                        const alertAbove = price && item.price_alert_above && price >= item.price_alert_above
+                                        const alertBelow = price && item.price_alert_below && price <= item.price_alert_below
+
+                                        return (
+                                            <tr key={item.id}
+                                                className="border-b border-border/50 hover:bg-bg-elevated/50 transition-colors">
+                                                <td className="px-4 py-3">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-8 h-10 flex-shrink-0 rounded overflow-hidden">
+                                                            {resolveCardImageUrl(card) ? (
+                                                                <img src={resolveCardImageUrl(card)} alt={card?.name}
+                                                                     className="w-full h-full object-cover"/>
+                                                            ) : (
+                                                                <div className="w-full h-full bg-border"/>
+                                                            )}
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <p className="text-sm font-medium text-text-primary">{card?.name}</p>
+                                                            <FallbackBadges card={card} compact/>
+                                                            {card?.rarity &&
+                                                                <p className="text-xs text-text-muted">{card.rarity}</p>}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3 text-center">
+                                                    <div
+                                                        className="inline-flex items-center gap-1 rounded-full bg-bg-surface border border-border px-1.5 py-1">
+                                                        <button onClick={() => changeQuantity(item, -1)}
+                                                                disabled={(item.quantity || 1) <= 1 || quantityMutation.isPending}
+                                                                className="text-text-muted hover:text-text-primary disabled:opacity-30 disabled:hover:text-text-muted transition-colors">
+                                                            <Minus size={12}/>
+                                                        </button>
+                                                        <span
+                                                            className="min-w-6 text-xs font-semibold text-text-primary">×{item.quantity || 1}</span>
+                                                        <button onClick={() => changeQuantity(item, 1)}
+                                                                disabled={(item.quantity || 1) >= 99 || quantityMutation.isPending}
+                                                                className="text-text-muted hover:text-text-primary disabled:opacity-30 disabled:hover:text-text-muted transition-colors">
+                                                            <Plus size={12}/>
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3 text-text-secondary text-xs">{card?.set_ref?.name || '-'}</td>
+                                                <td className="px-4 py-3 text-right">
+                                                    {price ? (
+                                                        <span
+                                                            className={`font-bold ${alertAbove ? 'text-yellow' : alertBelow ? 'text-blue' : 'text-green'}`}>
                                 {formatPrice(price)}
                               </span>
-                            ) : (
-                              <span className="text-text-muted">-</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            {editingId === item.id ? (
-                              <WishlistItemEditor item={item} onDone={() => setEditingId(null)} />
-                            ) : (
-                              <div className="flex items-center justify-center gap-3">
-                                {item.price_alert_above && (
-                                  <span className="badge badge-yellow text-xs">↑ {formatPrice(item.price_alert_above)}</span>
-                                )}
-                                {item.price_alert_below && (
-                                  <span className="badge badge-blue text-xs">↓ {formatPrice(item.price_alert_below)}</span>
-                                )}
-                                {!item.price_alert_above && !item.price_alert_below && (
-                                  <span className="text-text-muted text-xs">{t('wishlist.noAlerts')}</span>
-                                )}
-                                <button onClick={() => setEditingId(item.id)} className="text-text-muted hover:text-text-primary transition-colors">
-                                  <Edit2 size={12} />
-                                </button>
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-center text-xs text-text-muted">
-                            {item.notified_at
-                              ? new Date(item.notified_at).toLocaleDateString()
-                              : <span className="text-text-muted">{t('wishlist.never')}</span>
-                            }
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-1 justify-end">
-                              <button onClick={() => addToColMutation.mutate(item.card_id)}
-                                className="text-text-muted hover:text-green transition-colors p-1" title={t('wishlist.addToCollection')}>
-                                <Check size={14} />
-                              </button>
-                              <button onClick={() => {
-                                if (confirm(t('wishlist.removeConfirm', { name: card?.name || t('common.thisCard') }))) removeMutation.mutate(item.id)
-                              }} className="text-text-muted hover:text-brand-red transition-colors p-1">
-                                <Trash2 size={14} />
-                              </button>
+                                                    ) : (
+                                                        <span className="text-text-muted">-</span>
+                                                    )}
+                                                </td>
+                                                <td className="px-4 py-3 text-center">
+                                                    {editingId === item.id ? (
+                                                        <WishlistItemEditor item={item}
+                                                                            onDone={() => setEditingId(null)}/>
+                                                    ) : (
+                                                        <div className="flex items-center justify-center gap-3">
+                                                            {item.price_alert_above && (
+                                                                <span
+                                                                    className="badge badge-yellow text-xs">↑ {formatPrice(item.price_alert_above)}</span>
+                                                            )}
+                                                            {item.price_alert_below && (
+                                                                <span
+                                                                    className="badge badge-blue text-xs">↓ {formatPrice(item.price_alert_below)}</span>
+                                                            )}
+                                                            {!item.price_alert_above && !item.price_alert_below && (
+                                                                <span
+                                                                    className="text-text-muted text-xs">{t('wishlist.noAlerts')}</span>
+                                                            )}
+                                                            <button onClick={() => setEditingId(item.id)}
+                                                                    className="text-text-muted hover:text-text-primary transition-colors">
+                                                                <Edit2 size={12}/>
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </td>
+                                                <td className="px-4 py-3 text-center text-xs text-text-muted">
+                                                    {item.notified_at
+                                                        ? new Date(item.notified_at).toLocaleDateString()
+                                                        : <span className="text-text-muted">{t('wishlist.never')}</span>
+                                                    }
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <div className="flex items-center gap-1 justify-end">
+                                                        <button onClick={() => addToColMutation.mutate(item.card_id)}
+                                                                className="text-text-muted hover:text-green transition-colors p-1"
+                                                                title={t('wishlist.addToCollection')}>
+                                                            <Check size={14}/>
+                                                        </button>
+                                                        <button onClick={() => {
+                                                            if (confirm(t('wishlist.removeConfirm', {name: card?.name || t('common.thisCard')}))) removeMutation.mutate(item.id)
+                                                        }}
+                                                                className="text-text-muted hover:text-brand-red transition-colors p-1">
+                                                            <Trash2 size={14}/>
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )
+                                    })}
+                                    </tbody>
+                                </table>
                             </div>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
 
-              {/* Mobile Card Layout */}
-              <div className="md:hidden space-y-2 p-2">
-                {filtered.map((item) => {
-                  const card = item.card
-                  const price = getEffectiveCardPrice(card, null, pricePrimaryField)
-                  const alertAbove = price && item.price_alert_above && price >= item.price_alert_above
-                  const alertBelow = price && item.price_alert_below && price <= item.price_alert_below
+                            {/* Mobile Card Layout */}
+                            <div className="md:hidden space-y-2 p-2">
+                                {filtered.map((item) => {
+                                    const card = item.card
+                                    const price = getEffectiveCardPrice(card, null, pricePrimaryField)
+                                    const alertAbove = price && item.price_alert_above && price >= item.price_alert_above
+                                    const alertBelow = price && item.price_alert_below && price <= item.price_alert_below
 
-                  if (editingId === item.id) {
-                    return (
-                      <div key={item.id} className="bg-bg-card border border-border rounded-lg p-3 space-y-2">
-                        <p className="text-sm font-medium text-text-primary truncate">{card?.name}</p>
-                        <WishlistItemEditor item={item} onDone={() => setEditingId(null)} />
-                      </div>
-                    )
-                  }
+                                    if (editingId === item.id) {
+                                        return (
+                                            <div key={item.id}
+                                                 className="bg-bg-card border border-border rounded-lg p-3 space-y-2">
+                                                <p className="text-sm font-medium text-text-primary truncate">{card?.name}</p>
+                                                <WishlistItemEditor item={item} onDone={() => setEditingId(null)}/>
+                                            </div>
+                                        )
+                                    }
 
-                  const badges = []
-                  badges.push({ label: `×${item.quantity || 1}`, variant: 'purple' })
-                  if (item.price_alert_above) badges.push({ label: `↑ ${formatPrice(item.price_alert_above)}`, variant: 'yellow' })
-                  if (item.price_alert_below) badges.push({ label: `↓ ${formatPrice(item.price_alert_below)}`, variant: 'blue' })
-                  if (card?.rarity) badges.push({ label: card.rarity, variant: 'gray' })
-                  if (card?.data_source_lang) badges.push({ label: `${t('fallback.data')} ${tcgdexLanguageLabel(card.data_source_lang)}`, variant: 'purple' })
-                  if (card?.price_source_lang) badges.push({ label: `${t('fallback.price')} ${tcgdexLanguageLabel(card.price_source_lang)}`, variant: 'yellow' })
-                  if (card?.image_source_lang) badges.push({ label: `${t('fallback.image')} ${tcgdexLanguageLabel(card.image_source_lang)}`, variant: 'blue' })
+                                    const badges = []
+                                    badges.push({label: `×${item.quantity || 1}`, variant: 'purple'})
+                                    if (item.price_alert_above) badges.push({
+                                        label: `↑ ${formatPrice(item.price_alert_above)}`,
+                                        variant: 'yellow'
+                                    })
+                                    if (item.price_alert_below) badges.push({
+                                        label: `↓ ${formatPrice(item.price_alert_below)}`,
+                                        variant: 'blue'
+                                    })
+                                    if (card?.rarity) badges.push({label: card.rarity, variant: 'gray'})
+                                    if (card?.data_source_lang) badges.push({
+                                        label: `${t('fallback.data')} ${tcgdexLanguageLabel(card.data_source_lang)}`,
+                                        variant: 'purple'
+                                    })
+                                    if (card?.price_source_lang) badges.push({
+                                        label: `${t('fallback.price')} ${tcgdexLanguageLabel(card.price_source_lang)}`,
+                                        variant: 'yellow'
+                                    })
+                                    if (card?.image_source_lang) badges.push({
+                                        label: `${t('fallback.image')} ${tcgdexLanguageLabel(card.image_source_lang)}`,
+                                        variant: 'blue'
+                                    })
 
-                  return (
-                    <CardListItem
-                      key={item.id}
-                      image={resolveCardImageUrl(card)}
-                      name={card?.name}
-                      subtext={card?.set_ref?.name || '-'}
-                      badges={badges}
-                      value={price ? formatPrice(price) : '-'}
-                      rightAction={
-                        <div className="flex flex-col gap-1">
-                          <button onClick={(e) => { e.stopPropagation(); setEditingId(item.id) }}
-                            className="text-text-muted hover:text-text-primary transition-colors p-1">
-                            <Edit2 size={12} />
-                          </button>
-                          <button onClick={(e) => { e.stopPropagation(); addToColMutation.mutate(item.card_id) }}
-                            className="text-text-muted hover:text-green transition-colors p-1" title={t('wishlist.addToCollection')}>
-                            <Check size={12} />
-                          </button>
-                          <button onClick={(e) => {
-                            e.stopPropagation()
-                            if (confirm(t('wishlist.removeConfirm', { name: card?.name || t('common.thisCard') }))) removeMutation.mutate(item.id)
-                          }} className="text-text-muted hover:text-brand-red transition-colors p-1">
-                            <Trash2 size={12} />
-                          </button>
+                                    return (
+                                        <CardListItem
+                                            key={item.id}
+                                            image={resolveCardImageUrl(card)}
+                                            name={card?.name}
+                                            subtext={card?.set_ref?.name || '-'}
+                                            badges={badges}
+                                            value={price ? formatPrice(price) : '-'}
+                                            rightAction={
+                                                <div className="flex flex-col gap-1">
+                                                    <button onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setEditingId(item.id)
+                                                    }}
+                                                            className="text-text-muted hover:text-text-primary transition-colors p-1">
+                                                        <Edit2 size={12}/>
+                                                    </button>
+                                                    <button onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        addToColMutation.mutate(item.card_id)
+                                                    }}
+                                                            className="text-text-muted hover:text-green transition-colors p-1"
+                                                            title={t('wishlist.addToCollection')}>
+                                                        <Check size={12}/>
+                                                    </button>
+                                                    <button onClick={(e) => {
+                                                        e.stopPropagation()
+                                                        if (confirm(t('wishlist.removeConfirm', {name: card?.name || t('common.thisCard')}))) removeMutation.mutate(item.id)
+                                                    }}
+                                                            className="text-text-muted hover:text-brand-red transition-colors p-1">
+                                                        <Trash2 size={12}/>
+                                                    </button>
+                                                </div>
+                                            }
+                                        />
+                                    )
+                                })}
+                            </div>
                         </div>
-                      }
-                    />
-                  )
-                })}
-              </div>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  )
+                    )}
+                </>
+            )}
+        </div>
+    )
 }

@@ -5,73 +5,73 @@
 @tailwind utilities;
 
 :root {
-  /* --archive-canvas is already #000000 here and switches on its own. */
-  --color-bg: var(--archive-canvas);
-  --color-surface: #0A0A0A;
-  --color-border: #333333;
-  /* Hairline rule used by the Tailwind `border` token. Kept separate from
-     --color-border because it is an alpha wash, not a solid line. */
-  --color-border-hairline: rgba(255, 255, 255, 0.07);
-  /* Text ramp. tailwind.config.js reads these rather than holding literals,
-     which previously meant .text-text-primary was a hardcoded white with no
-     light-theme counterpart. Dark values match those former literals. */
-  --color-text-primary: #FFFFFF;
-  --color-text-secondary: #a0a0b8;
-  --color-text-muted: #606078;
+    /* --archive-canvas is already #000000 here and switches on its own. */
+    --color-bg: var(--archive-canvas);
+    --color-surface: #0A0A0A;
+    --color-border: #333333;
+    /* Hairline rule used by the Tailwind `border` token. Kept separate from
+       --color-border because it is an alpha wash, not a solid line. */
+    --color-border-hairline: rgba(255, 255, 255, 0.07);
+    /* Text ramp. tailwind.config.js reads these rather than holding literals,
+       which previously meant .text-text-primary was a hardcoded white with no
+       light-theme counterpart. Dark values match those former literals. */
+    --color-text-primary: #FFFFFF;
+    --color-text-secondary: #a0a0b8;
+    --color-text-muted: #606078;
 
-  /* Surfaces referenced by tailwind.config.js (bg-card, bg-elevated).
-     Aliased onto the archive palette so the light theme switches with it. */
-  --color-card: var(--archive-surface);
-  --color-elevated: var(--archive-surface-raised);
+    /* Surfaces referenced by tailwind.config.js (bg-card, bg-elevated).
+       Aliased onto the archive palette so the light theme switches with it. */
+    --color-card: var(--archive-surface);
+    --color-elevated: var(--archive-surface-raised);
 
-  /* Brand accent. Tailwind composes this as rgb(var(...) / <alpha-value>),
-     so it must stay a bare channel triplet rather than a hex value. */
-  --color-brand-red-rgb: 245 130 32;
-  --color-brand-red-light: #FFB06D;
-  --color-brand-red-dark: #C55E10;
+    /* Brand accent. Tailwind composes this as rgb(var(...) / <alpha-value>),
+       so it must stay a bare channel triplet rather than a hex value. */
+    --color-brand-red-rgb: 245 130 32;
+    --color-brand-red-light: #FFB06D;
+    --color-brand-red-dark: #C55E10;
 
-  --jj-red: #E03C31;
-  --jj-orange: #F58220;
-  --jj-yellow: #FFCD00;
-  --jj-green: #009639;
-  --jj-lightblue: #00A3E0;
-  --jj-darkblue: #0033A0;
-  --jj-purple: #582C83;
+    --jj-red: #E03C31;
+    --jj-orange: #F58220;
+    --jj-yellow: #FFCD00;
+    --jj-green: #009639;
+    --jj-lightblue: #00A3E0;
+    --jj-darkblue: #0033A0;
+    --jj-purple: #582C83;
 }
 
 /* --color-card and --color-elevated follow --archive-* automatically.
    The brand triplet is a literal, so the light theme restates it. */
 [data-theme='light'] {
-  --color-brand-red-rgb: 197 94 16;
-  --color-brand-red-light: #A54E0D;
-  --color-brand-red-dark: #7C3909;
+    --color-brand-red-rgb: 197 94 16;
+    --color-brand-red-light: #A54E0D;
+    --color-brand-red-dark: #7C3909;
 
-  /* Warm ink drawn from the archive light palette. Contrast on the
-     #FFF9F4 canvas: primary ~15:1, secondary ~7.8:1, muted ~5:1. */
-  --color-text-primary: #241E19;
-  --color-text-secondary: #594D42;
-  --color-text-muted: #7A6A5C;
+    /* Warm ink drawn from the archive light palette. Contrast on the
+       #FFF9F4 canvas: primary ~15:1, secondary ~7.8:1, muted ~5:1. */
+    --color-text-primary: #241E19;
+    --color-text-secondary: #594D42;
+    --color-text-muted: #7A6A5C;
 
-  /* Surfaces and rules. Without these the light theme drew 25 near-black
-     panels and 123 borders of white-on-cream, which were not visible. */
-  --color-surface: #FFFFFF;
-  --color-border: #DCCFC2;
-  --color-border-hairline: rgba(61, 47, 35, 0.14);
+    /* Surfaces and rules. Without these the light theme drew 25 near-black
+       panels and 123 borders of white-on-cream, which were not visible. */
+    --color-surface: #FFFFFF;
+    --color-border: #DCCFC2;
+    --color-border-hairline: rgba(61, 47, 35, 0.14);
 }
 
 body {
-  font-family: 'Inter', sans-serif;
-  background-color: var(--color-bg);
-  color: var(--color-text-primary);
-  margin: 0;
-  padding: 0;
-  overflow-x: hidden;
+    font-family: 'Inter', sans-serif;
+    background-color: var(--color-bg);
+    color: var(--color-text-primary);
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
 }
 
 h1, h2, h3, .mag-heading {
-  font-family: 'Inter', sans-serif;
-  font-weight: 900; /* Inter Black */
-  letter-spacing: -0.02em;
+    font-family: 'Inter', sans-serif;
+    font-weight: 900; /* Inter Black */
+    letter-spacing: -0.02em;
 }
 
 /* The application shell lives entirely in design/archive.css. An earlier
@@ -82,64 +82,64 @@ h1, h2, h3, .mag-heading {
    every field fell back to the browser's white default while inheriting
    white text — unreadable in both themes. */
 .input {
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 0.55rem 0.75rem;
-  font: inherit;
+    background: var(--color-surface);
+    color: var(--color-text-primary);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    padding: 0.55rem 0.75rem;
+    font: inherit;
 }
 
 .input::placeholder {
-  color: var(--color-text-muted);
+    color: var(--color-text-muted);
 }
 
 .input:focus-visible {
-  border-color: var(--archive-signal);
+    border-color: var(--archive-signal);
 }
 
 .input:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+    opacity: 0.6;
+    cursor: not-allowed;
 }
 
 /* Card Updates */
 .mag-card, .card, .polaroid-card {
-  background: var(--color-surface) !important;
-  border: 1px solid var(--color-border) !important;
-  border-radius: 12px !important;
-  padding: 1.5rem;
-  transition: all 0.2s;
-  box-shadow: none !important;
-  color: var(--color-text-primary);
-  transform: none !important;
+    background: var(--color-surface) !important;
+    border: 1px solid var(--color-border) !important;
+    border-radius: 12px !important;
+    padding: 1.5rem;
+    transition: all 0.2s;
+    box-shadow: none !important;
+    color: var(--color-text-primary);
+    transform: none !important;
 }
 
 .mag-card:hover, .polaroid-card:hover, .card:hover {
-  border-color: rgba(255,255,255,0.3) !important;
-  transform: translateY(-2px) !important;
+    border-color: rgba(255, 255, 255, 0.3) !important;
+    transform: translateY(-2px) !important;
 }
 
 /* Split Text Animation */
 .split-text-word {
-  display: inline-block;
-  overflow: hidden;
-  margin-right: 0.2em;
+    display: inline-block;
+    overflow: hidden;
+    margin-right: 0.2em;
 }
 
 .split-text-char {
-  display: inline-block;
-  transform: translateY(100%);
-  animation: split-text-rise 0.5s cubic-bezier(0.075, 0.82, 0.165, 1) forwards;
+    display: inline-block;
+    transform: translateY(100%);
+    animation: split-text-rise 0.5s cubic-bezier(0.075, 0.82, 0.165, 1) forwards;
 }
 
 /* Namespaced. This was called slideUp, which collided with the keyframe
    Tailwind emits for animate-slide-up and silently replaced it — leaving
    Modal and Sheet with an entrance animation that did nothing. */
 @keyframes split-text-rise {
-  to {
-    transform: translateY(0);
-  }
+    to {
+        transform: translateY(0);
+    }
 }
 
 /* Buttons
@@ -153,37 +153,40 @@ h1, h2, h3, .mag-heading {
    but Fluent draws both from colorNeutralBackground1. That is a design
    decision, not a mechanical refactor — see the audit's finding F3. */
 .fui-Button {
-  background-color: var(--color-surface) !important;
-  color: var(--color-text-primary) !important;
-  border: 1px solid var(--color-border) !important;
-  font-weight: 600 !important;
-  box-shadow: none !important;
+    background-color: var(--color-surface) !important;
+    color: var(--color-text-primary) !important;
+    border: 1px solid var(--color-border) !important;
+    font-weight: 600 !important;
+    box-shadow: none !important;
 }
 
 .fui-Button:hover {
-  background-color: rgba(255,255,255,0.1) !important;
-  box-shadow: none !important;
+    background-color: rgba(255, 255, 255, 0.1) !important;
+    box-shadow: none !important;
 }
 
 /* Input */
 .fui-Input {
-  border: 1px solid var(--color-border) !important;
-  box-shadow: none !important;
-  background: var(--color-surface) !important;
-  color: var(--color-text-primary) !important;
+    border: 1px solid var(--color-border) !important;
+    box-shadow: none !important;
+    background: var(--color-surface) !important;
+    color: var(--color-text-primary) !important;
 }
 
 /* Scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
+    width: 8px;
 }
+
 ::-webkit-scrollbar-track {
-  background: var(--color-bg);
+    background: var(--color-bg);
 }
+
 ::-webkit-scrollbar-thumb {
-  background: var(--color-border);
-  border-radius: 4px;
+    background: var(--color-border);
+    border-radius: 4px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
-  background: #555;
+    background: #555;
 }

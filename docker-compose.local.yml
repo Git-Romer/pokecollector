@@ -3,7 +3,7 @@ name: john-johns-pc
 services:
   postgres:
     container_name: !reset null
-    ports: !override []
+    ports: !override [ ]
 
   backend:
     container_name: !reset null

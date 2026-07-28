@@ -6,138 +6,138 @@ FastAPI app entry point: `backend/main.py`.
 
 ### Auth
 
-| Method | Path | Notes |
-|--------|------|-------|
-| POST | `/api/auth/login` | Username/password login |
-| GET | `/api/auth/me` | Current authenticated user |
-| GET | `/api/auth/mode` | Returns `{ multi_user: boolean }` |
-| PUT | `/api/auth/mode` | Admin-only toggle for single-user vs multi-user mode |
-| GET | `/api/auth/users` | Admin-only user list |
-| POST | `/api/auth/users` | Admin-only user creation |
-| PUT | `/api/auth/users/{user_id}` | Admin-only user update |
-| DELETE | `/api/auth/users/{user_id}` | Admin-only user delete; cascades owned data cleanup |
-| PUT | `/api/auth/me/password` | Change password with current password |
-| PUT | `/api/auth/me/force-password` | Complete required first-login password change |
-| PUT | `/api/auth/me/avatar` | Update current user's avatar |
-| PUT | `/api/auth/me/username` | Update current user's profile name |
+| Method | Path                          | Notes                                                |
+|--------|-------------------------------|------------------------------------------------------|
+| POST   | `/api/auth/login`             | Username/password login                              |
+| GET    | `/api/auth/me`                | Current authenticated user                           |
+| GET    | `/api/auth/mode`              | Returns `{ multi_user: boolean }`                    |
+| PUT    | `/api/auth/mode`              | Admin-only toggle for single-user vs multi-user mode |
+| GET    | `/api/auth/users`             | Admin-only user list                                 |
+| POST   | `/api/auth/users`             | Admin-only user creation                             |
+| PUT    | `/api/auth/users/{user_id}`   | Admin-only user update                               |
+| DELETE | `/api/auth/users/{user_id}`   | Admin-only user delete; cascades owned data cleanup  |
+| PUT    | `/api/auth/me/password`       | Change password with current password                |
+| PUT    | `/api/auth/me/force-password` | Complete required first-login password change        |
+| PUT    | `/api/auth/me/avatar`         | Update current user's avatar                         |
+| PUT    | `/api/auth/me/username`       | Update current user's profile name                   |
 
 ### Cards
 
-| Method | Path | Notes |
-|--------|------|-------|
-| GET | `/api/cards/search` | Local card search |
-| GET | `/api/cards/custom` | List custom cards |
-| POST | `/api/cards/custom` | Create custom card |
-| PUT | `/api/cards/custom/{card_id}` | Update custom card |
-| DELETE | `/api/cards/custom/{card_id}` | Delete custom card |
-| GET | `/api/cards/custom/matches` | Pending custom-card migration matches |
-| POST | `/api/cards/custom/migrate/{match_id}` | Migrate custom card to API card |
-| POST | `/api/cards/custom/dismiss/{match_id}` | Dismiss match |
-| GET | `/api/cards/{card_id}/lang/{lang}` | Resolve equivalent card in another language |
-| GET | `/api/cards/{card_id}/price-history` | Price history |
-| PUT | `/api/cards/{card_id}/custom-image` | Set temporary custom image URL |
-| GET | `/api/cards/{card_id}` | Card detail |
-| POST | `/api/cards/recognize` | Gemini-powered card recognition |
+| Method | Path                                   | Notes                                       |
+|--------|----------------------------------------|---------------------------------------------|
+| GET    | `/api/cards/search`                    | Local card search                           |
+| GET    | `/api/cards/custom`                    | List custom cards                           |
+| POST   | `/api/cards/custom`                    | Create custom card                          |
+| PUT    | `/api/cards/custom/{card_id}`          | Update custom card                          |
+| DELETE | `/api/cards/custom/{card_id}`          | Delete custom card                          |
+| GET    | `/api/cards/custom/matches`            | Pending custom-card migration matches       |
+| POST   | `/api/cards/custom/migrate/{match_id}` | Migrate custom card to API card             |
+| POST   | `/api/cards/custom/dismiss/{match_id}` | Dismiss match                               |
+| GET    | `/api/cards/{card_id}/lang/{lang}`     | Resolve equivalent card in another language |
+| GET    | `/api/cards/{card_id}/price-history`   | Price history                               |
+| PUT    | `/api/cards/{card_id}/custom-image`    | Set temporary custom image URL              |
+| GET    | `/api/cards/{card_id}`                 | Card detail                                 |
+| POST   | `/api/cards/recognize`                 | Gemini-powered card recognition             |
 
 ### Collection, Sets, Wishlist, Binders
 
-| Method | Path | Notes |
-|--------|------|-------|
-| GET | `/api/collection/` | User-scoped collection |
-| GET | `/api/collection/user/{user_id}` | View another user's collection (read-only, auth required) |
-| POST | `/api/collection/` | Add to collection |
-| POST | `/api/collection/bulk-add` | Bulk-add selected cards; commits each item independently and reports added/updated/failed counts |
-| POST | `/api/collection/import-csv` | Strict CSV collection import with all-or-nothing validation |
-| PUT | `/api/collection/{item_id}` | Update collection item |
-| DELETE | `/api/collection/{item_id}` | Soft-remove collection item with reason and history |
-| GET | `/api/collection/stats/summary` | Collection summary |
-| GET | `/api/inventory/locations` | List reusable storage locations |
-| POST | `/api/inventory/locations` | Create storage location |
-| PUT | `/api/inventory/locations/{location_id}` | Update/default/deactivate storage location |
-| GET | `/api/inventory/history` | Local inventory change history |
-| POST | `/api/inventory/import-xlsx` | Review or confirm a stable-ID Excel workbook import |
-| GET | `/api/sets/` | List sets |
-| GET | `/api/sets/new` | Newly detected sets |
-| POST | `/api/sets/mark-seen` | Mark new-set badges seen |
-| GET | `/api/sets/{set_id}` | Set detail |
-| GET | `/api/sets/{set_id}/checklist` | Set checklist |
-| GET | `/api/wishlist/` | Wishlist |
-| POST | `/api/wishlist/` | Add wishlist item |
-| PUT | `/api/wishlist/{item_id}` | Update wishlist quantity and price alerts |
-| DELETE | `/api/wishlist/{item_id}` | Remove wishlist item |
-| GET | `/api/binders/` | Binders |
-| POST | `/api/binders/` | Create binder |
-| PUT | `/api/binders/{binder_id}` | Update binder |
-| DELETE | `/api/binders/{binder_id}` | Delete binder |
-| GET | `/api/binders/{binder_id}/cards` | Binder cards |
-| GET | `/api/binders/{binder_id}/optimize-prints` | Equivalent-print optimization preview |
-| POST | `/api/binders/{binder_id}/optimize-prints` | Apply equivalent-print optimization |
-| POST | `/api/binders/{binder_id}/cards` | Add card to binder |
-| POST | `/api/binders/{binder_id}/collection-items` | Add owned collection item to binder |
-| PUT | `/api/binders/{binder_id}/entries/{binder_card_id}` | Update binder entry quantity |
-| GET | `/api/binders/{binder_id}/entries/{binder_card_id}/equivalent-prints` | List equivalent prints for an entry |
-| PUT | `/api/binders/{binder_id}/entries/{binder_card_id}/card` | Switch an entry to an equivalent print |
-| POST | `/api/binders/{binder_id}/entries/{binder_card_id}/wishlist` | Move binder entry to wishlist |
-| POST | `/api/binders/{binder_id}/wishlist` | Add wishlist card to binder |
-| GET | `/api/binders/{binder_id}/export-csv` | Binder CSV export |
-| POST | `/api/binders/{binder_id}/import-csv` | Binder CSV import |
-| DELETE | `/api/binders/{binder_id}/entries/{binder_card_id}` | Remove binder entry |
-| DELETE | `/api/binders/{binder_id}/cards/{card_id}` | Remove card from binder |
+| Method | Path                                                                  | Notes                                                                                            |
+|--------|-----------------------------------------------------------------------|--------------------------------------------------------------------------------------------------|
+| GET    | `/api/collection/`                                                    | User-scoped collection                                                                           |
+| GET    | `/api/collection/user/{user_id}`                                      | View another user's collection (read-only, auth required)                                        |
+| POST   | `/api/collection/`                                                    | Add to collection                                                                                |
+| POST   | `/api/collection/bulk-add`                                            | Bulk-add selected cards; commits each item independently and reports added/updated/failed counts |
+| POST   | `/api/collection/import-csv`                                          | Strict CSV collection import with all-or-nothing validation                                      |
+| PUT    | `/api/collection/{item_id}`                                           | Update collection item                                                                           |
+| DELETE | `/api/collection/{item_id}`                                           | Soft-remove collection item with reason and history                                              |
+| GET    | `/api/collection/stats/summary`                                       | Collection summary                                                                               |
+| GET    | `/api/inventory/locations`                                            | List reusable storage locations                                                                  |
+| POST   | `/api/inventory/locations`                                            | Create storage location                                                                          |
+| PUT    | `/api/inventory/locations/{location_id}`                              | Update/default/deactivate storage location                                                       |
+| GET    | `/api/inventory/history`                                              | Local inventory change history                                                                   |
+| POST   | `/api/inventory/import-xlsx`                                          | Review or confirm a stable-ID Excel workbook import                                              |
+| GET    | `/api/sets/`                                                          | List sets                                                                                        |
+| GET    | `/api/sets/new`                                                       | Newly detected sets                                                                              |
+| POST   | `/api/sets/mark-seen`                                                 | Mark new-set badges seen                                                                         |
+| GET    | `/api/sets/{set_id}`                                                  | Set detail                                                                                       |
+| GET    | `/api/sets/{set_id}/checklist`                                        | Set checklist                                                                                    |
+| GET    | `/api/wishlist/`                                                      | Wishlist                                                                                         |
+| POST   | `/api/wishlist/`                                                      | Add wishlist item                                                                                |
+| PUT    | `/api/wishlist/{item_id}`                                             | Update wishlist quantity and price alerts                                                        |
+| DELETE | `/api/wishlist/{item_id}`                                             | Remove wishlist item                                                                             |
+| GET    | `/api/binders/`                                                       | Binders                                                                                          |
+| POST   | `/api/binders/`                                                       | Create binder                                                                                    |
+| PUT    | `/api/binders/{binder_id}`                                            | Update binder                                                                                    |
+| DELETE | `/api/binders/{binder_id}`                                            | Delete binder                                                                                    |
+| GET    | `/api/binders/{binder_id}/cards`                                      | Binder cards                                                                                     |
+| GET    | `/api/binders/{binder_id}/optimize-prints`                            | Equivalent-print optimization preview                                                            |
+| POST   | `/api/binders/{binder_id}/optimize-prints`                            | Apply equivalent-print optimization                                                              |
+| POST   | `/api/binders/{binder_id}/cards`                                      | Add card to binder                                                                               |
+| POST   | `/api/binders/{binder_id}/collection-items`                           | Add owned collection item to binder                                                              |
+| PUT    | `/api/binders/{binder_id}/entries/{binder_card_id}`                   | Update binder entry quantity                                                                     |
+| GET    | `/api/binders/{binder_id}/entries/{binder_card_id}/equivalent-prints` | List equivalent prints for an entry                                                              |
+| PUT    | `/api/binders/{binder_id}/entries/{binder_card_id}/card`              | Switch an entry to an equivalent print                                                           |
+| POST   | `/api/binders/{binder_id}/entries/{binder_card_id}/wishlist`          | Move binder entry to wishlist                                                                    |
+| POST   | `/api/binders/{binder_id}/wishlist`                                   | Add wishlist card to binder                                                                      |
+| GET    | `/api/binders/{binder_id}/export-csv`                                 | Binder CSV export                                                                                |
+| POST   | `/api/binders/{binder_id}/import-csv`                                 | Binder CSV import                                                                                |
+| DELETE | `/api/binders/{binder_id}/entries/{binder_card_id}`                   | Remove binder entry                                                                              |
+| DELETE | `/api/binders/{binder_id}/cards/{card_id}`                            | Remove card from binder                                                                          |
 
 ### Dashboard, Analytics, Social, Community
 
-| Method | Path | Notes |
-|--------|------|-------|
-| GET | `/api/dashboard/` | Dashboard summary |
-| GET | `/api/analytics/duplicates` | Duplicate cards |
-| GET | `/api/analytics/top-movers` | Price movers |
-| GET | `/api/analytics/rarity-stats` | Rarity distribution |
-| GET | `/api/analytics/investment-tracker` | Portfolio history |
-| GET | `/api/analytics/new-sets` | Analytics new sets |
-| GET | `/api/social/leaderboard` | Multi-user leaderboard |
-| GET | `/api/social/compare/{user_id}` | Multi-user comparison |
-| GET | `/api/social/achievements/{user_id}` | Achievement progress |
-| GET | `/api/github/contributors` | Public GitHub contributors feed |
-| GET | `/api/github/supporters` | Supporters from `SUPPORTERS.csv` |
-| GET | `/api/github/rescue-donations` | Rescue donation total from `RESCUE_DONATIONS.csv` |
+| Method | Path                                 | Notes                                             |
+|--------|--------------------------------------|---------------------------------------------------|
+| GET    | `/api/dashboard/`                    | Dashboard summary                                 |
+| GET    | `/api/analytics/duplicates`          | Duplicate cards                                   |
+| GET    | `/api/analytics/top-movers`          | Price movers                                      |
+| GET    | `/api/analytics/rarity-stats`        | Rarity distribution                               |
+| GET    | `/api/analytics/investment-tracker`  | Portfolio history                                 |
+| GET    | `/api/analytics/new-sets`            | Analytics new sets                                |
+| GET    | `/api/social/leaderboard`            | Multi-user leaderboard                            |
+| GET    | `/api/social/compare/{user_id}`      | Multi-user comparison                             |
+| GET    | `/api/social/achievements/{user_id}` | Achievement progress                              |
+| GET    | `/api/github/contributors`           | Public GitHub contributors feed                   |
+| GET    | `/api/github/supporters`             | Supporters from `SUPPORTERS.csv`                  |
+| GET    | `/api/github/rescue-donations`       | Rescue donation total from `RESCUE_DONATIONS.csv` |
 
 ### Products, Export, Backup, Sync, Settings
 
-| Method | Path | Notes |
-|--------|------|-------|
-| GET | `/api/products/types` | Product type suggestions |
-| GET | `/api/products/` | Product list |
-| POST | `/api/products/` | Create product |
-| PUT | `/api/products/{product_id}` | Update product |
-| DELETE | `/api/products/{product_id}` | Soft-remove sealed product with reason and history |
-| GET | `/api/products/summary` | Product summary |
-| GET | `/api/products/{product_id}` | Product detail |
-| POST | `/api/products/{product_id}/cards` | Link collection cards to product |
-| DELETE | `/api/products/{product_id}/cards/{product_card_id}` | Unlink product card |
-| POST | `/api/products/{product_id}/cards/{product_card_id}/sell` | Record product-card sale |
-| POST | `/api/products/{product_id}/ledger` | Add product ledger entry |
-| GET | `/api/export/csv` | CSV export |
-| GET | `/api/export/pdf` | PDF export |
-| GET | `/api/export/xlsx` | Five-sheet portable collection ledger |
-| GET | `/api/backup/download` | Admin-only SQL backup |
-| POST | `/api/backup/restore` | Admin-only SQL restore |
-| POST | `/api/backup/clear-image-cache` | Admin-only image cache clear |
-| POST | `/api/sync/` | Admin-only full sync |
-| POST | `/api/sync/prices` | Admin-only small price sync |
-| POST | `/api/sync/prices/all` | Admin-only forced price sync for all tracked cards |
-| POST | `/api/sync/reschedule-full` | Reschedule full sync |
-| POST | `/api/sync/reschedule-prices` | Reschedule price sync |
-| GET | `/api/sync/status` | Sync status and history |
-| GET | `/api/images/card/{card_id}/{size}` | Card image proxy/cache |
-| GET | `/api/images/set/{set_id}/{image_type}` | Set logo/symbol proxy/cache |
-| GET | `/api/settings/` | Effective settings for current user |
-| GET | `/api/settings/tcgdex-languages` | Supported TCGdex language metadata |
-| PUT | `/api/settings/` | Update settings |
-| GET | `/api/settings/debug-log` | Admin-only debug log download |
-| GET | `/api/settings/telegram_status` | Whether Telegram is configured for current user |
-| GET | `/api/settings/exchange-rate` | Exchange-rate lookup for display currency |
-| GET | `/api/settings/{key}` | Get one setting |
-| POST | `/api/settings/{key}` | Set one setting |
+| Method | Path                                                      | Notes                                              |
+|--------|-----------------------------------------------------------|----------------------------------------------------|
+| GET    | `/api/products/types`                                     | Product type suggestions                           |
+| GET    | `/api/products/`                                          | Product list                                       |
+| POST   | `/api/products/`                                          | Create product                                     |
+| PUT    | `/api/products/{product_id}`                              | Update product                                     |
+| DELETE | `/api/products/{product_id}`                              | Soft-remove sealed product with reason and history |
+| GET    | `/api/products/summary`                                   | Product summary                                    |
+| GET    | `/api/products/{product_id}`                              | Product detail                                     |
+| POST   | `/api/products/{product_id}/cards`                        | Link collection cards to product                   |
+| DELETE | `/api/products/{product_id}/cards/{product_card_id}`      | Unlink product card                                |
+| POST   | `/api/products/{product_id}/cards/{product_card_id}/sell` | Record product-card sale                           |
+| POST   | `/api/products/{product_id}/ledger`                       | Add product ledger entry                           |
+| GET    | `/api/export/csv`                                         | CSV export                                         |
+| GET    | `/api/export/pdf`                                         | PDF export                                         |
+| GET    | `/api/export/xlsx`                                        | Five-sheet portable collection ledger              |
+| GET    | `/api/backup/download`                                    | Admin-only SQL backup                              |
+| POST   | `/api/backup/restore`                                     | Admin-only SQL restore                             |
+| POST   | `/api/backup/clear-image-cache`                           | Admin-only image cache clear                       |
+| POST   | `/api/sync/`                                              | Admin-only full sync                               |
+| POST   | `/api/sync/prices`                                        | Admin-only small price sync                        |
+| POST   | `/api/sync/prices/all`                                    | Admin-only forced price sync for all tracked cards |
+| POST   | `/api/sync/reschedule-full`                               | Reschedule full sync                               |
+| POST   | `/api/sync/reschedule-prices`                             | Reschedule price sync                              |
+| GET    | `/api/sync/status`                                        | Sync status and history                            |
+| GET    | `/api/images/card/{card_id}/{size}`                       | Card image proxy/cache                             |
+| GET    | `/api/images/set/{set_id}/{image_type}`                   | Set logo/symbol proxy/cache                        |
+| GET    | `/api/settings/`                                          | Effective settings for current user                |
+| GET    | `/api/settings/tcgdex-languages`                          | Supported TCGdex language metadata                 |
+| PUT    | `/api/settings/`                                          | Update settings                                    |
+| GET    | `/api/settings/debug-log`                                 | Admin-only debug log download                      |
+| GET    | `/api/settings/telegram_status`                           | Whether Telegram is configured for current user    |
+| GET    | `/api/settings/exchange-rate`                             | Exchange-rate lookup for display currency          |
+| GET    | `/api/settings/{key}`                                     | Get one setting                                    |
+| POST   | `/api/settings/{key}`                                     | Set one setting                                    |
 
 ## Models
 
@@ -148,15 +148,16 @@ FastAPI app entry point: `backend/main.py`.
 - `set_id` stores the original TCGdex set id, not the composite set row id
 - `rarity` is read-only API data
 - Variant availability is represented by boolean flags:
-  - `variants_normal`
-  - `variants_reverse`
-  - `variants_holo`
-  - `variants_first_edition`
+    - `variants_normal`
+    - `variants_reverse`
+    - `variants_holo`
+    - `variants_first_edition`
 
 ### `CollectionItem`
 
 - Stores user-owned copies of cards
-- Active fields include exact card printing, quantity, condition, variant, cost basis, acquisition source, protection, storage location, grading details, notes, and lifecycle status
+- Active fields include exact card printing, quantity, condition, variant, cost basis, acquisition source, protection,
+  storage location, grading details, notes, and lifecycle status
 - Variant values are now the physical print variants only: `Normal`, `Holo`, `Reverse Holo`, `First Edition`
 - Graded slabs retain grading company, grade, and certification number
 - Existing rows are grouped by exact physical state and quantity is incremented for duplicates
@@ -197,34 +198,39 @@ FastAPI app entry point: `backend/main.py`.
 Current settings are split in `backend/api/settings.py`:
 
 - `PER_USER_KEYS`
-  - `language`
-  - `currency`
-  - `price_primary`
-  - `price_display`
-  - `telegram_bot_token`
-  - `telegram_chat_id`
-  - `telegram_enabled`
-  - `price_alerts_enabled`
-  - `price_alert_threshold`
-  - `gemini_api_key`
-  - `trainer_name`
+    - `language`
+    - `currency`
+    - `price_primary`
+    - `price_display`
+    - `telegram_bot_token`
+    - `telegram_chat_id`
+    - `telegram_enabled`
+    - `price_alerts_enabled`
+    - `price_alert_threshold`
+    - `gemini_api_key`
+    - `trainer_name`
 - `ADMIN_ONLY_KEYS`
-  - `full_sync_interval_days`
-  - `price_sync_interval_minutes`
-  - `multi_user_mode`
-  - `tcgdex_sync_languages`
-  - `debug_mode`
-  - `cross_language_price_fallback`
-  - `cross_language_image_fallback`
+    - `full_sync_interval_days`
+    - `price_sync_interval_minutes`
+    - `multi_user_mode`
+    - `tcgdex_sync_languages`
+    - `debug_mode`
+    - `cross_language_price_fallback`
+    - `cross_language_image_fallback`
 
 Important behavior:
 
 - Each user only reads and writes their own `UserSetting` rows
 - Admin-only settings are stored globally in `settings`
 - Recurring automatic syncs include a full sync cadence and a separate small price sync cadence
-- `tcgdex_sync_languages` is seeded from `TCGDEX_SYNC_LANGUAGES` only when the row does not exist yet; afterward the DB value is authoritative. Empty or invalid env values safely fall back to `en,de`. The env value `all` expands to every supported TCGdex language during first bootstrap.
-- Supported TCGdex sync language codes are centralized in `services/tcgdex_languages.py`. Optional extra languages are `fr`, `es`, `es-mx`, `it`, `pt`, `pt-br`, `pt-pt`, `nl`, `pl`, `ru`, `ja`, `ko`, `zh-tw`, `id`, `th`, and `zh-cn` in addition to the default `en,de`.
-- English is the preferred cross-language fallback source for missing data, images, and prices by exact TCGdex ID. The backend does not guess English replacements by card name for regional-only cards.
+- `tcgdex_sync_languages` is seeded from `TCGDEX_SYNC_LANGUAGES` only when the row does not exist yet; afterward the DB
+  value is authoritative. Empty or invalid env values safely fall back to `en,de`. The env value `all` expands to every
+  supported TCGdex language during first bootstrap.
+- Supported TCGdex sync language codes are centralized in `services/tcgdex_languages.py`. Optional extra languages are
+  `fr`, `es`, `es-mx`, `it`, `pt`, `pt-br`, `pt-pt`, `nl`, `pl`, `ru`, `ja`, `ko`, `zh-tw`, `id`, `th`, and `zh-cn` in
+  addition to the default `en,de`.
+- English is the preferred cross-language fallback source for missing data, images, and prices by exact TCGdex ID. The
+  backend does not guess English replacements by card name for regional-only cards.
 - Admin users can receive initial fallback values from env vars for Telegram and Gemini
 - `recognize.py` intentionally reads Gemini only from the current user's `UserSetting`; there is no cross-user fallback
 
@@ -258,7 +264,8 @@ Current table mapping:
 - `collection`: `collection`, `wishlist`, `binders`, `binder_cards`, `storage_locations`, `inventory_events`
 - `users`: `users`, `user_settings`, `settings`
 - `cards`: `cards`, `sets`, `price_history`, `custom_card_matches`
-- `products`: `product_purchases`, `product_cards`, `product_ledger_entries`, `portfolio_snapshots`, `storage_locations`, `inventory_events`
+- `products`: `product_purchases`, `product_cards`, `product_ledger_entries`, `portfolio_snapshots`,
+  `storage_locations`, `inventory_events`
 - `system`: `sync_log`
 - `images`: `image_cache`
 
@@ -266,7 +273,8 @@ If `include=full`, image cache is excluded unless `images` is also explicitly in
 
 ### Automatic Pre-upgrade Backup
 
-The backend image installs PostgreSQL 18 client tools so `pg_dump` can back up the default PostgreSQL 18 service and newer external PostgreSQL 18 servers. PostgreSQL requires `pg_dump` to be at least as new as the server major version.
+The backend image installs PostgreSQL 18 client tools so `pg_dump` can back up the default PostgreSQL 18 service and
+newer external PostgreSQL 18 servers. PostgreSQL requires `pg_dump` to be at least as new as the server major version.
 
 `backend/services/pre_upgrade_backup.py` runs before `init_db()` startup migrations.
 
@@ -279,7 +287,8 @@ Behavior:
 - Uses filenames like `pre_upgrade_1.17.0_to_1.18.0_20260526_010500.sql`.
 - Records `last_successful_app_version` only after startup initialization succeeds.
 - Retains the newest `PRE_UPGRADE_BACKUP_KEEP` automatic backups, default `10`, minimum `1`.
-- Writes dumps to a temporary filename first, then atomically renames after a successful non-empty `pg_dump` so partial files are not treated as valid backups.
+- Writes dumps to a temporary filename first, then atomically renames after a successful non-empty `pg_dump` so partial
+  files are not treated as valid backups.
 
 Environment controls:
 
@@ -293,7 +302,8 @@ Environment controls:
 
 1. Gemini extracts card metadata from the uploaded photo
 2. TCGdex candidate results are ranked by recognized card number
-3. If the number is not decisive and there are enough candidates, Gemini visually compares the top candidates and picks the best match
+3. If the number is not decisive and there are enough candidates, Gemini visually compares the top candidates and picks
+   the best match
 
 Gemini error handling:
 
@@ -311,22 +321,26 @@ Additional matching behavior:
 
 ## Bulk Collection Add
 
-`POST /api/collection/bulk-add` accepts `BulkCollectionAddRequest` with multiple `CollectionItemCreate` items and returns `BulkCollectionAddResponse`:
+`POST /api/collection/bulk-add` accepts `BulkCollectionAddRequest` with multiple `CollectionItemCreate` items and
+returns `BulkCollectionAddResponse`:
 
 - `added`: new collection rows created
 - `updated`: existing matching rows whose quantity was incremented
 - `failed`: items that could not be added
 - `errors`: per-card error details
 
-Each item is committed independently, so one invalid or unavailable card does not roll back the rest of the batch. Existing rows are matched by card, variant, language, and current user.
+Each item is committed independently, so one invalid or unavailable card does not roll back the rest of the batch.
+Existing rows are matched by card, variant, language, and current user.
 
 ## Notifications
 
-`backend/services/telegram.py` now accepts `user_id` and reads Telegram credentials from that user's `UserSetting` rows first.
+`backend/services/telegram.py` now accepts `user_id` and reads Telegram credentials from that user's `UserSetting` rows
+first.
 
 ## Migrations
 
 - Migrations are raw SQL statements in `backend/database.py`
 - They are idempotent and run on startup
 - Automatic pre-upgrade backups run before `init_db()` migrations on existing installs when the app version changes
-- Legacy migration comments still mention older columns like `grade` or removed integrations, but the current runtime model and routers do not include eBay functionality
+- Legacy migration comments still mention older columns like `grade` or removed integrations, but the current runtime
+  model and routers do not include eBay functionality

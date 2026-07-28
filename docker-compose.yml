@@ -28,7 +28,7 @@ services:
         done
         exec docker-entrypoint.sh postgres
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U pokemon -d pokemon_tcg"]
+      test: [ "CMD-SHELL", "pg_isready -U pokemon -d pokemon_tcg" ]
       interval: 10s
       timeout: 5s
       retries: 5

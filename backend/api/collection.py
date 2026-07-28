@@ -135,7 +135,8 @@ def _annotate_collection_items(db: Session, current_user: User, items: list[Coll
 
 
 def _annotate_collection_item(db: Session, current_user: User, item: CollectionItem) -> CollectionItem:
-    return _annotate_collection_items(db, current_user, [item])[0]
+    annotated = _annotate_collection_items(db, current_user, [item])
+    return annotated[0] if annotated else item
 
 
 def _active_product_link_quantity(db: Session, current_user: User, collection_item_id: int) -> int:

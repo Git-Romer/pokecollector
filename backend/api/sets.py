@@ -336,5 +336,5 @@ def get_set_checklist(
         "cards": checklist,
         "owned_count": owned_count,
         "total_count": total_count,
-        "progress": round((owned_count / total_count * 100) if total_count > 0 else 0, 1),
+        "progress": round((owned_count / total_count * 100), 1) if total_count > 0 else 0,
     }

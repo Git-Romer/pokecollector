@@ -4,13 +4,13 @@ This document reflects the current code layout at the repository root.
 
 ## Stack
 
-| Layer | Technology | Port |
-|-------|-----------|------|
-| Frontend | React 18 + Vite + Tailwind CSS | 3000 |
-| Backend | FastAPI | 8000 |
-| Database | PostgreSQL 18 | 5432 |
-| External APIs | TCGdex, Gemini, Frankfurter, GitHub | external |
-| Containerization | Docker + docker compose | - |
+| Layer            | Technology                          | Port     |
+|------------------|-------------------------------------|----------|
+| Frontend         | React 18 + Vite + Tailwind CSS      | 3000     |
+| Backend          | FastAPI                             | 8000     |
+| Database         | PostgreSQL 18                       | 5432     |
+| External APIs    | TCGdex, Gemini, Frankfurter, GitHub | external |
+| Containerization | Docker + docker compose             | -        |
 
 ## Directory Structure
 
@@ -95,23 +95,20 @@ Important modules added since the older docs:
 
 ## John John's PC Product Boundary
 
-The deployed local app is branded **John John's PC** and keeps the user's
-collection as the source of truth. The primary navigation is fixed to
-Collection, Card Search, Sets, Analytics, and Settings. Legacy surfaces remain
-reachable through existing routes, but the root route is Collection Overview and
-does not use portfolio or P&L metrics as hero content.
+The deployed local app is branded **John John's PC** and keeps the user's collection as the source of truth. The primary
+navigation is fixed to Collection, Card Search, Sets, Analytics, and Settings. Legacy surfaces remain reachable through
+existing routes, but the root route is Collection Overview and does not use portfolio or P&L metrics as hero content.
 
-John John is represented as a faceless local presence. Notes and observations
-are derived from in-app collection data and do not call external AI services by
-default. Gemini remains an explicit scanner configuration option in Settings.
+John John is represented as a faceless local presence. Notes and observations are derived from in-app collection data
+and do not call external AI services by default. Gemini remains an explicit scanner configuration option in Settings.
 
 ## Local Backup Boundary
 
 `GET /api/export/xlsx` is the portable workbook export. It contains the
 `Owned Cards`, `Bulk`, `Sealed Products`, `Storage Locations`, and
-`Import Errors` sheets. `POST /api/inventory/import-xlsx` performs a read-only
-review by default and only writes after an explicit `commit=true` confirmation.
-Stable record IDs make export/edit/reimport round trips idempotent. The scheduler also registers
+`Import Errors` sheets. `POST /api/inventory/import-xlsx` performs a read-only review by default and only writes after
+an explicit `commit=true` confirmation. Stable record IDs make export/edit/reimport round trips idempotent. The
+scheduler also registers
 `weekly_excel_backup_job`, which writes local Excel backups under
 `/app/backups/excel` and keeps the newest eight files per active user.
 
@@ -138,11 +135,13 @@ Key ORM models in `backend/models.py`:
 
 Notable current model rules:
 
-- `Set.id` and `Card.id` are composite ids with TCGdex language suffixes, including multi-part codes such as `zh-tw` and `pt-br`
+- `Set.id` and `Card.id` are composite ids with TCGdex language suffixes, including multi-part codes such as `zh-tw` and
+  `pt-br`
 - `Card.rarity` comes from TCGdex and is treated as read-only metadata
 - Card data, image, and price fallback source languages are tagged when English exact-ID fallback data is used
 - Collection variants are limited to physical print variants
-- Collection and sealed-product records use stable IDs, required reusable storage locations, lifecycle status, and soft-removal history
+- Collection and sealed-product records use stable IDs, required reusable storage locations, lifecycle status, and
+  soft-removal history
 - `InventoryEvent` records local add, update, move, import, and removal activity
 - Wishlist items store requested quantity from `1` to `99`
 - `User.must_change_password` drives the forced password change flow
@@ -158,26 +157,29 @@ Settings are split between two stores:
 The split is defined in `backend/api/settings.py`:
 
 - `PER_USER_KEYS`
-  - language
-  - currency
-  - price display preferences
-  - Telegram keys and alert preferences
-  - Gemini key
-  - trainer name
+    - language
+    - currency
+    - price display preferences
+    - Telegram keys and alert preferences
+    - Gemini key
+    - trainer name
 - `ADMIN_ONLY_KEYS`
-  - full sync interval
-  - price sync interval
-  - multi-user mode
-  - TCGdex sync languages
+    - full sync interval
+    - price sync interval
+    - multi-user mode
+    - TCGdex sync languages
 
 Effectively:
 
 - normal users can only change their own per-user settings
 - admins can also change global operational settings
 - per-user settings isolation is enforced in the API layer
-- `tcgdex_sync_languages` controls which TCGdex set/card languages full sync fetches. It defaults to `en,de`; extra languages are optional because they increase sync time, API calls, and database size.
-- Invalid or empty `TCGDEX_SYNC_LANGUAGES` env values fall back safely to `en,de` during first bootstrap; the env value `all` expands to every supported TCGdex language
-- App UI language selection is separate from TCGdex sync-language selection. The UI selector includes all supported TCGdex language codes plus Swedish.
+- `tcgdex_sync_languages` controls which TCGdex set/card languages full sync fetches. It defaults to `en,de`; extra
+  languages are optional because they increase sync time, API calls, and database size.
+- Invalid or empty `TCGDEX_SYNC_LANGUAGES` env values fall back safely to `en,de` during first bootstrap; the env value
+  `all` expands to every supported TCGdex language
+- App UI language selection is separate from TCGdex sync-language selection. The UI selector includes all supported
+  TCGdex language codes plus Swedish.
 
 ## Authentication Architecture
 
@@ -203,14 +205,19 @@ Current flow:
 
 1. User uploads or captures a card image
 2. Gemini extracts card name, English name, printed number, set hint, type, HP, and language
-3. Search terms are broadened by stripping suffixes such as `EX`, `GX`, `V`, `VMAX`, `VSTAR`, `TAG TEAM`, `BREAK`, and `LV.X`
+3. Search terms are broadened by stripping suffixes such as `EX`, `GX`, `V`, `VMAX`, `VSTAR`, `TAG TEAM`, `BREAK`, and
+   `LV.X`
 4. TCGdex search results are collected in the detected language, with English fallback when needed
 5. Results are ranked by printed card number
-6. If number ranking is not decisive and there are enough candidates, Gemini visually compares the top candidates and picks the best match
+6. If number ranking is not decisive and there are enough candidates, Gemini visually compares the top candidates and
+   picks the best match
 
-Transient Gemini `502` / `503` / `504` capacity errors are retried with backoff. Gemini `429` responses are surfaced as rate-limit errors, invalid API keys get a dedicated message, and remaining temporary Gemini outages return a clearer temporary-unavailable response instead of a generic backend `500`.
+Transient Gemini `502` / `503` / `504` capacity errors are retried with backoff. Gemini `429` responses are surfaced as
+rate-limit errors, invalid API keys get a dedicated message, and remaining temporary Gemini outages return a clearer
+temporary-unavailable response instead of a generic backend `500`.
 
-The frontend then lets the user choose quantity, condition, variant, language, and purchase price before adding to the collection. Search results can also be selected in bulk and added with default values in one request.
+The frontend then lets the user choose quantity, condition, variant, language, and purchase price before adding to the
+collection. Search results can also be selected in bulk and added with default values in one request.
 
 ## Frontend State
 
@@ -239,7 +246,8 @@ Current frontend state layers:
 - Variant availability flags come from TCGdex
 - Rarity is read from TCGdex and shown read-only
 - Supported sync languages are centralized in `backend/services/tcgdex_languages.py`
-- English is the preferred fallback for missing data, images, and prices only when the same exact TCGdex card or set ID exists in English
+- English is the preferred fallback for missing data, images, and prices only when the same exact TCGdex card or set ID
+  exists in English
 - Regional-only cards are not guessed by translated name
 
 ### Gemini
@@ -266,10 +274,12 @@ Current frontend state layers:
 - Backup and restore are admin-only
 - Settings keys are separated into admin-only and per-user scopes
 - Frontend logout clears local storage and forces a full reload to avoid leaking cached user data across sessions
-- User deletion explicitly removes owned rows from collection, wishlist, binders, products, portfolio snapshots, and user settings before deleting the user
+- User deletion explicitly removes owned rows from collection, wishlist, binders, products, portfolio snapshots, and
+  user settings before deleting the user
 
 ## Migration Notes
 
 Schema changes are handled by idempotent SQL in `backend/database.py`, not Alembic.
 
-Some migration comments still mention historical features, but the current runtime architecture does not include eBay integration and does not expose grading in the active UI or ORM model.
+Some migration comments still mention historical features, but the current runtime architecture does not include eBay
+integration and does not expose grading in the active UI or ORM model.

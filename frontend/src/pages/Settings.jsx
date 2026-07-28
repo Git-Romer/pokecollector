@@ -1,1479 +1,1656 @@
 import SplitText from '../components/reactbits/SplitText'
-import { useState, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Crown, RefreshCw, Download, Upload, Plus, Pencil, Trash2, User, UserCheck, UserX, Zap } from 'lucide-react'
-import {
-  getSyncStatus, triggerSync, triggerAllPriceSync, rescheduleFullSync, reschedulePriceSync,
-  downloadBackup, restoreBackup, exportCSV, exportXLSX,
-  getSetting, setSetting, getTelegramStatus, saveSettings, setAuthMode,
-  getUsers, createUser, updateUser, deleteUser, changePassword, changeAvatar, changeUsername,
-  getContributors, getSupporters, getRescueDonations, getCustomMatches, downloadDebugLog,
+import {useEffect, useRef, useState} from 'react'
+import {useNavigate} from 'react-router-dom'
+import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
+import {Crown, Download, Pencil, Plus, RefreshCw, Trash2, Upload, User, UserCheck, UserX, Zap} from 'lucide-react'
+import api, {
+    changeAvatar,
+    changePassword,
+    changeUsername,
+    createUser,
+    deleteUser,
+    downloadBackup,
+    downloadDebugLog,
+    exportCSV,
+    exportXLSX,
+    getContributors,
+    getCustomMatches,
+    getRescueDonations,
+    getSetting,
+    getSupporters,
+    getSyncStatus,
+    getTelegramStatus,
+    getUsers,
+    rescheduleFullSync,
+    reschedulePriceSync,
+    restoreBackup,
+    setAuthMode,
+    setSetting,
+    triggerAllPriceSync,
+    triggerSync,
+    updateUser,
 } from '../api/client'
-import api from '../api/client'
-import { useAuth } from '../contexts/AuthContext'
-import { useTheme } from '../hooks/useTheme'
-import { useSettings } from '../contexts/SettingsContext'
+import {useAuth} from '../contexts/AuthContext'
+import {useTheme} from '../hooks/useTheme'
+import {useSettings} from '../contexts/SettingsContext'
 import Modal from '../components/ui/Modal'
 import AvatarPicker from '../components/AvatarPicker'
 import StorageLocationsPanel from '../components/StorageLocationsPanel'
-import { formatDistanceToNow } from 'date-fns'
+import {formatDistanceToNow} from 'date-fns'
 import toast from 'react-hot-toast'
-import { TCGDEX_LANGUAGES, normalizeTcgdexLanguageCsv, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
-import { APP_LANGUAGES } from '../utils/appLanguages'
-import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
-import { PRIVACY_DATA_POINTS } from '../utils/privacyData'
+import {normalizeTcgdexLanguageCsv, TCGDEX_LANGUAGES, tcgdexLanguageLabel} from '../utils/tcgdexLanguages'
+import {APP_LANGUAGES} from '../utils/appLanguages'
+import {invalidateTcgdexFilterLanguages} from '../utils/queryInvalidation'
+import {PRIVACY_DATA_POINTS} from '../utils/privacyData'
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function SectionHeader({ title }) {
-  return (
-    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted px-1 mb-3">
-      {title}
-    </p>
-  )
-}
-
-function SettingsCard({ children }) {
-  return (
-    <div
-      className="rounded-2xl overflow-hidden"
-      style={{
-        background: 'rgba(255,255,255,0.04)',
-        border: '1px solid rgba(255,255,255,0.07)',
-      }}
-    >
-      {children}
-    </div>
-  )
-}
-
-function SettingsRow({ label, description, children, last }) {
-  return (
-    <div
-      className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 px-4 py-3.5"
-      style={!last ? { borderBottom: '1px solid rgba(255,255,255,0.05)' } : {}}
-    >
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-text-primary">{label}</p>
-        {description && (
-          <p className="text-xs text-text-muted mt-0.5" style={{overflowWrap:"anywhere"}}>{description}</p>
-        )}
-      </div>
-      <div className="flex-shrink-0 w-full sm:w-auto">{children}</div>
-    </div>
-  )
-}
-
-function PrivacyDataGrid({ t }) {
-  return (
-    <section className="space-y-1">
-      <SectionHeader title={t('settings.privacyDataTitle')} />
-      <SettingsCard>
-        <div className="px-4 py-4">
-          <h2 className="text-sm font-semibold text-text-primary">{t('settings.privacyDataTitle')}</h2>
-          <p className="mt-1 text-xs text-text-muted">{t('settings.privacyDataDesc')}</p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            {PRIVACY_DATA_POINTS.map((point) => (
-              <div key={point.title} className="rounded-xl border border-border bg-bg-primary/70 p-3">
-                <p className="text-xs font-semibold text-text-primary">{point.title}</p>
-                <p className="mt-1 text-xs text-text-muted">{point.body}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </SettingsCard>
-    </section>
-  )
-}
-
-function Toggle({ value, onChange }) {
-  return (
-    <button
-      onClick={() => onChange(!value)}
-      className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${
-        value ? 'bg-brand-red' : 'bg-bg-elevated border border-border'
-      }`}
-    >
-      <span
-        className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${
-          value ? 'translate-x-5' : 'translate-x-0'
-        }`}
-      />
-    </button>
-  )
-}
-
-function SelectControl({ value, options, onChange }) {
-  return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="select w-full max-w-full sm:w-auto text-xs font-semibold"
-    >
-      {options.map((opt) => (
-        <option key={opt.value} value={opt.value}>
-          {opt.label}
-        </option>
-      ))}
-    </select>
-  )
-}
-
-function TcgdexLanguageControl({ value, onChange, selectedLabel, fallbackNote }) {
-  const selected = new Set(normalizeTcgdexLanguageCsv(value).split(','))
-
-  const toggle = (lang) => {
-    const next = new Set(selected)
-    if (next.has(lang)) {
-      if (next.size === 1) return
-      next.delete(lang)
-    } else {
-      next.add(lang)
-    }
-    const normalized = TCGDEX_LANGUAGES
-      .map((language) => language.code)
-      .filter((code) => next.has(code))
-      .join(',')
-    onChange(normalized || 'en,de')
-  }
-
-  return (
-    <div className="space-y-2">
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-        {TCGDEX_LANGUAGES.map((language) => (
-          <button
-            key={language.code}
-            type="button"
-            onClick={() => toggle(language.code)}
-            className={`px-2 py-1.5 rounded-lg text-xs font-semibold text-left transition-colors border ${
-              selected.has(language.code)
-                ? 'bg-brand-red text-white border-brand-red'
-                : 'bg-bg-card text-text-muted border-border hover:text-text-primary'
-            }`}
-            title={language.name}
-          >
-            {tcgdexLanguageLabel(language.code)}
-          </button>
-        ))}
-      </div>
-      <p className="text-[11px] text-text-muted leading-relaxed">
-        {selected.size} {selectedLabel}. {fallbackNote}
-      </p>
-    </div>
-  )
-}
-
-function ContributorsSection({ t }) {
-  const { data: contributors = [], isLoading } = useQuery({
-    queryKey: ['contributors'],
-    queryFn: () => getContributors(),
-    staleTime: 60 * 60 * 1000,
-  })
-
-  if (isLoading) {
+function SectionHeader({title}) {
     return (
-      <SettingsCard>
-        <div className="p-4 flex justify-center">
-          <div className="skeleton h-8 w-48 rounded" />
-        </div>
-      </SettingsCard>
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted px-1 mb-3">
+            {title}
+        </p>
     )
-  }
+}
 
-  return (
-    <SettingsCard>
-      <div className="p-4">
-        <div className="flex flex-wrap gap-4 justify-center">
-          {contributors.map((c) => (
-            <a key={c.login} href={c.html_url} target="_blank" rel="noreferrer" className="flex flex-col items-center gap-1.5 group">
-              <img src={c.avatar_url} alt={c.login} className="w-12 h-12 rounded-full border-2 border-border group-hover:border-brand-red transition-colors" />
-              <span className="text-[10px] font-semibold text-text-secondary group-hover:text-text-primary transition-colors">{c.login}</span>
-              <span className="text-[9px] text-text-muted">
+function SettingsCard({children}) {
+    return (
+        <div
+            className="rounded-2xl overflow-hidden"
+            style={{
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.07)',
+            }}
+        >
+            {children}
+        </div>
+    )
+}
+
+function SettingsRow({label, description, children, last}) {
+    return (
+        <div
+            className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 px-4 py-3.5"
+            style={!last ? {borderBottom: '1px solid rgba(255,255,255,0.05)'} : {}}
+        >
+            <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-text-primary">{label}</p>
+                {description && (
+                    <p className="text-xs text-text-muted mt-0.5" style={{overflowWrap: "anywhere"}}>{description}</p>
+                )}
+            </div>
+            <div className="flex-shrink-0 w-full sm:w-auto">{children}</div>
+        </div>
+    )
+}
+
+function PrivacyDataGrid({t}) {
+    return (
+        <section className="space-y-1">
+            <SectionHeader title={t('settings.privacyDataTitle')}/>
+            <SettingsCard>
+                <div className="px-4 py-4">
+                    <h2 className="text-sm font-semibold text-text-primary">{t('settings.privacyDataTitle')}</h2>
+                    <p className="mt-1 text-xs text-text-muted">{t('settings.privacyDataDesc')}</p>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        {PRIVACY_DATA_POINTS.map((point) => (
+                            <div key={point.title} className="rounded-xl border border-border bg-bg-primary/70 p-3">
+                                <p className="text-xs font-semibold text-text-primary">{point.title}</p>
+                                <p className="mt-1 text-xs text-text-muted">{point.body}</p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </SettingsCard>
+        </section>
+    )
+}
+
+function Toggle({value, onChange}) {
+    return (
+        <button
+            onClick={() => onChange(!value)}
+            className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${
+                value ? 'bg-brand-red' : 'bg-bg-elevated border border-border'
+            }`}
+        >
+      <span
+          className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${
+              value ? 'translate-x-5' : 'translate-x-0'
+          }`}
+      />
+        </button>
+    )
+}
+
+function SelectControl({value, options, onChange}) {
+    return (
+        <select
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            className="select w-full max-w-full sm:w-auto text-xs font-semibold"
+        >
+            {options.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                </option>
+            ))}
+        </select>
+    )
+}
+
+function TcgdexLanguageControl({value, onChange, selectedLabel, fallbackNote}) {
+    const selected = new Set(normalizeTcgdexLanguageCsv(value).split(','))
+
+    const toggle = (lang) => {
+        const next = new Set(selected)
+        if (next.has(lang)) {
+            if (next.size === 1) return
+            next.delete(lang)
+        } else {
+            next.add(lang)
+        }
+        const normalized = TCGDEX_LANGUAGES
+            .map((language) => language.code)
+            .filter((code) => next.has(code))
+            .join(',')
+        onChange(normalized || 'en,de')
+    }
+
+    return (
+        <div className="space-y-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                {TCGDEX_LANGUAGES.map((language) => (
+                    <button
+                        key={language.code}
+                        type="button"
+                        onClick={() => toggle(language.code)}
+                        className={`px-2 py-1.5 rounded-lg text-xs font-semibold text-left transition-colors border ${
+                            selected.has(language.code)
+                                ? 'bg-brand-red text-white border-brand-red'
+                                : 'bg-bg-card text-text-muted border-border hover:text-text-primary'
+                        }`}
+                        title={language.name}
+                    >
+                        {tcgdexLanguageLabel(language.code)}
+                    </button>
+                ))}
+            </div>
+            <p className="text-[11px] text-text-muted leading-relaxed">
+                {selected.size} {selectedLabel}. {fallbackNote}
+            </p>
+        </div>
+    )
+}
+
+function ContributorsSection({t}) {
+    const {data: contributors = [], isLoading} = useQuery({
+        queryKey: ['contributors'],
+        queryFn: () => getContributors(),
+        staleTime: 60 * 60 * 1000,
+    })
+
+    if (isLoading) {
+        return (
+            <SettingsCard>
+                <div className="p-4 flex justify-center">
+                    <div className="skeleton h-8 w-48 rounded"/>
+                </div>
+            </SettingsCard>
+        )
+    }
+
+    return (
+        <SettingsCard>
+            <div className="p-4">
+                <div className="flex flex-wrap gap-4 justify-center">
+                    {contributors.map((c) => (
+                        <a key={c.login} href={c.html_url} target="_blank" rel="noreferrer"
+                           className="flex flex-col items-center gap-1.5 group">
+                            <img src={c.avatar_url} alt={c.login}
+                                 className="w-12 h-12 rounded-full border-2 border-border group-hover:border-brand-red transition-colors"/>
+                            <span
+                                className="text-[10px] font-semibold text-text-secondary group-hover:text-text-primary transition-colors">{c.login}</span>
+                            <span className="text-[9px] text-text-muted">
                 {c.manual ? (c.note || t('settings.manualContributor')) : `${c.contributions} ${t('settings.commits')}`}
               </span>
-            </a>
-          ))}
-        </div>
-      </div>
-    </SettingsCard>
-  )
+                        </a>
+                    ))}
+                </div>
+            </div>
+        </SettingsCard>
+    )
 }
 
 const SUPPORTER_CROWN_COLORS = {
-  gold: '#facc15',
-  silver: '#d1d5db',
-  bronze: '#fb923c',
+    gold: '#facc15',
+    silver: '#d1d5db',
+    bronze: '#fb923c',
 }
 
 const CURRENCY_SYMBOLS = {
-  EUR: '€',
-  USD: '$',
-  GBP: '£',
+    EUR: '€',
+    USD: '$',
+    GBP: '£',
 }
 
 function formatSupporterAmount(amount, currency = 'EUR') {
-  const numericAmount = Number(amount || 0)
-  const safeCurrency = currency || 'EUR'
-  const formattedAmount = Number.isFinite(numericAmount) ? numericAmount.toFixed(2) : '0.00'
-  const symbol = CURRENCY_SYMBOLS[safeCurrency]
-  if (symbol) return `${symbol}${formattedAmount}`
-  return `${formattedAmount} ${safeCurrency}`
+    const numericAmount = Number(amount || 0)
+    const safeCurrency = currency || 'EUR'
+    const formattedAmount = Number.isFinite(numericAmount) ? numericAmount.toFixed(2) : '0.00'
+    const symbol = CURRENCY_SYMBOLS[safeCurrency]
+    if (symbol) return `${symbol}${formattedAmount}`
+    return `${formattedAmount} ${safeCurrency}`
 }
 
-function SupporterCard({ supporter, t }) {
-  const content = (
-    <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-bg-elevated border border-border text-left transition-colors hover:border-brand-red/50">
-      {supporter.crown && (
-        <Crown
-          size={18}
-          fill="currentColor"
-          style={{ color: SUPPORTER_CROWN_COLORS[supporter.crown] || SUPPORTER_CROWN_COLORS.gold }}
-          aria-label={supporter.crown}
-          className="flex-shrink-0"
-        />
-      )}
-      <div className="min-w-0">
-        <p className="text-xs font-semibold text-text-primary truncate">{supporter.name}</p>
-        <p className="text-[11px] text-text-secondary">
-          {formatSupporterAmount(supporter.total_amount, supporter.currency)} · {supporter.donation_count || 0} {supporter.donation_count === 1 ? t('settings.supporterDonation') : t('settings.supporterDonations')}
-        </p>
-        {supporter.latest_supported_at && (
-          <p className="text-[10px] text-text-muted">{t('settings.latestSupport')}: {supporter.latest_supported_at}</p>
-        )}
-      </div>
-    </div>
-  )
-
-  if (supporter.url) {
-    return (
-      <a href={supporter.url} target="_blank" rel="noreferrer" className="block min-w-[180px] flex-1 max-w-xs">
-        {content}
-      </a>
+function SupporterCard({supporter, t}) {
+    const content = (
+        <div
+            className="flex items-center gap-3 px-3 py-2 rounded-xl bg-bg-elevated border border-border text-left transition-colors hover:border-brand-red/50">
+            {supporter.crown && (
+                <Crown
+                    size={18}
+                    fill="currentColor"
+                    style={{color: SUPPORTER_CROWN_COLORS[supporter.crown] || SUPPORTER_CROWN_COLORS.gold}}
+                    aria-label={supporter.crown}
+                    className="flex-shrink-0"
+                />
+            )}
+            <div className="min-w-0">
+                <p className="text-xs font-semibold text-text-primary truncate">{supporter.name}</p>
+                <p className="text-[11px] text-text-secondary">
+                    {formatSupporterAmount(supporter.total_amount, supporter.currency)} · {supporter.donation_count || 0} {supporter.donation_count === 1 ? t('settings.supporterDonation') : t('settings.supporterDonations')}
+                </p>
+                {supporter.latest_supported_at && (
+                    <p className="text-[10px] text-text-muted">{t('settings.latestSupport')}: {supporter.latest_supported_at}</p>
+                )}
+            </div>
+        </div>
     )
-  }
 
-  return <div className="min-w-[180px] flex-1 max-w-xs">{content}</div>
+    if (supporter.url) {
+        return (
+            <a href={supporter.url} target="_blank" rel="noreferrer" className="block min-w-[180px] flex-1 max-w-xs">
+                {content}
+            </a>
+        )
+    }
+
+    return <div className="min-w-[180px] flex-1 max-w-xs">{content}</div>
 }
 
-function RescueDonationTotal({ t }) {
-  const { data: rescueDonations, isLoading } = useQuery({
-    queryKey: ['rescue-donations'],
-    queryFn: () => getRescueDonations(),
-    staleTime: 60 * 60 * 1000,
-  })
+function RescueDonationTotal({t}) {
+    const {data: rescueDonations, isLoading} = useQuery({
+        queryKey: ['rescue-donations'],
+        queryFn: () => getRescueDonations(),
+        staleTime: 60 * 60 * 1000,
+    })
 
-  if (isLoading) {
-    return <div className="skeleton h-14 w-full max-w-xs mx-auto rounded-xl" />
-  }
+    if (isLoading) {
+        return <div className="skeleton h-14 w-full max-w-xs mx-auto rounded-xl"/>
+    }
 
-  return (
-    <div className="inline-flex flex-col items-center gap-1 px-4 py-2 rounded-xl bg-bg-elevated border border-border">
-      <span className="text-[10px] font-black uppercase tracking-[0.18em] text-text-muted">{t('settings.rescueDonationTotal')}</span>
-      <span className="text-lg font-black text-text-primary">{formatSupporterAmount(rescueDonations?.total_amount || 0, rescueDonations?.currency || 'EUR')}</span>
-      <span className="text-[10px] text-text-muted">{t('settings.rescueDonationBatchHint')}</span>
-    </div>
-  )
+    return (
+        <div
+            className="inline-flex flex-col items-center gap-1 px-4 py-2 rounded-xl bg-bg-elevated border border-border">
+            <span
+                className="text-[10px] font-black uppercase tracking-[0.18em] text-text-muted">{t('settings.rescueDonationTotal')}</span>
+            <span
+                className="text-lg font-black text-text-primary">{formatSupporterAmount(rescueDonations?.total_amount || 0, rescueDonations?.currency || 'EUR')}</span>
+            <span className="text-[10px] text-text-muted">{t('settings.rescueDonationBatchHint')}</span>
+        </div>
+    )
 }
 
-function SupportersSection({ t }) {
-  const { data: supporters = [], isLoading } = useQuery({
-    queryKey: ['supporters'],
-    queryFn: () => getSupporters(),
-    staleTime: 60 * 60 * 1000,
-  })
+function SupportersSection({t}) {
+    const {data: supporters = [], isLoading} = useQuery({
+        queryKey: ['supporters'],
+        queryFn: () => getSupporters(),
+        staleTime: 60 * 60 * 1000,
+    })
 
-  if (isLoading) {
+    if (isLoading) {
+        return (
+            <SettingsCard>
+                <div className="p-4 flex justify-center">
+                    <div className="skeleton h-8 w-48 rounded"/>
+                </div>
+            </SettingsCard>
+        )
+    }
+
+    if (supporters.length === 0) {
+        return (
+            <SettingsCard>
+                <div className="p-4 text-center">
+                    <span className="mag-issue">{T('SETTINGS.NOSUPPORTERSYET')}</span>
+                </div>
+            </SettingsCard>
+        )
+    }
+
     return (
-      <SettingsCard>
-        <div className="p-4 flex justify-center">
-          <div className="skeleton h-8 w-48 rounded" />
-        </div>
-      </SettingsCard>
+        <SettingsCard>
+            <div className="p-4">
+                <div className="flex flex-wrap gap-3 justify-center">
+                    {supporters.map((supporter, index) => (
+                        <SupporterCard key={`${supporter.name}-${supporter.url || index}`} supporter={supporter} t={t}/>
+                    ))}
+                </div>
+            </div>
+        </SettingsCard>
     )
-  }
-
-  if (supporters.length === 0) {
-    return (
-      <SettingsCard>
-        <div className="p-4 text-center">
-          <span className="mag-issue">{T('SETTINGS.NOSUPPORTERSYET')}</span>
-        </div>
-      </SettingsCard>
-    )
-  }
-
-  return (
-    <SettingsCard>
-      <div className="p-4">
-        <div className="flex flex-wrap gap-3 justify-center">
-          {supporters.map((supporter, index) => (
-            <SupporterCard key={`${supporter.name}-${supporter.url || index}`} supporter={supporter} t={t} />
-          ))}
-        </div>
-      </div>
-    </SettingsCard>
-  )
 }
 
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function Settings() {
-  const fileInputRef = useRef(null)
-  const [restoring, setRestoring] = useState(false)
-  const [showAvatarPicker, setShowAvatarPicker] = useState(false)
-  const [editingUsername, setEditingUsername] = useState(false)
-  const [usernameInput, setUsernameInput] = useState('')
-  const queryClient = useQueryClient()
-  const navigate = useNavigate()
-  const { user, updateCurrentUser, multiUser } = useAuth()
-  const { settings, updateSettings, t, pricePrimaryField, exchangeRate } = useSettings()
-  const { theme, setTheme, themes } = useTheme()
-  const [activeTab, setActiveTab] = useState('general')
+    const fileInputRef = useRef(null)
+    const [restoring, setRestoring] = useState(false)
+    const [showAvatarPicker, setShowAvatarPicker] = useState(false)
+    const [editingUsername, setEditingUsername] = useState(false)
+    const [usernameInput, setUsernameInput] = useState('')
+    const queryClient = useQueryClient()
+    const navigate = useNavigate()
+    const {user, updateCurrentUser, multiUser} = useAuth()
+    const {settings, updateSettings, t, pricePrimaryField, exchangeRate} = useSettings()
+    const {theme, setTheme, themes} = useTheme()
+    const [activeTab, setActiveTab] = useState('general')
 
-  const [geminiKey, setGeminiKey] = useState('')
-  const [geminiDirty, setGeminiDirty] = useState(false)
-  const [backupOptions, setBackupOptions] = useState(['full'])
-  const [debugModeEnabled, setDebugModeEnabled] = useState(false)
+    const [geminiKey, setGeminiKey] = useState('')
+    const [geminiDirty, setGeminiDirty] = useState(false)
+    const [backupOptions, setBackupOptions] = useState(['full'])
+    const [debugModeEnabled, setDebugModeEnabled] = useState(false)
 
-  // Recurring automatic full sync interval (days) and small price sync interval (minutes).
-  const [fullSyncIntervalDays, setFullSyncIntervalDays] = useState('5')
-  const [priceSyncIntervalMinutes, setPriceSyncIntervalMinutes] = useState('30')
+    // Recurring automatic full sync interval (days) and small price sync interval (minutes).
+    const [fullSyncIntervalDays, setFullSyncIntervalDays] = useState('5')
+    const [priceSyncIntervalMinutes, setPriceSyncIntervalMinutes] = useState('30')
 
-  // Notification settings
-  const [priceAlertsEnabled, setPriceAlertsEnabled] = useState(false)
-  const [alertThreshold, setAlertThreshold] = useState('10')
+    // Notification settings
+    const [priceAlertsEnabled, setPriceAlertsEnabled] = useState(false)
+    const [alertThreshold, setAlertThreshold] = useState('10')
 
-  // Load individual settings from backend
-  const { data: fullSyncIntervalData } = useQuery({
-    queryKey: ['setting', 'full_sync_interval_days'],
-    queryFn: () => getSetting('full_sync_interval_days').catch(() => ({ value: '5' })),
-  })
+    // Load individual settings from backend
+    const {data: fullSyncIntervalData} = useQuery({
+        queryKey: ['setting', 'full_sync_interval_days'],
+        queryFn: () => getSetting('full_sync_interval_days').catch(() => ({value: '5'})),
+    })
 
-  const { data: priceSyncIntervalData } = useQuery({
-    queryKey: ['setting', 'price_sync_interval_minutes'],
-    queryFn: () => getSetting('price_sync_interval_minutes').catch(() => ({ value: '30' })),
-  })
+    const {data: priceSyncIntervalData} = useQuery({
+        queryKey: ['setting', 'price_sync_interval_minutes'],
+        queryFn: () => getSetting('price_sync_interval_minutes').catch(() => ({value: '30'})),
+    })
 
-  const { data: priceAlertsData } = useQuery({
-    queryKey: ['setting', 'price_alerts_enabled'],
-    queryFn: () => getSetting('price_alerts_enabled').catch(() => ({ value: 'false' })),
-  })
+    const {data: priceAlertsData} = useQuery({
+        queryKey: ['setting', 'price_alerts_enabled'],
+        queryFn: () => getSetting('price_alerts_enabled').catch(() => ({value: 'false'})),
+    })
 
-  const { data: alertThresholdData } = useQuery({
-    queryKey: ['setting', 'price_alert_threshold'],
-    queryFn: () => getSetting('price_alert_threshold').catch(() => ({ value: '10' })),
-  })
+    const {data: alertThresholdData} = useQuery({
+        queryKey: ['setting', 'price_alert_threshold'],
+        queryFn: () => getSetting('price_alert_threshold').catch(() => ({value: '10'})),
+    })
 
-  const { data: geminiKeyData } = useQuery({
-    queryKey: ['setting', 'gemini_api_key'],
-    queryFn: () => getSetting('gemini_api_key').catch(() => ({ value: '' })),
-  })
-
-
-  const [telegramBotToken, setTelegramBotToken] = useState('')
-  const [telegramBotTokenDirty, setTelegramBotTokenDirty] = useState(false)
-  const [telegramChatId, setTelegramChatId] = useState('')
-  const [telegramChatIdDirty, setTelegramChatIdDirty] = useState(false)
+    const {data: geminiKeyData} = useQuery({
+        queryKey: ['setting', 'gemini_api_key'],
+        queryFn: () => getSetting('gemini_api_key').catch(() => ({value: ''})),
+    })
 
 
-  const { data: telegramBotTokenData } = useQuery({
-    queryKey: ['setting', 'telegram_bot_token'],
-    queryFn: () => getSetting('telegram_bot_token').catch(() => ({ value: '' })),
-  })
-
-  const { data: telegramChatIdData } = useQuery({
-    queryKey: ['setting', 'telegram_chat_id'],
-    queryFn: () => getSetting('telegram_chat_id').catch(() => ({ value: '' })),
-  })
-
-  const { data: telegramStatus } = useQuery({
-    queryKey: ['telegram-status'],
-    queryFn: () => getTelegramStatus().catch(() => ({ configured: false })),
-  })
-
-  const { data: syncStatus } = useQuery({
-    queryKey: ['sync-status'],
-    queryFn: () => getSyncStatus().then((r) => r.data),
-    refetchInterval: 10000,
-  })
-
-  const { data: customMatches = [] } = useQuery({
-    queryKey: ['custom-matches'],
-    queryFn: () => getCustomMatches().then((r) => r.data),
-    refetchInterval: 60000,
-  })
-
-  // Sync fetched data → local state
-  useEffect(() => {
-    if (fullSyncIntervalData?.value) setFullSyncIntervalDays(fullSyncIntervalData.value)
-  }, [fullSyncIntervalData])
-
-  useEffect(() => {
-    if (priceSyncIntervalData?.value) setPriceSyncIntervalMinutes(priceSyncIntervalData.value)
-  }, [priceSyncIntervalData])
-
-  useEffect(() => {
-    if (priceAlertsData?.value) setPriceAlertsEnabled(priceAlertsData.value === 'true')
-  }, [priceAlertsData])
-
-  useEffect(() => {
-    if (alertThresholdData?.value) setAlertThreshold(alertThresholdData.value)
-  }, [alertThresholdData])
-
-  useEffect(() => {
-    if (geminiKeyData?.value !== undefined && !geminiDirty) setGeminiKey(geminiKeyData.value)
-  }, [geminiKeyData])
-
-  useEffect(() => {
-    setDebugModeEnabled(settings.debug_mode === 'true')
-  }, [settings.debug_mode])
+    const [telegramBotToken, setTelegramBotToken] = useState('')
+    const [telegramBotTokenDirty, setTelegramBotTokenDirty] = useState(false)
+    const [telegramChatId, setTelegramChatId] = useState('')
+    const [telegramChatIdDirty, setTelegramChatIdDirty] = useState(false)
 
 
-  useEffect(() => {
-    if (telegramBotTokenData?.value !== undefined && !telegramBotTokenDirty) setTelegramBotToken(telegramBotTokenData.value)
-  }, [telegramBotTokenData])
+    const {data: telegramBotTokenData} = useQuery({
+        queryKey: ['setting', 'telegram_bot_token'],
+        queryFn: () => getSetting('telegram_bot_token').catch(() => ({value: ''})),
+    })
 
-  useEffect(() => {
-    if (telegramChatIdData?.value !== undefined && !telegramChatIdDirty) setTelegramChatId(telegramChatIdData.value)
-  }, [telegramChatIdData])
+    const {data: telegramChatIdData} = useQuery({
+        queryKey: ['setting', 'telegram_chat_id'],
+        queryFn: () => getSetting('telegram_chat_id').catch(() => ({value: ''})),
+    })
 
-  // Sync mutation (full)
-  const syncMutation = useMutation({
-    mutationFn: triggerSync,
-    onSuccess: () => {
-      toast.success(t('settings.syncStarted'))
-      setTimeout(() => queryClient.invalidateQueries(), 5000)
-    },
-    onError: () => toast.error(t('settings.syncFailed')),
-  })
+    const {data: telegramStatus} = useQuery({
+        queryKey: ['telegram-status'],
+        queryFn: () => getTelegramStatus().catch(() => ({configured: false})),
+    })
 
-  // Forced price sync mutation (all tracked collection/wishlist/binder cards)
-  const allPriceSyncMutation = useMutation({
-    mutationFn: triggerAllPriceSync,
-    onSuccess: () => {
-      toast.success(t('settings.syncStarted'))
-      setTimeout(() => queryClient.invalidateQueries(), 5000)
-    },
-    onError: () => toast.error(t('settings.syncFailed')),
-  })
+    const {data: syncStatus} = useQuery({
+        queryKey: ['sync-status'],
+        queryFn: () => getSyncStatus().then((r) => r.data),
+        refetchInterval: 10000,
+    })
 
-  const avatarMutation = useMutation({
-    mutationFn: (avatarId) => changeAvatar(avatarId),
-    onSuccess: (updatedUser) => {
-      updateCurrentUser(updatedUser)
-      localStorage.setItem('lastUserAvatar', updatedUser.avatar_id || '')
-      toast.success(t('auth.avatarChanged'))
-    },
-    onError: (err) => toast.error(err.response?.data?.detail || t('common.error')),
-  })
+    const {data: customMatches = []} = useQuery({
+        queryKey: ['custom-matches'],
+        queryFn: () => getCustomMatches().then((r) => r.data),
+        refetchInterval: 60000,
+    })
 
-  const isRunning = syncStatus?.is_running || syncStatus?.is_price_sync_running || syncMutation.isPending || allPriceSyncMutation.isPending
+    // Sync fetched data → local state
+    useEffect(() => {
+        if (fullSyncIntervalData?.value) setFullSyncIntervalDays(fullSyncIntervalData.value)
+    }, [fullSyncIntervalData])
 
-  // Save helper
-  const saveSetting = async (key, value) => {
-    try {
-      await setSetting(key, value)
-      queryClient.invalidateQueries({ queryKey: ['setting', key] })
-      toast.success(t('settings.saved'))
-    } catch {
-      toast.error(t('settings.saveFailed'))
+    useEffect(() => {
+        if (priceSyncIntervalData?.value) setPriceSyncIntervalMinutes(priceSyncIntervalData.value)
+    }, [priceSyncIntervalData])
+
+    useEffect(() => {
+        if (priceAlertsData?.value) setPriceAlertsEnabled(priceAlertsData.value === 'true')
+    }, [priceAlertsData])
+
+    useEffect(() => {
+        if (alertThresholdData?.value) setAlertThreshold(alertThresholdData.value)
+    }, [alertThresholdData])
+
+    useEffect(() => {
+        if (geminiKeyData?.value !== undefined && !geminiDirty) setGeminiKey(geminiKeyData.value)
+    }, [geminiKeyData])
+
+    useEffect(() => {
+        setDebugModeEnabled(settings.debug_mode === 'true')
+    }, [settings.debug_mode])
+
+
+    useEffect(() => {
+        if (telegramBotTokenData?.value !== undefined && !telegramBotTokenDirty) setTelegramBotToken(telegramBotTokenData.value)
+    }, [telegramBotTokenData])
+
+    useEffect(() => {
+        if (telegramChatIdData?.value !== undefined && !telegramChatIdDirty) setTelegramChatId(telegramChatIdData.value)
+    }, [telegramChatIdData])
+
+    // Sync mutation (full)
+    const syncMutation = useMutation({
+        mutationFn: triggerSync,
+        onSuccess: () => {
+            toast.success(t('settings.syncStarted'))
+            setTimeout(() => queryClient.invalidateQueries(), 5000)
+        },
+        onError: () => toast.error(t('settings.syncFailed')),
+    })
+
+    // Forced price sync mutation (all tracked collection/wishlist/binder cards)
+    const allPriceSyncMutation = useMutation({
+        mutationFn: triggerAllPriceSync,
+        onSuccess: () => {
+            toast.success(t('settings.syncStarted'))
+            setTimeout(() => queryClient.invalidateQueries(), 5000)
+        },
+        onError: () => toast.error(t('settings.syncFailed')),
+    })
+
+    const avatarMutation = useMutation({
+        mutationFn: (avatarId) => changeAvatar(avatarId),
+        onSuccess: (updatedUser) => {
+            updateCurrentUser(updatedUser)
+            localStorage.setItem('lastUserAvatar', updatedUser.avatar_id || '')
+            toast.success(t('auth.avatarChanged'))
+        },
+        onError: (err) => toast.error(err.response?.data?.detail || t('common.error')),
+    })
+
+    const isRunning = syncStatus?.is_running || syncStatus?.is_price_sync_running || syncMutation.isPending || allPriceSyncMutation.isPending
+
+    // Save helper
+    const saveSetting = async (key, value) => {
+        try {
+            await setSetting(key, value)
+            queryClient.invalidateQueries({queryKey: ['setting', key]})
+            toast.success(t('settings.saved'))
+        } catch {
+            toast.error(t('settings.saveFailed'))
+        }
     }
-  }
 
-  const handlePriceSyncIntervalChange = async (val) => {
-    setPriceSyncIntervalMinutes(val)
-    await saveSetting('price_sync_interval_minutes', val)
-    try { await reschedulePriceSync(parseInt(val)) } catch {}
-  }
-
-  const handleFullSyncIntervalChange = async (val) => {
-    setFullSyncIntervalDays(val)
-    await saveSetting('full_sync_interval_days', val)
-    try { await rescheduleFullSync(parseInt(val)) } catch {}
-  }
-
-  const handlePriceAlertsToggle = async (val) => {
-    setPriceAlertsEnabled(val)
-    await saveSetting('price_alerts_enabled', val ? 'true' : 'false')
-  }
-
-  const handleAlertThresholdBlur = async () => {
-    await saveSetting('price_alert_threshold', alertThreshold)
-  }
-
-  const handleLanguageChange = async (lang) => {
-    try {
-      await updateSettings({ language: lang })
-      toast.success(t('settings.saved'))
-    } catch {
-      toast.error(t('settings.saveFailed'))
+    const handlePriceSyncIntervalChange = async (val) => {
+        setPriceSyncIntervalMinutes(val)
+        await saveSetting('price_sync_interval_minutes', val)
+        try {
+            await reschedulePriceSync(parseInt(val))
+        } catch {
+        }
     }
-  }
 
-  const handleCurrencyChange = async (val) => {
-    try {
-      await updateSettings({ currency: val })
-      toast.success(t('settings.saved'))
-    } catch {
-      toast.error(t('settings.saveFailed'))
+    const handleFullSyncIntervalChange = async (val) => {
+        setFullSyncIntervalDays(val)
+        await saveSetting('full_sync_interval_days', val)
+        try {
+            await rescheduleFullSync(parseInt(val))
+        } catch {
+        }
     }
-  }
 
-  const handlePriceTypeChange = async (val) => {
-    try {
-      await updateSettings({ price_primary: val })
-      toast.success(t('settings.saved'))
-    } catch {
-      toast.error(t('settings.saveFailed'))
+    const handlePriceAlertsToggle = async (val) => {
+        setPriceAlertsEnabled(val)
+        await saveSetting('price_alerts_enabled', val ? 'true' : 'false')
     }
-  }
 
-  const handleTcgdexSyncLanguagesChange = async (val) => {
-    try {
-      await updateSettings({ tcgdex_sync_languages: normalizeTcgdexLanguageCsv(val) })
-      invalidateTcgdexFilterLanguages(queryClient)
-      toast.success(t('settings.saved'))
-    } catch {
-      toast.error(t('settings.saveFailed'))
+    const handleAlertThresholdBlur = async () => {
+        await saveSetting('price_alert_threshold', alertThreshold)
     }
-  }
 
-  const handleDebugModeToggle = async (enabled) => {
-    setDebugModeEnabled(enabled)
-    try {
-      await setSetting('debug_mode', enabled ? 'true' : 'false')
-      queryClient.invalidateQueries({ queryKey: ['setting', 'debug_mode'] })
-      toast.success(t('settings.saved'))
-    } catch {
-      setDebugModeEnabled(!enabled)
-      toast.error(t('settings.saveFailed'))
+    const handleLanguageChange = async (lang) => {
+        try {
+            await updateSettings({language: lang})
+            toast.success(t('settings.saved'))
+        } catch {
+            toast.error(t('settings.saveFailed'))
+        }
     }
-  }
 
-  const handleAdminBooleanSettingToggle = async (key, enabled) => {
-    try {
-      await updateSettings({ [key]: enabled ? 'true' : 'false' })
-      if (key === 'tcgdex_digital_sets_enabled') {
-        queryClient.invalidateQueries()
-      }
-      toast.success(t('settings.saved'))
-    } catch {
-      toast.error(t('settings.saveFailed'))
+    const handleCurrencyChange = async (val) => {
+        try {
+            await updateSettings({currency: val})
+            toast.success(t('settings.saved'))
+        } catch {
+            toast.error(t('settings.saveFailed'))
+        }
     }
-  }
 
-  const handleDownloadDebugLog = async () => {
-    try {
-      await downloadDebugLog()
-    } catch {
-      toast.error(t('settings.debugLogDownloadFailed'))
+    const handlePriceTypeChange = async (val) => {
+        try {
+            await updateSettings({price_primary: val})
+            toast.success(t('settings.saved'))
+        } catch {
+            toast.error(t('settings.saveFailed'))
+        }
     }
-  }
 
-  const handleRestoreUpload = async (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (!file.name.endsWith('.sql')) {
-      toast.error(t('settings.selectSql'))
-      return
+    const handleTcgdexSyncLanguagesChange = async (val) => {
+        try {
+            await updateSettings({tcgdex_sync_languages: normalizeTcgdexLanguageCsv(val)})
+            invalidateTcgdexFilterLanguages(queryClient)
+            toast.success(t('settings.saved'))
+        } catch {
+            toast.error(t('settings.saveFailed'))
+        }
     }
-    if (!confirm(t('settings.restoreConfirm'))) return
 
-    setRestoring(true)
-    try {
-      await restoreBackup(file)
-      toast.success(t('settings.restoreSuccess'))
-      queryClient.invalidateQueries()
-    } catch (err) {
-      toast.error(t('settings.errorPrefix') + (err.response?.data?.detail || err.message))
-    } finally {
-      setRestoring(false)
+    const handleDebugModeToggle = async (enabled) => {
+        setDebugModeEnabled(enabled)
+        try {
+            await setSetting('debug_mode', enabled ? 'true' : 'false')
+            queryClient.invalidateQueries({queryKey: ['setting', 'debug_mode']})
+            toast.success(t('settings.saved'))
+        } catch {
+            setDebugModeEnabled(!enabled)
+            toast.error(t('settings.saveFailed'))
+        }
     }
-  }
 
-  const currentLang = settings.language || 'de'
-  const currentAppLang = currentLang === 'zh' ? 'zh-cn' : currentLang
-  const currentCurrency = settings.currency || 'EUR'
-  const currentPriceType = settings.price_primary || 'trend'
-  const exportParams = { price_field: pricePrimaryField, currency: currentCurrency, exchange_rate: exchangeRate }
-  const currentTcgdexSyncLanguages = normalizeTcgdexLanguageCsv(settings.tcgdex_sync_languages || 'en,de')
-  const digitalSetsEnabled = settings.tcgdex_digital_sets_enabled === 'true'
-  const crossLanguagePriceFallback = settings.cross_language_price_fallback !== 'false'
-  const crossLanguageImageFallback = settings.cross_language_image_fallback !== 'false'
+    const handleAdminBooleanSettingToggle = async (key, enabled) => {
+        try {
+            await updateSettings({[key]: enabled ? 'true' : 'false'})
+            if (key === 'tcgdex_digital_sets_enabled') {
+                queryClient.invalidateQueries()
+            }
+            toast.success(t('settings.saved'))
+        } catch {
+            toast.error(t('settings.saveFailed'))
+        }
+    }
 
-  const usernameMutation = useMutation({
-    mutationFn: (username) => changeUsername(username),
-    onSuccess: (updatedUser) => {
-      updateCurrentUser(updatedUser)
-      setEditingUsername(false)
-      toast.success(t('common.saved'))
-    },
-    onError: () => toast.error(t('common.error')),
-  })
+    const handleDownloadDebugLog = async () => {
+        try {
+            await downloadDebugLog()
+        } catch {
+            toast.error(t('settings.debugLogDownloadFailed'))
+        }
+    }
 
-  const handleAvatarSelect = (avatarId) => {
-    avatarMutation.mutate(avatarId)
-  }
+    const handleRestoreUpload = async (e) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+        if (!file.name.endsWith('.sql')) {
+            toast.error(t('settings.selectSql'))
+            return
+        }
+        if (!confirm(t('settings.restoreConfirm'))) return
 
-  const lastFullSyncText = syncStatus?.last_full_sync?.finished_at
-    ? formatDistanceToNow(new Date(syncStatus.last_full_sync.finished_at), { addSuffix: true })
-    : t('settings.neverSynced')
-  const lastFullSyncDescription = syncStatus?.last_full_sync?.status === 'error'
-    ? `${t('settings.lastSyncFailed')} ${lastFullSyncText}${syncStatus.last_full_sync.error_message ? `: ${syncStatus.last_full_sync.error_message}` : ''}`
-    : lastFullSyncText
+        setRestoring(true)
+        try {
+            await restoreBackup(file)
+            toast.success(t('settings.restoreSuccess'))
+            queryClient.invalidateQueries()
+        } catch (err) {
+            toast.error(t('settings.errorPrefix') + (err.response?.data?.detail || err.message))
+        } finally {
+            setRestoring(false)
+        }
+    }
 
-  return (
-    <div className="space-y-6 py-6">
-      <div className="px-1">
-        <h1 className="text-5xl font-bold text-text-primary mag-heading uppercase leading-none mt-2"><SplitText text={t('settings.title')} delay={40} /></h1>
-        <p className="text-sm text-text-muted mt-1">{t('settings.appConfig')}</p>
-      </div>
-      <div className="flex border-b border-border overflow-x-auto scrollbar-none -mx-4 px-4" style={{WebkitOverflowScrolling:"touch"}}>
-        {[
-          { key: 'general', label: t('settings.tabs.general') },
-          ...(user?.role === 'admin' ? [{ key: 'sync', label: t('settings.tabs.dataSync') }] : []),
-          { key: 'notifications', label: t('settings.tabs.notifications') },
-          { key: 'community', label: t('settings.tabs.community') },
-          ...(user?.role === 'admin' && multiUser ? [{ key: 'users', label: t('settings.tabs.users') }] : []),
-        ].map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={`px-3 py-2 text-xs sm:text-sm font-semibold whitespace-nowrap transition-colors border-b-2 flex-shrink-0 ${
-              activeTab === tab.key ? 'border-brand-red text-brand-red' : 'border-transparent text-text-muted hover:text-text-primary'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+    const currentLang = settings.language || 'de'
+    const currentAppLang = currentLang === 'zh' ? 'zh-cn' : currentLang
+    const currentCurrency = settings.currency || 'EUR'
+    const currentPriceType = settings.price_primary || 'trend'
+    const exportParams = {price_field: pricePrimaryField, currency: currentCurrency, exchange_rate: exchangeRate}
+    const currentTcgdexSyncLanguages = normalizeTcgdexLanguageCsv(settings.tcgdex_sync_languages || 'en,de')
+    const digitalSetsEnabled = settings.tcgdex_digital_sets_enabled === 'true'
+    const crossLanguagePriceFallback = settings.cross_language_price_fallback !== 'false'
+    const crossLanguageImageFallback = settings.cross_language_image_fallback !== 'false'
 
-      {activeTab === 'general' && (
-        <>
-          {/* ── 1. TRAINER ── */}
-          <section className="space-y-1">
-            <SectionHeader title={t('settings.sectionTrainer')} />
-            <SettingsCard>
-              <SettingsRow
-                label={t('auth.chooseAvatar')}
-                description={user?.username || 'Trainer'}
-              >
-                <button
-                  type="button"
-                  onClick={() => setShowAvatarPicker(true)}
-                  className="flex items-center gap-3 rounded-2xl border border-border bg-bg-primary px-3 py-2 transition-colors hover:border-brand-red/50"
-                >
-                  <div className="flex h-16 w-16 items-center justify-center rounded-full border border-border bg-bg-card">
-                    {user?.avatar_id ? (
-                      <img
-                        src={`https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/${user.avatar_id}.gif`}
-                        alt={`${user.username} avatar`}
-                        className="h-12 w-12 pixelated"
-                      />
-                    ) : (
-                      <User size={24} className="text-text-muted" />
-                    )}
-                  </div>
-                  <span className="text-xs font-semibold text-text-primary">
+    const usernameMutation = useMutation({
+        mutationFn: (username) => changeUsername(username),
+        onSuccess: (updatedUser) => {
+            updateCurrentUser(updatedUser)
+            setEditingUsername(false)
+            toast.success(t('common.saved'))
+        },
+        onError: () => toast.error(t('common.error')),
+    })
+
+    const handleAvatarSelect = (avatarId) => {
+        avatarMutation.mutate(avatarId)
+    }
+
+    const lastFullSyncText = syncStatus?.last_full_sync?.finished_at
+        ? formatDistanceToNow(new Date(syncStatus.last_full_sync.finished_at), {addSuffix: true})
+        : t('settings.neverSynced')
+    const lastFullSyncDescription = syncStatus?.last_full_sync?.status === 'error'
+        ? `${t('settings.lastSyncFailed')} ${lastFullSyncText}${syncStatus.last_full_sync.error_message ? `: ${syncStatus.last_full_sync.error_message}` : ''}`
+        : lastFullSyncText
+
+    return (
+        <div className="space-y-6 py-6">
+            <div className="px-1">
+                <h1 className="text-5xl font-bold text-text-primary mag-heading uppercase leading-none mt-2"><SplitText
+                    text={t('settings.title')} delay={40}/></h1>
+                <p className="text-sm text-text-muted mt-1">{t('settings.appConfig')}</p>
+            </div>
+            <div className="flex border-b border-border overflow-x-auto scrollbar-none -mx-4 px-4"
+                 style={{WebkitOverflowScrolling: "touch"}}>
+                {[
+                    {key: 'general', label: t('settings.tabs.general')},
+                    ...(user?.role === 'admin' ? [{key: 'sync', label: t('settings.tabs.dataSync')}] : []),
+                    {key: 'notifications', label: t('settings.tabs.notifications')},
+                    {key: 'community', label: t('settings.tabs.community')},
+                    ...(user?.role === 'admin' && multiUser ? [{key: 'users', label: t('settings.tabs.users')}] : []),
+                ].map((tab) => (
+                    <button
+                        key={tab.key}
+                        onClick={() => setActiveTab(tab.key)}
+                        className={`px-3 py-2 text-xs sm:text-sm font-semibold whitespace-nowrap transition-colors border-b-2 flex-shrink-0 ${
+                            activeTab === tab.key ? 'border-brand-red text-brand-red' : 'border-transparent text-text-muted hover:text-text-primary'
+                        }`}
+                    >
+                        {tab.label}
+                    </button>
+                ))}
+            </div>
+
+            {activeTab === 'general' && (
+                <>
+                    {/* ── 1. TRAINER ── */}
+                    <section className="space-y-1">
+                        <SectionHeader title={t('settings.sectionTrainer')}/>
+                        <SettingsCard>
+                            <SettingsRow
+                                label={t('auth.chooseAvatar')}
+                                description={user?.username || 'Trainer'}
+                            >
+                                <button
+                                    type="button"
+                                    onClick={() => setShowAvatarPicker(true)}
+                                    className="flex items-center gap-3 rounded-2xl border border-border bg-bg-primary px-3 py-2 transition-colors hover:border-brand-red/50"
+                                >
+                                    <div
+                                        className="flex h-16 w-16 items-center justify-center rounded-full border border-border bg-bg-card">
+                                        {user?.avatar_id ? (
+                                            <img
+                                                src={`https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/${user.avatar_id}.gif`}
+                                                alt={`${user.username} avatar`}
+                                                className="h-12 w-12 pixelated"
+                                            />
+                                        ) : (
+                                            <User size={24} className="text-text-muted"/>
+                                        )}
+                                    </div>
+                                    <span className="text-xs font-semibold text-text-primary">
                     {avatarMutation.isPending ? t('common.loading') : t('common.edit')}
                   </span>
-                </button>
-              </SettingsRow>
-              <SettingsRow label={t('settings.username')} description={t('settings.usernameDesc')} last>
-                {editingUsername ? (
-                  <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); usernameInput.trim() && usernameMutation.mutate(usernameInput.trim()) }}>
-                    <input
-                      type="text"
-                      value={usernameInput}
-                      onChange={(e) => setUsernameInput(e.target.value)}
-                      className="w-32 rounded-lg border border-border bg-bg-primary px-2 py-1.5 text-xs text-text-primary outline-none focus:border-brand-red"
-                      style={{ WebkitTextFillColor: "var(--color-text-primary)", WebkitBoxShadow: "0 0 0px 1000px var(--color-bg) inset" }}
-                      autoFocus
-                      maxLength={32}
-                    />
-                    <button type="submit" disabled={usernameMutation.isPending} className="rounded-lg bg-brand-red px-2 py-1.5 text-xs font-semibold text-white">
-                      {usernameMutation.isPending ? '...' : '✓'}
-                    </button>
-                    <button type="button" onClick={() => setEditingUsername(false)} className="rounded-lg border border-border px-2 py-1.5 text-xs text-text-muted">
-                      ✕
-                    </button>
-                  </form>
-                ) : (
-                  <button
-                    onClick={() => { setUsernameInput(user?.username || ''); setEditingUsername(true) }}
-                    className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-text-primary transition-colors hover:border-brand-red/50"
-                  >
-                    <Pencil size={12} />
-                    {user?.username || 'Trainer'}
-                  </button>
-                )}
-              </SettingsRow>
+                                </button>
+                            </SettingsRow>
+                            <SettingsRow label={t('settings.username')} description={t('settings.usernameDesc')} last>
+                                {editingUsername ? (
+                                    <form className="flex items-center gap-2" onSubmit={(e) => {
+                                        e.preventDefault();
+                                        usernameInput.trim() && usernameMutation.mutate(usernameInput.trim())
+                                    }}>
+                                        <input
+                                            type="text"
+                                            value={usernameInput}
+                                            onChange={(e) => setUsernameInput(e.target.value)}
+                                            className="w-32 rounded-lg border border-border bg-bg-primary px-2 py-1.5 text-xs text-text-primary outline-none focus:border-brand-red"
+                                            style={{
+                                                WebkitTextFillColor: "var(--color-text-primary)",
+                                                WebkitBoxShadow: "0 0 0px 1000px var(--color-bg) inset"
+                                            }}
+                                            autoFocus
+                                            maxLength={32}
+                                        />
+                                        <button type="submit" disabled={usernameMutation.isPending}
+                                                className="rounded-lg bg-brand-red px-2 py-1.5 text-xs font-semibold text-white">
+                                            {usernameMutation.isPending ? '...' : '✓'}
+                                        </button>
+                                        <button type="button" onClick={() => setEditingUsername(false)}
+                                                className="rounded-lg border border-border px-2 py-1.5 text-xs text-text-muted">
+                                            ✕
+                                        </button>
+                                    </form>
+                                ) : (
+                                    <button
+                                        onClick={() => {
+                                            setUsernameInput(user?.username || '');
+                                            setEditingUsername(true)
+                                        }}
+                                        className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-text-primary transition-colors hover:border-brand-red/50"
+                                    >
+                                        <Pencil size={12}/>
+                                        {user?.username || 'Trainer'}
+                                    </button>
+                                )}
+                            </SettingsRow>
 
-            </SettingsCard>
-          </section>
+                        </SettingsCard>
+                    </section>
 
-          {/* ── 2. THEME ── */}
-          <section className="space-y-1">
-            <SectionHeader title={t('settings.sectionTheme')} />
-            <SettingsCard>
-              <div className="px-4 py-3.5">
-                <p className="text-sm font-semibold text-text-primary mb-3">{t('settings.theme')}</p>
-                <div className="grid grid-cols-2 gap-2">
-                  {themes.map((th) => (
-                    <button
-                      key={th.id}
-                      onClick={() => setTheme(th.id)}
-                      className={`flex flex-col items-center gap-1.5 rounded-xl p-3 transition-all ${
-                        theme === th.id
-                          ? 'ring-2 ring-offset-1 ring-offset-transparent'
-                          : 'hover:bg-bg-elevated'
-                      }`}
-                      style={{
-                        background: theme === th.id ? 'rgba(91,156,255,0.15)' : 'rgba(255,255,255,0.03)',
-                        border: `1px solid ${theme === th.id ? 'rgba(143,192,255,0.65)' : 'rgba(255,255,255,0.05)'}`,
-                      }}
-                    >
-                      <span className="text-[10px] font-semibold text-text-secondary">{th.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </SettingsCard>
-          </section>
+                    {/* ── 2. THEME ── */}
+                    <section className="space-y-1">
+                        <SectionHeader title={t('settings.sectionTheme')}/>
+                        <SettingsCard>
+                            <div className="px-4 py-3.5">
+                                <p className="text-sm font-semibold text-text-primary mb-3">{t('settings.theme')}</p>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {themes.map((th) => (
+                                        <button
+                                            key={th.id}
+                                            onClick={() => setTheme(th.id)}
+                                            className={`flex flex-col items-center gap-1.5 rounded-xl p-3 transition-all ${
+                                                theme === th.id
+                                                    ? 'ring-2 ring-offset-1 ring-offset-transparent'
+                                                    : 'hover:bg-bg-elevated'
+                                            }`}
+                                            style={{
+                                                background: theme === th.id ? 'rgba(91,156,255,0.15)' : 'rgba(255,255,255,0.03)',
+                                                border: `1px solid ${theme === th.id ? 'rgba(143,192,255,0.65)' : 'rgba(255,255,255,0.05)'}`,
+                                            }}
+                                        >
+                                            <span
+                                                className="text-[10px] font-semibold text-text-secondary">{th.label}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </SettingsCard>
+                    </section>
 
-          {user?.role === 'admin' && (
-            <section className="space-y-1">
-              <SectionHeader title={t('settings.sectionMultiUser')} />
-              <SettingsCard>
-                <SettingsRow
-                  label={t('settings.multiUserMode')}
-                  description={t('settings.multiUserModeDesc')}
-                  last
-                >
-                  <Toggle
-                    value={multiUser}
-                    onChange={async (val) => {
-                      try {
-                        await setAuthMode(val)
-                        window.location.reload()
-                      } catch {
-                        toast.error(t('common.error'))
-                      }
-                    }}
-                  />
-                </SettingsRow>
-              </SettingsCard>
-            </section>
-          )}
+                    {user?.role === 'admin' && (
+                        <section className="space-y-1">
+                            <SectionHeader title={t('settings.sectionMultiUser')}/>
+                            <SettingsCard>
+                                <SettingsRow
+                                    label={t('settings.multiUserMode')}
+                                    description={t('settings.multiUserModeDesc')}
+                                    last
+                                >
+                                    <Toggle
+                                        value={multiUser}
+                                        onChange={async (val) => {
+                                            try {
+                                                await setAuthMode(val)
+                                                window.location.reload()
+                                            } catch {
+                                                toast.error(t('common.error'))
+                                            }
+                                        }}
+                                    />
+                                </SettingsRow>
+                            </SettingsCard>
+                        </section>
+                    )}
 
-          {/* ── 3. DARSTELLUNG ── */}
-          <section className="space-y-1">
-            <SectionHeader title={t('settings.sectionAppearance')} />
-            <SettingsCard>
-              <SettingsRow label={t('settings.language')} description={t('settings.languageDesc')}>
-                <SelectControl
-                  value={currentAppLang}
-                  options={APP_LANGUAGES}
-                  onChange={handleLanguageChange}
-                />
-              </SettingsRow>
-              <SettingsRow label={t('settings.currency')} description={t('settings.currencyDesc')}>
-                <SelectControl
-                  value={currentCurrency}
-                  options={[
-                    { value: 'EUR', label: '€ EUR' },
-                    { value: 'USD', label: '$ USD' },
-                  ]}
-                  onChange={handleCurrencyChange}
-                />
-              </SettingsRow>
-              <SettingsRow label={t('settings.priceType')} description={t('settings.priceTypeDesc')} last>
-                <SelectControl
-                  value={currentPriceType}
-                  options={[
-                    { value: 'trend', label: t('settings.priceTrend') },
-                    { value: 'avg', label: t('settings.priceAvg') },
-                    { value: 'avg1', label: t('settings.priceAvg1') },
-                    { value: 'avg7', label: t('settings.priceAvg7') },
-                    { value: 'avg30', label: t('settings.priceAvg30') },
-                    { value: 'low', label: t('settings.priceLow') },
-                  ]}
-                  onChange={handlePriceTypeChange}
-                />
-              </SettingsRow>
-            </SettingsCard>
-          </section>
+                    {/* ── 3. DARSTELLUNG ── */}
+                    <section className="space-y-1">
+                        <SectionHeader title={t('settings.sectionAppearance')}/>
+                        <SettingsCard>
+                            <SettingsRow label={t('settings.language')} description={t('settings.languageDesc')}>
+                                <SelectControl
+                                    value={currentAppLang}
+                                    options={APP_LANGUAGES}
+                                    onChange={handleLanguageChange}
+                                />
+                            </SettingsRow>
+                            <SettingsRow label={t('settings.currency')} description={t('settings.currencyDesc')}>
+                                <SelectControl
+                                    value={currentCurrency}
+                                    options={[
+                                        {value: 'EUR', label: '€ EUR'},
+                                        {value: 'USD', label: '$ USD'},
+                                    ]}
+                                    onChange={handleCurrencyChange}
+                                />
+                            </SettingsRow>
+                            <SettingsRow label={t('settings.priceType')} description={t('settings.priceTypeDesc')} last>
+                                <SelectControl
+                                    value={currentPriceType}
+                                    options={[
+                                        {value: 'trend', label: t('settings.priceTrend')},
+                                        {value: 'avg', label: t('settings.priceAvg')},
+                                        {value: 'avg1', label: t('settings.priceAvg1')},
+                                        {value: 'avg7', label: t('settings.priceAvg7')},
+                                        {value: 'avg30', label: t('settings.priceAvg30')},
+                                        {value: 'low', label: t('settings.priceLow')},
+                                    ]}
+                                    onChange={handlePriceTypeChange}
+                                />
+                            </SettingsRow>
+                        </SettingsCard>
+                    </section>
 
-          {/* ── 6. KI / KARTEN-SCANNER ── */}
-          <section className="space-y-1">
-            <SectionHeader title={t('settings.sectionAI')} />
-            <SettingsCard>
-              <SettingsRow label={t('settings.geminiApiKey')} description={t('settings.geminiApiKeyDesc')} last>
-                <div className="flex items-center gap-2 w-full mt-2">
-                  <input
-                    type={geminiDirty ? "text" : "password"}
-                    value={geminiKey}
-                    onChange={e => { setGeminiKey(e.target.value); setGeminiDirty(true) }}
-                    placeholder="AIza..."
-                    className="input flex-1 text-xs font-mono"
-                    style={{ minWidth: 0 }}
-                  />
-                  {geminiKey && !geminiDirty && (
-                    <span className="text-xs text-green flex-shrink-0">✅</span>
-                  )}
-                  {geminiDirty && (
-                    <button
-                      onClick={async () => {
-                        await saveSetting('gemini_api_key', geminiKey)
-                        setGeminiDirty(false)
-                        queryClient.invalidateQueries({ queryKey: ['setting', 'gemini_api_key'] })
-                        toast.success(t('settings.apiKeySaved'))
-                      }}
-                      className="btn-primary-sm flex-shrink-0"
-                    >
-                      {t('common.save')}
-                    </button>
-                  )}
-                </div>
-              </SettingsRow>
-            </SettingsCard>
-          </section>
+                    {/* ── 6. KI / KARTEN-SCANNER ── */}
+                    <section className="space-y-1">
+                        <SectionHeader title={t('settings.sectionAI')}/>
+                        <SettingsCard>
+                            <SettingsRow label={t('settings.geminiApiKey')} description={t('settings.geminiApiKeyDesc')}
+                                         last>
+                                <div className="flex items-center gap-2 w-full mt-2">
+                                    <input
+                                        type={geminiDirty ? "text" : "password"}
+                                        value={geminiKey}
+                                        onChange={e => {
+                                            setGeminiKey(e.target.value);
+                                            setGeminiDirty(true)
+                                        }}
+                                        placeholder="AIza..."
+                                        className="input flex-1 text-xs font-mono"
+                                        style={{minWidth: 0}}
+                                    />
+                                    {geminiKey && !geminiDirty && (
+                                        <span className="text-xs text-green flex-shrink-0">✅</span>
+                                    )}
+                                    {geminiDirty && (
+                                        <button
+                                            onClick={async () => {
+                                                await saveSetting('gemini_api_key', geminiKey)
+                                                setGeminiDirty(false)
+                                                queryClient.invalidateQueries({queryKey: ['setting', 'gemini_api_key']})
+                                                toast.success(t('settings.apiKeySaved'))
+                                            }}
+                                            className="btn-primary-sm flex-shrink-0"
+                                        >
+                                            {t('common.save')}
+                                        </button>
+                                    )}
+                                </div>
+                            </SettingsRow>
+                        </SettingsCard>
+                    </section>
 
-          {/* ── 7. EBAY API ── */}
-          
+                    {/* ── 7. EBAY API ── */}
 
-          {/* ── 8. ÜBER DIE APP ── */}
-          <section className="space-y-1">
-            <SectionHeader title={t('settings.sectionAbout')} />
-            <SettingsCard>
-              <SettingsRow label={t('settings.app')} description="Pokemon TCG Collection">
+
+                    {/* ── 8. ÜBER DIE APP ── */}
+                    <section className="space-y-1">
+                        <SectionHeader title={t('settings.sectionAbout')}/>
+                        <SettingsCard>
+                            <SettingsRow label={t('settings.app')} description="Pokemon TCG Collection">
                 <span className="text-xs font-bold text-text-muted px-2 py-1 rounded-lg"
-                  style={{ background: 'rgba(255,255,255,0.05)' }}>
+                      style={{background: 'rgba(255,255,255,0.05)'}}>
                   v{__APP_VERSION__}
                 </span>
-              </SettingsRow>
-              <SettingsRow label={t('settings.dataSource')} description={t('settings.dataSourceDesc')}>
-                <a
-                  href="https://tcgdex.dev"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-xs font-semibold text-brand-red hover:opacity-80 transition-opacity"
-                >
-                  TCGdex ↗
-                </a>
-              </SettingsRow>
-              <SettingsRow label={t('settings.sourceCode')} description={t('settings.sourceCodeDesc')}>
-                <a
-                  href="https://github.com/Git-Romer/pokecollector"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-xs font-semibold text-brand-red hover:opacity-80 transition-opacity"
-                >
-                  GitHub ↗
-                </a>
-              </SettingsRow>
-              <SettingsRow label={t('settings.creatorWebsite')} description={t('settings.creatorWebsiteDesc')}>
-                <a
-                  href="https://romerg.de/"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-xs font-semibold text-brand-red hover:opacity-80 transition-opacity"
-                >
-                  romerg.de ↗
-                </a>
-              </SettingsRow>
-              <SettingsRow label={t('settings.contact')} description={t('settings.contactDesc')} last>
-                <a
-                  href="mailto:info@romerg.de"
-                  className="text-xs font-semibold text-brand-red hover:opacity-80 transition-opacity"
-                >
-                  info@romerg.de
-                </a>
-              </SettingsRow>
-            </SettingsCard>
-            <div className="text-center mt-4 mb-2">
-              <p className="text-[11px] text-text-muted">
-                {t('settings.madeWith')} <a href="https://romerg.de/" target="_blank" rel="noreferrer" className="text-brand-red hover:opacity-80 transition-opacity font-semibold">Gilles Romer</a>
-              </p>
-            </div>
-          </section>
-          <PrivacyDataGrid t={t} />
-        </>
-      )}
-
-      {activeTab === 'sync' && (
-        <>
-          {/* ── 3. SYNCHRONISATION ── */}
-          <section className="space-y-1">
-            <SectionHeader title={t('settings.sectionSync')} />
-
-            {/* Card 1: Full Sync */}
-            <SettingsCard>
-              <SettingsRow label={t('settings.syncSetsCards')} description={lastFullSyncDescription}>
-                <button
-                  onClick={() => syncMutation.mutate()}
-                  disabled={isRunning}
-                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity disabled:opacity-50"
-                  style={{ background: 'rgba(227,0,11,0.15)', color: '#e3000b', border: '1px solid rgba(227,0,11,0.3)' }}
-                >
-                  <RefreshCw size={13} className={isRunning ? 'animate-spin' : ''} />
-                  {isRunning ? t('settings.running') : t('settings.syncButton')}
-                </button>
-              </SettingsRow>
-              {user?.role === 'admin' && (
-                <SettingsRow label={t('settings.tcgdexSyncLanguages')} description={t('settings.tcgdexSyncLanguagesDesc')}>
-                  <TcgdexLanguageControl
-                    value={currentTcgdexSyncLanguages}
-                    onChange={handleTcgdexSyncLanguagesChange}
-                    selectedLabel={t('settings.tcgdexSyncLanguagesSelected')}
-                    fallbackNote={t('settings.tcgdexSyncLanguagesFallbackNote')}
-                  />
-                </SettingsRow>
-              )}
-              {user?.role === 'admin' && (
-                <>
-                  <SettingsRow label={t('settings.digitalSets')} description={t('settings.digitalSetsDesc')}>
-                    <Toggle
-                      value={digitalSetsEnabled}
-                      onChange={(val) => handleAdminBooleanSettingToggle('tcgdex_digital_sets_enabled', val)}
-                    />
-                  </SettingsRow>
-                  <SettingsRow label={t('settings.crossLanguagePriceFallback')} description={t('settings.crossLanguagePriceFallbackDesc')}>
-                    <Toggle
-                      value={crossLanguagePriceFallback}
-                      onChange={(val) => handleAdminBooleanSettingToggle('cross_language_price_fallback', val)}
-                    />
-                  </SettingsRow>
-                  <SettingsRow label={t('settings.crossLanguageImageFallback')} description={t('settings.crossLanguageImageFallbackDesc')}>
-                    <Toggle
-                      value={crossLanguageImageFallback}
-                      onChange={(val) => handleAdminBooleanSettingToggle('cross_language_image_fallback', val)}
-                    />
-                  </SettingsRow>
+                            </SettingsRow>
+                            <SettingsRow label={t('settings.dataSource')} description={t('settings.dataSourceDesc')}>
+                                <a
+                                    href="https://tcgdex.dev"
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-xs font-semibold text-brand-red hover:opacity-80 transition-opacity"
+                                >
+                                    TCGdex ↗
+                                </a>
+                            </SettingsRow>
+                            <SettingsRow label={t('settings.sourceCode')} description={t('settings.sourceCodeDesc')}>
+                                <a
+                                    href="https://github.com/Git-Romer/pokecollector"
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-xs font-semibold text-brand-red hover:opacity-80 transition-opacity"
+                                >
+                                    GitHub ↗
+                                </a>
+                            </SettingsRow>
+                            <SettingsRow label={t('settings.creatorWebsite')}
+                                         description={t('settings.creatorWebsiteDesc')}>
+                                <a
+                                    href="https://romerg.de/"
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-xs font-semibold text-brand-red hover:opacity-80 transition-opacity"
+                                >
+                                    romerg.de ↗
+                                </a>
+                            </SettingsRow>
+                            <SettingsRow label={t('settings.contact')} description={t('settings.contactDesc')} last>
+                                <a
+                                    href="mailto:info@romerg.de"
+                                    className="text-xs font-semibold text-brand-red hover:opacity-80 transition-opacity"
+                                >
+                                    info@romerg.de
+                                </a>
+                            </SettingsRow>
+                        </SettingsCard>
+                        <div className="text-center mt-4 mb-2">
+                            <p className="text-[11px] text-text-muted">
+                                {t('settings.madeWith')} <a href="https://romerg.de/" target="_blank" rel="noreferrer"
+                                                            className="text-brand-red hover:opacity-80 transition-opacity font-semibold">Gilles
+                                Romer</a>
+                            </p>
+                        </div>
+                    </section>
+                    <PrivacyDataGrid t={t}/>
                 </>
-              )}
-              {customMatches.length > 0 && (
-                <SettingsRow label={t('migration.title')} description={`${customMatches.length} ${t('migration.pendingMatches')}`}>
-                  <button
-                    onClick={() => navigate('/migration')}
-                    className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity"
-                    style={{ background: 'rgba(245,200,66,0.15)', color: '#f5c842', border: '1px solid rgba(245,200,66,0.35)' }}
-                  >
-                    <Zap size={13} />
-                    {t('migration.title')}
-                  </button>
-                </SettingsRow>
-              )}
-              {user?.role === 'admin' && (
-                <SettingsRow label={t('settings.interval')} description={t('settings.syncSetsCardsDesc')} last>
-                  <SelectControl
-                    value={fullSyncIntervalDays}
-                    options={[
-                      { value: '1',  label: t('settings.day1') },
-                      { value: '2',  label: t('settings.days2') },
-                      { value: '3',  label: t('settings.days3') },
-                      { value: '5',  label: t('settings.days5') },
-                      { value: '7',  label: t('settings.days7') },
-                      { value: '14', label: t('settings.days14') },
-                      { value: '30', label: t('settings.days30') },
-                    ]}
-                    onChange={handleFullSyncIntervalChange}
-                  />
-                </SettingsRow>
-              )}
-            </SettingsCard>
+            )}
 
-            {/* Card 2: Price Sync */}
-            <SettingsCard>
-              <SettingsRow label={t('settings.syncPricesOnly')} description={t('settings.syncPricesOnlyDesc')}>
-                <button
-                  onClick={() => allPriceSyncMutation.mutate()}
-                  disabled={isRunning}
-                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity disabled:opacity-50"
-                  style={{ background: 'rgba(227,0,11,0.15)', color: '#e3000b', border: '1px solid rgba(227,0,11,0.3)' }}
-                >
-                  <RefreshCw size={13} className={isRunning ? 'animate-spin' : ''} />
-                  {isRunning ? t('settings.running') : t('settings.syncButton')}
-                </button>
-              </SettingsRow>
-              {user?.role === 'admin' && (
-                <SettingsRow label={t('settings.priceInterval')} description={t('settings.autoSmallSyncDesc')} last>
-                  <SelectControl
-                    value={priceSyncIntervalMinutes}
-                    options={[
-                      { value: '60',   label: t('settings.min60') },
-                      { value: '120',  label: t('settings.min120') },
-                      { value: '180',  label: t('settings.min180') },
-                      { value: '360',  label: t('settings.min360') },
-                      { value: '720',  label: t('settings.min720') },
-                      { value: '1440', label: t('settings.min1440') },
-                    ]}
-                    onChange={handlePriceSyncIntervalChange}
-                  />
-                </SettingsRow>
-              )}
-            </SettingsCard>
-          </section>
+            {activeTab === 'sync' && (
+                <>
+                    {/* ── 3. SYNCHRONISATION ── */}
+                    <section className="space-y-1">
+                        <SectionHeader title={t('settings.sectionSync')}/>
 
-          {/* ── 5. DATEN ── */}
-          <section className="space-y-1">
-            <SectionHeader title={t('settings.sectionData')} />
-            <StorageLocationsPanel />
-            <SettingsCard>
-              {user?.role === 'admin' && (
-                <SettingsRow label={t('settings.debugMode')} description={t('settings.debugModeDesc')}>
-                  <div className="flex items-center gap-2 justify-end">
-                    <button
-                      onClick={handleDownloadDebugLog}
-                      className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity"
-                      style={{ background: 'rgba(255,255,255,0.07)', color: '#90a4ae', border: '1px solid rgba(255,255,255,0.1)' }}
-                    >
-                      <Download size={13} /> {t('settings.debugLogDownload')}
-                    </button>
-                    <Toggle value={debugModeEnabled} onChange={handleDebugModeToggle} />
-                  </div>
-                </SettingsRow>
-              )}
-              <SettingsRow label={t('settings.clearImageCache')} description={t('settings.clearImageCacheDesc')}>
-                <button
-                  onClick={async () => {
-                    if (!confirm(t('settings.clearImageCacheConfirm'))) return
-                    try {
-                      await api.post('/backup/clear-image-cache')
-                      toast.success(t('settings.clearImageCacheSuccess'))
-                    } catch {
-                      toast.error(t('settings.clearImageCacheFailed'))
-                    }
-                  }}
-                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity"
-                  style={{ background: 'rgba(239,68,68,0.12)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.25)' }}
-                >
-                  🗑️ {t('settings.clearImageCache')}
-                </button>
-              </SettingsRow>
-              <SettingsRow label={t('settings.csvExport')} description={t('settings.csvExportDesc')}>
-                <div className="flex flex-wrap justify-end gap-2">
-                  <button
-                    onClick={() => exportXLSX(exportParams)}
-                    className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity"
-                    style={{ background: 'rgba(255,255,255,0.07)', color: '#90a4ae', border: '1px solid rgba(255,255,255,0.1)' }}
-                  >
-                    <Download size={13} /> {t('settings.exportExcelButton')}
-                  </button>
-                  <button
-                    onClick={() => exportCSV(exportParams)}
-                    className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity"
-                    style={{ background: 'rgba(255,255,255,0.07)', color: '#90a4ae', border: '1px solid rgba(255,255,255,0.1)' }}
-                  >
-                    <Download size={13} /> {t('settings.exportCsvButton')}
-                  </button>
-                </div>
-              </SettingsRow>
-              <SettingsRow label={t('settings.localFirstTitle')} description={t('settings.localFirstDesc')}>
+                        {/* Card 1: Full Sync */}
+                        <SettingsCard>
+                            <SettingsRow label={t('settings.syncSetsCards')} description={lastFullSyncDescription}>
+                                <button
+                                    onClick={() => syncMutation.mutate()}
+                                    disabled={isRunning}
+                                    className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity disabled:opacity-50"
+                                    style={{
+                                        background: 'rgba(227,0,11,0.15)',
+                                        color: '#e3000b',
+                                        border: '1px solid rgba(227,0,11,0.3)'
+                                    }}
+                                >
+                                    <RefreshCw size={13} className={isRunning ? 'animate-spin' : ''}/>
+                                    {isRunning ? t('settings.running') : t('settings.syncButton')}
+                                </button>
+                            </SettingsRow>
+                            {user?.role === 'admin' && (
+                                <SettingsRow label={t('settings.tcgdexSyncLanguages')}
+                                             description={t('settings.tcgdexSyncLanguagesDesc')}>
+                                    <TcgdexLanguageControl
+                                        value={currentTcgdexSyncLanguages}
+                                        onChange={handleTcgdexSyncLanguagesChange}
+                                        selectedLabel={t('settings.tcgdexSyncLanguagesSelected')}
+                                        fallbackNote={t('settings.tcgdexSyncLanguagesFallbackNote')}
+                                    />
+                                </SettingsRow>
+                            )}
+                            {user?.role === 'admin' && (
+                                <>
+                                    <SettingsRow label={t('settings.digitalSets')}
+                                                 description={t('settings.digitalSetsDesc')}>
+                                        <Toggle
+                                            value={digitalSetsEnabled}
+                                            onChange={(val) => handleAdminBooleanSettingToggle('tcgdex_digital_sets_enabled', val)}
+                                        />
+                                    </SettingsRow>
+                                    <SettingsRow label={t('settings.crossLanguagePriceFallback')}
+                                                 description={t('settings.crossLanguagePriceFallbackDesc')}>
+                                        <Toggle
+                                            value={crossLanguagePriceFallback}
+                                            onChange={(val) => handleAdminBooleanSettingToggle('cross_language_price_fallback', val)}
+                                        />
+                                    </SettingsRow>
+                                    <SettingsRow label={t('settings.crossLanguageImageFallback')}
+                                                 description={t('settings.crossLanguageImageFallbackDesc')}>
+                                        <Toggle
+                                            value={crossLanguageImageFallback}
+                                            onChange={(val) => handleAdminBooleanSettingToggle('cross_language_image_fallback', val)}
+                                        />
+                                    </SettingsRow>
+                                </>
+                            )}
+                            {customMatches.length > 0 && (
+                                <SettingsRow label={t('migration.title')}
+                                             description={`${customMatches.length} ${t('migration.pendingMatches')}`}>
+                                    <button
+                                        onClick={() => navigate('/migration')}
+                                        className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity"
+                                        style={{
+                                            background: 'rgba(245,200,66,0.15)',
+                                            color: '#f5c842',
+                                            border: '1px solid rgba(245,200,66,0.35)'
+                                        }}
+                                    >
+                                        <Zap size={13}/>
+                                        {t('migration.title')}
+                                    </button>
+                                </SettingsRow>
+                            )}
+                            {user?.role === 'admin' && (
+                                <SettingsRow label={t('settings.interval')}
+                                             description={t('settings.syncSetsCardsDesc')} last>
+                                    <SelectControl
+                                        value={fullSyncIntervalDays}
+                                        options={[
+                                            {value: '1', label: t('settings.day1')},
+                                            {value: '2', label: t('settings.days2')},
+                                            {value: '3', label: t('settings.days3')},
+                                            {value: '5', label: t('settings.days5')},
+                                            {value: '7', label: t('settings.days7')},
+                                            {value: '14', label: t('settings.days14')},
+                                            {value: '30', label: t('settings.days30')},
+                                        ]}
+                                        onChange={handleFullSyncIntervalChange}
+                                    />
+                                </SettingsRow>
+                            )}
+                        </SettingsCard>
+
+                        {/* Card 2: Price Sync */}
+                        <SettingsCard>
+                            <SettingsRow label={t('settings.syncPricesOnly')}
+                                         description={t('settings.syncPricesOnlyDesc')}>
+                                <button
+                                    onClick={() => allPriceSyncMutation.mutate()}
+                                    disabled={isRunning}
+                                    className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity disabled:opacity-50"
+                                    style={{
+                                        background: 'rgba(227,0,11,0.15)',
+                                        color: '#e3000b',
+                                        border: '1px solid rgba(227,0,11,0.3)'
+                                    }}
+                                >
+                                    <RefreshCw size={13} className={isRunning ? 'animate-spin' : ''}/>
+                                    {isRunning ? t('settings.running') : t('settings.syncButton')}
+                                </button>
+                            </SettingsRow>
+                            {user?.role === 'admin' && (
+                                <SettingsRow label={t('settings.priceInterval')}
+                                             description={t('settings.autoSmallSyncDesc')} last>
+                                    <SelectControl
+                                        value={priceSyncIntervalMinutes}
+                                        options={[
+                                            {value: '60', label: t('settings.min60')},
+                                            {value: '120', label: t('settings.min120')},
+                                            {value: '180', label: t('settings.min180')},
+                                            {value: '360', label: t('settings.min360')},
+                                            {value: '720', label: t('settings.min720')},
+                                            {value: '1440', label: t('settings.min1440')},
+                                        ]}
+                                        onChange={handlePriceSyncIntervalChange}
+                                    />
+                                </SettingsRow>
+                            )}
+                        </SettingsCard>
+                    </section>
+
+                    {/* ── 5. DATEN ── */}
+                    <section className="space-y-1">
+                        <SectionHeader title={t('settings.sectionData')}/>
+                        <StorageLocationsPanel/>
+                        <SettingsCard>
+                            {user?.role === 'admin' && (
+                                <SettingsRow label={t('settings.debugMode')} description={t('settings.debugModeDesc')}>
+                                    <div className="flex items-center gap-2 justify-end">
+                                        <button
+                                            onClick={handleDownloadDebugLog}
+                                            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity"
+                                            style={{
+                                                background: 'rgba(255,255,255,0.07)',
+                                                color: '#90a4ae',
+                                                border: '1px solid rgba(255,255,255,0.1)'
+                                            }}
+                                        >
+                                            <Download size={13}/> {t('settings.debugLogDownload')}
+                                        </button>
+                                        <Toggle value={debugModeEnabled} onChange={handleDebugModeToggle}/>
+                                    </div>
+                                </SettingsRow>
+                            )}
+                            <SettingsRow label={t('settings.clearImageCache')}
+                                         description={t('settings.clearImageCacheDesc')}>
+                                <button
+                                    onClick={async () => {
+                                        if (!confirm(t('settings.clearImageCacheConfirm'))) return
+                                        try {
+                                            await api.post('/backup/clear-image-cache')
+                                            toast.success(t('settings.clearImageCacheSuccess'))
+                                        } catch {
+                                            toast.error(t('settings.clearImageCacheFailed'))
+                                        }
+                                    }}
+                                    className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity"
+                                    style={{
+                                        background: 'rgba(239,68,68,0.12)',
+                                        color: '#ef4444',
+                                        border: '1px solid rgba(239,68,68,0.25)'
+                                    }}
+                                >
+                                    🗑️ {t('settings.clearImageCache')}
+                                </button>
+                            </SettingsRow>
+                            <SettingsRow label={t('settings.csvExport')} description={t('settings.csvExportDesc')}>
+                                <div className="flex flex-wrap justify-end gap-2">
+                                    <button
+                                        onClick={() => exportXLSX(exportParams)}
+                                        className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity"
+                                        style={{
+                                            background: 'rgba(255,255,255,0.07)',
+                                            color: '#90a4ae',
+                                            border: '1px solid rgba(255,255,255,0.1)'
+                                        }}
+                                    >
+                                        <Download size={13}/> {t('settings.exportExcelButton')}
+                                    </button>
+                                    <button
+                                        onClick={() => exportCSV(exportParams)}
+                                        className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity"
+                                        style={{
+                                            background: 'rgba(255,255,255,0.07)',
+                                            color: '#90a4ae',
+                                            border: '1px solid rgba(255,255,255,0.1)'
+                                        }}
+                                    >
+                                        <Download size={13}/> {t('settings.exportCsvButton')}
+                                    </button>
+                                </div>
+                            </SettingsRow>
+                            <SettingsRow label={t('settings.localFirstTitle')}
+                                         description={t('settings.localFirstDesc')}>
                 <span
-                  className="text-xs font-bold px-2.5 py-1 rounded-full"
-                  style={{ background: 'rgba(102,187,106,0.15)', color: '#66bb6a', border: '1px solid rgba(102,187,106,0.3)' }}
+                    className="text-xs font-bold px-2.5 py-1 rounded-full"
+                    style={{
+                        background: 'rgba(102,187,106,0.15)',
+                        color: '#66bb6a',
+                        border: '1px solid rgba(102,187,106,0.3)'
+                    }}
                 >
                   {t('settings.localFirstBadge')}
                 </span>
-              </SettingsRow>
-              <SettingsRow label={t('settings.aiControlTitle')} description={t('settings.aiControlDesc')}>
+                            </SettingsRow>
+                            <SettingsRow label={t('settings.aiControlTitle')} description={t('settings.aiControlDesc')}>
                 <span
-                  className="text-xs font-bold px-2.5 py-1 rounded-full"
-                  style={{ background: 'rgba(0,163,224,0.14)', color: '#00A3E0', border: '1px solid rgba(0,163,224,0.3)' }}
+                    className="text-xs font-bold px-2.5 py-1 rounded-full"
+                    style={{
+                        background: 'rgba(0,163,224,0.14)',
+                        color: '#00A3E0',
+                        border: '1px solid rgba(0,163,224,0.3)'
+                    }}
                 >
                   {t('settings.aiControlBadge')}
                 </span>
-              </SettingsRow>
-              <div className="px-4 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                <h2 className="text-sm font-semibold text-text-primary">{t('settings.privacyDataTitle')}</h2>
-                <p className="mt-1 text-xs text-text-muted">{t('settings.privacyDataDesc')}</p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  {PRIVACY_DATA_POINTS.map((point) => (
-                    <div key={point.title} className="rounded-xl border border-border bg-bg-primary/70 p-3">
-                      <p className="text-xs font-semibold text-text-primary">{point.title}</p>
-                      <p className="mt-1 text-xs text-text-muted">{point.body}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <SettingsRow label={t('settings.backupDownload')} description={t('settings.backupDownloadDesc')}>
-                <div className="flex flex-col gap-2 items-end">
-                  <div className="flex flex-wrap gap-1.5 justify-end">
-                    {[
-                      { key: 'full', label: t('settings.backupFull') },
-                      { key: 'collection', label: t('settings.backupCollection') },
-                      { key: 'users', label: t('settings.backupUsers') },
-                      { key: 'cards', label: t('settings.backupCards') },
-                      { key: 'products', label: t('settings.backupProducts') },
-                      { key: 'images', label: t('settings.backupImages') },
-                    ].map(opt => {
-                      const active = backupOptions.includes(opt.key)
-                      return (
-                        <button
-                          key={opt.key}
-                          onClick={() => {
-                            if (opt.key === 'full') {
-                              setBackupOptions(active ? [] : ['full'])
-                            } else {
-                              setBackupOptions(prev => {
-                                const next = prev.filter(k => k !== 'full')
-                                return active ? next.filter(k => k !== opt.key) : [...next, opt.key]
-                              })
-                            }
-                          }}
-                          className="text-[11px] font-semibold px-2.5 py-1 rounded-full transition-all"
-                          style={active
-                            ? { background: 'rgba(239,21,21,0.2)', color: '#EF1515', border: '1px solid rgba(239,21,21,0.4)' }
-                            : { background: 'rgba(255,255,255,0.05)', color: '#606078', border: '1px solid rgba(255,255,255,0.08)' }
-                          }
-                        >
-                          {opt.label}
-                        </button>
-                      )
-                    })}
-                  </div>
-                  <button
-                    onClick={() => downloadBackup(backupOptions.join(',') || 'full')}
-                    disabled={backupOptions.length === 0}
-                    className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity disabled:opacity-50"
-                    style={{ background: 'rgba(255,255,255,0.07)', color: '#90a4ae', border: '1px solid rgba(255,255,255,0.1)' }}
-                  >
-                    <Download size={13} /> {t('settings.backupButton')}
-                  </button>
-                </div>
-              </SettingsRow>
-              <SettingsRow label={t('settings.backupImport')} description={t('settings.backupImportDesc')} last>
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={restoring}
-                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity disabled:opacity-50"
-                  style={{ background: 'rgba(255,255,255,0.07)', color: '#90a4ae', border: '1px solid rgba(255,255,255,0.1)' }}
-                >
-                  <Upload size={13} /> {restoring ? t('settings.importing') : t('settings.importButton')}
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".sql"
-                  className="hidden"
-                  onChange={handleRestoreUpload}
-                />
-              </SettingsRow>
-            </SettingsCard>
-          </section>
-        </>
-      )}
+                            </SettingsRow>
+                            <div className="px-4 py-4" style={{borderBottom: '1px solid rgba(255,255,255,0.05)'}}>
+                                <h2 className="text-sm font-semibold text-text-primary">{t('settings.privacyDataTitle')}</h2>
+                                <p className="mt-1 text-xs text-text-muted">{t('settings.privacyDataDesc')}</p>
+                                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                                    {PRIVACY_DATA_POINTS.map((point) => (
+                                        <div key={point.title}
+                                             className="rounded-xl border border-border bg-bg-primary/70 p-3">
+                                            <p className="text-xs font-semibold text-text-primary">{point.title}</p>
+                                            <p className="mt-1 text-xs text-text-muted">{point.body}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                            <SettingsRow label={t('settings.backupDownload')}
+                                         description={t('settings.backupDownloadDesc')}>
+                                <div className="flex flex-col gap-2 items-end">
+                                    <div className="flex flex-wrap gap-1.5 justify-end">
+                                        {[
+                                            {key: 'full', label: t('settings.backupFull')},
+                                            {key: 'collection', label: t('settings.backupCollection')},
+                                            {key: 'users', label: t('settings.backupUsers')},
+                                            {key: 'cards', label: t('settings.backupCards')},
+                                            {key: 'products', label: t('settings.backupProducts')},
+                                            {key: 'images', label: t('settings.backupImages')},
+                                        ].map(opt => {
+                                            const active = backupOptions.includes(opt.key)
+                                            return (
+                                                <button
+                                                    key={opt.key}
+                                                    onClick={() => {
+                                                        if (opt.key === 'full') {
+                                                            setBackupOptions(active ? [] : ['full'])
+                                                        } else {
+                                                            setBackupOptions(prev => {
+                                                                const next = prev.filter(k => k !== 'full')
+                                                                return active ? next.filter(k => k !== opt.key) : [...next, opt.key]
+                                                            })
+                                                        }
+                                                    }}
+                                                    className="text-[11px] font-semibold px-2.5 py-1 rounded-full transition-all"
+                                                    style={active
+                                                        ? {
+                                                            background: 'rgba(239,21,21,0.2)',
+                                                            color: '#EF1515',
+                                                            border: '1px solid rgba(239,21,21,0.4)'
+                                                        }
+                                                        : {
+                                                            background: 'rgba(255,255,255,0.05)',
+                                                            color: '#606078',
+                                                            border: '1px solid rgba(255,255,255,0.08)'
+                                                        }
+                                                    }
+                                                >
+                                                    {opt.label}
+                                                </button>
+                                            )
+                                        })}
+                                    </div>
+                                    <button
+                                        onClick={() => downloadBackup(backupOptions.join(',') || 'full')}
+                                        disabled={backupOptions.length === 0}
+                                        className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity disabled:opacity-50"
+                                        style={{
+                                            background: 'rgba(255,255,255,0.07)',
+                                            color: '#90a4ae',
+                                            border: '1px solid rgba(255,255,255,0.1)'
+                                        }}
+                                    >
+                                        <Download size={13}/> {t('settings.backupButton')}
+                                    </button>
+                                </div>
+                            </SettingsRow>
+                            <SettingsRow label={t('settings.backupImport')} description={t('settings.backupImportDesc')}
+                                         last>
+                                <button
+                                    onClick={() => fileInputRef.current?.click()}
+                                    disabled={restoring}
+                                    className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity disabled:opacity-50"
+                                    style={{
+                                        background: 'rgba(255,255,255,0.07)',
+                                        color: '#90a4ae',
+                                        border: '1px solid rgba(255,255,255,0.1)'
+                                    }}
+                                >
+                                    <Upload
+                                        size={13}/> {restoring ? t('settings.importing') : t('settings.importButton')}
+                                </button>
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    accept=".sql"
+                                    className="hidden"
+                                    onChange={handleRestoreUpload}
+                                />
+                            </SettingsRow>
+                        </SettingsCard>
+                    </section>
+                </>
+            )}
 
-      {activeTab === 'notifications' && (
-        <>
-          {/* ── 4. BENACHRICHTIGUNGEN ── */}
-          <section className="space-y-1">
-            <SectionHeader title={t('settings.sectionNotifications')} />
-            <SettingsCard>
-              <SettingsRow
-                label={t('settings.telegramBot')}
-                description={t('settings.telegramBotDesc')}
-              >
-                {telegramStatus?.configured ? (
-                  <span
-                    className="text-xs font-bold px-2.5 py-1 rounded-full"
-                    style={{ background: 'rgba(102,187,106,0.15)', color: '#66bb6a', border: '1px solid rgba(102,187,106,0.3)' }}
-                  >
+            {activeTab === 'notifications' && (
+                <>
+                    {/* ── 4. BENACHRICHTIGUNGEN ── */}
+                    <section className="space-y-1">
+                        <SectionHeader title={t('settings.sectionNotifications')}/>
+                        <SettingsCard>
+                            <SettingsRow
+                                label={t('settings.telegramBot')}
+                                description={t('settings.telegramBotDesc')}
+                            >
+                                {telegramStatus?.configured ? (
+                                    <span
+                                        className="text-xs font-bold px-2.5 py-1 rounded-full"
+                                        style={{
+                                            background: 'rgba(102,187,106,0.15)',
+                                            color: '#66bb6a',
+                                            border: '1px solid rgba(102,187,106,0.3)'
+                                        }}
+                                    >
                     {t('settings.telegramConfigured')}
                   </span>
-                ) : (
-                  <span
-                    className="text-xs font-bold px-2.5 py-1 rounded-full"
-                    style={{ background: 'rgba(227,0,11,0.1)', color: '#e3000b', border: '1px solid rgba(227,0,11,0.25)' }}
-                  >
+                                ) : (
+                                    <span
+                                        className="text-xs font-bold px-2.5 py-1 rounded-full"
+                                        style={{
+                                            background: 'rgba(227,0,11,0.1)',
+                                            color: '#e3000b',
+                                            border: '1px solid rgba(227,0,11,0.25)'
+                                        }}
+                                    >
                     {t('settings.telegramNotConfigured')}
                   </span>
-                )}
-              </SettingsRow>
-              <SettingsRow label={t('settings.telegramBotToken')} description={t('settings.telegramBotTokenDesc')}>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="password"
-                    value={telegramBotToken}
-                    onChange={e => { setTelegramBotToken(e.target.value); setTelegramBotTokenDirty(true) }}
-                    placeholder="1234567890:AAF..."
-                    className="input text-xs font-mono"
-                    style={{ minWidth: 0, width: 180 }}
-                  />
-                  {telegramBotToken && !telegramBotTokenDirty && (
-                    <span className="text-xs text-green flex-shrink-0">✅</span>
-                  )}
-                  {telegramBotTokenDirty && (
-                    <button
-                      onClick={async () => {
-                        await saveSetting('telegram_bot_token', telegramBotToken)
-                        setTelegramBotTokenDirty(false)
-                        queryClient.invalidateQueries({ queryKey: ['setting', 'telegram_bot_token'] })
-                        queryClient.invalidateQueries({ queryKey: ['telegram-status'] })
-                        toast.success(t('settings.apiKeySaved'))
-                      }}
-                      className="btn-primary-sm flex-shrink-0"
-                    >
-                      {t('common.save')}
-                    </button>
-                  )}
-                </div>
-              </SettingsRow>
-              <SettingsRow label={t('settings.telegramChatId')} description={t('settings.telegramChatIdDesc')}>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={telegramChatId}
-                    onChange={e => { setTelegramChatId(e.target.value); setTelegramChatIdDirty(true) }}
-                    placeholder="-100123456789"
-                    className="input text-xs font-mono"
-                    style={{ minWidth: 0, width: 140 }}
-                  />
-                  {telegramChatId && !telegramChatIdDirty && (
-                    <span className="text-xs text-green flex-shrink-0">✅</span>
-                  )}
-                  {telegramChatIdDirty && (
-                    <button
-                      onClick={async () => {
-                        await saveSetting('telegram_chat_id', telegramChatId)
-                        setTelegramChatIdDirty(false)
-                        queryClient.invalidateQueries({ queryKey: ['setting', 'telegram_chat_id'] })
-                        queryClient.invalidateQueries({ queryKey: ['telegram-status'] })
-                        toast.success(t('settings.apiKeySaved'))
-                      }}
-                      className="btn-primary-sm flex-shrink-0"
-                    >
-                      {t('common.save')}
-                    </button>
-                  )}
-                </div>
-              </SettingsRow>
-              <SettingsRow
-                label={t('settings.priceAlerts')}
-                description={t('settings.priceAlertsDesc')}
-              >
-                <Toggle value={priceAlertsEnabled} onChange={handlePriceAlertsToggle} />
-              </SettingsRow>
-              {priceAlertsEnabled && (
-                <SettingsRow
-                  label={t('settings.threshold')}
-                  description={t('settings.thresholdDesc')}
-                  last
-                >
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="number"
-                      value={alertThreshold}
-                      onChange={(e) => setAlertThreshold(e.target.value)}
-                      onBlur={handleAlertThresholdBlur}
-                      min="1"
-                      max="100"
-                      className="text-xs font-semibold text-text-primary rounded-lg px-3 py-1.5 outline-none w-16 text-right"
-                      style={{
-                        background: 'rgba(255,255,255,0.07)',
-                        border: '1px solid rgba(255,255,255,0.1)',
-                      }}
-                    />
-                    <span className="text-xs text-text-muted">%</span>
-                  </div>
-                </SettingsRow>
-              )}
-              {!priceAlertsEnabled && <div style={{ height: 0 }} />}
-            </SettingsCard>
-          </section>
-        </>
-      )}
+                                )}
+                            </SettingsRow>
+                            <SettingsRow label={t('settings.telegramBotToken')}
+                                         description={t('settings.telegramBotTokenDesc')}>
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="password"
+                                        value={telegramBotToken}
+                                        onChange={e => {
+                                            setTelegramBotToken(e.target.value);
+                                            setTelegramBotTokenDirty(true)
+                                        }}
+                                        placeholder="1234567890:AAF..."
+                                        className="input text-xs font-mono"
+                                        style={{minWidth: 0, width: 180}}
+                                    />
+                                    {telegramBotToken && !telegramBotTokenDirty && (
+                                        <span className="text-xs text-green flex-shrink-0">✅</span>
+                                    )}
+                                    {telegramBotTokenDirty && (
+                                        <button
+                                            onClick={async () => {
+                                                await saveSetting('telegram_bot_token', telegramBotToken)
+                                                setTelegramBotTokenDirty(false)
+                                                queryClient.invalidateQueries({queryKey: ['setting', 'telegram_bot_token']})
+                                                queryClient.invalidateQueries({queryKey: ['telegram-status']})
+                                                toast.success(t('settings.apiKeySaved'))
+                                            }}
+                                            className="btn-primary-sm flex-shrink-0"
+                                        >
+                                            {t('common.save')}
+                                        </button>
+                                    )}
+                                </div>
+                            </SettingsRow>
+                            <SettingsRow label={t('settings.telegramChatId')}
+                                         description={t('settings.telegramChatIdDesc')}>
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="text"
+                                        value={telegramChatId}
+                                        onChange={e => {
+                                            setTelegramChatId(e.target.value);
+                                            setTelegramChatIdDirty(true)
+                                        }}
+                                        placeholder="-100123456789"
+                                        className="input text-xs font-mono"
+                                        style={{minWidth: 0, width: 140}}
+                                    />
+                                    {telegramChatId && !telegramChatIdDirty && (
+                                        <span className="text-xs text-green flex-shrink-0">✅</span>
+                                    )}
+                                    {telegramChatIdDirty && (
+                                        <button
+                                            onClick={async () => {
+                                                await saveSetting('telegram_chat_id', telegramChatId)
+                                                setTelegramChatIdDirty(false)
+                                                queryClient.invalidateQueries({queryKey: ['setting', 'telegram_chat_id']})
+                                                queryClient.invalidateQueries({queryKey: ['telegram-status']})
+                                                toast.success(t('settings.apiKeySaved'))
+                                            }}
+                                            className="btn-primary-sm flex-shrink-0"
+                                        >
+                                            {t('common.save')}
+                                        </button>
+                                    )}
+                                </div>
+                            </SettingsRow>
+                            <SettingsRow
+                                label={t('settings.priceAlerts')}
+                                description={t('settings.priceAlertsDesc')}
+                            >
+                                <Toggle value={priceAlertsEnabled} onChange={handlePriceAlertsToggle}/>
+                            </SettingsRow>
+                            {priceAlertsEnabled && (
+                                <SettingsRow
+                                    label={t('settings.threshold')}
+                                    description={t('settings.thresholdDesc')}
+                                    last
+                                >
+                                    <div className="flex items-center gap-1.5">
+                                        <input
+                                            type="number"
+                                            value={alertThreshold}
+                                            onChange={(e) => setAlertThreshold(e.target.value)}
+                                            onBlur={handleAlertThresholdBlur}
+                                            min="1"
+                                            max="100"
+                                            className="text-xs font-semibold text-text-primary rounded-lg px-3 py-1.5 outline-none w-16 text-right"
+                                            style={{
+                                                background: 'rgba(255,255,255,0.07)',
+                                                border: '1px solid rgba(255,255,255,0.1)',
+                                            }}
+                                        />
+                                        <span className="text-xs text-text-muted">%</span>
+                                    </div>
+                                </SettingsRow>
+                            )}
+                            {!priceAlertsEnabled && <div style={{height: 0}}/>}
+                        </SettingsCard>
+                    </section>
+                </>
+            )}
 
-      {activeTab === 'community' && (
-        <>
-          <section className="space-y-1">
-            <SectionHeader title={t('settings.contributors')} />
-            <ContributorsSection t={t} />
-          </section>
+            {activeTab === 'community' && (
+                <>
+                    <section className="space-y-1">
+                        <SectionHeader title={t('settings.contributors')}/>
+                        <ContributorsSection t={t}/>
+                    </section>
 
-          <section className="space-y-1 mt-4">
-            <SectionHeader title={t('settings.supporters')} />
-            <SupportersSection t={t} />
-          </section>
+                    <section className="space-y-1 mt-4">
+                        <SectionHeader title={t('settings.supporters')}/>
+                        <SupportersSection t={t}/>
+                    </section>
 
-          <section className="space-y-1 mt-4">
-            <SectionHeader title={t('settings.sponsors')} />
-            <SettingsCard>
-              <div className="p-4 text-center space-y-3">
-                <p className="text-2xl">🐾</p>
-                <p className="text-sm text-text-secondary">
-                  {t('settings.sponsorMessage')}
-                </p>
-                <RescueDonationTotal t={t} />
-                <p className="text-xs text-text-muted">
-                  {t('settings.kofiHint')}
-                </p>
-                <a
-                  href="https://ko-fi.com/gillesromer"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-brand-red text-white text-sm font-semibold hover:opacity-90 transition-opacity"
-                >
-                  ☕ {t('settings.kofiButton')}
-                </a>
-              </div>
-            </SettingsCard>
-          </section>
-        </>
-      )}
+                    <section className="space-y-1 mt-4">
+                        <SectionHeader title={t('settings.sponsors')}/>
+                        <SettingsCard>
+                            <div className="p-4 text-center space-y-3">
+                                <p className="text-2xl">🐾</p>
+                                <p className="text-sm text-text-secondary">
+                                    {t('settings.sponsorMessage')}
+                                </p>
+                                <RescueDonationTotal t={t}/>
+                                <p className="text-xs text-text-muted">
+                                    {t('settings.kofiHint')}
+                                </p>
+                                <a
+                                    href="https://ko-fi.com/gillesromer"
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-brand-red text-white text-sm font-semibold hover:opacity-90 transition-opacity"
+                                >
+                                    ☕ {t('settings.kofiButton')}
+                                </a>
+                            </div>
+                        </SettingsCard>
+                    </section>
+                </>
+            )}
 
-      {activeTab === 'users' && user?.role === 'admin' && multiUser && (
-        <UsersTab t={t} queryClient={queryClient} />
-      )}
+            {activeTab === 'users' && user?.role === 'admin' && multiUser && (
+                <UsersTab t={t} queryClient={queryClient}/>
+            )}
 
-      <AvatarPicker
-        isOpen={showAvatarPicker}
-        onClose={() => setShowAvatarPicker(false)}
-        onSelect={handleAvatarSelect}
-        currentAvatarId={user?.avatar_id ?? null}
-      />
-    </div>
-  )
+            <AvatarPicker
+                isOpen={showAvatarPicker}
+                onClose={() => setShowAvatarPicker(false)}
+                onSelect={handleAvatarSelect}
+                currentAvatarId={user?.avatar_id ?? null}
+            />
+        </div>
+    )
 }
 
-function UsersTab({ t, queryClient }) {
-  const [showModal, setShowModal] = useState(false)
-  const [editingUser, setEditingUser] = useState(null)
-  const [formUsername, setFormUsername] = useState('')
-  const [formPassword, setFormPassword] = useState('')
-  const [formRole, setFormRole] = useState('trainer')
-  const [formForceChange, setFormForceChange] = useState(false)
-  const [currentPw, setCurrentPw] = useState('')
-  const [newPw, setNewPw] = useState('')
-  const { user: currentUser } = useAuth()
+function UsersTab({t, queryClient}) {
+    const [showModal, setShowModal] = useState(false)
+    const [editingUser, setEditingUser] = useState(null)
+    const [formUsername, setFormUsername] = useState('')
+    const [formPassword, setFormPassword] = useState('')
+    const [formRole, setFormRole] = useState('trainer')
+    const [formForceChange, setFormForceChange] = useState(false)
+    const [currentPw, setCurrentPw] = useState('')
+    const [newPw, setNewPw] = useState('')
+    const {user: currentUser} = useAuth()
 
-  const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: getUsers })
+    const {data: users = []} = useQuery({queryKey: ['users'], queryFn: getUsers})
 
-  const createMut = useMutation({
-    mutationFn: (data) => createUser(data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['users'] }); toast.success(t('settings.users.userCreated')); setShowModal(false) },
-    onError: (e) => toast.error(e.response?.data?.detail || t('common.error')),
-  })
-  const updateMut = useMutation({
-    mutationFn: ({ id, data }) => updateUser(id, data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['users'] }); toast.success(t('settings.users.userUpdated')); setShowModal(false); setEditingUser(null) },
-    onError: (e) => toast.error(e.response?.data?.detail || t('common.error')),
-  })
-  const deleteMut = useMutation({
-    mutationFn: (id) => deleteUser(id),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['users'] }); toast.success(t('settings.users.userDeleted')) },
-    onError: (e) => toast.error(e.response?.data?.detail || t('common.error')),
-  })
-  const changePwMut = useMutation({
-    mutationFn: (data) => changePassword(data),
-    onSuccess: () => { toast.success(t('settings.users.passwordChanged')); setCurrentPw(''); setNewPw('') },
-    onError: (e) => toast.error(e.response?.data?.detail || t('common.error')),
-  })
+    const createMut = useMutation({
+        mutationFn: (data) => createUser(data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({queryKey: ['users']});
+            toast.success(t('settings.users.userCreated'));
+            setShowModal(false)
+        },
+        onError: (e) => toast.error(e.response?.data?.detail || t('common.error')),
+    })
+    const updateMut = useMutation({
+        mutationFn: ({id, data}) => updateUser(id, data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({queryKey: ['users']});
+            toast.success(t('settings.users.userUpdated'));
+            setShowModal(false);
+            setEditingUser(null)
+        },
+        onError: (e) => toast.error(e.response?.data?.detail || t('common.error')),
+    })
+    const deleteMut = useMutation({
+        mutationFn: (id) => deleteUser(id),
+        onSuccess: () => {
+            queryClient.invalidateQueries({queryKey: ['users']});
+            toast.success(t('settings.users.userDeleted'))
+        },
+        onError: (e) => toast.error(e.response?.data?.detail || t('common.error')),
+    })
+    const changePwMut = useMutation({
+        mutationFn: (data) => changePassword(data),
+        onSuccess: () => {
+            toast.success(t('settings.users.passwordChanged'));
+            setCurrentPw('');
+            setNewPw('')
+        },
+        onError: (e) => toast.error(e.response?.data?.detail || t('common.error')),
+    })
 
-  const openCreate = () => {
-    setEditingUser(null)
-    setFormUsername('')
-    setFormPassword('')
-    setFormRole('trainer')
-    setFormForceChange(false)
-    setShowModal(true)
-  }
-  const openEdit = (u) => { setEditingUser(u); setFormUsername(u.username); setFormPassword(''); setFormRole(u.role); setShowModal(true) }
-  const handleSubmit = (e) => {
-    e.preventDefault()
-    if (editingUser) {
-      const data = {}
-      if (formUsername !== editingUser.username) data.username = formUsername
-      if (formPassword) data.password = formPassword
-      if (formRole !== editingUser.role) data.role = formRole
-      updateMut.mutate({ id: editingUser.id, data })
-    } else {
-      createMut.mutate({
-        username: formUsername,
-        password: formPassword,
-        role: formRole,
-        must_change_password: formForceChange,
-      })
+    const openCreate = () => {
+        setEditingUser(null)
+        setFormUsername('')
+        setFormPassword('')
+        setFormRole('trainer')
+        setFormForceChange(false)
+        setShowModal(true)
     }
-  }
+    const openEdit = (u) => {
+        setEditingUser(u);
+        setFormUsername(u.username);
+        setFormPassword('');
+        setFormRole(u.role);
+        setShowModal(true)
+    }
+    const handleSubmit = (e) => {
+        e.preventDefault()
+        if (editingUser) {
+            const data = {}
+            if (formUsername !== editingUser.username) data.username = formUsername
+            if (formPassword) data.password = formPassword
+            if (formRole !== editingUser.role) data.role = formRole
+            updateMut.mutate({id: editingUser.id, data})
+        } else {
+            createMut.mutate({
+                username: formUsername,
+                password: formPassword,
+                role: formRole,
+                must_change_password: formForceChange,
+            })
+        }
+    }
 
-  return (
-    <>
-      <section className="space-y-1">
-        <div className="flex items-center justify-between px-1 mb-3">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">{t('settings.users.title')}</p>
-          <button onClick={openCreate} className="flex items-center gap-1 text-xs font-semibold text-brand-red hover:text-brand-red/80">
-            <Plus size={14} /> {t('settings.users.addUser')}
-          </button>
-        </div>
-        <SettingsCard>
-          {users.map((u, i) => (
-            <SettingsRow key={u.id} label={u.username} description={`${u.role} · ${u.is_active ? t('settings.users.active') : t('settings.users.inactive')}`} last={i === users.length - 1}>
-              <div className="flex items-center gap-2">
-                <button onClick={() => updateMut.mutate({ id: u.id, data: { is_active: !u.is_active } })} className="text-text-muted hover:text-text-primary" title={u.is_active ? 'Deactivate' : 'Activate'}>
-                  {u.is_active ? <UserCheck size={15} /> : <UserX size={15} />}
-                </button>
-                <button onClick={() => openEdit(u)} className="text-text-muted hover:text-text-primary"><Pencil size={15} /></button>
-                {u.id !== currentUser?.id && (
-                  <button onClick={() => { if (window.confirm(t('settings.users.deleteConfirm'))) deleteMut.mutate(u.id) }} className="text-text-muted hover:text-brand-red"><Trash2 size={15} /></button>
-                )}
-              </div>
-            </SettingsRow>
-          ))}
-        </SettingsCard>
-      </section>
+    return (
+        <>
+            <section className="space-y-1">
+                <div className="flex items-center justify-between px-1 mb-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">{t('settings.users.title')}</p>
+                    <button onClick={openCreate}
+                            className="flex items-center gap-1 text-xs font-semibold text-brand-red hover:text-brand-red/80">
+                        <Plus size={14}/> {t('settings.users.addUser')}
+                    </button>
+                </div>
+                <SettingsCard>
+                    {users.map((u, i) => (
+                        <SettingsRow key={u.id} label={u.username}
+                                     description={`${u.role} · ${u.is_active ? t('settings.users.active') : t('settings.users.inactive')}`}
+                                     last={i === users.length - 1}>
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => updateMut.mutate({id: u.id, data: {is_active: !u.is_active}})}
+                                        className="text-text-muted hover:text-text-primary"
+                                        title={u.is_active ? 'Deactivate' : 'Activate'}>
+                                    {u.is_active ? <UserCheck size={15}/> : <UserX size={15}/>}
+                                </button>
+                                <button onClick={() => openEdit(u)} className="text-text-muted hover:text-text-primary">
+                                    <Pencil size={15}/></button>
+                                {u.id !== currentUser?.id && (
+                                    <button onClick={() => {
+                                        if (window.confirm(t('settings.users.deleteConfirm'))) deleteMut.mutate(u.id)
+                                    }} className="text-text-muted hover:text-brand-red"><Trash2 size={15}/></button>
+                                )}
+                            </div>
+                        </SettingsRow>
+                    ))}
+                </SettingsCard>
+            </section>
 
-      <section className="space-y-1">
-        <SectionHeader title={t('settings.users.changePassword')} />
-        <SettingsCard>
-          <div className="px-4 py-3 space-y-3">
-            <input type="password" placeholder={t('settings.users.currentPassword')} value={currentPw} onChange={(e) => setCurrentPw(e.target.value)} className="input w-full" />
-            <input type="password" placeholder={t('settings.users.newPassword')} value={newPw} onChange={(e) => setNewPw(e.target.value)} className="input w-full" />
-            <button onClick={() => changePwMut.mutate({ current_password: currentPw, new_password: newPw })} disabled={!currentPw || !newPw || changePwMut.isPending} className="btn-primary text-sm">
-              {t('settings.users.changePassword')}
-            </button>
-          </div>
-        </SettingsCard>
-      </section>
+            <section className="space-y-1">
+                <SectionHeader title={t('settings.users.changePassword')}/>
+                <SettingsCard>
+                    <div className="px-4 py-3 space-y-3">
+                        <input type="password" placeholder={t('settings.users.currentPassword')} value={currentPw}
+                               onChange={(e) => setCurrentPw(e.target.value)} className="input w-full"/>
+                        <input type="password" placeholder={t('settings.users.newPassword')} value={newPw}
+                               onChange={(e) => setNewPw(e.target.value)} className="input w-full"/>
+                        <button onClick={() => changePwMut.mutate({current_password: currentPw, new_password: newPw})}
+                                disabled={!currentPw || !newPw || changePwMut.isPending}
+                                className="btn-primary text-sm">
+                            {t('settings.users.changePassword')}
+                        </button>
+                    </div>
+                </SettingsCard>
+            </section>
 
-      <Modal isOpen={showModal} onClose={() => setShowModal(false)} title={editingUser ? t('common.edit') : t('settings.users.addUser')} size="sm">
-        <form onSubmit={handleSubmit} className="space-y-4 p-4">
-          <div>
-            <label className="text-xs text-text-secondary mb-1 block">{t('settings.users.username')}</label>
-            <input type="text" value={formUsername} onChange={(e) => setFormUsername(e.target.value)} className="input w-full" required />
-          </div>
-          <div>
-            <label className="text-xs text-text-secondary mb-1 block">{t('settings.users.password')}{editingUser && ' (leave blank to keep)'}</label>
-            <input type="password" value={formPassword} onChange={(e) => setFormPassword(e.target.value)} className="input w-full" {...(!editingUser && { required: true })} />
-          </div>
-          <div>
-            <label className="text-xs text-text-secondary mb-1 block">{t('settings.users.role')}</label>
-            <select value={formRole} onChange={(e) => setFormRole(e.target.value)} className="select w-full">
-              <option value="trainer">{t('settings.users.trainer')}</option>
-              <option value="admin">{t('settings.users.admin')}</option>
-            </select>
-          </div>
-          {!editingUser && (
-            <label className="flex items-center gap-2 text-sm text-text-primary">
-              <input
-                type="checkbox"
-                checked={formForceChange}
-                onChange={(e) => setFormForceChange(e.target.checked)}
-              />
-              <span>{t('settings.users.forcePasswordChange')}</span>
-            </label>
-          )}
-          <div className="flex gap-3 pt-2">
-            <button type="button" onClick={() => setShowModal(false)} className="btn-ghost flex-1">{t('common.cancel')}</button>
-            <button type="submit" disabled={createMut.isPending || updateMut.isPending} className="btn-primary flex-1">
-              {editingUser ? t('common.save') : t('settings.users.addUser')}
-            </button>
-          </div>
-        </form>
-      </Modal>
-    </>
-  )
+            <Modal isOpen={showModal} onClose={() => setShowModal(false)}
+                   title={editingUser ? t('common.edit') : t('settings.users.addUser')} size="sm">
+                <form onSubmit={handleSubmit} className="space-y-4 p-4">
+                    <div>
+                        <label className="text-xs text-text-secondary mb-1 block">{t('settings.users.username')}</label>
+                        <input type="text" value={formUsername} onChange={(e) => setFormUsername(e.target.value)}
+                               className="input w-full" required/>
+                    </div>
+                    <div>
+                        <label
+                            className="text-xs text-text-secondary mb-1 block">{t('settings.users.password')}{editingUser && ' (leave blank to keep)'}</label>
+                        <input type="password" value={formPassword} onChange={(e) => setFormPassword(e.target.value)}
+                               className="input w-full" {...(!editingUser && {required: true})} />
+                    </div>
+                    <div>
+                        <label className="text-xs text-text-secondary mb-1 block">{t('settings.users.role')}</label>
+                        <select value={formRole} onChange={(e) => setFormRole(e.target.value)}
+                                className="select w-full">
+                            <option value="trainer">{t('settings.users.trainer')}</option>
+                            <option value="admin">{t('settings.users.admin')}</option>
+                        </select>
+                    </div>
+                    {!editingUser && (
+                        <label className="flex items-center gap-2 text-sm text-text-primary">
+                            <input
+                                type="checkbox"
+                                checked={formForceChange}
+                                onChange={(e) => setFormForceChange(e.target.checked)}
+                            />
+                            <span>{t('settings.users.forcePasswordChange')}</span>
+                        </label>
+                    )}
+                    <div className="flex gap-3 pt-2">
+                        <button type="button" onClick={() => setShowModal(false)}
+                                className="btn-ghost flex-1">{t('common.cancel')}</button>
+                        <button type="submit" disabled={createMut.isPending || updateMut.isPending}
+                                className="btn-primary flex-1">
+                            {editingUser ? t('common.save') : t('settings.users.addUser')}
+                        </button>
+                    </div>
+                </form>
+            </Modal>
+        </>
+    )
 }
