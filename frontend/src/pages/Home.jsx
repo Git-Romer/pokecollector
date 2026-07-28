@@ -9,6 +9,7 @@ import ArchiveNote from '../components/ArchiveNote'
 import AnimatedCard from '../components/reactbits/AnimatedCard'
 import OrbitImages from '../components/reactbits/OrbitImages'
 import ColorBends from '../components/reactbits/ColorBends'
+import MagneticLink from '../components/originkit/MagneticLink'
 import { useSettings } from '../contexts/SettingsContext'
 
 /**
@@ -70,9 +71,9 @@ export default function Home() {
         const [before, name, after] = emphasise(t('archive.lastFiled'), featured.name)
         return <p className="archive-featured-card">{before}<strong>{name}</strong>{after}</p>
       })()}
-      <Link className="archive-featured-action" to="/collection">
+      <MagneticLink className="archive-featured-action" to="/collection">
         {t('archive.viewCollection')}
-      </Link>
+      </MagneticLink>
     </div>
     <ColorBends className="archive-featured-orbit" opacity={0.6}>
       {/* Magazine-cover dressing, not data: hidden so the digits stop being
