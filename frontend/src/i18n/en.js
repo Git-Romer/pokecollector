@@ -25,14 +25,16 @@ const en = {
   archive: {
     search: 'Search your collection',
     notes: 'Collection notes',
-    kicker: 'COLLECTION OVERVIEW',
+    // Distinct names: two landmarks both called "Primary navigation" are
+    // indistinguishable in a landmark list.
+    primaryNav: 'Main',
+    mobileNav: 'Mobile',
     title: 'Collection Overview',
     subtitle: 'Everything you’ve chosen to keep, right where it belongs.',
     notesTitle: 'John John’s Notes',
     openNotes: 'Open John John’s Notes',
     keepingWatch: 'John John is keeping watch',
     loading: 'John John is opening the collection…',
-    latestKicker: 'LATEST ADDITION',
     latestTitle: 'Latest addition',
     latestNote: 'The newest card in your collection, and the five before it.',
     lastFiled: 'The last thing John John filed was {name}.',

@@ -8,9 +8,15 @@ const overview = en.archive
 
 describe('Collection Overview copy', () => {
   it('uses Collection Overview language for the root surface', () => {
-    expect(overview.kicker).toBe('COLLECTION OVERVIEW')
     expect(overview.title).toBe('Collection Overview')
     expect(overview.notesTitle).toBe('John John’s Notes')
+  })
+
+  it('does not repeat a heading in an eyebrow above it', () => {
+    // The kicker/latestKicker pair held the same words as the heading directly
+    // beneath, so each section announced its own name twice.
+    expect(overview.kicker).toBeUndefined()
+    expect(overview.latestKicker).toBeUndefined()
   })
 
   it('keeps finance language off the landing surface', () => {

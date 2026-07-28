@@ -5,7 +5,9 @@ export default function OrbitImages({ images = [], centralText = "ARCHIVE", clas
   return (
     <div className={`orbit-container ${className}`}>
       <div className="orbit-center">
-        <span>{centralText}</span>
+        {/* Decorative: the surrounding section already names itself, so this
+            glyph would otherwise leak into the page as bare content. */}
+        <span aria-hidden="true">{centralText}</span>
       </div>
       {images.map((img, i) => {
         const angle = (i / images.length) * 360;

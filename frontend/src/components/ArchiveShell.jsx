@@ -44,17 +44,20 @@ export default function ArchiveShell() {
   return (
     <div className="archive-shell min-h-dvh">
       <div className="archive-ambient" aria-hidden="true" />
-      <aside className="archive-rail hidden lg:flex" aria-label="Primary navigation">
+      {/* A plain div, not <aside>: this is a layout rail holding the wordmark,
+          the nav and a status caption. As an <aside> it published a
+          `complementary` landmark named for navigation it merely contains. */}
+      <div className="archive-rail hidden lg:flex">
         <NavLink to="/collection" className="archive-wordmark" aria-label="John John's PC, Collection Overview"><span aria-hidden="true">∞</span><strong><ShinyText text="John John's PC" speed={5} /></strong></NavLink>
-        <nav className="archive-nav">
+        <nav className="archive-nav" aria-label={t('archive.primaryNav')}>
           {PRIMARY_ARCHIVE_NAV.map(({ to, label, icon: Icon, end }) => (
             <NavLink key={to} to={to} end={end} className={({ isActive }) => clsx('archive-nav-link', isActive && 'archive-nav-link-active')}>
               <Icon /><span>{label}</span>
             </NavLink>
           ))}
         </nav>
-        <div className="archive-rail-footer"><JohnJohnSignal /><span>{t('archive.keepingWatch')}</span></div>
-      </aside>
+        <div className="archive-rail-footer"><JohnJohnSignal decorative /><span>{t('archive.keepingWatch')}</span></div>
+      </div>
       <div className="archive-content">
         <Toolbar className="archive-toolbar">
           {/* A plain button rather than ToolbarButton: this reads as a search
@@ -80,7 +83,7 @@ export default function ArchiveShell() {
         </Toolbar>
         <main className="archive-main"><Outlet /></main>
       </div>
-      <nav className="archive-mobile-nav lg:hidden" aria-label="Primary navigation">
+      <nav className="archive-mobile-nav lg:hidden" aria-label={t('archive.mobileNav')}>
         {PRIMARY_ARCHIVE_NAV.map(({ to, label, icon: Icon, end }) => (
           <NavLink key={to} to={to} end={end} className={({ isActive }) => clsx('archive-mobile-link', isActive && 'archive-mobile-link-active')}>
             <Icon /><span>{label}</span>
