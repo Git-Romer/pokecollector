@@ -18,9 +18,9 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - 👤 **Creator:** [Gilles Romer](https://romerg.de/)
 - ✉️ **Contact:** [info@romerg.de](mailto:info@romerg.de)
 
-![Version](https://img.shields.io/badge/version-v1.25.1-e3000b?style=flat-square) ![Dark Theme](https://img.shields.io/badge/theme-dark-1a1a2e?style=flat-square) ![TCGdex](https://img.shields.io/badge/card%20data-TCGdex-e3000b?style=flat-square) ![Docker](https://img.shields.io/badge/deploy-Docker-2496ed?style=flat-square) ![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square) ![React](https://img.shields.io/badge/frontend-React%2018-61dafb?style=flat-square) [![Ko-fi](https://img.shields.io/badge/support-Ko--fi-ff5e5b?style=flat-square&logo=ko-fi&logoColor=white)](https://ko-fi.com/gillesromer)
+![Version](https://img.shields.io/badge/version-v1.27.3-e3000b?style=flat-square) ![Dark Theme](https://img.shields.io/badge/theme-dark-1a1a2e?style=flat-square) ![TCGdex](https://img.shields.io/badge/card%20data-TCGdex-e3000b?style=flat-square) ![Docker](https://img.shields.io/badge/deploy-Docker-2496ed?style=flat-square) ![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square) ![React](https://img.shields.io/badge/frontend-React%2018-61dafb?style=flat-square) [![Ko-fi](https://img.shields.io/badge/support-Ko--fi-ff5e5b?style=flat-square&logo=ko-fi&logoColor=white)](https://ko-fi.com/gillesromer)
 
-**Current version:** `v1.25.1` · Releases are tracked on the [GitHub Releases page](https://github.com/Git-Romer/pokecollector/releases).
+**Current version:** `v1.27.3` · Releases are tracked on the [GitHub Releases page](https://github.com/Git-Romer/pokecollector/releases).
 
 ![WebApp Preview](preview-homescreen.png)
 
@@ -30,6 +30,7 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 
 - [Features](#-features)
 - [Quick Start](#-quick-start)
+- [Reverse Proxy Authentication](#-reverse-proxy-authentication)
 - [Managing Users](#-managing-users)
 - [Environment Variables](#-environment-variables)
 - [Sync Behavior](#-sync-behavior)
@@ -87,6 +88,8 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 ### 🏆 Social & Community
 - Leaderboard, trainer comparison, and achievements in multi-user mode
 - View other trainers' collections from the Leaderboard
+- Optional public trainer profiles with trainer-name URLs, a public directory, individually shared collection binders, and opt-in market values
+- Admin-controlled public sharing switch, disabled by default on new and upgraded installations
 - Community section in Settings with GitHub contributors and Ko-fi supporters
 
 ### 🎨 UX & Localization
@@ -201,6 +204,14 @@ See [National Pokédex documentation](docs/POKEDEX.md) for the data model, route
 - In single-user mode, login is skipped and the app auto-authenticates as admin
 - In multi-user mode, use the admin account created from `ADMIN_USERNAME` / `ADMIN_PASSWORD`
 - If `ADMIN_PASSWORD` is omitted, a random password may be logged during bootstrap
+
+---
+
+## 🔐 Reverse Proxy Authentication
+
+If PokéCollector is protected by Authentik, Authelia, oauth2-proxy, or another forward-auth layer, the proxy checks requests before they reach PokéCollector. Enabling public profiles inside the app is therefore not enough on its own. The proxy must also allow the public pages, their public API calls, and the assets those pages use.
+
+See [Reverse proxy authentication](docs/REVERSE_PROXY_AUTH.md) for the complete route list, Authentik examples, and a verification checklist. Do not bypass authentication for all `/api` routes.
 
 ---
 
@@ -355,6 +366,7 @@ Build and dependency installation also contact package/distribution registries s
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System structure, data flow, contexts, settings model |
 | [`docs/BACKEND.md`](docs/BACKEND.md) | API routes, models, settings scoping, backup behavior |
 | [`docs/FRONTEND.md`](docs/FRONTEND.md) | Routes, pages, components, contexts, theming, i18n |
+| [`docs/REVERSE_PROXY_AUTH.md`](docs/REVERSE_PROXY_AUTH.md) | Forward-auth exceptions for public profiles and binders |
 
 ---
 

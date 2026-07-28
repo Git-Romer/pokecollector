@@ -1,6 +1,6 @@
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Search, Bell, BellOff, SortAsc, Filter, ChevronUp, ChevronDown, Eye, EyeOff, RotateCcw } from 'lucide-react'
 import { getSets, markSetsSeen } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
@@ -10,6 +10,7 @@ import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
 import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import { normalizeTcgdexLanguage, tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { textIncludes } from '../utils/textSearch'
+import { getSavedListScrollPosition, isSavedPositionForLocation, useListScrollRestoration } from '../hooks/useListScrollRestoration'
 
 const DEFAULT_SET_FILTERS = {
   search: '',
@@ -58,6 +59,7 @@ const normalizeHiddenSetIds = (value) => {
 
 export default function Sets() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { t, settings, updateSettings, loaded: settingsLoaded } = useSettings()
   const visibleLanguages = useVisibleTcgdexLanguages()
   const [filtersHydrated, setFiltersHydrated] = useState(false)
@@ -71,13 +73,48 @@ export default function Sets() {
   const [hiddenSetIds, setHiddenSetIds] = useState([])
   const savedFilterStateRef = useRef('')
   const savedHiddenSetIdsRef = useRef('')
+  const filterSaveTimeoutRef = useRef(null)
   const queryClient = useQueryClient()
+  const filterState = useMemo(() => ({
+    search,
+    series,
+    sortBy,
+    sortOrder,
+    progressFilter,
+    langFilter,
+    showHiddenSets,
+  }), [langFilter, progressFilter, search, series, showHiddenSets, sortBy, sortOrder])
+  const serializedFilterState = useMemo(() => JSON.stringify(filterState), [filterState])
+  const persistFilterState = useCallback((serializedFilters) => {
+    savedFilterStateRef.current = serializedFilters
+    updateSettings({ set_overview_filters: serializedFilters })
+      .catch(() => {
+        savedFilterStateRef.current = ''
+        toast.error(t('sets.savePreferencesFailed'))
+      })
+  }, [t, updateSettings])
 
   const { data: sets = [], isLoading } = useQuery({
     queryKey: ['sets', langFilter],
     queryFn: () => getSets({ lang: langFilter }).then(r => r.data),
     enabled: filtersHydrated,
   })
+  const { saveScrollPosition, createDetailNavigationState } = useListScrollRestoration({
+    key: 'sets',
+    isReady: filtersHydrated && !isLoading && sets.length > 0,
+    listState: filtersHydrated ? filterState : null,
+  })
+
+  const openSet = (set) => {
+    const anchorId = `set-${set.id}`
+    saveScrollPosition(anchorId, filterState)
+    if (savedFilterStateRef.current !== serializedFilterState) {
+      clearTimeout(filterSaveTimeoutRef.current)
+      filterSaveTimeoutRef.current = null
+      persistFilterState(serializedFilterState)
+    }
+    navigate(`/sets/${set.id}`, { state: createDetailNavigationState(anchorId) })
+  }
 
   const markSeenMutation = useMutation({
     mutationFn: markSetsSeen,
@@ -106,43 +143,39 @@ export default function Sets() {
 
   useEffect(() => {
     if (!settingsLoaded || visibleLanguages.isLoading || filtersHydrated) return
-    const savedFilters = normalizeSetFilters(settings.set_overview_filters, defaultLangFilter)
+    const savedPosition = getSavedListScrollPosition('sets')
+    const storedFilters = normalizeSetFilters(settings.set_overview_filters, defaultLangFilter)
+    const activeFilters = normalizeSetFilters(
+      isSavedPositionForLocation(savedPosition, location)
+        ? savedPosition.listState
+        : storedFilters,
+      defaultLangFilter,
+    )
     const savedHiddenIds = normalizeHiddenSetIds(settings.hidden_set_ids)
-    setSearch(savedFilters.search)
-    setSeries(savedFilters.series)
-    setSortBy(savedFilters.sortBy)
-    setSortOrder(savedFilters.sortOrder)
-    setProgressFilter(savedFilters.progressFilter)
-    setLangFilter(savedFilters.langFilter)
-    setShowHiddenSets(savedFilters.showHiddenSets)
+    setSearch(activeFilters.search)
+    setSeries(activeFilters.series)
+    setSortBy(activeFilters.sortBy)
+    setSortOrder(activeFilters.sortOrder)
+    setProgressFilter(activeFilters.progressFilter)
+    setLangFilter(activeFilters.langFilter)
+    setShowHiddenSets(activeFilters.showHiddenSets)
     setHiddenSetIds(savedHiddenIds)
-    savedFilterStateRef.current = JSON.stringify(savedFilters)
+    savedFilterStateRef.current = JSON.stringify(storedFilters)
     savedHiddenSetIdsRef.current = JSON.stringify(savedHiddenIds)
     setFiltersHydrated(true)
-  }, [defaultLangFilter, filtersHydrated, settings, settingsLoaded, visibleLanguages.isLoading])
+  }, [defaultLangFilter, filtersHydrated, location, settings, settingsLoaded, visibleLanguages.isLoading])
 
   useEffect(() => {
-    if (!settingsLoaded || !filtersHydrated) return
-    const serializedFilters = JSON.stringify({
-      search,
-      series,
-      sortBy,
-      sortOrder,
-      progressFilter,
-      langFilter,
-      showHiddenSets,
-    })
-    if (savedFilterStateRef.current === serializedFilters) return
-    const handle = setTimeout(() => {
-      savedFilterStateRef.current = serializedFilters
-      updateSettings({ set_overview_filters: serializedFilters })
-        .catch(() => {
-          savedFilterStateRef.current = ''
-          toast.error(t('sets.savePreferencesFailed'))
-        })
+    if (!settingsLoaded || !filtersHydrated || savedFilterStateRef.current === serializedFilterState) return
+    filterSaveTimeoutRef.current = setTimeout(() => {
+      filterSaveTimeoutRef.current = null
+      persistFilterState(serializedFilterState)
     }, 400)
-    return () => clearTimeout(handle)
-  }, [filtersHydrated, langFilter, progressFilter, search, series, settingsLoaded, showHiddenSets, sortBy, sortOrder, t, updateSettings])
+    return () => {
+      clearTimeout(filterSaveTimeoutRef.current)
+      filterSaveTimeoutRef.current = null
+    }
+  }, [filtersHydrated, persistFilterState, serializedFilterState, settingsLoaded])
 
   useEffect(() => {
     if (!settingsLoaded || !filtersHydrated) return
@@ -354,7 +387,7 @@ export default function Sets() {
         return (
           <div
             className="set-hero cursor-pointer mb-6 group"
-            onClick={() => navigate(`/sets/${hero.id}`)}
+            onClick={() => openSet(hero)}
           >
             <div className="set-hero-glow" />
             <div className="relative z-10 flex items-center justify-between p-6 gap-4">
@@ -407,10 +440,12 @@ export default function Sets() {
             return (
               <div
                 key={set.id}
+                id={`set-${set.id}`}
+                data-scroll-anchor={`set-${set.id}`}
                 className={`bg-bg-card border rounded-2xl overflow-hidden cursor-pointer hover:border-brand-red/40 transition-all duration-200 hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)] group relative ${
                   isHidden ? 'border-border/70 opacity-60' : 'border-border'
                 }`}
-                onClick={() => navigate(`/sets/${set.id}`)}
+                onClick={() => openSet(set)}
               >
                 {set.is_new && (
                   <span className="absolute top-2 left-2 z-10 badge badge-red">{t('common.new')}</span>

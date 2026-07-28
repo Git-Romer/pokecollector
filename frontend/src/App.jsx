@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom'
 import { Suspense, lazy, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import PokeBallLoader from './components/PokeBallLoader'
@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { forceChangePassword } from './api/client'
 import Layout from './components/Layout'
 import { useSettings } from './contexts/SettingsContext'
+import PublicHomeButton from './components/PublicHomeButton'
 
 const HomeScreen = lazy(() => import('./pages/HomeScreen'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
@@ -29,6 +30,9 @@ const Leaderboard = lazy(() => import('./pages/Leaderboard'))
 const Compare = lazy(() => import('./pages/Compare'))
 const Achievements = lazy(() => import('./pages/Achievements'))
 const UserCollection = lazy(() => import('./pages/UserCollection'))
+const PublicProfile = lazy(() => import('./pages/PublicProfile'))
+const PublicBinderView = lazy(() => import('./pages/PublicBinderView'))
+const PublicDirectory = lazy(() => import('./pages/PublicDirectory'))
 
 function RouteLoader() {
   return (
@@ -109,6 +113,15 @@ function lazyRoute(element) {
   return <Suspense fallback={<RouteLoader />}>{element}</Suspense>
 }
 
+function PublicRoutes() {
+  return (
+    <>
+      <PublicHomeButton />
+      <Outlet />
+    </>
+  )
+}
+
 function ProtectedRoutes() {
   const { user, loading, multiUser } = useAuth()
 
@@ -172,6 +185,11 @@ export default function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={lazyRoute(<Login />)} />
+            <Route path="/u" element={<PublicRoutes />}>
+              <Route index element={lazyRoute(<PublicDirectory />)} />
+              <Route path=":handle" element={lazyRoute(<PublicProfile />)} />
+              <Route path=":handle/binder/:binderId" element={lazyRoute(<PublicBinderView />)} />
+            </Route>
             <Route path="/*" element={<ProtectedRoutes />} />
           </Routes>
         </BrowserRouter>

@@ -1,13 +1,14 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Crown, RefreshCw, Download, Upload, Plus, Pencil, Trash2, User, UserCheck, UserX, Zap } from 'lucide-react'
+import { Crown, RefreshCw, Download, Upload, Plus, Pencil, Trash2, User, UserCheck, UserX, Zap, Copy } from 'lucide-react'
 import {
   getSyncStatus, triggerSync, triggerAllPriceSync, rescheduleFullSync, reschedulePriceSync,
   downloadBackup, restoreBackup, exportCSV,
   getSetting, setSetting, getTelegramStatus, saveSettings, setAuthMode,
   getUsers, createUser, updateUser, deleteUser, changePassword, changeAvatar, changeUsername,
   getContributors, getSupporters, getRescueDonations, getCustomMatches, downloadDebugLog,
+  getProfile, updateProfile,
 } from '../api/client'
 import api from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
@@ -62,13 +63,17 @@ function SettingsRow({ label, description, children, last }) {
   )
 }
 
-function Toggle({ value, onChange }) {
+function Toggle({ value, onChange, label, disabled = false }) {
   return (
     <button
+      type="button"
       onClick={() => onChange(!value)}
+      disabled={disabled}
       className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${
         value ? 'bg-brand-red' : 'bg-bg-elevated border border-border'
-      }`}
+      } ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
+      aria-pressed={value}
+      aria-label={label}
     >
       <span
         className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${
@@ -304,6 +309,7 @@ export default function Settings() {
   const navigate = useNavigate()
   const { user, updateCurrentUser, multiUser } = useAuth()
   const { settings, updateSettings, t, pricePrimaryField, exchangeRate } = useSettings()
+  const publicProfilesEnabled = settings.public_profiles_enabled === 'true'
   const { theme, setTheme, themes } = useTheme()
   const [activeTab, setActiveTab] = useState('general')
 
@@ -345,6 +351,24 @@ export default function Settings() {
     queryKey: ['setting', 'gemini_api_key'],
     queryFn: () => getSetting('gemini_api_key').catch(() => ({ value: '' })),
   })
+
+  // Public profile
+  const [profilePublic, setProfilePublic] = useState(false)
+  const [publicShowValues, setPublicShowValues] = useState(false)
+  const [profileDirty, setProfileDirty] = useState(false)
+  const [publicFeatureSaving, setPublicFeatureSaving] = useState(false)
+
+  const { data: profileData } = useQuery({
+    queryKey: ['profile'],
+    queryFn: () => getProfile(),
+  })
+
+  useEffect(() => {
+    if (profileData && !profileDirty) {
+      setProfilePublic(!!profileData.is_profile_public)
+      setPublicShowValues(!!profileData.public_show_values)
+    }
+  }, [profileData, profileDirty])
 
 
   const [telegramBotToken, setTelegramBotToken] = useState('')
@@ -443,6 +467,57 @@ export default function Settings() {
     },
     onError: (err) => toast.error(err.response?.data?.detail || t('common.error')),
   })
+
+  const profileMutation = useMutation({
+    mutationFn: (data) => updateProfile(data),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['profile'], data)
+      queryClient.invalidateQueries({ queryKey: ['leaderboard'] })
+      setProfilePublic(!!data.is_profile_public)
+      setPublicShowValues(!!data.public_show_values)
+      setProfileDirty(false)
+      toast.success(t('settings.saved'))
+    },
+    onError: (err) => toast.error(err.response?.data?.detail || t('settings.saveFailed')),
+  })
+
+  const savePublicProfile = () => {
+    profileMutation.mutate({
+      is_profile_public: profilePublic,
+      public_show_values: publicShowValues,
+    })
+  }
+
+  const publicHandle = profileData?.public_handle || ''
+  const publicHandleError = profileData?.public_handle_error || ''
+  const publicProfileUrl = publicHandle ? `${window.location.origin}/u/${publicHandle}` : ''
+  const publicProfileSaveDisabled = profileMutation.isPending || (profilePublic && !publicHandle)
+
+  const handlePublicProfilesToggle = async (enabled) => {
+    setPublicFeatureSaving(true)
+    try {
+      await updateSettings({ public_profiles_enabled: enabled ? 'true' : 'false' })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['profile'] }),
+        queryClient.invalidateQueries({ queryKey: ['binders'] }),
+        queryClient.invalidateQueries({ queryKey: ['leaderboard'] }),
+      ])
+      toast.success(t('settings.saved'))
+    } catch {
+      toast.error(t('settings.saveFailed'))
+    } finally {
+      setPublicFeatureSaving(false)
+    }
+  }
+
+  const copyPublicProfileUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(publicProfileUrl)
+      toast.success(t('settings.linkCopied'))
+    } catch {
+      toast.error(t('settings.linkCopyFailed'))
+    }
+  }
 
   const isRunning = syncStatus?.is_running || syncStatus?.is_price_sync_running || syncMutation.isPending || allPriceSyncMutation.isPending
 
@@ -582,10 +657,12 @@ export default function Settings() {
     mutationFn: (username) => changeUsername(username),
     onSuccess: (updatedUser) => {
       updateCurrentUser(updatedUser)
+      queryClient.invalidateQueries({ queryKey: ['profile'] })
+      queryClient.invalidateQueries({ queryKey: ['leaderboard'] })
       setEditingUsername(false)
       toast.success(t('common.saved'))
     },
-    onError: () => toast.error(t('common.error')),
+    onError: (error) => toast.error(error.response?.data?.detail || t('common.error')),
   })
 
   const handleAvatarSelect = (avatarId) => {
@@ -689,6 +766,81 @@ export default function Settings() {
             </SettingsCard>
           </section>
 
+          {/* ── PUBLIC PROFILE ── */}
+          {(user?.role === 'admin' || publicProfilesEnabled) && <section className="space-y-1">
+            <SectionHeader title={t('settings.sectionPublicProfile')} />
+            <SettingsCard>
+              {user?.role === 'admin' && (
+                <SettingsRow
+                  label={t('settings.publicProfilesGlobal')}
+                  description={publicProfilesEnabled
+                    ? t('settings.publicProfilesGlobalEnabledDesc')
+                    : t('settings.publicProfilesGlobalDisabledDesc')}
+                  last={!publicProfilesEnabled}
+                >
+                  <Toggle
+                    value={publicProfilesEnabled}
+                    onChange={handlePublicProfilesToggle}
+                    label={t('settings.publicProfilesGlobal')}
+                    disabled={publicFeatureSaving}
+                  />
+                </SettingsRow>
+              )}
+              {publicProfilesEnabled && <SettingsRow label={t('settings.publicTrainerName')} description={t('settings.publicTrainerNameDesc')}>
+                <div className="flex w-full flex-col items-end gap-1 sm:w-64">
+                  <span className="w-full truncate rounded-lg border border-border bg-bg-primary px-3 py-2 text-xs font-semibold text-text-primary">
+                    {profileData?.trainer_name || user?.username || t('settings.username')}
+                  </span>
+                  {publicProfileUrl && (
+                    <span className="w-full truncate text-right font-mono text-[10px] text-text-muted">
+                      {publicProfileUrl}
+                    </span>
+                  )}
+                  {publicHandleError && (
+                    <span className="w-full text-right text-[11px] font-semibold text-brand-red">
+                      {publicHandleError}
+                    </span>
+                  )}
+                </div>
+              </SettingsRow>}
+              {publicProfilesEnabled && <SettingsRow label={t('settings.publicProfileToggle')} description={t('settings.publicProfileToggleDesc')}>
+                <Toggle
+                  value={profilePublic}
+                  onChange={(val) => { setProfilePublic(val); setProfileDirty(true) }}
+                  label={t('settings.publicProfileToggle')}
+                />
+              </SettingsRow>}
+              {publicProfilesEnabled && <SettingsRow label={t('settings.publicShowValues')} description={t('settings.publicShowValuesDesc')} last={!(profilePublic && publicHandle)}>
+                <Toggle
+                  value={publicShowValues}
+                  onChange={(val) => { setPublicShowValues(val); setProfileDirty(true) }}
+                  label={t('settings.publicShowValues')}
+                />
+              </SettingsRow>}
+              {publicProfilesEnabled && profilePublic && publicHandle && (
+                <SettingsRow label={t('settings.publicProfileLink')} description={publicProfileUrl} last>
+                  <button
+                    type="button"
+                    onClick={copyPublicProfileUrl}
+                    className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity flex-shrink-0"
+                    style={{ background: 'rgba(255,255,255,0.07)', color: '#90a4ae', border: '1px solid rgba(255,255,255,0.1)' }}
+                  >
+                    <Copy size={13} /> {t('common.copy')}
+                  </button>
+                </SettingsRow>
+              )}
+            </SettingsCard>
+            {publicProfilesEnabled && <div className="flex justify-end px-1">
+              <button
+                onClick={savePublicProfile}
+                disabled={publicProfileSaveDisabled}
+                className="btn-primary-sm"
+              >
+                {profileMutation.isPending ? t('common.saving') : t('common.save')}
+              </button>
+            </div>}
+          </section>}
+
           {/* ── 2. THEME ── */}
           <section className="space-y-1">
             <SectionHeader title={t('settings.sectionTheme')} />
@@ -731,6 +883,7 @@ export default function Settings() {
                 >
                   <Toggle
                     value={multiUser}
+                    label={t('settings.multiUserMode')}
                     onChange={async (val) => {
                       try {
                         await setAuthMode(val)
@@ -913,18 +1066,21 @@ export default function Settings() {
                   <SettingsRow label={t('settings.digitalSets')} description={t('settings.digitalSetsDesc')}>
                     <Toggle
                       value={digitalSetsEnabled}
+                      label={t('settings.digitalSets')}
                       onChange={(val) => handleAdminBooleanSettingToggle('tcgdex_digital_sets_enabled', val)}
                     />
                   </SettingsRow>
                   <SettingsRow label={t('settings.crossLanguagePriceFallback')} description={t('settings.crossLanguagePriceFallbackDesc')}>
                     <Toggle
                       value={crossLanguagePriceFallback}
+                      label={t('settings.crossLanguagePriceFallback')}
                       onChange={(val) => handleAdminBooleanSettingToggle('cross_language_price_fallback', val)}
                     />
                   </SettingsRow>
                   <SettingsRow label={t('settings.crossLanguageImageFallback')} description={t('settings.crossLanguageImageFallbackDesc')}>
                     <Toggle
                       value={crossLanguageImageFallback}
+                      label={t('settings.crossLanguageImageFallback')}
                       onChange={(val) => handleAdminBooleanSettingToggle('cross_language_image_fallback', val)}
                     />
                   </SettingsRow>
@@ -1007,7 +1163,7 @@ export default function Settings() {
                     >
                       <Download size={13} /> {t('settings.debugLogDownload')}
                     </button>
-                    <Toggle value={debugModeEnabled} onChange={handleDebugModeToggle} />
+                    <Toggle value={debugModeEnabled} onChange={handleDebugModeToggle} label={t('settings.debugMode')} />
                   </div>
                 </SettingsRow>
               )}
@@ -1193,7 +1349,7 @@ export default function Settings() {
                 label={t('settings.priceAlerts')}
                 description={t('settings.priceAlertsDesc')}
               >
-                <Toggle value={priceAlertsEnabled} onChange={handlePriceAlertsToggle} />
+                <Toggle value={priceAlertsEnabled} onChange={handlePriceAlertsToggle} label={t('settings.priceAlerts')} />
               </SettingsRow>
               {priceAlertsEnabled && (
                 <SettingsRow
