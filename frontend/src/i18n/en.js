@@ -26,6 +26,7 @@ const en = {
     subtitle: 'Own any matching card to complete a species.',
     searchPlaceholder: 'Name or Pokédex number',
     national: 'National',
+    generationFilter: 'Pokédex region',
     generation: 'Gen {generation}',
     all: 'All',
     owned: 'Owned',

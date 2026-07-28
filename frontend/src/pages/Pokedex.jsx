@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { Check, Search } from 'lucide-react'
@@ -6,20 +6,13 @@ import clsx from 'clsx'
 import { getPokedex } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import PokeBallLoader from '../components/PokeBallLoader'
+import PokedexGenerationFilter, { POKEDEX_GENERATIONS } from '../components/PokedexGenerationFilter'
 import { getSavedListScrollPosition, isSavedPositionForLocation, useListScrollRestoration } from '../hooks/useListScrollRestoration'
-import { getPokedexGeneration } from '../utils/pokedexUrlState'
-
-const GENERATIONS = [
-  { id: 1, region: 'Kanto', range: '#001–151' },
-  { id: 2, region: 'Johto', range: '#152–251' },
-  { id: 3, region: 'Hoenn', range: '#252–386' },
-  { id: 4, region: 'Sinnoh', range: '#387–493' },
-  { id: 5, region: 'Unova', range: '#494–649' },
-  { id: 6, region: 'Kalos', range: '#650–721' },
-  { id: 7, region: 'Alola', range: '#722–809' },
-  { id: 8, region: 'Galar', range: '#810–905' },
-  { id: 9, region: 'Paldea', range: '#906–1025' },
-]
+import {
+  getPokedexGeneration,
+  normalizePokedexSearchParams,
+  setPokedexGeneration,
+} from '../utils/pokedexUrlState'
 
 function SpeciesImage({ entry, name }) {
   const handleError = (event) => {
@@ -104,6 +97,13 @@ export default function Pokedex() {
   // Keep the URL as the source of truth so browser Back/Forward updates both
   // the active filter and the query without requiring the page to remount.
   const generation = getPokedexGeneration(searchParams)
+  const searchParamsKey = searchParams.toString()
+  useEffect(() => {
+    const normalized = normalizePokedexSearchParams(new URLSearchParams(searchParamsKey))
+    if (normalized.toString() !== searchParamsKey) {
+      setSearchParams(normalized, { replace: true })
+    }
+  }, [searchParamsKey, setSearchParams])
   // The list remounts after Back. Restore non-URL filters before its query runs
   // so the saved Pokémon anchor is present when scroll restoration occurs.
   const savedPosition = getSavedListScrollPosition('pokedex')
@@ -138,7 +138,7 @@ export default function Pokedex() {
   })
   const grouped = useMemo(() => {
     if (generation || search.trim()) return [{ generation, entries }]
-    return GENERATIONS.map((item) => ({
+    return POKEDEX_GENERATIONS.map((item) => ({
       generation: item.id,
       entries: entries.filter((entry) => entry.generation === item.id),
     })).filter((group) => group.entries.length)
@@ -146,10 +146,9 @@ export default function Pokedex() {
 
   const summary = data?.summary || { total: 0, owned: 0, missing: 0 }
   const progress = summary.total ? Math.round((summary.owned / summary.total) * 100) : 0
-  const scope = generation ? GENERATIONS.find((item) => item.id === generation) : null
+  const scope = generation ? POKEDEX_GENERATIONS.find((item) => item.id === generation) : null
   const selectGeneration = (value) => {
-    if (value) setSearchParams({ generation: String(value) })
-    else setSearchParams({})
+    setSearchParams(setPokedexGeneration(searchParams, value))
   }
 
   return (
@@ -187,25 +186,11 @@ export default function Pokedex() {
           />
         </label>
 
-        <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-          <button
-            type="button"
-            onClick={() => selectGeneration(null)}
-            className={clsx('whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-bold', !generation ? 'border-brand-red bg-brand-red/20 text-brand-red' : 'border-border text-text-secondary')}
-          >
-            {t('pokedex.national')}
-          </button>
-          {GENERATIONS.map((item) => (
-            <button
-              type="button"
-              key={item.id}
-              onClick={() => selectGeneration(item.id)}
-              className={clsx('whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-bold', generation === item.id ? 'border-brand-red bg-brand-red/20 text-brand-red' : 'border-border text-text-secondary')}
-            >
-              Gen {item.id} · {item.region}
-            </button>
-          ))}
-        </div>
+        <PokedexGenerationFilter
+          generation={generation}
+          onSelectGeneration={selectGeneration}
+          t={t}
+        />
 
         <div className="flex gap-2" role="group" aria-label="Ownership filter">
           {['all', 'owned', 'missing'].map((value) => (
@@ -226,7 +211,7 @@ export default function Pokedex() {
       {!isLoading && !isError && entries.length === 0 && <p className="py-12 text-center text-text-muted">{t('common.noResults')}</p>}
 
       {!isLoading && grouped.map((group) => {
-        const info = GENERATIONS.find((item) => item.id === group.generation)
+        const info = POKEDEX_GENERATIONS.find((item) => item.id === group.generation)
         return (
           <section key={group.generation || 'results'} className="space-y-3">
             {!generation && !search.trim() && info && (
