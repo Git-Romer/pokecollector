@@ -17,5 +17,10 @@ backups/
 
 # Local editor/agent tooling — machine-specific, not part of the project.
 .claude/
+.claude-flow/
 .codex/
 .idea/
+
+# Throwaway interpreter environments. `.venv` above is an exact name and does
+# not cover the suffixed ones that get made to run a suite once.
+.venv-*/
