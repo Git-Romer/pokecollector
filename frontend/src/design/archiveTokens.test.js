@@ -75,3 +75,27 @@ describe('archive signal tokens', () => {
     })
   })
 })
+
+describe('radius scale', () => {
+  // Twelve arbitrary radii had accumulated with no rule for choosing one.
+  const TIERS = ['--r-chip', '--r-control', '--r-surface', '--r-panel']
+
+  it('defines every tier', () => {
+    TIERS.forEach((tier) => {
+      expect(rootBlock, `${tier} is not defined`).toContain(`${tier}:`)
+    })
+  })
+
+  it('rounds every corner from the scale', () => {
+    // 999px pills and 50% circles are shapes rather than radii, and `inherit`
+    // defers to whichever tier the parent already picked.
+    const allowed = /^(var\(--r-(chip|control|surface|panel)\)|999px|50%|inherit)$/
+    const body = archiveCss.slice(rootBlock.length)
+
+    const strays = [...body.matchAll(/border-radius:\s*([^;]+);/g)]
+      .map(([, value]) => value.trim())
+      .filter((value) => !allowed.test(value))
+
+    expect(strays, `ad hoc radii: ${[...new Set(strays)].join(', ')}`).toEqual([])
+  })
+})

@@ -31,6 +31,10 @@ const en = {
     mobileNav: 'Mobile',
     title: 'Collection Overview',
     subtitle: 'Everything you’ve chosen to keep, right where it belongs.',
+    // The anchor. Counts, never prices - this surface stays unpriced.
+    cardsFiled: 'cards filed',
+    uniqueCards: 'Unique',
+    setsTracked: 'Sets tracked',
     notesTitle: 'John John’s Notes',
     openNotes: 'Open John John’s Notes',
     keepingWatch: 'John John is keeping watch',

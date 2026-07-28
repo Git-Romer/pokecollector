@@ -12,6 +12,15 @@
   --archive-signal-text: #f58220;
   --archive-focus: #ffb06d;
   --archive-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
+
+  /* Twelve arbitrary radii had accumulated across this file - .4, .6, .65,
+     .7, .75, .8, .85, .9, 1, 1.1, 1.4 and 1.5rem - with no rule for picking
+     one. Four named tiers by the size of the thing being rounded. Pills
+     (999px) and circles (50%) stay literal; they are shapes, not radii. */
+  --r-chip: .4rem;
+  --r-control: .65rem;
+  --r-surface: 1rem;
+  --r-panel: 1.4rem;
 }
 
 [data-theme='light'] {
@@ -31,13 +40,13 @@
 }
 
 body {
-  background: radial-gradient(circle at 78% 0%, rgba(245, 130, 32, 0.15), transparent 34%), var(--archive-canvas);
+  background: radial-gradient(circle at 28% 0%, rgba(245, 130, 32, 0.15), transparent 34%), var(--archive-canvas);
   color: var(--archive-text);
   font-family: Inter, system-ui, sans-serif;
 }
 
 #root::before {
-  background: radial-gradient(ellipse 480px 320px at 78% 0%, rgba(245, 130, 32, 0.15), transparent 72%);
+  background: radial-gradient(ellipse 480px 320px at 28% 0%, rgba(245, 130, 32, 0.15), transparent 72%);
 }
 
 :focus-visible {
@@ -69,7 +78,7 @@ body {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(circle at 78% 0%, rgba(245, 130, 32, 0.18), transparent 34%),
+    radial-gradient(circle at 28% 0%, rgba(245, 130, 32, 0.18), transparent 34%),
     radial-gradient(circle at 18% 18%, rgba(0, 163, 224, 0.08), transparent 30%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 34%);
 }
@@ -89,9 +98,9 @@ body {
 /* One glyph, not two letters: the tight tracking that kept "JJ" together
    would clip the infinity mark, and it needs the larger optical size to
    read at the same weight. */
-.archive-wordmark span, .john-john-mark { display: inline-grid; place-items: center; width: 2rem; height: 2rem; border-radius: .65rem; background: var(--archive-signal); color: #07101e; font-size: 1.15rem; font-weight: 700; letter-spacing: 0; line-height: 1; }
+.archive-wordmark span, .john-john-mark { display: inline-grid; place-items: center; width: 2rem; height: 2rem; border-radius: var(--r-control); background: var(--archive-signal); color: #07101e; font-size: 1.15rem; font-weight: 700; letter-spacing: 0; line-height: 1; }
 .archive-nav { display: grid; flex: 1; gap: .35rem; align-content: start; }
-.archive-nav-link, .archive-mobile-link { display: flex; align-items: center; gap: .75rem; border-radius: .6rem; color: var(--archive-muted); font-weight: 600; text-decoration: none; transition: background-color 180ms ease, color 180ms ease; }
+.archive-nav-link, .archive-mobile-link { display: flex; align-items: center; gap: .75rem; border-radius: var(--r-control); color: var(--archive-muted); font-weight: 600; text-decoration: none; transition: background-color 180ms ease, color 180ms ease; }
 .archive-nav-link { padding: .75rem; }
 .archive-nav-link:hover, .archive-nav-link-active { background: color-mix(in srgb, var(--archive-signal) 13%, transparent); color: var(--archive-text); }
 .archive-rail-footer { margin-top: auto; display: flex; align-items: center; gap: .5rem; color: var(--archive-muted); font-size: .75rem; padding: .75rem; }
@@ -129,7 +138,7 @@ body {
   width: min(22rem, 100%);
   padding: .5rem .6rem .5rem .75rem;
   border: 1px solid var(--archive-border);
-  border-radius: .7rem;
+  border-radius: var(--r-control);
   background: color-mix(in srgb, var(--archive-surface) 70%, transparent);
   color: var(--archive-muted);
   font: inherit;
@@ -153,7 +162,7 @@ body {
 .archive-kbd {
   flex: none;
   border: 1px solid var(--archive-border);
-  border-radius: .4rem;
+  border-radius: var(--r-chip);
   padding: .1rem .4rem;
   background: color-mix(in srgb, var(--archive-canvas) 60%, transparent);
   color: var(--archive-muted);
@@ -179,7 +188,7 @@ body {
   margin-block: 2.5rem;
   overflow: hidden;
   border: 1px solid var(--archive-border);
-  border-radius: 1.5rem;
+  border-radius: var(--r-panel);
   padding: clamp(1.25rem, 4vw, 2.25rem);
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--archive-signal) 17%, transparent), transparent 45%),
@@ -220,7 +229,7 @@ body {
   justify-content: center;
   margin-top: 1.5rem;
   border: 1px solid color-mix(in srgb, var(--archive-signal) 58%, var(--archive-border));
-  border-radius: .85rem;
+  border-radius: var(--r-surface);
   padding: .8rem 1rem;
   background: color-mix(in srgb, var(--archive-signal) 18%, var(--archive-surface));
   color: var(--archive-text);
@@ -247,7 +256,7 @@ body {
 .archive-note { padding: 1rem; }
 .archive-box, .archive-discover-card { display: grid; gap: .8rem; min-height: 11rem; padding: 1.25rem; background: var(--archive-surface); border: 1px solid var(--archive-border); }
 .archive-box:hover, .archive-discover-card:hover { border-color: color-mix(in srgb, var(--archive-signal) 70%, var(--archive-border)); transform: translateY(-2px); transition: 180ms ease; }
-.archive-loading { display: inline-flex; align-items: center; gap: .65rem; padding: .65rem .85rem; border: 1px solid var(--archive-border); border-radius: .75rem; background: color-mix(in srgb, var(--archive-surface) 92%, transparent); color: var(--archive-muted); font-size: .875rem; }
+.archive-loading { display: inline-flex; align-items: center; gap: .65rem; padding: .65rem .85rem; border: 1px solid var(--archive-border); border-radius: var(--r-control); background: color-mix(in srgb, var(--archive-surface) 92%, transparent); color: var(--archive-muted); font-size: .875rem; }
 .archive-loading-orbit { width: 1rem; height: 1rem; border: 2px solid color-mix(in srgb, var(--archive-signal) 30%, transparent); border-top-color: var(--archive-signal); border-radius: 50%; animation: archive-orbit 900ms linear infinite; }
 
 .archive-eyebrow {
@@ -263,7 +272,7 @@ body {
   align-items: flex-end;
   justify-content: space-between;
   gap: 1.25rem;
-  border-radius: 1.4rem;
+  border-radius: var(--r-panel);
   padding: 1.2rem 1.3rem;
   background:
     linear-gradient(115deg, color-mix(in srgb, var(--archive-signal) 12%, transparent), transparent 44%),
@@ -286,7 +295,7 @@ body {
   gap: .25rem;
   overflow-x: auto;
   border: 1px solid var(--archive-border);
-  border-radius: .9rem;
+  border-radius: var(--r-surface);
   padding: .25rem;
   background: color-mix(in srgb, var(--archive-surface) 75%, transparent);
 }
@@ -298,7 +307,7 @@ body {
   gap: .45rem;
   min-height: 2.35rem;
   border: 0;
-  border-radius: .65rem;
+  border-radius: var(--r-control);
   padding: .45rem .8rem;
   background: transparent;
   color: var(--archive-muted);
@@ -333,7 +342,7 @@ body {
   gap: .7rem;
   min-height: 5rem;
   border: 1px solid var(--archive-border);
-  border-radius: .9rem;
+  border-radius: var(--r-surface);
   padding: .8rem;
   background: color-mix(in srgb, var(--archive-surface-raised) 52%, transparent);
   color: var(--archive-muted);
@@ -357,7 +366,7 @@ body {
   width: 2rem;
   height: 2rem;
   flex: none;
-  border-radius: .65rem;
+  border-radius: var(--r-control);
   background: color-mix(in srgb, var(--archive-signal) 16%, transparent);
   color: var(--archive-signal);
 }
@@ -367,7 +376,7 @@ body {
   align-items: center;
   gap: 1rem;
   border: 1px solid color-mix(in srgb, var(--archive-signal) 34%, var(--archive-border));
-  border-radius: 1rem;
+  border-radius: var(--r-surface);
   padding: .9rem;
   background: color-mix(in srgb, var(--archive-signal) 8%, var(--archive-surface));
 }
@@ -386,7 +395,7 @@ body {
   gap: .65rem;
   min-width: 0;
   border: 1px solid var(--archive-border);
-  border-radius: .8rem;
+  border-radius: var(--r-surface);
   padding: .55rem;
   background: color-mix(in srgb, var(--archive-surface-raised) 55%, transparent);
   color: inherit;
@@ -404,7 +413,7 @@ body {
   align-items: center;
   gap: .55rem;
   border: 1px dashed var(--archive-border);
-  border-radius: .8rem;
+  border-radius: var(--r-surface);
   padding: .8rem;
   color: var(--archive-muted);
   font-size: .8rem;
@@ -416,7 +425,7 @@ body {
   gap: .45rem;
   width: 100%;
   border: 1px dashed color-mix(in srgb, var(--archive-signal) 55%, var(--archive-border));
-  border-radius: 1rem;
+  border-radius: var(--r-surface);
   padding: 1.8rem 1rem;
   background: color-mix(in srgb, var(--archive-signal) 7%, var(--archive-surface));
   color: var(--archive-text);
@@ -431,7 +440,7 @@ body {
   place-items: center;
   width: 3rem;
   height: 3rem;
-  border-radius: .9rem;
+  border-radius: var(--r-surface);
   background: color-mix(in srgb, var(--jj-green) 18%, transparent);
   color: #63d886;
 }
@@ -443,7 +452,7 @@ body {
 .excel-review-metric {
   min-width: 0;
   border: 1px solid var(--archive-border);
-  border-radius: .75rem;
+  border-radius: var(--r-control);
   padding: .65rem;
   background: color-mix(in srgb, var(--archive-surface-raised) 55%, transparent);
 }
@@ -458,7 +467,7 @@ body {
   align-items: flex-start;
   gap: .7rem;
   border: 1px solid var(--archive-border);
-  border-radius: .85rem;
+  border-radius: var(--r-surface);
   padding: .8rem;
 }
 .excel-review-status strong { color: var(--archive-text); font-size: .85rem; }
@@ -484,7 +493,7 @@ body {
   min-height: 10rem;
   overflow: hidden;
   border: 1px solid var(--archive-border);
-  border-radius: 1.1rem;
+  border-radius: var(--r-surface);
   padding: 1rem;
   background:
     linear-gradient(135deg, color-mix(in srgb, var(--jj-purple) 18%, transparent), transparent 48%),
@@ -506,7 +515,7 @@ body {
   width: 4.25rem;
   height: 4.25rem;
   flex: none;
-  border-radius: 1rem;
+  border-radius: var(--r-surface);
   background: color-mix(in srgb, var(--jj-purple) 26%, var(--archive-surface-raised));
   color: #bba1dc;
 }
@@ -531,7 +540,7 @@ body {
   align-items: flex-start;
   gap: .85rem;
   border: 1px solid var(--archive-border);
-  border-radius: 1rem;
+  border-radius: var(--r-surface);
   padding: 1rem;
   background:
     linear-gradient(115deg, color-mix(in srgb, var(--archive-surface-raised) 88%, transparent), color-mix(in srgb, var(--archive-surface) 96%, transparent));
@@ -550,7 +559,7 @@ body {
   height: 2.25rem;
   flex: none;
   border: 1px solid color-mix(in srgb, var(--jj-lightblue) 28%, var(--archive-border));
-  border-radius: .75rem;
+  border-radius: var(--r-control);
   background: color-mix(in srgb, var(--jj-lightblue) 14%, var(--archive-surface-raised));
   color: var(--jj-lightblue);
 }
@@ -574,7 +583,7 @@ body {
   justify-items: center;
   gap: .55rem;
   border: 1px dashed var(--archive-border);
-  border-radius: 1.1rem;
+  border-radius: var(--r-surface);
   padding: 4rem 1rem;
   text-align: center;
 }
@@ -585,7 +594,7 @@ body {
   place-items: center;
   width: 3.4rem;
   height: 3.4rem;
-  border-radius: 1rem;
+  border-radius: var(--r-surface);
   background: color-mix(in srgb, var(--archive-signal) 14%, transparent);
   color: var(--archive-signal);
 }
@@ -594,7 +603,7 @@ body {
   margin-bottom: .8rem;
   overflow: hidden;
   border: 1px solid var(--archive-border);
-  border-radius: 1rem;
+  border-radius: var(--r-surface);
   background: color-mix(in srgb, var(--archive-surface) 86%, transparent);
 }
 .storage-settings-intro {
@@ -612,7 +621,7 @@ body {
   width: 2.1rem;
   height: 2.1rem;
   flex: none;
-  border-radius: .65rem;
+  border-radius: var(--r-control);
   background: color-mix(in srgb, var(--jj-lightblue) 14%, transparent);
   color: var(--jj-lightblue);
 }
@@ -740,4 +749,62 @@ body {
   .magnetic-link-sweep { display: none; }
   .magnetic-link:hover .magnetic-link-label,
   .magnetic-link:focus-visible .magnetic-link-label { color: inherit; }
+}
+
+/* Collection anchor. The surface used to open with a label, a title and a
+   subtitle - three lines of chrome before any content, and no focal point, so
+   the brightest thing on screen was an ambient gradient in an empty corner.
+   This leads with the one number the page is actually about.
+
+   Deliberately not a value. Home.test.jsx keeps finance language off this
+   surface: price belongs in card detail. */
+.archive-anchor {
+  display: grid;
+  gap: .75rem;
+  justify-items: start;
+}
+.archive-anchor-lede {
+  color: var(--archive-muted);
+  font-size: .95rem;
+}
+.archive-anchor-figure {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 .75rem;
+  margin: 0;
+  line-height: .95;
+}
+.archive-anchor-count {
+  font-size: clamp(3.5rem, 10vw, 6.5rem);
+  font-weight: 900;
+  letter-spacing: -.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--archive-text);
+}
+.archive-anchor-unit {
+  font-size: clamp(1.2rem, 3vw, 2rem);
+  font-weight: 800;
+  letter-spacing: -.01em;
+  /* The ink token, not the fill: this is text on the page background. */
+  color: var(--archive-signal-text);
+}
+.archive-anchor-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem 2.25rem;
+  margin: .5rem 0 0;
+  font-size: .875rem;
+}
+.archive-anchor-stat {
+  display: flex;
+  align-items: baseline;
+  gap: .45rem;
+}
+.archive-anchor-stat dt { color: var(--archive-muted); }
+.archive-anchor-stat dd {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--archive-text);
 }

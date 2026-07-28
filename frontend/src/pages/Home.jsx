@@ -52,10 +52,32 @@ export default function Home() {
   const featured = recent[0]
   const loading = dashboardQuery.isLoading || setsQuery.isLoading
 
-  return <section className="archive-card-reveal space-y-10">
-    {/* No kicker above these headings: it repeated the heading text verbatim,
-        so the page announced its own name twice in a row. */}
-    <header><h1 className="text-5xl font-bold text-text-primary mag-heading uppercase leading-none"><SplitText text={t('archive.title')} delay={40} /></h1><p className="mt-2 text-text-secondary">{t('archive.subtitle')}</p></header>
+  // Counts only. The dashboard payload also carries total_value, total_cost
+  // and pnl; none of them belong on this surface.
+  const totalCards = data.total_cards ?? 0
+  const uniqueCards = data.unique_cards ?? 0
+  const totalSets = data.total_sets ?? 0
+
+  // The surface's own name now lives on the region rather than in a visible
+  // heading, so the h1 can be the number the page is actually about.
+  return <section className="archive-card-reveal space-y-10" aria-label={t('archive.title')}>
+    <header className="archive-anchor">
+      <p className="archive-anchor-lede">{t('archive.subtitle')}</p>
+      <h1 className="archive-anchor-figure">
+        <span className="archive-anchor-count">{totalCards}</span>
+        <span className="archive-anchor-unit">{t('archive.cardsFiled')}</span>
+      </h1>
+      <dl className="archive-anchor-stats">
+        <div className="archive-anchor-stat">
+          <dt>{t('archive.uniqueCards')}</dt>
+          <dd>{uniqueCards}</dd>
+        </div>
+        <div className="archive-anchor-stat">
+          <dt>{t('archive.setsTracked')}</dt>
+          <dd>{totalSets}</dd>
+        </div>
+      </dl>
+    </header>
     {loading && <div className="archive-loading" role="status" aria-live="polite"><span className="archive-loading-orbit" aria-hidden="true" /><SplitText text={t('archive.loading')} delay={30} /></div>}
     
 {recent.length > 0 && (

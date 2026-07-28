@@ -19,6 +19,17 @@ describe('Collection Overview copy', () => {
     expect(overview.latestKicker).toBeUndefined()
   })
 
+  it('anchors the surface on a count rather than a value', () => {
+    // The page had no focal point: a label, a title and a subtitle, then
+    // content. The anchor is a card count precisely because the finance rule
+    // below rules out the obvious alternative.
+    expect(overview.cardsFiled).toBe('cards filed')
+    expect(overview.uniqueCards).toBeTruthy()
+    expect(overview.setsTracked).toBeTruthy()
+    expect(`${overview.cardsFiled} ${overview.uniqueCards} ${overview.setsTracked}`)
+      .not.toMatch(/[$€£]|value|price|worth|cost/i)
+  })
+
   it('keeps finance language off the landing surface', () => {
     // The spec makes this an unpriced surface; price belongs in card detail.
     expect(Object.values(overview).join(' ')).not.toMatch(/portfolio|P&L|market|profit/i)
