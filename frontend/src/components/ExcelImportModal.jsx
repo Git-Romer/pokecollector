@@ -128,12 +128,12 @@ export default function ExcelImportModal({isOpen, onClose}) {
                             <span>Nothing is written until you review and confirm the changes.</span>
                             <span className="btn-primary mt-2"><Upload size={16}/> Choose .xlsx</span>
                         </button>
+                        <ImportReviewNotice/>
                         <details className="rounded-xl border border-border bg-bg-elevated/30">
                             <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-text-secondary">
                                 Legacy CSV tools
                             </summary>
                             <div className="flex flex-wrap gap-2 border-t border-border p-3">
-                                <ImportReviewNotice/>
                                 <p className="w-full text-xs text-text-muted">
                                     CSV keeps the legacy field name purchase_price; treat it as Cost Basis.
                                     Leave it blank when cost basis is needed.

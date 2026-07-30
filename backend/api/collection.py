@@ -410,7 +410,13 @@ def _get_api_sets_by_code(include_digital: bool = False) -> dict[str, List[dict]
     return index
 
 
-def _cache_set_by_code(db: Session, set_code_upper: str, include_digital: bool) -> None:
+def _cache_set_by_code(
+    db: Session,
+    set_code_upper: str,
+    include_digital: bool,
+    *,
+    commit_cache: bool = True,
+) -> None:
     try:
         for api_set in _get_api_sets_by_code(include_digital=include_digital).get(set_code_upper, []):
             parsed_set = pokemon_api.parse_set_for_db(api_set)
@@ -422,13 +428,22 @@ def _cache_set_by_code(db: Session, set_code_upper: str, include_digital: bool) 
                         setattr(existing_set, key, value)
             else:
                 db.add(Set(**parsed_set))
-        db.commit()
+        if commit_cache:
+            db.commit()
+        else:
+            db.flush()
     except Exception:
         logger.exception("Failed to cache set metadata for CSV import set_code=%s", set_code_upper)
         db.rollback()
 
 
-def _matching_sets(db: Session, set_code: str, include_digital: bool | None = None) -> List[Set]:
+def _matching_sets(
+    db: Session,
+    set_code: str,
+    include_digital: bool | None = None,
+    *,
+    commit_cache: bool = True,
+) -> List[Set]:
     if include_digital is None:
         include_digital = digital_sets_enabled(db)
     set_code_upper = set_code.strip().upper()
@@ -440,7 +455,12 @@ def _matching_sets(db: Session, set_code: str, include_digital: bool | None = No
     if not include_digital:
         set_objs = [set_obj for set_obj in set_objs if not set_obj.is_digital]
     if not set_objs:
-        _cache_set_by_code(db, set_code_upper, include_digital)
+        _cache_set_by_code(
+            db,
+            set_code_upper,
+            include_digital,
+            commit_cache=commit_cache,
+        )
         set_objs = db.query(Set).filter(
             (func.upper(Set.abbreviation) == set_code_upper) |
             (func.upper(Set.id) == set_code_upper) |
@@ -451,9 +471,21 @@ def _matching_sets(db: Session, set_code: str, include_digital: bool | None = No
     return set_objs
 
 
-def _find_card_by_code(db: Session, set_code: str, card_number: str, lang: str) -> Card:
+def _find_card_by_code(
+    db: Session,
+    set_code: str,
+    card_number: str,
+    lang: str,
+    *,
+    commit_cache: bool = True,
+) -> Card:
     include_digital = digital_sets_enabled(db)
-    set_objs = _matching_sets(db, set_code, include_digital=include_digital)
+    set_objs = _matching_sets(
+        db,
+        set_code,
+        include_digital=include_digital,
+        commit_cache=commit_cache,
+    )
     if not set_objs:
         raise ValueError(f"set_code '{set_code}' was not found")
 
@@ -489,7 +521,10 @@ def _find_card_by_code(db: Session, set_code: str, card_number: str, lang: str) 
                             setattr(existing, key, value)
                 else:
                     db.add(Card(**parsed))
-            db.commit()
+            if commit_cache:
+                db.commit()
+            else:
+                db.flush()
         except Exception:
             logger.exception("Failed to cache cards for CSV import set_id=%s lang=%s", tcg_set_id, lang)
             db.rollback()
@@ -710,7 +745,13 @@ async def import_collection_csv(
         try:
             item = _parse_import_row(row, row_number)
             set_code, card_number = item.card_id.split(" ", 1)
-            card = _find_card_by_code(db, set_code, card_number, item.lang or "en")
+            card = _find_card_by_code(
+                db,
+                set_code,
+                card_number,
+                item.lang or "en",
+                commit_cache=False,
+            )
             validated_item = item.copy(update={"card_id": card.id})
             item_key = collection_import_key(
                 validated_item.card_id,

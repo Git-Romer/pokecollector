@@ -1,5 +1,6 @@
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -99,6 +100,57 @@ class CollectionCsvImportReviewTests(unittest.TestCase):
         self.assertFalse(second_review.json()["committed"])
         self.assertEqual(second_review.json()["updated"], 1)
         self.assertEqual(self.db.query(CollectionItem).one().quantity, 2)
+
+    def test_review_does_not_persist_collection_or_card_cache_changes(self):
+        self.csv = (
+            "set_code,number,quantity,condition,variant,lang,purchase_price\n"
+            "NEW,7,1,NM,Normal,en,\n"
+        )
+        counts_before = {
+            CollectionItem: self.db.query(CollectionItem).count(),
+            Card: self.db.query(Card).count(),
+            Set: self.db.query(Set).count(),
+        }
+
+        with (
+            patch(
+                "api.collection._get_api_sets_by_code",
+                return_value={"NEW": [{"id": "new", "_lang": "en"}]},
+            ),
+            patch(
+                "api.collection.pokemon_api.parse_set_for_db",
+                return_value={
+                    "id": "new_en",
+                    "tcg_set_id": "new",
+                    "name": "Preview Set",
+                    "abbreviation": "NEW",
+                    "lang": "en",
+                },
+            ),
+            patch(
+                "api.collection.pokemon_api.get_set_cards",
+                return_value={"cards": [{"id": "new-7"}]},
+            ),
+            patch(
+                "api.collection.pokemon_api.parse_card_for_db",
+                return_value={
+                    "id": "new-7_en",
+                    "tcg_card_id": "new-7",
+                    "name": "Preview Card",
+                    "set_id": "new",
+                    "number": "7",
+                    "lang": "en",
+                },
+            ),
+        ):
+            review = self._post_csv()
+
+        self.assertEqual(review.status_code, 200, review.text)
+        self.assertEqual(review.json()["added"], 1)
+        self.assertFalse(review.json()["committed"])
+        self.db.expire_all()
+        for model, count_before in counts_before.items():
+            self.assertEqual(self.db.query(model).count(), count_before)
 
 
 class CollectionCsvTests(unittest.TestCase):
