@@ -37,7 +37,7 @@ const en = {
         setsTracked: 'Sets tracked',
         notesTitle: 'John John’s Notes',
         openNotes: 'Open John John’s Notes',
-        keepingWatch: 'John John is keeping watch',
+        keepingWatch: 'John John is keeping watch.',
         loading: 'John John is opening the collection…',
         latestTitle: 'Latest addition',
         latestNote: 'The newest card in your collection, and the five before it.',

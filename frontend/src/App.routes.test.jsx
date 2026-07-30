@@ -7,9 +7,10 @@ const here = dirname(fileURLToPath(import.meta.url))
 const appSource = readFileSync(resolve(here, './App.jsx'), 'utf-8')
 
 describe('route contracts', () => {
-    it('enters My Collection from root and legacy dashboard routes', () => {
-        expect(appSource).toContain('<Route index element={<Navigate replace to="/collection"/>}/>')
-        expect(appSource).toContain('<Route path="dashboard" element={<Navigate replace to="/collection"/>}/>')
+    it('mounts Collection Overview at root and redirects the legacy dashboard there', () => {
+        expect(appSource).toContain('<Route index element={<Home/>}/>')
+        expect(appSource).toContain('<Route path="dashboard" element={<Navigate replace to="/"/>}/>')
+        expect(appSource).toContain('<Route path="collection" element={<Collection/>}/>')
     })
 
     it('keeps old Sets and Analytics paths as aliases for the current primary nav', () => {
@@ -26,5 +27,10 @@ describe('route contracts', () => {
         expect(appSource).toContain('<Route path="binders" element={<Navigate replace to="/boxes"/>}/>')
         expect(appSource).toContain('<Route path="binders/:binderId" element={<BinderRedirect/>}/>')
         expect(appSource).toContain('return <Navigate replace to={`/boxes/${binderId}`}/>')
+    })
+
+    it('does not lazy-load the retired dashboard implementation', () => {
+        expect(appSource).not.toContain("lazy(() => import('./pages/Dashboard'))")
+        expect(appSource).toContain('<Route path="dashboard" element={<Navigate replace to="/"/>}/>')
     })
 })

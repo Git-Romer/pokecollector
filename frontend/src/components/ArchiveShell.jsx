@@ -66,7 +66,7 @@ export default function ArchiveShell() {
           the nav and a status caption. As an <aside> it published a
           `complementary` landmark named for navigation it merely contains. */}
             <div className="archive-rail hidden lg:flex">
-                <NavLink to="/collection" className="archive-wordmark" aria-label="John John's PC, Collection Overview"><span
+                <NavLink to="/" className="archive-wordmark" aria-label="John John's PC, Collection Overview"><span
                     aria-hidden="true">∞</span><strong><ShinyText text="John John's PC" speed={5}/></strong></NavLink>
                 <nav className="archive-nav" aria-label={t('archive.primaryNav')}>
                     {PRIMARY_ARCHIVE_NAV.map(({to, label, icon: Icon, end}) => (

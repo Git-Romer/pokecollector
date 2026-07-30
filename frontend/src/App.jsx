@@ -15,7 +15,6 @@ import Settings from './pages/Settings'
 
 const Boxes = lazy(() => import('./pages/Boxes'))
 const Discover = lazy(() => import('./pages/Discover'))
-const Dashboard = lazy(() => import('./pages/Dashboard'))
 const SetDetail = lazy(() => import('./pages/SetDetail'))
 const Wishlist = lazy(() => import('./pages/Wishlist'))
 const Binders = lazy(() => import('./pages/Binders'))
@@ -154,8 +153,8 @@ function ProtectedRoutes() {
     return (
         <Routes>
             <Route path="/" element={<ArchiveShell/>}>
-                <Route index element={<Navigate replace to="/collection"/>}/>
-                <Route path="dashboard" element={<Navigate replace to="/collection"/>}/>
+                <Route index element={<Home/>}/>
+                <Route path="dashboard" element={<Navigate replace to="/"/>}/>
                 <Route path="search" element={<CardSearch/>}/>
                 <Route path="discover" element={lazyRoute(<Discover/>)}/>
                 <Route path="card-search" element={<SearchRedirect/>}/>

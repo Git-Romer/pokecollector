@@ -26,6 +26,14 @@ function emphasise(sentence, value) {
 }
 
 const setTotal = (set) => set.total || set.total_cards || 0
+const LOCAL_COLLECTION_NOTES = Object.freeze([
+    {
+        id: 'collection-care',
+        title: 'Collection care',
+        body: 'Keep storage locations, conditions, and the story behind each card current in this local collection.',
+        href: '/collection',
+    },
+])
 
 export default function Home() {
     const {t} = useSettings()
@@ -43,12 +51,6 @@ export default function Home() {
         })
         .slice(0, 3)
 
-    const {data: agentNotes} = useQuery({
-        queryKey: ['agent-notes'],
-        queryFn: () => fetch('/api/agent/notes').then(r => r.json()),
-    })
-    const notes = agentNotes || []
-
     const featured = recent[0]
     const loading = dashboardQuery.isLoading || setsQuery.isLoading
 
@@ -58,15 +60,14 @@ export default function Home() {
     const uniqueCards = data.unique_cards ?? 0
     const totalSets = data.total_sets ?? 0
 
-    // The surface's own name now lives on the region rather than in a visible
-    // heading, so the h1 can be the number the page is actually about.
     return <section className="archive-card-reveal space-y-10" aria-label={t('archive.title')}>
         <header className="archive-anchor">
+            <h1 className="archive-overview-title">{t('archive.title')}</h1>
             <p className="archive-anchor-lede">{t('archive.subtitle')}</p>
-            <h1 className="archive-anchor-figure">
+            <p className="archive-anchor-figure">
                 <span className="archive-anchor-count">{totalCards}</span>
                 <span className="archive-anchor-unit">{t('archive.cardsFiled')}</span>
-            </h1>
+            </p>
             <dl className="archive-anchor-stats">
                 <div className="archive-anchor-stat">
                     <dt>{t('archive.uniqueCards')}</dt>
@@ -137,13 +138,13 @@ export default function Home() {
                 </AnimatedCard>
             })}</div>
         </section>
-        {notes.length > 0 && <section>
+        <section>
             <div className="section-header"><h2 className="section-title"><SplitText text={t('archive.notesTitle')}
                                                                                      delay={80}/></h2><span
                 className="text-sm text-text-muted">{t('archive.keepingWatch')}</span></div>
-            <div className="grid gap-3 lg:grid-cols-3">{notes.map((note) => <ArchiveNote key={note.id}
+            <div className="grid gap-3 lg:grid-cols-3">{LOCAL_COLLECTION_NOTES.map((note) => <ArchiveNote key={note.id}
                                                                                          note={note}/>)}</div>
-        </section>}
+        </section>
     </section>
 }
 
