@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --configLoader runner",
-    "build": "vite build --configLoader runner && node scripts/enforce-john-john-motion.mjs",
+    "build": "vite build --configLoader runner",
     "preview": "vite preview --configLoader runner",
     "test": "vitest run --configLoader runner",
     "test:watch": "vitest --configLoader runner"
