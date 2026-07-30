@@ -231,6 +231,31 @@ Respond ONLY with this exact JSON (no markdown, no explanation):
         if card_name_en_simple != card_name_en:
             search_pairs.append(("en", card_name_en))
 
+    # Normalize a card number for comparison: "136/182" -> "136", "063" -> "63"
+    def _leading_number(value) -> str | None:
+        if value is None:
+            return None
+        num_match = re.match(r"(\d+)", str(value).strip())
+        return str(int(num_match.group(1))) if num_match else None
+
+    # TCGdex returns search results sorted ascending by card number, so a plain
+    # head slice keeps only the lowest-numbered printings and discards the
+    # target card for anything numbered above them. Float printings that match
+    # the recognized number to the front so they survive the per-search cap.
+    target_number = _leading_number(card_info.get("number"))
+
+    def _prioritize_by_number(cards: list) -> list:
+        if not target_number:
+            return cards
+        matches = [c for c in cards if _leading_number(c.get("localId")) == target_number]
+        if not matches:
+            return cards
+        rest = [c for c in cards if _leading_number(c.get("localId")) != target_number]
+        logger.info(
+            f"Number pre-filter: {len(matches)} of {len(cards)} results match #{target_number}"
+        )
+        return matches + rest
+
     # Collect all raw results first, setting _lang on each card
     all_results = []
     for lang, search_name in search_pairs:
@@ -246,7 +271,7 @@ Respond ONLY with this exact JSON (no markdown, no explanation):
                 tcgdex_cards = search_resp.json()
                 if isinstance(tcgdex_cards, list):
                     logger.info(f"TCGdex {lang} search for '{search_name}': {len(tcgdex_cards)} results")
-                    for c in tcgdex_cards[:8]:
+                    for c in _prioritize_by_number(tcgdex_cards)[:8]:
                         card_id = c.get("id")
                         if not card_id:
                             continue
