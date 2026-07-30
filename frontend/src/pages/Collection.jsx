@@ -308,7 +308,10 @@ function CollectionEditModal({item, onClose}) {
     const [variant, setVariant] = useState(item.variant || 'Normal')
     const [lang, setLang] = useState(item.lang || 'en')
     const [price, setPrice] = useState(itemPriceInput)
-    const [acquisitionSource, setAcquisitionSource] = useState(item.acquisition_source || '')
+    const [acquisitionSource, setAcquisitionSource] = useState(item.acquisition_source || '');
+    const [collectionIntent, setCollectionIntent] = useState(item.collection_intent || 'main_collection');
+    const [isGrail, setIsGrail] = useState(Boolean(item.is_grail));
+    const [cardHistory, setCardHistory] = useState(item.card_history || '')
     const [protectionType, setProtectionType] = useState(item.protection_type || 'raw')
     const [storageLocationId, setStorageLocationId] = useState(String(item.storage_location_id || ''))
     const [storageType, setStorageType] = useState(item.storage_type || '')
@@ -376,6 +379,9 @@ function CollectionEditModal({item, onClose}) {
         price: itemPriceInput,
         customImageUrl: card?.custom_image_url || '',
         acquisitionSource: item.acquisition_source || '',
+        collectionIntent: item.collection_intent || 'main_collection',
+        isGrail: Boolean(item.is_grail),
+        cardHistory: item.card_history || '',
         protectionType: item.protection_type || 'raw',
         storageLocationId: String(item.storage_location_id || ''),
         storageType: item.storage_type || '',
@@ -396,6 +402,9 @@ function CollectionEditModal({item, onClose}) {
             price: itemPriceInput,
             customImageUrl: card?.custom_image_url || '',
             acquisitionSource: item.acquisition_source || '',
+            collectionIntent: item.collection_intent || 'main_collection',
+            isGrail: Boolean(item.is_grail),
+            cardHistory: item.card_history || '',
             protectionType: item.protection_type || 'raw',
             storageLocationId: String(item.storage_location_id || ''),
             storageType: item.storage_type || '',
@@ -418,6 +427,9 @@ function CollectionEditModal({item, onClose}) {
             setCustomImageUrl(nextItem.customImageUrl)
             setSavedCustomImageUrl(nextItem.customImageUrl)
             setAcquisitionSource(nextItem.acquisitionSource)
+            setCollectionIntent(nextItem.collectionIntent)
+            setIsGrail(nextItem.isGrail)
+            setCardHistory(nextItem.cardHistory)
             setProtectionType(nextItem.protectionType)
             setStorageLocationId(nextItem.storageLocationId)
             setStorageType(nextItem.storageType)
@@ -448,6 +460,15 @@ function CollectionEditModal({item, onClose}) {
             }
             if (acquisitionSource === prevItem.acquisitionSource && nextItem.acquisitionSource !== prevItem.acquisitionSource) {
                 setAcquisitionSource(nextItem.acquisitionSource)
+            }
+            if (collectionIntent === prevItem.collectionIntent && nextItem.collectionIntent !== prevItem.collectionIntent) {
+                setCollectionIntent(nextItem.collectionIntent)
+            }
+            if (isGrail === prevItem.isGrail && nextItem.isGrail !== prevItem.isGrail) {
+                setIsGrail(nextItem.isGrail)
+            }
+            if (cardHistory === prevItem.cardHistory && nextItem.cardHistory !== prevItem.cardHistory) {
+                setCardHistory(nextItem.cardHistory)
             }
             if (protectionType === prevItem.protectionType && nextItem.protectionType !== prevItem.protectionType) {
                 setProtectionType(nextItem.protectionType)
@@ -486,6 +507,9 @@ function CollectionEditModal({item, onClose}) {
         itemPriceInput,
         card?.custom_image_url,
         item.acquisition_source,
+        item.collection_intent,
+        item.is_grail,
+        item.card_history,
         item.protection_type,
         item.storage_location_id,
         item.storage_type,
@@ -517,6 +541,9 @@ function CollectionEditModal({item, onClose}) {
             lang,
             purchase_price: parseMoneyInputValue(price, exchangeRate, null),
             acquisition_source: acquisitionSource || null,
+            collection_intent: collectionIntent,
+            is_grail: isGrail,
+            card_history: cardHistory.trim() || null,
             protection_type: protectionType,
             storage_location_id: storageLocationId ? Number(storageLocationId) : null,
             storage_type: storageType || null,
@@ -810,6 +837,21 @@ function CollectionEditModal({item, onClose}) {
 
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
+                                    <label className="text-xs text-text-muted mb-1 block">Collection</label>
+                                    <select value={collectionIntent} onChange={e => setCollectionIntent(e.target.value)} className="select w-full">
+                                        <option value="main_collection">Main Collection</option>
+                                        <option value="vault">Vault</option>
+                                        <option value="pc">PC</option>
+                                    </select>
+                                </div>
+                                <label className="flex items-end gap-2 pb-2 text-sm text-text-secondary cursor-pointer">
+                                    <input type="checkbox" checked={isGrail} onChange={e => setIsGrail(e.target.checked)} className="h-4 w-4 accent-yellow"/>
+                                    <span>★ Grail Card</span>
+                                </label>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
                                     <label className="text-xs text-text-muted mb-1 block">Storage Location</label>
                                     <select value={storageLocationId}
                                             onChange={e => setStorageLocationId(e.target.value)}
@@ -824,10 +866,10 @@ function CollectionEditModal({item, onClose}) {
                                     <input
                                         type="text"
                                         value={grader}
-                                        placeholder={protectionType === 'psa_slab' ? 'PSA, BGS, CGC…' : 'Only for graded slabs'}
+                                        placeholder={['psa_slab', 'tag_slab'].includes(protectionType) ? (protectionType === 'tag_slab' ? 'TAG' : 'PSA, BGS, CGC…') : 'Only for graded slabs'}
                                         onChange={e => setGrader(e.target.value)}
                                         className="input w-full"
-                                        disabled={protectionType !== 'psa_slab'}
+                                        disabled={!['psa_slab', 'tag_slab'].includes(protectionType)}
                                     />
                                 </div>
                             </div>
@@ -841,7 +883,7 @@ function CollectionEditModal({item, onClose}) {
                                         placeholder="e.g. Gem Mint 10"
                                         onChange={e => setGrade(e.target.value)}
                                         className="input w-full"
-                                        disabled={protectionType !== 'psa_slab'}
+                                        disabled={!['psa_slab', 'tag_slab'].includes(protectionType)}
                                     />
                                 </div>
                                 <div>
@@ -852,9 +894,19 @@ function CollectionEditModal({item, onClose}) {
                                         placeholder="e.g. 12345678"
                                         onChange={e => setCertificationNumber(e.target.value)}
                                         className="input w-full"
-                                        disabled={protectionType !== 'psa_slab'}
+                                        disabled={!['psa_slab', 'tag_slab'].includes(protectionType)}
                                     />
                                 </div>
+                            </div>
+
+                            <div>
+                                <label className="text-xs text-text-muted mb-1 block">Card History</label>
+                                <textarea
+                                    value={cardHistory}
+                                    placeholder="Origin, receipt, certification, or provenance notes…"
+                                    onChange={e => setCardHistory(e.target.value)}
+                                    className="input w-full h-16 resize-none py-1"
+                                />
                             </div>
 
                             <div>
@@ -1433,9 +1485,9 @@ export default function Collection() {
                 {/* ─── Header ───────────────────────────────────────────────── */}
                 <div className="collection-hero">
                     <div className="min-w-0">
-                        <span className="archive-eyebrow">My Pokémon databank</span>
+                        <span className="archive-eyebrow">Private Collection</span>
                         <h1 className="mt-2 text-5xl font-bold text-text-primary mag-heading uppercase leading-none">
-                            <SplitText text={t('collection.title')} delay={40}/></h1>
+                            <SplitText text={'My Collection'} delay={40}/></h1>
                         <p className="mt-2 text-sm text-text-secondary">
                             {activeView === 'sealed'
                                 ? 'Sealed product, filed alongside the cards it belongs with.'
@@ -1813,6 +1865,12 @@ export default function Collection() {
                                                                 return null
                                                             })()}
                                                             <div className="flex flex-wrap gap-0.5 mt-0.5 px-0.5">
+                                                                {item.is_grail && (
+                                                                    <span className="inline-flex items-center text-[10px] font-black px-1.5 py-0.5 rounded-full bg-yellow/20 text-yellow border border-yellow/40" title="Grail Card">★ Grail</span>
+                                                                )}
+                                                                {item.collection_intent && item.collection_intent !== "main_collection" && (
+                                                                    <span className="inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-purple/20 text-purple border border-purple/40">{item.collection_intent === "vault" ? "Vault" : "PC"}</span>
+                                                                )}
                                                                 {item.quantity > 1 && (
                                                                     <span
                                                                         className="inline-flex items-center gap-0.5 text-[10px] font-black px-1.5 py-0.5 rounded-full bg-brand-red/20 text-brand-red border border-brand-red/40">

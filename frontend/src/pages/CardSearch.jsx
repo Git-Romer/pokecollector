@@ -18,7 +18,7 @@ import {
     X
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import {bulkAddToCollection, getCustomCards, getSets, searchCards} from '../api/client'
+import {bulkAddToCollection, getCustomCards, getPokeBeachNews, getSets, searchCards} from '../api/client'
 import {CardItem, CardModal, CustomCardModal} from '../components/CardItem'
 import {useSettings} from '../contexts/SettingsContext'
 import Sheet from '../components/ui/Sheet'
@@ -55,6 +55,12 @@ const TYPES = ['Fire', 'Water', 'Grass', 'Lightning', 'Psychic', 'Fighting', 'Da
 const CATEGORIES = ['Pokemon', 'Trainer', 'Energy']
 const SUBTYPES = ['Basic', 'Stage1', 'Stage2', 'Supporter', 'Item', 'Stadium', 'Tool', 'Technical Machine', 'Special']
 const RARITIES = ['Common', 'Uncommon', 'Rare', 'Rare Holo', 'Rare Ultra', 'Rare Secret', 'Illustration Rare', 'Special Illustration Rare', 'Hyper Rare', 'Double Rare', 'ACE SPEC Rare', 'Promo', 'Amazing Rare']
+
+const DISCOVERY_MODULES = [
+    {label: 'New Set Drops', copy: 'Explore sets and identify cards worth adding.'},
+    {label: 'Meta & Deckbuilding', copy: 'Browse inspiration signals for your next lot.'},
+    {label: 'Trending Cards', copy: 'Spot activity while adding lots to your collection.'},
+]
 
 function FilterForm({filters, setFilter, allSeries, setsForSeries, toggleSortOrder, t}) {
     return (
@@ -168,6 +174,7 @@ export default function CardSearch() {
         hp_min: '', hp_max: '', sort_by: '', sort_order: 'asc',
     })
     const [langFilter, setLangFilter] = useState('all')
+    const [ownedOnly, setOwnedOnly] = useState(false)
     const [page, setPage] = useState(1)
     const [showFilters, setShowFilters] = useState(false)
     const [showCustomModal, setShowCustomModal] = useState(false)
@@ -194,6 +201,12 @@ export default function CardSearch() {
     const {data: recentCustomCards = []} = useQuery({
         queryKey: ['custom-cards'],
         queryFn: () => getCustomCards().then(r => r.data),
+    })
+
+    const {data: pokebeachNews} = useQuery({
+        queryKey: ['pokebeach-news'],
+        queryFn: () => getPokeBeachNews().then(response => response.data),
+        staleTime: 6 * 60 * 60 * 1000,
     })
 
     const {data: allSets = []} = useQuery({
@@ -233,6 +246,7 @@ export default function CardSearch() {
         sort_by: filters.sort_by || undefined,
         sort_order: filters.sort_order || 'asc',
         lang: langFilter,
+        owned_only: ownedOnly,
         page,
         page_size: pageSize,
     }
@@ -240,9 +254,9 @@ export default function CardSearch() {
     const hasQuery = filters.name || filters.category || filters.type || filters.subtype || filters.rarity || filters.set_id || filters.artist || filters.hp_min || filters.hp_max || filters.series
 
     const {data, isLoading, error, isFetching} = useQuery({
-        queryKey: ['card-search', queryParams, langFilter],
+        queryKey: ['card-search', queryParams, langFilter, ownedOnly],
         queryFn: () => searchCards(queryParams).then(r => r.data),
-        enabled: !!hasQuery || langFilter !== 'all',
+        enabled: true,
         placeholderData: (prev) => prev,
     })
 
@@ -290,6 +304,7 @@ export default function CardSearch() {
         })
         setSearchInput('')
         setLangFilter('all')
+        setOwnedOnly(false)
         setPage(1)
     }
 
@@ -497,6 +512,10 @@ export default function CardSearch() {
                     }}
                     className="select w-full sm:w-52 text-xs py-1.5"
                 />
+                <label className="ml-auto flex items-center gap-2 text-xs font-semibold text-text-secondary cursor-pointer">
+                    <input type="checkbox" checked={ownedOnly} onChange={event => { setOwnedOnly(event.target.checked); setPage(1) }} className="h-4 w-4 accent-yellow"/>
+                    Owned Only
+                </label>
             </div>
 
             {/* ─── Search Bar + Filter Button ───────────────────────────── */}
@@ -557,6 +576,67 @@ export default function CardSearch() {
                 </form>
             </div>
 
+            <section
+                className="card border-light-blue/20 bg-gradient-to-br from-light-blue/5 via-transparent to-purple/5"
+                aria-labelledby="card-search-discovery-heading"
+            >
+                <div className="flex items-start justify-between gap-3 mb-4">
+                    <div>
+                        <p className="text-xs uppercase tracking-[0.16em] text-light-blue font-semibold">
+                            Card Search (Fluent: Discovery & Motion)
+                        </p>
+                        <h2 id="card-search-discovery-heading" className="text-lg font-bold text-text-primary mt-1">
+                            Find your next cards
+                        </h2>
+                        <p className="text-xs text-text-secondary mt-1">
+                            Identify cards, add lots, explore sets, and browse inspiration signals from PokéBeach.
+                        </p>
+                    </div>
+                    <a
+                        href="https://www.pokebeach.com/"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs font-semibold text-light-blue hover:underline flex-shrink-0"
+                    >
+                        PokéBeach ↗
+                    </a>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {DISCOVERY_MODULES.map(module => {
+                        const items = (pokebeachNews?.items || [])
+                            .filter(item => item.category === module.label)
+                            .slice(0, 2)
+                        return (
+                            <div key={module.label} className="rounded-xl border border-white/10 bg-black/10 p-3">
+                                <h3 className="text-xs uppercase tracking-[0.12em] font-bold text-light-blue">
+                                    {module.label}
+                                </h3>
+                                <p className="mt-2 text-xs text-text-secondary">{module.copy}</p>
+                                <div className="mt-3 space-y-2">
+                                    {items.length > 0 ? items.map(item => (
+                                        <a
+                                            key={item.url}
+                                            href={item.url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="block rounded-lg border border-white/10 p-2 transition-transform hover:-translate-y-0.5 hover:border-light-blue/40"
+                                        >
+                                            <p className="text-xs font-semibold leading-snug text-text-primary">
+                                                {item.title}
+                                            </p>
+                                        </a>
+                                    )) : (
+                                        <p className="rounded-lg border border-dashed border-white/10 p-2 text-xs text-text-muted">
+                                            No live signal yet.
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        )
+                    })}
+                </div>
+            </section>
+
             {/* ─── Filter Sheet ─────────────────────────────────────────── */}
             <Sheet isOpen={showFilters} onClose={() => setShowFilters(false)} title={t('cardSearch.filters')}>
                 <div className="p-4 space-y-4">
@@ -583,7 +663,7 @@ export default function CardSearch() {
             </Sheet>
 
             {/* ─── Empty / loading / error states ──────────────────────── */}
-            {!hasQuery && (
+            {!hasQuery && !data?.items?.length && (
                 <div className="text-center py-20">
                     <div className="w-24 h-24 pokeball-bg mx-auto mb-4 opacity-20"/>
                     <p className="text-text-muted">{t('cardSearch.trySearch')}</p>
@@ -591,7 +671,7 @@ export default function CardSearch() {
                 </div>
             )}
 
-            {isLoading && hasQuery && (
+            {isLoading && (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                     {[...Array(10)].map((_, i) => (
                         <div key={i} className="card p-0">

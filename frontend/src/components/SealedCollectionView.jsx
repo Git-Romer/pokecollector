@@ -15,6 +15,7 @@ function ProductEditor({product, onClose, onAddPulledCards}) {
     const [quantity, setQuantity] = useState(product.quantity || 1)
     const [sealedCondition, setSealedCondition] = useState(product.sealed_condition || 'factory_sealed')
     const [acquisitionSource, setAcquisitionSource] = useState(product.acquisition_source || 'unknown')
+    const [collectionIntent, setCollectionIntent] = useState(product.collection_intent || 'main_collection')
     const [locationId, setLocationId] = useState(String(product.storage_location_id || ''))
     const [notes, setNotes] = useState(product.notes || '')
     const [removing, setRemoving] = useState(false)
@@ -42,6 +43,7 @@ function ProductEditor({product, onClose, onAddPulledCards}) {
             quantity: Number(quantity),
             sealed_condition: sealedCondition,
             acquisition_source: acquisitionSource,
+            collection_intent: collectionIntent,
             storage_location_id: Number(locationId),
             notes: notes.trim() || null,
         }),
@@ -111,6 +113,14 @@ function ProductEditor({product, onClose, onAddPulledCards}) {
                                 {ACQUISITION_SOURCES.filter(option => option.value !== 'bulk_before_tracking').map(option => (
                                     <option key={option.value} value={option.value}>{option.label}</option>
                                 ))}
+                            </select>
+                        </label>
+                        <label>
+                            <span className="mb-1 block text-xs font-semibold text-text-secondary">Collection</span>
+                            <select className="select w-full" value={collectionIntent} onChange={event => setCollectionIntent(event.target.value)}>
+                                <option value="main_collection">Main Collection</option>
+                                <option value="vault">Vault</option>
+                                <option value="pc">PC</option>
                             </select>
                         </label>
                         <label className="sm:col-span-2">

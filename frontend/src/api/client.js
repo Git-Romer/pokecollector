@@ -209,6 +209,8 @@ export const getDuplicates = (params = {}) => api.get('/analytics/duplicates', {
 export const getTopMovers = (days, params = {}) => api.get('/analytics/top-movers', {params: {...params, days}})
 export const getRarityStats = (params = {}) => api.get('/analytics/rarity-stats', {params})
 export const getInvestmentTracker = (params = {}) => api.get('/analytics/investment-tracker', {params})
+export const getPortfolioSummary = (params = {}) => api.get('/analytics/portfolio-summary', {params})
+export const getPokeBeachNews = (params = {}) => api.get('/analytics/pokebeach-news', {params})
 export const getAnalyticsNewSets = () => api.get('/analytics/new-sets')
 
 // Sync

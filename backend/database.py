@@ -114,6 +114,10 @@ def _run_migrations(conn):
         "ALTER TABLE collection ADD COLUMN IF NOT EXISTS grader VARCHAR",
         "ALTER TABLE collection ADD COLUMN IF NOT EXISTS certification_number VARCHAR",
         "ALTER TABLE collection ADD COLUMN IF NOT EXISTS notes TEXT",
+        "ALTER TABLE collection ADD COLUMN IF NOT EXISTS collection_intent VARCHAR NOT NULL DEFAULT 'main_collection'",
+        "ALTER TABLE product_purchases ADD COLUMN IF NOT EXISTS collection_intent VARCHAR NOT NULL DEFAULT 'main_collection'",
+        "ALTER TABLE collection ADD COLUMN IF NOT EXISTS is_grail BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE collection ADD COLUMN IF NOT EXISTS card_history TEXT",
         "ALTER TABLE product_purchases ADD COLUMN IF NOT EXISTS storage_type VARCHAR",
         "ALTER TABLE product_purchases ADD COLUMN IF NOT EXISTS storage_detail VARCHAR",
         # Inventory intake: stable IDs, reusable storage, care state, lifecycle and audit history.
@@ -297,6 +301,7 @@ def _run_migrations(conn):
         "CREATE INDEX IF NOT EXISTS idx_collection_grouping ON collection (user_id, card_id, variant, lang, condition, purchase_price)",
         "ALTER TABLE wishlist ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id)",
         "ALTER TABLE wishlist ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1",
+        "ALTER TABLE wishlist ADD COLUMN IF NOT EXISTS pursuit_status VARCHAR NOT NULL DEFAULT 'chase'",
         "UPDATE wishlist SET quantity = 1 WHERE quantity IS NULL OR quantity < 1",
         "UPDATE wishlist SET quantity = 99 WHERE quantity > 99",
         "ALTER TABLE wishlist ALTER COLUMN quantity SET DEFAULT 1",

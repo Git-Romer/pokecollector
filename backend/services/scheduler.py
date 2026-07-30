@@ -70,9 +70,9 @@ def run_price_sync():
         db.close()
 
 
-def run_weekly_excel_backup():
-    """Create local Excel backups and keep the newest eight files per user."""
-    from services.weekly_excel_backup import run_weekly_excel_backup as create_backup
+def run_gfs_excel_backup():
+    """Create local portable Excel backups using Grandfather-Father-Son retention."""
+    from services.weekly_excel_backup import run_gfs_excel_backup as create_backup
 
     create_backup()
 
@@ -121,12 +121,12 @@ def start_scheduler():
         # Job 3: Official portable local backup, retained as the newest eight
         # XLSX workbooks per active user in /app/backups/excel.
         scheduler.add_job(
-            run_weekly_excel_backup,
-            trigger=IntervalTrigger(weeks=1),
-            id="weekly_excel_backup_job",
-            name="John John's PC Weekly Excel Backup",
+            run_gfs_excel_backup,
+            trigger=IntervalTrigger(days=1),
+            id="gfs_excel_backup_job",
+            name="John John's PC GFS Excel Backup",
             replace_existing=True,
-            next_run_time=now_utc + datetime.timedelta(weeks=1),
+            next_run_time=now_utc + datetime.timedelta(days=1),
         )
 
         scheduler.start()
@@ -134,7 +134,7 @@ def start_scheduler():
             f"Scheduler started — full sync every {full_interval_days} days "
             f"({'immediately' if needs_initial_sync else f'in {full_interval_days} days'}), "
             f"small price sync every {price_interval_minutes} minutes, "
-            "weekly Excel backups retained locally"
+            "GFS Excel backups retained locally"
         )
     else:
         logger.info("Scheduler already running")

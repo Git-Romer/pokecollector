@@ -104,8 +104,8 @@ the [GitHub Releases page](https://github.com/Git-Romer/pokecollector/releases).
 
 ### 🎨 UX & Localization
 
-- Fluent-inspired John John's PC shell with five primary sections: Collection, Card Search, Sets, Analytics, and
-  Settings
+- Fluent-inspired John John's PC shell with five primary sections: Collection, Card Search, All Cards, Trends &
+  Insights, and Settings
 - App UI translations for all supported TCGdex languages, plus Swedish
 - Accessible dark/light archive themes with purposeful motion and reduced-motion support
 

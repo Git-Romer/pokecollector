@@ -1,6 +1,6 @@
 import unittest
 
-from services.analytics import sort_top_movers
+from services.analytics import sort_top_movers, summarize_collection_intents
 
 
 class AnalyticsTests(unittest.TestCase):

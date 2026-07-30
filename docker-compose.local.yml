@@ -9,6 +9,9 @@ services:
     container_name: !reset null
     ports: !override
       - "127.0.0.1:18080:8000"
+    volumes: !override
+      - "C:/Users/johnn/OneDrive/John John's PC:/app/backups"
+      - "O:/:/mnt/odrive:ro"
 
   frontend:
     container_name: !reset null

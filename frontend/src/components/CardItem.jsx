@@ -25,6 +25,7 @@ import {getEffectiveCardPrice} from '../utils/prices'
 import {getTcgdexLanguage, tcgdexLanguageBadgeClass, tcgdexLanguageLabel} from '../utils/tcgdexLanguages'
 import {invalidateTcgdexFilterLanguages} from '../utils/queryInvalidation'
 import {parseMoneyInputValue} from '../utils/moneyInput'
+import {ACQUISITION_SOURCES, PROTECTION_TYPES, RAW_CONDITIONS} from '../utils/collectionMetadata'
 
 function askWishlistQuantity(t, defaultQuantity = 1) {
     const initialQuantity = Math.max(1, Math.min(99, parseInt(defaultQuantity, 10) || 1))
@@ -386,8 +387,7 @@ export function CustomCardModal({onClose, onCreated, sets: setsProp = [], autoAd
                                     <label className="text-xs text-text-muted mb-1 block">{t('card.condition')}</label>
                                     <select value={condition} onChange={(e) => setCondition(e.target.value)}
                                             className="select">
-                                        {['Mint', 'NM', 'LP', 'MP', 'HP'].map(c => <option key={c}
-                                                                                           value={c}>{c}</option>)}
+                                        {RAW_CONDITIONS.map(c => <option key={c} value={c}>{c}</option>)}
                                     </select>
                                 </div>
                             </div>
@@ -624,6 +624,9 @@ export function CardModal({card, onClose, onEdit, defaultLang = 'en', ownedItems
     const [condition, setCondition] = useState('NM')
     const [variant, setVariant] = useState(() => getDefaultVariant(card))
     const [purchasePrice, setPurchasePrice] = useState('')
+    const [acquisitionSource, setAcquisitionSource] = useState('')
+    const [collectionIntent, setCollectionIntent] = useState('main_collection')
+    const [protectionType, setProtectionType] = useState('raw')
     const [resolvedCardId, setResolvedCardId] = useState(card.id)
     const [customImageUrl, setCustomImageUrl] = useState(card.custom_image_url || '')
     const [savedCustomImageUrl, setSavedCustomImageUrl] = useState(card.custom_image_url || '')
@@ -1085,7 +1088,7 @@ export function CardModal({card, onClose, onEdit, defaultLang = 'en', ownedItems
                                     <label className="text-xs text-text-muted mb-1 block">{t('card.condition')}</label>
                                     <select value={condition} onChange={(e) => setCondition(e.target.value)}
                                             className="select">
-                                        {['Mint', 'NM', 'LP', 'MP', 'HP'].map(c => <option key={c}
+                                        {RAW_CONDITIONS.map(c => <option key={c}
                                                                                            value={c}>{c}</option>)}
                                     </select>
                                 </div>
@@ -1114,6 +1117,29 @@ export function CardModal({card, onClose, onEdit, defaultLang = 'en', ownedItems
                                     </p>
                                 </div>
                             )}
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-xs text-text-muted mb-1 block">Collection</label>
+                                    <select value={collectionIntent} onChange={(e) => setCollectionIntent(e.target.value)} className="select">
+                                        <option value="main_collection">Main Collection</option>
+                                        <option value="vault">Vault</option>
+                                        <option value="pc">PC</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-xs text-text-muted mb-1 block">Acquisition</label>
+                                    <select value={acquisitionSource} onChange={(e) => setAcquisitionSource(e.target.value)} className="select">
+                                        <option value="">Not recorded</option>
+                                        {ACQUISITION_SOURCES.map(source => <option key={source.value} value={source.value}>{source.label}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="text-xs text-text-muted mb-1 block">Protection</label>
+                                <select value={protectionType} onChange={(e) => setProtectionType(e.target.value)} className="select">
+                                    {PROTECTION_TYPES.map(protection => <option key={protection.value} value={protection.value}>{protection.label}</option>)}
+                                </select>
+                            </div>
                             <div>
                                 <label className="text-xs text-text-muted mb-1 block">{t('card.purchasePrice')}</label>
                                 <MoneyInput
@@ -1128,6 +1154,9 @@ export function CardModal({card, onClose, onEdit, defaultLang = 'en', ownedItems
                                     card_id: resolvedCardId, quantity, condition,
                                     variant,
                                     purchase_price: parseMoneyInputValue(purchasePrice, exchangeRate),
+                                    acquisition_source: acquisitionSource || null,
+                                    collection_intent: collectionIntent,
+                                    protection_type: protectionType,
                                     lang: card.lang || 'en',
                                 })} disabled={addMutation.isPending || !exchangeRateReady}>
                                     <Plus

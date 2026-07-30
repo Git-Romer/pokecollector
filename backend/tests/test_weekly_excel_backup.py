@@ -2,7 +2,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from services.weekly_excel_backup import _prune_user_backups, _safe_username
+from datetime import date
+
+from services.weekly_excel_backup import (
+    GFS_RETENTION,
+    _gfs_tiers_for_date,
+    _prune_user_backups,
+    _safe_username,
+)
 
 
 class WeeklyExcelBackupTests(unittest.TestCase):
@@ -24,3 +31,12 @@ class WeeklyExcelBackupTests(unittest.TestCase):
             self.assertEqual(len(remaining), 8)
             self.assertNotIn("john-johns-pc-1-john-00.xlsx", remaining)
             self.assertNotIn("john-johns-pc-1-john-01.xlsx", remaining)
+
+    def test_gfs_tiers_and_retention_match_the_backup_schedule(self):
+        self.assertEqual(_gfs_tiers_for_date(date(2026, 7, 28)), ["sons"])
+        self.assertEqual(_gfs_tiers_for_date(date(2026, 7, 27)), ["sons", "fathers"])
+        self.assertEqual(
+            _gfs_tiers_for_date(date(2026, 6, 1)),
+            ["sons", "fathers", "grandfathers"],
+        )
+        self.assertEqual(GFS_RETENTION, {"sons": 7, "fathers": 4, "grandfathers": 12})

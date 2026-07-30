@@ -411,6 +411,7 @@ def search_cards(
     page: int = 1,
     page_size: int = 20,
     lang: Optional[str] = Query("all", description="Language filter: supported TCGdex language code or 'all'"),
+    owned_only: bool = Query(False, description="Return only cards represented by active owned collection lots"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -434,6 +435,14 @@ def search_cards(
 
         # ── Pure DB search ────────────────────────────────────────────────────
         query = db.query(Card).filter(Card.is_custom == False, visible_card_filter(db, current_user.id, search_lang))
+
+        if owned_only:
+            owned_card_ids = db.query(CollectionItem.card_id).filter(
+                CollectionItem.user_id == current_user.id,
+                CollectionItem.status == "owned",
+                CollectionItem.inventory_kind == "owned",
+            )
+            query = query.filter(Card.id.in_(owned_card_ids))
 
         if name:
             query = query.filter(accent_insensitive_contains(db, Card.name, name))

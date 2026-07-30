@@ -1281,3 +1281,70 @@ body {
     font-variant-numeric: tabular-nums;
     color: var(--archive-text);
 }
+
+/* John John's PC is a dedicated desktop workspace. The old responsive rail
+   becomes a compact control deck across the top, leaving the collection as
+   the largest surface in the room. */
+.archive-shell {
+    display: block;
+    min-width: 1280px;
+}
+
+.archive-rail {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 5.25rem;
+    padding: 0 2rem;
+    border-right: 0;
+    border-bottom: 1px solid var(--archive-border);
+}
+
+.archive-wordmark {
+    flex: 0 0 auto;
+    padding: 0 2rem 0 0;
+}
+
+.archive-nav {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: .35rem;
+}
+
+.archive-nav-link {
+    padding: .65rem .8rem;
+    white-space: nowrap;
+}
+
+.archive-rail-footer,
+.archive-mobile-nav {
+    display: none !important;
+}
+
+.archive-content {
+    width: 100%;
+}
+
+.archive-toolbar {
+    top: 5.25rem;
+}
+
+@media (max-width: 1279px) {
+    .archive-content,
+    .archive-rail {
+        display: none;
+    }
+
+    .archive-shell::before {
+        content: "John John's PC is designed for a desktop workspace.";
+        display: grid;
+        place-items: center;
+        min-height: 100dvh;
+        color: var(--archive-text);
+        font: 700 1.125rem/1.4 Inter, system-ui, sans-serif;
+    }
+}

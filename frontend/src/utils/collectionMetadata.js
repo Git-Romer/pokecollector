@@ -13,14 +13,16 @@ export const ACQUISITION_SOURCES = [
     {value: 'other', label: 'Other'}
 ];
 
-export const RAW_CONDITIONS = ['Unassessed', 'Mint', 'NM', 'LP', 'MP', 'HP', 'Damaged']
+export const RAW_CONDITIONS = ['NM', 'LP', 'MP', 'HP', 'DMG']
 
 export const PROTECTION_TYPES = [
     {value: 'raw', label: 'Raw'},
     {value: 'penny_sleeve', label: 'Penny sleeve'},
     {value: 'card_saver', label: 'Card Saver'},
     {value: 'top_loader', label: 'Top loader / hard sleeve'},
-    {value: 'psa_slab', label: 'Graded slab'},
+    {value: 'psa_slab', label: 'PSA slab'},
+    {value: 'tag_slab', label: 'TAG slab'},
+    {value: 'other', label: 'Other'},
 ]
 
 export const SEALED_CONDITIONS = [

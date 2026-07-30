@@ -268,13 +268,13 @@ def _upsert_collection_item(
             status_code=422,
             detail=f"condition must be one of: {', '.join(RAW_CONDITIONS)}",
         )
-    if item.protection_type == "psa_slab" and not (item.grader or "PSA").strip():
+    if item.protection_type in {"psa_slab", "tag_slab"} and not (item.grader or "PSA").strip():
         raise HTTPException(status_code=422, detail="A grading company is required for slabbed cards")
 
     location = resolve_storage_location(db, current_user.id, item.storage_location_id)
     grader = item.grader
-    if item.protection_type == "psa_slab" and not grader:
-        grader = "PSA"
+    if item.protection_type in {"psa_slab", "tag_slab"} and not grader:
+        grader = "TAG" if item.protection_type == "tag_slab" else "PSA"
 
     existing = db.query(CollectionItem).filter(
         CollectionItem.card_id == effective_card_id,
@@ -336,6 +336,9 @@ def _upsert_collection_item(
         grade=item.grade,
         certification_number=item.certification_number,
         notes=item.notes,
+        collection_intent=item.collection_intent,
+        is_grail=item.is_grail,
+        card_history=item.card_history,
         status="owned",
         lang=item_lang,
         user_id=current_user.id,
@@ -788,12 +791,12 @@ def update_collection_item(
         raise HTTPException(status_code=422, detail="purchase_price must be a finite, non-negative number")
     if update_data.get("inventory_kind") == "bulk":
         update_data["purchase_price"] = None
-    if update_data.get("protection_type") == "psa_slab" and not (
+    if update_data.get("protection_type") in {"psa_slab", "tag_slab"} and not (
         update_data.get("grader") or item.grader or "PSA"
     ):
         raise HTTPException(status_code=422, detail="A grading company is required for slabbed cards")
-    if update_data.get("protection_type") == "psa_slab" and "grader" not in update_data and not item.grader:
-        update_data["grader"] = "PSA"
+    if update_data.get("protection_type") in {"psa_slab", "tag_slab"} and "grader" not in update_data and not item.grader:
+        update_data["grader"] = "TAG" if update_data.get("protection_type") == "tag_slab" else "PSA"
     active_linked_quantity = _active_product_link_quantity(db, current_user, item.id)
     if "quantity" in update_data and update_data["quantity"] is not None:
         if update_data["quantity"] < active_linked_quantity:

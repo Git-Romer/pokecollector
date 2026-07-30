@@ -34,6 +34,8 @@ import {
     getAnalyticsNewSets,
     getDuplicates,
     getInvestmentTracker,
+    getPortfolioSummary,
+    getSets,
     getProducts,
     getRarityStats,
     getTopMovers
@@ -43,7 +45,6 @@ import CardListItem from '../components/CardListItem'
 import {format, parseISO} from 'date-fns'
 import clsx from 'clsx'
 import PeriodSelector, {CARD_PERIODS, PERIOD_DAYS} from '../components/PeriodSelector'
-import TabNav from '../components/TabNav'
 import toast from 'react-hot-toast'
 import {resolveCardImageUrl} from '../utils/imageUrl'
 import MoneyInput from '../components/MoneyInput'
@@ -55,6 +56,21 @@ const RARITY_COLORS = [
 ]
 
 const PRODUCT_TYPES = ['Booster Pack', 'Booster Box', 'Elite Trainer Box', 'Tin', 'Bundle', 'Collection Box', 'Blister', 'Other']
+
+function formatPortfolioCounts(segment) {
+    const counts = []
+    if (segment.cards > 0) counts.push(`${segment.cards} ${segment.cards === 1 ? 'card' : 'cards'}`)
+    if (segment.sealed_products > 0) counts.push(`${segment.sealed_products} sealed ${segment.sealed_products === 1 ? 'product' : 'products'}`)
+    return counts.length > 0 ? counts.join(' · ') : 'No items'
+}
+
+function formatCostBasisNeeded(segment) {
+    const needed = segment.cost_basis_needed || {}
+    const counts = []
+    if (needed.cards > 0) counts.push(`${needed.cards} ${needed.cards === 1 ? 'card' : 'cards'}`)
+    if (needed.sealed_products > 0) counts.push(`${needed.sealed_products} sealed ${needed.sealed_products === 1 ? 'product' : 'products'}`)
+    return counts.length > 0 ? counts.join(' · ') : null
+}
 
 function CustomTooltip({active, payload, label, formatPrice}) {
     if (active && payload && payload.length) {
@@ -189,14 +205,9 @@ export default function Analytics() {
     const {t, formatPrice, pricePrimaryField, currencySymbol} = useSettings()
     const [moversPeriod, setMoversPeriod] = useState('7d')
     const [moversSort, setMoversSort] = useState('percentage')
-    const [activeTab, setActiveTab] = useState('duplicates')
+    const [activeTab, setActiveTab] = useState('visualize')
     const [showExpenseModal, setShowExpenseModal] = useState(false)
     const queryClient = useQueryClient()
-    const ANALYTICS_TABS = [
-        {to: '/analytics', label: t('nav.analytics'), icon: BarChart3},
-        {to: '/products', label: t('nav.products'), icon: ShoppingBag},
-        {to: '/dashboard', label: t('nav.dashboard'), icon: LayoutDashboard},
-    ]
 
     const {data: duplicates = [], isLoading: dupLoading} = useQuery({
         queryKey: ['duplicates', pricePrimaryField],
@@ -229,11 +240,21 @@ export default function Analytics() {
         queryFn: () => getAnalyticsNewSets().then(r => r.data),
     })
 
+    const {data: sets = []} = useQuery({
+        queryKey: ['sets'],
+        queryFn: () => getSets().then(r => r.data),
+    })
+
+    const {data: portfolioSummary, isLoading: portfolioSummaryLoading} = useQuery({
+        queryKey: ['portfolio-summary', pricePrimaryField],
+        queryFn: () => getPortfolioSummary({price_field: pricePrimaryField}).then(r => r.data),
+    })
+
     const tabs = [
-        {key: 'duplicates', label: t('analytics.duplicates'), icon: Copy},
-        {key: 'movers', label: t('analytics.topMovers'), icon: TrendingUp},
-        {key: 'rarity', label: t('analytics.rarityStats'), icon: BarChart3},
-        {key: 'investment', label: t('analytics.investment'), icon: Activity},
+        {key: 'visualize', label: 'Visualize', icon: Activity},
+        {key: 'discover', label: 'Discover', icon: TrendingUp},
+        {key: 'master_set', label: 'Master Set', icon: BarChart3},
+        {key: 'portfolio', label: 'Portfolio Performance', icon: Activity},
     ]
 
     const chartData = investmentData.map(s => ({
@@ -256,11 +277,10 @@ export default function Analytics() {
 
     return (
         <div className="space-y-4 pb-2">
-            <TabNav tabs={ANALYTICS_TABS}/>
             <div>
                 <h1 className="text-5xl font-bold text-text-primary mag-heading uppercase leading-none mt-2"><SplitText
-                    text={t('analytics.title')} delay={40}/></h1>
-                <p className="text-sm text-text-secondary mt-1">{t('analytics.subtitle')}</p>
+                    text={'Trends & Insights'} delay={40}/></h1>
+                <p className="text-sm text-text-secondary mt-1">Visualize, Discover, Master Set, and Portfolio Performance.</p>
             </div>
 
             {newSets.length > 0 && (
@@ -289,7 +309,7 @@ export default function Analytics() {
             </div>
 
             {/* Duplicates Tab */}
-            {activeTab === 'duplicates' && (
+            {activeTab === 'visualize' && (
                 <div className="space-y-4">
                     <p className="text-sm text-text-secondary">{t('analytics.duplicatesDesc')}</p>
                     {dupLoading ? (
@@ -356,7 +376,7 @@ export default function Analytics() {
             )}
 
             {/* Top Movers Tab */}
-            {activeTab === 'movers' && (
+            {activeTab === 'discover' && (
                 <div className="space-y-4">
                     <div className="flex items-center gap-3 flex-wrap">
                         <p className="text-sm text-text-secondary">{t('analytics.moversDesc')} {moversDay} {t('analytics.days')}</p>
@@ -423,8 +443,22 @@ export default function Analytics() {
             )}
 
             {/* Rarity Stats Tab */}
-            {activeTab === 'rarity' && (
+            {activeTab === 'master_set' && (
                 <div className="space-y-4">
+                    <div className="card">
+                        <div className="flex items-start justify-between gap-4 mb-4">
+                            <div><p className="text-xs uppercase tracking-[0.16em] text-text-muted font-semibold">Master Set</p><h2 className="text-lg font-bold text-text-primary mt-1">Closest to completion</h2></div>
+                            <p className="text-xs text-text-muted">Exact numbered cards</p>
+                        </div>
+                        <div className="space-y-3">
+                            {[...sets].filter(set => set.total > 0).sort((a, b) => ((b.owned_count || 0) / b.total) - ((a.owned_count || 0) / a.total)).slice(0, 5).map(set => {
+                                const owned = set.owned_count || 0
+                                const pct = Math.round(owned / set.total * 100)
+                                return <div key={set.id}><div className="flex justify-between gap-3 text-sm"><span className="truncate text-text-primary font-medium">{set.name}</span><span className="shrink-0 text-text-secondary">{owned}/{set.total} · {pct}%</span></div><div className="mt-1.5 h-1.5 rounded-full bg-white/10 overflow-hidden"><div className="h-full rounded-full bg-gradient-to-r from-red via-yellow to-light-blue" style={{width: pct + "%"}}/></div></div>
+                            })}
+                            {sets.length === 0 && <p className="text-sm text-text-muted">Your set catalog will appear after the next card sync.</p>}
+                        </div>
+                    </div>
                     {rarityLoading ? (
                         <div className="skeleton h-64 rounded-xl"/>
                     ) : rarityStats.length === 0 ? (
@@ -523,9 +557,50 @@ export default function Analytics() {
                 </div>
             )}
 
-            {/* Investment Tracker Tab */}
-            {activeTab === 'investment' && (
+            {/* Portfolio Performance */}
+            {activeTab === 'portfolio' && (
                 <div className="space-y-4">
+                    {portfolioSummary?.segments && (
+                        <>
+                            <div className="card border-brand-red/20 bg-brand-red/5">
+                                <p className="text-sm font-semibold text-text-primary">Portfolio scope</p>
+                                <p className="mt-1 text-sm text-text-secondary">
+                                    Vault, PC, and the highest-value 10% of Main Collection by market value.
+                                    Sealed product is included when it is marked Vault or PC.
+                                </p>
+                            </div>
+                            <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
+                                {[['vault', 'Vault'], ['pc', 'PC'], ['main_collection', 'Main Collection · Highest-value 10%']].map(([scope, label]) => {
+                                    const segment = portfolioSummary.segments[scope]
+                                    const costBasisNeeded = formatCostBasisNeeded(segment)
+                                    return <div key={scope} className="card border-white/10">
+                                        <p className="text-xs uppercase tracking-[0.16em] text-text-muted font-semibold">{label}</p>
+                                        <p className="mt-2 text-2xl font-black text-text-primary">{formatPrice(segment.market_value)}</p>
+                                        <p className="mt-1 text-xs text-text-secondary">{formatPortfolioCounts(segment)}</p>
+                                        <div className="mt-3 space-y-1 text-xs">
+                                            <div className="flex justify-between gap-3">
+                                                <span className="text-text-muted">Cost basis</span>
+                                                <span className="font-medium text-text-primary">{formatPrice(segment.cost_basis)}</span>
+                                            </div>
+                                            <div className="flex justify-between gap-3">
+                                                <span className="text-text-muted">Profit / loss</span>
+                                                <span className={clsx('font-bold', segment.profit_loss >= 0 ? 'text-green' : 'text-brand-red')}>{formatPrice(segment.profit_loss)}</span>
+                                            </div>
+                                            <div className="flex justify-between gap-3">
+                                                <span className="text-text-muted">Return</span>
+                                                <span className="font-medium text-text-primary">{segment.return_percentage == null ? '—' : `${segment.return_percentage}%`}</span>
+                                            </div>
+                                        </div>
+                                        {costBasisNeeded && (
+                                            <p className="mt-3 border-t border-border/50 pt-2 text-xs text-yellow">
+                                                <span className="font-semibold">Cost Basis Needed:</span> {costBasisNeeded}. Included in market value; excluded from profit/loss.
+                                            </p>
+                                        )}
+                                    </div>
+                                })}
+                            </div>
+                        </>
+                    )}
                     {/* Header with expense button */}
                     <div className="flex items-center justify-between flex-wrap gap-2">
                         <div>

@@ -56,6 +56,8 @@ def add_to_wishlist(
         existing.quantity = _add_wishlist_quantity(existing.quantity, item.quantity)
         if item.price_alert_above is not None:
             existing.price_alert_above = item.price_alert_above
+        if item.pursuit_status:
+            existing.pursuit_status = item.pursuit_status
         if item.price_alert_below is not None:
             existing.price_alert_below = item.price_alert_below
         db.commit()
@@ -65,6 +67,7 @@ def add_to_wishlist(
     db_item = WishlistItem(
         card_id=item.card_id,
         quantity=item.quantity,
+        pursuit_status=item.pursuit_status,
         price_alert_above=item.price_alert_above,
         price_alert_below=item.price_alert_below,
         user_id=current_user.id,
@@ -94,6 +97,8 @@ def update_wishlist_item(
     update_data = update.model_dump(exclude_unset=True)
     if "quantity" in update_data:
         item.quantity = update_data["quantity"]
+    if "pursuit_status" in update_data:
+        item.pursuit_status = update_data["pursuit_status"]
     if "price_alert_above" in update_data:
         item.price_alert_above = update_data["price_alert_above"]
     if "price_alert_below" in update_data:

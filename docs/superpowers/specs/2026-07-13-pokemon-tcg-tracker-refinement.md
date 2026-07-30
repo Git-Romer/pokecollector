@@ -10,7 +10,7 @@ own, or compete with the collection.
 
 - Visible product name and browser/PWA metadata: **John John's PC**.
 - The tracker wordmark returns to the root **Collection Overview** route.
-- Primary navigation remains exactly: **Collection**, **Card Search**, **Sets**, **Analytics**, and **Settings**.
+- Primary navigation remains exactly five destinations: **Collection**, **Card Search**, **All Cards**, **Trends & Insights**, and **Settings**. (All Cards and Trends & Insights were formerly Sets and Analytics; the old `/sets` and `/analytics` paths redirect to `/all-cards` and `/trends`.)
 - Existing routes remain reachable; renamed or retired paths redirect quietly.
 - The existing multi-user capability remains available in Settings but the experience is personal and single-user by
   default.

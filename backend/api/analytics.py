@@ -5,9 +5,10 @@ from api.auth import get_current_user
 from database import get_db
 from services.card_values import effective_market_price, normalize_price_field
 from services.card_visibility import visible_card_filter, visible_set_filter
-from services.analytics import sort_top_movers
+from services.analytics import get_pokebeach_news, sort_top_movers, summarize_collection_intents
 from models import CollectionItem, Card, PriceHistory, PortfolioSnapshot, Set, ProductPurchase, User
 from typing import Optional
+from math import ceil
 import datetime
 
 router = APIRouter()
@@ -333,3 +334,52 @@ def get_new_sets(
         }
         for s in new_sets
     ]
+
+
+@router.get('/portfolio-summary')
+def get_portfolio_summary(
+    price_field: str = Query(default='price_trend'),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    price_field = normalize_price_field(price_field)
+    items = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).options(
+        joinedload(CollectionItem.card)
+    ).filter(
+        CollectionItem.user_id == current_user.id,
+        CollectionItem.status == 'owned',
+        CollectionItem.inventory_kind == 'owned',
+        visible_card_filter(db, current_user.id, 'all'),
+    ).all()
+    entries = [
+        {
+            'intent': item.collection_intent or 'main_collection',
+            'quantity': item.quantity,
+            'unit_cost': item.purchase_price,
+            'market_value': _get_item_price(item, price_field) * item.quantity,
+        }
+        for item in items if item.card
+    ]
+    products = db.query(ProductPurchase).filter(
+        ProductPurchase.user_id == current_user.id,
+        ProductPurchase.status == "active",
+    ).all()
+    entries.extend({
+        "intent": product.collection_intent or "main_collection",
+        "quantity": 1,
+        "unit_cost": product.purchase_price,
+        "market_value": product.current_value if product.current_value is not None else product.purchase_price,
+        "sealed_product": True,
+    } for product in products)
+    return {
+        'price_field': price_field,
+        'as_of': datetime.datetime.utcnow().isoformat() + 'Z',
+        'segments': summarize_collection_intents(entries),
+    }
+
+@router.get('/pokebeach-news')
+def get_pokebeach_discovery(
+    limit: int = Query(9, ge=1, le=18),
+    current_user: User = Depends(get_current_user),
+):
+    return get_pokebeach_news(limit)

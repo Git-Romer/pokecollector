@@ -156,6 +156,7 @@ def _product_response(
         quantity=product.quantity,
         sealed_condition=product.sealed_condition,
         acquisition_source=product.acquisition_source,
+        collection_intent=product.collection_intent,
         purchase_price=product.purchase_price,
         current_value=product.current_value,
         sold_price=product.sold_price,
@@ -249,6 +250,7 @@ def create_product(
         product_type=product.product_type,
         quantity=product.quantity,
         sealed_condition=product.sealed_condition,
+        collection_intent=product.collection_intent,
         acquisition_source=product.acquisition_source,
         purchase_price=product.purchase_price,
         current_value=product.current_value,
@@ -302,7 +304,7 @@ def update_product(
         field: getattr(product, field)
         for field in (
             "product_name", "product_type", "quantity", "sealed_condition",
-            "acquisition_source", "purchase_price", "purchase_date", "notes",
+            "acquisition_source", "collection_intent", "purchase_price", "purchase_date", "notes",
             "storage_location_id",
         )
     }

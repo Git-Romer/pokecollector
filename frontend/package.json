@@ -4,11 +4,11 @@
   "version": "1.22.13",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "dev": "vite --configLoader runner",
+    "build": "vite build --configLoader runner",
+    "preview": "vite preview --configLoader runner",
+    "test": "TMPDIR=/tmp TEMP=/tmp TMP=/tmp vitest run --configLoader runner",
+    "test:watch": "TMPDIR=/tmp TEMP=/tmp TMP=/tmp vitest --configLoader runner"
   },
   "dependencies": {
     "@fluentui/react-components": "^9.72.0",

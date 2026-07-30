@@ -149,21 +149,24 @@ function ProtectedRoutes() {
     return (
         <Routes>
             <Route path="/" element={<ArchiveShell/>}>
-                <Route index element={lazyRoute(<Home/>)}/>
-                <Route path="dashboard" element={<Navigate replace to="/"/>}/>
+                <Route index element={<Navigate replace to="/collection"/>}/>
+                <Route path="dashboard" element={<Navigate replace to="/collection"/>}/>
                 <Route path="search" element={<CardSearch/>}/>
                 <Route path="discover" element={lazyRoute(<Discover/>)}/>
                 <Route path="card-search" element={<SearchRedirect/>}/>
                 <Route path="collection" element={<Collection/>}/>
                 <Route path="collection/user/:userId" element={lazyRoute(<UserCollection/>)}/>
-                <Route path="sets" element={<Sets/>}/>
-                <Route path="sets/:setId" element={lazyRoute(<SetDetail/>)}/>
+                <Route path="all-cards" element={<Sets/>}/>
+                <Route path="all-cards/:setId" element={lazyRoute(<SetDetail/>)}/>
+                <Route path="sets" element={<Navigate replace to="/all-cards"/>}/>
+                <Route path="sets/:setId" element={<Navigate replace to="/all-cards"/>}/>
                 <Route path="wishlist" element={lazyRoute(<Wishlist/>)}/>
                 <Route path="boxes" element={lazyRoute(<Boxes/>)}/>
                 <Route path="boxes/:binderId" element={lazyRoute(<BinderDetail/>)}/>
                 <Route path="binders" element={<Navigate replace to="/boxes"/>}/>
                 <Route path="binders/:binderId" element={<BinderRedirect/>}/>
-                <Route path="analytics" element={<Analytics/>}/>
+                <Route path="trends" element={<Analytics/>}/>
+                <Route path="analytics" element={<Navigate replace to="/trends"/>}/>
                 <Route path="products" element={lazyRoute(<Products/>)}/>
                 <Route path="leaderboard" element={lazyRoute(<Leaderboard/>)}/>
                 <Route path="leaderboard/compare/:userId" element={lazyRoute(<Compare/>)}/>

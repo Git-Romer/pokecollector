@@ -228,9 +228,9 @@ export default function Sets() {
             <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
                 <div className="min-w-0">
                     <h1 className="text-5xl font-bold text-text-primary mag-heading uppercase leading-none mt-2">
-                        <SplitText text={t('sets.title')} delay={40}/></h1>
+                        <SplitText text={'All Cards'} delay={40}/></h1>
                     <p className="text-sm text-text-secondary mt-1">
-                        {sets.length} {t('sets.setsTotal')}
+                        Master checklist · {sets.length} {t('sets.setsTotal')}
                         {newSets.length > 0 && (
                             <span className="ml-2 badge badge-red">{newSets.length} {t('sets.newSets')}</span>
                         )}
@@ -367,7 +367,7 @@ export default function Sets() {
                 return (
                     <div
                         className="set-hero cursor-pointer mb-6 group"
-                        onClick={() => navigate(`/sets/${hero.id}`)}
+                        onClick={() => navigate(`/all-cards/${hero.id}`)}
                     >
                         <div className="set-hero-glow"/>
                         <div className="relative z-10 flex items-center justify-between p-6 gap-4">
@@ -428,7 +428,7 @@ export default function Sets() {
                                 className={`bg-bg-card border rounded-2xl overflow-hidden cursor-pointer hover:border-brand-red/40 transition-all duration-200 hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)] group relative ${
                                     isHidden ? 'border-border/70 opacity-60' : 'border-border'
                                 }`}
-                                onClick={() => navigate(`/sets/${set.id}`)}
+                                onClick={() => navigate(`/all-cards/${set.id}`)}
                             >
                                 {set.is_new && (
                                     <span

@@ -6,12 +6,8 @@ import {FluentProvider} from '@fluentui/react-components'
 import App from './App.jsx'
 import './index.css'
 import './design/archive.css'
-import {archiveDarkTheme, archiveLightTheme} from './design/archiveTheme'
-import {ARCHIVE_THEME_STORAGE_KEY, useTheme} from './hooks/useTheme'
-
-// Apply saved theme before first paint to prevent flash
-const savedTheme = localStorage.getItem(ARCHIVE_THEME_STORAGE_KEY)
-document.documentElement.dataset.theme = savedTheme === 'light' ? 'light' : 'midnight'
+import {archiveDarkTheme} from './design/archiveTheme'
+document.documentElement.dataset.theme = 'midnight'
 
 const queryClient = new QueryClient({
     defaultOptions: {
@@ -24,17 +20,15 @@ const queryClient = new QueryClient({
 })
 
 function ThemedApp() {
-    const {theme} = useTheme()
-
     return (
-        <FluentProvider theme={theme === 'light' ? archiveLightTheme : archiveDarkTheme}>
+        <FluentProvider theme={archiveDarkTheme}>
             <App/>
             <Toaster
                 position="top-center"
                 toastOptions={{
                     style: {
-                        background: theme === 'light' ? '#ffffff' : '#101c30',
-                        color: theme === 'light' ? '#172033' : '#f4f7ff',
+                        background: '#101c30',
+                        color: '#f4f7ff',
                         border: '1px solid #293b59',
                     },
                     success: {

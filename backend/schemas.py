@@ -130,8 +130,9 @@ class CollectionItemCreate(BaseModel):
     variant: Optional[str] = "Normal"
     purchase_price: Optional[float] = None
     acquisition_source: Optional[Literal["pulled", "bulk_before_tracking", "purchased", "trade", "gift", "unknown", "other"]] = None
+    collection_intent: Literal["main_collection", "vault", "pc"] = "main_collection"
     inventory_kind: Literal["owned", "bulk"] = "owned"
-    protection_type: Literal["raw", "penny_sleeve", "card_saver", "top_loader", "psa_slab"] = "raw"
+    protection_type: Literal["raw", "penny_sleeve", "card_saver", "top_loader", "psa_slab", "tag_slab", "other"] = "raw"
     storage_location_id: Optional[int] = None
     storage_type: Optional[str] = None
     storage_detail: Optional[str] = None
@@ -139,6 +140,8 @@ class CollectionItemCreate(BaseModel):
     grade: Optional[str] = None
     certification_number: Optional[str] = None
     notes: Optional[str] = None
+    is_grail: bool = False
+    card_history: Optional[str] = None
     lang: str = "en"  # fixed TCGdex language of this card item
 
 
@@ -149,7 +152,7 @@ class CollectionItemUpdate(BaseModel):
     purchase_price: Optional[float] = None
     acquisition_source: Optional[Literal["pulled", "bulk_before_tracking", "purchased", "trade", "gift", "unknown", "other"]] = None
     inventory_kind: Optional[Literal["owned", "bulk"]] = None
-    protection_type: Optional[Literal["raw", "penny_sleeve", "card_saver", "top_loader", "psa_slab"]] = None
+    protection_type: Optional[Literal["raw", "penny_sleeve", "card_saver", "top_loader", "psa_slab", "tag_slab", "other"]] = None
     storage_location_id: Optional[int] = None
     storage_type: Optional[str] = None
     storage_detail: Optional[str] = None
@@ -157,6 +160,9 @@ class CollectionItemUpdate(BaseModel):
     grade: Optional[str] = None
     certification_number: Optional[str] = None
     notes: Optional[str] = None
+    collection_intent: Optional[Literal["main_collection", "vault", "pc"]] = None
+    is_grail: Optional[bool] = None
+    card_history: Optional[str] = None
     lang: Optional[str] = None
 
 
@@ -201,6 +207,9 @@ class CollectionItemResponse(BaseModel):
     grade: Optional[str] = None
     certification_number: Optional[str] = None
     notes: Optional[str] = None
+    collection_intent: str = "main_collection"
+    is_grail: bool = False
+    card_history: Optional[str] = None
     status: str = "owned"
     removed_at: Optional[datetime] = None
     removal_reason: Optional[str] = None
@@ -265,11 +274,13 @@ class InventoryEventResponse(BaseModel):
 class WishlistItemCreate(BaseModel):
     card_id: str
     quantity: int = Field(1, ge=1, le=99)
+    pursuit_status: Literal["track", "chase", "grail"] = "chase"
     price_alert_above: Optional[float] = None
     price_alert_below: Optional[float] = None
 
 
 class WishlistItemUpdate(BaseModel):
+    pursuit_status: Optional[Literal["track", "chase", "grail"]] = None
     quantity: Optional[int] = Field(None, ge=1, le=99)
     price_alert_above: Optional[float] = None
     price_alert_below: Optional[float] = None
@@ -279,6 +290,7 @@ class WishlistItemResponse(BaseModel):
     id: int
     card_id: str
     quantity: int = 1
+    pursuit_status: str = "chase"
     price_alert_above: Optional[float] = None
     price_alert_below: Optional[float] = None
     notified_at: Optional[datetime] = None
@@ -356,6 +368,7 @@ class ProductPurchaseCreate(BaseModel):
     quantity: int = Field(default=1, ge=1, le=999)
     sealed_condition: Literal["factory_sealed", "sealed_with_wear", "damaged_seal", "opened"] = "factory_sealed"
     acquisition_source: Optional[Literal["pulled", "bulk_before_tracking", "purchased", "trade", "gift", "unknown", "other"]] = None
+    collection_intent: Literal["main_collection", "vault", "pc"] = "main_collection"
     purchase_price: float
     current_value: Optional[float] = None
     sold_price: Optional[float] = None
@@ -373,6 +386,7 @@ class ProductPurchaseUpdate(BaseModel):
     quantity: Optional[int] = Field(default=None, ge=1, le=999)
     sealed_condition: Optional[Literal["factory_sealed", "sealed_with_wear", "damaged_seal", "opened"]] = None
     acquisition_source: Optional[Literal["pulled", "bulk_before_tracking", "purchased", "trade", "gift", "unknown", "other"]] = None
+    collection_intent: Optional[Literal["main_collection", "vault", "pc"]] = None
     purchase_price: Optional[float] = None
     current_value: Optional[float] = None
     sold_price: Optional[float] = None
@@ -459,6 +473,7 @@ class ProductPurchaseResponse(BaseModel):
     quantity: int = 1
     sealed_condition: str = "factory_sealed"
     acquisition_source: Optional[str] = None
+    collection_intent: str = "main_collection"
     purchase_price: float
     current_value: Optional[float] = None
     sold_price: Optional[float] = None

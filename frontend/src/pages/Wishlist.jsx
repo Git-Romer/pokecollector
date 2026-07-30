@@ -28,6 +28,7 @@ import {invalidateTcgdexFilterLanguages} from '../utils/queryInvalidation'
 
 function WishlistItemEditor({item, onDone}) {
     const [quantity, setQuantity] = useState(item.quantity || 1)
+    const [pursuitStatus, setPursuitStatus] = useState(item.pursuit_status || "chase")
     const [above, setAbove] = useState(item.price_alert_above || '')
     const [below, setBelow] = useState(item.price_alert_below || '')
     const {t} = useSettings()
@@ -37,6 +38,7 @@ function WishlistItemEditor({item, onDone}) {
 
     const updateMutation = useMutation({
         mutationFn: () => updateWishlistItem(item.id, {
+            pursuit_status: pursuitStatus,
             quantity: normalizedQuantity,
             price_alert_above: above ? parseFloat(above) : null,
             price_alert_below: below ? parseFloat(below) : null,
@@ -57,6 +59,11 @@ function WishlistItemEditor({item, onDone}) {
                        value={quantity}
                        onChange={(e) => setQuantity(e.target.value)} className="input w-16 py-1 text-xs"/>
             </div>
+            <select value={pursuitStatus} onChange={(e) => setPursuitStatus(e.target.value)} className="select w-24 py-1 text-xs">
+                <option value="track">Track</option>
+                <option value="chase">Chase</option>
+                <option value="grail">★ Grail</option>
+            </select>
             <div className="flex items-center gap-1">
                 <span className="text-xs text-text-muted">↑</span>
                 <input type="number" step="0.01" placeholder={t('wishlist.aboveLabel')}
@@ -331,6 +338,7 @@ export default function Wishlist() {
                                         const price = getEffectiveCardPrice(card, null, pricePrimaryField)
                                         const alertAbove = price && item.price_alert_above && price >= item.price_alert_above
                                         const alertBelow = price && item.price_alert_below && price <= item.price_alert_below
+                                        const pursuitLabel = item.pursuit_status === "grail" ? "★ Grail" : item.pursuit_status === "track" ? "Track" : "Chase"
 
                                         return (
                                             <tr key={item.id}
@@ -351,6 +359,7 @@ export default function Wishlist() {
                                                             {card?.rarity &&
                                                                 <p className="text-xs text-text-muted">{card.rarity}</p>}
                                                         </div>
+                                                            <span className={`inline-flex mt-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${item.pursuit_status === "grail" ? "bg-yellow/15 text-yellow" : item.pursuit_status === "track" ? "bg-blue/15 text-blue" : "bg-purple/15 text-purple-300"}`}>{pursuitLabel}</span>
                                                     </div>
                                                 </td>
                                                 <td className="px-4 py-3 text-center">

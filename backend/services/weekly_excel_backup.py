@@ -98,3 +98,60 @@ def run_weekly_excel_backup() -> None:
         logger.error("Weekly Excel backup failed: %s", exc, exc_info=True)
     finally:
         db.close()
+
+
+GFS_RETENTION = {'sons': 7, 'fathers': 4, 'grandfathers': 12}
+
+def _gfs_tiers_for_date(backup_date: datetime.date) -> list[str]:
+    tiers = ['sons']
+    if backup_date.weekday() == 0:
+        tiers.append('fathers')
+    if backup_date.day == 1:
+        tiers.append('grandfathers')
+    return tiers
+
+def create_gfs_excel_backups(db: Session, backup_date: datetime.date | None = None) -> list[Path]:
+    """Create portable Excel backups in the Grandfather-Father-Son scheme.
+
+    Sons are daily, Fathers are weekly on Monday, and Grandfathers are monthly
+    on the first. Retention is isolated by tier and user.
+    """
+    backup_date = backup_date or datetime.date.today()
+    created = []
+    users = db.query(User).filter(User.is_active == True).order_by(User.id).all()
+    for user in users:
+        items = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).options(
+            joinedload(CollectionItem.card).joinedload(Card.set_ref)
+        ).filter(
+            CollectionItem.user_id == user.id,
+            visible_card_filter(db, user.id, 'all'),
+        ).all()
+        products = db.query(ProductPurchase).filter(ProductPurchase.user_id == user.id).order_by(
+            ProductPurchase.purchase_date.desc()
+        ).all()
+        locations = db.query(StorageLocation).filter(StorageLocation.user_id == user.id).order_by(
+            StorageLocation.is_default.desc(), StorageLocation.name
+        ).all()
+        workbook = build_collection_workbook(items, products, locations)
+        user_slug = f'{user.id}-{_safe_username(user.username)}'
+        for tier in _gfs_tiers_for_date(backup_date):
+            tier_dir = BACKUP_DIR / tier
+            tier_dir.mkdir(parents=True, exist_ok=True)
+            path = tier_dir / f'john-johns-pc-{user_slug}-{backup_date.isoformat()}.xlsx'
+            tmp_path = path.with_suffix('.tmp')
+            tmp_path.write_bytes(workbook)
+            tmp_path.replace(path)
+            created.append(path)
+            _prune_user_backups(tier_dir, user_slug, keep=GFS_RETENTION[tier])
+    logger.info('Created %s GFS Excel backup(s) in %s', len(created), BACKUP_DIR)
+    return created
+
+def run_gfs_excel_backup() -> None:
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        create_gfs_excel_backups(db)
+    except Exception as exc:
+        logger.error('GFS Excel backup failed: %s', exc, exc_info=True)
+    finally:
+        db.close()
