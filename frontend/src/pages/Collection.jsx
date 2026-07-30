@@ -899,6 +899,29 @@ function CollectionEditModal({item, onClose}) {
                                 </div>
                             </div>
 
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-xs text-text-muted mb-1 block">Storage Type</label>
+                                    <input
+                                        type="text"
+                                        value={storageType}
+                                        placeholder="e.g. Binder, slab case"
+                                        onChange={e => setStorageType(e.target.value)}
+                                        className="input w-full"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-text-muted mb-1 block">Storage Detail</label>
+                                    <input
+                                        type="text"
+                                        value={storageDetail}
+                                        placeholder="e.g. Binder 2, page 4"
+                                        onChange={e => setStorageDetail(e.target.value)}
+                                        className="input w-full"
+                                    />
+                                </div>
+                            </div>
+
                             <div>
                                 <label className="text-xs text-text-muted mb-1 block">Card History</label>
                                 <textarea
@@ -1144,6 +1167,29 @@ function CollectionEditModal({item, onClose}) {
                                         onChange={e => setNewVersionGrader(e.target.value)}
                                         className="input w-full"
                                         disabled={!['psa_slab', 'tag_slab'].includes(newVersionProtectionType)}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-xs text-text-muted mb-1 block">Storage Type</label>
+                                    <input
+                                        type="text"
+                                        value={newVersionStorageType}
+                                        placeholder="e.g. Binder, slab case"
+                                        onChange={e => setNewVersionStorageType(e.target.value)}
+                                        className="input w-full"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-text-muted mb-1 block">Storage Detail</label>
+                                    <input
+                                        type="text"
+                                        value={newVersionStorageDetail}
+                                        placeholder="e.g. Binder 2, page 4"
+                                        onChange={e => setNewVersionStorageDetail(e.target.value)}
+                                        className="input w-full"
                                     />
                                 </div>
                             </div>

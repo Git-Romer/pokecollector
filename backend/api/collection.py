@@ -46,6 +46,13 @@ ALLOWED_VARIANTS = set(CARD_VARIANTS)
 ALLOWED_LANGS = set(SUPPORTED_TCGDEX_LANGUAGES)
 
 
+def _field_was_set(model, field_name: str) -> bool:
+    fields_set = getattr(model, "model_fields_set", None)
+    if fields_set is None:
+        fields_set = getattr(model, "__fields_set__", set())
+    return field_name in fields_set
+
+
 def _normalize_collection_variant(variant: Optional[str]) -> str:
     return normalize_card_variant(variant)
 
@@ -257,11 +264,12 @@ def _upsert_collection_item(
     inventory_kind = "bulk" if item.acquisition_source == "bulk_before_tracking" else item.inventory_kind
     purchase_price = item.purchase_price
     if purchase_price is not None and not is_valid_collection_purchase_price(purchase_price):
-        raise HTTPException(status_code=422, detail="purchase_price must be a finite, non-negative number")
-    if purchase_price is None and item.acquisition_source == "pulled":
-        purchase_price = 4.49
-    if inventory_kind == "bulk":
-        purchase_price = None
+        raise HTTPException(status_code=422, detail="Cost Basis must be a finite, non-negative number")
+    if not _field_was_set(item, "purchase_price"):
+        if item.acquisition_source == "pulled":
+            purchase_price = 4.49
+        elif item.acquisition_source == "bulk_before_tracking":
+            purchase_price = 0.0
 
     if item.condition not in ALLOWED_CONDITIONS:
         raise HTTPException(
@@ -788,9 +796,7 @@ def update_collection_item(
     if update_data.get("purchase_price") is not None and not is_valid_collection_purchase_price(
         update_data["purchase_price"]
     ):
-        raise HTTPException(status_code=422, detail="purchase_price must be a finite, non-negative number")
-    if update_data.get("inventory_kind") == "bulk":
-        update_data["purchase_price"] = None
+        raise HTTPException(status_code=422, detail="Cost Basis must be a finite, non-negative number")
     if update_data.get("protection_type") in {"psa_slab", "tag_slab"} and not (
         update_data.get("grader") or item.grader or "PSA"
     ):

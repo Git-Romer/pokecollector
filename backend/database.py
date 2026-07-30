@@ -157,13 +157,8 @@ def _run_migrations(conn):
         "ALTER TABLE collection ALTER COLUMN record_uid SET NOT NULL",
         "ALTER TABLE collection ADD COLUMN IF NOT EXISTS inventory_kind VARCHAR DEFAULT 'owned'",
         "UPDATE collection SET inventory_kind = 'owned' WHERE inventory_kind IS NULL OR btrim(inventory_kind) = ''",
-        """UPDATE collection
-           SET inventory_kind = 'bulk', purchase_price = NULL
-           WHERE acquisition_source = 'bulk_before_tracking'""",
-        """UPDATE collection
-           SET purchase_price = 4.49
-           WHERE acquisition_source = 'pulled'
-             AND purchase_price IS NULL""",
+        # Source-aware cost defaults apply only when a new collection item is created.
+        # Startup migrations must not overwrite an existing item's recorded price.
         "ALTER TABLE collection ALTER COLUMN inventory_kind SET NOT NULL",
         "ALTER TABLE collection ADD COLUMN IF NOT EXISTS protection_type VARCHAR DEFAULT 'raw'",
         "UPDATE collection SET protection_type = 'raw' WHERE protection_type IS NULL OR btrim(protection_type) = ''",

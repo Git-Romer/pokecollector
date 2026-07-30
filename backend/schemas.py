@@ -129,7 +129,7 @@ class CollectionItemCreate(BaseModel):
     condition: str = "NM"
     variant: Optional[str] = "Normal"
     purchase_price: Optional[float] = None
-    acquisition_source: Optional[Literal["pulled", "bulk_before_tracking", "purchased", "trade", "gift", "unknown", "other"]] = None
+    acquisition_source: Optional[Literal["pulled", "bulk_before_tracking", "purchased", "trade", "gift", "other"]] = None
     collection_intent: Literal["main_collection", "vault", "pc"] = "main_collection"
     inventory_kind: Literal["owned", "bulk"] = "owned"
     protection_type: Literal["raw", "penny_sleeve", "card_saver", "top_loader", "psa_slab", "tag_slab", "other"] = "raw"
@@ -150,7 +150,7 @@ class CollectionItemUpdate(BaseModel):
     condition: Optional[str] = None
     variant: Optional[str] = None
     purchase_price: Optional[float] = None
-    acquisition_source: Optional[Literal["pulled", "bulk_before_tracking", "purchased", "trade", "gift", "unknown", "other"]] = None
+    acquisition_source: Optional[Literal["pulled", "bulk_before_tracking", "purchased", "trade", "gift", "other"]] = None
     inventory_kind: Optional[Literal["owned", "bulk"]] = None
     protection_type: Optional[Literal["raw", "penny_sleeve", "card_saver", "top_loader", "psa_slab", "tag_slab", "other"]] = None
     storage_location_id: Optional[int] = None

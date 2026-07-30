@@ -79,7 +79,7 @@ class InventoryLifecycleTests(unittest.TestCase):
         ).one()
         self.assertEqual(event.entity_uid, item.record_uid)
 
-    def test_bulk_item_is_separate_and_has_no_per_card_cost_basis(self):
+    def test_bulk_item_is_separate_and_defaults_to_zero_cost_basis(self):
         item = add_to_collection(
             CollectionItemCreate(
                 card_id=self.card.id,
@@ -91,7 +91,7 @@ class InventoryLifecycleTests(unittest.TestCase):
         )
 
         self.assertEqual(item.inventory_kind, "bulk")
-        self.assertIsNone(item.purchase_price)
+        self.assertEqual(item.purchase_price, 0.0)
 
     def test_duplicate_intake_updates_quantity_without_discarding_new_note(self):
         first = add_to_collection(

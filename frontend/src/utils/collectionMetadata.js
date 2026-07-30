@@ -1,15 +1,15 @@
 export function defaultPurchasePrice(source) {
     if (source === 'pulled') return 4.49;
+    if (source === 'bulk_before_tracking') return 0;
     return null;
 }
 
 export const ACQUISITION_SOURCES = [
     {value: 'pulled', label: 'Pulled'},
-    {value: 'purchased', label: 'Purchased single'},
-    {value: 'gift', label: 'Gifted'},
-    {value: 'trade', label: 'Traded'},
-    {value: 'bulk_before_tracking', label: 'Bulk / legacy'},
-    {value: 'unknown', label: 'Unknown'},
+    {value: 'purchased', label: 'Purchased'},
+    {value: 'gift', label: 'Gift'},
+    {value: 'trade', label: 'Trade'},
+    {value: 'bulk_before_tracking', label: 'Bulk / before tracking'},
     {value: 'other', label: 'Other'}
 ];
 
@@ -39,3 +39,8 @@ export const REMOVAL_REASONS = [
     {value: 'lost_damaged', label: 'Lost / damaged'},
     {value: 'other', label: 'Other'},
 ]
+
+
+export function normalizeAcquisitionSourceForUi(value) {
+    return value === 'unknown' ? 'other' : (value || '')
+}
