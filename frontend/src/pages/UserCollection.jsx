@@ -8,9 +8,9 @@ import { useSettings } from '../contexts/SettingsContext'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 import { CardModal } from '../components/CardItem'
 import { getEffectiveCardPrice } from '../utils/prices'
-import { TCGDEX_LANGUAGES } from '../utils/tcgdexLanguages'
+import { TCGDEX_LANGUAGES, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { textIncludes } from '../utils/textSearch'
-import UnifiedCard from '../components/UnifiedCard'
+import UnifiedCard, { withCollectionItemState } from '../components/UnifiedCard'
 
 export default function UserCollection() {
   const { userId } = useParams()
@@ -42,6 +42,7 @@ export default function UserCollection() {
   }, [items])
 
   const visibleLanguageCodes = useMemo(() => visibleLanguages.map(language => language.code), [visibleLanguages])
+  const hasMixedLanguages = visibleLanguageCodes.length > 1
 
   useEffect(() => {
     if (filterLang && !visibleLanguageCodes.includes(filterLang)) {
@@ -206,15 +207,16 @@ export default function UserCollection() {
                 card={card}
                 image={imgSrc}
                 price={price > 0 ? formatPrice(price) : null}
+                languageLabel={hasMixedLanguages && (item.lang || card.lang)
+                  ? tcgdexLanguageLabel(item.lang || card.lang)
+                  : null}
                 variantEffectSource={item.variant}
+                stateIndicatorProps={{
+                  card: withCollectionItemState(card, item),
+                  alwaysShowQuantity: true,
+                  showWishlist: false,
+                }}
                 onClick={() => setSelectedCard(card)}
-                overlay={(
-                  <div className="absolute bottom-2 left-2 right-2 z-20 flex flex-wrap gap-1">
-                    <span className="rounded-full border border-white/20 bg-black/80 px-2 py-1 text-[10px] font-bold text-white">
-                      {item.quantity}x · {item.variant || 'Normal'}
-                    </span>
-                  </div>
-                )}
               />
             )
           })}

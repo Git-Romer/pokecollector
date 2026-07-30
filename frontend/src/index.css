@@ -161,13 +161,6 @@ input:-webkit-autofill:focus {
     outline: none;
     transform: translateY(-1px);
   }
-  .unified-card-frame-interactive:focus-visible {
-    box-shadow:
-      0 0 0 2px #fff,
-      0 0 0 5px rgba(227,0,11,0.9),
-      0 0 24px rgba(227,0,11,0.5),
-      0 12px 28px rgba(0,0,0,0.48);
-  }
   .unified-card-frame-unavailable {
     cursor: not-allowed;
   }
@@ -196,6 +189,7 @@ input:-webkit-autofill:focus {
     background: rgba(0,0,0,0.28);
     color: white;
     opacity: 0;
+    pointer-events: none;
     transition: opacity 160ms ease, background 160ms ease;
   }
   .unified-card-add::before {
@@ -216,6 +210,7 @@ input:-webkit-autofill:focus {
     .unified-card-frame:hover .unified-card-add,
     .unified-card-frame:focus-within .unified-card-add {
       opacity: 1;
+      pointer-events: auto;
     }
   }
   .unified-card-selection {

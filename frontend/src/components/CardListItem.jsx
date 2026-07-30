@@ -24,6 +24,8 @@ export default function CardListItem({
   card = {},
   name,
   subtext,
+  setNumber,
+  languageLabel,
   badges = [],
   value,
   valueSecondary,
@@ -68,7 +70,13 @@ export default function CardListItem({
         )}
 
         {/* Subtext — set name, etc. — also truncated */}
-        {subtext && (
+        {(setNumber || languageLabel) && (
+          <p className="flex min-w-0 items-center gap-1.5 text-xs leading-tight">
+            {setNumber && <span className="truncate font-mono font-bold text-brand-red">{setNumber}</span>}
+            {languageLabel && <span className="truncate text-text-muted">{languageLabel}</span>}
+          </p>
+        )}
+        {subtext && !setNumber && (
           <p className="text-xs text-text-muted truncate leading-tight">
             {subtext}
           </p>

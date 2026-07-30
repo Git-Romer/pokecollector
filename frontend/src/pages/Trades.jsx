@@ -149,7 +149,7 @@ function MiniCardRow({ card, variant, meta, value, rightAction }) {
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold text-text-primary">{cardTitle(card)}</p>
-        <p className="truncate text-xs text-text-muted">{cardSubtitle(card)}</p>
+        <p className="truncate font-mono text-xs font-bold text-brand-red">{cardSubtitle(card)}</p>
         {meta && <p className="truncate text-xs text-text-secondary">{meta}</p>}
       </div>
       {value && <div className="text-right text-sm font-bold text-text-primary flex-shrink-0">{value}</div>}

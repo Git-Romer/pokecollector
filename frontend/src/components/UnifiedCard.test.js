@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { getCardFallbackKinds, getCardSetNumber, getFallbackBorderGradient } from './UnifiedCard'
+import {
+  getCardFallbackKinds,
+  getCardSetNumber,
+  getFallbackBorderGradient,
+  withCollectionItemState,
+} from './UnifiedCard'
 
 describe('getCardFallbackKinds', () => {
   it('returns fallback kinds in a stable order and ignores custom images', () => {
@@ -43,5 +48,40 @@ describe('getCardSetNumber', () => {
   it('collapses cleanly when catalogue metadata is incomplete', () => {
     expect(getCardSetNumber({ number: '12' })).toBe('12')
     expect(getCardSetNumber({})).toBe('')
+  })
+})
+
+describe('withCollectionItemState', () => {
+  it('maps the collection row quantity and variant into visible card state', () => {
+    expect(withCollectionItemState(
+      { id: 'sv8-001', name: 'Pikachu' },
+      { quantity: 2, variant: 'Reverse Holo' },
+    )).toMatchObject({
+      owned: true,
+      owned_quantity: 2,
+      owned_variants: [{ variant: 'Reverse Holo', quantity: 2 }],
+    })
+  })
+
+  it('keeps a single normal copy visible as a Normal badge', () => {
+    expect(withCollectionItemState(
+      { id: 'sv8-001', name: 'Pikachu' },
+      { quantity: 1 },
+    )).toMatchObject({
+      owned: true,
+      owned_quantity: 1,
+      owned_variants: [{ variant: 'Normal', quantity: 1 }],
+    })
+  })
+
+  it('does not invent ownership for an empty collection row', () => {
+    expect(withCollectionItemState(
+      { id: 'sv8-001', name: 'Pikachu' },
+      { quantity: 0, variant: 'Holo' },
+    )).toMatchObject({
+      owned: false,
+      owned_quantity: 0,
+      owned_variants: [],
+    })
   })
 })

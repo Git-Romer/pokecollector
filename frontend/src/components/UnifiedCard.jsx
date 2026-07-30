@@ -1,8 +1,11 @@
 import clsx from 'clsx'
-import { Plus } from 'lucide-react'
+import { Plus, X } from 'lucide-react'
+import { useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useSettings } from '../contexts/SettingsContext'
 import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
 import CardImage from './CardImage'
+import FallbackBadges from './FallbackBadges'
 import CardStateIndicators from './CardStateIndicators'
 
 export const FALLBACK_KIND_ORDER = ['data', 'price', 'image']
@@ -56,6 +59,18 @@ export function getCardSetNumber(card = {}) {
   return [String(setCode || '').toUpperCase(), number].filter(Boolean).join(' ')
 }
 
+export function withCollectionItemState(card = {}, item = {}) {
+  const quantity = Math.max(0, Number(item.quantity) || 0)
+  return {
+    ...card,
+    owned: quantity > 0,
+    owned_quantity: quantity,
+    owned_variants: quantity > 0
+      ? [{ variant: item.variant || 'Normal', quantity }]
+      : [],
+  }
+}
+
 function fallbackAriaLabel(t, kinds) {
   if (kinds.length === 0) return undefined
   const labels = kinds.map((kind) => {
@@ -88,10 +103,11 @@ export function CardArtworkFrame({
   const kinds = getCardFallbackKinds(card)
   const label = fallbackAriaLabel(t, kinds)
   const handleKeyDown = (event) => {
-    if (!interactive) return
+    if (!interactive || unavailableReason) return
     if (event.key === 'Enter') {
       event.preventDefault()
-      onClick?.(event)
+      if (onClick) onClick(event)
+      else onSelect?.(event)
     } else if (event.key === ' ' && onSelect) {
       event.preventDefault()
       onSelect(event)
@@ -110,7 +126,7 @@ export function CardArtworkFrame({
         '--card-frame-gradient': getFallbackBorderGradient(kinds),
         '--card-frame-hover-gradient': getFallbackBorderGradient(kinds, true),
       }}
-      onClick={interactive ? onClick : undefined}
+      onClick={interactive && !unavailableReason ? onClick : undefined}
       onKeyDown={handleKeyDown}
       role={interactive ? 'button' : undefined}
       tabIndex={interactive && !unavailableReason ? 0 : undefined}
@@ -158,6 +174,133 @@ export function CardArtworkFrame({
       </div>
     </div>
   )
+}
+
+export function UnifiedCardDialog({
+  card,
+  image,
+  variantEffectSource = card,
+  price,
+  tabs = [],
+  activeTab,
+  onTabChange,
+  onClose,
+  closeButtonRef,
+  children,
+  className = '',
+}) {
+  const { t } = useSettings()
+  const internalCloseButtonRef = useRef(null)
+  const resolvedCloseButtonRef = closeButtonRef || internalCloseButtonRef
+  const onCloseRef = useRef(onClose)
+
+  useEffect(() => {
+    onCloseRef.current = onClose
+  }, [onClose])
+
+  useEffect(() => {
+    if (!card) return undefined
+    const previousFocus = document.activeElement
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') onCloseRef.current?.()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    resolvedCloseButtonRef.current?.focus()
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      previousFocus?.focus?.()
+    }
+  }, [card?.id, resolvedCloseButtonRef])
+
+  if (!card) return null
+
+  const setNumber = getCardSetNumber(card)
+  const dialog = (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm sm:p-6"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={card.name}
+        className={clsx(
+          'relative max-h-[calc(100dvh-1.5rem)] w-full max-w-6xl overflow-y-auto rounded-2xl border border-white/10 bg-bg-surface shadow-2xl sm:max-h-[calc(100dvh-3rem)]',
+          className,
+        )}
+        onClick={event => event.stopPropagation()}
+      >
+        <button
+          ref={resolvedCloseButtonRef}
+          type="button"
+          onClick={onClose}
+          className="absolute right-3 top-3 z-50 grid h-9 w-9 place-items-center rounded-full border border-white/15 bg-black/75 text-white shadow-lg transition-colors hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red"
+          aria-label={t('common.close')}
+        >
+          <X size={18} aria-hidden />
+        </button>
+
+        <div className="grid gap-4 p-4 sm:grid-cols-[minmax(220px,300px)_minmax(0,1fr)] sm:gap-6 sm:p-6">
+          <aside className="min-w-0 sm:border-r sm:border-white/8 sm:pr-6">
+            <div className="flex items-start gap-4 sm:block">
+              <div className="w-24 flex-shrink-0 sm:w-full">
+                <CardArtworkFrame
+                  card={card}
+                  image={image}
+                  alt={card.name}
+                  variantEffectSource={variantEffectSource}
+                  showStateIndicators={false}
+                  loading="eager"
+                />
+              </div>
+              <div className="min-w-0 flex-1 pr-9 sm:mt-4 sm:pr-0">
+                <h2 className="break-words text-base font-black text-text-primary sm:text-xl">{card.name}</h2>
+                {(setNumber || price) && (
+                  <div className="mt-1.5 flex min-w-0 items-center justify-between gap-2">
+                    <span className="truncate font-mono text-xs font-black text-brand-red">{setNumber}</span>
+                    {price && <span className="shrink-0 text-sm font-black text-green">{price}</span>}
+                  </div>
+                )}
+                {card.rarity && <p className="mt-1 text-xs text-text-muted">{card.rarity}</p>}
+                <FallbackBadges card={card} className="mt-2" />
+              </div>
+            </div>
+          </aside>
+
+          <section className="min-w-0">
+            {tabs.length > 0 && (
+              <div
+                className="-mx-1 mb-4 flex gap-1 overflow-x-auto px-1 pb-1 pr-10"
+                role="tablist"
+                aria-label={card.name}
+              >
+                {tabs.map(tab => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === tab.id}
+                    onClick={() => onTabChange?.(tab.id)}
+                    className={clsx(
+                      'inline-flex min-h-9 shrink-0 items-center justify-center rounded-lg px-3 py-2 text-center text-xs font-bold leading-tight transition-colors',
+                      activeTab === tab.id
+                        ? 'bg-brand-red text-white shadow-[0_0_14px_rgba(227,0,11,0.3)]'
+                        : 'bg-bg-card text-text-secondary hover:bg-bg-elevated hover:text-text-primary',
+                    )}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {children}
+          </section>
+        </div>
+      </div>
+    </div>
+  )
+
+  return createPortal(dialog, document.body)
 }
 
 export function CardCaption({

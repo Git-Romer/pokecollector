@@ -10,15 +10,13 @@ import toast from 'react-hot-toast'
 import clsx from 'clsx'
 import { cardImageUrl, resolveCardImageUrl } from '../utils/imageUrl'
 import { CARD_VARIANTS, getAvailableVariants, getDefaultVariant } from '../utils/cardVariants'
-import FallbackBadges from './FallbackBadges'
 import MoneyInput from './MoneyInput'
 import { getEffectiveCardPrice } from '../utils/prices'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import { parseMoneyInputValue } from '../utils/moneyInput'
 import { cardmarketLinks } from '../utils/cardmarket'
-import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
-import UnifiedCard, { CardArtworkFrame } from './UnifiedCard'
+import UnifiedCard, { UnifiedCardDialog } from './UnifiedCard'
 
 const RARITY_COLORS = {
   'Common': 'text-text-secondary',
@@ -450,16 +448,9 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
   const [savedCustomImageUrl, setSavedCustomImageUrl] = useState(card.custom_image_url || '')
   const [customImageVersion, setCustomImageVersion] = useState(0)
   const customImageInputId = useId()
-  const { t, settings, formatPrice, formatUsdPrice, pricePrimary, pricePrimaryField, exchangeRate, exchangeRateReady } = useSettings()
+  const { t, formatPrice, formatUsdPrice, pricePrimary, pricePrimaryField, exchangeRate, exchangeRateReady } = useSettings()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-
-  const { data: modalSets = [] } = useQuery({
-    queryKey: ['sets', settings.language || 'en'],
-    queryFn: () => getSets().then(r => r.data),
-    enabled: Boolean(card.set_ref?.id || card.set?.id || card.set_id),
-    staleTime: 5 * 60 * 1000,
-  })
 
   // Price history chart
   const cardIdForHistory = card?.card_id || (typeof card?.id === 'string' ? card.id : null)
@@ -492,20 +483,6 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
     || customImageProxyUrl
     || resolveCardImageUrl(card, 'large')
     || resolveCardImageUrl(card)
-  const setName = card.set?.name || card.set_ref?.name
-  const setCandidates = [
-    card.set_ref?.id,
-    card.set_ref?.tcg_set_id,
-    card.set?.id,
-    card.set?.tcg_set_id,
-    card.set_id,
-  ].filter(Boolean)
-  const setLanguage = card.set_ref?.lang || card.set?.lang || card.lang || defaultLang
-  const setDetailId = card.set_ref?.id
-    || modalSets.find(set => setCandidates.includes(set.id) && (!setLanguage || set.lang === setLanguage))?.id
-    || modalSets.find(set => setCandidates.includes(set.tcg_set_id) && (!setLanguage || set.lang === setLanguage))?.id
-    || modalSets.find(set => setCandidates.includes(set.id) || setCandidates.includes(set.tcg_set_id))?.id
-    || null
   const dexIds = [...new Set(
     (Array.isArray(card.dex_ids) ? card.dex_ids : card.dex_id != null ? [card.dex_id] : [])
       .map(Number)
@@ -612,114 +589,25 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
   const historyDataKey = historyPriceField
   const historyPriceLabel = pricePrimaryField === historyPriceField ? t(`prices.${pricePrimary}`) : t('prices.avg')
   const modalTabs = [
-    { id: 'overview', label: t('home.details') },
-    { id: 'prices', label: t('prices.cardmarketTitle') },
-    ...(ownedQuantity > 0 ? [{ id: 'owned', label: t('setDetail.owned') }] : []),
-    { id: 'add', label: t('card.addToCollection') },
-    { id: 'wishlist', label: t('wishlist.title') },
+    { id: 'overview', label: t('cardTabs.overview') },
+    { id: 'prices', label: t('cardTabs.prices') },
+    ...(ownedQuantity > 0 ? [{ id: 'owned', label: t('cardTabs.owned') }] : []),
+    { id: 'add', label: t('cardTabs.add') },
+    { id: 'wishlist', label: t('cardTabs.wishlist') },
   ]
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm sm:p-5"
-      onClick={onClose}>
-      <div
-        className="relative max-h-[calc(100dvh-1.5rem)] w-full max-w-3xl overflow-y-auto rounded-2xl border border-border bg-bg-surface shadow-2xl sm:max-h-[88dvh]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute right-3 top-3 z-50 grid h-9 w-9 place-items-center rounded-full border border-white/15 bg-black/70 text-white shadow-lg transition-colors hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red"
-          aria-label={t('common.close')}
-        >
-          <X size={18} />
-        </button>
-
-        <div className="flex flex-col gap-4 p-4 sm:flex-row sm:gap-6 sm:p-6">
-          <div className="flex-shrink-0">
-            <div className="flex sm:block items-start gap-4">
-              <div className="w-24 flex-shrink-0 sm:w-44">
-                <CardArtworkFrame
-                  card={card}
-                  image={cardImage}
-                  alt={card.name}
-                  variantEffectSource={variant}
-                  showStateIndicators={false}
-                  loading="eager"
-                />
-              </div>
-
-              <div className="sm:hidden flex-1 min-w-0 pt-1">
-                <div className="flex items-start gap-2 pr-9">
-                  <div className="min-w-0">
-                    <h2 className="text-base font-bold text-text-primary break-words">{card.name}</h2>
-                    {setName && (
-                      <p className="text-xs text-text-secondary mt-0.5">
-                        {setDetailId ? (
-                          <button
-                            type="button"
-                            onClick={() => navigateFromModal(`/sets/${setDetailId}`)}
-                            className="font-medium hover:text-brand-red hover:underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/50 rounded"
-                          >
-                            {setName}
-                          </button>
-                        ) : setName}
-                        {card.number ? ` · #${card.number}` : ''}
-                      </p>
-                    )}
-                    <FallbackBadges card={card} className="mt-1" />
-                    {card.rarity && (
-                      <p className={`text-xs mt-0.5 ${(RARITY_COLORS[card.rarity] || 'text-text-secondary')}`}>
-                        {card.rarity}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex-1 min-w-0 space-y-4">
-            <div className="hidden sm:flex items-start gap-2 pr-10">
-              <div className="min-w-0">
-                <h2 className="text-xl font-bold text-text-primary break-words">{card.name}</h2>
-                {setName && (
-                  <p className="text-sm text-text-secondary">
-                    {setDetailId ? (
-                      <button
-                        type="button"
-                        onClick={() => navigateFromModal(`/sets/${setDetailId}`)}
-                        className="font-medium hover:text-brand-red hover:underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/50 rounded"
-                      >
-                        {setName}
-                      </button>
-                    ) : setName}
-                    {card.number ? ` · #${card.number}` : ''}
-                  </p>
-                )}
-                <FallbackBadges card={card} className="mt-1" />
-              </div>
-            </div>
-
-            <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1" role="tablist" aria-label={card.name}>
-              {modalTabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={activeTab === tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={clsx(
-                    'shrink-0 rounded-lg px-3 py-2 text-xs font-bold transition-colors',
-                    activeTab === tab.id
-                      ? 'bg-brand-red text-white shadow-[0_0_14px_rgba(227,0,11,0.3)]'
-                      : 'bg-bg-card text-text-secondary hover:bg-bg-elevated hover:text-text-primary',
-                  )}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
+  return (
+    <UnifiedCardDialog
+      card={card}
+      image={cardImage}
+      variantEffectSource={variant}
+      price={selectedPrimaryPrice > 0 ? formatPrice(selectedPrimaryPrice) : null}
+      tabs={modalTabs}
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+      onClose={onClose}
+    >
+      <div className="min-w-0 space-y-4">
 
             {activeTab === 'overview' && <div className="grid grid-cols-2 gap-3 text-sm">
               {card.rarity && (
@@ -1055,11 +943,8 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
                 </div>
               )}
             </div>
-          </div>
-        </div>
       </div>
-    </div>,
-    document.body
+    </UnifiedCardDialog>
   )
 }
 

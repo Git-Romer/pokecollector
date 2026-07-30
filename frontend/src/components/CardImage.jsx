@@ -4,17 +4,22 @@
  *
  * Usage: <CardImage src={url} alt={card.name} className="w-full h-full object-cover" />
  */
+import { RefreshCw } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { useSettings } from '../contexts/SettingsContext'
 
 const CARD_BACK = '/cardback.jpg'
 
 export default function CardImage({ src, alt, className, showName = false, style, loading = 'lazy' }) {
+  const { t } = useSettings()
   const [failed, setFailed] = useState(false)
   const [loaded, setLoaded] = useState(false)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     setFailed(false)
     setLoaded(false)
+    setAttempt(0)
   }, [src])
 
   const handleError = (e) => {
@@ -25,13 +30,25 @@ export default function CardImage({ src, alt, className, showName = false, style
     setLoaded(true)
   }
 
+  const retry = (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setFailed(false)
+    setLoaded(false)
+    setAttempt(value => value + 1)
+  }
+
   const showOverlay = !src || failed || showName
+  const displaySrc = failed || !src
+    ? CARD_BACK
+    : `${src}${attempt > 0 ? `${String(src).includes('?') ? '&' : '?'}retry=${attempt}` : ''}`
 
   return (
     <div className="relative w-full h-full bg-bg-elevated">
       {!loaded && <div className="unified-card-skeleton absolute inset-0" aria-hidden />}
       <img
-        src={src || CARD_BACK}
+        key={`${src || CARD_BACK}-${attempt}`}
+        src={displaySrc}
         alt={alt}
         className={className || 'w-full h-full object-cover'}
         style={{ ...(src && !failed ? {} : { opacity: 0.8 }), ...style }}
@@ -48,6 +65,17 @@ export default function CardImage({ src, alt, className, showName = false, style
             {alt}
           </span>
         </div>
+      )}
+      {failed && (
+        <button
+          type="button"
+          className="absolute left-1/2 top-1/2 z-20 inline-flex -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-1.5 rounded-full border border-white/25 bg-black/85 px-3 py-2 text-xs font-bold text-white shadow-xl hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+          onClick={retry}
+          aria-label={t('card.retryImage')}
+        >
+          <RefreshCw size={13} aria-hidden />
+          {t('common.retry')}
+        </button>
       )}
     </div>
   )

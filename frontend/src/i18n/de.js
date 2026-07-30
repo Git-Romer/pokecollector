@@ -59,6 +59,18 @@ const de = {
     searchFallback: 'Keine genaue Produkt-ID gespeichert; es wird nach Set und Kartennummer gesucht.',
   },
 
+  cardTabs: {
+    overview: 'Übersicht',
+    prices: 'Preise',
+    owned: 'Eigene Exemplare',
+    add: 'Zur Sammlung',
+    wishlist: 'Wunschliste',
+    manage: 'Exemplare verwalten',
+    binder: 'Binder',
+    equivalents: 'Gleichwertige Drucke',
+    binderHelp: 'Wähle den Sammlungs-Binder, der dieses Exemplar erhalten soll.',
+  },
+
   // Common / General
   fallback: {
     data: 'Daten',
@@ -85,6 +97,7 @@ const de = {
     edit: 'Bearbeiten',
     sync: 'Synchronisieren',
     refresh: 'Aktualisieren',
+    retry: 'Erneut versuchen',
     export: 'Exportieren',
     import: 'Importieren',
     backup: 'Backup',
@@ -981,6 +994,7 @@ const de = {
     saveCustomImage: 'Bild-URL speichern',
     clearCustomImage: 'Bild-URL entfernen',
     customImageSaved: 'Eigene Bild-URL gespeichert',
+    retryImage: 'Kartenbild erneut laden',
   },
 
 

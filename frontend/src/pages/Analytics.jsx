@@ -13,6 +13,8 @@ import {
 } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import CardListItem from '../components/CardListItem'
+import { CardModal } from '../components/CardItem'
+import { CardArtworkFrame } from '../components/UnifiedCard'
 import { format, parseISO } from 'date-fns'
 import clsx from 'clsx'
 import PeriodSelector, { CARD_PERIODS, PERIOD_DAYS } from '../components/PeriodSelector'
@@ -157,6 +159,7 @@ export default function Analytics() {
   const [moversSort, setMoversSort] = useState('percentage')
   const [activeTab, setActiveTab] = useState('duplicates')
   const [showExpenseModal, setShowExpenseModal] = useState(false)
+  const [selectedCard, setSelectedCard] = useState(null)
   const queryClient = useQueryClient()
   const { data: duplicates = [], isLoading: dupLoading } = useQuery({
     queryKey: ['duplicates', pricePrimaryField],
@@ -279,12 +282,12 @@ export default function Analytics() {
                     {duplicates.map((item) => (
                       <tr key={item.id} className="border-b border-border/50 hover:bg-bg-elevated/50">
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-3">
-                            {resolveCardImageUrl(item) && (
-                              <img src={resolveCardImageUrl(item)} alt={item.name} className="w-8 h-10 object-cover rounded flex-shrink-0" loading="lazy" />
-                            )}
+                          <button type="button" className="flex items-center gap-3 text-left" onClick={() => setSelectedCard({ ...item, id: item.card_id || item.id })}>
+                            <div className="w-8 flex-shrink-0">
+                              <CardArtworkFrame card={item} image={resolveCardImageUrl(item)} alt={item.name} showStateIndicators={false} />
+                            </div>
                             <span className="text-sm font-medium text-text-primary">{item.name}</span>
-                          </div>
+                          </button>
                         </td>
                         <td className="px-4 py-3 text-text-secondary text-xs">{item.set_name || '-'}</td>
                         <td className="px-4 py-3 text-text-secondary text-xs">{item.rarity || '-'}</td>
@@ -310,6 +313,7 @@ export default function Analytics() {
                     ]}
                     value={formatPrice(item.total_value)}
                     valueSecondary={formatPrice(item.price_market)}
+                    onClick={() => setSelectedCard({ ...item, id: item.card_id || item.id })}
                   />
                 ))}
               </div>
@@ -357,9 +361,9 @@ export default function Analytics() {
             <div className="space-y-2">
               {topMovers.map((card) => (
                 <div key={card.card_id} className="card flex items-center gap-4">
-                  {resolveCardImageUrl(card) && (
-                    <img src={resolveCardImageUrl(card)} alt={card.name} className="w-10 h-14 object-cover rounded flex-shrink-0" loading="lazy" />
-                  )}
+                  <button type="button" className="w-10 flex-shrink-0" onClick={() => setSelectedCard({ ...card, id: card.card_id })}>
+                    <CardArtworkFrame card={card} image={resolveCardImageUrl(card)} alt={card.name} showStateIndicators={false} />
+                  </button>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-text-primary truncate">{card.name}</p>
                     <p className="text-xs text-text-muted">{card.rarity}</p>
@@ -696,6 +700,13 @@ export default function Analytics() {
         <AddExpenseModal
           onClose={() => setShowExpenseModal(false)}
           onSuccess={() => queryClient.invalidateQueries({ queryKey: ['investment-tracker'] })}
+        />
+      )}
+      {selectedCard && (
+        <CardModal
+          card={selectedCard}
+          onClose={() => setSelectedCard(null)}
+          initialTab="overview"
         />
       )}
     </div>

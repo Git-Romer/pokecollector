@@ -15,7 +15,6 @@ import clsx from 'clsx'
 import { cardImageUrl, resolveCardImageUrl } from '../utils/imageUrl'
 import { cardNumberMatches } from '../utils/cardNumbers'
 import { normalizeSearchText, textIncludes } from '../utils/textSearch'
-import FallbackBadges from '../components/FallbackBadges'
 import { getEffectiveCardPrice } from '../utils/prices'
 import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
 import { tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
@@ -23,7 +22,7 @@ import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/q
 import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import { formatMoneyInputValue, parseMoneyInputValue } from '../utils/moneyInput'
 import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
-import UnifiedCard, { CardArtworkFrame } from '../components/UnifiedCard'
+import UnifiedCard, { CardArtworkFrame, UnifiedCardDialog, withCollectionItemState } from '../components/UnifiedCard'
 
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
 const CONDITION_COLORS = {
@@ -279,6 +278,7 @@ function CollectionEditModal({ item, onClose }) {
   const [customImageUrl, setCustomImageUrl] = useState(card?.custom_image_url || '')
   const [savedCustomImageUrl, setSavedCustomImageUrl] = useState(card?.custom_image_url || '')
   const [customImageVersion, setCustomImageVersion] = useState(0)
+  const [activeTab, setActiveTab] = useState('manage')
   const customImageInputId = useId()
 
   const prevItemRef = useRef({
@@ -459,67 +459,117 @@ function CollectionEditModal({ item, onClose }) {
     )
   )
 
-  const renderCardHeader = () => (
-    <div className="flex items-start gap-4 mb-5">
-      <div className="w-20 flex-shrink-0">
-        <CardArtworkFrame
-          card={card}
-          image={cardImage}
-          alt={card?.name}
-          variantEffectSource={variant}
-          showStateIndicators={false}
-          loading="eager"
-        />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-start gap-2 pr-8">
-          <div className="min-w-0">
-            <h2 className="text-base font-bold text-text-primary break-words">{card?.name}</h2>
-            {card?.set_ref?.name && (
-              <p className="text-xs text-text-secondary mt-0.5">
-                {card.set_ref.name}{card?.number ? ` · #${card.number}` : ''}
-              </p>
-            )}
-            {card?.rarity && <p className="text-xs text-text-muted mt-0.5">{card.rarity}</p>}
-            {getEffectiveCardPrice(card, item.variant, pricePrimaryField) > 0 && (
-              <p className="text-sm font-bold text-green mt-1">{formatPrice(getEffectiveCardPrice(card, item.variant, pricePrimaryField))}</p>
-            )}
+  const marketPrice = getEffectiveCardPrice(card, item.variant, pricePrimaryField)
+  const dialogTabs = [
+    { id: 'overview', label: t('cardTabs.overview') },
+    { id: 'prices', label: t('cardTabs.prices') },
+    { id: 'owned', label: t('cardTabs.owned') },
+    { id: 'manage', label: t('cardTabs.manage') },
+    { id: 'binder', label: t('cardTabs.binder') },
+  ]
+
+  return (
+    <UnifiedCardDialog
+      card={card}
+      image={cardImage}
+      variantEffectSource={variant}
+      price={marketPrice > 0 ? formatPrice(marketPrice) : null}
+      tabs={dialogTabs}
+      activeTab={activeTab}
+      onTabChange={(tab) => {
+        setShowAddVersionForm(false)
+        setActiveTab(tab)
+      }}
+      onClose={onClose}
+    >
+      {activeTab === 'overview' && (
+        <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+          {[
+            [t('card.rarity'), card?.rarity],
+            [t('card.type'), card?.supertype],
+            [t('card.hp'), card?.hp],
+            [t('card.artist'), card?.artist],
+            [t('lang.selectLabel'), tcgdexLanguageLabel(item.lang || 'en')],
+            [t('card.condition'), item.condition || 'NM'],
+          ].filter(([, value]) => value).map(([label, value]) => (
+            <div key={label} className="rounded-xl border border-border bg-bg-card p-3">
+              <p className="text-xs text-text-muted">{label}</p>
+              <p className="mt-1 break-words text-sm font-bold text-text-primary">{value}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {activeTab === 'prices' && (
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-xl border border-border bg-bg-card p-3">
+            <p className="text-xs text-text-muted">{t('collection.marketPrice')}</p>
+            <p className="mt-1 text-xl font-black text-green">{marketPrice > 0 ? formatPrice(marketPrice) : '—'}</p>
+          </div>
+          <div className="rounded-xl border border-border bg-bg-card p-3">
+            <p className="text-xs text-text-muted">{t('collection.buyPrice')}</p>
+            <p className="mt-1 text-xl font-black text-text-primary">{item.purchase_price ? formatPrice(item.purchase_price) : '—'}</p>
+          </div>
+          <div className="rounded-xl border border-border bg-bg-card p-3">
+            <p className="text-xs text-text-muted">{t('collection.totalVal')}</p>
+            <p className="mt-1 text-xl font-black text-text-primary">{marketPrice > 0 ? formatPrice(marketPrice * item.quantity) : '—'}</p>
           </div>
         </div>
-      </div>
-    </div>
-  )
+      )}
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm sm:p-5"
-      onClick={onClose}
-    >
-      <div
-        className="relative max-h-[calc(100dvh-1.5rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-border bg-bg-surface shadow-2xl sm:max-h-[88dvh]"
-        onClick={e => e.stopPropagation()}
-      >
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute right-3 top-3 z-50 grid h-9 w-9 place-items-center rounded-full border border-white/15 bg-black/70 text-white shadow-lg transition-colors hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red"
-          aria-label={t('common.close')}
-        >
-          <X size={18} />
-        </button>
+      {activeTab === 'owned' && (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-bg-card p-4">
+            <div className="min-w-0">
+              <p className="font-bold text-text-primary">{item.variant || 'Normal'}</p>
+              <p className="mt-1 text-xs text-text-muted">
+                {[item.condition || 'NM', tcgdexLanguageLabel(item.lang || 'en')].join(' · ')}
+              </p>
+            </div>
+            <span className="inline-flex min-w-12 items-center justify-center rounded-lg border border-brand-red/35 bg-brand-red/15 px-3 py-2 text-sm font-black text-brand-red">
+              ×{item.quantity}
+            </span>
+          </div>
+          {productSourceSummary && (
+            <div className="rounded-xl border border-yellow/25 bg-yellow/10 p-3">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-yellow">
+                <Package size={14} aria-hidden />
+                <span>{t('collection.foundIn')}</span>
+              </div>
+              <div className="mt-2 space-y-1">
+                {productSourceSummary.sources.map(source => (
+                  <div key={source.product_card_id} className="flex items-center justify-between gap-3 text-sm">
+                    <p className="truncate font-medium text-text-primary">{source.product_name}</p>
+                    <span className="shrink-0 text-xs font-bold text-yellow">×{source.active_quantity}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
+      {activeTab === 'binder' && (
+        <div className="space-y-3">
+          <div className="rounded-xl border border-border bg-bg-card p-4">
+            <p className="text-sm font-bold text-text-primary">{t('collection.addToBinder')}</p>
+            <p className="mt-1 text-xs text-text-muted">{t('cardTabs.binderHelp')}</p>
+          </div>
+          {binderSelect}
+        </div>
+      )}
+
+      {activeTab === 'manage' && (
         <div className="grid overflow-hidden [perspective:1200px]">
           <div
             aria-hidden={showAddVersionForm}
             className={clsx(
-              'col-start-1 row-start-1 p-5 transition-all duration-300 ease-out transform-gpu',
+              'col-start-1 row-start-1 transition-all duration-300 ease-out transform-gpu',
               showAddVersionForm
                 ? '-translate-x-10 -rotate-2 scale-[0.97] opacity-0 pointer-events-none'
                 : 'translate-x-0 rotate-0 scale-100 opacity-100'
             )}
           >
-            {renderCardHeader()}
-
             {productSourceSummary && (
               <div className="mb-4 rounded-xl border border-yellow/25 bg-yellow/10 px-3 py-2">
                 <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-yellow">
@@ -669,7 +719,7 @@ function CollectionEditModal({ item, onClose }) {
           <form
             aria-hidden={!showAddVersionForm}
             className={clsx(
-              'col-start-1 row-start-1 p-5 transition-all duration-300 ease-out transform-gpu',
+              'col-start-1 row-start-1 transition-all duration-300 ease-out transform-gpu',
               showAddVersionForm
                 ? 'translate-x-0 rotate-0 scale-100 opacity-100'
                 : 'translate-x-[115%] rotate-6 scale-[0.96] opacity-0 pointer-events-none'
@@ -680,8 +730,6 @@ function CollectionEditModal({ item, onClose }) {
               cloneMutation.mutate()
             }}
           >
-            {renderCardHeader()}
-
             <div className="space-y-3">
               <div className="bg-bg-card rounded-xl p-3 border border-brand-red/30 shadow-lg shadow-black/10">
                 <h3 className="text-sm font-bold text-text-primary">{t('collection.newVersionDetails')}</h3>
@@ -746,9 +794,8 @@ function CollectionEditModal({ item, onClose }) {
             </div>
           </form>
         </div>
-      </div>
-    </div>,
-    document.body
+      )}
+    </UnifiedCardDialog>
   )
 }
 
@@ -791,6 +838,17 @@ export default function Collection() {
     queryFn: () => getWishlist().then(r => r.data),
     staleTime: 60000,
   })
+  const wishlistedCardIds = useMemo(() => new Set(
+    wishlistItems.flatMap(item => [
+      item.card_id,
+      item.card?.id,
+      item.card?.tcg_card_id,
+    ]).filter(Boolean).map(String),
+  ), [wishlistItems])
+  const hasMixedCollectionLanguages = useMemo(
+    () => new Set(items.map(item => item.lang).filter(Boolean)).size > 1,
+    [items],
+  )
 
   const COLLECTION_TABS = [
     { to: '/collection', label: t('nav.collection'), icon: Library },
@@ -1219,31 +1277,26 @@ export default function Collection() {
                 {filtered.map(item => {
                   const card = item.card
                   const marketPrice = getEffectivePrice(card, item.variant)
+                  const cardState = {
+                    ...withCollectionItemState(card, item),
+                    wishlisted: [
+                      item.card_id,
+                      card?.id,
+                      card?.tcg_card_id,
+                    ].filter(Boolean).some(id => wishlistedCardIds.has(String(id))),
+                  }
                   return (
                     <UnifiedCard
                       key={item.id}
                       card={card}
                       image={resolveCardImageUrl(card)}
                       price={marketPrice > 0 ? formatPrice(marketPrice) : null}
-                      languageLabel={item.lang ? tcgdexLanguageLabel(item.lang) : null}
+                      languageLabel={hasMixedCollectionLanguages && item.lang ? tcgdexLanguageLabel(item.lang) : null}
                       variantEffectSource={item.variant}
+                      stateIndicatorProps={{ card: cardState, alwaysShowQuantity: true }}
                       onClick={() => setEditingCollectionItem(item)}
                       overlay={(
-                        <>
-                        <ProductSourceBadge item={item} t={t} compact className="absolute right-1 top-1 z-10 h-6 w-6" />
-                        <div className="absolute bottom-2 left-2 right-2 z-20 flex flex-wrap gap-1">
-                          {item.quantity > 1 && (
-                            <span className="rounded-full border border-brand-red/50 bg-black/80 px-2 py-1 text-[10px] font-black text-brand-red">
-                              ×{item.quantity}
-                            </span>
-                          )}
-                          {item.variant && item.variant !== 'Normal' && (
-                            <span className="max-w-full rounded-full border border-yellow/40 bg-black/80 px-2 py-1 text-center text-[10px] font-bold leading-tight text-yellow">
-                              ✨ {item.variant}
-                            </span>
-                          )}
-                        </div>
-                        </>
+                        <ProductSourceBadge item={item} t={t} compact className="absolute bottom-2 left-2 z-20 h-6 w-6" />
                       )}
                     />
                   )
@@ -1277,15 +1330,13 @@ export default function Collection() {
                   <thead>
                     <tr className="border-b border-border bg-bg/50">
                       <th className="text-left px-4 py-3 text-text-muted font-medium">{t('collection.card')}</th>
-                      <th className="text-left px-4 py-3 text-text-muted font-medium">{t('common.set')}</th>
-                      <th className="text-left px-4 py-3 text-text-muted font-medium">{t('common.rarity')}</th>
+                      <th className="text-left px-4 py-3 text-text-muted font-medium">✨ {t('variants.label')}</th>
                       <th className="text-center px-4 py-3 text-text-muted font-medium">{t('collection.qty')}</th>
                       <th className="text-center px-4 py-3 text-text-muted font-medium">{t('common.condition')}</th>
-                      <th className="text-left px-4 py-3 text-text-muted font-medium">✨ {t('variants.label')}</th>
                       <th className="text-right px-4 py-3 text-text-muted font-medium">{t('collection.buyPrice')}</th>
                       <th className="text-right px-4 py-3 text-text-muted font-medium">{t('collection.marketPrice')}</th>
-                      <th className="text-right px-4 py-3 text-text-muted font-medium">{t('collection.totalVal')}</th>
                       <th className="text-right px-4 py-3 text-text-muted font-medium">P&amp;L</th>
+                      <th className="px-4 py-3" />
                     </tr>
                   </thead>
                   <tbody>
@@ -1326,7 +1377,6 @@ export default function Collection() {
                                       {tcgdexLanguageLabel(item.lang)}
                                     </span>
                                   )}
-                                  <FallbackBadges card={card} compact />
                                 </div>
                                 {(() => {
                                   const abbr = card?.set_ref?.abbreviation
@@ -1339,17 +1389,6 @@ export default function Collection() {
                               </div>
                             </div>
                           </td>
-                          <td className="px-4 py-3 text-text-secondary truncate max-w-[120px]">{card?.set_ref?.name || '-'}</td>
-                          <td className="px-4 py-3 text-text-secondary text-xs">{card?.rarity || '-'}</td>
-                          <td className="px-4 py-3 text-center">
-                            <span className="font-medium text-text-primary">
-                              {item.quantity}
-                              {item.quantity > 1 && <span className="ml-1 text-xs text-brand-red">×{item.quantity}</span>}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <span className={clsx('badge text-xs', CONDITION_COLORS[item.condition] || 'badge-blue')}>{item.condition}</span>
-                          </td>
                           <td className="px-4 py-3 text-left">
                             {item.variant ? (
                               <span className={clsx('badge text-xs max-w-[150px] justify-center whitespace-normal break-words text-center leading-tight', VARIANT_COLORS[item.variant] || 'badge-gray')}>{item.variant}</span>
@@ -1357,14 +1396,17 @@ export default function Collection() {
                               <span className="text-text-muted text-xs">—</span>
                             )}
                           </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className="font-medium text-text-primary">{item.quantity}</span>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <span className={clsx('badge text-xs', CONDITION_COLORS[item.condition] || 'badge-blue')}>{item.condition}</span>
+                          </td>
                           <td className="px-4 py-3 text-right text-text-secondary">
                             {item.purchase_price ? formatPrice(item.purchase_price) : '-'}
                           </td>
                           <td className="px-4 py-3 text-right text-text-primary font-medium">
                             {marketPrice > 0 ? formatPrice(marketPrice) : '-'}
-                          </td>
-                          <td className="px-4 py-3 text-right font-semibold text-green">
-                            {marketPrice > 0 ? formatPrice(totalVal) : '-'}
                           </td>
                           <td className="px-4 py-3 text-right text-xs font-medium">
                             {pnl !== null ? (
@@ -1373,13 +1415,26 @@ export default function Collection() {
                               </span>
                             ) : '-'}
                           </td>
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              type="button"
+                              className="rounded-lg p-2 text-text-muted transition-colors hover:bg-bg-card hover:text-text-primary"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                setEditingCollectionItem(item)
+                              }}
+                              aria-label={`${t('common.edit')} ${card?.name || ''}`}
+                            >
+                              <PenLine size={14} aria-hidden />
+                            </button>
+                          </td>
                         </tr>
                       )
                     })}
                   </tbody>
                   <tfoot>
                     <tr className="border-t border-border bg-bg/50">
-                      <td colSpan={8} className="px-4 py-3 text-text-muted text-sm">{filtered.length} {t('collection.filtered')}</td>
+                      <td colSpan={6} className="px-4 py-3 text-text-muted text-sm">{filtered.length} {t('collection.filtered')}</td>
                       <td className="px-4 py-3 text-right font-bold text-green">{formatPrice(totalValue)}</td>
                       <td />
                     </tr>
@@ -1397,10 +1452,11 @@ export default function Collection() {
                   const pnl = item.purchase_price ? totalVal - buyTotal : null
 
                   const badges = []
-                  if (item.lang) badges.push({ label: tcgdexLanguageLabel(item.lang), variant: 'blue' })
                   if (item.variant) badges.push({ label: item.variant, variant: 'purple' })
-                  if (item.condition) badges.push({ label: item.condition, variant: item.condition === 'Mint' ? 'green' : item.condition === 'NM' ? 'blue' : 'yellow' })
-                  if (item.quantity > 1) badges.push({ label: `×${item.quantity}`, variant: 'red' })
+                  if (item.condition) badges.push({
+                    label: `${item.condition} ×${item.quantity || 1}`,
+                    variant: item.condition === 'Mint' ? 'green' : item.condition === 'NM' ? 'blue' : 'yellow',
+                  })
                   const sourceSummary = getProductSourceSummary(item)
                   if (sourceSummary) badges.push({ label: `${t('collection.foundIn')}: ${sourceSummary.label}`, variant: 'gold' })
                   if (card?.is_custom) badges.push({ label: '✏️', variant: 'yellow' })
@@ -1411,9 +1467,10 @@ export default function Collection() {
                       card={card}
                       image={resolveCardImageUrl(card)}
                       name={card?.name}
-                      subtext={[card?.set_ref?.name, card?.number ? `#${card.number}` : null].filter(Boolean).join(' · ') || '-'}
+                      setNumber={[card?.set_ref?.abbreviation || card?.set_id, card?.number].filter(Boolean).join(' ').toUpperCase()}
+                      languageLabel={item.lang ? tcgdexLanguageLabel(item.lang) : null}
                       badges={badges}
-                      value={marketPrice > 0 ? formatPrice(marketPrice) : '-'}
+                      value={marketPrice > 0 ? formatPrice(totalVal) : '-'}
                       valueSecondary={pnl !== null ? `${pnl >= 0 ? '+' : ''}${formatPrice(pnl)}` : undefined}
                       onClick={() => setEditingCollectionItem(item)}
                       variantEffectSource={item.variant}

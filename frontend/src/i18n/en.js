@@ -59,6 +59,18 @@ const en = {
     searchFallback: 'No exact product ID is stored; this opens a set and collector-number search.',
   },
 
+  cardTabs: {
+    overview: 'Overview',
+    prices: 'Prices',
+    owned: 'Owned copies',
+    add: 'Add to collection',
+    wishlist: 'Wishlist',
+    manage: 'Manage copies',
+    binder: 'Binder',
+    equivalents: 'Equivalent prints',
+    binderHelp: 'Choose the collection binder that should receive this owned copy.',
+  },
+
   // Common / General
   fallback: {
     data: 'Data',
@@ -85,6 +97,7 @@ const en = {
     edit: 'Edit',
     sync: 'Sync',
     refresh: 'Refresh',
+    retry: 'Retry',
     export: 'Export',
     import: 'Import',
     backup: 'Backup',
@@ -991,6 +1004,7 @@ const en = {
     saveCustomImage: 'Save image URL',
     clearCustomImage: 'Clear image URL',
     customImageSaved: 'Custom image URL saved',
+    retryImage: 'Retry loading card artwork',
   },
 
 

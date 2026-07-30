@@ -26,8 +26,8 @@ function CardPreview({ card, label }) {
       <div className="text-center max-w-[120px]">
         <p className="text-xs font-medium text-text-primary truncate">{card?.name || t('migration.noImage')}</p>
         {card?.set_id && (
-          <p className="text-xs text-text-muted truncate">
-            {card.set_id}{card.number ? ` #${card.number}` : ''}
+          <p className="truncate font-mono text-xs font-bold text-brand-red">
+            {card.set_id}{card.number ? ` ${card.number}` : ''}
           </p>
         )}
         {card?.rarity && <p className="text-xs text-text-muted truncate">{card.rarity}</p>}

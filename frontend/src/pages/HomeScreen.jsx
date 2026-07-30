@@ -15,7 +15,7 @@ import toast from 'react-hot-toast'
 import { format, parseISO } from 'date-fns'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 import { collectionItemTargetUrl } from '../utils/navigation'
-import { CardArtworkFrame } from '../components/UnifiedCard'
+import { CardArtworkFrame, withCollectionItemState } from '../components/UnifiedCard'
 
 // Compact number formatter for mobile (1.2k, 3.4M, etc.)
 function compactNum(n) {
@@ -54,7 +54,15 @@ function CardThumb({ card, onClick }) {
   const img = resolveCardImageUrl(card)
   return (
     <div className="w-[110px] flex-shrink-0">
-      <CardArtworkFrame card={card} image={img} alt={card.name} interactive onClick={onClick} />
+      <CardArtworkFrame
+        card={card}
+        image={img}
+        alt={card.name}
+        variantEffectSource={card.variant}
+        interactive
+        onClick={onClick}
+        stateIndicatorProps={{ card: withCollectionItemState(card, card), alwaysShowQuantity: true }}
+      />
     </div>
   )
 }
@@ -450,7 +458,13 @@ export default function HomeScreen() {
                 <div key={card.collection_item_id || card.id} className="flex-shrink-0 w-[110px] cursor-pointer group"
                   onClick={() => openCollectionItem(card)}>
                   <div className="relative">
-                    <CardArtworkFrame card={card} image={resolveCardImageUrl(card)} alt={card.name} />
+                    <CardArtworkFrame
+                      card={card}
+                      image={resolveCardImageUrl(card)}
+                      alt={card.name}
+                      variantEffectSource={card.variant}
+                      stateIndicatorProps={{ card: withCollectionItemState(card, card), alwaysShowQuantity: true }}
+                    />
                     <span className="absolute top-1 left-1 text-[9px] font-black px-1 rounded leading-4"
                       style={{ background:'rgba(0,0,0,0.85)', color:'#f5c842' }}>#{i+1}</span>
                   </div>

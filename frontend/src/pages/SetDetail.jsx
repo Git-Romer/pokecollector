@@ -9,7 +9,6 @@ import toast from 'react-hot-toast'
 import clsx from 'clsx'
 import { resolveCardImageUrl, resolveSetImageUrl } from '../utils/imageUrl'
 import { CARD_VARIANTS, getAvailableVariants, getDefaultVariantOrNull } from '../utils/cardVariants'
-import FallbackBadges from '../components/FallbackBadges'
 import { CardStateLegend } from '../components/CardStateIndicators'
 import { HOLO_FIELD_MAP } from '../utils/prices'
 import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
@@ -17,7 +16,7 @@ import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/q
 import MoneyInput from '../components/MoneyInput'
 import { parseMoneyInputValue } from '../utils/moneyInput'
 import { useDetailBackNavigation, useScrollToTopOnPush } from '../hooks/useListScrollRestoration'
-import UnifiedCard, { CardArtworkFrame } from '../components/UnifiedCard'
+import UnifiedCard, { UnifiedCardDialog } from '../components/UnifiedCard'
 
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
 
@@ -132,13 +131,14 @@ function OwnedVersionRow({ item, onQuantityChange, onRemove, isUpdating, isRemov
   )
 }
 
-function SetCardActionModal({ card, setLang, onClose, onAdd, onAddWishlist, onQuantityChange, onRemove, isAdding, isAddingWishlist, isUpdatingQuantity, isRemoving, t }) {
-  const { exchangeRate, exchangeRateReady } = useSettings()
+function SetCardActionModal({ card, setLang, initialTab = 'overview', onClose, onAdd, onAddWishlist, onQuantityChange, onRemove, isAdding, isAddingWishlist, isUpdatingQuantity, isRemoving, t }) {
+  const { exchangeRate, exchangeRateReady, formatPrice, pricePrimaryField } = useSettings()
   const [addQuantity, setAddQuantity] = useState(1)
   const [addCondition, setAddCondition] = useState('NM')
   const [addVariant, setAddVariant] = useState('Normal')
   const [addLang, setAddLang] = useState(setLang)
   const [addPrice, setAddPrice] = useState('')
+  const [activeTab, setActiveTab] = useState(initialTab)
 
   useEffect(() => {
     if (!card) return
@@ -147,12 +147,21 @@ function SetCardActionModal({ card, setLang, onClose, onAdd, onAddWishlist, onQu
     setAddVariant(getDefaultVariantOrNull(card))
     setAddLang(setLang)
     setAddPrice('')
-  }, [card, setLang])
+    setActiveTab(initialTab)
+  }, [card, initialTab, setLang])
 
   if (!card) return null
   const availableVariants = getAvailableVariants(card)
   const variants = availableVariants.length > 0 ? availableVariants : CARD_VARIANTS
   const ownedItems = card.owned_items || []
+  const marketPrice = setSortPrice(card, pricePrimaryField)
+  const tabs = [
+    { id: 'overview', label: t('cardTabs.overview') },
+    { id: 'prices', label: t('cardTabs.prices') },
+    ...(ownedItems.length > 0 ? [{ id: 'owned', label: t('cardTabs.owned') }] : []),
+    { id: 'add', label: t('cardTabs.add') },
+    { id: 'wishlist', label: t('cardTabs.wishlist') },
+  ]
 
   const submitAddVersion = (event) => {
     event.preventDefault()
@@ -167,35 +176,42 @@ function SetCardActionModal({ card, setLang, onClose, onAdd, onAddWishlist, onQu
     })
   }
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm sm:p-5" onClick={onClose}>
-      <div
-        className="relative max-h-[calc(100dvh-1.5rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-border bg-bg-surface shadow-2xl sm:max-h-[88dvh]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute right-3 top-3 z-50 grid h-9 w-9 place-items-center rounded-full border border-white/15 bg-black/70 text-white shadow-lg hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red"
-          aria-label={t('common.close')}
-        >
-          <X size={18} />
-        </button>
-
-        <div className="p-5">
-          <div className="mb-4 flex items-start gap-3 pr-9">
-            <div className="w-16 flex-shrink-0">
-              <CardArtworkFrame card={card} image={resolveCardImageUrl(card)} alt={card.name} showStateIndicators={false} loading="eager" />
+  return (
+    <UnifiedCardDialog
+      card={card}
+      image={resolveCardImageUrl(card)}
+      price={marketPrice > 0 ? formatPrice(marketPrice) : null}
+      tabs={tabs}
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+      onClose={onClose}
+    >
+      {activeTab === 'overview' && (
+        <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+          {[
+            [t('card.rarity'), card.rarity],
+            [t('card.type'), card.supertype],
+            [t('card.hp'), card.hp],
+            [t('card.artist'), card.artist],
+            [t('lang.selectLabel'), setLang.toUpperCase()],
+          ].filter(([, value]) => value).map(([label, value]) => (
+            <div key={label} className="rounded-xl border border-border bg-bg-card p-3">
+              <p className="text-xs text-text-muted">{label}</p>
+              <p className="mt-1 text-sm font-bold text-text-primary">{value}</p>
             </div>
-            <div className="min-w-0 flex-1">
-              <h2 className="text-lg font-bold text-text-primary">{card.name}</h2>
-              <p className="text-xs text-text-muted">#{card.number} · {setLang.toUpperCase()}</p>
-              <FallbackBadges card={card} className="mt-1" />
-            </div>
-          </div>
+          ))}
+        </div>
+      )}
 
-          <div className="space-y-4">
-            <form onSubmit={submitAddVersion} className="space-y-3 rounded-xl border border-brand-red/30 bg-bg-card p-3">
+      {activeTab === 'prices' && (
+        <div className="rounded-xl border border-border bg-bg-card p-4">
+          <p className="text-xs font-bold uppercase tracking-wide text-text-muted">{t('collection.marketPrice')}</p>
+          <p className="mt-2 text-2xl font-black text-green">{marketPrice > 0 ? formatPrice(marketPrice) : '—'}</p>
+        </div>
+      )}
+
+      {activeTab === 'add' && (
+        <form onSubmit={submitAddVersion} className="space-y-3 rounded-xl border border-brand-red/30 bg-bg-card p-3">
               <p className="text-xs font-semibold text-text-muted mb-2 uppercase tracking-wide">{t('setDetail.addVersion')}</p>
               <p className="text-xs text-text-secondary -mt-1">{t('collection.addAnotherVersionHelp')}</p>
 
@@ -239,47 +255,60 @@ function SetCardActionModal({ card, setLang, onClose, onAdd, onAddWishlist, onQu
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div>
                 <button type="submit" disabled={isAdding || !exchangeRateReady} className="btn-primary justify-center">
                   <Plus size={14} /> {isAdding ? t('card.adding') : t('collection.addVersionToCollection')}
                 </button>
-                <button
-                  type="button"
-                  disabled={isAddingWishlist}
-                  className="btn-ghost justify-center"
-                  onClick={() => onAddWishlist({
-                    card,
-                    quantity: Math.max(1, Math.min(99, parseInt(addQuantity, 10) || 1)),
-                  })}
-                >
-                  <Heart size={14} /> {t('binderTypes.addToWishlist')}
-                </button>
               </div>
-            </form>
+        </form>
+      )}
 
-            {ownedItems.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-text-muted mb-2 uppercase tracking-wide">{t('setDetail.ownedVersions')}</p>
-                <div className="space-y-2">
-                  {ownedItems.map(item => (
-                    <OwnedVersionRow
-                      key={item.id}
-                      item={item}
-                      onQuantityChange={onQuantityChange}
-                      onRemove={onRemove}
-                      isUpdating={isUpdatingQuantity}
-                      isRemoving={isRemoving}
-                      t={t}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
+      {activeTab === 'wishlist' && (
+        <div className="space-y-3 rounded-xl border border-border bg-bg-card p-4">
+          <label className="block">
+            <span className="mb-1 block text-xs text-text-muted">{t('card.quantity')}</span>
+            <input
+              type="number"
+              min="1"
+              max="99"
+              value={addQuantity}
+              onChange={(event) => setAddQuantity(event.target.value)}
+              className="input"
+            />
+          </label>
+          <button
+            type="button"
+            disabled={isAddingWishlist}
+            className="btn-primary w-full justify-center"
+            onClick={() => onAddWishlist({
+              card,
+              quantity: Math.max(1, Math.min(99, parseInt(addQuantity, 10) || 1)),
+            })}
+          >
+            <Heart size={14} /> {t('binderTypes.addToWishlist')}
+          </button>
+        </div>
+      )}
+
+      {activeTab === 'owned' && ownedItems.length > 0 && (
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">{t('setDetail.ownedVersions')}</p>
+          <div className="space-y-2">
+            {ownedItems.map(item => (
+              <OwnedVersionRow
+                key={item.id}
+                item={item}
+                onQuantityChange={onQuantityChange}
+                onRemove={onRemove}
+                isUpdating={isUpdatingQuantity}
+                isRemoving={isRemoving}
+                t={t}
+              />
+            ))}
           </div>
         </div>
-      </div>
-    </div>,
-    document.body
+      )}
+    </UnifiedCardDialog>
   )
 }
 
@@ -293,6 +322,7 @@ export default function SetDetail() {
   const [sortBy, setSortBy] = useState('number')
   const [rarityFilter, setRarityFilter] = useState('all')
   const [selectedCard, setSelectedCard] = useState(null)
+  const [selectedCardTab, setSelectedCardTab] = useState('overview')
   const [binderPickerOpen, setBinderPickerOpen] = useState(false)
   const [badgeLegendOpen, setBadgeLegendOpen] = useState(false)
 
@@ -574,8 +604,14 @@ export default function SetDetail() {
             card={card}
             image={resolveCardImageUrl(card)}
             price={setSortPrice(card, pricePrimaryField) > 0 ? formatPrice(setSortPrice(card, pricePrimaryField)) : null}
-            onClick={() => setSelectedCard(card)}
-            onAdd={() => setSelectedCard(card)}
+            onClick={() => {
+              setSelectedCardTab('overview')
+              setSelectedCard(card)
+            }}
+            onAdd={() => {
+              setSelectedCardTab('add')
+              setSelectedCard(card)
+            }}
           />
         ))}
       </div>
@@ -583,6 +619,7 @@ export default function SetDetail() {
       <SetCardActionModal
         card={selectedCard}
         setLang={setLang}
+        initialTab={selectedCardTab}
         onClose={() => setSelectedCard(null)}
         onAdd={(payload) => addMutation.mutate(payload)}
         onAddWishlist={(payload) => wishlistMutation.mutate(payload)}
