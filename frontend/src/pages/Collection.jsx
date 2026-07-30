@@ -32,7 +32,7 @@ import {
     addToCollection,
     exportCSV,
     exportPDF,
-    exportXLSX,
+    exportExcel,
     getBinders,
     getCollection,
     getSets,
@@ -1585,7 +1585,7 @@ export default function Collection() {
                             </summary>
                             <div
                                 className="absolute right-0 z-30 mt-2 grid min-w-36 gap-1 rounded-xl border border-border bg-bg-surface p-2 shadow-xl">
-                                <button type="button" onClick={() => exportXLSX(exportParams)}
+                                <button type="button" onClick={() => exportExcel(exportParams)}
                                         className="btn-ghost justify-start text-xs">Excel workbook
                                 </button>
                                 <button type="button" onClick={() => exportCSV(exportParams)}

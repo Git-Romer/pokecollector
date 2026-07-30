@@ -32,6 +32,21 @@ LOCATION_HEADERS = [
     "Record UID", "Name", "Description", "Default", "Active", "Created At", "Updated At",
 ]
 ERROR_HEADERS = ["Sheet", "Row", "Record UID", "Error"]
+EXCEL_CARD_HEADERS = [
+    "Card ID", "Name", "Set", "Number", "Rarity", "Quantity", "Condition",
+    "Variant", "Language", "Cost Basis", "Collection Intent", "Protection",
+    "Grading Company", "Grade", "Certification Number", "Grail",
+    "Card History", "Notes", "Status", "Record UID",
+]
+EXCEL_SEALED_HEADERS = [
+    "Product Name", "Product Type", "Quantity", "Condition", "Cost Basis",
+    "Acquisition Date", "Collection Intent", "Notes", "Status", "Record UID",
+]
+EXCEL_ACQUISITION_HEADERS = [
+    "Record UID", "Record Type", "Item Name", "Acquisition Source",
+    "Acquisition Date", "Storage Location UID", "Storage Location",
+    "Storage Type", "Storage Detail", "Updated At",
+]
 
 
 def _date_cell(value):
@@ -155,13 +170,102 @@ def build_collection_workbook(items, products, locations=()) -> bytes:
     return output.getvalue()
 
 
+def build_excel_export(items, products) -> bytes:
+    """Build the collection's three-sheet, non-market Excel export."""
+    workbook = Workbook()
+    cards = workbook.active
+    cards.title = "Cards"
+    cards.append(EXCEL_CARD_HEADERS)
+
+    acquisition_rows = []
+    for item in items:
+        card = item.card
+        if not card:
+            continue
+        location = getattr(item, "storage_location", None)
+        cards.append([
+            card.id,
+            card.name,
+            card.set_ref.name if card.set_ref else "",
+            card.number or "",
+            card.rarity or "",
+            item.quantity,
+            item.condition,
+            item.variant,
+            item.lang,
+            item.purchase_price,
+            getattr(item, "collection_intent", None) or "main_collection",
+            item.protection_type or "raw",
+            item.grader or "",
+            item.grade or "",
+            item.certification_number or "",
+            bool(getattr(item, "is_grail", False)),
+            getattr(item, "card_history", None) or "",
+            item.notes or "",
+            getattr(item, "status", None) or "owned",
+            item.record_uid,
+        ])
+        acquisition_rows.append([
+            item.record_uid,
+            "Card",
+            card.name,
+            item.acquisition_source or "",
+            _date_cell(getattr(item, "added_at", None)),
+            location.record_uid if location else "",
+            location.name if location else "",
+            item.storage_type or "",
+            item.storage_detail or "",
+            _date_cell(getattr(item, "updated_at", None)),
+        ])
+
+    sealed = workbook.create_sheet("Sealed Product")
+    sealed.append(EXCEL_SEALED_HEADERS)
+    for product in products:
+        location = getattr(product, "storage_location", None)
+        sealed.append([
+            product.product_name,
+            product.product_type or "",
+            product.quantity,
+            product.sealed_condition,
+            product.purchase_price,
+            _date_cell(product.purchase_date),
+            getattr(product, "collection_intent", None) or "main_collection",
+            product.notes or "",
+            product.status or "active",
+            product.record_uid,
+        ])
+        acquisition_rows.append([
+            product.record_uid,
+            "Sealed Product",
+            product.product_name,
+            product.acquisition_source or "",
+            _date_cell(product.purchase_date),
+            location.record_uid if location else "",
+            location.name if location else "",
+            product.storage_type or "",
+            product.storage_detail or "",
+            _date_cell(product.updated_at),
+        ])
+
+    acquisition = workbook.create_sheet("Acquisition & Storage")
+    acquisition.append(EXCEL_ACQUISITION_HEADERS)
+    for row in acquisition_rows:
+        acquisition.append(row)
+
+    _style_workbook(workbook)
+    output = io.BytesIO()
+    workbook.save(output)
+    return output.getvalue()
+
+
 @router.get("/xlsx")
 def export_xlsx(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     items = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).options(
-        joinedload(CollectionItem.card).joinedload(Card.set_ref)
+        joinedload(CollectionItem.card).joinedload(Card.set_ref),
+        joinedload(CollectionItem.storage_location),
     ).filter(
         CollectionItem.user_id == current_user.id,
         visible_card_filter(db, current_user.id, "all"),
@@ -171,12 +275,9 @@ def export_xlsx(
     ).filter(
         ProductPurchase.user_id == current_user.id
     ).order_by(ProductPurchase.purchase_date.desc()).all()
-    locations = db.query(StorageLocation).filter(
-        StorageLocation.user_id == current_user.id
-    ).order_by(StorageLocation.is_default.desc(), StorageLocation.name).all()
     filename = f"john-johns-pc-{datetime.date.today().isoformat()}.xlsx"
     return StreamingResponse(
-        io.BytesIO(build_collection_workbook(items, products, locations)),
+        io.BytesIO(build_excel_export(items, products)),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )

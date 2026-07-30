@@ -113,11 +113,12 @@ export const getUserCollection = (userId, params = {}) => api.get(`/collection/u
 export const searchCollection = (params) => api.get('/collection/', {params})
 export const addToCollection = (data) => api.post('/collection/', data)
 export const bulkAddToCollection = (items) => api.post('/collection/bulk-add', {items}).then(r => r.data)
-export const importCollectionCsv = (file) => {
+export const importCollectionCsv = (file, commit = false) => {
     const formData = new FormData()
     formData.append('file', file)
     return api.post('/collection/import-csv', formData, {
         headers: {'Content-Type': 'multipart/form-data'},
+        params: {commit},
     }).then(r => r.data)
 }
 export const updateCollectionItem = (id, data) => api.put(`/collection/${id}`, data)
@@ -270,7 +271,7 @@ export const exportPDF = (params = {}) => {
         window.URL.revokeObjectURL(url)
     })
 }
-export const exportXLSX = (params = {}) => {
+export const exportExcel = (params = {}) => {
     const token = localStorage.getItem('token')
     const config = {
         responseType: 'blob',
@@ -289,6 +290,7 @@ export const exportXLSX = (params = {}) => {
         window.URL.revokeObjectURL(url)
     })
 }
+export const exportXLSX = exportExcel
 
 // Backup
 export const downloadBackup = (include = 'full') => {

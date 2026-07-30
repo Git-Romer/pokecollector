@@ -240,7 +240,8 @@ def _upsert_collection_item(
     item: CollectionItemCreate,
     *,
     commit: bool = True,
-) -> tuple[str, CollectionItem]:
+    apply: bool = True,
+) -> tuple[str, Optional[CollectionItem]]:
     """Add or increment one exact physical inventory record."""
     _, detected_lang = pokemon_api.strip_lang_suffix(item.card_id)
     item_lang = _normalize_request_lang(item.lang or detected_lang or "en")
@@ -302,6 +303,8 @@ def _upsert_collection_item(
     ).first()
 
     if existing:
+        if not apply:
+            return "updated", existing
         before_quantity = int(existing.quantity or 0)
         before_notes = existing.notes
         existing.quantity += item.quantity or 1
@@ -327,6 +330,9 @@ def _upsert_collection_item(
             db.commit()
             db.refresh(existing)
         return "updated", existing
+
+    if not apply:
+        return "added", None
 
     db_item = CollectionItem(
         card_id=effective_card_id,
@@ -374,8 +380,14 @@ def _upsert_collection_item(
     return "added", db_item
 
 
-def _add_collection_item(db: Session, current_user: User, item: CollectionItemCreate, commit: bool = True) -> str:
-    status, _ = _upsert_collection_item(db, current_user, item, commit=commit)
+def _add_collection_item(
+    db: Session,
+    current_user: User,
+    item: CollectionItemCreate,
+    commit: bool = True,
+    apply: bool = True,
+) -> str:
+    status, _ = _upsert_collection_item(db, current_user, item, commit=commit, apply=apply)
     return status
 
 
@@ -649,10 +661,11 @@ def bulk_add_to_collection(
 @router.post("/import-csv", response_model=BulkCollectionAddResponse)
 async def import_collection_csv(
     file: UploadFile = File(...),
+    commit: bool = Query(default=False),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Import collection rows from a strict CSV format.
+    """Review or explicitly commit collection rows from a strict CSV format.
 
     Required header, in this exact order:
     set_code,number,quantity,condition,variant,lang,purchase_price
@@ -722,11 +735,23 @@ async def import_collection_csv(
             errors.append(f"row {row_number}: unexpected import error")
 
     if failed:
-        return BulkCollectionAddResponse(added=0, updated=0, failed=failed, errors=errors)
+        return BulkCollectionAddResponse(
+            added=0,
+            updated=0,
+            failed=failed,
+            errors=errors,
+            committed=False,
+        )
 
     for item in validated_items.values():
         try:
-            status = _add_collection_item(db, current_user, item, commit=False)
+            status = _add_collection_item(
+                db,
+                current_user,
+                item,
+                commit=False,
+                apply=commit,
+            )
             if status == "added":
                 added += 1
             else:
@@ -735,16 +760,37 @@ async def import_collection_csv(
             db.rollback()
             failed += 1
             errors.append(f"{item.card_id}: {exc.detail}")
-            return BulkCollectionAddResponse(added=0, updated=0, failed=failed, errors=errors)
+            return BulkCollectionAddResponse(
+                added=0,
+                updated=0,
+                failed=failed,
+                errors=errors,
+                committed=False,
+            )
         except Exception:
             logger.exception("Unexpected CSV import write error for card_id=%s", item.card_id)
             db.rollback()
             failed += 1
             errors.append(f"{item.card_id}: unexpected import error")
-            return BulkCollectionAddResponse(added=0, updated=0, failed=failed, errors=errors)
+            return BulkCollectionAddResponse(
+                added=0,
+                updated=0,
+                failed=failed,
+                errors=errors,
+                committed=False,
+            )
 
-    db.commit()
-    return BulkCollectionAddResponse(added=added, updated=updated, failed=failed, errors=errors)
+    if commit:
+        db.commit()
+    else:
+        db.rollback()
+    return BulkCollectionAddResponse(
+        added=added,
+        updated=updated,
+        failed=failed,
+        errors=errors,
+        committed=commit,
+    )
 
 @router.put("/{item_id}", response_model=CollectionItemResponse)
 def update_collection_item(
