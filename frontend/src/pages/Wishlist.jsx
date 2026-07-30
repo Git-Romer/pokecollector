@@ -11,6 +11,7 @@ import FallbackBadges from '../components/FallbackBadges'
 import { getEffectiveCardPrice } from '../utils/prices'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
+import { CardArtworkFrame } from '../components/UnifiedCard'
 
 function WishlistItemEditor({ item, onDone }) {
   const [quantity, setQuantity] = useState(item.quantity || 1)
@@ -291,12 +292,13 @@ export default function Wishlist() {
                         <tr key={item.id} className="border-b border-border/50 hover:bg-bg-elevated/50 transition-colors">
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-3">
-                              <div className="w-8 h-10 flex-shrink-0 rounded overflow-hidden">
-                                {resolveCardImageUrl(card) ? (
-                                  <img src={resolveCardImageUrl(card)} alt={card?.name} className="w-full h-full object-cover" />
-                                ) : (
-                                  <div className="w-full h-full bg-border" />
-                                )}
+                              <div className="w-8 flex-shrink-0">
+                                <CardArtworkFrame
+                                  card={card}
+                                  image={resolveCardImageUrl(card)}
+                                  alt={card?.name}
+                                  showStateIndicators={false}
+                                />
                               </div>
                               <div className="min-w-0">
                                 <p className="text-sm font-medium text-text-primary">{card?.name}</p>
@@ -403,6 +405,7 @@ export default function Wishlist() {
                   return (
                     <CardListItem
                       key={item.id}
+                      card={card}
                       image={resolveCardImageUrl(card)}
                       name={card?.name}
                       subtext={card?.set_ref?.name || '-'}

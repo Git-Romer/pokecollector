@@ -12,7 +12,6 @@ import MoneyInput from '../components/MoneyInput'
 import TabNav from '../components/TabNav'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
-import { useTilt } from '../hooks/useTilt'
 import { cardImageUrl, resolveCardImageUrl } from '../utils/imageUrl'
 import { cardNumberMatches } from '../utils/cardNumbers'
 import { normalizeSearchText, textIncludes } from '../utils/textSearch'
@@ -24,22 +23,7 @@ import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/q
 import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import { formatMoneyInputValue, parseMoneyInputValue } from '../utils/moneyInput'
 import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
-
-function TiltBinderCard({ className, onClick, children }) {
-  const { ref, onMouseMove, onMouseEnter, onMouseLeave } = useTilt(10)
-  return (
-    <div
-      ref={ref}
-      className={className}
-      onClick={onClick}
-      onMouseMove={onMouseMove}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
-    >
-      {children}
-    </div>
-  )
-}
+import UnifiedCard, { CardArtworkFrame } from '../components/UnifiedCard'
 
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
 const CONDITION_COLORS = {
@@ -477,13 +461,18 @@ function CollectionEditModal({ item, onClose }) {
 
   const renderCardHeader = () => (
     <div className="flex items-start gap-4 mb-5">
-      {cardImage && (
-        <div className={`w-20 rounded-xl overflow-hidden shadow-lg flex-shrink-0 ${getCardVariantEffectClass(variant)}`}>
-          <img src={cardImage} alt={card?.name} className="w-full" />
-        </div>
-      )}
+      <div className="w-20 flex-shrink-0">
+        <CardArtworkFrame
+          card={card}
+          image={cardImage}
+          alt={card?.name}
+          variantEffectSource={variant}
+          showStateIndicators={false}
+          loading="eager"
+        />
+      </div>
       <div className="flex-1 min-w-0">
-        <div className="flex items-start justify-between gap-2">
+        <div className="flex items-start gap-2 pr-8">
           <div className="min-w-0">
             <h2 className="text-base font-bold text-text-primary break-words">{card?.name}</h2>
             {card?.set_ref?.name && (
@@ -496,9 +485,6 @@ function CollectionEditModal({ item, onClose }) {
               <p className="text-sm font-bold text-green mt-1">{formatPrice(getEffectiveCardPrice(card, item.variant, pricePrimaryField))}</p>
             )}
           </div>
-          <button onClick={onClose} className="text-text-muted hover:text-text-primary flex-shrink-0 p-1">
-            <X size={18} />
-          </button>
         </div>
       </div>
     </div>
@@ -506,20 +492,21 @@ function CollectionEditModal({ item, onClose }) {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm md:flex md:items-center md:justify-center md:bg-black/80"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm sm:p-5"
       onClick={onClose}
     >
       <div
-        className={[
-          'fixed bottom-0 left-0 right-0 rounded-t-2xl max-h-[90dvh] overflow-y-auto',
-          'bg-bg-surface border-t border-border more-sheet-enter',
-          'md:static md:rounded-2xl md:border md:max-w-lg md:w-full md:max-h-[85vh] md:animate-none',
-        ].join(' ')}
+        className="relative max-h-[calc(100dvh-1.5rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-border bg-bg-surface shadow-2xl sm:max-h-[88dvh]"
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex justify-center pt-3 pb-1 md:hidden">
-          <div className="w-10 h-1 bg-border rounded-full" />
-        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-3 top-3 z-50 grid h-9 w-9 place-items-center rounded-full border border-white/15 bg-black/70 text-white shadow-lg transition-colors hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red"
+          aria-label={t('common.close')}
+        >
+          <X size={18} />
+        </button>
 
         <div className="grid overflow-hidden [perspective:1200px]">
           <div
@@ -1231,56 +1218,34 @@ export default function Collection() {
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
                 {filtered.map(item => {
                   const card = item.card
+                  const marketPrice = getEffectivePrice(card, item.variant)
                   return (
-                    <TiltBinderCard
+                    <UnifiedCard
                       key={item.id}
-                      className="binder-card cursor-pointer"
+                      card={card}
+                      image={resolveCardImageUrl(card)}
+                      price={marketPrice > 0 ? formatPrice(marketPrice) : null}
+                      languageLabel={item.lang ? tcgdexLanguageLabel(item.lang) : null}
+                      variantEffectSource={item.variant}
                       onClick={() => setEditingCollectionItem(item)}
-                    >
-                      <div
-                        className={`aspect-[2.5/3.5] relative rounded-xl overflow-hidden flex-shrink-0 ${getCardVariantEffectClass(item.variant)}`}
-                      >
-                        <CardImage src={resolveCardImageUrl(card)} alt={card?.name} className="w-full h-full object-cover" />
+                      overlay={(
+                        <>
                         <ProductSourceBadge item={item} t={t} compact className="absolute right-1 top-1 z-10 h-6 w-6" />
-                      </div>
-                      {(() => {
-                        const abbr = card?.set_ref?.abbreviation
-                        const num = card?.number
-                        const setName = card?.set_ref?.name
-                        if (abbr && num) {
-                          return (
-                            <p className="text-[10px] font-mono font-bold text-brand-red/70 leading-tight truncate mt-0.5 px-0.5">
-                              {abbr} {num}
-                            </p>
-                          )
-                        } else if (setName) {
-                          return (
-                            <p className="text-[10px] text-text-muted leading-tight truncate mt-0.5 px-0.5">
-                              {setName}
-                            </p>
-                          )
-                        }
-                        return null
-                      })()}
-                      <div className="flex flex-wrap gap-0.5 mt-0.5 px-0.5">
-                        {item.quantity > 1 && (
-                          <span className="inline-flex items-center gap-0.5 text-[10px] font-black px-1.5 py-0.5 rounded-full bg-brand-red/20 text-brand-red border border-brand-red/40">
-                            ×{item.quantity}
-                          </span>
-                        )}
-                        {item.variant && item.variant !== 'Normal' && (
-                          <span className="inline-flex max-w-full min-w-0 items-center justify-center text-center text-[10px] font-semibold leading-tight px-1.5 py-0.5 rounded-full bg-yellow/15 text-yellow border border-yellow/30 whitespace-normal break-words">
-                            ✨ {item.variant}
-                          </span>
-                        )}
-                        {item.lang && (
-                          <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${tcgdexLanguageBadgeClass(item.lang)}`}>
-                            {tcgdexLanguageLabel(item.lang)}
-                          </span>
-                        )}
-                        <FallbackBadges card={card} compact />
-                      </div>
-                    </TiltBinderCard>
+                        <div className="absolute bottom-2 left-2 right-2 z-20 flex flex-wrap gap-1">
+                          {item.quantity > 1 && (
+                            <span className="rounded-full border border-brand-red/50 bg-black/80 px-2 py-1 text-[10px] font-black text-brand-red">
+                              ×{item.quantity}
+                            </span>
+                          )}
+                          {item.variant && item.variant !== 'Normal' && (
+                            <span className="max-w-full rounded-full border border-yellow/40 bg-black/80 px-2 py-1 text-center text-[10px] font-bold leading-tight text-yellow">
+                              ✨ {item.variant}
+                            </span>
+                          )}
+                        </div>
+                        </>
+                      )}
+                    />
                   )
                 })}
               </div>
@@ -1339,8 +1304,14 @@ export default function Collection() {
                         >
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-3">
-                              <div className={`w-8 h-10 flex-shrink-0 rounded overflow-hidden ${getCardVariantEffectClass(item.variant)}`}>
-                                <CardImage src={resolveCardImageUrl(card)} alt={card?.name} className="w-full h-full object-cover" />
+                              <div className="w-8 flex-shrink-0">
+                                <CardArtworkFrame
+                                  card={card}
+                                  image={resolveCardImageUrl(card)}
+                                  alt={card?.name}
+                                  variantEffectSource={item.variant}
+                                  showStateIndicators={false}
+                                />
                               </div>
                               <div className="min-w-0">
                                 <div className="flex items-center gap-1 flex-wrap">
@@ -1437,6 +1408,7 @@ export default function Collection() {
                   return (
                     <CardListItem
                       key={item.id}
+                      card={card}
                       image={resolveCardImageUrl(card)}
                       name={card?.name}
                       subtext={[card?.set_ref?.name, card?.number ? `#${card.number}` : null].filter(Boolean).join(' · ') || '-'}

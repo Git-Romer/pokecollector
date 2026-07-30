@@ -7,38 +7,31 @@ import { format, parseISO } from 'date-fns'
 import toast from 'react-hot-toast'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
+import { CardArtworkFrame } from '../components/UnifiedCard'
 
 function CardPreview({ card, label }) {
   const { t } = useSettings()
-  if (!card) return (
-    <div className="flex flex-col items-center gap-2 text-text-muted">
-      <div className="w-24 h-32 rounded-lg bg-bg-card border border-border flex items-center justify-center">
-        <span className="text-xs">{t('migration.noImage')}</span>
-      </div>
-      <span className="text-xs text-text-muted">{label}</span>
-    </div>
-  )
 
   return (
     <div className="flex flex-col items-center gap-2">
-      <div className="w-24 h-32 rounded-lg overflow-hidden bg-bg-card border border-border flex-shrink-0">
-        {resolveCardImageUrl(card) ? (
-          <img src={resolveCardImageUrl(card)} alt={card.name} className="w-full h-full object-cover" />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <span className="text-xs text-text-muted">{t('migration.noImage')}</span>
-          </div>
-        )}
+      <div className="w-24 flex-shrink-0">
+        <CardArtworkFrame
+          card={card || {}}
+          image={resolveCardImageUrl(card)}
+          alt={card?.name || t('migration.noImage')}
+          showStateIndicators={false}
+          loading="eager"
+        />
       </div>
       <div className="text-center max-w-[120px]">
-        <p className="text-xs font-medium text-text-primary truncate">{card.name}</p>
-        {card.set_id && (
+        <p className="text-xs font-medium text-text-primary truncate">{card?.name || t('migration.noImage')}</p>
+        {card?.set_id && (
           <p className="text-xs text-text-muted truncate">
             {card.set_id}{card.number ? ` #${card.number}` : ''}
           </p>
         )}
-        {card.rarity && <p className="text-xs text-text-muted truncate">{card.rarity}</p>}
-        {card.is_custom && (
+        {card?.rarity && <p className="text-xs text-text-muted truncate">{card.rarity}</p>}
+        {card?.is_custom && (
           <span className="inline-block mt-1 text-xs bg-yellow/20 text-yellow px-1.5 py-0.5 rounded-full">{t('migration.custom')}</span>
         )}
       </div>

@@ -4,24 +4,32 @@
  *
  * Usage: <CardImage src={url} alt={card.name} className="w-full h-full object-cover" />
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 const CARD_BACK = '/cardback.jpg'
 
 export default function CardImage({ src, alt, className, showName = false, style, loading = 'lazy' }) {
   const [failed, setFailed] = useState(false)
-  
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    setFailed(false)
+    setLoaded(false)
+  }, [src])
+
   const handleError = (e) => {
     e.currentTarget.onerror = null // prevent infinite loop
     e.currentTarget.src = CARD_BACK
     e.currentTarget.style.opacity = '0.8'
     setFailed(true)
+    setLoaded(true)
   }
 
   const showOverlay = !src || failed || showName
 
   return (
-    <div className="relative w-full h-full">
+    <div className="relative w-full h-full bg-bg-elevated">
+      {!loaded && <div className="unified-card-skeleton absolute inset-0" aria-hidden />}
       <img
         src={src || CARD_BACK}
         alt={alt}
@@ -29,6 +37,7 @@ export default function CardImage({ src, alt, className, showName = false, style
         style={{ ...(src && !failed ? {} : { opacity: 0.8 }), ...style }}
         loading={loading}
         onError={handleError}
+        onLoad={() => setLoaded(true)}
       />
       {showOverlay && alt && (
         <div

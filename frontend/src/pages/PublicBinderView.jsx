@@ -6,8 +6,8 @@ import { getPublicBinder } from '../api/publicClient'
 import { formatEur } from '../utils/formatEur'
 import { groupCardsByPrint } from '../utils/groupCardsByPrint'
 import { useSettings } from '../contexts/SettingsContext'
-import CardStateIndicators, { CardStateLegend } from '../components/CardStateIndicators'
-import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
+import { CardStateLegend } from '../components/CardStateIndicators'
+import { CardArtworkFrame } from '../components/UnifiedCard'
 
 export default function PublicBinderView() {
   const { handle, binderId } = useParams()
@@ -100,19 +100,17 @@ export default function PublicBinderView() {
                     </div>
                   )
                 })}
-                <div className={clsx(
-                  'relative z-10 aspect-[5/7] overflow-hidden rounded bg-bg-secondary',
-                  getCardVariantEffectClass(tile.prints)
-                )}>
-                  {tile.image
-                    ? <img src={tile.image} alt={tile.name} className="w-full h-full object-cover" loading="lazy" />
-                    : <div className="w-full h-full" />}
-                  <CardStateIndicators
-                    card={{ owned_variants: tile.prints }}
-                    compact
-                    showWishlist={false}
-                    alwaysShowQuantity
-                    className="absolute left-1 right-1 top-1 z-20"
+                <div className="relative z-10">
+                  <CardArtworkFrame
+                    card={tile}
+                    image={tile.image}
+                    alt={tile.name}
+                    variantEffectSource={tile.prints}
+                    stateIndicatorProps={{
+                      card: { owned_variants: tile.prints },
+                      showWishlist: false,
+                      alwaysShowQuantity: true,
+                    }}
                   />
                 </div>
               </div>

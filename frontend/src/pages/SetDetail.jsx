@@ -10,14 +10,14 @@ import clsx from 'clsx'
 import { resolveCardImageUrl, resolveSetImageUrl } from '../utils/imageUrl'
 import { CARD_VARIANTS, getAvailableVariants, getDefaultVariantOrNull } from '../utils/cardVariants'
 import FallbackBadges from '../components/FallbackBadges'
-import CardStateIndicators, { CardStateLegend } from '../components/CardStateIndicators'
+import { CardStateLegend } from '../components/CardStateIndicators'
 import { HOLO_FIELD_MAP } from '../utils/prices'
 import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import MoneyInput from '../components/MoneyInput'
 import { parseMoneyInputValue } from '../utils/moneyInput'
-import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
 import { useDetailBackNavigation, useScrollToTopOnPush } from '../hooks/useListScrollRestoration'
+import UnifiedCard, { CardArtworkFrame } from '../components/UnifiedCard'
 
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
 
@@ -168,27 +168,30 @@ function SetCardActionModal({ card, setLang, onClose, onAdd, onAddWishlist, onQu
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm md:flex md:items-center md:justify-center md:bg-black/80" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm sm:p-5" onClick={onClose}>
       <div
-        className={[
-          'fixed bottom-0 left-0 right-0 rounded-t-2xl max-h-[90dvh] overflow-y-auto',
-          'bg-bg-surface border-t border-border more-sheet-enter',
-          'md:static md:w-full md:max-w-md md:rounded-2xl md:border md:max-h-[85vh] md:animate-none',
-        ].join(' ')}
+        className="relative max-h-[calc(100dvh-1.5rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-border bg-bg-surface shadow-2xl sm:max-h-[88dvh]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex justify-center pt-3 pb-1 md:hidden">
-          <div className="w-10 h-1 bg-border rounded-full" />
-        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-3 top-3 z-50 grid h-9 w-9 place-items-center rounded-full border border-white/15 bg-black/70 text-white shadow-lg hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red"
+          aria-label={t('common.close')}
+        >
+          <X size={18} />
+        </button>
 
         <div className="p-5">
-          <div className="flex items-start justify-between gap-3 mb-4">
-            <div className="min-w-0">
+          <div className="mb-4 flex items-start gap-3 pr-9">
+            <div className="w-16 flex-shrink-0">
+              <CardArtworkFrame card={card} image={resolveCardImageUrl(card)} alt={card.name} showStateIndicators={false} loading="eager" />
+            </div>
+            <div className="min-w-0 flex-1">
               <h2 className="text-lg font-bold text-text-primary">{card.name}</h2>
               <p className="text-xs text-text-muted">#{card.number} · {setLang.toUpperCase()}</p>
               <FallbackBadges card={card} className="mt-1" />
             </div>
-            <button onClick={onClose} className="text-text-muted hover:text-text-primary"><X size={18} /></button>
           </div>
 
           <div className="space-y-4">
@@ -284,7 +287,7 @@ export default function SetDetail() {
   const { setId } = useParams()
   const goBack = useDetailBackNavigation('sets', '/sets')
   useScrollToTopOnPush()
-  const { t, pricePrimaryField } = useSettings()
+  const { t, pricePrimaryField, formatPrice } = useSettings()
   const queryClient = useQueryClient()
   const [filter, setFilter] = useState('all')
   const [sortBy, setSortBy] = useState('number')
@@ -566,46 +569,14 @@ export default function SetDetail() {
       {/* Card Grid */}
       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
         {filteredCards.map((card) => (
-          <div key={card.id}
+          <UnifiedCard
+            key={card.id}
+            card={card}
+            image={resolveCardImageUrl(card)}
+            price={setSortPrice(card, pricePrimaryField) > 0 ? formatPrice(setSortPrice(card, pricePrimaryField)) : null}
             onClick={() => setSelectedCard(card)}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedCard(card) }}
-            role="button"
-            tabIndex={0}
-            className={clsx(
-              'relative group rounded-lg overflow-hidden transition-all duration-200',
-              getCardVariantEffectClass(card),
-              card.owned
-                ? 'ring-2 ring-green/50 hover:ring-green cursor-pointer'
-                : 'opacity-60 hover:opacity-90 ring-1 ring-brand-red/30 hover:ring-brand-red/60 cursor-pointer'
-            )}>
-            {resolveCardImageUrl(card) ? (
-              <img src={resolveCardImageUrl(card)} alt={card.name} className="w-full aspect-[2.5/3.5] object-cover" loading="lazy" />
-            ) : (
-              <div className="w-full aspect-[2.5/3.5] bg-bg-card flex items-center justify-center text-xs text-text-muted p-1 text-center">
-                {card.name}
-              </div>
-            )}
-
-            <CardStateIndicators card={card} compact className="absolute left-1 right-1 top-1 z-10" />
-            <div className="absolute left-1 right-1 bottom-6 z-10 flex flex-col items-center gap-1 pointer-events-none">
-              <FallbackBadges card={card} className="justify-center" compact variant="overlay" />
-            </div>
-
-            {/* Above the pills (z-10) so hovering dims them along with the art, rather
-                than leaving them lit on top of the overlay. */}
-            <div className="absolute inset-0 z-20 bg-black/0 group-hover:bg-black/40 transition-all flex flex-col items-center justify-center gap-1 opacity-0 group-hover:opacity-100">
-              <p className="text-white text-xs font-medium text-center px-1 line-clamp-2">{card.name}</p>
-              <button onClick={(e) => { e.stopPropagation(); setSelectedCard(card) }}
-                className="bg-brand-red text-white rounded-full p-1">
-                <Plus size={12} />
-              </button>
-            </div>
-
-
-            <div className="absolute bottom-0 left-0 right-0 z-10 bg-black/60 text-center text-xs text-text-secondary py-0.5">
-              #{card.number}
-            </div>
-          </div>
+            onAdd={() => setSelectedCard(card)}
+          />
         ))}
       </div>
 

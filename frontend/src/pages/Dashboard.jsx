@@ -12,10 +12,10 @@ import { useAuth } from '../contexts/AuthContext'
 import { format, parseISO } from 'date-fns'
 import TrainerCard from '../components/TrainerCard'
 import PokeBallLoader from '../components/PokeBallLoader'
-import CardImage from '../components/CardImage'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 import { collectionItemTargetUrl } from '../utils/navigation'
 import AnalyticsSectionNav from '../components/AnalyticsSectionNav'
+import { CardArtworkFrame } from '../components/UnifiedCard'
 
 const CustomTooltip = ({ active, payload, label }) => {
   const { formatPrice } = useSettings()
@@ -145,9 +145,7 @@ export default function Dashboard() {
           <div className="flex gap-2.5 overflow-x-auto pb-2 no-scrollbar -mx-4 px-4">
             {data.recent_additions.slice(0, 12).map(card => (
               <div key={card.id} className="flex-shrink-0 w-20 group cursor-pointer" onClick={() => openCollectionItem(card)}>
-                <div className="aspect-[2.5/3.5] rounded-lg overflow-hidden shadow-lg ring-1 ring-white/5 group-hover:ring-brand-red/50 group-hover:scale-[1.03] transition-all duration-150 transform-gpu origin-center">
-                  <CardImage src={resolveCardImageUrl(card)} alt={card.name} className="w-full h-full object-cover" />
-                </div>
+                <CardArtworkFrame card={card} image={resolveCardImageUrl(card)} alt={card.name} />
                 {card.price_market > 0 && (
                   <p className="text-[10px] font-bold text-gold mt-1 truncate">
                     {formatPrice(card.price_market)}
@@ -190,9 +188,7 @@ export default function Dashboard() {
             {data.top_cards.slice(0, 10).map((card, i) => (
               <div key={card.collection_item_id || card.id} className="flex-shrink-0 w-24 group cursor-pointer" onClick={() => openCollectionItem(card)}>
                 <div className="relative">
-                  <div className="aspect-[2.5/3.5] rounded-lg overflow-hidden shadow-lg ring-1 ring-white/5 group-hover:scale-[1.03] transition-all duration-150 group-hover:ring-gold/40 transform-gpu origin-center">
-                    <CardImage src={resolveCardImageUrl(card)} alt={card.name} className="w-full h-full object-cover" />
-                  </div>
+                  <CardArtworkFrame card={card} image={resolveCardImageUrl(card)} alt={card.name} />
                   <span className="absolute top-1 left-1 bg-black/80 text-gold text-[9px] font-black rounded px-1 leading-4">
                     #{i + 1}
                   </span>

@@ -5,15 +5,14 @@ import { ArrowLeft, Plus, Trash2, Package, Star, Download, Upload, X, Heart, Min
 import { getBinderCards, removeCardFromBinder, removeBinderEntry, addCardToBinder, addCollectionItemToBinder, searchCards, getCollection, updateBinderEntry, getBinderEntryEquivalentPrints, getBinderPrintOptimization, applyBinderPrintOptimization, switchBinderEntryCard, addBinderEntryToWishlist, addBinderCardsToWishlist, importBinderCsv, exportBinderCsv, getApiErrorMessage } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
-import { useTilt } from '../hooks/useTilt'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 import { cardNumberMatches } from '../utils/cardNumbers'
 import { normalizeSearchText, textIncludes } from '../utils/textSearch'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
-import CardStateIndicators, { CardStateLegend } from '../components/CardStateIndicators'
-import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
+import { CardStateLegend } from '../components/CardStateIndicators'
 import { BINDER_SORT_OPTIONS, sortBinderCards } from '../utils/binderCards'
+import UnifiedCard, { CardArtworkFrame } from '../components/UnifiedCard'
 
 const SPRITE_BASE_URL = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated'
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
@@ -113,22 +112,6 @@ function BinderCsvImportModal({ t, isWishlist, onClose, onChooseFile, onDownload
           </p>
         </div>
       </div>
-    </div>
-  )
-}
-
-function TiltBinderCard({ className, onClick, children }) {
-  const { ref, onMouseMove, onMouseEnter, onMouseLeave } = useTilt(10)
-  return (
-    <div
-      ref={ref}
-      className={className}
-      onClick={onClick}
-      onMouseMove={onMouseMove}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
-    >
-      {children}
     </div>
   )
 }
@@ -589,27 +572,18 @@ export default function BinderDetail() {
                   {searchResults.data.map((card) => {
                     const alreadyAdded = cards.some(c => c.id === card.id)
                     return (
-                      <div key={card.id}
-                        className={`relative rounded-lg overflow-hidden cursor-pointer group ${alreadyAdded ? 'opacity-40' : ''}`}
+                      <UnifiedCard
+                        key={card.id}
+                        card={card}
+                        image={resolveCardImageUrl(card)}
+                        compact
+                        unavailableReason={alreadyAdded ? t('binderTypes.alreadyUsed') : ''}
                         onClick={() => {
                           if (alreadyAdded) return
                           const requiredQuantity = askQuantity(t, 1)
                           if (requiredQuantity) addMutation.mutate({ cardId: card.id, requiredQuantity })
-                        }}>
-                        {(card.images?.small || resolveCardImageUrl(card) || card.image) ? (
-                          <img src={resolveCardImageUrl(card)}
-                            alt={card.name} className="w-full aspect-[2.5/3.5] object-cover" loading="lazy" />
-                        ) : (
-                          <div className="w-full aspect-[2.5/3.5] bg-bg-card flex items-center justify-center text-xs text-text-muted p-1 text-center">
-                            {card.name}
-                          </div>
-                        )}
-                        {!alreadyAdded && (
-                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
-                            <Plus size={20} className="text-white" />
-                          </div>
-                        )}
-                      </div>
+                        }}
+                      />
                     )
                   })}
                 </div>
@@ -630,34 +604,23 @@ export default function BinderDetail() {
                     const alreadyAdded = cards.some(c => c.collection_item_id === item.id)
                     const unavailable = unavailableCollectionItemIds.has(item.id)
                     return (
-                      <div key={`${card.id}-${item.id}`}
-                        className={`relative rounded-lg overflow-hidden cursor-pointer group ${getCardVariantEffectClass(item.variant)} ${alreadyAdded || unavailable ? 'opacity-40' : ''}`}
+                      <UnifiedCard
+                        key={`${card.id}-${item.id}`}
+                        card={card}
+                        image={resolveCardImageUrl(card)}
+                        compact
+                        variantEffectSource={item.variant}
                         onClick={() => !alreadyAdded && !unavailable && addCollectionItemMutation.mutate(item.id)}
-                        title={`${card.name}${item.variant ? ` (${item.variant})` : ''} · ${item.quantity}x`}>
-                        {resolveCardImageUrl(card) ? (
-                          <img src={resolveCardImageUrl(card)} alt={card.name} className="w-full aspect-[2.5/3.5] object-cover" loading="lazy" />
-                        ) : (
-                          <div className="w-full aspect-[2.5/3.5] bg-bg-card flex items-center justify-center text-xs text-text-muted p-1 text-center">
-                            {card.name}
-                          </div>
-                        )}
-                        <div className="absolute top-0.5 left-0.5 z-10 bg-bg/80 text-text-primary text-xs rounded px-1">{item.quantity}x</div>
-                        {(item.variant || item.condition) && (
-                          <div className="absolute bottom-0 left-0 right-0 z-10 bg-black/70 text-white text-[9px] text-center truncate px-1">
+                        unavailableReason={alreadyAdded || unavailable ? t('binderTypes.alreadyUsed') : ''}
+                        overlay={(
+                          <>
+                          <div className="absolute left-2 top-2 z-20 rounded-full bg-black/80 px-2 py-1 text-[10px] font-bold text-white">{item.quantity}x</div>
+                          <div className="absolute bottom-2 left-2 right-2 z-20 truncate rounded-full bg-black/80 px-2 py-1 text-center text-[9px] text-white">
                             {[item.variant || 'Normal', item.condition].filter(Boolean).join(' · ')}
                           </div>
+                          </>
                         )}
-                        {unavailable && !alreadyAdded && (
-                          <div className="absolute inset-0 z-10 bg-black/65 flex items-center justify-center text-white text-[10px] text-center px-1">
-                            {t('binderTypes.alreadyUsed')}
-                          </div>
-                        )}
-                        {!alreadyAdded && !unavailable && (
-                          <div className="absolute inset-0 z-10 bg-black/0 group-hover:bg-black/50 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
-                            <Plus size={20} className="text-white" />
-                          </div>
-                        )}
-                      </div>
+                      />
                     )
                   })}
                 </div>
@@ -760,20 +723,18 @@ export default function BinderDetail() {
             const isMissing = isWishlist && (card.missing_quantity || 0) > 0
 
             return (
-              <TiltBinderCard key={card.binder_card_id || card.id} className="relative group rounded-xl overflow-hidden card p-0 cursor-pointer" onClick={() => setSelectedCard(card)}>
-                <div className={`relative w-full aspect-[2.5/3.5] overflow-hidden ${getCardVariantEffectClass(card.variant)}`}>
-                  {resolveCardImageUrl(card) ? (
-                    <img src={resolveCardImageUrl(card)} alt={card.name}
-                      className={`w-full h-full object-cover transition-all ${isMissing ? 'grayscale opacity-60' : ''}`}
-                      loading="lazy" />
-                  ) : (
-                    <div className={`w-full h-full bg-bg-card flex items-center justify-center text-xs text-text-muted p-1 text-center ${isMissing ? 'grayscale opacity-60' : ''}`}>
-                      {card.name}
-                    </div>
-                  )}
-
+              <UnifiedCard
+                key={card.binder_card_id || card.id}
+                card={card}
+                image={resolveCardImageUrl(card)}
+                price={card.price_market > 0 ? formatPrice(card.price_market) : null}
+                variantEffectSource={card.variant}
+                unavailableReason={isMissing ? t('binderTypes.missing') : ''}
+                onClick={() => setSelectedCard(card)}
+                overlay={(
+                  <>
                   {isWishlist && (
-                    <div className={`absolute top-1 left-1 z-20 rounded-full text-white text-xs px-1.5 py-0.5 font-medium ${
+                    <div className={`absolute left-2 top-2 z-20 rounded-full px-2 py-1 text-[10px] font-bold text-white ${
                       isComplete ? 'bg-green/90' : 'bg-bg-elevated/90 text-text-secondary'
                     }`}>
                       {(card.owned_quantity || 0) >= (card.required_quantity || 1) ? `✓ ${card.owned_quantity || 0}/${card.required_quantity || 1}` : `${card.owned_quantity || 0}/${card.required_quantity || 1}`}
@@ -781,31 +742,13 @@ export default function BinderDetail() {
                   )}
 
                   {!isWishlist && card.in_collection && (
-                    <div className="absolute top-1 left-1 z-20 bg-green/80 rounded-full text-white text-xs px-1">
+                    <div className="absolute left-2 top-2 z-20 rounded-full bg-black/80 px-2 py-1 text-[10px] font-bold text-white">
                       {card.quantity}x
                     </div>
                   )}
-
-                  {isCollection && card.variant && (
-                    <CardStateIndicators
-                      card={{ owned_variants: [{ variant: card.variant, quantity: card.quantity || 1 }] }}
-                      compact
-                      showWishlist={false}
-                      showQuantity={false}
-                      className="absolute right-1 top-1 z-20"
-                    />
-                  )}
-                </div>
-
-                <div className="p-1.5">
-                  <p className="text-xs text-text-primary font-medium truncate">{card.name}</p>
-                  {card.price_market > 0 ? (
-                    <p className="text-xs text-green">{formatPrice(card.price_market)}</p>
-                  ) : (
-                    <p className="text-xs text-text-muted">{t('binderTypes.noPriceDataShort')}</p>
-                  )}
-                </div>
-              </TiltBinderCard>
+                  </>
+                )}
+              />
             )
           })}
         </div>
@@ -927,29 +870,40 @@ export default function BinderDetail() {
       )}
 
       {selectedCard && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setSelectedCard(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm sm:p-5" onClick={() => setSelectedCard(null)}>
           <div
-            className="bg-bg-surface border border-border rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[90vh] overflow-y-auto"
+            className="relative max-h-[calc(100dvh-1.5rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-border bg-bg-surface shadow-2xl sm:max-h-[88dvh]"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
             aria-labelledby="binder-card-dialog-title"
           >
+            <button
+              ref={selectedCardCloseRef}
+              type="button"
+              onClick={() => setSelectedCard(null)}
+              className="absolute right-3 top-3 z-50 grid h-9 w-9 place-items-center rounded-full border border-white/15 bg-black/70 text-white shadow-lg hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red"
+              aria-label={t('common.close')}
+            >
+              <X size={18} />
+            </button>
             <div className="p-4 space-y-4">
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3 pr-10">
                 <div className="min-w-0">
                   <h2 id="binder-card-dialog-title" className="text-lg font-bold text-text-primary truncate">{selectedCard.name}</h2>
                   <p className="text-xs text-text-muted">{selectedCard.set_name || selectedCard.set_id} #{selectedCard.number}</p>
                 </div>
-                <button ref={selectedCardCloseRef} onClick={() => setSelectedCard(null)} className="text-text-muted hover:text-text-primary p-1" aria-label={t('common.close')}><X size={18} /></button>
               </div>
 
               <div className="grid grid-cols-[120px_1fr] gap-4">
-                {resolveCardImageUrl(selectedCard) ? (
-                  <img src={resolveCardImageUrl(selectedCard)} alt={selectedCard.name} className="w-full rounded-xl" />
-                ) : (
-                  <div className="aspect-[2.5/3.5] rounded-xl bg-bg-card flex items-center justify-center text-xs text-text-muted text-center p-2">{selectedCard.name}</div>
-                )}
+                <CardArtworkFrame
+                  card={selectedCard}
+                  image={resolveCardImageUrl(selectedCard)}
+                  alt={selectedCard.name}
+                  variantEffectSource={selectedCard.variant}
+                  showStateIndicators={false}
+                  loading="eager"
+                />
                 <div className="space-y-3 text-sm">
                   <div className="grid grid-cols-2 gap-2">
                     <div className="rounded-lg bg-bg-card p-2"><p className="text-xs text-text-muted">{t('binderTypes.owned')}</p><p className="font-bold text-green">{selectedCard.owned_quantity || 0}</p></div>
@@ -998,11 +952,15 @@ export default function BinderDetail() {
                         const imageUrl = resolveCardImageUrl(print)
                         return (
                           <div key={print.collection_item_id || print.id} className={`flex items-center gap-3 rounded-lg border p-2 ${print.is_current ? 'border-yellow/40 bg-yellow/5' : 'border-border bg-bg/40'}`}>
-                            {imageUrl ? (
-                              <img src={imageUrl} alt={print.name} className="w-10 aspect-[2.5/3.5] object-cover rounded" loading="lazy" />
-                            ) : (
-                              <div className="w-10 aspect-[2.5/3.5] rounded bg-bg-elevated flex items-center justify-center text-[9px] text-text-muted text-center px-1">{print.name}</div>
-                            )}
+                            <div className="w-10 flex-shrink-0">
+                              <CardArtworkFrame
+                                card={print}
+                                image={imageUrl}
+                                alt={print.name}
+                                variantEffectSource={print.variant}
+                                showStateIndicators={false}
+                              />
+                            </div>
                             <div className="min-w-0 flex-1">
                               <p className="text-xs font-semibold text-text-primary truncate">{print.set_name || print.set_id} #{print.number}</p>
                               <div className="flex items-center gap-2 flex-wrap text-[11px] text-text-muted">

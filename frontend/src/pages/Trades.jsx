@@ -11,13 +11,12 @@ import {
   getTrades,
   searchCards,
 } from '../api/client'
-import CardImage from '../components/CardImage'
 import MoneyInput from '../components/MoneyInput'
 import { CustomCardModal } from '../components/CardItem'
 import { useSettings } from '../contexts/SettingsContext'
 import { CARD_VARIANTS, getDefaultVariantOrNull } from '../utils/cardVariants'
 import { resolveCardImageUrl } from '../utils/imageUrl'
-import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
+import { CardArtworkFrame } from '../components/UnifiedCard'
 import { getEffectiveCardPrice, priceFieldFromPrimary } from '../utils/prices'
 import { formatMoneyInputValue, parseMoneyInputValue } from '../utils/moneyInput'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
@@ -139,8 +138,14 @@ function TradeHealthBar({ outgoingValue, incomingValue, scoreOutgoingValue, miss
 function MiniCardRow({ card, variant, meta, value, rightAction }) {
   return (
     <div className="flex items-center gap-3 rounded-lg border border-border bg-bg-card p-2 min-w-0">
-      <div className={`h-14 w-10 flex-shrink-0 overflow-hidden rounded bg-bg-elevated ${getCardVariantEffectClass(variant)}`}>
-        <CardImage src={resolveCardImageUrl(card)} alt={cardTitle(card)} className="h-full w-full object-cover" />
+      <div className="w-10 flex-shrink-0">
+        <CardArtworkFrame
+          card={card}
+          image={resolveCardImageUrl(card)}
+          alt={cardTitle(card)}
+          variantEffectSource={variant}
+          showStateIndicators={false}
+        />
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold text-text-primary">{cardTitle(card)}</p>

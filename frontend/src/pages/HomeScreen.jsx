@@ -13,10 +13,9 @@ import { useSettings } from '../contexts/SettingsContext'
 import { useAuth } from '../contexts/AuthContext'
 import toast from 'react-hot-toast'
 import { format, parseISO } from 'date-fns'
-import { useTilt } from '../hooks/useTilt'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 import { collectionItemTargetUrl } from '../utils/navigation'
-import CardImage from '../components/CardImage'
+import { CardArtworkFrame } from '../components/UnifiedCard'
 
 // Compact number formatter for mobile (1.2k, 3.4M, etc.)
 function compactNum(n) {
@@ -53,14 +52,9 @@ function ChartTooltip({ active, payload, label, formatPrice }) {
 // ── Card thumbnail ────────────────────────────────────────────────────────────
 function CardThumb({ card, onClick }) {
   const img = resolveCardImageUrl(card)
-  const { ref, onMouseMove, onMouseEnter, onMouseLeave } = useTilt(8)
   return (
-    <div ref={ref} className="flex-shrink-0 w-[110px] cursor-pointer group" onClick={onClick} onMouseMove={onMouseMove} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
-      <div className="aspect-[2.5/3.5] rounded-xl overflow-hidden shadow-lg transition-all duration-150
-        group-hover:shadow-brand-red/20"
-        style={{ border: '1px solid rgba(255,255,255,0.07)', boxShadow: '0 4px 16px rgba(0,0,0,0.5)' }}>
-        <CardImage src={img} alt={card.name} className="w-full h-full object-cover" />
-      </div>
+    <div className="w-[110px] flex-shrink-0">
+      <CardArtworkFrame card={card} image={img} alt={card.name} interactive onClick={onClick} />
     </div>
   )
 }
@@ -456,11 +450,7 @@ export default function HomeScreen() {
                 <div key={card.collection_item_id || card.id} className="flex-shrink-0 w-[110px] cursor-pointer group"
                   onClick={() => openCollectionItem(card)}>
                   <div className="relative">
-                    <div className="aspect-[2.5/3.5] rounded-xl overflow-hidden shadow-lg transition-all duration-150
-                      group-hover:scale-[1.03]"
-                      style={{ border:'1px solid rgba(245,200,66,0.2)', boxShadow:'0 4px 16px rgba(0,0,0,0.5)' }}>
-                      <CardImage src={resolveCardImageUrl(card)} alt={card.name} className="w-full h-full object-cover" />
-                    </div>
+                    <CardArtworkFrame card={card} image={resolveCardImageUrl(card)} alt={card.name} />
                     <span className="absolute top-1 left-1 text-[9px] font-black px-1 rounded leading-4"
                       style={{ background:'rgba(0,0,0,0.85)', color:'#f5c842' }}>#{i+1}</span>
                   </div>

@@ -137,6 +137,134 @@ input:-webkit-autofill:focus {
     padding: 1rem;
   }
 
+  /* ── Unified card artwork/caption system ── */
+  .unified-card-frame {
+    position: relative;
+    width: 100%;
+    padding: 4px;
+    border-radius: 15px;
+    background: var(--card-frame-gradient, #717a89);
+    box-shadow: 0 8px 22px rgba(0,0,0,0.4);
+    transition: background 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+  }
+  .unified-card-frame-interactive {
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .unified-card-frame-interactive:hover,
+  .unified-card-frame-interactive:focus-visible {
+    background: var(--card-frame-hover-gradient, #c6ccd7);
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.45),
+      0 0 23px rgba(166,174,190,0.34),
+      0 12px 28px rgba(0,0,0,0.48);
+    outline: none;
+    transform: translateY(-1px);
+  }
+  .unified-card-frame-interactive:focus-visible {
+    box-shadow:
+      0 0 0 2px #fff,
+      0 0 0 5px rgba(227,0,11,0.9),
+      0 0 24px rgba(227,0,11,0.5),
+      0 12px 28px rgba(0,0,0,0.48);
+  }
+  .unified-card-frame-unavailable {
+    cursor: not-allowed;
+  }
+  .unified-card-art {
+    position: relative;
+    aspect-ratio: 2.5 / 3.5;
+    width: 100%;
+    overflow: hidden;
+    border-radius: 11px;
+    background: var(--color-elevated);
+  }
+  .unified-card-caption {
+    min-height: 48px;
+    padding: 8px 2px 0;
+  }
+  .unified-card-add {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    border: 0;
+    border-radius: 11px;
+    background: rgba(0,0,0,0.28);
+    color: white;
+    opacity: 0;
+    transition: opacity 160ms ease, background 160ms ease;
+  }
+  .unified-card-add::before {
+    content: '';
+    position: absolute;
+    width: 44px;
+    height: 44px;
+    border: 2px solid rgba(255,255,255,0.75);
+    border-radius: 9999px;
+    background: rgba(227,0,11,0.92);
+    box-shadow: 0 0 18px rgba(227,0,11,0.55);
+  }
+  .unified-card-add > svg {
+    position: relative;
+    z-index: 1;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .unified-card-frame:hover .unified-card-add,
+    .unified-card-frame:focus-within .unified-card-add {
+      opacity: 1;
+    }
+  }
+  .unified-card-selection {
+    position: absolute;
+    right: 7px;
+    top: 7px;
+    z-index: 35;
+    display: grid;
+    width: 28px;
+    height: 28px;
+    place-items: center;
+    border: 1px solid rgba(255,255,255,0.55);
+    border-radius: 8px;
+    background: var(--color-brand-red);
+    color: white;
+    font-size: 13px;
+    font-weight: 900;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.42);
+  }
+  .unified-card-unavailable-reason {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+    z-index: 35;
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 7px;
+    background: rgba(8,8,15,0.92);
+    padding: 6px 8px;
+    color: white;
+    text-align: center;
+    font-size: 10px;
+    font-weight: 800;
+  }
+  .unified-card-frame-unavailable .unified-card-art > div:first-of-type,
+  .unified-card-frame-unavailable .unified-card-art > img {
+    filter: grayscale(0.78);
+    opacity: 0.42;
+  }
+  .unified-card-skeleton {
+    background: linear-gradient(105deg, #1e2631 0 38%, #303947 48%, #1e2631 58% 100%);
+    background-size: 220% 100%;
+    animation: unified-card-shimmer 1.35s linear infinite;
+  }
+  @keyframes unified-card-shimmer {
+    from { background-position: 100% 0; }
+    to { background-position: -120% 0; }
+  }
+
   /* ── Buttons — bold with glow ── */
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2

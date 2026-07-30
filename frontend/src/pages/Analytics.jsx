@@ -300,6 +300,7 @@ export default function Analytics() {
                 {duplicates.map((item) => (
                   <CardListItem
                     key={item.id}
+                    card={item}
                     image={resolveCardImageUrl(item)}
                     name={item.name}
                     subtext={item.set_name || '-'}

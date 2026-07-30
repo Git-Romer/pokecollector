@@ -7,12 +7,10 @@ import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
 import { useSettings } from '../contexts/SettingsContext'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 import { CardModal } from '../components/CardItem'
-import CardImage from '../components/CardImage'
-import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
-import FallbackBadges from '../components/FallbackBadges'
 import { getEffectiveCardPrice } from '../utils/prices'
 import { TCGDEX_LANGUAGES } from '../utils/tcgdexLanguages'
 import { textIncludes } from '../utils/textSearch'
+import UnifiedCard from '../components/UnifiedCard'
 
 export default function UserCollection() {
   const { userId } = useParams()
@@ -203,25 +201,21 @@ export default function UserCollection() {
             const imgSrc = resolveCardImageUrl(card)
             const price = getEffectiveCardPrice(card, item.variant, pricePrimaryField)
             return (
-              <div
+              <UnifiedCard
                 key={item.id}
-                className="cursor-pointer group"
+                card={card}
+                image={imgSrc}
+                price={price > 0 ? formatPrice(price) : null}
+                variantEffectSource={item.variant}
                 onClick={() => setSelectedCard(card)}
-              >
-                <div className={`aspect-[2.5/3.5] rounded-xl overflow-hidden ring-1 ring-white/5 group-hover:ring-brand-red/30 transition-all ${getCardVariantEffectClass(item.variant)}`}>
-                  <CardImage src={imgSrc} alt={card.name} className="w-full h-full object-cover" />
-                </div>
-                <div className="mt-1 px-0.5">
-                  <p className="text-[10px] font-semibold text-text-primary truncate">{card.name}</p>
-                  <FallbackBadges card={card} compact />
-                  <div className="flex items-center justify-between">
-                    <span className="text-[9px] text-text-muted">{item.quantity}x · {item.variant || 'Normal'}</span>
-                    {price > 0 && (
-                      <span className="text-[9px] font-bold text-green">{formatPrice(price)}</span>
-                    )}
+                overlay={(
+                  <div className="absolute bottom-2 left-2 right-2 z-20 flex flex-wrap gap-1">
+                    <span className="rounded-full border border-white/20 bg-black/80 px-2 py-1 text-[10px] font-bold text-white">
+                      {item.quantity}x · {item.variant || 'Normal'}
+                    </span>
                   </div>
-                </div>
-              </div>
+                )}
+              />
             )
           })}
         </div>

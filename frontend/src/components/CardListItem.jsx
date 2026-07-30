@@ -1,6 +1,5 @@
-import CardImage from './CardImage'
 import clsx from 'clsx'
-import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
+import { CardArtworkFrame } from './UnifiedCard'
 
 /**
  * CardListItem — Reusable card row for Collection, Wishlist, Search results, etc.
@@ -22,6 +21,7 @@ import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
  */
 export default function CardListItem({
   image,
+  card = {},
   name,
   subtext,
   badges = [],
@@ -39,6 +39,7 @@ export default function CardListItem({
         'bg-[rgba(20,20,40,0.6)] backdrop-blur-xl',
         'border-[rgba(255,255,255,0.05)]',
         onClick && 'cursor-pointer hover:border-brand-red/30 hover:bg-bg-elevated hover:shadow-glow active:bg-bg-elevated transition-all duration-200',
+        onClick && 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/70',
         className
       )}
       onClick={onClick}
@@ -47,11 +48,14 @@ export default function CardListItem({
       onKeyDown={onClick ? (e) => e.key === 'Enter' && onClick(e) : undefined}
     >
       {/* Card thumbnail */}
-      <div className={clsx(
-        'flex-shrink-0 w-12 h-[68px] rounded-lg overflow-hidden bg-bg-elevated shadow-lg ring-1 ring-white/5',
-        getCardVariantEffectClass(variantEffectSource)
-      )}>
-        <CardImage src={image} alt={name} className="w-full h-full object-cover" />
+      <div className="w-12 flex-shrink-0">
+        <CardArtworkFrame
+          card={card}
+          image={image}
+          alt={name}
+          variantEffectSource={variantEffectSource}
+          showStateIndicators={false}
+        />
       </div>
 
       {/* Content — flex-1 min-w-0 so it shrinks and wraps instead of overflowing */}
