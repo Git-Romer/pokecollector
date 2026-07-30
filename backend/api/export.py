@@ -19,14 +19,14 @@ router = APIRouter()
 CARD_HEADERS = [
     "Record UID", "Card ID", "Name", "Set", "Number", "Rarity", "Quantity",
     "Condition", "Variant", "Language", "Cost Basis", "Acquisition Source",
-    "Protection", "Storage Location UID", "Storage Location", "Grading Company",
-    "Grade", "Certification Number", "Notes", "Status", "Added At", "Updated At",
-    "Removal Reason",
+    "Collection Intent", "Protection", "Storage Location UID", "Storage Location",
+    "Grading Company", "Grade", "Certification Number", "Grail", "Card History",
+    "Notes", "Status", "Added At", "Updated At", "Removal Reason",
 ]
 SEALED_HEADERS = [
-    "Record UID", "Product Name", "Product Type", "Acquisition Source", "Quantity", "Condition",
-    "Cost Basis", "Acquisition Date", "Storage Location UID", "Storage Location",
-    "Notes", "Status", "Updated At", "Removal Reason",
+    "Record UID", "Product Name", "Product Type", "Acquisition Source", "Collection Intent",
+    "Quantity", "Condition", "Cost Basis", "Acquisition Date", "Storage Location UID",
+    "Storage Location", "Notes", "Status", "Updated At", "Removal Reason",
 ]
 LOCATION_HEADERS = [
     "Record UID", "Name", "Description", "Default", "Active", "Created At", "Updated At",
@@ -56,12 +56,15 @@ def _card_row(item):
         item.lang,
         item.purchase_price,
         item.acquisition_source or "",
+        getattr(item, "collection_intent", None) or "main_collection",
         item.protection_type or "raw",
         location.record_uid if location else "",
         location.name if location else "",
         item.grader or "",
         item.grade or "",
         item.certification_number or "",
+        bool(getattr(item, "is_grail", False)),
+        getattr(item, "card_history", None) or "",
         item.notes or "",
         getattr(item, "status", None) or "owned",
         _date_cell(getattr(item, "added_at", None)),
@@ -118,6 +121,7 @@ def build_collection_workbook(items, products, locations=()) -> bytes:
             product.product_name,
             product.product_type or "",
             product.acquisition_source or "",
+            getattr(product, "collection_intent", None) or "main_collection",
             product.quantity,
             product.sealed_condition,
             product.purchase_price,
@@ -306,7 +310,7 @@ def export_pdf(
             fontSize=18,
             spaceAfter=6,
         )
-        story.append(Paragraph("Pokemon TCG Collection", title_style))
+        story.append(Paragraph("John John's PC", title_style))
         story.append(Paragraph(
             f"Exported: {datetime.date.today().isoformat()} | Total cards: {sum(i.quantity for i in items)}",
             styles["Normal"]

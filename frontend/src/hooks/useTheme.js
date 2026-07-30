@@ -2,27 +2,24 @@ import {useCallback, useEffect, useState} from 'react'
 
 export const ARCHIVE_THEME_STORAGE_KEY = 'john-johns-pc-theme'
 export const ARCHIVE_THEMES = [
-    {id: 'midnight', label: 'Midnight Archive'},
-    {id: 'light', label: 'Daylight Archive'},
+    {id: 'midnight', label: "John John's PC"},
 ]
 
-const themeIds = new Set(ARCHIVE_THEMES.map(({id}) => id))
-
 function readTheme() {
-    const savedTheme = localStorage.getItem(ARCHIVE_THEME_STORAGE_KEY)
-    return themeIds.has(savedTheme) ? savedTheme : 'midnight'
+    return 'midnight'
 }
 
 export function useTheme() {
-    const [theme, setThemeState] = useState(readTheme)
+    const [theme] = useState(readTheme)
 
     useEffect(() => {
-        document.documentElement.dataset.theme = theme
-        localStorage.setItem(ARCHIVE_THEME_STORAGE_KEY, theme)
-    }, [theme])
+        document.documentElement.dataset.theme = 'midnight'
+        localStorage.setItem(ARCHIVE_THEME_STORAGE_KEY, 'midnight')
+    }, [])
 
-    const setTheme = useCallback((nextTheme) => {
-        if (themeIds.has(nextTheme)) setThemeState(nextTheme)
+    const setTheme = useCallback(() => {
+        document.documentElement.dataset.theme = 'midnight'
+        localStorage.setItem(ARCHIVE_THEME_STORAGE_KEY, 'midnight')
     }, [])
 
     return {theme, setTheme, themes: ARCHIVE_THEMES}

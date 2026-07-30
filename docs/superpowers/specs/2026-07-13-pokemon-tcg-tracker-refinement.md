@@ -31,14 +31,12 @@ permanent side panel.
 
 ## Visual system
 
-- Desktop uses a slim left rail; mobile uses the same five destinations in a bottom navigation bar.
-- Use a black, warm-white, and restrained orange collection palette inspired by the requested City Connect reference.
-  The John John spectrum is reserved for the JJ signal.
+- John John's PC is desktop-only for this release; narrow screens show a desktop-workspace gate instead of alternate navigation.
+- Use black, warm-white, and the full John John spectrum as identity colors. The seven spectrum colors are a vibe, not functional status colors.
 - Use Inter: Black for display, Semi Bold for UI labels, and Regular for body copy.
-- Dark is the default, with a complete accessible light theme.
+- Dark mode is the only product mode.
 - Motion is purposeful: gallery reveals, card hover/focus feedback, and loading transitions. Treat React Bits as an
-  interaction-quality reference, not a dependency requirement. It must respect system and in-app reduced-motion
-  preferences.
+  interaction-quality reference, not a dependency requirement. It does not expose an in-app reduced-motion mode; motion is part of the design system.
 - Motion communicates discovery, activity, presence, and intelligence: smooth route transitions, animated loading
   states, a context-aware JJ presence signal, collection reveals, and tactile card hover/focus feedback. Do not animate
   decorative chrome or run continuous motion without a collection event.
@@ -46,7 +44,7 @@ permanent side panel.
   responsive behavior, and accessible contrast. Use Fluent UI v9 patterns and tokens before custom UI primitives, with
   the visual polish benchmarked against Microsoft Copilot, Windows 11, Microsoft Loop, and Microsoft Designer.
 - Treat accessibility as a product behavior: semantic landmarks, predictable focus order, keyboard-complete controls,
-  clear states, sufficient contrast, responsive reflow, and reduced motion are required acceptance criteria.
+  clear states, sufficient contrast, predictable desktop layout, and useful motion are required acceptance criteria.
 
 ## Collection model
 

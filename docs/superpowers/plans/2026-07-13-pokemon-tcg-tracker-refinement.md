@@ -15,12 +15,12 @@ those concerns through focused frontend components.
 ## Global Constraints
 
 - Visible product name is exactly `John John's PC`.
-- Primary navigation remains Collection, Card Search, Sets, Analytics, and Settings.
+- Primary navigation remains Collection, Card Search, All Cards, Trends & Insights, and Settings.
 - Preserve database records, API paths, legacy routes, and `docker-compose.local.yml`.
 - Collection Overview has no portfolio, P&L, or market hero metric.
 - John John is a local faceless JJ signal, never a chatbot, avatar, or external AI integration.
 - Use black, warm-white, and orange for chrome; reserve the spectrum for John John.
-- Use Inter, accessible dark/light themes, and reduced-motion support.
+- Use Inter, dark-only John John styling, and purposeful motion as part of the design system.
 - Use Fluent UI v9 patterns and tokens before custom primitives. Maintain spacious responsive layouts, rounded
   soft-depth surfaces, meaningful visual hierarchy, keyboard-first interaction, visible focus states, and contrast that
   meets the quality bar of Copilot, Windows 11, Loop, and Designer.

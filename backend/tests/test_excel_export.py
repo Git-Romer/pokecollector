@@ -18,15 +18,16 @@ class ExcelExportTests(unittest.TestCase):
             card=card, quantity=1, condition="NM", variant="Normal", lang="en",
             purchase_price=4.49, acquisition_source="pulled", storage_type="Penny Sleeve",
             storage_detail="Binder 1", grader=None, grade=None, certification_number=None,
-            protection_type="penny_sleeve",
+            protection_type="penny_sleeve", collection_intent="pc", is_grail=True,
+            card_history="Pulled from a booster pack",
             storage_location=SimpleNamespace(record_uid="location-1", name="Binder 1"),
-            notes="First pull", added_at=None, updated_at=None,
+            notes="First pull", added_at=None, updated_at=None, removal_reason=None,
         )
         product = SimpleNamespace(
             id=3, record_uid="product-record-3", quantity=1, sealed_condition="factory_sealed",
             status="active", removal_reason=None,
             product_name="Elite Trainer Box", product_type="Elite Trainer Box",
-            acquisition_source="purchased", purchase_price=0,
+            acquisition_source="purchased", collection_intent="vault", purchase_price=0,
             purchase_date=None, storage_type="Sealed", storage_detail="Shelf A",
             storage_location=SimpleNamespace(record_uid="location-2", name="Shelf A"),
             notes=None, updated_at=None,
@@ -60,6 +61,10 @@ class ExcelExportTests(unittest.TestCase):
         )
         self.assertEqual(workbook["Owned Cards"]["A1"].value, "Record UID")
         self.assertEqual(workbook["Owned Cards"]["A2"].value, "card-record-7")
+        self.assertEqual(workbook["Owned Cards"]["M2"].value, "pc")
+        self.assertEqual(workbook["Owned Cards"]["T2"].value, True)
+        self.assertEqual(workbook["Owned Cards"]["U2"].value, "Pulled from a booster pack")
         self.assertEqual(workbook["Sealed Products"]["A2"].value, "product-record-3")
+        self.assertEqual(workbook["Sealed Products"]["E2"].value, "vault")
         self.assertEqual(workbook["Storage Locations"]["A2"].value, "location-1")
         self.assertEqual(workbook["Import Errors"]["A1"].value, "Sheet")

@@ -126,7 +126,7 @@ class CardWithSet(CardBase):
 class CollectionItemCreate(BaseModel):
     card_id: str
     quantity: int = Field(default=1, ge=1, le=999)
-    condition: str = "Unassessed"
+    condition: str = "NM"
     variant: Optional[str] = "Normal"
     purchase_price: Optional[float] = None
     acquisition_source: Optional[Literal["pulled", "bulk_before_tracking", "purchased", "trade", "gift", "unknown", "other"]] = None

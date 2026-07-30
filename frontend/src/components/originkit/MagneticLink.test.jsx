@@ -1,16 +1,8 @@
 import {render, screen} from '@testing-library/react'
 import {MemoryRouter} from 'react-router-dom'
-import {beforeEach, describe, expect, it, vi} from 'vitest'
+import {describe, expect, it, vi} from 'vitest'
 import MagneticLink from './MagneticLink'
 
-function setReducedMotion(reduced) {
-    window.matchMedia = vi.fn().mockImplementation((query) => ({
-        matches: reduced && query.includes('prefers-reduced-motion'),
-        media: query,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-    }))
-}
 
 function renderLink() {
     return render(
@@ -21,7 +13,6 @@ function renderLink() {
 }
 
 describe('MagneticLink', () => {
-    beforeEach(() => setReducedMotion(false))
 
     it('routes rather than navigating away', () => {
         // The Originkit original renders a bare <a href>, which inside a router is
@@ -58,16 +49,14 @@ describe('MagneticLink', () => {
         expect(link).toHaveClass('archive-featured-action')
     })
 
-    it('does not follow the pointer when reduced motion is requested', () => {
-        // The global reduced-motion rule collapses CSS durations but cannot stop a
-        // transform written from JavaScript, so this has to be handled explicitly.
-        setReducedMotion(true)
-        const {container} = renderLink()
+    it('uses the single John John motion path', () => {
+        window.matchMedia = vi.fn(() => {
+            throw new Error('matchMedia should not be read by this component')
+        })
 
-        window.dispatchEvent(new MouseEvent('pointermove', {clientX: 10, clientY: 10}))
+        renderLink()
 
-        const link = container.querySelector('.magnetic-link')
-        expect(link.style.getPropertyValue('--magnet-x')).toBe('')
-        expect(link.style.getPropertyValue('--magnet-y')).toBe('')
+        expect(screen.getByRole('link', {name: 'View collection'})).toBeVisible()
+        expect(window.matchMedia).not.toHaveBeenCalled()
     })
 })

@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState} from 'react'
+import {useEffect, useRef} from 'react'
 import {Link} from 'react-router-dom'
 
 /**
@@ -14,42 +14,22 @@ import {Link} from 'react-router-dom'
  * - It depended on framer-motion. Every other animated component here runs on
  *   CSS, and a spring library is a poor trade for one button, so the transform
  *   rides on custom properties and the sweep is a scaled pseudo-element.
- * - It animated unconditionally. The global reduced-motion rule in archive.css
- *   collapses CSS durations, but it cannot stop a transform written from
- *   JavaScript, so the pull is disabled explicitly below.
+ * - John John's PC keeps one motion language, so the pull remains active
+ *   instead of branching on reduced-motion preferences.
  */
 
 // How far outside itself the button starts reacting, and how far it travels.
 const REACH_PER_POINT = 18
 const MAX_PULL = 0.5
 
-function usePrefersReducedMotion() {
-    const [reduced, setReduced] = useState(
-        () => typeof window !== 'undefined'
-            && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true,
-    )
-
-    useEffect(() => {
-        const query = window.matchMedia?.('(prefers-reduced-motion: reduce)')
-        if (!query) return undefined
-
-        const sync = () => setReduced(query.matches)
-        sync()
-        query.addEventListener('change', sync)
-        return () => query.removeEventListener('change', sync)
-    }, [])
-
-    return reduced
-}
 
 export default function MagneticLink({to, children, className = '', magnet = 10, ...rest}) {
     const ref = useRef(null)
     const frame = useRef(0)
-    const reducedMotion = usePrefersReducedMotion()
 
     useEffect(() => {
         const node = ref.current
-        if (!node || reducedMotion) return undefined
+        if (!node) return undefined
 
         const pull = (magnet / 20) * MAX_PULL
         const reach = magnet * REACH_PER_POINT
@@ -94,7 +74,7 @@ export default function MagneticLink({to, children, className = '', magnet = 10,
             if (frame.current) cancelAnimationFrame(frame.current)
             release()
         }
-    }, [magnet, reducedMotion])
+    }, [magnet])
 
     return (
         <Link ref={ref} to={to} className={`magnetic-link ${className}`.trim()} {...rest}>

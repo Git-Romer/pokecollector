@@ -17,10 +17,8 @@
        light-theme counterpart. Dark values match those former literals. */
     --color-text-primary: #FFFFFF;
     --color-text-secondary: #a0a0b8;
-    --color-text-muted: #606078;
-
-    /* Surfaces referenced by tailwind.config.js (bg-card, bg-elevated).
-       Aliased onto the archive palette so the light theme switches with it. */
+    --color-text-muted: #8A8AA3;
+    /* Surfaces referenced by tailwind.config.js (bg-card, bg-elevated). */
     --color-card: var(--archive-surface);
     --color-elevated: var(--archive-surface-raised);
 
@@ -39,25 +37,6 @@
     --jj-purple: #582C83;
 }
 
-/* --color-card and --color-elevated follow --archive-* automatically.
-   The brand triplet is a literal, so the light theme restates it. */
-[data-theme='light'] {
-    --color-brand-red-rgb: 197 94 16;
-    --color-brand-red-light: #A54E0D;
-    --color-brand-red-dark: #7C3909;
-
-    /* Warm ink drawn from the archive light palette. Contrast on the
-       #FFF9F4 canvas: primary ~15:1, secondary ~7.8:1, muted ~5:1. */
-    --color-text-primary: #241E19;
-    --color-text-secondary: #594D42;
-    --color-text-muted: #7A6A5C;
-
-    /* Surfaces and rules. Without these the light theme drew 25 near-black
-       panels and 123 borders of white-on-cream, which were not visible. */
-    --color-surface: #FFFFFF;
-    --color-border: #DCCFC2;
-    --color-border-hairline: rgba(61, 47, 35, 0.14);
-}
 
 body {
     font-family: 'Inter', sans-serif;
@@ -80,7 +59,7 @@ h1, h2, h3, .mag-heading {
 
 /* Text fields. `.input` is applied at 46 sites but was never defined, so
    every field fell back to the browser's white default while inheriting
-   white text — unreadable in both themes. */
+   white text — unreadable on the dark canvas. */
 .input {
     background: var(--color-surface);
     color: var(--color-text-primary);

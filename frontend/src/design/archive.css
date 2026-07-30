@@ -5,9 +5,7 @@
     --archive-border: rgba(255, 255, 255, 0.14);
     --archive-text: #ffffff;
     --archive-muted: #d8c9bd;
-    /* --archive-signal is the fill: the orange a dark glyph sits *on*.
-       --archive-signal-text is the same accent used *as* ink on a page
-       background. The two cannot be one value — see the light theme. */
+    /* --archive-signal is the fill a dark glyph sits on; --archive-signal-text is accent ink on the dark canvas. */
     --archive-signal: #f58220;
     --archive-signal-text: #f58220;
     --archive-focus: #ffb06d;
@@ -21,22 +19,6 @@
     --r-control: .65rem;
     --r-surface: 1rem;
     --r-panel: 1.4rem;
-}
-
-[data-theme='light'] {
-    --archive-canvas: #fff9f4;
-    --archive-surface: #ffffff;
-    --archive-surface-raised: #f5ede6;
-    --archive-border: rgba(61, 47, 35, 0.18);
-    --archive-text: #241e19;
-    --archive-muted: #594d42;
-    /* The fill has to stay light enough for the #07101e glyph on top of it
-       (4.52:1); the ink has to go darker to clear 4.5:1 against the page
-       (#c55e10 as text is only 4.04:1 on canvas). Opposite directions. */
-    --archive-signal: #c55e10;
-    --archive-signal-text: #a54e0d;
-    --archive-focus: #a54e0d;
-    --archive-shadow: 0 16px 40px rgba(33, 54, 85, 0.12);
 }
 
 body {
@@ -237,30 +219,8 @@ body {
     padding-bottom: 6rem;
 }
 
-.archive-mobile-nav {
-    position: fixed;
-    z-index: 50;
-    right: 0;
-    bottom: 0;
-    left: 0;
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    padding: .4rem max(.6rem, env(safe-area-inset-right)) calc(.4rem + env(safe-area-inset-bottom)) max(.6rem, env(safe-area-inset-left));
-    border-top: 1px solid var(--archive-border);
-    background: color-mix(in srgb, var(--archive-surface) 94%, transparent);
-    backdrop-filter: blur(18px);
-}
-
-.archive-mobile-link {
-    min-height: 3.6rem;
-    flex-direction: column;
-    justify-content: center;
-    gap: .2rem;
-    font-size: .67rem;
-}
-
-.archive-mobile-link-active {
-    color: var(--archive-signal-text);
+.archive-desktop-gate {
+    display: none;
 }
 
 /* ASCII wordmark on the sign-in surface. The renderer measures its container,
@@ -1031,21 +991,6 @@ body {
     padding: .8rem;
 }
 
-@media (min-width: 1024px) {
-    .archive-mobile-nav {
-        display: none;
-    }
-}
-
-@media (max-width: 1023px) {
-    .archive-shell {
-        display: block;
-    }
-
-    .archive-content {
-        min-height: 100dvh;
-    }
-}
 
 @media (max-width: 800px) {
     .archive-featured {
@@ -1138,19 +1083,6 @@ body {
     }
 }
 
-@media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after {
-        animation-duration: 1ms !important;
-        animation-iteration-count: 1 !important;
-        scroll-behavior: auto !important;
-        transition-duration: 1ms !important;
-    }
-
-    .archive-route-frame {
-        animation: none;
-    }
-}
-
 /* Magnetic link - adapted from Originkit's Magnetic Hover Button.
    The sweep uses --archive-signal rather than the fixed #0000FF the original
    shipped with, so it follows the light and dark themes. Once the sweep is
@@ -1195,23 +1127,6 @@ body {
 .magnetic-link:hover .magnetic-link-label,
 .magnetic-link:focus-visible .magnetic-link-label {
     color: #07101e;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    /* The pull is already disabled in JS; this keeps the sweep from being the
-       one thing that still moves. */
-    .magnetic-link {
-        transform: none;
-    }
-
-    .magnetic-link-sweep {
-        display: none;
-    }
-
-    .magnetic-link:hover .magnetic-link-label,
-    .magnetic-link:focus-visible .magnetic-link-label {
-        color: inherit;
-    }
 }
 
 /* Collection anchor. The surface used to open with a label, a title and a
@@ -1320,8 +1235,7 @@ body {
     white-space: nowrap;
 }
 
-.archive-rail-footer,
-.archive-mobile-nav {
+.archive-rail-footer {
     display: none !important;
 }
 
@@ -1339,12 +1253,40 @@ body {
         display: none;
     }
 
-    .archive-shell::before {
-        content: "John John's PC is designed for a desktop workspace.";
+    .archive-shell {
+        min-width: 0;
+    }
+
+    .archive-desktop-gate {
         display: grid;
         place-items: center;
         min-height: 100dvh;
+        padding: 2rem;
+        text-align: center;
         color: var(--archive-text);
-        font: 700 1.125rem/1.4 Inter, system-ui, sans-serif;
+    }
+
+    .archive-desktop-gate span {
+        display: block;
+        margin-bottom: 1rem;
+        font-size: 3rem;
+        line-height: 1;
+        background: linear-gradient(90deg, var(--jj-red), var(--jj-orange), var(--jj-yellow), var(--jj-green), var(--jj-lightblue), var(--jj-blue), var(--jj-purple));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+    }
+
+    .archive-desktop-gate strong {
+        display: block;
+        max-width: 26rem;
+        font: 800 1.125rem/1.35 Inter, system-ui, sans-serif;
+    }
+
+    .archive-desktop-gate p {
+        margin-top: .65rem;
+        max-width: 26rem;
+        color: var(--archive-muted);
+        font-size: .9rem;
     }
 }

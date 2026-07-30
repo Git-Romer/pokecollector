@@ -74,17 +74,17 @@ the [GitHub Releases page](https://github.com/Git-Romer/pokecollector/releases).
 - Scanner strips suffixes like `ex` / `GX` / `VSTAR` for broader matching
 - Card modal auto-preselects a likely variant from TCGdex variant flags
 
-### 🗂️ Sets, Binders & Wishlist
+### 🗂️ All Cards, Binders & Chase Cards
 
 - Set overview with completion progress and per-set checklist
 - Virtual binders for collection and checklist views
-- Wishlist with Telegram price alerts
+- Chase Cards with Track, Chase, and Grail pursuit states plus optional price alerts
 
-### 📈 Prices, Portfolio & Analytics
+### 📈 Portfolio & Trends & Insights
 
 - Cardmarket EUR pricing and TCGPlayer USD pricing via TCGdex
 - Price history charts and portfolio snapshots
-- Dashboard, duplicates, top movers, rarity stats, and investment tracker
+- Trends & Insights, duplicates, top movers, rarity stats, and portfolio performance
 - Sealed product tracking with realized and unrealized P&L
 
 ### 👤 Single-User & Multi-User
@@ -123,7 +123,7 @@ the [GitHub Releases page](https://github.com/Git-Romer/pokecollector/releases).
 ### John John's PC local-first boundary
 
 - Visible product identity and browser/PWA metadata are **John John's PC**.
-- The root route is Collection Overview, not a finance dashboard.
+- The root route enters **My Collection**, not a finance dashboard.
 - John John is a local, faceless presence. He is not a chatbot, mascot, or external AI service.
 - HoloDex, Collectr, PSA, and CSV data are supplementary manual/reviewed inputs. They do not automatically overwrite
   tracker records.

@@ -255,11 +255,12 @@ export default function InventoryIntakeModal({
     const [kind, setKind] = useState(initialKind)
     const [selectedCard, setSelectedCard] = useState(null)
     const [quantity, setQuantity] = useState(1)
-    const [condition, setCondition] = useState('Unassessed')
+    const [condition, setCondition] = useState('NM')
     const [variant, setVariant] = useState('Normal')
     const [source, setSource] = useState(
         initialKind === 'bulk' ? 'bulk_before_tracking' : initialSource || (initialKind === 'sealed' ? 'purchased' : 'unknown'),
     )
+    const [collectionIntent, setCollectionIntent] = useState('main_collection')
     const [protection, setProtection] = useState('raw')
     const [locationId, setLocationId] = useState('')
     const [costBasis, setCostBasis] = useState('')
@@ -291,9 +292,10 @@ export default function InventoryIntakeModal({
     const reset = () => {
         setSelectedCard(null)
         setQuantity(1)
-        setCondition('Unassessed')
+        setCondition('NM')
         setVariant('Normal')
         setSource(kind === 'bulk' ? 'bulk_before_tracking' : 'unknown')
+        setCollectionIntent('main_collection')
         setProtection('raw')
         setLocationId('')
         setCostBasis('')
@@ -321,6 +323,7 @@ export default function InventoryIntakeModal({
                     quantity: Number(quantity),
                     sealed_condition: sealedCondition,
                     acquisition_source: source || null,
+                    collection_intent: collectionIntent,
                     purchase_price: Number(costBasis),
                     purchase_date: purchaseDate,
                     storage_location_id: Number(locationId),
@@ -334,13 +337,18 @@ export default function InventoryIntakeModal({
                 condition,
                 variant,
                 acquisition_source: isBulk ? 'bulk_before_tracking' : source,
+                collection_intent: isBulk ? 'main_collection' : collectionIntent,
                 inventory_kind: isBulk ? 'bulk' : 'owned',
                 protection_type: isBulk ? 'raw' : protection,
                 storage_location_id: Number(locationId),
                 purchase_price: isBulk || costBasis === '' ? null : Number(costBasis),
-                grader: protection === 'psa_slab' ? (grader.trim() || 'PSA') : null,
-                grade: protection === 'psa_slab' ? (grade.trim() || null) : null,
-                certification_number: protection === 'psa_slab' ? (certificationNumber.trim() || null) : null,
+                grader: ['psa_slab', 'tag_slab'].includes(protection)
+                    ? (grader.trim() || (protection === 'tag_slab' ? 'TAG' : 'PSA'))
+                    : null,
+                grade: ['psa_slab', 'tag_slab'].includes(protection) ? (grade.trim() || null) : null,
+                certification_number: ['psa_slab', 'tag_slab'].includes(protection)
+                    ? (certificationNumber.trim() || null)
+                    : null,
                 notes: notes.trim() || null,
             })
         },
@@ -359,8 +367,10 @@ export default function InventoryIntakeModal({
         setKind(nextKind)
         setSelectedCard(null)
         setSource(nextKind === 'bulk' ? 'bulk_before_tracking' : nextKind === 'sealed' ? 'purchased' : 'unknown')
+        setCollectionIntent('main_collection')
         setCostBasis('')
         setProtection('raw')
+        setGrader('PSA')
     }
 
     const sourceOptions = useMemo(
@@ -372,6 +382,12 @@ export default function InventoryIntakeModal({
         setSource(nextSource)
         const suggested = defaultPurchasePrice(nextSource)
         if (suggested !== null && costBasis === '') setCostBasis(String(suggested))
+    }
+
+    const handleProtection = nextProtection => {
+        setProtection(nextProtection)
+        if (nextProtection === 'tag_slab') setGrader('TAG')
+        else if (nextProtection === 'psa_slab') setGrader('PSA')
     }
 
     return (
@@ -444,6 +460,14 @@ export default function InventoryIntakeModal({
                                                                      value={option.value}>{option.label}</option>)}
                             </select>
                         </Field>
+                        <Field label="Collection intent">
+                            <select className="select w-full" value={collectionIntent}
+                                    onChange={event => setCollectionIntent(event.target.value)}>
+                                <option value="main_collection">Main Collection</option>
+                                <option value="vault">Vault</option>
+                                <option value="pc">PC</option>
+                            </select>
+                        </Field>
                         <Field label="Acquisition date" required>
                             <input className="input w-full" type="date" value={purchaseDate}
                                    onChange={event => setPurchaseDate(event.target.value)}/>
@@ -483,9 +507,19 @@ export default function InventoryIntakeModal({
                         {!isBulk && (
                             <Field label="Protection">
                                 <select className="select w-full" value={protection}
-                                        onChange={event => setProtection(event.target.value)}>
+                                        onChange={event => handleProtection(event.target.value)}>
                                     {PROTECTION_TYPES.map(option => <option key={option.value}
                                                                             value={option.value}>{option.label}</option>)}
+                                </select>
+                            </Field>
+                        )}
+                        {!isBulk && (
+                            <Field label="Collection intent">
+                                <select className="select w-full" value={collectionIntent}
+                                        onChange={event => setCollectionIntent(event.target.value)}>
+                                    <option value="main_collection">Main Collection</option>
+                                    <option value="vault">Vault</option>
+                                    <option value="pc">PC</option>
                                 </select>
                             </Field>
                         )}
@@ -497,11 +531,12 @@ export default function InventoryIntakeModal({
                                        placeholder="No cost entered"/>
                             </Field>
                         )}
-                        {protection === 'psa_slab' && !isBulk && (
+                        {['psa_slab', 'tag_slab'].includes(protection) && !isBulk && (
                             <>
                                 <Field label="Grading company" required>
                                     <input className="input w-full" value={grader}
-                                           onChange={event => setGrader(event.target.value)} placeholder="PSA"/>
+                                           onChange={event => setGrader(event.target.value)}
+                                           placeholder={protection === 'tag_slab' ? 'TAG' : 'PSA'}/>
                                 </Field>
                                 <Field label="Grade">
                                     <input className="input w-full" value={grade}

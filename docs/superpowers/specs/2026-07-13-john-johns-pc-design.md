@@ -19,29 +19,17 @@ The existing local Docker override remains unmodified and uncommitted.
 
 Primary navigation has five destinations:
 
-1. **Archive** — default landing experience. Shows a featured card or set, recent additions, visual set-progress
-   moments, and sparse Archive Notes.
-2. **Collection** — art-forward card gallery, with a compact inventory view for archival work.
-3. **Boxes** — primary organization metaphor, implemented over existing binder data in phase one.
-4. **Sets** — visual set shelves, completion status, and missing-card discovery.
-5. **Discover** — card search, scanner, wishlist, set-completion prompts, and global archive search.
-
-Market observations, achievements, sealed products, imports, settings, and existing multi-user tools become contextual
-or secondary surfaces. The collection stays private by default; existing multi-user capability remains intact but is no
-longer part of the core experience.
+1. **Collection** — owned collection lots and sealed product, opening to My Collection.
+2. **Card Search** — full card catalog discovery, Owned Only filtering, Add to Collection, and live PokéBeach signals.
+3. **All Cards** — master set and expansion completion tracking.
+4. **Trends & Insights** — Visualize, Discover, Master Set, and Portfolio Performance.
+5. **Settings** — local controls, users, import/export, backups, and data transparency.
 
 Legacy URLs continue to work through redirects to their renamed destinations.
 
 ## Responsive shell
 
-Desktop uses three zones:
-
-- A slim navigation rail.
-- A generous central collection canvas.
-- A quiet contextual panel that surfaces John John only when relevant.
-
-Mobile uses a five-item bottom navigation for Archive, Collection, Boxes, Sets, and Discover. John John appears in the
-Archive header rather than consuming a navigation slot.
+John John's PC is a desktop-only first release. Desktop uses a top rail and generous collection canvas. Narrow screens show a desktop-workspace gate instead of a separate mobile navigation model.
 
 ## Visual direction
 
@@ -49,10 +37,10 @@ Archive header rather than consuming a navigation slot.
 
 - Default theme: **Midnight Archive**, using deep navy-black canvas tones, softened elevated surfaces, restrained
   electric-blue signal color, and Pokemon card art as the principal color source.
-- Companion light theme: accessible and intentionally designed, replacing the current Pokemon-type theme picker.
+- Dark mode is the only product mode.
 - Fluent 2 principles: spacious layouts, rounded geometry, soft depth, visible focus states, responsive behavior, strong
   hierarchy, and accessibility-first contrast.
-- Typography: Segoe UI Variable with system fallbacks.
+- Typography: Inter Black for display, Inter Semi Bold for labels, and Inter Regular for body.
 
 ### Identity
 
@@ -112,8 +100,7 @@ collection data by default.
 Motion communicates discovery, activity, presence, and intelligence. It includes purposeful page transitions, card hover
 and focus feedback, loading states, collection reveals, and restrained milestone reveals.
 
-Milestones use a brief archive-reveal moment rather than confetti or game-like rewards. Motion honors the operating
-system's Reduce Motion preference, with in-app subtle and full settings.
+Milestones use a brief archive-reveal moment rather than confetti or game-like rewards. Motion is part of the design system and stays active; there is no in-app reduced-motion mode.
 
 ## Implementation approach
 
@@ -130,8 +117,8 @@ Before release, verify:
 
 - Production frontend build succeeds.
 - Existing local app routes and redirected legacy routes work.
-- Desktop and mobile layouts are usable.
-- Keyboard navigation, focus states, contrast, and reduced-motion behavior are correct.
+- Desktop layout is usable and narrow screens show the desktop-workspace gate.
+- Keyboard navigation, focus states, contrast, and purposeful motion behavior are correct.
 - Collection, binders/Boxes, sets, search, scanning, and imports retain their existing behavior.
 - Local hosting and API paths remain available.
 

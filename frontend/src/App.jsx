@@ -119,6 +119,11 @@ function BinderRedirect() {
     return <Navigate replace to={`/boxes/${binderId}`}/>
 }
 
+function SetRedirect() {
+    const {setId} = useParams()
+    return <Navigate replace to={`/all-cards/${setId}`}/>
+}
+
 function ProtectedRoutes() {
     const {user, loading, multiUser} = useAuth()
 
@@ -159,7 +164,7 @@ function ProtectedRoutes() {
                 <Route path="all-cards" element={<Sets/>}/>
                 <Route path="all-cards/:setId" element={lazyRoute(<SetDetail/>)}/>
                 <Route path="sets" element={<Navigate replace to="/all-cards"/>}/>
-                <Route path="sets/:setId" element={<Navigate replace to="/all-cards"/>}/>
+                <Route path="sets/:setId" element={<SetRedirect/>}/>
                 <Route path="wishlist" element={lazyRoute(<Wishlist/>)}/>
                 <Route path="boxes" element={lazyRoute(<Boxes/>)}/>
                 <Route path="boxes/:binderId" element={lazyRoute(<BinderDetail/>)}/>

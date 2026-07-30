@@ -31,7 +31,6 @@ import api, {
     updateUser,
 } from '../api/client'
 import {useAuth} from '../contexts/AuthContext'
-import {useTheme} from '../hooks/useTheme'
 import {useSettings} from '../contexts/SettingsContext'
 import Modal from '../components/ui/Modal'
 import AvatarPicker from '../components/AvatarPicker'
@@ -355,7 +354,6 @@ export default function Settings() {
     const navigate = useNavigate()
     const {user, updateCurrentUser, multiUser} = useAuth()
     const {settings, updateSettings, t, pricePrimaryField, exchangeRate} = useSettings()
-    const {theme, setTheme, themes} = useTheme()
     const [activeTab, setActiveTab] = useState('general')
 
     const [geminiKey, setGeminiKey] = useState('')
@@ -760,36 +758,6 @@ export default function Settings() {
                         </SettingsCard>
                     </section>
 
-                    {/* ── 2. THEME ── */}
-                    <section className="space-y-1">
-                        <SectionHeader title={t('settings.sectionTheme')}/>
-                        <SettingsCard>
-                            <div className="px-4 py-3.5">
-                                <p className="text-sm font-semibold text-text-primary mb-3">{t('settings.theme')}</p>
-                                <div className="grid grid-cols-2 gap-2">
-                                    {themes.map((th) => (
-                                        <button
-                                            key={th.id}
-                                            onClick={() => setTheme(th.id)}
-                                            className={`flex flex-col items-center gap-1.5 rounded-xl p-3 transition-all ${
-                                                theme === th.id
-                                                    ? 'ring-2 ring-offset-1 ring-offset-transparent'
-                                                    : 'hover:bg-bg-elevated'
-                                            }`}
-                                            style={{
-                                                background: theme === th.id ? 'rgba(91,156,255,0.15)' : 'rgba(255,255,255,0.03)',
-                                                border: `1px solid ${theme === th.id ? 'rgba(143,192,255,0.65)' : 'rgba(255,255,255,0.05)'}`,
-                                            }}
-                                        >
-                                            <span
-                                                className="text-[10px] font-semibold text-text-secondary">{th.label}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        </SettingsCard>
-                    </section>
-
                     {user?.role === 'admin' && (
                         <section className="space-y-1">
                             <SectionHeader title={t('settings.sectionMultiUser')}/>
@@ -899,7 +867,7 @@ export default function Settings() {
                     <section className="space-y-1">
                         <SectionHeader title={t('settings.sectionAbout')}/>
                         <SettingsCard>
-                            <SettingsRow label={t('settings.app')} description="Pokemon TCG Collection">
+                            <SettingsRow label={t('settings.app')} description="John John's PC">
                 <span className="text-xs font-bold text-text-muted px-2 py-1 rounded-lg"
                       style={{background: 'rgba(255,255,255,0.05)'}}>
                   v{__APP_VERSION__}

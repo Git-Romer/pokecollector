@@ -9,17 +9,19 @@ Routes are defined in `frontend/src/App.jsx`.
 | Route                          | Component File             | Notes                                                                       |
 |--------------------------------|----------------------------|-----------------------------------------------------------------------------|
 | `/login`                       | `pages/Login.jsx`          | Multi-user login screen                                                     |
-| `/`                            | `pages/Home.jsx`           | Collection Overview with recent additions, set shelf, and John John’s Notes |
-| `/dashboard`                   | Redirects to `/`           | Legacy route                                                                |
+| `/`                            | Redirects to `/collection` | Root entry into My Collection                                               |
+| `/dashboard`                   | Redirects to `/collection` | Legacy route                                                                |
 | `/search`                      | `pages/CardSearch.jsx`     | Card search, scanner entry, and multi-select bulk add                       |
 | `/collection`                  | `pages/Collection.jsx`     | User collection                                                             |
 | `/collection/user/:userId`     | `pages/UserCollection.jsx` | Read-only view of another user's collection                                 |
-| `/sets`                        | `pages/Sets.jsx`           | Set browser                                                                 |
-| `/sets/:setId`                 | `pages/SetDetail.jsx`      | Set checklist                                                               |
-| `/wishlist`                    | `pages/Wishlist.jsx`       | Wishlist and alerts                                                         |
-| `/binders`                     | `pages/Binders.jsx`        | Binder list                                                                 |
-| `/binders/:binderId`           | `pages/BinderDetail.jsx`   | Binder detail                                                               |
-| `/analytics`                   | `pages/Analytics.jsx`      | Analytics tabs                                                              |
+| `/all-cards`                   | `pages/Sets.jsx`           | All Cards master-set browser                                                |
+| `/all-cards/:setId`             | `pages/SetDetail.jsx`      | All Cards set checklist                                                     |
+| `/wishlist`                    | `pages/Wishlist.jsx`       | Chase Cards and alerts                                                      |
+| `/boxes`                       | `pages/Boxes.jsx`          | Contextual binder/storage boxes                                             |
+| `/boxes/:binderId`             | `pages/BinderDetail.jsx`   | Box/binder detail                                                           |
+| `/binders`                     | Redirects to `/boxes`      | Legacy route                                                                |
+| `/binders/:binderId`           | Redirects to `/boxes/:id`  | Legacy route                                                                |
+| `/trends`                      | `pages/Analytics.jsx`      | Trends & Insights tabs                                                      |
 | `/products`                    | `pages/Products.jsx`       | Sealed products                                                             |
 | `/leaderboard`                 | `pages/Leaderboard.jsx`    | Multi-user leaderboard                                                      |
 | `/leaderboard/compare/:userId` | `pages/Compare.jsx`        | Trainer comparison                                                          |
@@ -35,13 +37,13 @@ destinations:
 
 1. Collection
 2. Card Search
-3. Sets
-4. Analytics
+3. All Cards
+4. Trends & Insights
 5. Settings
 
-Older routes such as `/binders`, `/products`, `/wishlist`, `/leaderboard`, and
+Older routes such as `/sets`, `/analytics`, `/binders`, `/products`, `/wishlist`, `/leaderboard`, and
 `/achievements` remain reachable as contextual or legacy surfaces, but they are not primary navigation items. The root
-route is Collection Overview, not a portfolio dashboard.
+route enters My Collection, not a portfolio dashboard.
 
 ## Privacy & Data UI
 
@@ -117,26 +119,19 @@ Notes:
 
 Defined in `frontend/src/hooks/useTheme.js`.
 
-- Stores the selected theme in `localStorage`
-- Applies theme via `data-theme` on `document.documentElement`
-- Available themes:
-    - `default`
-    - `fire`
-    - `water`
-    - `grass`
-    - `electric`
-    - `psychic`
-    - `dragon`
-    - `dark`
-    - `fairy`
+- Dark-only compatibility shim for John John's PC.
+- Stores `midnight` in `localStorage` for older callers.
+- Applies `data-theme="midnight"` on `document.documentElement`.
+- There is no light theme, alternate color theme picker, or reduced-motion mode in this release.
 
 ## Navigation
 
-### Home / Portal Navigation
+### John John's PC Shell Navigation
 
-- `pages/HomeScreen.jsx` is the main portal view
-- The app now uses a compact navigation pattern with 6 primary portal items on the home screen
-- Secondary sections are organized with grouped tabs on individual pages
+- `components/ArchiveShell.jsx` owns the desktop shell.
+- Primary navigation is fixed to Collection, Card Search, All Cards, Trends & Insights, and Settings.
+- Root and legacy dashboard routes enter `/collection`.
+- Narrow screens show the desktop-workspace gate instead of a mobile navigation surface.
 
 ### `TabNav`
 

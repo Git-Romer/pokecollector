@@ -38,7 +38,7 @@ class InventoryWorkbookImportTests(unittest.TestCase):
             user_id=self.user.id,
             card_id=self.card.id,
             quantity=1,
-            condition="Unassessed",
+            condition="NM",
             variant="Normal",
             lang="en",
             acquisition_source="pulled",
@@ -46,6 +46,9 @@ class InventoryWorkbookImportTests(unittest.TestCase):
             inventory_kind="owned",
             protection_type="penny_sleeve",
             storage_location_id=self.location.id,
+            collection_intent="main_collection",
+            is_grail=False,
+            card_history=None,
             status="owned",
         )
         self.product = ProductPurchase(
@@ -53,6 +56,7 @@ class InventoryWorkbookImportTests(unittest.TestCase):
             product_name="Elite Trainer Box",
             product_type="ETB",
             acquisition_source="purchased",
+            collection_intent="main_collection",
             quantity=1,
             sealed_condition="factory_sealed",
             purchase_price=49.99,
@@ -76,8 +80,11 @@ class InventoryWorkbookImportTests(unittest.TestCase):
         )
         workbook = load_workbook(BytesIO(data))
         workbook["Owned Cards"]["G2"] = 3
-        workbook["Owned Cards"]["S2"] = "Moved after review"
-        workbook["Sealed Products"]["E2"] = 2
+        workbook["Owned Cards"]["M2"] = "pc"
+        workbook["Owned Cards"]["T2"] = True
+        workbook["Owned Cards"]["U2"] = "Pulled from a booster pack"
+        workbook["Owned Cards"]["V2"] = "Moved after review"
+        workbook["Sealed Products"]["F2"] = 2
         output = BytesIO()
         workbook.save(output)
         return output.getvalue()
@@ -108,7 +115,11 @@ class InventoryWorkbookImportTests(unittest.TestCase):
         self.assertEqual(self.db.query(CollectionItem).count(), 1)
         self.assertEqual(self.db.query(ProductPurchase).count(), 1)
         self.assertEqual(self.db.get(CollectionItem, self.item.id).quantity, 3)
-        self.assertEqual(self.db.get(CollectionItem, self.item.id).notes, "Moved after review")
+        updated_item = self.db.get(CollectionItem, self.item.id)
+        self.assertEqual(updated_item.collection_intent, "pc")
+        self.assertTrue(updated_item.is_grail)
+        self.assertEqual(updated_item.card_history, "Pulled from a booster pack")
+        self.assertEqual(updated_item.notes, "Moved after review")
         self.assertEqual(self.db.get(ProductPurchase, self.product.id).quantity, 2)
         self.assertEqual(
             self.db.query(InventoryEvent).filter(InventoryEvent.action == "import_updated").count(),

@@ -62,6 +62,14 @@ const DISCOVERY_MODULES = [
     {label: 'Trending Cards', copy: 'Spot activity while adding lots to your collection.'},
 ]
 
+function encodeDiscoveryTopic(value) {
+    return encodeURIComponent((value || '').trim())
+}
+
+function getDiscoveryTopic(filters, searchInput) {
+    return (filters.name || searchInput || '').trim()
+}
+
 function FilterForm({filters, setFilter, allSeries, setsForSeries, toggleSortOrder, t}) {
     return (
         <div className="space-y-4">
@@ -252,6 +260,14 @@ export default function CardSearch() {
     }
 
     const hasQuery = filters.name || filters.category || filters.type || filters.subtype || filters.rarity || filters.set_id || filters.artist || filters.hp_min || filters.hp_max || filters.series
+    const discoveryTopic = getDiscoveryTopic(filters, searchInput)
+    const encodedDiscoveryTopic = encodeDiscoveryTopic(discoveryTopic || 'Pokemon')
+    const bulbapediaAnimationUrl = discoveryTopic
+        ? `https://bulbapedia.bulbagarden.net/wiki/Special:Search?search=${encodedDiscoveryTopic}+anime`
+        : 'https://bulbapedia.bulbagarden.net/wiki/Browse:Animation'
+    const justWatchUrl = discoveryTopic
+        ? `https://www.justwatch.com/us/search?q=${encodedDiscoveryTopic}`
+        : 'https://www.justwatch.com/us/'
 
     const {data, isLoading, error, isFetching} = useQuery({
         queryKey: ['card-search', queryParams, langFilter, ownedOnly],
@@ -589,7 +605,10 @@ export default function CardSearch() {
                             Find your next cards
                         </h2>
                         <p className="text-xs text-text-secondary mt-1">
-                            Identify cards, add lots, explore sets, and browse inspiration signals from PokéBeach.
+                            Identify cards, add lots, explore sets, and browse inspiration signals from PokéBeach, Bulbapedia, and JustWatch.
+                        </p>
+                        <p className="mt-2 text-[11px] text-text-muted">
+                            Catalog data comes from your local TCGdex sync. External sources are discovery references only; John John's PC remains the collection source of truth.
                         </p>
                     </div>
                     <a
@@ -634,6 +653,38 @@ export default function CardSearch() {
                             </div>
                         )
                     })}
+                </div>
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <a
+                        href={bulbapediaAnimationUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-xl border border-white/10 bg-black/10 p-3 transition-transform hover:-translate-y-0.5 hover:border-purple/40"
+                    >
+                        <p className="text-xs uppercase tracking-[0.12em] font-bold text-purple">In Animation</p>
+                        <h3 className="mt-2 text-sm font-bold text-text-primary">
+                            Featured In {discoveryTopic || 'Pokémon animation'}
+                        </h3>
+                        <p className="mt-2 text-xs text-text-secondary">
+                            Open Bulbapedia animation references for appearances, episodes, and related media context.
+                        </p>
+                        <p className="mt-3 text-[11px] font-semibold text-purple">Bulbapedia ↗</p>
+                    </a>
+                    <a
+                        href={justWatchUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-xl border border-white/10 bg-black/10 p-3 transition-transform hover:-translate-y-0.5 hover:border-light-blue/40"
+                    >
+                        <p className="text-xs uppercase tracking-[0.12em] font-bold text-light-blue">Streaming reference</p>
+                        <h3 className="mt-2 text-sm font-bold text-text-primary">
+                            Currently available on JustWatch
+                        </h3>
+                        <p className="mt-2 text-xs text-text-secondary">
+                            Check current U.S. streaming services for the related show or movie before adding media notes.
+                        </p>
+                        <p className="mt-3 text-[11px] font-semibold text-light-blue">JustWatch ↗</p>
+                    </a>
                 </div>
             </section>
 

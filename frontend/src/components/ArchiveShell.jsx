@@ -57,6 +57,11 @@ export default function ArchiveShell() {
     return (
         <div className="archive-shell min-h-dvh">
             <div className="archive-ambient" aria-hidden="true"/>
+            <div className="archive-desktop-gate" role="status">
+                <span aria-hidden="true">∞</span>
+                <strong>John John's PC is designed for a desktop workspace.</strong>
+                <p>Open it on a wider screen to enter the collection.</p>
+            </div>
             {/* A plain div, not <aside>: this is a layout rail holding the wordmark,
           the nav and a status caption. As an <aside> it published a
           `complementary` landmark named for navigation it merely contains. */}
@@ -103,14 +108,6 @@ export default function ArchiveShell() {
                     </div>
                 </main>
             </div>
-            <nav className="archive-mobile-nav lg:hidden" aria-label={t('archive.mobileNav')}>
-                {PRIMARY_ARCHIVE_NAV.map(({to, label, icon: Icon, end}) => (
-                    <NavLink key={to} to={to} end={end}
-                             className={({isActive}) => clsx('archive-mobile-link', isActive && 'archive-mobile-link-active')}>
-                        <Icon/><span>{label}</span>
-                    </NavLink>
-                ))}
-            </nav>
             <ArchiveCommandBar open={commandOpen} onClose={() => setCommandOpen(false)}/>
         </div>
     )

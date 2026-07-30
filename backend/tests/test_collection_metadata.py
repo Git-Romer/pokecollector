@@ -23,6 +23,48 @@ class CollectionMetadataTests(unittest.TestCase):
     def tearDown(self):
         self.db.close()
 
+    def test_default_condition_matches_simplified_labels(self):
+        item = add_to_collection(
+            CollectionItemCreate(card_id=self.card.id),
+            current_user=self.user,
+            db=self.db,
+        )
+
+        self.assertEqual(item.condition, "NM")
+
+    def test_tag_slab_defaults_grader_and_keeps_certification(self):
+        item = add_to_collection(
+            CollectionItemCreate(
+                card_id=self.card.id,
+                protection_type="tag_slab",
+                grade="Mint Gem",
+                certification_number="TAG-777",
+            ),
+            current_user=self.user,
+            db=self.db,
+        )
+
+        self.assertEqual(item.protection_type, "tag_slab")
+        self.assertEqual(item.grader, "TAG")
+        self.assertEqual(item.grade, "Mint Gem")
+        self.assertEqual(item.certification_number, "TAG-777")
+
+    def test_collection_intent_grail_and_history_persist(self):
+        item = add_to_collection(
+            CollectionItemCreate(
+                card_id=self.card.id,
+                collection_intent="pc",
+                is_grail=True,
+                card_history="Pulled from a birthday pack.",
+            ),
+            current_user=self.user,
+            db=self.db,
+        )
+
+        self.assertEqual(item.collection_intent, "pc")
+        self.assertTrue(item.is_grail)
+        self.assertEqual(item.card_history, "Pulled from a birthday pack.")
+
     def test_pulled_card_persists_care_and_defaults_cost_basis(self):
         item = add_to_collection(
             CollectionItemCreate(

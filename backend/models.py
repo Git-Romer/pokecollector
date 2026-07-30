@@ -170,7 +170,7 @@ class CollectionItem(Base):
     card_id = Column(String, ForeignKey("cards.id"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     quantity = Column(Integer, default=1)
-    condition = Column(String, default="Unassessed")
+    condition = Column(String, default="NM")
     variant = Column(String, nullable=False, default="Normal")  # Normal/Holo/Reverse Holo/First Edition
     purchase_price = Column(Float)
     acquisition_source = Column(String)

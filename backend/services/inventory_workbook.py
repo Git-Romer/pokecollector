@@ -46,12 +46,15 @@ CARD_FIELDS = (
     "lang",
     "purchase_price",
     "acquisition_source",
+    "collection_intent",
     "inventory_kind",
     "protection_type",
     "storage_location_id",
     "grader",
     "grade",
     "certification_number",
+    "is_grail",
+    "card_history",
     "notes",
     "status",
     "removal_reason",
@@ -60,6 +63,7 @@ PRODUCT_FIELDS = (
     "product_name",
     "product_type",
     "acquisition_source",
+    "collection_intent",
     "quantity",
     "sealed_condition",
     "purchase_price",
@@ -266,7 +270,7 @@ def _plan_cards(db: Session, user_id: int, workbook, result, location_ops):
                     )
                 result["summary"]["matched_cards"] += 1
 
-                condition = _text(row.get("Condition"), "Unassessed")
+                condition = _text(row.get("Condition"), "NM")
                 if condition not in RAW_CONDITIONS:
                     raise WorkbookValueError(f"Condition must be one of: {', '.join(RAW_CONDITIONS)}")
                 protection = _text(row.get("Protection"), "raw")
@@ -279,6 +283,9 @@ def _plan_cards(db: Session, user_id: int, workbook, result, location_ops):
                     raise WorkbookValueError(
                         f"Acquisition Source must be one of: {', '.join(ACQUISITION_SOURCES)}"
                     )
+                collection_intent = _text(row.get("Collection Intent"), "main_collection")
+                if collection_intent not in {"main_collection", "vault", "pc"}:
+                    raise WorkbookValueError("Collection Intent must be main_collection, vault, or pc")
                 status = _text(row.get("Status"), "owned")
                 if status not in {"owned", "removed"}:
                     raise WorkbookValueError("Status must be owned or removed")
@@ -321,12 +328,15 @@ def _plan_cards(db: Session, user_id: int, workbook, result, location_ops):
                     "lang": language,
                     "purchase_price": cost,
                     "acquisition_source": source,
+                    "collection_intent": collection_intent,
                     "inventory_kind": inventory_kind,
                     "protection_type": protection,
                     "storage_location_id": location_op["record"].id if location_op and location_op["record"] else None,
                     "grader": grader,
                     "grade": _optional_text(row.get("Grade")),
                     "certification_number": _optional_text(row.get("Certification Number")),
+                    "is_grail": _bool(row.get("Grail"), False),
+                    "card_history": _optional_text(row.get("Card History")),
                     "notes": _optional_text(row.get("Notes")),
                     "status": status,
                     "removal_reason": removal_reason,
@@ -372,6 +382,9 @@ def _plan_products(db: Session, user_id: int, workbook, result, location_ops):
                 raise WorkbookValueError(
                     f"Condition must be one of: {', '.join(SEALED_CONDITIONS)}"
                 )
+            collection_intent = _text(row.get("Collection Intent"), "main_collection")
+            if collection_intent not in {"main_collection", "vault", "pc"}:
+                raise WorkbookValueError("Collection Intent must be main_collection, vault, or pc")
             status = _text(row.get("Status"), "active")
             if status not in {"active", "removed"}:
                 raise WorkbookValueError("Status must be active or removed")
@@ -396,6 +409,7 @@ def _plan_products(db: Session, user_id: int, workbook, result, location_ops):
                 "product_name": name,
                 "product_type": _optional_text(row.get("Product Type")),
                 "acquisition_source": acquisition_source,
+                "collection_intent": collection_intent,
                 "quantity": _positive_int(row.get("Quantity"), "Quantity"),
                 "sealed_condition": condition,
                 "purchase_price": _optional_float(row.get("Cost Basis"), "Cost Basis"),

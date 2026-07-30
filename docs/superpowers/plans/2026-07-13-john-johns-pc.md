@@ -24,9 +24,8 @@ React, FastAPI, pytest.
 - John John is an abstract curator signal, never a chatbot, mascot, human avatar, Pokemon character, or permanent chat
   surface.
 - Phase one derives insights locally from existing API data; do not add a generative AI or external market integration.
-- Desktop uses Archive, Collection, Boxes, Sets, and Discover; mobile uses the same five destinations in bottom
-  navigation.
-- Default theme is Midnight Archive; offer an accessible light theme and honor `prefers-reduced-motion`.
+- Desktop uses Collection, Card Search, All Cards, Trends & Insights, and Settings. This release is desktop-only; narrow screens show a desktop-workspace gate.
+- Default theme is John John dark mode; do not offer a light theme or reduced-motion mode.
 - Use Fluent UI v9 components and tokens before custom utility styles. Use custom CSS only for archive-specific effects
   and card presentation.
 - Every changed user-facing English string must have an `en.js` key. Existing non-English translations may fall back to
@@ -36,7 +35,7 @@ React, FastAPI, pytest.
 
 ## File Structure
 
-- `frontend/src/design/archiveTheme.js` — Fluent `webDarkTheme`/`webLightTheme` extensions and Midnight Archive semantic
+- `frontend/src/design/archiveTheme.js` — Fluent `webDarkTheme` extension and John John dark-mode semantic
   tokens.
 - `frontend/src/design/archive.css` — archive-specific color variables, focus treatments, reduced-motion rules, gallery
   and reveal effects.
@@ -79,7 +78,7 @@ React, FastAPI, pytest.
 
 - Produces `ARCHIVE_THEME_STORAGE_KEY`, `ARCHIVE_THEMES`, and `useTheme()` returning `{ theme, setTheme, themes }` where
   theme is `midnight` or `light`.
-- Produces `archiveDarkTheme` and `archiveLightTheme` for Fluent `FluentProvider`.
+- Produces `archiveDarkTheme` for Fluent `FluentProvider`.
 - Consumes no backend contracts.
 
 - [ ] **Step 1: Add the frontend test and Fluent dependencies**
@@ -132,26 +131,24 @@ React, FastAPI, pytest.
 
 - [ ] **Step 4: Implement the archive theme contract**
 
-  Replace the type-theme array in `frontend/src/hooks/useTheme.js` with:
+  Replace the type-theme array in `frontend/src/hooks/useTheme.js` with a dark-only compatibility contract:
 
   ```jsx
   export const ARCHIVE_THEME_STORAGE_KEY = 'john-johns-pc-theme'
   export const ARCHIVE_THEMES = [
-    { id: 'midnight', label: 'Midnight Archive' },
-    { id: 'light', label: 'Daylight Archive' },
+    { id: 'midnight', label: "John John's PC" },
   ]
   ```
 
-  Initialize from `ARCHIVE_THEME_STORAGE_KEY`, default to `midnight`, set
-  `document.documentElement.dataset.theme = theme`, and return `themes: ARCHIVE_THEMES`.
+  Always set `document.documentElement.dataset.theme = 'midnight'` and return
+  `themes: ARCHIVE_THEMES`.
 
-  Create `archiveTheme.js` using Fluent `webDarkTheme`, `webLightTheme`, and `createLightTheme`/`createDarkTheme` token
-  overrides. Export `archiveDarkTheme` and `archiveLightTheme`; give the dark theme a navy-black page background and
+  Create `archiveTheme.js` using Fluent `webDarkTheme`. Export `archiveDarkTheme`; give the dark theme a black page background and
   electric-blue brand tokens. In `main.jsx`, wrap the app in `FluentProvider` and choose the exported theme from
   `useTheme` through a small `ThemedApp` component.
 
   Create `archive.css` with CSS variables for archive canvas/surface/border/signal colors, `:focus-visible` outline
-  rules, `@media (prefers-reduced-motion: reduce)` that removes animation and transition durations, and
+  rules for purposeful motion, route transitions, hover feedback, and collection reveals, and
   `data-theme="light"` values. Import it after `index.css`.
 
   Remove the type-specific `[data-theme]` blocks and Pokemon-type theme picker assumptions from `index.css` and
@@ -230,7 +227,7 @@ React, FastAPI, pytest.
   opens for `/` when the target is not an input, textarea, or contenteditable element, and opens for `Ctrl+K` or
   `Meta+K`. Its form submits to Discover and closes the dialog.
 
-  Create `JohnJohnSignal.jsx` as a small button with an abstract JJ glyph, a presence dot, and `prefers-reduced-motion`
+  Create `JohnJohnSignal.jsx` as a small button with an abstract infinity glyph, a presence dot, and active John John motion
   safe CSS. It opens notes only when `noteCount > 0`; otherwise it is a labelled passive status indicator.
 
 - [ ] **Step 4: Replace routes and old navigation**

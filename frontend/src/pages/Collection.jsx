@@ -1140,10 +1140,10 @@ function CollectionEditModal({item, onClose}) {
                                     <input
                                         type="text"
                                         value={newVersionGrader}
-                                        placeholder="e.g. PSA, BGS"
+                                        placeholder={newVersionProtectionType === 'tag_slab' ? 'TAG' : 'e.g. PSA, BGS'}
                                         onChange={e => setNewVersionGrader(e.target.value)}
                                         className="input w-full"
-                                        disabled={newVersionProtectionType !== 'psa_slab'}
+                                        disabled={!['psa_slab', 'tag_slab'].includes(newVersionProtectionType)}
                                     />
                                 </div>
                             </div>
@@ -1157,7 +1157,7 @@ function CollectionEditModal({item, onClose}) {
                                         placeholder="e.g. 10, 9.5, Raw"
                                         onChange={e => setNewVersionGrade(e.target.value)}
                                         className="input w-full"
-                                        disabled={newVersionProtectionType !== 'psa_slab'}
+                                        disabled={!['psa_slab', 'tag_slab'].includes(newVersionProtectionType)}
                                     />
                                 </div>
                                 <div>
@@ -1168,7 +1168,7 @@ function CollectionEditModal({item, onClose}) {
                                         placeholder="e.g. 12345678"
                                         onChange={e => setNewVersionCertificationNumber(e.target.value)}
                                         className="input w-full"
-                                        disabled={newVersionProtectionType !== 'psa_slab'}
+                                        disabled={!['psa_slab', 'tag_slab'].includes(newVersionProtectionType)}
                                     />
                                 </div>
                             </div>

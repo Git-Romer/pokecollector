@@ -12,9 +12,6 @@ import {useSettings} from '../contexts/SettingsContext'
 // read CSS variables, so the token value is mirrored here.
 const ASCII_INK = '#d8c9bd'
 
-const reduceMotion =
-    typeof window !== 'undefined' &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 export default function Login() {
     const [lastUser] = useState(() => localStorage.getItem('lastUser') || '')
@@ -59,14 +56,13 @@ export default function Login() {
                     className="w-full max-w-md rounded-[2rem] border border-border bg-bg-card p-6 shadow-2xl backdrop-blur-xl sm:p-8"
                 >
                     <div className="mb-8 text-center">
+                        {
                         {/* Decorative rendering of the wordmark. The readable name lives in
-                the sr-only text below, so the canvas stays out of the
-                accessibility tree entirely. Static by default — see
-                ASCIIText's animateContinuously prop. */}
+                            the sr-only text below, so the canvas stays out of the
+                            accessibility tree entirely. Motion is part of the John John design system. */}}
                         <div
                             className="archive-ascii-wordmark"
                             aria-hidden="true"
-                            hidden={reduceMotion}
                         >
                             <ASCIIText
                                 text="John John's PC"
