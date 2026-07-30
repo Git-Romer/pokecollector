@@ -1,0 +1,14 @@
+{
+  "name": "john-johns-pc-workspace",
+  "private": true,
+  "version": "1.22.13",
+  "workspaces": [
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace john-johns-pc",
+    "build": "npm run build --workspace john-johns-pc",
+    "test": "npm run test --workspace john-johns-pc",
+    "test:watch": "npm run test:watch --workspace john-johns-pc"
+  }
+}

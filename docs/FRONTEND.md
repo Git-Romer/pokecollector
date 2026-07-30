@@ -9,7 +9,7 @@ Routes are defined in `frontend/src/App.jsx`.
 | Route                          | Component File             | Notes                                                                       |
 |--------------------------------|----------------------------|-----------------------------------------------------------------------------|
 | `/login`                       | `pages/Login.jsx`          | Multi-user login screen                                                     |
-| `/`                            | `pages/Home.jsx`           | My Collection overview and John John presence                               |
+| `/`                            | `pages/Home.jsx`           | Collection Overview and John John presence                                  |
 | `/dashboard`                   | Redirects to `/`           | Legacy collection-overview route                                            |
 | `/search`                      | `pages/CardSearch.jsx`     | Card search, scanner entry, and multi-select bulk add                       |
 | `/card-search`                 | Redirects to `/search`     | Legacy search route; query string is preserved                              |
@@ -45,7 +45,7 @@ destinations:
 
 Older routes such as `/sets`, `/analytics`, `/binders`, `/products`, `/wishlist`, `/leaderboard`, and
 `/achievements` remain reachable as contextual or legacy surfaces, but they are not primary navigation items. The root
-route enters My Collection, not a portfolio dashboard.
+route enters Collection Overview, not a portfolio dashboard.
 
 ## Privacy & Data UI
 
@@ -55,7 +55,8 @@ Settings includes a **Privacy & Data** panel backed by
 - John John’s Notes are derived locally from tracker data.
 - External AI is disabled by default and requires explicit opt-in.
 - HoloDex, Collectr, PSA, TAG, and CSV data are manual/reviewed imports.
-- Excel export is the local portable backup format.
+- Excel export is the local portable backup format: exactly `Cards`, `Sealed Product`, and `Acquisition & Storage`;
+  `Cards!A1` is `Card ID`.
 
 Scheduled workbook backups are intentionally deferred. Do not enable them until the export endpoint passes a live smoke
 check and the user approves a visible local destination.
@@ -135,7 +136,7 @@ Defined in `frontend/src/hooks/useTheme.js`.
 
 - `components/ArchiveShell.jsx` owns the desktop shell.
 - Primary navigation is fixed to Collection, Card Search, All Cards, Trends & Insights, and Settings.
-- Root enters `pages/Home.jsx` as the My Collection overview; legacy dashboard routes redirect to `/`.
+- Root enters `pages/Home.jsx` as Collection Overview; legacy dashboard routes redirect to `/`.
 - Narrow screens show the desktop-workspace gate instead of a mobile navigation surface.
 
 ### `TabNav`

@@ -70,13 +70,6 @@ def run_price_sync():
         db.close()
 
 
-def run_gfs_excel_backup():
-    """Create local portable Excel backups using Grandfather-Father-Son retention."""
-    from services.weekly_excel_backup import run_gfs_excel_backup as create_backup
-
-    create_backup()
-
-
 # Keep legacy alias
 def run_sync():
     """Legacy alias for run_full_sync."""
@@ -103,7 +96,7 @@ def start_scheduler():
             run_full_sync,
             trigger=IntervalTrigger(days=full_interval_days),
             id="full_sync_job",
-            name="Pokemon TCG Full Sync",
+            name="John John's PC Full Sync",
             replace_existing=True,
             next_run_time=full_next_run,
         )
@@ -113,20 +106,9 @@ def start_scheduler():
             run_price_sync,
             trigger=IntervalTrigger(minutes=price_interval_minutes),
             id="price_sync_job",
-            name="Pokemon TCG Price Sync",
+            name="John John's PC Price Sync",
             replace_existing=True,
             next_run_time=now_utc + datetime.timedelta(minutes=price_interval_minutes),
-        )
-
-        # Job 3: Official portable local backup, retained as the newest eight
-        # XLSX workbooks per active user in /app/backups/excel.
-        scheduler.add_job(
-            run_gfs_excel_backup,
-            trigger=IntervalTrigger(days=1),
-            id="gfs_excel_backup_job",
-            name="John John's PC GFS Excel Backup",
-            replace_existing=True,
-            next_run_time=now_utc + datetime.timedelta(days=1),
         )
 
         scheduler.start()
@@ -134,7 +116,7 @@ def start_scheduler():
             f"Scheduler started — full sync every {full_interval_days} days "
             f"({'immediately' if needs_initial_sync else f'in {full_interval_days} days'}), "
             f"small price sync every {price_interval_minutes} minutes, "
-            "GFS Excel backups retained locally"
+            "Excel workbook backups deferred (manual export only)"
         )
     else:
         logger.info("Scheduler already running")

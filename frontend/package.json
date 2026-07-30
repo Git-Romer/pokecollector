@@ -1,14 +1,14 @@
 {
-  "name": "pokemon-tcg-collection",
+  "name": "john-johns-pc",
   "private": true,
   "version": "1.22.13",
   "type": "module",
   "scripts": {
     "dev": "vite --configLoader runner",
-    "build": "vite build --configLoader runner",
+    "build": "vite build --configLoader runner && node scripts/enforce-john-john-motion.mjs",
     "preview": "vite preview --configLoader runner",
-    "test": "TMPDIR=/tmp TEMP=/tmp TMP=/tmp vitest run --configLoader runner",
-    "test:watch": "TMPDIR=/tmp TEMP=/tmp TMP=/tmp vitest --configLoader runner"
+    "test": "vitest run --configLoader runner",
+    "test:watch": "vitest --configLoader runner"
   },
   "dependencies": {
     "@fluentui/react-components": "^9.72.0",

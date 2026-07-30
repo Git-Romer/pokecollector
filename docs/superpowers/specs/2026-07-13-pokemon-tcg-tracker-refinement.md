@@ -70,8 +70,9 @@ permanent side panel.
 - Physical organization is called **Binders**, preserving the original tracker language.
 - HoloDex, Collectr, and PSA are supplementary manual-import sources. Their records enter a review queue and never
   automatically overwrite or merge the tracker’s records.
-- The official portable backup is Excel (.xlsx), with Cards, Sealed Product, and Acquisition/Storage sheets. Create
-  weekly local backups and retain eight.
+- The official portable backup is Excel (.xlsx), with exactly Cards, Sealed Product, and Acquisition & Storage sheets;
+  `Cards!A1` is `Card ID`. Scheduled local backups are deferred: export remains manual until a live smoke check passes
+  and a visible local destination is approved.
 - Keep operational data and backups with the tracker. Obsidian receives only a lightweight journal of milestones,
   acquisition decisions, and backup links.
 - Future external AI is disabled by default and must use explicit, explained opt-in. Collection insights remain in-app

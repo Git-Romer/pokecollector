@@ -123,13 +123,13 @@ the [GitHub Releases page](https://github.com/Git-Romer/pokecollector/releases).
 ### John John's PC local-first boundary
 
 - Visible product identity and browser/PWA metadata are **John John's PC**.
-- The root route enters **My Collection**, not a finance dashboard.
+- The root route enters **Collection Overview**, not a finance dashboard.
 - John John is a local, faceless presence. He is not a chatbot, mascot, or external AI service.
 - External AI is disabled by default and requires an explicit opt-in.
 - HoloDex, Collectr, PSA, TAG, and CSV data are supplementary manual/reviewed inputs. They do not automatically overwrite
   tracker records.
-- Excel `.xlsx` is the official portable backup format with `Owned Cards`, `Bulk`, `Sealed Products`,
-  `Storage Locations`, and `Import Errors` worksheets.
+- Excel `.xlsx` is the official portable backup format with exactly `Cards`, `Sealed Product`, and
+  `Acquisition & Storage` worksheets. `Cards!A1` is `Card ID`.
 - Excel imports are reviewed before writing and use stable record IDs so a round trip updates records without
   duplicating them.
 
@@ -294,7 +294,8 @@ controls card/set data sync only; changing the app UI language does not automati
 ## 🏗️ Architecture
 
 ```text
-pokecollector/
+john-johns-pc/
+├── package.json     # npm workspace commands for the frontend
 ├── backend/         # FastAPI + SQLAlchemy + PostgreSQL
 │   ├── api/         # Feature routers
 │   ├── services/    # Auth, sync, scheduler, Telegram, TCGdex integration
@@ -313,6 +314,9 @@ pokecollector/
 ```
 
 The old nested `pokemon-tcg-collection/` layout is no longer used.
+
+Run frontend commands from repository root: `npm run dev`, `npm test`, or `npm run build`. Backend remains a separate
+Python service in `backend/`.
 
 ---
 

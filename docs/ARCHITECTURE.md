@@ -15,7 +15,8 @@ This document reflects the current code layout at the repository root.
 ## Directory Structure
 
 ```text
-pokecollector/
+john-johns-pc/
+├── package.json
 ├── backend/
 │   ├── main.py
 │   ├── database.py
@@ -97,7 +98,7 @@ Important modules added since the older docs:
 
 The deployed local app is branded **John John's PC** and keeps the user's collection as the source of truth. The primary
 navigation is fixed to Collection, Card Search, All Cards, Trends & Insights, and Settings. Legacy surfaces remain reachable through
-existing routes, but the root route is My Collection and does not use portfolio or P&L metrics as hero content.
+existing routes, but the root route is Collection Overview and does not use portfolio or P&L metrics as hero content.
 
 John John is represented as a faceless local presence. Notes and observations are derived from in-app collection data
 and do not call external AI services by default. Gemini remains an explicit scanner configuration option in Settings.
@@ -105,8 +106,7 @@ and do not call external AI services by default. Gemini remains an explicit scan
 ## Local Backup Boundary
 
 `GET /api/export/xlsx` is the portable workbook export. It contains the
-`Owned Cards`, `Bulk`, `Sealed Products`, `Storage Locations`, and
-`Import Errors` sheets. Card rows are Collection Lots: stable ownership records that preserve quantity, condition, acquisition, protection, storage, cost basis, grail status, and Card History. `POST /api/inventory/import-xlsx` performs a read-only review by default and only writes after
+exactly `Cards`, `Sealed Product`, and `Acquisition & Storage` sheets; `Cards!A1` is `Card ID`. Card rows are Collection Lots: stable ownership records that preserve quantity, condition, acquisition, protection, storage, cost basis, grail status, and Card History. `POST /api/inventory/import-xlsx` performs a read-only review by default and only writes after
 an explicit `commit=true` confirmation. Stable record IDs make export/edit/reimport round trips idempotent.
 
 Scheduled workbook backups are deferred. They must not be registered until the export endpoint passes a live smoke check
