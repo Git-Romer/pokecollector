@@ -4,6 +4,7 @@ import {AlertTriangle, Check, Download, FileSpreadsheet, FileText, RefreshCw, Up
 import toast from 'react-hot-toast'
 
 import {getApiErrorMessage, importCollectionCsv, importInventoryXlsx} from '../api/client'
+import ImportReviewNotice from './ImportReviewNotice'
 import Modal from './ui/Modal'
 
 function Metric({value = 0, label, tone = 'default'}) {
@@ -21,10 +22,14 @@ export default function ExcelImportModal({isOpen, onClose}) {
     const csvInputRef = useRef(null)
     const [file, setFile] = useState(null)
     const [review, setReview] = useState(null)
+    const [csvFile, setCsvFile] = useState(null)
+    const [csvReview, setCsvReview] = useState(null)
 
     const close = () => {
         setFile(null)
         setReview(null)
+        setCsvFile(null)
+        setCsvReview(null)
         if (inputRef.current) inputRef.current.value = ''
         if (csvInputRef.current) csvInputRef.current.value = ''
         onClose()
@@ -55,15 +60,22 @@ export default function ExcelImportModal({isOpen, onClose}) {
         onError: error => toast.error(getApiErrorMessage(error, 'Could not import this workbook')),
     })
 
-    const csvMutation = useMutation({
-        mutationFn: selectedFile => importCollectionCsv(selectedFile),
+    const csvReviewMutation = useMutation({
+        mutationFn: selectedFile => importCollectionCsv(selectedFile, false),
+        onSuccess: setCsvReview,
+        onError: error => toast.error(getApiErrorMessage(error, 'Could not review this CSV')),
+    })
+
+    const csvCommitMutation = useMutation({
+        mutationFn: () => importCollectionCsv(csvFile, true),
         onSuccess: result => {
             const message = `${result.added} added · ${result.updated} updated`
-            if (result.failed) {
+            if (result.failed || !result.committed) {
                 toast.error(`${message} · ${result.failed} failed`)
+                setCsvReview(result)
                 return
             }
-            toast.success(`Legacy CSV imported · ${message}`)
+            toast.success(`CSV imported · ${message}`)
             queryClient.invalidateQueries({queryKey: ['collection']})
             queryClient.invalidateQueries({queryKey: ['dashboard']})
             close()
@@ -73,10 +85,16 @@ export default function ExcelImportModal({isOpen, onClose}) {
 
     const chooseCsv = event => {
         const selected = event.target.files?.[0]
-        if (selected) csvMutation.mutate(selected)
+        if (!selected) return
+        setCsvFile(selected)
+        setCsvReview(null)
+        csvReviewMutation.mutate(selected)
     }
 
     const downloadCsvTemplate = () => {
+        // Legacy CSV import still accepts the API field name `purchase_price`.
+        // The interface presents this as Cost Basis so the backup workflow stays
+        // aligned with John John's PC terminology.
         const contents = 'set_code,number,quantity,condition,variant,lang,purchase_price\nASC,152,1,NM,Normal,en,\n'
         const url = URL.createObjectURL(new Blob([contents], {type: 'text/csv;charset=utf-8'}))
         const link = document.createElement('a')
@@ -115,17 +133,50 @@ export default function ExcelImportModal({isOpen, onClose}) {
                                 Legacy CSV tools
                             </summary>
                             <div className="flex flex-wrap gap-2 border-t border-border p-3">
+                                <ImportReviewNotice/>
+                                <p className="w-full text-xs text-text-muted">
+                                    CSV keeps the legacy field name purchase_price; treat it as Cost Basis.
+                                    Leave it blank when cost basis is needed.
+                                </p>
+                                {csvFile && (
+                                    <div className="w-full rounded-lg border border-border bg-bg/40 px-3 py-2 text-xs text-text-secondary">
+                                        <strong className="text-text-primary">{csvFile.name}</strong>
+                                        {csvReviewMutation.isPending && <span> · Reviewing…</span>}
+                                        {csvReview && (
+                                            <span>
+                                                {' '}· {csvReview.added} new · {csvReview.updated} existing
+                                                {csvReview.failed ? ` · ${csvReview.failed} errors` : ''}
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
                                 <button
                                     type="button"
                                     className="btn-ghost text-xs"
-                                    disabled={csvMutation.isPending}
+                                    disabled={csvReviewMutation.isPending || csvCommitMutation.isPending}
                                     onClick={() => csvInputRef.current?.click()}
                                 >
-                                    <FileText size={15}/> {csvMutation.isPending ? 'Importing…' : 'Import CSV'}
+                                    <FileText size={15}/> {csvFile ? 'Replace CSV' : 'Choose CSV'}
                                 </button>
                                 <button type="button" className="btn-ghost text-xs" onClick={downloadCsvTemplate}>
                                     <Download size={15}/> CSV template
                                 </button>
+                                {csvReview && !csvReview.failed && (
+                                    <button
+                                        type="button"
+                                        className="btn-primary text-xs"
+                                        disabled={csvCommitMutation.isPending}
+                                        onClick={() => csvCommitMutation.mutate()}
+                                    >
+                                        <Check size={15}/>
+                                        {csvCommitMutation.isPending ? 'Importing…' : 'Confirm CSV import'}
+                                    </button>
+                                )}
+                                {csvReview?.errors?.length > 0 && (
+                                    <ul className="w-full space-y-1 text-xs text-brand-red">
+                                        {csvReview.errors.map(error => <li key={error}>{error}</li>)}
+                                    </ul>
+                                )}
                             </div>
                         </details>
                     </>

@@ -175,6 +175,7 @@ class BulkCollectionAddResponse(BaseModel):
     updated: int
     failed: int
     errors: List[str] = []
+    committed: bool = True
 
 
 class CollectionProductSourceResponse(BaseModel):
