@@ -22,11 +22,12 @@ describe('route contracts', () => {
         expect(appSource).toContain('<Route path="analytics" element={<Navigate replace to="/trends"/>}/>')
     })
 
-    it('keeps old Binders paths as aliases for Boxes without dropping ids', () => {
-        expect(appSource).toContain('<Route path="boxes" element={lazyRoute(<Boxes/>)} />'.replace(' />', '/>'))
-        expect(appSource).toContain('<Route path="binders" element={<Navigate replace to="/boxes"/>}/>')
-        expect(appSource).toContain('<Route path="binders/:binderId" element={<BinderRedirect/>}/>')
-        expect(appSource).toContain('return <Navigate replace to={`/boxes/${binderId}`}/>')
+    it('keeps Binders as direct routes without replacing them with Boxes', () => {
+        expect(appSource).toContain('<Route path="binders" element={lazyRoute(<Binders/>)}/>')
+        expect(appSource).toContain('<Route path="binders/:binderId" element={lazyRoute(<BinderDetail/>)}/>')
+        expect(appSource).not.toContain('<Route path="boxes"')
+        expect(appSource).not.toContain('to="/boxes"')
+        expect(appSource).not.toContain('to={`/boxes/${binderId}`}')
     })
 
     it('does not lazy-load the retired dashboard implementation', () => {

@@ -2,7 +2,7 @@ import SplitText from '../components/reactbits/SplitText'
 import {useState} from 'react'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
 import {useNavigate} from 'react-router-dom'
-import {BookOpen, Check, Edit2, Heart, Library, Package, Plus, Star, Trash2, X} from 'lucide-react'
+import {BookOpen, Check, Edit2, Heart, Library, Plus, Star, Trash2, X} from 'lucide-react'
 import {createBinder, deleteBinder, getBinders, getWishlist, updateBinder} from '../api/client'
 import {useSettings} from '../contexts/SettingsContext'
 import TabNav from '../components/TabNav'
@@ -44,7 +44,7 @@ function BinderForm({initial = {}, onSubmit, onCancel, loading}) {
                                     ? 'bg-blue/20 border-blue text-blue'
                                     : 'bg-bg-card border-border text-text-muted hover:border-text-muted'
                             }`}>
-                        <Package size={16}/> {t('binderTypes.collectionIcon')} {t('binderTypes.collection')}
+                        <BookOpen size={16}/> {t('binderTypes.collectionIcon')} {t('binderTypes.collection')}
                     </button>
                     <button type="button" onClick={() => setBinderType('wishlist')}
                             className={`flex-1 py-2.5 px-3 rounded-lg border text-sm font-medium transition-all flex items-center justify-center gap-2 ${
@@ -267,7 +267,7 @@ export default function Binders() {
                                                 <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
                                                     isWishlist ? 'bg-yellow/20 text-yellow' : 'bg-blue/20 text-blue'
                                                 }`}>
-                          {isWishlist ? '⭐' : '📦'}
+                          {isWishlist ? '⭐' : '📖'}
                         </span>
                                             </div>
                                             {binder.description && (

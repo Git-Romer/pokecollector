@@ -1,6 +1,6 @@
 import SplitText from '../components/reactbits/SplitText'
 import {useEffect, useId, useMemo, useRef, useState} from 'react'
-import {useSearchParams} from 'react-router-dom'
+import {Link, useSearchParams} from 'react-router-dom'
 import {createPortal} from 'react-dom'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
 import {
@@ -1546,6 +1546,9 @@ export default function Collection() {
                         </p>
                     </div>
                     <div className="collection-hero-actions">
+                        <Link to="/products" className="btn-ghost text-sm py-1.5">
+                            <Package size={14}/> Sealed product
+                        </Link>
 
                         {/* VIEW TOGGLE */}
                         {(activeView === 'owned' || activeView === 'bulk') &&

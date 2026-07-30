@@ -2,7 +2,7 @@ import SplitText from '../components/reactbits/SplitText'
 import {useEffect, useMemo, useRef, useState} from 'react'
 import {useNavigate, useParams} from 'react-router-dom'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
-import {ArrowLeft, Download, Heart, Minus, Package, Plus, Star, Trash2, Upload, X} from 'lucide-react'
+import {ArrowLeft, BookOpen, Download, Heart, Minus, Plus, Star, Trash2, Upload, X} from 'lucide-react'
 import {
     addBinderCardsToWishlist,
     addBinderEntryToWishlist,
@@ -487,14 +487,14 @@ export default function BinderDetail() {
                         ) : isWishlist ? (
                             <Star size={20} className="flex-shrink-0" style={{color: binder?.color}}/>
                         ) : (
-                            <Package size={20} className="flex-shrink-0" style={{color: binder?.color}}/>
+                            <BookOpen size={20} className="flex-shrink-0" style={{color: binder?.color}}/>
                         )}
                         <h1 className="text-5xl font-bold text-text-primary mag-heading uppercase leading-none mt-2">
                             <SplitText text="{binder?.name}" delay={40}/></h1>
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
                             isWishlist ? 'bg-yellow/20 text-yellow' : 'bg-blue/20 text-blue'
                         }`}>
-              {isWishlist ? `⭐ ${t('binderTypes.wishlist')}` : `📦 ${t('binderTypes.collection')}`}
+              {isWishlist ? `⭐ ${t('binderTypes.wishlist')}` : `📖 ${t('binderTypes.collection')}`}
             </span>
                     </div>
                     {binder?.description && <p className="text-sm text-text-secondary mt-1">{binder.description}</p>}

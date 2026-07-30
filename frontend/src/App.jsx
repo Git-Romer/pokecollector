@@ -13,7 +13,6 @@ import Sets from './pages/Sets'
 import Analytics from './pages/Analytics'
 import Settings from './pages/Settings'
 
-const Boxes = lazy(() => import('./pages/Boxes'))
 const Discover = lazy(() => import('./pages/Discover'))
 const SetDetail = lazy(() => import('./pages/SetDetail'))
 const Wishlist = lazy(() => import('./pages/Wishlist'))
@@ -113,11 +112,6 @@ function SearchRedirect() {
     return <Navigate replace to={`/search${location.search}`}/>
 }
 
-function BinderRedirect() {
-    const {binderId} = useParams()
-    return <Navigate replace to={`/boxes/${binderId}`}/>
-}
-
 function SetRedirect() {
     const {setId} = useParams()
     return <Navigate replace to={`/all-cards/${setId}`}/>
@@ -165,10 +159,8 @@ function ProtectedRoutes() {
                 <Route path="sets" element={<Navigate replace to="/all-cards"/>}/>
                 <Route path="sets/:setId" element={<SetRedirect/>}/>
                 <Route path="wishlist" element={lazyRoute(<Wishlist/>)}/>
-                <Route path="boxes" element={lazyRoute(<Boxes/>)}/>
-                <Route path="boxes/:binderId" element={lazyRoute(<BinderDetail/>)}/>
-                <Route path="binders" element={<Navigate replace to="/boxes"/>}/>
-                <Route path="binders/:binderId" element={<BinderRedirect/>}/>
+                <Route path="binders" element={lazyRoute(<Binders/>)}/>
+                <Route path="binders/:binderId" element={lazyRoute(<BinderDetail/>)}/>
                 <Route path="trends" element={<Analytics/>}/>
                 <Route path="analytics" element={<Navigate replace to="/trends"/>}/>
                 <Route path="products" element={lazyRoute(<Products/>)}/>
