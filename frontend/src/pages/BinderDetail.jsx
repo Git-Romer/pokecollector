@@ -658,7 +658,7 @@ export default function BinderDetail() {
         </div>
       )}
 
-      {isCollection && cards.length > 0 && (
+      {cards.length > 0 && (
         <>
           <div className="flex justify-end">
             <button
@@ -682,16 +682,18 @@ export default function BinderDetail() {
               <CardStateLegend
                 showOwnershipFallback={false}
                 showWishlist={false}
-                showQuantity={false}
+                showQuantity={!isCollection}
+                showSelection={showSearch}
+                showBinderProgress={isWishlist}
               />
-              <div className="mt-3 flex items-center gap-2 border-t border-border pt-3">
+              {isCollection && <div className="mt-3 flex items-center gap-2 border-t border-border pt-3">
                 <span className="inline-flex flex-shrink-0 items-center rounded-full bg-green/80 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white shadow-sm">
                   2x
                 </span>
                 <span className="text-xs leading-tight text-text-secondary">
                   {t('binderTypes.amountInBinder')}
                 </span>
-              </div>
+              </div>}
             </div>
           )}
         </>

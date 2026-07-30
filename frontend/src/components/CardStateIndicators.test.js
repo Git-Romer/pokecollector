@@ -12,6 +12,12 @@ vi.mock('../contexts/SettingsContext', () => ({
       'variants.First Edition': 'First Edition',
       'setDetail.ownedVariantUnknown': 'Owned (variant unknown)',
       'setDetail.badgeQuantity': 'Quantity owned',
+      'fallback.dataBorder': 'Purple border: fallback card data',
+      'fallback.priceBorder': 'Amber border: fallback price',
+      'fallback.imageBorder': 'Blue border: fallback image',
+      'collection.foundIn': 'Found in product',
+      'common.selected': 'Selected',
+      'binderTypes.progress': 'Binder progress',
       'nav.wishlist': 'Wishlist',
     })[key] || key,
   }),
@@ -42,6 +48,9 @@ describe('CardStateLegend', () => {
       'Owned (variant unknown)',
       'Wishlist',
       'Quantity owned',
+      'Purple border: fallback card data',
+      'Amber border: fallback price',
+      'Blue border: fallback image',
       '×2',
     ]) {
       expect(markup).toContain(label)
@@ -72,6 +81,19 @@ describe('CardStateLegend', () => {
     }
     expect(markup).not.toContain('Quantity owned')
     expect(markup).not.toContain('×2')
+  })
+
+  it('can explain contextual product, selection, and binder progress badges', () => {
+    const markup = renderToStaticMarkup(createElement(CardStateLegend, {
+      showProductSource: true,
+      showSelection: true,
+      showBinderProgress: true,
+    }))
+
+    expect(markup).toContain('Found in product')
+    expect(markup).toContain('Selected')
+    expect(markup).toContain('Binder progress')
+    expect(markup).toContain('2/4')
   })
 })
 

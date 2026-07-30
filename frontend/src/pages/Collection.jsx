@@ -23,6 +23,7 @@ import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import { formatMoneyInputValue, parseMoneyInputValue } from '../utils/moneyInput'
 import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
 import UnifiedCard, { CardArtworkFrame, UnifiedCardDialog, withCollectionItemState } from '../components/UnifiedCard'
+import { CardStateLegendDisclosure } from '../components/CardStateIndicators'
 
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
 const CONDITION_COLORS = {
@@ -1261,6 +1262,12 @@ export default function Collection() {
           </div>
         )}
       </div>
+
+      {items.length > 0 && (
+        <CardStateLegendDisclosure
+          legendProps={{ showProductSource: true }}
+        />
+      )}
 
       {/* ─── GRID BINDER VIEW ─────────────────────────────────────── */}
       {viewMode === 'grid' && (

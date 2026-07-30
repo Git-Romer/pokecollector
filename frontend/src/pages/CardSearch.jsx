@@ -16,6 +16,7 @@ import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
 import { normalizeTcgdexLanguage, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import UnifiedCard from '../components/UnifiedCard'
+import { CardStateLegendDisclosure } from '../components/CardStateIndicators'
 import {
   getLastCardSearchPage,
   isValidCardSearchPage,
@@ -580,6 +581,12 @@ export default function CardSearch() {
           </button>
         </div>
       </Sheet>
+
+      {(matchedCustomCards.length > 0 || (data?.data || []).length > 0) && (
+        <CardStateLegendDisclosure
+          legendProps={{ showSelection: true }}
+        />
+      )}
 
       {/* ─── Empty / loading / error states ──────────────────────── */}
       {!hasQuery && (

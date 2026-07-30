@@ -11,6 +11,7 @@ import { getEffectiveCardPrice } from '../utils/prices'
 import { TCGDEX_LANGUAGES, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { textIncludes } from '../utils/textSearch'
 import UnifiedCard, { withCollectionItemState } from '../components/UnifiedCard'
+import { CardStateLegendDisclosure } from '../components/CardStateIndicators'
 
 export default function UserCollection() {
   const { userId } = useParams()
@@ -187,6 +188,15 @@ export default function UserCollection() {
           </div>
         )}
       </div>
+
+      {items.length > 0 && (
+        <CardStateLegendDisclosure
+          legendProps={{
+            showOwnershipFallback: false,
+            showWishlist: false,
+          }}
+        />
+      )}
 
       {isLoading ? (
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">

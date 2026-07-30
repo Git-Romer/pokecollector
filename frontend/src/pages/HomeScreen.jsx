@@ -16,6 +16,7 @@ import { format, parseISO } from 'date-fns'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 import { collectionItemTargetUrl } from '../utils/navigation'
 import { CardArtworkFrame, withCollectionItemState } from '../components/UnifiedCard'
+import { CardStateLegendDisclosure } from '../components/CardStateIndicators'
 
 // Compact number formatter for mobile (1.2k, 3.4M, etc.)
 function compactNum(n) {
@@ -426,6 +427,15 @@ export default function HomeScreen() {
             ))}
           </div>
         </div>
+
+        {(recentCards.length > 0 || topCards.length > 0) && (
+          <CardStateLegendDisclosure
+            legendProps={{
+              showOwnershipFallback: false,
+              showWishlist: false,
+            }}
+          />
+        )}
 
         {/* ── RECENTLY ADDED ── */}
         {recentCards.length > 0 && (

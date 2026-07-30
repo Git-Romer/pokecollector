@@ -16,6 +16,7 @@ import { resolveCardImageUrl } from '../utils/imageUrl'
 import { collectionItemTargetUrl } from '../utils/navigation'
 import AnalyticsSectionNav from '../components/AnalyticsSectionNav'
 import { CardArtworkFrame, withCollectionItemState } from '../components/UnifiedCard'
+import { CardStateLegendDisclosure } from '../components/CardStateIndicators'
 
 const CustomTooltip = ({ active, payload, label }) => {
   const { formatPrice } = useSettings()
@@ -125,6 +126,15 @@ export default function Dashboard() {
           totalSets={totalSets}
           weeklyGain={data.weekly_additions || 0}
           gainLoss={pnl}
+        />
+      )}
+
+      {(data?.recent_additions?.length > 0 || data?.top_cards?.length > 0) && (
+        <CardStateLegendDisclosure
+          legendProps={{
+            showOwnershipFallback: false,
+            showWishlist: false,
+          }}
         />
       )}
 

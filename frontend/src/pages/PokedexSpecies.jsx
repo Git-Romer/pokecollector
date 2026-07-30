@@ -10,6 +10,7 @@ import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { getEffectiveCardPrice } from '../utils/prices'
 import { getNextDetailNavigationState, useDetailBackNavigation, useScrollToTopOnPush } from '../hooks/useListScrollRestoration'
+import { CardStateLegendDisclosure } from '../components/CardStateIndicators'
 
 function SpeciesArtwork({ species, name }) {
   const handleError = (event) => {
@@ -201,6 +202,7 @@ export default function PokedexSpecies() {
             </div>
           </div>
         </div>
+        {cards.length > 0 && <CardStateLegendDisclosure />}
         {cardsQuery.isLoading && <div className="flex justify-center py-16"><PokeBallLoader size={44} /></div>}
         {!cardsQuery.isLoading && cards.length === 0 && (
           <p className="rounded-2xl border border-border bg-bg-card p-6 text-center text-text-muted">{t('pokedex.noCards')}</p>

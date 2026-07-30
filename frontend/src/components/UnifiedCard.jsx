@@ -139,7 +139,7 @@ export function CardArtworkFrame({
           <CardStateIndicators
             card={card}
             compact
-            className="absolute left-2 right-2 top-2 z-20"
+            className="absolute left-1 right-1 top-1 z-20 sm:left-2 sm:right-2 sm:top-2"
             {...stateIndicatorProps}
           />
         )}

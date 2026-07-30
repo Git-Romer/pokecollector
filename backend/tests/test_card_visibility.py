@@ -240,6 +240,16 @@ class CardVisibilityTests(unittest.TestCase):
         self.assertEqual(self.db.query(WishlistItem).filter(WishlistItem.card_id == "A1-1_en").count(), 1)
         self.assertEqual(self.db.query(BinderCard).filter(BinderCard.card_id == "A1-1_en").count(), 1)
 
+    def test_dashboard_cards_keep_the_collection_variant_for_badges(self):
+        item = self.db.query(CollectionItem).filter(CollectionItem.card_id == "sv2-1_fr").one()
+        item.variant = "Reverse Holo"
+        self.db.commit()
+
+        dashboard = get_dashboard(db=self.db, price_field="price_trend", current_user=self.user)
+
+        self.assertEqual(dashboard["recent_additions"][0]["variant"], "Reverse Holo")
+        self.assertEqual(dashboard["top_cards"][0]["variant"], "Reverse Holo")
+
     def test_exports_and_social_stats_hide_digital_cards_when_setting_is_disabled(self):
         self._add_hidden_digital_user_rows()
 
