@@ -5,7 +5,9 @@ test('states the local Privacy & Data boundary', () => {
 
     expect(text).toMatch(/local/i)
     expect(text).toMatch(/External AI is disabled by default/i)
-    expect(text).toMatch(/HoloDex, Collectr, PSA/)
+    expect(text).toMatch(/HoloDex, Collectr, PSA, TAG/)
     expect(text).toMatch(/Excel export is local/)
-    expect(text).toMatch(/eight newest files retained/)
+    expect(text).toMatch(/Scheduled backups remain off/)
+    expect(text).toMatch(/live smoke check/)
+    expect(text).toMatch(/visible local destination/)
 })

@@ -112,8 +112,8 @@ the [GitHub Releases page](https://github.com/Git-Romer/pokecollector/releases).
 ### ⚙️ Utilities
 
 - Excel, CSV, and PDF export; Excel is the primary portable collection ledger
-- Weekly local Excel backups are written under the mounted backup directory and the newest eight are retained per active
-  user
+- Excel export is local and manual. Scheduled workbook backups remain deferred until the export endpoint passes a live
+  smoke check and a visible local destination is approved.
 - Strict CSV collection import with a downloadable template; required row values are `set_code` and `number`, while
   `quantity`, `condition`, `variant`, `lang`, and `purchase_price` may be blank
 - Admin-only sync endpoints and scheduler controls
@@ -125,7 +125,8 @@ the [GitHub Releases page](https://github.com/Git-Romer/pokecollector/releases).
 - Visible product identity and browser/PWA metadata are **John John's PC**.
 - The root route enters **My Collection**, not a finance dashboard.
 - John John is a local, faceless presence. He is not a chatbot, mascot, or external AI service.
-- HoloDex, Collectr, PSA, and CSV data are supplementary manual/reviewed inputs. They do not automatically overwrite
+- External AI is disabled by default and requires an explicit opt-in.
+- HoloDex, Collectr, PSA, TAG, and CSV data are supplementary manual/reviewed inputs. They do not automatically overwrite
   tracker records.
 - Excel `.xlsx` is the official portable backup format with `Owned Cards`, `Bulk`, `Sealed Products`,
   `Storage Locations`, and `Import Errors` worksheets.

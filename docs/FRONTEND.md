@@ -9,19 +9,21 @@ Routes are defined in `frontend/src/App.jsx`.
 | Route                          | Component File             | Notes                                                                       |
 |--------------------------------|----------------------------|-----------------------------------------------------------------------------|
 | `/login`                       | `pages/Login.jsx`          | Multi-user login screen                                                     |
-| `/`                            | Redirects to `/collection` | Root entry into My Collection                                               |
-| `/dashboard`                   | Redirects to `/collection` | Legacy route                                                                |
+| `/`                            | `pages/Home.jsx`           | My Collection overview and John John presence                               |
+| `/dashboard`                   | Redirects to `/`           | Legacy collection-overview route                                            |
 | `/search`                      | `pages/CardSearch.jsx`     | Card search, scanner entry, and multi-select bulk add                       |
+| `/card-search`                 | Redirects to `/search`     | Legacy search route; query string is preserved                              |
 | `/collection`                  | `pages/Collection.jsx`     | User collection                                                             |
 | `/collection/user/:userId`     | `pages/UserCollection.jsx` | Read-only view of another user's collection                                 |
 | `/all-cards`                   | `pages/Sets.jsx`           | All Cards master-set browser                                                |
-| `/all-cards/:setId`             | `pages/SetDetail.jsx`      | All Cards set checklist                                                     |
+| `/all-cards/:setId`            | `pages/SetDetail.jsx`      | All Cards set checklist                                                     |
+| `/sets`                        | Redirects to `/all-cards`  | Legacy set-browser route                                                     |
+| `/sets/:setId`                 | Redirects to `/all-cards/:setId` | Legacy set-detail route                                                |
 | `/wishlist`                    | `pages/Wishlist.jsx`       | Chase Cards and alerts                                                      |
-| `/boxes`                       | `pages/Boxes.jsx`          | Contextual binder/storage boxes                                             |
-| `/boxes/:binderId`             | `pages/BinderDetail.jsx`   | Box/binder detail                                                           |
-| `/binders`                     | Redirects to `/boxes`      | Legacy route                                                                |
-| `/binders/:binderId`           | Redirects to `/boxes/:id`  | Legacy route                                                                |
+| `/binders`                     | `pages/Binders.jsx`        | Contextual binder/storage surface                                           |
+| `/binders/:binderId`           | `pages/BinderDetail.jsx`   | Binder detail                                                               |
 | `/trends`                      | `pages/Analytics.jsx`      | Trends & Insights tabs                                                      |
+| `/analytics`                   | Redirects to `/trends`     | Legacy analytics route                                                      |
 | `/products`                    | `pages/Products.jsx`       | Sealed products                                                             |
 | `/leaderboard`                 | `pages/Leaderboard.jsx`    | Multi-user leaderboard                                                      |
 | `/leaderboard/compare/:userId` | `pages/Compare.jsx`        | Trainer comparison                                                          |
@@ -52,8 +54,11 @@ Settings includes a **Privacy & Data** panel backed by
 
 - John John’s Notes are derived locally from tracker data.
 - External AI is disabled by default and requires explicit opt-in.
-- HoloDex, Collectr, PSA, and CSV data are manual/reviewed imports.
+- HoloDex, Collectr, PSA, TAG, and CSV data are manual/reviewed imports.
 - Excel export is the local portable backup format.
+
+Scheduled workbook backups are intentionally deferred. Do not enable them until the export endpoint passes a live smoke
+check and the user approves a visible local destination.
 
 ## Auth Flow
 
@@ -130,7 +135,7 @@ Defined in `frontend/src/hooks/useTheme.js`.
 
 - `components/ArchiveShell.jsx` owns the desktop shell.
 - Primary navigation is fixed to Collection, Card Search, All Cards, Trends & Insights, and Settings.
-- Root and legacy dashboard routes enter `/collection`.
+- Root enters `pages/Home.jsx` as the My Collection overview; legacy dashboard routes redirect to `/`.
 - Narrow screens show the desktop-workspace gate instead of a mobile navigation surface.
 
 ### `TabNav`

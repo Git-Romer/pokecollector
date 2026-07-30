@@ -9,10 +9,10 @@ export const PRIVACY_DATA_POINTS = [
     },
     {
         title: 'Manual imports',
-        body: 'HoloDex, Collectr, PSA, and CSV imports are reviewed manually before existing collection records change.',
+        body: 'HoloDex, Collectr, PSA, TAG, and CSV imports are reviewed manually before existing collection records change.',
     },
     {
         title: 'Portable Excel backup',
-        body: 'Excel export is local, portable, and backed up weekly with the eight newest files retained.',
+        body: 'Excel export is local and portable. Scheduled backups remain off until the export endpoint passes a live smoke check and you approve a visible local destination.',
     },
 ]
