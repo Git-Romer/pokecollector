@@ -51,13 +51,14 @@ function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[300] flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm"
+      className="fixed inset-0 z-[300] flex items-end justify-center bg-black/80 p-2 backdrop-blur-sm sm:items-center sm:p-3"
       onClick={onClose}
     >
       <div
-        className="relative max-h-[calc(100dvh-1.5rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-border bg-bg-surface shadow-2xl"
+        className="relative max-h-[calc(100dvh-1rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-border bg-bg-surface shadow-2xl sm:max-h-[calc(100dvh-1.5rem)]"
         onClick={e => e.stopPropagation()}
       >
+        <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-white/20 sm:hidden" aria-hidden />
         <button
           type="button"
           onClick={onClose}
@@ -149,6 +150,7 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
   const [phase, setPhase] = useState('capture') // 'capture' | 'loading' | 'results'
   const [preview, setPreview] = useState(null)
   const [results, setResults] = useState(null)
+  const [selectedMatch, setSelectedMatch] = useState(null)
   const [addModal, setAddModal] = useState(null) // match to show modal for
   const fileRef = useRef()
   const { t } = useSettings()
@@ -162,6 +164,7 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
     try {
       const data = await recognizeCard(file)
       setResults(data)
+      setSelectedMatch(data.matches?.[0] || null)
       setPhase('results')
     } catch (e) {
       const msg = e?.response?.data?.detail || t('scanner.recognitionFailed')
@@ -175,6 +178,7 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
     setPhase('capture')
     setPreview(null)
     setResults(null)
+    setSelectedMatch(null)
     setAddModal(null)
   }
 
@@ -255,55 +259,88 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
 
         {/* RESULTS */}
         {phase === 'results' && results && (
-          <div className="space-y-4">
-            <div className="rounded-2xl p-4"
-              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted mb-2">{t('scanner.detected')}</p>
-              <p className="font-bold text-white text-lg">{results.recognized?.name || '—'}</p>
-              {results.recognized?.number && (
-                <p className="text-sm text-text-muted">Nr. {results.recognized.number}</p>
-              )}
-              {results.recognized?.language && (
-                <p className="text-xs text-text-muted mt-0.5 uppercase tracking-wider">
-                  {t('scanner.detectedLanguage')} {results.recognized.language}
+          <div className="mx-auto max-w-6xl space-y-4 pb-24 sm:pb-4">
+            <div className="grid gap-4 lg:grid-cols-[minmax(220px,0.8fr)_minmax(0,1.2fr)]">
+              <div className="hidden rounded-2xl border border-white/10 bg-white/[0.04] p-4 sm:block">
+                <p className="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
+                  {t('scanner.yourScan')}
                 </p>
-              )}
-            </div>
+                {preview && (
+                  <img
+                    src={preview}
+                    alt={t('scanner.yourScan')}
+                    className="mx-auto max-h-[28rem] w-full rounded-xl object-contain"
+                  />
+                )}
+              </div>
 
-            {results.matches?.length > 0 ? (
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted mb-3">
-                  {t('scanner.matches')} ({results.matches.length})
-                </p>
-                {/* Grid layout — like Sets overview */}
-                <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-7 gap-2">
-                  {results.matches.map(match => {
-                    const matchLang = match.lang || match._lang || 'en'
-                    return (
-                      <UnifiedCard
-                        key={`${match.id}-${matchLang}`}
-                        card={match}
-                        image={match.image}
-                        languageLabel={tcgdexLanguageLabel(matchLang)}
-                        onClick={() => setAddModal(match)}
-                        onAdd={() => setAddModal(match)}
-                      />
-                    )
-                  })}
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                  <p className="mb-2 text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">{t('scanner.detected')}</p>
+                  <p className="text-lg font-bold text-white">{results.recognized?.name || '—'}</p>
+                  {results.recognized?.number && <p className="text-sm text-text-muted">Nr. {results.recognized.number}</p>}
+                  {results.recognized?.language && (
+                    <p className="mt-0.5 text-xs uppercase tracking-wider text-text-muted">
+                      {t('scanner.detectedLanguage')} {results.recognized.language}
+                    </p>
+                  )}
                 </div>
+
+                {results.matches?.length > 0 ? (
+                  <div>
+                    <p className="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
+                      {t('scanner.bestMatches')} ({results.matches.length})
+                    </p>
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                      {results.matches.map(match => {
+                        const matchLang = match.lang || match._lang || 'en'
+                        const selected = selectedMatch?.id === match.id
+                          && (selectedMatch?.lang || selectedMatch?._lang || 'en') === matchLang
+                        return (
+                          <UnifiedCard
+                            key={`${match.id}-${matchLang}`}
+                            card={match}
+                            image={match.image}
+                            languageLabel={tcgdexLanguageLabel(matchLang)}
+                            selected={selected}
+                            onClick={() => setSelectedMatch(match)}
+                            onSelect={() => setSelectedMatch(match)}
+                          />
+                        )
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2 py-6 text-center">
+                    <p className="text-sm text-text-muted">{t('scanner.noMatches')}</p>
+                    <p className="text-xs text-text-muted">{t('scanner.noMatchTip')}</p>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="text-center py-6 space-y-2">
-                <p className="text-text-muted text-sm">{t('scanner.noMatches')}</p>
-                <p className="text-xs text-text-muted">{t('scanner.noMatchTip')}</p>
-              </div>
-            )}
+            </div>
 
             <button onClick={reset}
               className="w-full py-3 rounded-xl flex items-center justify-center gap-2 text-sm font-semibold text-text-muted hover:text-white transition-colors"
               style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
               <RefreshCw size={15} /> {t('scanner.scanAgain')}
             </button>
+
+            {selectedMatch && (
+              <div className="fixed bottom-3 left-3 right-3 z-20 rounded-2xl border border-white/15 bg-bg-surface/95 p-3 shadow-2xl backdrop-blur sm:sticky sm:bottom-3 sm:mx-auto sm:flex sm:max-w-xl sm:items-center sm:gap-3">
+                <div className="mb-2 min-w-0 flex-1 sm:mb-0">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-text-muted">{t('scanner.selectedMatch')}</p>
+                  <p className="truncate text-sm font-bold text-text-primary">{selectedMatch.name}</p>
+                </div>
+                <button
+                  type="button"
+                  className="btn-primary w-full justify-center sm:w-auto"
+                  onClick={() => setAddModal(selectedMatch)}
+                >
+                  <Check size={16} />
+                  {t('scanner.useSelectedMatch')}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

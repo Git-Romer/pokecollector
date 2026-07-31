@@ -177,6 +177,50 @@ input:-webkit-autofill:focus {
     overflow: hidden;
     padding: 8px 2px 0;
   }
+  .unified-card-caption-name {
+    display: block;
+    flex: 1 1 0%;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow-wrap: normal;
+    word-break: normal;
+    hyphens: none;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+  .unified-card-caption-skeleton {
+    background: linear-gradient(105deg, #202733 0 38%, #333c49 48%, #202733 58% 100%);
+    background-size: 220% 100%;
+    animation: unified-card-shimmer 1.35s linear infinite;
+  }
+  .unified-card-frame-thumbnail {
+    padding: 1px;
+    border-radius: 7px;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.32);
+  }
+  .unified-card-frame-thumbnail .unified-card-art {
+    border-radius: 6px;
+  }
+  .migration-comparison-art .unified-card-frame {
+    padding: 2px;
+    border-radius: 8px;
+  }
+  .migration-comparison-art .unified-card-art {
+    border-radius: 6px;
+  }
+  @media (min-width: 768px) {
+    .migration-comparison-art .unified-card-frame {
+      padding: 4px;
+      border-radius: 15px;
+    }
+    .migration-comparison-art .unified-card-art {
+      border-radius: 11px;
+    }
+  }
   .unified-card-missing-overlay {
     position: absolute;
     inset: 0;
@@ -259,8 +303,7 @@ input:-webkit-autofill:focus {
     font-size: 10px;
     font-weight: 800;
   }
-  .unified-card-frame-unavailable .unified-card-art > div:first-of-type,
-  .unified-card-frame-unavailable .unified-card-art > img {
+  .unified-card-frame-unavailable .unified-card-image {
     filter: grayscale(0.78);
     opacity: 0.42;
   }

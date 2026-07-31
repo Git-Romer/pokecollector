@@ -633,7 +633,7 @@ export default function CardSearch() {
       {data && !isLoading && hasQuery && (
         <>
           {selectMode && (
-            <div className="card flex flex-wrap items-center gap-2 sticky top-2 z-20 bg-bg-elevated/95 backdrop-blur">
+            <div className="card sticky top-2 z-20 hidden flex-wrap items-center gap-2 bg-bg-elevated/95 backdrop-blur sm:flex">
               <span className="text-sm font-semibold text-brand-red">
                 {selectedItems.size} {t('cardSearch.selected')}
               </span>
@@ -665,6 +665,31 @@ export default function CardSearch() {
                 onClick={() => bulkAddMutation.mutate()}
                 disabled={selectedItems.size === 0 || bulkAddMutation.isPending}
                 className="btn-primary text-sm disabled:opacity-50"
+              >
+                <Plus size={14} />
+                {bulkAddMutation.isPending ? t('card.adding') : t('cardSearch.addSelected')}
+              </button>
+            </div>
+          )}
+          {selectMode && (
+            <div className="fixed bottom-20 left-3 right-3 z-40 flex items-center gap-2 rounded-2xl border border-white/15 bg-bg-surface/95 p-3 shadow-2xl backdrop-blur sm:hidden">
+              <span className="min-w-0 flex-1 text-sm font-semibold text-brand-red">
+                {selectedItems.size} {t('cardSearch.selected')}
+              </span>
+              <button
+                type="button"
+                onClick={clearSelection}
+                disabled={selectedItems.size === 0}
+                className="btn-ghost px-3 disabled:opacity-50"
+                aria-label={t('cardSearch.clearSelection')}
+              >
+                <X size={15} />
+              </button>
+              <button
+                type="button"
+                onClick={() => bulkAddMutation.mutate()}
+                disabled={selectedItems.size === 0 || bulkAddMutation.isPending}
+                className="btn-primary justify-center px-3 text-sm disabled:opacity-50"
               >
                 <Plus size={14} />
                 {bulkAddMutation.isPending ? t('card.adding') : t('cardSearch.addSelected')}

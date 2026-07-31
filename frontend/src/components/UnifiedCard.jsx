@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { Plus, X } from 'lucide-react'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useSettings } from '../contexts/SettingsContext'
 import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
@@ -99,6 +99,8 @@ export function CardArtworkFrame({
   showStateIndicators = true,
   stateIndicatorProps = {},
   dimmed = false,
+  thumbnail = false,
+  onLoadingChange,
   overlay,
   className = '',
   imageClassName = 'w-full h-full object-cover',
@@ -125,6 +127,7 @@ export function CardArtworkFrame({
         'unified-card-frame',
         interactive && 'unified-card-frame-interactive',
         unavailableReason && 'unified-card-frame-unavailable',
+        thumbnail && 'unified-card-frame-thumbnail',
         className,
       )}
       style={{
@@ -158,6 +161,8 @@ export function CardArtworkFrame({
           alt={alt}
           className={imageClassName}
           loading={loading}
+          onLoadingChange={onLoadingChange}
+          compactError={thumbnail}
         />
         {dimmed && <span className="unified-card-missing-overlay" aria-hidden />}
         {overlay}
@@ -316,20 +321,30 @@ export function CardCaption({
   price,
   languageLabel,
   custom = card?.is_custom,
+  loading = false,
   className = '',
 }) {
   return (
     <div className={clsx('unified-card-caption', className)}>
-      <div className="flex h-5 min-w-0 items-center gap-1.5 overflow-hidden">
-        {name && <h3 className="block min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap break-normal text-sm font-semibold text-text-primary">{name}</h3>}
-        {custom && <span className="badge-yellow shrink-0 px-1.5 py-0.5 text-[9px]">Custom</span>}
-        {languageLabel && <span className="badge-gray shrink-0 px-1.5 py-0.5 text-[9px]">{languageLabel}</span>}
-      </div>
-      {(setNumber || price) && (
-        <div className="mt-1 flex h-4 min-w-0 items-center justify-between gap-2 overflow-hidden">
-          <span className="truncate font-mono text-[11px] font-bold text-brand-red">{setNumber}</span>
-          {price && <span className="shrink-0 text-xs font-extrabold text-green">{price}</span>}
-        </div>
+      {loading ? (
+        <>
+          <div className="unified-card-caption-skeleton h-3 w-3/5 rounded" />
+          <div className="unified-card-caption-skeleton mt-2 h-2 w-2/5 rounded" />
+        </>
+      ) : (
+        <>
+          <div className="flex h-5 min-w-0 items-center gap-1.5 overflow-hidden">
+            {name && <h3 className="unified-card-caption-name" title={name}>{name}</h3>}
+            {custom && <span className="badge-yellow shrink-0 px-1.5 py-0.5 text-[9px]">Custom</span>}
+            {languageLabel && <span className="badge-gray shrink-0 px-1.5 py-0.5 text-[9px]">{languageLabel}</span>}
+          </div>
+          {(setNumber || price) && (
+            <div className="mt-1 flex h-4 min-w-0 items-center justify-between gap-2 overflow-hidden">
+              <span className="truncate font-mono text-[11px] font-bold text-brand-red">{setNumber}</span>
+              {price && <span className="shrink-0 text-xs font-extrabold text-green">{price}</span>}
+            </div>
+          )}
+        </>
       )}
     </div>
   )
@@ -354,6 +369,8 @@ export default function UnifiedCard({
   compact = false,
   className = '',
 }) {
+  const [artworkLoading, setArtworkLoading] = useState(true)
+
   return (
     <div className={clsx('min-w-0', className)}>
       <CardArtworkFrame
@@ -370,6 +387,7 @@ export default function UnifiedCard({
         showStateIndicators={showStateIndicators}
         stateIndicatorProps={stateIndicatorProps}
         dimmed={shouldDimUnownedCard(card, dimWhenUnowned)}
+        onLoadingChange={setArtworkLoading}
         overlay={overlay}
       />
       {!compact && (
@@ -377,6 +395,7 @@ export default function UnifiedCard({
           card={card}
           price={price}
           languageLabel={languageLabel}
+          loading={artworkLoading}
         />
       )}
     </div>

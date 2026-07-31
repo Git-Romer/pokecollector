@@ -1362,13 +1362,14 @@ export default function Collection() {
                         >
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-3">
-                              <div className="w-8 flex-shrink-0">
+                              <div className="w-7 flex-shrink-0">
                                 <CardArtworkFrame
                                   card={card}
                                   image={resolveCardImageUrl(card)}
                                   alt={card?.name}
                                   variantEffectSource={item.variant}
                                   showStateIndicators={false}
+                                  thumbnail
                                 />
                               </div>
                               <div className="min-w-0">

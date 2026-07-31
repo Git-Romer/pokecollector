@@ -587,7 +587,7 @@ export default function Trades() {
             </section>
           </div>
 
-          <div className="rounded-lg border border-border bg-bg-card p-4 space-y-3">
+          <div id="trade-finalize" className="scroll-mt-24 rounded-lg border border-border bg-bg-card p-4 space-y-3">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
               <input value={partnerName} onChange={(event) => setPartnerName(event.target.value)} className="input" placeholder={t('trades.partnerName')} />
               <input type="date" value={tradeDate} onChange={(event) => setTradeDate(event.target.value)} className="input" />
@@ -598,6 +598,26 @@ export default function Trades() {
             </div>
             <input value={notes} onChange={(event) => setNotes(event.target.value)} className="input" placeholder={t('common.notes')} />
           </div>
+
+          {(outgoing.length > 0 || incoming.length > 0) && (
+            <div className="fixed bottom-20 left-3 right-3 z-40 flex items-center gap-3 rounded-2xl border border-white/15 bg-bg-surface/95 p-3 shadow-2xl backdrop-blur md:hidden">
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-bold text-text-primary">
+                  {outgoing.length + incoming.length} {t('trades.selectedCards')}
+                </p>
+                <p className="truncate text-[11px] text-text-muted">
+                  {formatPrice(totals.outgoingValue)} → {formatPrice(totals.incomingValue)}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn-primary justify-center text-sm"
+                onClick={() => document.getElementById('trade-finalize')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+              >
+                {t('trades.reviewTrade')}
+              </button>
+            </div>
+          )}
         </>
       ) : (
         <div className="space-y-3">

@@ -1,11 +1,39 @@
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import {
+  CardCaption,
   getCardFallbackKinds,
   getCardSetNumber,
   getFallbackBorderGradient,
   shouldDimUnownedCard,
   withCollectionItemState,
 } from './UnifiedCard'
+
+describe('CardCaption', () => {
+  it('keeps the title and metadata in separate fixed rows with an ellipsis-ready title', () => {
+    const markup = renderToStaticMarkup(createElement(CardCaption, {
+      card: { name: 'A very long Pokémon card name' },
+      setNumber: 'PBL 096',
+      price: '€12.34',
+    }))
+
+    expect(markup).toContain('class="unified-card-caption-name"')
+    expect(markup).toContain('title="A very long Pokémon card name"')
+    expect(markup).toContain('PBL 096')
+    expect(markup).toContain('€12.34')
+  })
+
+  it('renders caption-shaped loading placeholders while artwork is loading', () => {
+    const markup = renderToStaticMarkup(createElement(CardCaption, {
+      card: { name: 'Pikachu' },
+      loading: true,
+    }))
+
+    expect(markup.match(/unified-card-caption-skeleton/g)).toHaveLength(2)
+    expect(markup).not.toContain('Pikachu')
+  })
+})
 
 describe('getCardFallbackKinds', () => {
   it('returns fallback kinds in a stable order and ignores custom images', () => {
