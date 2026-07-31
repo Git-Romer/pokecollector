@@ -76,4 +76,4 @@ Review should focus on whether the idea belongs in the shared system and whether
 
 `npm test` runs `npm run check:card-system` and `npm run check:translations`. The card-system check flags feature code that imports legacy internals, assembles low-level card components, or uses internal frame classes. The translation check rejects literal `t('namespace.key')` references that do not resolve in the English source bundle, preventing raw keys from reaching shared dialogs or feature pages. Both checks identify the source file and point contributors toward the supported extension path.
 
-Visual screenshot tests cover the component gallery on desktop and mobile. A deliberate shared visual change should update the snapshots and include the resulting difference in review.
+Visual screenshot tests cover the component gallery on desktop and mobile. A dedicated WebKit test also verifies large compact lists so Safari-specific loading regressions fail CI. A deliberate shared visual change should update the snapshots and include the resulting difference in review.

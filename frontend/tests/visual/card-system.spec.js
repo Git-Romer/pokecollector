@@ -78,3 +78,44 @@ test('compact artwork prioritizes visible rows in a large list', async ({ page }
   ))).toBe(true)
   expect(imageRequests).toBeLessThanOrEqual(80)
 })
+
+test('Safari fallback loads visible rows when IntersectionObserver stalls', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'userAgent', {
+      configurable: true,
+      value: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/18.6 Safari/605.1.15',
+    })
+    window.IntersectionObserver = class StalledIntersectionObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+      takeRecords() { return [] }
+    }
+  })
+
+  const cardBackResponse = await page.request.get('/cardback.jpg')
+  const cardBack = await cardBackResponse.body()
+  await page.route('**/api/images/card/**', route => route.fulfill({
+    status: 200,
+    contentType: 'image/jpeg',
+    body: cardBack,
+  }))
+
+  await waitForGallery(page)
+  await page.getByTestId('mount-lazy-card-stress').evaluate(button => button.click())
+
+  const stress = page.getByTestId('lazy-card-stress')
+  const firstArtwork = stress.locator('.unified-card-compact-artwork').first()
+  await firstArtwork.scrollIntoViewIfNeeded()
+  await expect.poll(async () => firstArtwork.locator('img').evaluate(image => (
+    image.complete && image.naturalWidth > 0
+  ))).toBe(true)
+  await expect(firstArtwork.locator('.unified-card-skeleton')).toHaveCount(0)
+
+  const lastArtwork = stress.locator('.unified-card-compact-artwork').last()
+  await expect(lastArtwork.locator('img')).toHaveCount(0)
+  await lastArtwork.scrollIntoViewIfNeeded()
+  await expect.poll(async () => lastArtwork.locator('img').evaluate(image => (
+    image.complete && image.naturalWidth > 0
+  ))).toBe(true)
+})

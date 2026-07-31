@@ -9,6 +9,68 @@ import { useEffect, useRef, useState } from 'react'
 import { useSettings } from '../contexts/SettingsContext'
 
 const CARD_BACK = '/cardback.jpg'
+const VIEWPORT_MARGIN = 300
+const webkitViewportFallbacks = new Map()
+let webkitViewportFrame = null
+let webkitViewportListenersAttached = false
+
+function isWebKitBrowser() {
+  if (typeof navigator === 'undefined') return false
+  return /AppleWebKit/i.test(navigator.userAgent)
+    && !/(?:Chrome|Chromium|Edg|OPR|Android)\//i.test(navigator.userAgent)
+}
+
+function isNearViewport(element) {
+  const rect = element.getBoundingClientRect()
+  return rect.bottom >= -VIEWPORT_MARGIN
+    && rect.top <= window.innerHeight + VIEWPORT_MARGIN
+    && rect.right >= -VIEWPORT_MARGIN
+    && rect.left <= window.innerWidth + VIEWPORT_MARGIN
+}
+
+function detachWebKitViewportListeners() {
+  if (!webkitViewportListenersAttached || webkitViewportFallbacks.size > 0) return
+  window.removeEventListener('scroll', scheduleWebKitViewportCheck, true)
+  window.removeEventListener('resize', scheduleWebKitViewportCheck)
+  document.removeEventListener('visibilitychange', scheduleWebKitViewportCheck)
+  webkitViewportListenersAttached = false
+}
+
+function checkWebKitViewportFallbacks() {
+  webkitViewportFrame = null
+  for (const [element, reveal] of webkitViewportFallbacks) {
+    if (!element.isConnected) {
+      webkitViewportFallbacks.delete(element)
+    } else if (isNearViewport(element)) {
+      webkitViewportFallbacks.delete(element)
+      reveal()
+    }
+  }
+  detachWebKitViewportListeners()
+}
+
+function scheduleWebKitViewportCheck() {
+  if (webkitViewportFrame !== null) return
+  webkitViewportFrame = window.requestAnimationFrame(checkWebKitViewportFallbacks)
+}
+
+function observeWebKitViewport(element, reveal) {
+  if (!isWebKitBrowser()) return () => {}
+
+  webkitViewportFallbacks.set(element, reveal)
+  if (!webkitViewportListenersAttached) {
+    window.addEventListener('scroll', scheduleWebKitViewportCheck, true)
+    window.addEventListener('resize', scheduleWebKitViewportCheck)
+    document.addEventListener('visibilitychange', scheduleWebKitViewportCheck)
+    webkitViewportListenersAttached = true
+  }
+  scheduleWebKitViewportCheck()
+
+  return () => {
+    webkitViewportFallbacks.delete(element)
+    detachWebKitViewportListeners()
+  }
+}
 
 export default function CardImage({
   src,
@@ -46,14 +108,20 @@ export default function CardImage({
     const container = containerRef.current
     if (!container) return undefined
 
+    const reveal = () => setShouldLoad(true)
+    const stopWebKitFallback = observeWebKitViewport(container, reveal)
+
     const observer = new IntersectionObserver((entries) => {
       if (!entries.some(entry => entry.isIntersecting)) return
-      setShouldLoad(true)
+      reveal()
       observer.disconnect()
-    }, { rootMargin: '300px 0px' })
+    }, { rootMargin: `${VIEWPORT_MARGIN}px 0px` })
 
     observer.observe(container)
-    return () => observer.disconnect()
+    return () => {
+      observer.disconnect()
+      stopWebKitFallback()
+    }
   }, [loading, shouldLoad])
 
   useEffect(() => {

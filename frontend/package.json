@@ -11,6 +11,7 @@
     "preview": "vite preview",
     "test": "npm run check:card-system && npm run check:translations && vitest run src",
     "test:visual": "playwright test",
+    "test:visual:webkit": "playwright test --config=playwright.webkit.config.js",
     "test:visual:update": "playwright test --update-snapshots",
     "test:watch": "vitest"
   },

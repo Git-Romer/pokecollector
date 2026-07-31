@@ -4,6 +4,7 @@ const executablePath = process.env.PLAYWRIGHT_CHROMIUM_PATH
 
 export default defineConfig({
   testDir: './tests/visual',
+  testIgnore: 'card-system-webkit.spec.js',
   outputDir: './test-results',
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),

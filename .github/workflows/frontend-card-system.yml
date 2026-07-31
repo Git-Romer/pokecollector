@@ -48,8 +48,11 @@ jobs:
       - name: Build production frontend
         run: npm run build
 
-      - name: Install visual-test browser
-        run: npx playwright install --with-deps chromium
+      - name: Install visual-test browsers
+        run: npx playwright install --with-deps chromium webkit
 
       - name: Run desktop and mobile visual regression tests
         run: npm run test:visual
+
+      - name: Run WebKit card-list regression test
+        run: npm run test:visual:webkit
