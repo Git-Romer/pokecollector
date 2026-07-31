@@ -16,7 +16,7 @@ vi.mock('../contexts/SettingsContext', () => ({
       'fallback.priceBorder': 'Amber border: fallback price',
       'fallback.imageBorder': 'Blue border: fallback image',
       'collection.foundIn': 'Found in product',
-      'common.selected': 'Selected',
+      'cardSearch.selected': 'Selected',
       'binderTypes.progress': 'Binder progress',
       'nav.wishlist': 'Wishlist',
     })[key] || key,

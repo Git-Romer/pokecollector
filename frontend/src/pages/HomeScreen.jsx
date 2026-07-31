@@ -15,8 +15,7 @@ import toast from 'react-hot-toast'
 import { format, parseISO } from 'date-fns'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 import { collectionItemTargetUrl } from '../utils/navigation'
-import { CardArtworkFrame, withCollectionItemState } from '../components/UnifiedCard'
-import { CardStateLegendDisclosure } from '../components/CardStateIndicators'
+import { CardDisplay, CardLegend, withCollectionItemState } from '../components/card-system'
 
 // Compact number formatter for mobile (1.2k, 3.4M, etc.)
 function compactNum(n) {
@@ -55,7 +54,8 @@ function CardThumb({ card, onClick }) {
   const img = resolveCardImageUrl(card)
   return (
     <div className="w-[110px] flex-shrink-0">
-      <CardArtworkFrame
+      <CardDisplay
+        variant="artwork"
         card={card}
         image={img}
         alt={card.name}
@@ -429,7 +429,7 @@ export default function HomeScreen() {
         </div>
 
         {(recentCards.length > 0 || topCards.length > 0) && (
-          <CardStateLegendDisclosure
+          <CardLegend
             legendProps={{
               showOwnershipFallback: false,
               showWishlist: false,
@@ -468,7 +468,8 @@ export default function HomeScreen() {
                 <div key={card.collection_item_id || card.id} className="flex-shrink-0 w-[110px] cursor-pointer group"
                   onClick={() => openCollectionItem(card)}>
                   <div className="relative">
-                    <CardArtworkFrame
+                    <CardDisplay
+                      variant="artwork"
                       card={card}
                       image={resolveCardImageUrl(card)}
                       alt={card.name}

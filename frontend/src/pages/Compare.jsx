@@ -6,7 +6,7 @@ import { compareUsers } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import { useAuth } from '../contexts/AuthContext'
 import { resolveCardImageUrl } from '../utils/imageUrl'
-import { CompactCardIdentity } from '../components/CardListItem'
+import { CardIdentity } from '../components/card-system'
 import { CardModal } from '../components/CardItem'
 
 function TrainerAvatar({ avatarId, username }) {
@@ -63,7 +63,7 @@ function TrainerPanel({ trainer, formatPrice, t, onCardClick }) {
       <div>
         <p className="mb-2 text-[11px] uppercase tracking-[0.2em] text-text-muted">{t('leaderboard.bestCard')}</p>
         {bestCard ? (
-          <CompactCardIdentity
+          <CardIdentity
             className="w-full rounded-2xl border border-border bg-bg-primary/60 p-3"
             card={bestCard}
             image={resolveCardImageUrl(bestCard)}
@@ -169,7 +169,7 @@ export default function Compare() {
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {data.trade_suggestions.map((trade) => (
                   <div key={`${trade.card_id}-${trade.owner_username}-${trade.wants_username}`} className="rounded-2xl border border-border bg-bg-primary/60 p-3">
-                    <CompactCardIdentity
+                    <CardIdentity
                       className="w-full"
                       card={trade}
                       image={resolveCardImageUrl(trade)}

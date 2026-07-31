@@ -15,8 +15,7 @@ import PokeBallLoader from '../components/PokeBallLoader'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 import { collectionItemTargetUrl } from '../utils/navigation'
 import AnalyticsSectionNav from '../components/AnalyticsSectionNav'
-import { CardArtworkFrame, withCollectionItemState } from '../components/UnifiedCard'
-import { CardStateLegendDisclosure } from '../components/CardStateIndicators'
+import { CardDisplay, CardLegend, withCollectionItemState } from '../components/card-system'
 
 const CustomTooltip = ({ active, payload, label }) => {
   const { formatPrice } = useSettings()
@@ -130,7 +129,7 @@ export default function Dashboard() {
       )}
 
       {(data?.recent_additions?.length > 0 || data?.top_cards?.length > 0) && (
-        <CardStateLegendDisclosure
+        <CardLegend
           legendProps={{
             showOwnershipFallback: false,
             showWishlist: false,
@@ -155,7 +154,8 @@ export default function Dashboard() {
           <div className="flex gap-2.5 overflow-x-auto pb-2 no-scrollbar -mx-4 px-4">
             {data.recent_additions.slice(0, 12).map(card => (
               <div key={card.id} className="flex-shrink-0 w-20 group cursor-pointer" onClick={() => openCollectionItem(card)}>
-                <CardArtworkFrame
+                <CardDisplay
+                  variant="artwork"
                   card={card}
                   image={resolveCardImageUrl(card)}
                   alt={card.name}
@@ -204,7 +204,8 @@ export default function Dashboard() {
             {data.top_cards.slice(0, 10).map((card, i) => (
               <div key={card.collection_item_id || card.id} className="flex-shrink-0 w-24 group cursor-pointer" onClick={() => openCollectionItem(card)}>
                 <div className="relative">
-                  <CardArtworkFrame
+                  <CardDisplay
+                    variant="artwork"
                     card={card}
                     image={resolveCardImageUrl(card)}
                     alt={card.name}

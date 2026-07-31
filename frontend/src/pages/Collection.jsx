@@ -7,7 +7,7 @@ import { getCollection, updateCollectionItem, updateCardCustomImage, removeFromC
 import { CustomCardModal } from '../components/CardItem'
 import { useSettings } from '../contexts/SettingsContext'
 import CardImage from '../components/CardImage'
-import CardListItem, { CompactCardIdentity } from '../components/CardListItem'
+import { CardDialog, CardDisplay, CardIdentity, CardLegend, CardRow, withCollectionItemState } from '../components/card-system'
 import MoneyInput from '../components/MoneyInput'
 import TabNav from '../components/TabNav'
 import toast from 'react-hot-toast'
@@ -22,8 +22,6 @@ import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/q
 import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import { formatMoneyInputValue, parseMoneyInputValue } from '../utils/moneyInput'
 import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
-import UnifiedCard, { UnifiedCardDialog, withCollectionItemState } from '../components/UnifiedCard'
-import { CardStateLegendDisclosure } from '../components/CardStateIndicators'
 
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
 const CONDITION_COLORS = {
@@ -470,7 +468,7 @@ function CollectionEditModal({ item, onClose }) {
   ]
 
   return (
-    <UnifiedCardDialog
+    <CardDialog
       card={card}
       image={cardImage}
       variantEffectSource={variant}
@@ -796,7 +794,7 @@ function CollectionEditModal({ item, onClose }) {
           </form>
         </div>
       )}
-    </UnifiedCardDialog>
+    </CardDialog>
   )
 }
 
@@ -1264,7 +1262,7 @@ export default function Collection() {
       </div>
 
       {items.length > 0 && (
-        <CardStateLegendDisclosure
+        <CardLegend
           legendProps={{ showProductSource: true }}
         />
       )}
@@ -1293,7 +1291,7 @@ export default function Collection() {
                     ].filter(Boolean).some(id => wishlistedCardIds.has(String(id))),
                   }
                   return (
-                    <UnifiedCard
+                    <CardDisplay
                       key={item.id}
                       card={card}
                       image={resolveCardImageUrl(card)}
@@ -1361,7 +1359,7 @@ export default function Collection() {
                           onClick={() => setEditingCollectionItem(item)}
                         >
                           <td className="px-4 py-3">
-                            <CompactCardIdentity
+                            <CardIdentity
                               card={card}
                               image={resolveCardImageUrl(card)}
                               name={card?.name}
@@ -1451,7 +1449,7 @@ export default function Collection() {
                   if (card?.is_custom) badges.push({ label: '✏️', variant: 'yellow' })
 
                   return (
-                    <CardListItem
+                    <CardRow
                       key={item.id}
                       card={card}
                       image={resolveCardImageUrl(card)}

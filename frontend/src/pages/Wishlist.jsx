@@ -3,13 +3,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Trash2, Edit2, Check, X, Heart, Filter, SortAsc, ChevronUp, ChevronDown, Library, BookOpen, Minus, Plus } from 'lucide-react'
 import { getWishlist, removeFromWishlist, updateWishlistItem, addToCollection } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
-import CardListItem, { CompactCardIdentity } from '../components/CardListItem'
+import { CardDialog, CardIdentity, CardRow, getCardSetNumber } from '../components/card-system'
 import TabNav from '../components/TabNav'
 import toast from 'react-hot-toast'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 import { getEffectiveCardPrice } from '../utils/prices'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
-import { UnifiedCardDialog, getCardSetNumber } from '../components/UnifiedCard'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 
 function WishlistItemEditor({ item, onDone }) {
@@ -72,7 +71,7 @@ function WishlistCardModal({ item, onClose, onAddToCollection, onRemove }) {
   const price = getEffectiveCardPrice(card, null, pricePrimaryField)
 
   return (
-    <UnifiedCardDialog
+    <CardDialog
       card={card}
       image={resolveCardImageUrl(card)}
       price={price > 0 ? formatPrice(price) : null}
@@ -121,7 +120,7 @@ function WishlistCardModal({ item, onClose, onAddToCollection, onRemove }) {
           </div>
         </div>
       )}
-    </UnifiedCardDialog>
+    </CardDialog>
   )
 }
 
@@ -350,7 +349,7 @@ export default function Wishlist() {
                       return (
                         <tr key={item.id} className="border-b border-border/50 hover:bg-bg-elevated/50 transition-colors">
                           <td className="px-4 py-3">
-                            <CompactCardIdentity
+                            <CardIdentity
                               card={card}
                               image={resolveCardImageUrl(card)}
                               name={card?.name}
@@ -443,7 +442,7 @@ export default function Wishlist() {
                   if (card?.rarity) badges.push({ label: card.rarity, variant: 'gray' })
 
                   return (
-                    <CardListItem
+                    <CardRow
                       key={item.id}
                       card={card}
                       image={resolveCardImageUrl(card)}

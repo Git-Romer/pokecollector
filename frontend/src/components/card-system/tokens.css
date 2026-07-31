@@ -1,0 +1,29 @@
+:root {
+  --pc-card-border-default: #717a89;
+  --pc-card-border-default-hover: #c6ccd7;
+  --pc-card-border-data: #a56cff;
+  --pc-card-border-data-hover: #d391ff;
+  --pc-card-border-price: #f0aa38;
+  --pc-card-border-price-hover: #ffd16b;
+  --pc-card-border-image: #55a7ff;
+  --pc-card-border-image-hover: #86e3ff;
+  --pc-card-frame-padding: 4px;
+  --pc-card-frame-padding-compact: 2px;
+  --pc-card-frame-radius: 15px;
+  --pc-card-frame-radius-compact: 9px;
+  --pc-card-art-radius: 11px;
+  --pc-card-art-radius-compact: 7px;
+  --pc-card-frame-padding-comparison: 2px;
+  --pc-card-frame-radius-comparison: 8px;
+  --pc-card-art-radius-comparison: 6px;
+  --pc-card-compact-width: 2.5rem;
+  --pc-card-caption-height: 48px;
+}
+
+@media (min-width: 768px) {
+  :root {
+    --pc-card-frame-padding-comparison: var(--pc-card-frame-padding);
+    --pc-card-frame-radius-comparison: var(--pc-card-frame-radius);
+    --pc-card-art-radius-comparison: var(--pc-card-art-radius);
+  }
+}

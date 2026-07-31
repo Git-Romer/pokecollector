@@ -15,8 +15,7 @@ import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
 import { normalizeTcgdexLanguage, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
-import UnifiedCard from '../components/UnifiedCard'
-import { CardStateLegendDisclosure } from '../components/CardStateIndicators'
+import { CardDisplay, CardLegend } from '../components/card-system'
 import {
   getLastCardSearchPage,
   isValidCardSearchPage,
@@ -583,7 +582,7 @@ export default function CardSearch() {
       </Sheet>
 
       {(matchedCustomCards.length > 0 || (data?.data || []).length > 0) && (
-        <CardStateLegendDisclosure
+        <CardLegend
           legendProps={{ showSelection: true }}
         />
       )}
@@ -729,7 +728,7 @@ export default function CardSearch() {
                 const isSelected = selectedItems.has(card.id)
                 const cardPrice = card.price_market ?? card.price_trend ?? null
                 return (
-                  <UnifiedCard
+                  <CardDisplay
                     key={card.id}
                     card={card}
                     image={imgSrc}

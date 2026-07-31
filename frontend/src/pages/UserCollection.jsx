@@ -10,8 +10,7 @@ import { CardModal } from '../components/CardItem'
 import { getEffectiveCardPrice } from '../utils/prices'
 import { TCGDEX_LANGUAGES, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { textIncludes } from '../utils/textSearch'
-import UnifiedCard, { withCollectionItemState } from '../components/UnifiedCard'
-import { CardStateLegendDisclosure } from '../components/CardStateIndicators'
+import { CardDisplay, CardLegend, withCollectionItemState } from '../components/card-system'
 
 export default function UserCollection() {
   const { userId } = useParams()
@@ -190,7 +189,7 @@ export default function UserCollection() {
       </div>
 
       {items.length > 0 && (
-        <CardStateLegendDisclosure
+        <CardLegend
           legendProps={{
             showOwnershipFallback: false,
             showWishlist: false,
@@ -212,7 +211,7 @@ export default function UserCollection() {
             const imgSrc = resolveCardImageUrl(card)
             const price = getEffectiveCardPrice(card, item.variant, pricePrimaryField)
             return (
-              <UnifiedCard
+              <CardDisplay
                 key={item.id}
                 card={card}
                 image={imgSrc}

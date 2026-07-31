@@ -69,7 +69,7 @@ describe('getCardFallbackKinds', () => {
 
 describe('getFallbackBorderGradient', () => {
   it('uses one solid color for a single fallback', () => {
-    expect(getFallbackBorderGradient(['price'])).toBe('#f0aa38')
+    expect(getFallbackBorderGradient(['price'])).toBe('var(--pc-card-border-price, #f0aa38)')
   })
 
   it('splits two fallbacks with blended corner transitions', () => {

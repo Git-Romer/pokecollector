@@ -10,7 +10,7 @@ import TcgdexLanguageSelect from './TcgdexLanguageSelect'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import MoneyInput from './MoneyInput'
 import { parseMoneyInputValue } from '../utils/moneyInput'
-import UnifiedCard, { CardArtworkFrame } from './UnifiedCard'
+import { CardDisplay } from './card-system'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 
 // ─── Add-to-Collection Modal für Scan-Ergebnis ──────────────────────────────
@@ -71,7 +71,7 @@ function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
           {/* Card Info */}
           <div className="flex items-center gap-3 mb-4">
             <div className="w-16 flex-shrink-0">
-              <CardArtworkFrame card={match} image={match.image} alt={match.name} showStateIndicators={false} loading="eager" />
+              <CardDisplay variant="artwork" card={match} image={match.image} alt={match.name} showStateIndicators={false} loading="eager" />
             </div>
             <div className="flex-1 min-w-0 pr-9">
               <p className="font-bold text-white text-base truncate">{match.name}</p>
@@ -297,8 +297,9 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
                         const selected = selectedMatch?.id === match.id
                           && (selectedMatch?.lang || selectedMatch?._lang || 'en') === matchLang
                         return (
-                          <UnifiedCard
+                          <CardDisplay
                             key={`${match.id}-${matchLang}`}
+                            variant="selectable"
                             card={match}
                             image={match.image}
                             languageLabel={tcgdexLanguageLabel(matchLang)}

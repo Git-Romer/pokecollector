@@ -7,28 +7,12 @@ import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
 import CardImage from './CardImage'
 import FallbackBadges from './FallbackBadges'
 import CardStateIndicators from './CardStateIndicators'
+import { CARD_SYSTEM_TOKENS } from './card-system/tokens'
 
 export const FALLBACK_KIND_ORDER = ['data', 'price', 'image']
 
-const FALLBACK_COLORS = {
-  data: {
-    base: '#a56cff',
-    hover: '#d391ff',
-  },
-  price: {
-    base: '#f0aa38',
-    hover: '#ffd16b',
-  },
-  image: {
-    base: '#55a7ff',
-    hover: '#86e3ff',
-  },
-}
-
-const NORMAL_BORDER = {
-  base: '#717a89',
-  hover: '#c6ccd7',
-}
+const FALLBACK_COLORS = CARD_SYSTEM_TOKENS.border
+const NORMAL_BORDER = CARD_SYSTEM_TOKENS.border.default
 
 export function getCardFallbackKinds(card = {}) {
   return FALLBACK_KIND_ORDER.filter((kind) => Boolean(card?.[`${kind}_source_lang`]))
@@ -152,7 +136,7 @@ export function CardArtworkFrame({
           />
         )}
         {selected && (
-          <span className="unified-card-selection" aria-label={t('common.selected')}>
+          <span className="unified-card-selection" aria-label={t('cardSearch.selected')}>
             ✓
           </span>
         )}
@@ -395,6 +379,7 @@ export default function UnifiedCard({
   dimWhenUnowned = false,
   overlay,
   compact = false,
+  loading = 'lazy',
   className = '',
 }) {
   const [artworkLoading, setArtworkLoading] = useState(true)
@@ -417,6 +402,7 @@ export default function UnifiedCard({
         dimmed={shouldDimUnownedCard(card, dimWhenUnowned)}
         onLoadingChange={setArtworkLoading}
         overlay={overlay}
+        loading={loading}
       />
       {!compact && (
         <CardCaption

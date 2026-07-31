@@ -9,14 +9,13 @@ import toast from 'react-hot-toast'
 import clsx from 'clsx'
 import { resolveCardImageUrl, resolveSetImageUrl } from '../utils/imageUrl'
 import { CARD_VARIANTS, getAvailableVariants, getDefaultVariantOrNull } from '../utils/cardVariants'
-import { CardStateLegend } from '../components/CardStateIndicators'
 import { HOLO_FIELD_MAP } from '../utils/prices'
 import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import MoneyInput from '../components/MoneyInput'
 import { parseMoneyInputValue } from '../utils/moneyInput'
 import { useDetailBackNavigation, useScrollToTopOnPush } from '../hooks/useListScrollRestoration'
-import UnifiedCard, { UnifiedCardDialog } from '../components/UnifiedCard'
+import { CardDialog, CardDisplay, CardLegend } from '../components/card-system'
 
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
 
@@ -177,7 +176,7 @@ function SetCardActionModal({ card, setLang, initialTab = 'overview', onClose, o
   }
 
   return (
-    <UnifiedCardDialog
+    <CardDialog
       card={card}
       image={resolveCardImageUrl(card)}
       price={marketPrice > 0 ? formatPrice(marketPrice) : null}
@@ -308,7 +307,7 @@ function SetCardActionModal({ card, setLang, initialTab = 'overview', onClose, o
           </div>
         </div>
       )}
-    </UnifiedCardDialog>
+    </CardDialog>
   )
 }
 
@@ -564,7 +563,7 @@ export default function SetDetail() {
           <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
             {t('setDetail.badgeLegend')}
           </p>
-          <CardStateLegend />
+          <CardLegend collapsible={false} />
         </div>
       )}
 
@@ -599,7 +598,7 @@ export default function SetDetail() {
       {/* Card Grid */}
       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
         {filteredCards.map((card) => (
-          <UnifiedCard
+          <CardDisplay
             key={card.id}
             card={card}
             image={resolveCardImageUrl(card)}

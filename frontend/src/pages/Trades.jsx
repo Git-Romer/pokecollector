@@ -16,7 +16,7 @@ import { CustomCardModal } from '../components/CardItem'
 import { useSettings } from '../contexts/SettingsContext'
 import { CARD_VARIANTS, getDefaultVariantOrNull } from '../utils/cardVariants'
 import { resolveCardImageUrl } from '../utils/imageUrl'
-import { CompactCardIdentity } from '../components/CardListItem'
+import { CardIdentity } from '../components/card-system'
 import { getEffectiveCardPrice, priceFieldFromPrimary } from '../utils/prices'
 import { formatMoneyInputValue, parseMoneyInputValue } from '../utils/moneyInput'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
@@ -138,7 +138,7 @@ function TradeHealthBar({ outgoingValue, incomingValue, scoreOutgoingValue, miss
 function MiniCardRow({ card, variant, meta, value, rightAction }) {
   return (
     <div className="flex items-center gap-3 rounded-lg border border-border bg-bg-card p-2 min-w-0">
-      <CompactCardIdentity
+      <CardIdentity
         className="flex-1"
         card={card}
         image={resolveCardImageUrl(card)}

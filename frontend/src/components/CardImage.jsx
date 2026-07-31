@@ -21,31 +21,34 @@ export default function CardImage({
   compactError = false,
 }) {
   const { t } = useSettings()
-  const [failed, setFailed] = useState(false)
-  const [loaded, setLoaded] = useState(false)
-  const [attempt, setAttempt] = useState(0)
-
-  useEffect(() => {
-    setFailed(false)
-    setLoaded(false)
-    setAttempt(0)
-  }, [src])
+  const [status, setStatus] = useState(() => ({ source: src, failed: false, loaded: false, attempt: 0 }))
+  const currentStatus = status.source === src
+    ? status
+    : { source: src, failed: false, loaded: false, attempt: 0 }
+  const { failed, loaded, attempt } = currentStatus
 
   useEffect(() => {
     onLoadingChange?.(!loaded)
   }, [loaded, onLoadingChange])
 
   const handleError = () => {
-    setFailed(true)
-    setLoaded(true)
+    setStatus(previous => ({
+      source: src,
+      failed: true,
+      loaded: true,
+      attempt: previous.source === src ? previous.attempt : 0,
+    }))
   }
 
   const retry = (event) => {
     event.preventDefault()
     event.stopPropagation()
-    setFailed(false)
-    setLoaded(false)
-    setAttempt(value => value + 1)
+    setStatus(previous => ({
+      source: src,
+      failed: false,
+      loaded: false,
+      attempt: previous.source === src ? previous.attempt + 1 : 1,
+    }))
   }
 
   const showOverlay = !src || showName
@@ -65,7 +68,12 @@ export default function CardImage({
           style={{ ...(src ? {} : { opacity: 0.8 }), ...style }}
           loading={loading}
           onError={handleError}
-          onLoad={() => setLoaded(true)}
+          onLoad={() => setStatus(previous => ({
+            source: src,
+            failed: false,
+            loaded: true,
+            attempt: previous.source === src ? previous.attempt : 0,
+          }))}
         />
       )}
       {failed && (

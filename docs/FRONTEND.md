@@ -166,24 +166,17 @@ Defined in `frontend/src/components/TabNav.jsx`.
 
 ## Card UI
 
-### `CardItem` / `CardModal`
+### Shared card system
 
-Defined in `frontend/src/components/CardItem.jsx`.
+Feature pages import the public API from `frontend/src/components/card-system`. Its high-level components are `CardDisplay`, `CardRow`, `CardIdentity`, `CardDialog`, `CardLegend`, and `CardStack`.
 
-Current behavior:
+The system centralizes card structure, borders, image handling, badges, ownership and unavailable states, responsive behavior, and keyboard/touch interactions. Pages supply data, layout, and actions rather than assembling their own card visuals.
 
-- `CardItem` renders the card tile
-- `CardModal` displays detailed pricing, price history, metadata, and add-to-collection actions
-- Rarity is displayed as read-only API metadata
-- Variant selection is limited to:
-  - `Normal`
-  - `Holo`
-  - `Reverse Holo`
-  - `First Edition`
-- Variant auto-preselect logic:
-  - preselects the only available variant if there is exactly one
-  - defaults to `Holo` when holo exists without normal or reverse
-- Shows available variants from TCGdex flags
+Approved `CardDisplay` variants include `grid`, `carousel`, `ranking`, `selectable`, `artwork`, and `compact-artwork`. A development-only component gallery is available at `/__card-system`.
+
+See [`CARD_SYSTEM.md`](CARD_SYSTEM.md) for usage, design tokens, automated enforcement, and the contributor-friendly process for proposing a new shared variant.
+
+`CardItem.jsx`, `UnifiedCard.jsx`, and the low-level state components remain implementation details of this public system and should not be imported by feature pages.
 
 ### `pages/CardSearch.jsx`
 

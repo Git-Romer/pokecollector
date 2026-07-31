@@ -7,7 +7,7 @@ import { format, parseISO } from 'date-fns'
 import toast from 'react-hot-toast'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
-import { CardArtworkFrame } from '../components/UnifiedCard'
+import { CardDisplay } from '../components/card-system'
 
 function CardPreview({ card, label, match = false }) {
   const { t } = useSettings()
@@ -26,8 +26,9 @@ function CardPreview({ card, label, match = false }) {
         </span>
       </div>
       <div className="flex items-center gap-3 md:block">
-        <div className="migration-comparison-art w-12 flex-shrink-0 md:mx-auto md:w-40">
-          <CardArtworkFrame
+        <div className="w-12 flex-shrink-0 md:mx-auto md:w-40">
+          <CardDisplay
+            variant="comparison"
             card={card || {}}
             image={resolveCardImageUrl(card)}
             alt={card?.name || t('migration.noImage')}

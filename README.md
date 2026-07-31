@@ -363,9 +363,11 @@ Build and dependency installation also contact package/distribution registries s
 
 | Doc | Description |
 |-----|-------------|
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Contributor workflow and shared card-interface guidance |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System structure, data flow, contexts, settings model |
 | [`docs/BACKEND.md`](docs/BACKEND.md) | API routes, models, settings scoping, backup behavior |
 | [`docs/FRONTEND.md`](docs/FRONTEND.md) | Routes, pages, components, contexts, theming, i18n |
+| [`docs/CARD_SYSTEM.md`](docs/CARD_SYSTEM.md) | Public card components, variants, gallery, and extension workflow |
 | [`docs/REVERSE_PROXY_AUTH.md`](docs/REVERSE_PROXY_AUTH.md) | Forward-auth exceptions for public profiles and binders |
 
 ---

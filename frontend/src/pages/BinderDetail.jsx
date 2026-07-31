@@ -10,9 +10,8 @@ import { cardNumberMatches } from '../utils/cardNumbers'
 import { normalizeSearchText, textIncludes } from '../utils/textSearch'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
-import { CardStateLegend } from '../components/CardStateIndicators'
 import { BINDER_SORT_OPTIONS, sortBinderCards } from '../utils/binderCards'
-import UnifiedCard, { CompactCardArtwork, UnifiedCardDialog, withCollectionItemState } from '../components/UnifiedCard'
+import { CardDialog, CardDisplay, CardLegend, withCollectionItemState } from '../components/card-system'
 
 const SPRITE_BASE_URL = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated'
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
@@ -594,7 +593,7 @@ export default function BinderDetail() {
                     const alreadyAdded = cards.some(c => c.id === card.id)
                     const selected = selectedPickerIds.includes(card.id)
                     return (
-                      <UnifiedCard
+                      <CardDisplay
                         key={card.id}
                         card={card}
                         image={resolveCardImageUrl(card)}
@@ -625,7 +624,7 @@ export default function BinderDetail() {
                     const unavailable = unavailableCollectionItemIds.has(item.id)
                     const selected = selectedPickerIds.includes(item.id)
                     return (
-                      <UnifiedCard
+                      <CardDisplay
                         key={`${card.id}-${item.id}`}
                         card={card}
                         image={resolveCardImageUrl(card)}
@@ -692,7 +691,8 @@ export default function BinderDetail() {
               <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
                 {t('setDetail.badgeLegend')}
               </p>
-              <CardStateLegend
+              <CardLegend
+                collapsible={false}
                 showOwnershipFallback={false}
                 showWishlist={false}
                 showQuantity={!isCollection}
@@ -763,7 +763,7 @@ export default function BinderDetail() {
             const isMissing = isWishlist && (card.missing_quantity || 0) > 0
 
             return (
-              <UnifiedCard
+              <CardDisplay
                 key={card.binder_card_id || card.id}
                 card={card}
                 image={resolveCardImageUrl(card)}
@@ -865,7 +865,7 @@ export default function BinderDetail() {
                             <div className="min-w-0 flex-1">
                               <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_32px_minmax(0,1fr)_auto] md:items-center">
                                 <div className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-bg-elevated/50 p-2">
-                                  <CompactCardArtwork card={item.current} image={resolveCardImageUrl(item.current)} alt={item.current.name} variantEffectSource={item.current.variant} />
+                                  <CardDisplay variant="compact-artwork" card={item.current} image={resolveCardImageUrl(item.current)} alt={item.current.name} variantEffectSource={item.current.variant} />
                                   <div className="min-w-0">
                                     <p className="text-[9px] font-bold uppercase tracking-wide text-text-muted">{t('binderTypes.currentPrint')}</p>
                                     <p className="truncate text-xs font-semibold text-text-primary">{item.current.set_name || item.current.set_id} #{item.current.number}</p>
@@ -878,7 +878,7 @@ export default function BinderDetail() {
                                   <span className="hidden md:inline">→</span>
                                 </span>
                                 <div className="flex min-w-0 items-center gap-2 rounded-lg border border-green/30 bg-green/5 p-2">
-                                  <CompactCardArtwork card={item.suggested} image={resolveCardImageUrl(item.suggested)} alt={item.suggested.name} variantEffectSource={item.suggested.variant} />
+                                  <CardDisplay variant="compact-artwork" card={item.suggested} image={resolveCardImageUrl(item.suggested)} alt={item.suggested.name} variantEffectSource={item.suggested.variant} />
                                   <div className="min-w-0">
                                     <p className="text-[9px] font-bold uppercase tracking-wide text-green">{t('binderTypes.suggestedPrint')}</p>
                                     <p className="truncate text-xs font-semibold text-text-primary">{item.suggested.set_name || item.suggested.set_id} #{item.suggested.number}</p>
@@ -923,7 +923,7 @@ export default function BinderDetail() {
       )}
 
       {selectedCard && (
-        <UnifiedCardDialog
+        <CardDialog
           card={selectedCard}
           image={resolveCardImageUrl(selectedCard)}
           variantEffectSource={selectedCard.variant}
@@ -1005,7 +1005,8 @@ export default function BinderDetail() {
                         const imageUrl = resolveCardImageUrl(print)
                         return (
                           <div key={print.collection_item_id || print.id} className={`flex items-center gap-3 rounded-lg border p-2 ${print.is_current ? 'border-yellow/40 bg-yellow/5' : 'border-border bg-bg/40'}`}>
-                            <CompactCardArtwork
+                            <CardDisplay
+                              variant="compact-artwork"
                               card={print}
                               image={imageUrl}
                               alt={print.name}
@@ -1039,7 +1040,7 @@ export default function BinderDetail() {
                   )}
                 </div>
           )}
-        </UnifiedCardDialog>
+        </CardDialog>
       )}
     </div>
   )

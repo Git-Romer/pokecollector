@@ -7,7 +7,7 @@ import { useSettings } from '../contexts/SettingsContext'
 import { useAuth } from '../contexts/AuthContext'
 import TabNav from '../components/TabNav'
 import { resolveCardImageUrl } from '../utils/imageUrl'
-import { CompactCardIdentity } from '../components/CardListItem'
+import { CardIdentity } from '../components/card-system'
 import { CardModal } from '../components/CardItem'
 
 const SORT_OPTIONS = ['total_value', 'total_cards', 'unique_cards', 'sets_completed', 'pnl']
@@ -157,7 +157,7 @@ export default function Leaderboard() {
                     <div className="col-span-2 md:col-span-1">
                       <p className="text-[11px] uppercase tracking-[0.2em] text-text-muted">{t('leaderboard.bestCard')}</p>
                       {bestCard ? (
-                        <CompactCardIdentity
+                        <CardIdentity
                           className="mt-1"
                           card={bestCard}
                           image={resolveCardImageUrl(bestCard)}

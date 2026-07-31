@@ -11,6 +11,7 @@ export function CompactCardIdentity({
   variantEffectSource = null,
   details,
   onClick,
+  loading = 'lazy',
   className = '',
 }) {
   const Component = onClick ? 'button' : 'div'
@@ -30,6 +31,7 @@ export function CompactCardIdentity({
         image={image}
         alt={name}
         variantEffectSource={variantEffectSource}
+        loading={loading}
       />
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         {name && <p className="truncate text-sm font-semibold leading-tight text-text-primary">{name}</p>}
@@ -78,6 +80,7 @@ export default function CardListItem({
   rightAction,
   className = '',
   variantEffectSource = null,
+  loading = 'lazy',
 }) {
   return (
     <div
@@ -103,6 +106,7 @@ export default function CardListItem({
         setNumber={setNumber}
         languageLabel={languageLabel}
         variantEffectSource={variantEffectSource}
+        loading={loading}
         details={badges.length > 0 ? (
           <div className="flex flex-wrap gap-1 mt-0.5">
             {badges.map((badge, i) => (

@@ -7,7 +7,7 @@ import {
 import { Plus, Trash2, Edit2, TrendingUp, TrendingDown, Package, Check, X, SortAsc, Filter, ChevronUp, ChevronDown, Link2, DollarSign, History, Eye } from 'lucide-react'
 import { getProducts, createProduct, updateProduct, deleteProduct, getProductsSummary, getCollection, linkProductCard, unlinkProductCard, sellProductCard, addProductLedgerEntry, getApiErrorMessage } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
-import CardListItem from '../components/CardListItem'
+import { CardRow } from '../components/card-system'
 import MoneyInput from '../components/MoneyInput'
 import PeriodSelector, { PRODUCT_PERIODS, getPeriodCutoff } from '../components/PeriodSelector'
 import AnalyticsSectionNav from '../components/AnalyticsSectionNav'
@@ -763,7 +763,7 @@ export default function Products() {
 
               return (
                 <Fragment key={p.id}>
-                  <CardListItem
+                  <CardRow
                     name={p.product_name}
                     subtext={`${p.purchase_date} · ${formatPrice(p.purchase_price)} · ${t('products.valueLabel')}: ${p.computed_current_value != null ? formatPrice(p.computed_current_value) : '-'}`}
                     badges={badges}

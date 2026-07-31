@@ -1,0 +1,156 @@
+  .unified-card-frame {
+    position: relative;
+    width: 100%;
+    padding: var(--pc-card-frame-padding);
+    border-radius: var(--pc-card-frame-radius);
+    background: var(--card-frame-gradient, #717a89);
+    box-shadow: 0 8px 22px rgba(0,0,0,0.4);
+    transition: background 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+  }
+  .unified-card-frame-interactive {
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .unified-card-frame-interactive:hover,
+  .unified-card-frame-interactive:focus-visible {
+    background: var(--card-frame-hover-gradient, #c6ccd7);
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.45),
+      0 0 23px rgba(166,174,190,0.34),
+      0 12px 28px rgba(0,0,0,0.48);
+    outline: none;
+    transform: translateY(-1px);
+  }
+  .unified-card-frame-unavailable { cursor: not-allowed; }
+  .unified-card-art {
+    position: relative;
+    aspect-ratio: 2.5 / 3.5;
+    width: 100%;
+    overflow: hidden;
+    border-radius: var(--pc-card-art-radius);
+    background: var(--color-elevated);
+  }
+  .unified-card-caption {
+    height: var(--pc-card-caption-height);
+    overflow: hidden;
+    padding: 8px 2px 0;
+  }
+  .unified-card-caption-name {
+    display: block;
+    flex: 1 1 0%;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow-wrap: normal;
+    word-break: normal;
+    hyphens: none;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+  .unified-card-caption-skeleton {
+    background: linear-gradient(105deg, #202733 0 38%, #333c49 48%, #202733 58% 100%);
+    background-size: 220% 100%;
+    animation: unified-card-shimmer 1.35s linear infinite;
+  }
+  .unified-card-frame-thumbnail {
+    padding: var(--pc-card-frame-padding-compact);
+    border-radius: var(--pc-card-frame-radius-compact);
+    box-shadow: 0 3px 8px rgba(0,0,0,0.32);
+  }
+  .unified-card-frame-thumbnail .unified-card-art { border-radius: var(--pc-card-art-radius-compact); }
+  .unified-card-compact-artwork { width: var(--pc-card-compact-width); }
+  .unified-card-frame-comparison {
+    padding: var(--pc-card-frame-padding-comparison);
+    border-radius: var(--pc-card-frame-radius-comparison);
+  }
+  .unified-card-frame-comparison .unified-card-art { border-radius: var(--pc-card-art-radius-comparison); }
+  .unified-card-missing-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    border-radius: inherit;
+    background: rgba(38, 43, 51, 0.5);
+    pointer-events: none;
+    transition: background 160ms ease;
+  }
+  .unified-card-frame-interactive:hover .unified-card-missing-overlay,
+  .unified-card-frame-interactive:focus-visible .unified-card-missing-overlay { background: rgba(38, 43, 51, 0.34); }
+  .unified-card-add {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    border: 0;
+    border-radius: 11px;
+    background: rgba(0,0,0,0.28);
+    color: white;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 160ms ease, background 160ms ease;
+  }
+  .unified-card-add::before {
+    content: '';
+    position: absolute;
+    width: 44px;
+    height: 44px;
+    border: 2px solid rgba(255,255,255,0.75);
+    border-radius: 9999px;
+    background: rgba(227,0,11,0.92);
+    box-shadow: 0 0 18px rgba(227,0,11,0.55);
+  }
+  .unified-card-add > svg { position: relative; z-index: 1; }
+  @media (hover: hover) and (pointer: fine) {
+    .unified-card-frame:hover .unified-card-add,
+    .unified-card-frame:focus-within .unified-card-add {
+      opacity: 1;
+      pointer-events: auto;
+    }
+  }
+  .unified-card-selection {
+    position: absolute;
+    right: 7px;
+    top: 7px;
+    z-index: 35;
+    display: grid;
+    width: 28px;
+    height: 28px;
+    place-items: center;
+    border: 1px solid rgba(255,255,255,0.55);
+    border-radius: 8px;
+    background: var(--color-brand-red);
+    color: white;
+    font-size: 13px;
+    font-weight: 900;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.42);
+  }
+  .unified-card-unavailable-reason {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+    z-index: 35;
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 7px;
+    background: rgba(8,8,15,0.92);
+    padding: 6px 8px;
+    color: white;
+    text-align: center;
+    font-size: 10px;
+    font-weight: 800;
+  }
+  .unified-card-frame-unavailable .unified-card-image { filter: grayscale(0.78); opacity: 0.42; }
+  .unified-card-skeleton {
+    background: linear-gradient(105deg, #1e2631 0 38%, #303947 48%, #1e2631 58% 100%);
+    background-size: 220% 100%;
+    animation: unified-card-shimmer 1.35s linear infinite;
+  }
+  @keyframes unified-card-shimmer {
+    from { background-position: 100% 0; }
+    to { background-position: -120% 0; }
+  }
