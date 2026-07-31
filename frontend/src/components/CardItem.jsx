@@ -939,7 +939,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
                     disabled={wishlistMutation.isPending}
                   >
                     <Heart size={16} />
-                    {wishlistMutation.isPending ? t('common.saving') : t('card.addToWishlist')}
+                    {wishlistMutation.isPending ? t('common.saving') : t('binderTypes.addToWishlist')}
                   </button>
                 </div>
               )}

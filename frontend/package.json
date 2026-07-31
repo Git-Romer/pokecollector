@@ -7,8 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "check:card-system": "node scripts/check-card-system.mjs",
+    "check:translations": "node scripts/check-translations.mjs",
     "preview": "vite preview",
-    "test": "npm run check:card-system && vitest run src",
+    "test": "npm run check:card-system && npm run check:translations && vitest run src",
     "test:visual": "playwright test",
     "test:visual:update": "playwright test --update-snapshots",
     "test:watch": "vitest"

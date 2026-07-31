@@ -18,6 +18,8 @@ npm test
 npm run build
 ```
 
+The frontend test command also validates literal translation keys. Add new user-facing keys to `src/i18n/en.js`; other language bundles can fall back to English until a translation is contributed. Missing keys fail with the source file and line instead of appearing as raw labels in the app.
+
 ## Card interfaces
 
 Feature pages should use the public card system from `src/components/card-system` instead of building card frames, rows, badges, dialogs, or loading/error states themselves.
