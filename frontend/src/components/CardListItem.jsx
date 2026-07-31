@@ -1,11 +1,56 @@
 import clsx from 'clsx'
-import { CardArtworkFrame } from './UnifiedCard'
+import { CompactCardArtwork } from './UnifiedCard'
+
+export function CompactCardIdentity({
+  image,
+  card = {},
+  name,
+  subtext,
+  setNumber,
+  languageLabel,
+  variantEffectSource = null,
+  details,
+  onClick,
+  className = '',
+}) {
+  const Component = onClick ? 'button' : 'div'
+
+  return (
+    <Component
+      type={onClick ? 'button' : undefined}
+      className={clsx(
+        'flex min-w-0 items-center gap-3 text-left',
+        onClick && 'rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/70',
+        className,
+      )}
+      onClick={onClick}
+    >
+      <CompactCardArtwork
+        card={card}
+        image={image}
+        alt={name}
+        variantEffectSource={variantEffectSource}
+      />
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        {name && <p className="truncate text-sm font-semibold leading-tight text-text-primary">{name}</p>}
+        {(setNumber || languageLabel) && (
+          <p className="flex min-w-0 items-center gap-1.5 text-xs leading-tight">
+            {setNumber && <span className="truncate font-mono font-bold text-brand-red">{setNumber}</span>}
+            {languageLabel && <span className="truncate text-text-muted">{languageLabel}</span>}
+          </p>
+        )}
+        {subtext && <p className="truncate text-xs leading-tight text-text-muted">{subtext}</p>}
+        {details}
+      </div>
+    </Component>
+  )
+}
 
 /**
  * CardListItem — Reusable card row for Collection, Wishlist, Search results, etc.
  *
  * Layout (mobile-first, no overflow):
- *   [Image 48×68] [Content flex-1 min-w-0] [Value flex-shrink-0]
+ *   [Shared compact artwork] [Content flex-1 min-w-0] [Value flex-shrink-0]
  *
  * Props:
  *   image       {string}    — card image URL
@@ -49,41 +94,16 @@ export default function CardListItem({
       tabIndex={onClick ? 0 : undefined}
       onKeyDown={onClick ? (e) => e.key === 'Enter' && onClick(e) : undefined}
     >
-      {/* Card thumbnail */}
-      <div className="w-12 flex-shrink-0">
-        <CardArtworkFrame
-          card={card}
-          image={image}
-          alt={name}
-          variantEffectSource={variantEffectSource}
-          showStateIndicators={false}
-        />
-      </div>
-
-      {/* Content — flex-1 min-w-0 so it shrinks and wraps instead of overflowing */}
-      <div className="flex-1 flex flex-col gap-0.5" style={{ minWidth: 0, overflow: "visible" }}>
-        {/* Card name — truncated single line */}
-        {name && (
-          <p className="text-sm font-semibold text-text-primary truncate leading-tight">
-            {name}
-          </p>
-        )}
-
-        {/* Subtext — set name, etc. — also truncated */}
-        {(setNumber || languageLabel) && (
-          <p className="flex min-w-0 items-center gap-1.5 text-xs leading-tight">
-            {setNumber && <span className="truncate font-mono font-bold text-brand-red">{setNumber}</span>}
-            {languageLabel && <span className="truncate text-text-muted">{languageLabel}</span>}
-          </p>
-        )}
-        {subtext && !setNumber && (
-          <p className="text-xs text-text-muted truncate leading-tight">
-            {subtext}
-          </p>
-        )}
-
-        {/* Badges row */}
-        {badges.length > 0 && (
+      <CompactCardIdentity
+        className="flex-1"
+        card={card}
+        image={image}
+        name={name}
+        subtext={subtext}
+        setNumber={setNumber}
+        languageLabel={languageLabel}
+        variantEffectSource={variantEffectSource}
+        details={badges.length > 0 ? (
           <div className="flex flex-wrap gap-1 mt-0.5">
             {badges.map((badge, i) => (
               <span
@@ -97,8 +117,8 @@ export default function CardListItem({
               </span>
             ))}
           </div>
-        )}
-      </div>
+        ) : null}
+      />
 
       {/* Right: value + optional action */}
       <div className="flex-shrink-0 flex items-center gap-2">

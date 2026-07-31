@@ -12,7 +12,7 @@ import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import { CardStateLegend } from '../components/CardStateIndicators'
 import { BINDER_SORT_OPTIONS, sortBinderCards } from '../utils/binderCards'
-import UnifiedCard, { CardArtworkFrame, UnifiedCardDialog, withCollectionItemState } from '../components/UnifiedCard'
+import UnifiedCard, { CompactCardArtwork, UnifiedCardDialog, withCollectionItemState } from '../components/UnifiedCard'
 
 const SPRITE_BASE_URL = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated'
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
@@ -865,9 +865,7 @@ export default function BinderDetail() {
                             <div className="min-w-0 flex-1">
                               <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_32px_minmax(0,1fr)_auto] md:items-center">
                                 <div className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-bg-elevated/50 p-2">
-                                  <div className="w-10 flex-shrink-0">
-                                    <CardArtworkFrame card={item.current} image={resolveCardImageUrl(item.current)} alt={item.current.name} variantEffectSource={item.current.variant} showStateIndicators={false} thumbnail />
-                                  </div>
+                                  <CompactCardArtwork card={item.current} image={resolveCardImageUrl(item.current)} alt={item.current.name} variantEffectSource={item.current.variant} />
                                   <div className="min-w-0">
                                     <p className="text-[9px] font-bold uppercase tracking-wide text-text-muted">{t('binderTypes.currentPrint')}</p>
                                     <p className="truncate text-xs font-semibold text-text-primary">{item.current.set_name || item.current.set_id} #{item.current.number}</p>
@@ -880,9 +878,7 @@ export default function BinderDetail() {
                                   <span className="hidden md:inline">→</span>
                                 </span>
                                 <div className="flex min-w-0 items-center gap-2 rounded-lg border border-green/30 bg-green/5 p-2">
-                                  <div className="w-10 flex-shrink-0">
-                                    <CardArtworkFrame card={item.suggested} image={resolveCardImageUrl(item.suggested)} alt={item.suggested.name} variantEffectSource={item.suggested.variant} showStateIndicators={false} thumbnail />
-                                  </div>
+                                  <CompactCardArtwork card={item.suggested} image={resolveCardImageUrl(item.suggested)} alt={item.suggested.name} variantEffectSource={item.suggested.variant} />
                                   <div className="min-w-0">
                                     <p className="text-[9px] font-bold uppercase tracking-wide text-green">{t('binderTypes.suggestedPrint')}</p>
                                     <p className="truncate text-xs font-semibold text-text-primary">{item.suggested.set_name || item.suggested.set_id} #{item.suggested.number}</p>
@@ -1009,15 +1005,12 @@ export default function BinderDetail() {
                         const imageUrl = resolveCardImageUrl(print)
                         return (
                           <div key={print.collection_item_id || print.id} className={`flex items-center gap-3 rounded-lg border p-2 ${print.is_current ? 'border-yellow/40 bg-yellow/5' : 'border-border bg-bg/40'}`}>
-                            <div className="w-10 flex-shrink-0">
-                              <CardArtworkFrame
-                                card={print}
-                                image={imageUrl}
-                                alt={print.name}
-                                variantEffectSource={print.variant}
-                                showStateIndicators={false}
-                              />
-                            </div>
+                            <CompactCardArtwork
+                              card={print}
+                              image={imageUrl}
+                              alt={print.name}
+                              variantEffectSource={print.variant}
+                            />
                             <div className="min-w-0 flex-1">
                               <p className="text-xs font-semibold text-text-primary truncate">{print.set_name || print.set_id} #{print.number}</p>
                               <div className="flex items-center gap-2 flex-wrap text-[11px] text-text-muted">

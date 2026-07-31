@@ -3,13 +3,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Trash2, Edit2, Check, X, Heart, Filter, SortAsc, ChevronUp, ChevronDown, Library, BookOpen, Minus, Plus } from 'lucide-react'
 import { getWishlist, removeFromWishlist, updateWishlistItem, addToCollection } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
-import CardListItem from '../components/CardListItem'
+import CardListItem, { CompactCardIdentity } from '../components/CardListItem'
 import TabNav from '../components/TabNav'
 import toast from 'react-hot-toast'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 import { getEffectiveCardPrice } from '../utils/prices'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
-import { CardArtworkFrame, UnifiedCardDialog, getCardSetNumber } from '../components/UnifiedCard'
+import { UnifiedCardDialog, getCardSetNumber } from '../components/UnifiedCard'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 
 function WishlistItemEditor({ item, onDone }) {
@@ -350,23 +350,14 @@ export default function Wishlist() {
                       return (
                         <tr key={item.id} className="border-b border-border/50 hover:bg-bg-elevated/50 transition-colors">
                           <td className="px-4 py-3">
-                            <button type="button" className="flex items-center gap-3 text-left" onClick={() => setSelectedItem(item)}>
-                              <div className="w-8 flex-shrink-0">
-                                <CardArtworkFrame
-                                  card={card}
-                                  image={resolveCardImageUrl(card)}
-                                  alt={card?.name}
-                                  showStateIndicators={false}
-                                />
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-sm font-medium text-text-primary">{card?.name}</p>
-                                <p className="text-xs">
-                                  <span className="font-mono font-bold text-brand-red">{getCardSetNumber(card)}</span>
-                                  {card?.lang && <span className="ml-2 text-text-muted">{tcgdexLanguageLabel(card.lang)}</span>}
-                                </p>
-                              </div>
-                            </button>
+                            <CompactCardIdentity
+                              card={card}
+                              image={resolveCardImageUrl(card)}
+                              name={card?.name}
+                              setNumber={getCardSetNumber(card)}
+                              languageLabel={card?.lang ? tcgdexLanguageLabel(card.lang) : null}
+                              onClick={() => setSelectedItem(item)}
+                            />
                           </td>
                           <td className="px-4 py-3 text-xs text-text-secondary">{card?.rarity || '—'}</td>
                           <td className="px-4 py-3 text-center">

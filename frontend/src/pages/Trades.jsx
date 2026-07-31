@@ -16,7 +16,7 @@ import { CustomCardModal } from '../components/CardItem'
 import { useSettings } from '../contexts/SettingsContext'
 import { CARD_VARIANTS, getDefaultVariantOrNull } from '../utils/cardVariants'
 import { resolveCardImageUrl } from '../utils/imageUrl'
-import { CardArtworkFrame } from '../components/UnifiedCard'
+import { CompactCardIdentity } from '../components/CardListItem'
 import { getEffectiveCardPrice, priceFieldFromPrimary } from '../utils/prices'
 import { formatMoneyInputValue, parseMoneyInputValue } from '../utils/moneyInput'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
@@ -138,20 +138,15 @@ function TradeHealthBar({ outgoingValue, incomingValue, scoreOutgoingValue, miss
 function MiniCardRow({ card, variant, meta, value, rightAction }) {
   return (
     <div className="flex items-center gap-3 rounded-lg border border-border bg-bg-card p-2 min-w-0">
-      <div className="w-10 flex-shrink-0">
-        <CardArtworkFrame
-          card={card}
-          image={resolveCardImageUrl(card)}
-          alt={cardTitle(card)}
-          variantEffectSource={variant}
-          showStateIndicators={false}
-        />
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold text-text-primary">{cardTitle(card)}</p>
-        <p className="truncate font-mono text-xs font-bold text-brand-red">{cardSubtitle(card)}</p>
-        {meta && <p className="truncate text-xs text-text-secondary">{meta}</p>}
-      </div>
+      <CompactCardIdentity
+        className="flex-1"
+        card={card}
+        image={resolveCardImageUrl(card)}
+        name={cardTitle(card)}
+        setNumber={cardSubtitle(card)}
+        subtext={meta}
+        variantEffectSource={variant}
+      />
       {value && <div className="text-right text-sm font-bold text-text-primary flex-shrink-0">{value}</div>}
       {rightAction}
     </div>

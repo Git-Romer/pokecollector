@@ -6,7 +6,7 @@ import { compareUsers } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import { useAuth } from '../contexts/AuthContext'
 import { resolveCardImageUrl } from '../utils/imageUrl'
-import { CardArtworkFrame } from '../components/UnifiedCard'
+import { CompactCardIdentity } from '../components/CardListItem'
 import { CardModal } from '../components/CardItem'
 
 function TrainerAvatar({ avatarId, username }) {
@@ -63,15 +63,14 @@ function TrainerPanel({ trainer, formatPrice, t, onCardClick }) {
       <div>
         <p className="mb-2 text-[11px] uppercase tracking-[0.2em] text-text-muted">{t('leaderboard.bestCard')}</p>
         {bestCard ? (
-          <button type="button" className="flex w-full items-center gap-3 rounded-2xl border border-border bg-bg-primary/60 p-3 text-left" onClick={() => onCardClick(bestCard)}>
-            <div className="w-12 flex-shrink-0">
-              <CardArtworkFrame card={bestCard} image={resolveCardImageUrl(bestCard)} alt={bestCard.name} showStateIndicators={false} />
-            </div>
-            <div className="min-w-0">
-              <p className="truncate font-semibold text-text-primary">{bestCard.name}</p>
-              <p className="text-sm text-text-secondary">{formatPrice(bestCard.price_market)}</p>
-            </div>
-          </button>
+          <CompactCardIdentity
+            className="w-full rounded-2xl border border-border bg-bg-primary/60 p-3"
+            card={bestCard}
+            image={resolveCardImageUrl(bestCard)}
+            name={bestCard.name}
+            subtext={formatPrice(bestCard.price_market)}
+            onClick={() => onCardClick(bestCard)}
+          />
         ) : (
           <div className="rounded-2xl border border-border bg-bg-primary/60 p-3 text-sm text-text-muted">-</div>
         )}
@@ -170,16 +169,14 @@ export default function Compare() {
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {data.trade_suggestions.map((trade) => (
                   <div key={`${trade.card_id}-${trade.owner_username}-${trade.wants_username}`} className="rounded-2xl border border-border bg-bg-primary/60 p-3">
-                    <button type="button" className="flex w-full items-center gap-3 text-left" onClick={() => setSelectedCard({ ...trade, id: trade.card_id, name: trade.card_name })}>
-                      <div className="w-12 flex-shrink-0">
-                        <CardArtworkFrame card={trade} image={resolveCardImageUrl(trade)} alt={trade.card_name} showStateIndicators={false} />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="truncate font-semibold text-text-primary">{trade.card_name}</p>
-                        <p className="text-sm text-text-secondary">{trade.owner_username} {t('compare.has')}</p>
-                        <p className="text-sm text-text-secondary">{trade.wants_username} {t('compare.wants')}</p>
-                      </div>
-                    </button>
+                    <CompactCardIdentity
+                      className="w-full"
+                      card={trade}
+                      image={resolveCardImageUrl(trade)}
+                      name={trade.card_name}
+                      subtext={`${trade.owner_username} ${t('compare.has')} · ${trade.wants_username} ${t('compare.wants')}`}
+                      onClick={() => setSelectedCard({ ...trade, id: trade.card_id, name: trade.card_name })}
+                    />
                   </div>
                 ))}
               </div>

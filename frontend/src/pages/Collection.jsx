@@ -7,7 +7,7 @@ import { getCollection, updateCollectionItem, updateCardCustomImage, removeFromC
 import { CustomCardModal } from '../components/CardItem'
 import { useSettings } from '../contexts/SettingsContext'
 import CardImage from '../components/CardImage'
-import CardListItem from '../components/CardListItem'
+import CardListItem, { CompactCardIdentity } from '../components/CardListItem'
 import MoneyInput from '../components/MoneyInput'
 import TabNav from '../components/TabNav'
 import toast from 'react-hot-toast'
@@ -17,12 +17,12 @@ import { cardNumberMatches } from '../utils/cardNumbers'
 import { normalizeSearchText, textIncludes } from '../utils/textSearch'
 import { getEffectiveCardPrice } from '../utils/prices'
 import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
-import { tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
+import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import { formatMoneyInputValue, parseMoneyInputValue } from '../utils/moneyInput'
 import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
-import UnifiedCard, { CardArtworkFrame, UnifiedCardDialog, withCollectionItemState } from '../components/UnifiedCard'
+import UnifiedCard, { UnifiedCardDialog, withCollectionItemState } from '../components/UnifiedCard'
 import { CardStateLegendDisclosure } from '../components/CardStateIndicators'
 
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
@@ -1361,41 +1361,22 @@ export default function Collection() {
                           onClick={() => setEditingCollectionItem(item)}
                         >
                           <td className="px-4 py-3">
-                            <div className="flex items-center gap-3">
-                              <div className="w-7 flex-shrink-0">
-                                <CardArtworkFrame
-                                  card={card}
-                                  image={resolveCardImageUrl(card)}
-                                  alt={card?.name}
-                                  variantEffectSource={item.variant}
-                                  showStateIndicators={false}
-                                  thumbnail
-                                />
-                              </div>
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-1 flex-wrap">
-                                  <p className="text-sm font-medium text-text-primary hover:text-brand-red transition-colors truncate max-w-[130px]">
-                                    {card?.name}
-                                  </p>
+                            <CompactCardIdentity
+                              card={card}
+                              image={resolveCardImageUrl(card)}
+                              name={card?.name}
+                              setNumber={[card?.set_ref?.abbreviation || card?.set_id, card?.number].filter(Boolean).join(' ').toUpperCase()}
+                              languageLabel={item.lang ? tcgdexLanguageLabel(item.lang) : null}
+                              variantEffectSource={item.variant}
+                              details={(
+                                <div className="mt-0.5 flex min-w-0 items-center gap-1">
                                   {card?.is_custom && (
-                                    <span className="text-xs bg-yellow/20 text-yellow px-1 rounded" title={t('migration.custom')}>✏️</span>
+                                    <span className="rounded bg-yellow/20 px-1 text-xs text-yellow" title={t('migration.custom')}>✏️</span>
                                   )}
-                                  {item.lang && (
-                                    <span className={`text-[9px] font-black px-1 py-0.5 rounded leading-none ${tcgdexLanguageBadgeClass(item.lang)}`}>
-                                      {tcgdexLanguageLabel(item.lang)}
-                                    </span>
-                                  )}
+                                  <ProductSourceBadge item={item} t={t} className="max-w-[180px]" />
                                 </div>
-                                {(() => {
-                                  const abbr = card?.set_ref?.abbreviation
-                                  const num = card?.number
-                                  if (abbr && num) return <p className="text-[10px] font-mono text-brand-red/70">{abbr} {num}</p>
-                                  if (num) return <p className="text-[10px] font-mono text-text-muted">#{num}</p>
-                                  return null
-                                })()}
-                                <ProductSourceBadge item={item} t={t} className="mt-1 max-w-[180px]" />
-                              </div>
-                            </div>
+                              )}
+                            />
                           </td>
                           <td className="px-4 py-3 text-left">
                             {item.variant ? (

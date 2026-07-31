@@ -198,12 +198,15 @@ input:-webkit-autofill:focus {
     animation: unified-card-shimmer 1.35s linear infinite;
   }
   .unified-card-frame-thumbnail {
-    padding: 1px;
-    border-radius: 7px;
+    padding: 2px;
+    border-radius: 9px;
     box-shadow: 0 3px 8px rgba(0,0,0,0.32);
   }
   .unified-card-frame-thumbnail .unified-card-art {
-    border-radius: 6px;
+    border-radius: 7px;
+  }
+  .unified-card-compact-artwork {
+    width: 2.5rem;
   }
   .migration-comparison-art .unified-card-frame {
     padding: 2px;

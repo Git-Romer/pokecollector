@@ -12,9 +12,8 @@ import {
   getInvestmentTracker, getTradeStats, getAnalyticsNewSets, getProducts, createProduct
 } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
-import CardListItem from '../components/CardListItem'
+import CardListItem, { CompactCardIdentity } from '../components/CardListItem'
 import { CardModal } from '../components/CardItem'
-import { CardArtworkFrame } from '../components/UnifiedCard'
 import { format, parseISO } from 'date-fns'
 import clsx from 'clsx'
 import PeriodSelector, { CARD_PERIODS, PERIOD_DAYS } from '../components/PeriodSelector'
@@ -282,12 +281,12 @@ export default function Analytics() {
                     {duplicates.map((item) => (
                       <tr key={item.id} className="border-b border-border/50 hover:bg-bg-elevated/50">
                         <td className="px-4 py-3">
-                          <button type="button" className="flex items-center gap-3 text-left" onClick={() => setSelectedCard({ ...item, id: item.card_id || item.id })}>
-                            <div className="w-8 flex-shrink-0">
-                              <CardArtworkFrame card={item} image={resolveCardImageUrl(item)} alt={item.name} showStateIndicators={false} />
-                            </div>
-                            <span className="text-sm font-medium text-text-primary">{item.name}</span>
-                          </button>
+                          <CompactCardIdentity
+                            card={item}
+                            image={resolveCardImageUrl(item)}
+                            name={item.name}
+                            onClick={() => setSelectedCard({ ...item, id: item.card_id || item.id })}
+                          />
                         </td>
                         <td className="px-4 py-3 text-text-secondary text-xs">{item.set_name || '-'}</td>
                         <td className="px-4 py-3 text-text-secondary text-xs">{item.rarity || '-'}</td>
@@ -360,28 +359,29 @@ export default function Analytics() {
           ) : (
             <div className="space-y-2">
               {topMovers.map((card) => (
-                <div key={card.card_id} className="card flex items-center gap-4">
-                  <button type="button" className="w-10 flex-shrink-0" onClick={() => setSelectedCard({ ...card, id: card.card_id })}>
-                    <CardArtworkFrame card={card} image={resolveCardImageUrl(card)} alt={card.name} showStateIndicators={false} />
-                  </button>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-text-primary truncate">{card.name}</p>
-                    <p className="text-xs text-text-muted">{card.rarity}</p>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <p className="text-sm text-text-secondary">{formatPrice(card.old_price)} → {formatPrice(card.current_price)}</p>
-                    <div className={clsx(
-                      'flex items-center justify-end gap-1 font-bold',
-                      card.change_pct >= 0 ? 'text-green' : 'text-brand-red'
-                    )}>
-                      {card.change_pct >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-                      {card.change_pct >= 0 ? '+' : ''}{card.change_pct}%
-                      <span className="text-xs font-normal ml-1">
-                        ({card.change_abs >= 0 ? '+' : ''}{formatPrice(card.change_abs)})
-                      </span>
+                <CardListItem
+                  key={card.card_id}
+                  card={card}
+                  image={resolveCardImageUrl(card)}
+                  name={card.name}
+                  subtext={card.rarity}
+                  onClick={() => setSelectedCard({ ...card, id: card.card_id })}
+                  rightAction={(
+                    <div className="flex-shrink-0 text-right">
+                      <p className="text-sm text-text-secondary">{formatPrice(card.old_price)} → {formatPrice(card.current_price)}</p>
+                      <div className={clsx(
+                        'flex items-center justify-end gap-1 font-bold',
+                        card.change_pct >= 0 ? 'text-green' : 'text-brand-red'
+                      )}>
+                        {card.change_pct >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                        {card.change_pct >= 0 ? '+' : ''}{card.change_pct}%
+                        <span className="ml-1 text-xs font-normal">
+                          ({card.change_abs >= 0 ? '+' : ''}{formatPrice(card.change_abs)})
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                </div>
+                  )}
+                />
               ))}
             </div>
           )}

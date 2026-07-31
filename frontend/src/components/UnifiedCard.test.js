@@ -1,14 +1,21 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   CardCaption,
+  CompactCardArtwork,
   getCardFallbackKinds,
   getCardSetNumber,
   getFallbackBorderGradient,
   shouldDimUnownedCard,
   withCollectionItemState,
 } from './UnifiedCard'
+
+vi.mock('../contexts/SettingsContext', () => ({
+  useSettings: () => ({
+    t: key => key,
+  }),
+}))
 
 describe('CardCaption', () => {
   it('keeps the title and metadata in separate fixed rows with an ellipsis-ready title', () => {
@@ -32,6 +39,20 @@ describe('CardCaption', () => {
 
     expect(markup.match(/unified-card-caption-skeleton/g)).toHaveLength(2)
     expect(markup).not.toContain('Pikachu')
+  })
+})
+
+describe('CompactCardArtwork', () => {
+  it('uses the shared compact frame and contains the full artwork', () => {
+    const markup = renderToStaticMarkup(createElement(CompactCardArtwork, {
+      card: { id: 'sv8-001', name: 'Pikachu' },
+      image: 'https://example.test/pikachu.webp',
+      alt: 'Pikachu',
+    }))
+
+    expect(markup).toContain('unified-card-compact-artwork')
+    expect(markup).toContain('unified-card-frame-thumbnail')
+    expect(markup).toContain('object-contain')
   })
 })
 

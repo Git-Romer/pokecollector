@@ -187,6 +187,34 @@ export function CardArtworkFrame({
   )
 }
 
+/**
+ * Shared artwork primitive for rows, tables, rankings, trades, and other
+ * compact displays. Sizing can vary by context; fit and frame treatment do not.
+ */
+export function CompactCardArtwork({
+  card = {},
+  image,
+  alt,
+  variantEffectSource,
+  className = '',
+  ...frameProps
+}) {
+  return (
+    <div className={clsx('unified-card-compact-artwork flex-shrink-0', className)}>
+      <CardArtworkFrame
+        card={card}
+        image={image}
+        alt={alt}
+        variantEffectSource={variantEffectSource}
+        showStateIndicators={false}
+        imageClassName="h-full w-full object-contain"
+        thumbnail
+        {...frameProps}
+      />
+    </div>
+  )
+}
+
 export function UnifiedCardDialog({
   card,
   image,
