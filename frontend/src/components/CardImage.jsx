@@ -5,7 +5,7 @@
  * Usage: <CardImage src={url} alt={card.name} className="w-full h-full object-cover" />
  */
 import { AlertTriangle, RefreshCw } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSettings } from '../contexts/SettingsContext'
 
 const CARD_BACK = '/cardback.jpg'
@@ -21,15 +21,43 @@ export default function CardImage({
   compactError = false,
 }) {
   const { t } = useSettings()
+  const imageRef = useRef(null)
   const [status, setStatus] = useState(() => ({ source: src, failed: false, loaded: false, attempt: 0 }))
   const currentStatus = status.source === src
     ? status
     : { source: src, failed: false, loaded: false, attempt: 0 }
   const { failed, loaded, attempt } = currentStatus
+  const showOverlay = !src || showName
+  const displaySrc = !src
+    ? CARD_BACK
+    : `${src}${attempt > 0 ? `${String(src).includes('?') ? '&' : '?'}retry=${attempt}` : ''}`
 
   useEffect(() => {
     onLoadingChange?.(!loaded)
   }, [loaded, onLoadingChange])
+
+  useEffect(() => {
+    const image = imageRef.current
+    if (!image?.complete) return
+
+    const nextFailed = image.naturalWidth === 0
+    setStatus(previous => {
+      const nextAttempt = previous.source === src ? previous.attempt : 0
+      if (
+        previous.source === src
+        && previous.loaded
+        && previous.failed === nextFailed
+        && previous.attempt === nextAttempt
+      ) return previous
+
+      return {
+        source: src,
+        failed: nextFailed,
+        loaded: true,
+        attempt: nextAttempt,
+      }
+    })
+  }, [displaySrc, src])
 
   const handleError = () => {
     setStatus(previous => ({
@@ -51,16 +79,12 @@ export default function CardImage({
     }))
   }
 
-  const showOverlay = !src || showName
-  const displaySrc = !src
-    ? CARD_BACK
-    : `${src}${attempt > 0 ? `${String(src).includes('?') ? '&' : '?'}retry=${attempt}` : ''}`
-
   return (
     <div className="unified-card-image relative w-full h-full bg-bg-elevated">
       {!loaded && <div className="unified-card-skeleton absolute inset-0" aria-hidden />}
       {!failed && (
         <img
+          ref={imageRef}
           key={`${src || CARD_BACK}-${attempt}`}
           src={displaySrc}
           alt={alt}

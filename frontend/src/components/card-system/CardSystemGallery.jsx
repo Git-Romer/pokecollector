@@ -28,6 +28,7 @@ const FALLBACK_CARD = {
 
 export default function CardSystemGallery() {
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [compactRevision, setCompactRevision] = useState(0)
 
   return (
     <main className="min-h-screen bg-bg-primary p-4 text-text-primary sm:p-8" data-testid="card-system-gallery">
@@ -54,7 +55,7 @@ export default function CardSystemGallery() {
 
         <section className="space-y-3" data-testid="compact-card-variants">
           <h2 className="text-sm font-bold uppercase tracking-wide text-text-muted">Compact and table variants</h2>
-          <div className="grid gap-3 lg:grid-cols-2">
+          <div key={compactRevision} className="grid gap-3 lg:grid-cols-2">
             <CardRow
               card={BASE_CARD}
               image={CARD_BACK}
@@ -63,12 +64,19 @@ export default function CardSystemGallery() {
               languageLabel="EN"
               badges={[{ label: 'Reverse Holo ×2', variant: 'purple' }]}
               value="€24.68"
-              loading="eager"
             />
             <div className="rounded-xl border border-border bg-bg-card p-3">
-              <CardIdentity card={BASE_CARD} image={CARD_BACK} name={BASE_CARD.name} setNumber="SSP 057" subtext="Illustration Rare" loading="eager" />
+              <CardIdentity card={BASE_CARD} image={CARD_BACK} name={BASE_CARD.name} setNumber="SSP 057" subtext="Illustration Rare" />
             </div>
           </div>
+          <button
+            type="button"
+            className="sr-only"
+            data-testid="remount-compact-cards"
+            onClick={() => setCompactRevision(value => value + 1)}
+          >
+            Remount compact cards
+          </button>
         </section>
 
         <section className="space-y-3" data-testid="context-card-variants">
