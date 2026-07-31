@@ -29,6 +29,7 @@ const FALLBACK_CARD = {
 export default function CardSystemGallery() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [compactRevision, setCompactRevision] = useState(0)
+  const [lazyStressMounted, setLazyStressMounted] = useState(false)
 
   return (
     <main className="min-h-screen bg-bg-primary p-4 text-text-primary sm:p-8" data-testid="card-system-gallery">
@@ -107,6 +108,29 @@ export default function CardSystemGallery() {
         <button type="button" className="btn-primary" onClick={() => setDialogOpen(true)} data-testid="open-card-dialog">
           Open shared card dialog
         </button>
+        <button
+          type="button"
+          className="sr-only"
+          data-testid="mount-lazy-card-stress"
+          onClick={() => setLazyStressMounted(true)}
+        >
+          Mount lazy card stress list
+        </button>
+
+        {lazyStressMounted && (
+          <section className="space-y-2" data-testid="lazy-card-stress">
+            {Array.from({ length: 80 }, (_, index) => (
+              <div key={index} className="rounded-xl border border-border bg-bg-card p-2">
+                <CardIdentity
+                  card={{ ...BASE_CARD, id: `lazy-card-${index}` }}
+                  image={`/api/images/card/lazy-card-${index}/small`}
+                  name={`Lazy compact card ${index + 1}`}
+                  setNumber={`TST ${String(index + 1).padStart(3, '0')}`}
+                />
+              </div>
+            ))}
+          </section>
+        )}
       </div>
 
       {dialogOpen && (

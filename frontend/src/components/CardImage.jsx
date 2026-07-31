@@ -21,7 +21,11 @@ export default function CardImage({
   compactError = false,
 }) {
   const { t } = useSettings()
+  const containerRef = useRef(null)
   const imageRef = useRef(null)
+  const [shouldLoad, setShouldLoad] = useState(() => (
+    loading !== 'lazy' || typeof IntersectionObserver === 'undefined'
+  ))
   const [status, setStatus] = useState(() => ({ source: src, failed: false, loaded: false, attempt: 0 }))
   const currentStatus = status.source === src
     ? status
@@ -31,6 +35,26 @@ export default function CardImage({
   const displaySrc = !src
     ? CARD_BACK
     : `${src}${attempt > 0 ? `${String(src).includes('?') ? '&' : '?'}retry=${attempt}` : ''}`
+
+  useEffect(() => {
+    if (shouldLoad) return undefined
+    if (loading !== 'lazy' || typeof IntersectionObserver === 'undefined') {
+      setShouldLoad(true)
+      return undefined
+    }
+
+    const container = containerRef.current
+    if (!container) return undefined
+
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some(entry => entry.isIntersecting)) return
+      setShouldLoad(true)
+      observer.disconnect()
+    }, { rootMargin: '300px 0px' })
+
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [loading, shouldLoad])
 
   useEffect(() => {
     onLoadingChange?.(!loaded)
@@ -57,7 +81,7 @@ export default function CardImage({
         attempt: nextAttempt,
       }
     })
-  }, [displaySrc, src])
+  }, [displaySrc, shouldLoad, src])
 
   const handleError = () => {
     setStatus(previous => ({
@@ -80,9 +104,9 @@ export default function CardImage({
   }
 
   return (
-    <div className="unified-card-image relative w-full h-full bg-bg-elevated">
+    <div ref={containerRef} className="unified-card-image relative w-full h-full bg-bg-elevated">
       {!loaded && <div className="unified-card-skeleton absolute inset-0" aria-hidden />}
-      {!failed && (
+      {shouldLoad && !failed && (
         <img
           ref={imageRef}
           key={`${src || CARD_BACK}-${attempt}`}
@@ -90,7 +114,7 @@ export default function CardImage({
           alt={alt}
           className={className || 'w-full h-full object-cover'}
           style={{ ...(src ? {} : { opacity: 0.8 }), ...style }}
-          loading={loading}
+          loading={loading === 'lazy' ? 'eager' : loading}
           onError={handleError}
           onLoad={() => setStatus(previous => ({
             source: src,
