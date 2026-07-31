@@ -3,6 +3,7 @@ import {
   getCardFallbackKinds,
   getCardSetNumber,
   getFallbackBorderGradient,
+  shouldDimUnownedCard,
   withCollectionItemState,
 } from './UnifiedCard'
 
@@ -83,5 +84,14 @@ describe('withCollectionItemState', () => {
       owned_quantity: 0,
       owned_variants: [],
     })
+  })
+})
+
+describe('shouldDimUnownedCard', () => {
+  it('dims only missing cards in ownership-comparison views', () => {
+    expect(shouldDimUnownedCard({ owned: false, owned_quantity: 0 }, true)).toBe(true)
+    expect(shouldDimUnownedCard({ owned: true, owned_quantity: 1 }, true)).toBe(false)
+    expect(shouldDimUnownedCard({ owned: false, owned_quantity: 2 }, true)).toBe(false)
+    expect(shouldDimUnownedCard({ owned: false, owned_quantity: 0 }, false)).toBe(false)
   })
 })

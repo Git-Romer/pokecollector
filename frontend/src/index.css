@@ -173,8 +173,22 @@ input:-webkit-autofill:focus {
     background: var(--color-elevated);
   }
   .unified-card-caption {
-    min-height: 48px;
+    height: 48px;
+    overflow: hidden;
     padding: 8px 2px 0;
+  }
+  .unified-card-missing-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    border-radius: inherit;
+    background: rgba(38, 43, 51, 0.5);
+    pointer-events: none;
+    transition: background 160ms ease;
+  }
+  .unified-card-frame-interactive:hover .unified-card-missing-overlay,
+  .unified-card-frame-interactive:focus-visible .unified-card-missing-overlay {
+    background: rgba(38, 43, 51, 0.34);
   }
   .unified-card-add {
     position: absolute;

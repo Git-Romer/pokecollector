@@ -373,7 +373,7 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
   )
 }
 
-export const CardItem = memo(function CardItem({ card, showActions = true, onAddToBinder = null, compact = false, lang = null }) {
+export const CardItem = memo(function CardItem({ card, showActions = true, onAddToBinder = null, compact = false, lang = null, dimWhenUnowned = false }) {
   const [showModal, setShowModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [modalTab, setModalTab] = useState('overview')
@@ -403,6 +403,7 @@ export const CardItem = memo(function CardItem({ card, showActions = true, onAdd
         price={formattedPrice}
         languageLabel={languageLabel}
         compact={compact}
+        dimWhenUnowned={dimWhenUnowned}
         onClick={() => openModal('overview')}
         onAdd={showActions
           ? () => {

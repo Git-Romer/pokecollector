@@ -71,6 +71,10 @@ export function withCollectionItemState(card = {}, item = {}) {
   }
 }
 
+export function shouldDimUnownedCard(card = {}, dimWhenUnowned = false) {
+  return Boolean(dimWhenUnowned && !card.owned && Number(card.owned_quantity || 0) <= 0)
+}
+
 function fallbackAriaLabel(t, kinds) {
   if (kinds.length === 0) return undefined
   const labels = kinds.map((kind) => {
@@ -94,6 +98,7 @@ export function CardArtworkFrame({
   unavailableReason = '',
   showStateIndicators = true,
   stateIndicatorProps = {},
+  dimmed = false,
   overlay,
   className = '',
   imageClassName = 'w-full h-full object-cover',
@@ -154,6 +159,7 @@ export function CardArtworkFrame({
           className={imageClassName}
           loading={loading}
         />
+        {dimmed && <span className="unified-card-missing-overlay" aria-hidden />}
         {overlay}
         {onAdd && !unavailableReason && (
           <button
@@ -314,13 +320,13 @@ export function CardCaption({
 }) {
   return (
     <div className={clsx('unified-card-caption', className)}>
-      <div className="flex min-w-0 items-center gap-1.5">
-        {name && <h3 className="truncate text-sm font-semibold text-text-primary">{name}</h3>}
-        {custom && <span className="badge-yellow px-1.5 py-0.5 text-[9px]">Custom</span>}
-        {languageLabel && <span className="badge-gray px-1.5 py-0.5 text-[9px]">{languageLabel}</span>}
+      <div className="flex h-5 min-w-0 items-center gap-1.5 overflow-hidden">
+        {name && <h3 className="block min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap break-normal text-sm font-semibold text-text-primary">{name}</h3>}
+        {custom && <span className="badge-yellow shrink-0 px-1.5 py-0.5 text-[9px]">Custom</span>}
+        {languageLabel && <span className="badge-gray shrink-0 px-1.5 py-0.5 text-[9px]">{languageLabel}</span>}
       </div>
       {(setNumber || price) && (
-        <div className="mt-1 flex min-w-0 items-center justify-between gap-2">
+        <div className="mt-1 flex h-4 min-w-0 items-center justify-between gap-2 overflow-hidden">
           <span className="truncate font-mono text-[11px] font-bold text-brand-red">{setNumber}</span>
           {price && <span className="shrink-0 text-xs font-extrabold text-green">{price}</span>}
         </div>
@@ -343,6 +349,7 @@ export default function UnifiedCard({
   unavailableReason = '',
   showStateIndicators = true,
   stateIndicatorProps,
+  dimWhenUnowned = false,
   overlay,
   compact = false,
   className = '',
@@ -362,6 +369,7 @@ export default function UnifiedCard({
         unavailableReason={unavailableReason}
         showStateIndicators={showStateIndicators}
         stateIndicatorProps={stateIndicatorProps}
+        dimmed={shouldDimUnownedCard(card, dimWhenUnowned)}
         overlay={overlay}
       />
       {!compact && (

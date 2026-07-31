@@ -475,7 +475,7 @@ export default function HomeScreen() {
                       variantEffectSource={card.variant}
                       stateIndicatorProps={{ card: withCollectionItemState(card, card), alwaysShowQuantity: true }}
                     />
-                    <span className="absolute top-1 left-1 text-[9px] font-black px-1 rounded leading-4"
+                    <span className="absolute bottom-1 left-1 z-20 text-[9px] font-black px-1 rounded leading-4"
                       style={{ background:'rgba(0,0,0,0.85)', color:'#f5c842' }}>#{i+1}</span>
                   </div>
                   <p className="text-[10px] font-bold mt-1 truncate" style={{ color:'#f5c842' }}>

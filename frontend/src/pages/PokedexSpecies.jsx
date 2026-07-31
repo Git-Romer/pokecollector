@@ -208,7 +208,7 @@ export default function PokedexSpecies() {
           <p className="rounded-2xl border border-border bg-bg-card p-6 text-center text-text-muted">{t('pokedex.noCards')}</p>
         )}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-          {cards.map((card) => <CardItem key={card.id} card={card} />)}
+          {cards.map((card) => <CardItem key={card.id} card={card} dimWhenUnowned />)}
         </div>
       </section>
     </div>

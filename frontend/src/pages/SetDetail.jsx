@@ -604,6 +604,7 @@ export default function SetDetail() {
             card={card}
             image={resolveCardImageUrl(card)}
             price={setSortPrice(card, pricePrimaryField) > 0 ? formatPrice(setSortPrice(card, pricePrimaryField)) : null}
+            dimWhenUnowned
             onClick={() => {
               setSelectedCardTab('overview')
               setSelectedCard(card)

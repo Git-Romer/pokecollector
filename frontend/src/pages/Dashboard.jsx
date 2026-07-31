@@ -211,7 +211,7 @@ export default function Dashboard() {
                     variantEffectSource={card.variant}
                     stateIndicatorProps={{ card: withCollectionItemState(card, card), alwaysShowQuantity: true }}
                   />
-                  <span className="absolute top-1 left-1 bg-black/80 text-gold text-[9px] font-black rounded px-1 leading-4">
+                  <span className="absolute bottom-1 left-1 z-20 bg-black/80 text-gold text-[9px] font-black rounded px-1 leading-4">
                     #{i + 1}
                   </span>
                 </div>
