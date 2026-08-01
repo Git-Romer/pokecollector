@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Check } from 'lucide-react'
 import CardDialog from './CardDialog'
 import CardDisplay from './CardDisplay'
 import CardLegend from './CardLegend'
@@ -20,11 +21,39 @@ const BASE_CARD = {
 const FALLBACK_CARD = {
   ...BASE_CARD,
   id: 'gallery-fallback',
-  name: 'Fallback artwork example',
-  data_source_lang: 'en',
-  price_source_lang: 'en',
+  name: 'Fallback example',
+  data_source_lang: 'fr',
+  price_source_lang: 'de',
   image_source_lang: 'en',
 }
+
+const FALLBACK_COMBINATIONS = [
+  ['No fallback', {}],
+  ['Data', { data_source_lang: 'fr' }],
+  ['Price', { price_source_lang: 'de' }],
+  ['Image', { image_source_lang: 'en' }],
+  ['Data + price', { data_source_lang: 'fr', price_source_lang: 'de' }],
+  ['Data + image', { data_source_lang: 'fr', image_source_lang: 'en' }],
+  ['Price + image', { price_source_lang: 'de', image_source_lang: 'en' }],
+  ['Data + price + image', { data_source_lang: 'fr', price_source_lang: 'de', image_source_lang: 'en' }],
+]
+
+function GalleryExample({ label, children }) {
+  return <div className="min-w-0 space-y-2">
+    <p className="truncate text-xs font-bold text-text-secondary" title={label}>{label}</p>
+    {children}
+  </div>
+}
+
+const binderProgress = (complete) => (
+  <span
+    className={complete
+      ? 'inline-flex items-center justify-center rounded-full border border-green/40 bg-green/90 p-1 text-white shadow-sm'
+      : 'inline-flex items-center rounded-full border border-white/15 bg-bg-elevated px-1.5 py-0.5 text-[10px] font-bold leading-none text-text-secondary shadow-sm'}
+  >
+    {complete ? <Check size={10} strokeWidth={3} aria-hidden /> : '0/1'}
+  </span>
+)
 
 export default function CardSystemGallery() {
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -42,27 +71,84 @@ export default function CardSystemGallery() {
           </p>
         </header>
 
-        <section className="space-y-3" data-testid="full-card-variants">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-text-muted">Full card variants</h2>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
-            <CardDisplay card={BASE_CARD} image={CARD_BACK} price="€12.34" languageLabel="EN" loading="eager" />
-            <CardDisplay variant="selectable" card={BASE_CARD} image={CARD_BACK} selected onSelect={() => {}} loading="eager" />
-            <CardDisplay card={{ ...BASE_CARD, id: 'gallery-missing', owned: false, owned_quantity: 0, owned_variants: [] }} image={CARD_BACK} dimWhenUnowned loading="eager" />
-            <CardDisplay card={FALLBACK_CARD} image={CARD_BACK} price="€9.99" loading="eager" />
-            <CardDisplay card={{ ...BASE_CARD, id: 'gallery-unavailable' }} image={CARD_BACK} unavailableReason="Already used" loading="eager" />
-            <CardDisplay card={{ ...BASE_CARD, id: 'gallery-error', name: 'Failed artwork with retry' }} image="/__card-system-missing-image.jpg" loading="eager" />
+        <section className="space-y-3" data-testid="fallback-combinations">
+          <div>
+            <h2 className="text-sm font-bold uppercase tracking-wide text-text-muted">Fallback-border combinations</h2>
+            <p className="mt-1 text-xs text-text-secondary">Every supported data, price, and image fallback combination.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
+            {FALLBACK_COMBINATIONS.map(([label, fallbacks], index) => (
+              <GalleryExample key={label} label={label}>
+                <CardDisplay
+                  card={{ ...BASE_CARD, ...fallbacks, id: `gallery-fallback-${index}`, name: 'Pikachu' }}
+                  image={CARD_BACK}
+                  price="€12.34"
+                  loading="eager"
+                />
+              </GalleryExample>
+            ))}
           </div>
         </section>
 
-        <section className="space-y-3" data-testid="compact-card-variants">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-text-muted">Compact and table variants</h2>
-          <div key={compactRevision} className="grid gap-3 lg:grid-cols-2">
+        <section className="space-y-3" data-testid="state-combinations">
+          <div>
+            <h2 className="text-sm font-bold uppercase tracking-wide text-text-muted">Ownership and contextual states</h2>
+            <p className="mt-1 text-xs text-text-secondary">Ownership variants, wishlist, generic ownership, and binder requirement progress.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            <GalleryExample label="Owned variants ×2">
+              <CardDisplay card={BASE_CARD} image={CARD_BACK} price="€12.34" loading="eager" />
+            </GalleryExample>
+            <GalleryExample label="Multiple owned variants">
+              <CardDisplay card={{ ...BASE_CARD, id: 'gallery-multiple', owned_quantity: 4, owned_variants: [{ variant: 'Normal', quantity: 1 }, { variant: 'Holo', quantity: 3 }] }} image={CARD_BACK} loading="eager" />
+            </GalleryExample>
+            <GalleryExample label="Owned, variant unknown">
+              <CardDisplay card={{ ...BASE_CARD, id: 'gallery-generic-owned', owned_variants: [] }} image={CARD_BACK} loading="eager" />
+            </GalleryExample>
+            <GalleryExample label="Wishlisted">
+              <CardDisplay card={{ ...BASE_CARD, id: 'gallery-wishlisted', wishlisted: true }} image={CARD_BACK} loading="eager" />
+            </GalleryExample>
+            <GalleryExample label="Binder requirement 0/1">
+              <CardDisplay card={{ ...BASE_CARD, id: 'gallery-binder-missing' }} image={CARD_BACK} showStateIndicators={false} captionAccessory={binderProgress(false)} loading="eager" />
+            </GalleryExample>
+            <GalleryExample label="Binder requirement complete">
+              <CardDisplay card={{ ...BASE_CARD, id: 'gallery-binder-complete' }} image={CARD_BACK} showStateIndicators={false} captionAccessory={binderProgress(true)} loading="eager" />
+            </GalleryExample>
+          </div>
+        </section>
+
+        <section className="space-y-3" data-testid="interaction-combinations">
+          <div>
+            <h2 className="text-sm font-bold uppercase tracking-wide text-text-muted">Interaction and availability states</h2>
+            <p className="mt-1 text-xs text-text-secondary">Selectable, selected, missing, unavailable, and failed-image behavior.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
+            <GalleryExample label="Selectable">
+              <CardDisplay variant="selectable" card={{ ...BASE_CARD, id: 'gallery-selectable' }} image={CARD_BACK} onSelect={() => {}} loading="eager" />
+            </GalleryExample>
+            <GalleryExample label="Selectable, selected">
+              <CardDisplay variant="selectable" card={{ ...BASE_CARD, id: 'gallery-selected' }} image={CARD_BACK} selected onSelect={() => {}} loading="eager" />
+            </GalleryExample>
+            <GalleryExample label="Unowned / missing">
+              <CardDisplay card={{ ...BASE_CARD, id: 'gallery-missing', owned: false, owned_quantity: 0, owned_variants: [] }} image={CARD_BACK} dimWhenUnowned loading="eager" />
+            </GalleryExample>
+            <GalleryExample label="Unavailable">
+              <CardDisplay card={{ ...BASE_CARD, id: 'gallery-unavailable' }} image={CARD_BACK} unavailableReason="Already used" loading="eager" />
+            </GalleryExample>
+            <GalleryExample label="Image error with retry">
+              <CardDisplay card={{ ...BASE_CARD, id: 'gallery-error', name: 'Failed artwork' }} image="/__card-system-missing-image.jpg" loading="eager" />
+            </GalleryExample>
+          </div>
+        </section>
+
+        <section className="space-y-3" data-testid="display-variants">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-text-muted">Supported display variants</h2>
+          <div key={compactRevision} className="grid gap-3 lg:grid-cols-2" data-testid="compact-card-variants">
             <CardRow
               card={BASE_CARD}
               image={CARD_BACK}
               name={BASE_CARD.name}
               setNumber="SSP 057"
-              languageLabel="EN"
               badges={[{ label: 'Reverse Holo ×2', variant: 'purple' }]}
               value="€24.68"
             />
@@ -78,23 +164,15 @@ export default function CardSystemGallery() {
           >
             Remount compact cards
           </button>
-        </section>
-
-        <section className="space-y-3" data-testid="context-card-variants">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-text-muted">Carousel and ranking variants</h2>
-          <div className="flex gap-5">
-            <div className="w-32"><CardDisplay variant="carousel" card={BASE_CARD} image={CARD_BACK} loading="eager" /></div>
-            <div className="w-32"><CardDisplay variant="ranking" card={BASE_CARD} image={CARD_BACK} loading="eager" /></div>
+          <div className="grid grid-cols-2 gap-5 sm:grid-cols-4">
+            <GalleryExample label="Carousel"><div className="w-32"><CardDisplay variant="carousel" card={BASE_CARD} image={CARD_BACK} loading="eager" /></div></GalleryExample>
+            <GalleryExample label="Ranking"><div className="w-32"><CardDisplay variant="ranking" card={BASE_CARD} image={CARD_BACK} loading="eager" /></div></GalleryExample>
+            <GalleryExample label="Artwork"><div className="w-28"><CardDisplay variant="artwork" card={BASE_CARD} image={CARD_BACK} alt={BASE_CARD.name} loading="eager" /></div></GalleryExample>
+            <GalleryExample label="Stack"><div className="w-28"><CardStack card={BASE_CARD} image={CARD_BACK} layers={2} alt={BASE_CARD.name} loading="eager" /></div></GalleryExample>
           </div>
-        </section>
-
-        <section className="space-y-3" data-testid="artwork-variants">
-          <h2 className="text-sm font-bold uppercase tracking-wide text-text-muted">Artwork-only variants</h2>
           <div className="flex items-end gap-5">
-            <div className="w-28"><CardDisplay variant="artwork" card={BASE_CARD} image={CARD_BACK} alt={BASE_CARD.name} loading="eager" /></div>
             <CardDisplay variant="compact-artwork" card={BASE_CARD} image={CARD_BACK} alt={BASE_CARD.name} loading="eager" />
             <div className="w-12"><CardDisplay variant="comparison" card={BASE_CARD} image={CARD_BACK} alt={BASE_CARD.name} loading="eager" /></div>
-            <div className="w-28"><CardStack card={BASE_CARD} image={CARD_BACK} layers={2} alt={BASE_CARD.name} loading="eager" /></div>
           </div>
         </section>
 
@@ -147,7 +225,7 @@ export default function CardSystemGallery() {
 
       {dialogOpen && (
         <CardDialog
-          card={BASE_CARD}
+          card={FALLBACK_CARD}
           image={CARD_BACK}
           tabs={[{ id: 'overview', label: 'Overview' }, { id: 'prices', label: 'Prices' }]}
           activeTab="overview"

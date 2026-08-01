@@ -131,10 +131,15 @@ export function CardStateLegend({
         <span className="text-xs leading-tight text-text-secondary">{t('cardSearch.selected')}</span>
       </div>}
       {showBinderProgress && <div className="flex min-w-0 items-center gap-2">
-        <span className="inline-flex flex-shrink-0 items-center rounded-full border border-white/20 bg-black/80 px-2 py-1 text-[10px] font-bold text-white">
-          2/4
+        <span className="inline-flex flex-shrink-0 items-center gap-1">
+          <span className="inline-flex rounded-full border border-white/20 bg-bg-elevated px-2 py-1 text-[10px] font-bold text-text-secondary">
+            2/4
+          </span>
+          <span className="inline-flex items-center justify-center rounded-full border border-green/40 bg-green/90 p-1 text-white shadow-sm">
+            <Check size={10} strokeWidth={3} aria-hidden />
+          </span>
         </span>
-        <span className="text-xs leading-tight text-text-secondary">{t('binderTypes.progress')}</span>
+        <span className="text-xs leading-tight text-text-secondary">{t('binderTypes.cardRequirementProgress')}</span>
       </div>}
     </div>
   )

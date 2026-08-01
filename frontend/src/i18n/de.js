@@ -1114,6 +1114,7 @@ const de = {
     ownedOf: 'von',
     cards: 'Karten',
     progress: 'Fortschritt',
+    cardRequirementProgress: 'Besessene benötigte Exemplare; Haken bedeutet vollständig',
     searchCollection: 'In Kollektion suchen...',
     searchAll: 'Alle Karten suchen...',
     addFromCollection: 'Aus Kollektion hinzufügen',

@@ -17,7 +17,7 @@ vi.mock('../contexts/SettingsContext', () => ({
       'fallback.imageBorder': 'Blue border: fallback image',
       'collection.foundIn': 'Found in product',
       'cardSearch.selected': 'Selected',
-      'binderTypes.progress': 'Binder progress',
+      'binderTypes.cardRequirementProgress': 'Required copies owned; check means complete',
       'nav.wishlist': 'Wishlist',
     })[key] || key,
   }),
@@ -92,8 +92,9 @@ describe('CardStateLegend', () => {
 
     expect(markup).toContain('Found in product')
     expect(markup).toContain('Selected')
-    expect(markup).toContain('Binder progress')
+    expect(markup).toContain('Required copies owned; check means complete')
     expect(markup).toContain('2/4')
+    expect(markup).toContain('lucide-check')
   })
 })
 

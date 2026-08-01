@@ -344,6 +344,7 @@ export function CardCaption({
   setNumber = getCardSetNumber(card),
   price,
   languageLabel,
+  captionAccessory,
   custom = card?.is_custom,
   loading = false,
   className = '',
@@ -361,6 +362,7 @@ export function CardCaption({
             {name && <h3 className="unified-card-caption-name" title={name}>{name}</h3>}
             {custom && <span className="badge-yellow shrink-0 px-1.5 py-0.5 text-[9px]">Custom</span>}
             {languageLabel && <span className="badge-gray shrink-0 px-1.5 py-0.5 text-[9px]">{languageLabel}</span>}
+            {captionAccessory && <span className="ml-auto flex shrink-0 items-center">{captionAccessory}</span>}
           </div>
           {(setNumber || price) && (
             <div className="mt-1 flex h-4 min-w-0 items-center justify-between gap-2 overflow-hidden">
@@ -379,6 +381,7 @@ export default function UnifiedCard({
   image,
   price,
   languageLabel,
+  captionAccessory,
   variantEffectSource = card,
   onClick,
   onSelect,
@@ -421,6 +424,7 @@ export default function UnifiedCard({
           card={card}
           price={price}
           languageLabel={languageLabel}
+          captionAccessory={captionAccessory}
           loading={artworkLoading}
         />
       )}

@@ -41,6 +41,16 @@ describe('CardCaption', () => {
     expect(markup.match(/unified-card-caption-skeleton/g)).toHaveLength(2)
     expect(markup).not.toContain('Pikachu')
   })
+
+  it('can place a contextual status at the right edge of the name row', () => {
+    const markup = renderToStaticMarkup(createElement(CardCaption, {
+      card: { name: 'Pikachu' },
+      captionAccessory: createElement('span', { 'aria-label': 'Progress: 0/1' }, '0/1'),
+    }))
+
+    expect(markup).toContain('ml-auto flex shrink-0 items-center')
+    expect(markup).toContain('aria-label="Progress: 0/1"')
+  })
 })
 
 describe('CompactCardArtwork', () => {

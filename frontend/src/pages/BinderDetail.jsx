@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Plus, Trash2, Package, Star, Download, Upload, X, Heart, Minus, HelpCircle } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Package, Star, Download, Upload, X, Heart, Minus, HelpCircle, Check } from 'lucide-react'
 import { getBinderCards, removeCardFromBinder, removeBinderEntry, addCardToBinder, addCollectionItemToBinder, searchCards, getCollection, updateBinderEntry, getBinderEntryEquivalentPrints, getBinderPrintOptimization, applyBinderPrintOptimization, switchBinderEntryCard, addBinderEntryToWishlist, addBinderCardsToWishlist, importBinderCsv, exportBinderCsv, getApiErrorMessage } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
@@ -759,8 +759,11 @@ export default function BinderDetail() {
       ) : (
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 sm:gap-3">
           {visibleCards.map((card) => {
-            const isComplete = (card.missing_quantity || 0) === 0
+            const ownedQuantity = Math.max(0, Number(card.owned_quantity) || 0)
+            const requiredQuantity = Math.max(1, Number(card.required_quantity) || 1)
+            const isComplete = ownedQuantity >= requiredQuantity
             const isMissing = isWishlist && (card.missing_quantity || 0) > 0
+            const progressLabel = `${t('binderTypes.progress')}: ${ownedQuantity}/${requiredQuantity}`
 
             return (
               <CardDisplay
@@ -769,24 +772,25 @@ export default function BinderDetail() {
                 image={resolveCardImageUrl(card)}
                 price={card.price_market > 0 ? formatPrice(card.price_market) : null}
                 variantEffectSource={card.variant}
-                stateIndicatorProps={!isWishlist && card.in_collection ? {
+                showStateIndicators={!isWishlist}
+                stateIndicatorProps={isCollection ? {
                   card: withCollectionItemState(card, card),
                   alwaysShowQuantity: true,
                   showWishlist: false,
                 } : undefined}
+                captionAccessory={isWishlist ? (
+                  <span
+                    title={progressLabel}
+                    aria-label={progressLabel}
+                    className={isComplete
+                      ? 'inline-flex items-center justify-center rounded-full border border-green/40 bg-green/90 p-1 text-white shadow-sm'
+                      : 'inline-flex items-center rounded-full border border-white/15 bg-bg-elevated px-1.5 py-0.5 text-[10px] font-bold leading-none text-text-secondary shadow-sm'}
+                  >
+                    {isComplete ? <Check size={10} strokeWidth={3} aria-hidden /> : `${ownedQuantity}/${requiredQuantity}`}
+                  </span>
+                ) : undefined}
                 unavailableReason={isMissing ? t('binderTypes.missing') : ''}
                 onClick={() => setSelectedCard(card)}
-                overlay={(
-                  <>
-                  {isWishlist && (
-                    <div className={`absolute left-2 top-2 z-20 rounded-full px-2 py-1 text-[10px] font-bold text-white ${
-                      isComplete ? 'bg-green/90' : 'bg-bg-elevated/90 text-text-secondary'
-                    }`}>
-                      {(card.owned_quantity || 0) >= (card.required_quantity || 1) ? `✓ ${card.owned_quantity || 0}/${card.required_quantity || 1}` : `${card.owned_quantity || 0}/${card.required_quantity || 1}`}
-                    </div>
-                  )}
-                  </>
-                )}
               />
             )
           })}

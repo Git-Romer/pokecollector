@@ -13,7 +13,7 @@ async function waitForGallery(page) {
           image.addEventListener('error', resolve, { once: true })
         })))
   })
-  await expect(page.getByTestId('full-card-variants').getByRole('button', { name: /retry/i })).toBeVisible()
+  await expect(page.getByTestId('interaction-combinations').getByRole('button', { name: /retry/i })).toBeVisible()
   await expect(page.locator('.unified-card-skeleton')).toHaveCount(0)
   await page.evaluate(() => window.scrollTo(0, 0))
 }

@@ -1124,6 +1124,7 @@ const en = {
     ownedOf: 'of',
     cards: 'cards',
     progress: 'Progress',
+    cardRequirementProgress: 'Required copies owned; check means complete',
     searchCollection: 'Search in collection...',
     searchAll: 'Search all cards...',
     addFromCollection: 'Add from collection',
