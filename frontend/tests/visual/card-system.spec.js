@@ -1,6 +1,13 @@
 import { expect, test } from '@playwright/test'
 
 async function waitForGallery(page) {
+  const cardBackResponse = await page.request.get('/cardback.jpg')
+  const cardBack = await cardBackResponse.body()
+  await page.route(/\/api\/images\/card\/(?:me04|me03|base1)-[^/]+\/(?:small|large)$/, route => route.fulfill({
+    status: 200,
+    contentType: 'image/jpeg',
+    body: cardBack,
+  }))
   await page.goto('/__card-system')
   await expect(page.getByTestId('card-system-gallery')).toBeVisible()
   await page.getByTestId('compact-card-variants').scrollIntoViewIfNeeded()
