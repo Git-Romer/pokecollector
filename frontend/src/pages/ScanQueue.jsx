@@ -66,7 +66,7 @@ function JobDetail({ jobId, onBack }) {
   }
 
   const resolveMutation = useMutation({
-    mutationFn: item => resolveScanJobItem(jobId, item.id),
+    mutationFn: ({ item, cardId }) => resolveScanJobItem(jobId, item.id, cardId),
     onSuccess: invalidate,
     onError: e => toast.error(e?.response?.data?.detail || t('scanner.recognitionFailed')),
   })
@@ -128,7 +128,7 @@ function JobDetail({ jobId, onBack }) {
             jobId={job.id}
             item={item}
             onSelectMatch={(scanItem, match) => setAddModal({ item: scanItem, match })}
-            onResolve={item => resolveMutation.mutate(item)}
+            onResolve={item => resolveMutation.mutate({ item })}
             t={t}
           />
         ))}
@@ -140,9 +140,9 @@ function JobDetail({ jobId, onBack }) {
           defaultLang={addModal.item?.recognized?.language || addModal.match?.lang || 'en'}
           onClose={() => setAddModal(null)}
           onAdded={() => {
-            // Adding the card is the review — mark the item handled so it stops
-            // showing up as outstanding.
-            resolveMutation.mutate(addModal.item)
+            // Adding the card is the review: it both clears the item and
+            // records the confirmed identity as ground truth for the traces.
+            resolveMutation.mutate({ item: addModal.item, cardId: addModal.match?.tcg_card_id })
             setAddModal(null)
           }}
         />

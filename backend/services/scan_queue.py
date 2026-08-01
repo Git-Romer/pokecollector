@@ -100,10 +100,22 @@ async def _process_item_group(db: Session, api_key: str, gemini_url: str, items:
     can stop the pass instead of burning the remaining groups against an
     exhausted quota.
     """
-    from api.recognize import _recognize_composite_chunk, _recognize_single_image, _match_card_info
+    from api.recognize import (
+        _recognize_composite_chunk, _recognize_single_image, _match_card_info, get_gemini_model,
+    )
+    from services.scan_trace import ScanTrace
     import base64
     import httpx
     from fastapi import HTTPException
+
+    model = get_gemini_model()
+    traces = [
+        ScanTrace(mode="batch" if batched else "single", job_id=item.job_id,
+                  item_id=item.id, filename=item.filename, model=model)
+        for item in items
+    ]
+    for tr, item in zip(traces, items):
+        tr.set_image(item.image_data)
 
     for item in items:
         item.attempts = (item.attempts or 0) + 1
@@ -114,7 +126,7 @@ async def _process_item_group(db: Session, api_key: str, gemini_url: str, items:
             {"filename": item.filename, "bytes": item.image_data, "mime_type": item.content_type}
             for item in items
         ]
-        results = await _recognize_composite_chunk(db, api_key, gemini_url, chunk)
+        results = await _recognize_composite_chunk(db, api_key, gemini_url, chunk, traces=traces)
         for item, result in zip(items, results):
             transient |= _apply_result(item, result)
     else:
@@ -122,13 +134,24 @@ async def _process_item_group(db: Session, api_key: str, gemini_url: str, items:
         image_b64 = base64.b64encode(item.image_data).decode()
         try:
             async with httpx.AsyncClient(timeout=30) as client:
-                card_info = await _recognize_single_image(client, gemini_url, api_key, image_b64, item.content_type)
-            result = await _match_card_info(db, api_key, gemini_url, card_info, image_b64, item.content_type)
+                card_info = await _recognize_single_image(
+                    client, gemini_url, api_key, image_b64, item.content_type, trace=traces[0]
+                )
+            result = await _match_card_info(
+                db, api_key, gemini_url, card_info, image_b64, item.content_type, trace=traces[0]
+            )
             transient = _apply_result(item, result)
         except HTTPException as exc:
+            traces[0].record_error(str(exc.detail))
             transient = _apply_result(item, {"error": str(exc.detail)})
         except Exception as exc:
+            traces[0].record_error(str(exc))
             transient = _apply_result(item, {"error": f"Erkennung fehlgeschlagen: {exc}"})
+
+    # Traces are written even for transient failures: a rate-limited attempt is
+    # still evidence about pacing, and a later retry writes its own trace.
+    for tr in traces:
+        tr.save()
     return transient
 
 

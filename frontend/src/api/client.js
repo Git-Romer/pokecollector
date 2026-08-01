@@ -123,8 +123,12 @@ export const enqueueScanJob = ({ batched = [], singles = [] }) => {
 
 export const getScanJobs = () => api.get('/cards/recognize/jobs').then(r => r.data)
 export const getScanJob = (jobId) => api.get(`/cards/recognize/jobs/${jobId}`).then(r => r.data)
-export const resolveScanJobItem = (jobId, itemId) =>
-  api.post(`/cards/recognize/jobs/${jobId}/items/${itemId}/resolve`).then(r => r.data)
+// selectedCardId records which candidate the user confirmed — ground truth for
+// the scan traces, so recognition accuracy can be measured over time.
+export const resolveScanJobItem = (jobId, itemId, selectedCardId) =>
+  api.post(`/cards/recognize/jobs/${jobId}/items/${itemId}/resolve`, null, {
+    params: selectedCardId ? { selected_card_id: selectedCardId } : undefined,
+  }).then(r => r.data)
 export const deleteScanJob = (jobId) => api.delete(`/cards/recognize/jobs/${jobId}`).then(r => r.data)
 
 // Fetched as a blob rather than used as an <img src> directly: the endpoint is

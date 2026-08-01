@@ -391,7 +391,7 @@ class RecognizeCompositeChunkTests(NoWaitLimiterMixin, unittest.IsolatedAsyncioT
             async def post(self, *args, **kwargs):
                 return _fake_gemini_text_response(json.dumps(gemini_array))
 
-        async def fake_match(db, api_key, gemini_url, card_info, image_b64, mime_type):
+        async def fake_match(db, api_key, gemini_url, card_info, image_b64, mime_type, trace=None):
             return {"recognized": card_info, "matches": []}
 
         with patch("api.recognize.httpx.AsyncClient") as mock_client_cls, \
@@ -419,7 +419,7 @@ class RecognizeCompositeChunkTests(NoWaitLimiterMixin, unittest.IsolatedAsyncioT
             async def post(self, *args, **kwargs):
                 return _fake_gemini_text_response(json.dumps(gemini_array))
 
-        async def fake_match(db, api_key, gemini_url, card_info, image_b64, mime_type):
+        async def fake_match(db, api_key, gemini_url, card_info, image_b64, mime_type, trace=None):
             return {"recognized": card_info, "matches": []}
 
         with patch("api.recognize.httpx.AsyncClient") as mock_client_cls, \
