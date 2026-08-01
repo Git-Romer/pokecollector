@@ -98,6 +98,65 @@ const binderProgress = (value, complete = false) => (
   </span>
 )
 
+const HOME_CAROUSEL_CARDS = [
+  ownedAs(CARDS.greninja, [{ variant: 'Holo', quantity: 1 }]),
+  ownedAs(CARDS.ampharos, [{ variant: 'Holo', quantity: 2 }]),
+  ownedAs(CARDS.delphox, [{ variant: 'Normal', quantity: 1 }, { variant: 'Holo', quantity: 3 }]),
+]
+
+const HOME_RANKING_CARDS = [
+  { ...ownedAs(CARDS.cinccino, [{ variant: 'Holo', quantity: 2 }]), total_value: 100.48 },
+  { ...ownedAs(CARDS.tranquility, [{ variant: 'Holo', quantity: 1 }]), total_value: 24.94 },
+  { ...ownedAs(CARDS.ampharos, [{ variant: 'Holo', quantity: 2 }]), total_value: 21.42 },
+]
+
+function HomeCarouselExample() {
+  return <div className="flex gap-2.5 overflow-hidden">
+    {HOME_CAROUSEL_CARDS.map(entry => (
+      <div key={entry.id} className="w-20 flex-shrink-0 sm:w-[110px]">
+        <CardDisplay
+          variant="artwork"
+          card={entry}
+          image={imageFor(entry)}
+          alt={entry.name}
+          variantEffectSource="Holo"
+          stateIndicatorProps={{ card: entry, alwaysShowQuantity: true }}
+          loading="eager"
+        />
+      </div>
+    ))}
+  </div>
+}
+
+function HomeRankingExample() {
+  return <div className="flex gap-2.5 overflow-hidden">
+    {HOME_RANKING_CARDS.map((entry, index) => (
+      <div key={entry.id} className="w-20 flex-shrink-0 sm:w-[110px]">
+        <div className="relative">
+          <CardDisplay
+            variant="artwork"
+            card={entry}
+            image={imageFor(entry)}
+            alt={entry.name}
+            variantEffectSource="Holo"
+            stateIndicatorProps={{ card: entry, alwaysShowQuantity: true }}
+            loading="eager"
+          />
+          <span
+            className="absolute bottom-1 left-1 z-20 rounded bg-black/85 px-1 text-[9px] font-black leading-4 text-gold"
+            data-testid="ranking-position"
+          >
+            #{index + 1}
+          </span>
+        </div>
+        <p className="mt-1 truncate text-[10px] font-bold text-gold" data-testid="ranking-value">
+          {priceFor({ price_market: entry.total_value })}
+        </p>
+      </div>
+    ))}
+  </div>
+}
+
 export default function CardSystemGallery() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [compactRevision, setCompactRevision] = useState(0)
@@ -230,8 +289,8 @@ export default function CardSystemGallery() {
             Remount compact cards
           </button>
           <div className="grid grid-cols-2 gap-5 sm:grid-cols-4">
-            <GalleryExample label="Carousel" testId="carousel-state"><div className="w-32"><CardDisplay variant="carousel" card={ownedAs(CARDS.greninja, [{ variant: 'Holo', quantity: 1 }])} image={imageFor(CARDS.greninja)} stateIndicatorProps={{ alwaysShowQuantity: true }} loading="eager" /></div></GalleryExample>
-            <GalleryExample label="Ranking" testId="ranking-state"><div className="w-32"><CardDisplay variant="ranking" card={ownedAs(CARDS.ampharos, [{ variant: 'Holo', quantity: 2 }])} image={imageFor(CARDS.ampharos)} stateIndicatorProps={{ alwaysShowQuantity: true }} loading="eager" /></div></GalleryExample>
+            <div className="col-span-2"><GalleryExample label="Carousel · recently added" testId="carousel-state"><HomeCarouselExample /></GalleryExample></div>
+            <div className="col-span-2"><GalleryExample label="Ranking · most valuable" testId="ranking-state"><HomeRankingExample /></GalleryExample></div>
             <GalleryExample label="Artwork"><div className="w-28"><CardDisplay variant="artwork" card={CARDS.emma} image={imageFor(CARDS.emma)} alt={CARDS.emma.name} loading="eager" /></div></GalleryExample>
             <GalleryExample label="Stack"><div className="w-28"><CardStack card={CARDS.crobat} image={imageFor(CARDS.crobat)} layers={2} alt={CARDS.crobat.name} loading="eager" /></div></GalleryExample>
           </div>
