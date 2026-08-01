@@ -30,6 +30,33 @@ except ModuleNotFoundError:
     API_TEST_DEPS_AVAILABLE = False
 
 
+class _NoWaitLimiter:
+    """Stand-in for the shared Gemini rate limiter so tests never sleep.
+
+    The limiter's real pacing is covered in test_gemini_rate_limit against a
+    virtual clock; here it would only add wall-clock delay to every test that
+    happens to issue more calls than the burst allowance.
+    """
+
+    def __init__(self):
+        self.penalties = 0
+
+    async def acquire(self):
+        return None
+
+    def penalize(self, seconds=None):
+        self.penalties += 1
+
+
+class NoWaitLimiterMixin:
+    def setUp(self):
+        super().setUp()
+        self.limiter = _NoWaitLimiter()
+        patcher = patch("api.recognize.get_limiter", return_value=self.limiter)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")
 class RecognizeConfigTests(unittest.TestCase):
     def test_gemini_model_defaults_to_supported_alias(self):
@@ -52,7 +79,7 @@ class RecognizeErrorTests(unittest.TestCase):
 
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")
-class RecognizeApiTests(unittest.IsolatedAsyncioTestCase):
+class RecognizeApiTests(NoWaitLimiterMixin, unittest.IsolatedAsyncioTestCase):
     async def test_gemini_404_surfaces_upstream_message(self):
         class FakeClient:
             async def post(self, *args, **kwargs):
@@ -67,6 +94,35 @@ class RecognizeApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ctx.exception.status_code, 502)
         self.assertIn("GEMINI_MODEL", ctx.exception.detail)
         self.assertIn("no longer available", ctx.exception.detail)
+
+    async def test_rate_limit_penalizes_the_limiter_and_retries(self):
+        # A 429 used to fail immediately. It now backs the shared limiter off
+        # and retries, because under a limiter a 429 means "too early", not "broken".
+        calls = []
+
+        class FakeClient:
+            async def post(self, *args, **kwargs):
+                calls.append(1)
+                if len(calls) == 1:
+                    return httpx.Response(429, json={"error": {"message": "rate limited"}})
+                return _fake_gemini_text_response('{"name": "Gengar"}')
+
+        resp = await post_gemini_generate(FakeClient(), "https://example.test", "key", {})
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(self.limiter.penalties, 1)
+
+    async def test_rate_limit_still_surfaces_once_retries_are_exhausted(self):
+        class AlwaysLimited:
+            async def post(self, *args, **kwargs):
+                return httpx.Response(429, json={"error": {"message": "rate limited"}})
+
+        with self.assertRaises(HTTPException) as ctx:
+            await post_gemini_generate(AlwaysLimited(), "https://example.test", "key", {}, max_attempts=2)
+
+        self.assertEqual(ctx.exception.status_code, 429)
+        self.assertEqual(self.limiter.penalties, 2)
 
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")
@@ -140,7 +196,7 @@ def _fake_jpeg_bytes() -> bytes:
 
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")
-class RecognizeSingleImageTests(unittest.IsolatedAsyncioTestCase):
+class RecognizeSingleImageTests(NoWaitLimiterMixin, unittest.IsolatedAsyncioTestCase):
     async def test_parses_card_info_from_gemini_response(self):
         card_info = {"name": "Gengar", "name_en": "Gengar", "number_local": "050", "language": "en"}
 
@@ -153,7 +209,7 @@ class RecognizeSingleImageTests(unittest.IsolatedAsyncioTestCase):
 
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")
-class RecognizeCompositeChunkTests(unittest.IsolatedAsyncioTestCase):
+class RecognizeCompositeChunkTests(NoWaitLimiterMixin, unittest.IsolatedAsyncioTestCase):
     async def test_maps_results_back_to_source_by_echoed_index(self):
         chunk = [
             {"filename": "a.jpg", "bytes": _fake_jpeg_bytes(), "mime_type": "image/jpeg"},
@@ -244,7 +300,7 @@ class RecognizeBatchEndpointTests(unittest.TestCase):
             id = 1
 
         app.dependency_overrides[get_current_user] = lambda: FakeUser()
-        app.dependency_overrides[get_db] = lambda: iter([None])
+        app.dependency_overrides[get_db] = lambda: None
         self.client = TestClient(app)
 
     def test_rejects_when_no_photos_uploaded_at_all(self):
@@ -261,6 +317,106 @@ class RecognizeBatchEndpointTests(unittest.TestCase):
             resp = self.client.post("/api/cards/recognize/batch", files=files)
         self.assertEqual(resp.status_code, 400)
         self.assertIn("Gemini API Key", resp.json()["detail"])
+
+
+@unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")
+class ScanJobEndpointTests(unittest.TestCase):
+    """The queue endpoints against a real DB session, including the ownership
+    checks — a scan job holds the user's uploaded photos, so another account
+    must not be able to read or delete one.
+    """
+
+    def setUp(self):
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy.pool import StaticPool
+        from database import Base
+        from models import User
+
+        # TestClient serves requests on another thread, so an in-memory SQLite
+        # DB has to share one connection across threads to stay visible.
+        self.engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        Base.metadata.create_all(self.engine)
+        self.Session = sessionmaker(bind=self.engine)
+        self.db = self.Session()
+
+        self.owner = User(username="owner", hashed_password="x")
+        self.other = User(username="other", hashed_password="x")
+        self.db.add_all([self.owner, self.other])
+        self.db.commit()
+        self.current_user = self.owner
+
+        app = FastAPI()
+        app.include_router(recognize_router, prefix="/api/cards")
+        app.dependency_overrides[get_current_user] = lambda: self.current_user
+        app.dependency_overrides[get_db] = lambda: self.db
+        self.client = TestClient(app)
+
+    def tearDown(self):
+        self.db.close()
+
+    def _enqueue(self):
+        with patch.object(recognize_module, "get_gemini_key", return_value="key"), \
+                patch.object(recognize_module, "drain_scan_queue", new=lambda: None):
+            resp = self.client.post(
+                "/api/cards/recognize/batch",
+                files=[("files", ("a.jpg", _fake_jpeg_bytes(), "image/jpeg"))],
+            )
+        self.assertEqual(resp.status_code, 200)
+        return resp.json()
+
+    def test_enqueue_returns_a_job_without_waiting_for_recognition(self):
+        body = self._enqueue()
+        self.assertEqual(body["status"], "pending")
+        self.assertEqual(body["total"], 1)
+        self.assertEqual(body["done"], 0)
+
+    def test_job_detail_lists_items(self):
+        job = self._enqueue()
+        resp = self.client.get(f"/api/cards/recognize/jobs/{job['id']}")
+        self.assertEqual(resp.status_code, 200)
+        items = resp.json()["items"]
+        self.assertEqual(len(items), 1)
+        self.assertTrue(items[0]["has_image"])
+
+    def test_another_user_cannot_read_a_job(self):
+        job = self._enqueue()
+        self.current_user = self.other
+        resp = self.client.get(f"/api/cards/recognize/jobs/{job['id']}")
+        self.assertEqual(resp.status_code, 404)
+
+    def test_another_user_cannot_delete_a_job(self):
+        job = self._enqueue()
+        self.current_user = self.other
+        resp = self.client.delete(f"/api/cards/recognize/jobs/{job['id']}")
+        self.assertEqual(resp.status_code, 404)
+
+    def test_item_image_is_served_then_gone_after_resolve(self):
+        from models import ScanJobItem
+
+        job = self._enqueue()
+        item = self.db.query(ScanJobItem).first()
+
+        resp = self.client.get(f"/api/cards/recognize/jobs/{job['id']}/items/{item.id}/image")
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.content)
+
+        resolved = self.client.post(f"/api/cards/recognize/jobs/{job['id']}/items/{item.id}/resolve")
+        self.assertEqual(resolved.status_code, 200)
+        self.assertTrue(resolved.json()["resolved"])
+
+        gone = self.client.get(f"/api/cards/recognize/jobs/{job['id']}/items/{item.id}/image")
+        self.assertEqual(gone.status_code, 404)
+
+    def test_listing_only_returns_the_callers_own_jobs(self):
+        self._enqueue()
+        self.current_user = self.other
+        resp = self.client.get("/api/cards/recognize/jobs")
+        self.assertEqual(resp.json()["jobs"], [])
 
 
 if __name__ == "__main__":

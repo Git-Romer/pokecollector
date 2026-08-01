@@ -7,12 +7,14 @@ import re
 from typing import List, Optional
 from services.tcgdex_languages import is_supported_tcgdex_language, normalize_tcgdex_language
 from services.card_composite import build_composite, chunk_for_composite, GRID_SIZE as BATCH_GRID_SIZE
+from services.gemini_rate_limit import get_limiter
 import logging
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, BackgroundTasks, Response
 from sqlalchemy.orm import Session
 from api.auth import get_current_user
 from database import get_db
-from models import Setting, UserSetting, User, Set
+from models import Setting, UserSetting, User, Set, ScanJob, ScanJobItem
+from services.scan_queue import drain_scan_queue, enqueue_scan_job, job_progress, resolve_item
 
 logger = logging.getLogger(__name__)
 
@@ -72,11 +74,19 @@ async def post_gemini_generate(
     *,
     max_attempts: int = 3,
 ) -> httpx.Response:
-    """Call Gemini with small retries for transient capacity errors."""
+    """Call Gemini with small retries for transient capacity errors.
+
+    Every call first takes budget from the process-wide rate limiter so queued
+    batch work and interactive scans share one quota. A 429 still means the
+    bucket guessed wrong, so it penalizes the limiter and retries rather than
+    failing outright.
+    """
     last_error = None
+    limiter = get_limiter()
 
     for attempt in range(max_attempts):
         try:
+            await limiter.acquire()
             resp = await client.post(
                 gemini_url,
                 headers={"x-goog-api-key": api_key},
@@ -84,6 +94,9 @@ async def post_gemini_generate(
             )
 
             if resp.status_code == 429:
+                limiter.penalize()
+                if attempt < max_attempts - 1:
+                    continue
                 raise HTTPException(
                     status_code=429,
                     detail="Gemini Rate Limit erreicht – bitte kurz warten und nochmal versuchen.",
@@ -587,21 +600,40 @@ async def _recognize_composite_chunk(db: Session, api_key: str, gemini_url: str,
     return out
 
 
+def _item_payload(item: ScanJobItem) -> dict:
+    return {
+        "id": item.id,
+        "position": item.position,
+        "filename": item.filename,
+        "batch_mode": item.batch_mode,
+        "status": item.status,
+        "resolved": item.resolved,
+        "recognized": item.recognized,
+        "matches": item.matches,
+        "error": item.error,
+        "has_image": item.image_data is not None,
+    }
+
+
 @router.post("/recognize/batch")
-async def recognize_cards_batch(
+async def enqueue_recognize_batch(
+    background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(default=[]),
     singles: List[UploadFile] = File(default=[]),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Recognize many single-card photos in one request.
+    """Queue many single-card photos for background recognition.
 
-    `files` are grouped into composite grids of up to BATCH_GRID_SIZE cards per
-    Gemini call — cheaper and faster (confirmed ~4x fewer image tokens and API
-    calls per card at this grid size), at a small accuracy cost on hard cards.
-    `singles` bypass batching entirely and go through the same one-photo-per-call
-    path as /recognize — the manual override for cards (vintage, non-Latin
-    script, etc.) where batching has shown lower accuracy on real cards.
+    Returns immediately with a job id — recognition happens in the background,
+    paced against the Gemini rate limit, so a large upload is not bounded by an
+    HTTP timeout and survives the user closing the tab.
+
+    `files` get grouped into composite grids of up to BATCH_GRID_SIZE cards per
+    Gemini call (~4x fewer image tokens and API calls per card at this grid
+    size, at a small accuracy cost on hard cards). `singles` bypass batching and
+    get one call each — the override for cards (vintage, non-Latin script) where
+    batching measured worse.
     """
     if not files and not singles:
         raise HTTPException(status_code=400, detail="Keine Bilder hochgeladen.")
@@ -613,34 +645,109 @@ async def recognize_cards_batch(
             detail="Kein Gemini API Key konfiguriert. Bitte in den Einstellungen eintragen."
         )
 
-    gemini_url = build_gemini_generate_url()
-    single_results = []
-    batched_results = []
-
-    for f in singles:
-        image_bytes = await f.read()
-        image_b64 = base64.b64encode(image_bytes).decode()
-        mime_type = f.content_type or "image/jpeg"
-        try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                card_info = await _recognize_single_image(client, gemini_url, api_key, image_b64, mime_type)
-            match_result = await _match_card_info(db, api_key, gemini_url, card_info, image_b64, mime_type)
-            single_results.append({"filename": f.filename, **match_result})
-        except HTTPException as e:
-            single_results.append({"filename": f.filename, "error": e.detail})
-        except Exception as e:
-            single_results.append({"filename": f.filename, "error": f"Erkennung fehlgeschlagen: {e}"})
-
-    file_payloads = []
+    uploads = []
     for f in files:
-        image_bytes = await f.read()
-        file_payloads.append({
+        uploads.append({
             "filename": f.filename,
-            "bytes": image_bytes,
-            "mime_type": f.content_type or "image/jpeg",
+            "bytes": await f.read(),
+            "content_type": f.content_type or "image/jpeg",
+            "batch_mode": True,
+        })
+    for f in singles:
+        uploads.append({
+            "filename": f.filename,
+            "bytes": await f.read(),
+            "content_type": f.content_type or "image/jpeg",
+            "batch_mode": False,
         })
 
-    for chunk in chunk_for_composite(file_payloads, size=BATCH_GRID_SIZE):
-        batched_results.extend(await _recognize_composite_chunk(db, api_key, gemini_url, chunk))
+    job = enqueue_scan_job(db, current_user.id, uploads)
+    background_tasks.add_task(drain_scan_queue)
+    return job_progress(db, job)
 
-    return {"batched": batched_results, "singles": single_results}
+
+@router.get("/recognize/jobs")
+def list_scan_jobs(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Jobs for the current user, newest first — the review inbox index."""
+    jobs = (
+        db.query(ScanJob)
+        .filter(ScanJob.user_id == current_user.id)
+        .order_by(ScanJob.created_at.desc())
+        .limit(20)
+        .all()
+    )
+    return {"jobs": [job_progress(db, job) for job in jobs]}
+
+
+def _get_own_job(db: Session, job_id: int, current_user: User) -> ScanJob:
+    job = db.query(ScanJob).filter(ScanJob.id == job_id).first()
+    if not job or job.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Scan-Auftrag nicht gefunden.")
+    return job
+
+
+@router.get("/recognize/jobs/{job_id}")
+def get_scan_job(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Poll progress and read finished items for review."""
+    job = _get_own_job(db, job_id, current_user)
+    items = (
+        db.query(ScanJobItem)
+        .filter(ScanJobItem.job_id == job.id)
+        .order_by(ScanJobItem.position.asc())
+        .all()
+    )
+    return {**job_progress(db, job), "items": [_item_payload(item) for item in items]}
+
+
+@router.get("/recognize/jobs/{job_id}/items/{item_id}/image")
+def get_scan_job_item_image(
+    job_id: int,
+    item_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """The original uploaded photo, so the review UI can show it after a reload."""
+    _get_own_job(db, job_id, current_user)
+    item = db.query(ScanJobItem).filter(
+        ScanJobItem.id == item_id, ScanJobItem.job_id == job_id
+    ).first()
+    if not item or not item.image_data:
+        raise HTTPException(status_code=404, detail="Bild nicht gefunden.")
+    return Response(content=item.image_data, media_type=item.content_type or "image/jpeg")
+
+
+@router.post("/recognize/jobs/{job_id}/items/{item_id}/resolve")
+def resolve_scan_job_item(
+    job_id: int,
+    item_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Mark a reviewed item handled. Drops its stored photo."""
+    _get_own_job(db, job_id, current_user)
+    item = db.query(ScanJobItem).filter(
+        ScanJobItem.id == item_id, ScanJobItem.job_id == job_id
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Eintrag nicht gefunden.")
+    return _item_payload(resolve_item(db, item))
+
+
+@router.delete("/recognize/jobs/{job_id}")
+def delete_scan_job(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Discard a job and every stored photo in it."""
+    job = _get_own_job(db, job_id, current_user)
+    db.delete(job)
+    db.commit()
+    return {"deleted": job_id}

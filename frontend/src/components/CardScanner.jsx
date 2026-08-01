@@ -1,7 +1,16 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { Camera, Upload, Images, X, Check, Loader2, RefreshCw, Plus } from 'lucide-react'
-import { recognizeCard, recognizeCardsBatch, addToCollection } from '../api/client'
+import { Camera, Upload, Images, X, Check, Loader2, RefreshCw, Plus, Trash2 } from 'lucide-react'
+import {
+  recognizeCard,
+  enqueueScanJob,
+  getScanJob,
+  getScanJobs,
+  resolveScanJobItem,
+  deleteScanJob,
+  fetchScanJobItemImage,
+  addToCollection,
+} from '../api/client'
 import { useQueryClient } from '@tanstack/react-query'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
@@ -213,30 +222,80 @@ function MatchesGrid({ matches, onSelect, t }) {
   )
 }
 
-// One photo's result inside the batch-results list: thumbnail + detected info
-// + its own MatchesGrid, or an error panel if that photo's recognition failed.
-function ScanResultPanel({ previewUrl, result, onSelectMatch, t }) {
+// The stored photo for a queued item. Loaded as a blob because the endpoint is
+// authenticated, so it survives a page reload where a local blob: URL would not.
+function ScanItemThumb({ jobId, item }) {
+  const [url, setUrl] = useState(null)
+
+  useEffect(() => {
+    if (!item.has_image) return undefined
+    let revoked = false
+    let objectUrl = null
+    fetchScanJobItemImage(jobId, item.id)
+      .then(next => {
+        if (revoked) {
+          URL.revokeObjectURL(next)
+          return
+        }
+        objectUrl = next
+        setUrl(next)
+      })
+      .catch(() => {})
+    return () => {
+      revoked = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [jobId, item.id, item.has_image])
+
+  if (!url) {
+    return <div className="w-16 aspect-[2.5/3.5] rounded-lg flex-shrink-0 bg-white/5" />
+  }
   return (
-    <div className="rounded-2xl p-3 flex gap-3"
+    <img src={url} className="w-16 aspect-[2.5/3.5] object-cover rounded-lg flex-shrink-0"
+      style={{ border: '1px solid rgba(255,255,255,0.1)' }} />
+  )
+}
+
+// One queued photo in the review list: thumbnail + detected info + its own
+// MatchesGrid, or a pending/error state.
+function ScanItemPanel({ jobId, item, onSelectMatch, onResolve, t }) {
+  return (
+    <div className={`rounded-2xl p-3 flex gap-3 transition-opacity ${item.resolved ? 'opacity-40' : ''}`}
       style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-      {previewUrl && (
-        <img src={previewUrl} className="w-16 aspect-[2.5/3.5] object-cover rounded-lg flex-shrink-0"
-          style={{ border: '1px solid rgba(255,255,255,0.1)' }} />
-      )}
+      <ScanItemThumb jobId={jobId} item={item} />
       <div className="flex-1 min-w-0">
-        {result.error ? (
-          <p className="text-sm text-brand-red">{result.error}</p>
-        ) : (
+        {item.status === 'pending' && (
+          <p className="text-sm text-text-muted flex items-center gap-2">
+            <Loader2 size={14} className="animate-spin" /> {t('scanner.itemPending')}
+          </p>
+        )}
+        {item.status === 'failed' && (
+          <p className="text-sm text-brand-red">{item.error || t('scanner.recognitionFailed')}</p>
+        )}
+        {item.status === 'done' && (
           <>
-            <p className="font-bold text-white text-sm truncate">{result.recognized?.name || '—'}</p>
-            {result.recognized?.number_local && (
-              <p className="text-xs text-text-muted">
-                Nr. {result.recognized.number_local}{result.recognized.number_total ? `/${result.recognized.number_total}` : ''}
-              </p>
-            )}
-            <div className="mt-2">
-              <MatchesGrid matches={result.matches} onSelect={onSelectMatch} t={t} />
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-bold text-white text-sm truncate">{item.recognized?.name || '—'}</p>
+                {item.recognized?.number_local && (
+                  <p className="text-xs text-text-muted">
+                    Nr. {item.recognized.number_local}{item.recognized.number_total ? `/${item.recognized.number_total}` : ''}
+                  </p>
+                )}
+              </div>
+              {!item.resolved && (
+                <button onClick={() => onResolve(item)}
+                  title={t('scanner.markReviewedHint')}
+                  className="text-[10px] font-semibold px-2 py-1 rounded-lg border border-white/10 text-text-muted hover:text-white flex-shrink-0">
+                  <Check size={12} className="inline mr-1" />{t('scanner.markReviewed')}
+                </button>
+              )}
             </div>
+            {!item.resolved && (
+              <div className="mt-2">
+                <MatchesGrid matches={item.matches} onSelect={match => onSelectMatch(item, match)} t={t} />
+              </div>
+            )}
           </>
         )}
       </div>
@@ -244,18 +303,52 @@ function ScanResultPanel({ previewUrl, result, onSelectMatch, t }) {
   )
 }
 
+const POLL_INTERVAL_MS = 3000
+
 export default function CardScanner({ isOpen, onClose, onCardSelected }) {
   // capture -> loading -> results (single photo)
-  // capture -> staging -> batch-loading -> batch-results (multiple photos)
+  // capture -> staging -> review (multiple photos, recognized in the background)
   const [phase, setPhase] = useState('capture')
   const [preview, setPreview] = useState(null)
   const [results, setResults] = useState(null)
   const [stagedFiles, setStagedFiles] = useState([]) // [{ id, file, previewUrl, individual }]
-  const [batchResults, setBatchResults] = useState(null) // [{ previewUrl, filename, recognized, matches, error }]
-  const [addModal, setAddModal] = useState(null) // match to show modal for
+  const [job, setJob] = useState(null) // { id, status, total, done, failed, pending, items }
+  const [openJobs, setOpenJobs] = useState([]) // unfinished/unreviewed jobs from previous sessions
+  const [addModal, setAddModal] = useState(null) // { item, match }
   const fileRef = useRef()
   const multiFileRef = useRef()
   const { t } = useSettings()
+
+  // Surface jobs still in flight (or still awaiting review) when the scanner
+  // opens, so closing the tab mid-scan doesn't lose them.
+  useEffect(() => {
+    if (!isOpen) return
+    getScanJobs()
+      .then(data => {
+        const open = (data.jobs || []).filter(j => j.status !== 'done' || j.done > 0)
+        setOpenJobs(open)
+      })
+      .catch(() => {})
+  }, [isOpen])
+
+  const refreshJob = useCallback(async (jobId) => {
+    try {
+      const data = await getScanJob(jobId)
+      setJob(data)
+      return data
+    } catch {
+      return null
+    }
+  }, [])
+
+  // Poll while the job still has work outstanding. Recognition is paced against
+  // the Gemini rate limit server-side, so this can run for a while.
+  useEffect(() => {
+    if (!job?.id) return undefined
+    if (job.status === 'done' || job.status === 'failed') return undefined
+    const timer = setInterval(() => { refreshJob(job.id) }, POLL_INTERVAL_MS)
+    return () => clearInterval(timer)
+  }, [job?.id, job?.status, refreshJob])
 
   if (!isOpen) return null
 
@@ -292,43 +385,74 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
   }
 
   const removeStagedFile = (id) => {
-    setStagedFiles(prev => prev.filter(f => f.id !== id))
+    setStagedFiles(prev => {
+      const target = prev.find(f => f.id === id)
+      if (target) URL.revokeObjectURL(target.previewUrl)
+      return prev.filter(f => f.id !== id)
+    })
   }
 
-  const runBatchScan = async () => {
+  const submitBatch = async () => {
     if (!stagedFiles.length) return
-    setPhase('batch-loading')
-    const batched = stagedFiles.filter(f => !f.individual)
-    const singles = stagedFiles.filter(f => f.individual)
-    const previewById = new Map(stagedFiles.map(f => [f.file, f.previewUrl]))
     try {
-      const data = await recognizeCardsBatch({
-        batched: batched.map(f => f.file),
-        singles: singles.map(f => f.file),
+      const created = await enqueueScanJob({
+        batched: stagedFiles.filter(f => !f.individual).map(f => f.file),
+        singles: stagedFiles.filter(f => f.individual).map(f => f.file),
       })
-      const combined = [
-        ...(data.batched || []).map((r, i) => ({ ...r, previewUrl: previewById.get(batched[i]?.file) })),
-        ...(data.singles || []).map((r, i) => ({ ...r, previewUrl: previewById.get(singles[i]?.file) })),
-      ]
-      setBatchResults(combined)
-      setPhase('batch-results')
+      stagedFiles.forEach(f => URL.revokeObjectURL(f.previewUrl))
+      setStagedFiles([])
+      setPhase('review')
+      await refreshJob(created.id)
     } catch (e) {
       const msg = e?.response?.data?.detail || t('scanner.recognitionFailed')
       toast.error(msg)
-      setPhase('staging')
+    }
+  }
+
+  const openExistingJob = async (jobId) => {
+    setPhase('review')
+    await refreshJob(jobId)
+  }
+
+  const handleResolveItem = async (item) => {
+    if (!job?.id) return
+    try {
+      await resolveScanJobItem(job.id, item.id)
+      await refreshJob(job.id)
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || t('scanner.recognitionFailed'))
+    }
+  }
+
+  const handleDiscardJob = async () => {
+    if (!job?.id) return
+    try {
+      await deleteScanJob(job.id)
+      setJob(null)
+      setPhase('capture')
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || t('scanner.recognitionFailed'))
     }
   }
 
   const reset = () => {
+    stagedFiles.forEach(f => URL.revokeObjectURL(f.previewUrl))
     setPhase('capture')
     setPreview(null)
     setResults(null)
     setStagedFiles([])
-    setBatchResults(null)
+    setJob(null)
     setAddModal(null)
   }
 
-  const detectedLang = (results?.recognized?.language) || (addModal?.lang) || 'en'
+  // Prefer the language detected for the specific card being added; fall back
+  // to the single-scan result, then English.
+  const detectedLang =
+    addModal?.item?.recognized?.language ||
+    addModal?.match?.lang ||
+    results?.recognized?.language ||
+    addModal?.lang ||
+    'en'
 
   return createPortal(
     <div className="fixed inset-0 z-[200] flex flex-col"
@@ -393,6 +517,26 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
             <p className="text-[11px] text-text-muted text-center max-w-xs">
               {t('scanner.aiHint')}
             </p>
+
+            {/* Scans still running or awaiting review from a previous visit */}
+            {openJobs.length > 0 && (
+              <div className="w-full max-w-xs space-y-2 pt-2">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
+                  {t('scanner.openJobs')}
+                </p>
+                {openJobs.map(j => (
+                  <button key={j.id} onClick={() => openExistingJob(j.id)}
+                    className="w-full text-left px-3 py-2 rounded-xl border border-white/10 hover:border-white/25 transition-colors">
+                    <span className="text-xs text-white font-semibold">
+                      {j.done}/{j.total} {t('scanner.jobProgressSuffix')}
+                    </span>
+                    {j.pending > 0 && (
+                      <Loader2 size={12} className="inline ml-2 animate-spin text-text-muted" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -429,7 +573,7 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
             {stagedFiles.length === 0 ? (
               <p className="text-center text-sm text-text-muted py-4">{t('scanner.noPhotosStaged')}</p>
             ) : (
-              <button onClick={runBatchScan}
+              <button onClick={submitBatch}
                 className="w-full py-4 rounded-2xl font-black text-white text-base flex items-center justify-center gap-3"
                 style={{ background: '#e3000b', boxShadow: '0 0 24px rgba(227,0,11,0.35)' }}>
                 <Camera size={20} /> {t('scanner.scanCount')} ({stagedFiles.length})
@@ -454,17 +598,6 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
             <div className="flex flex-col items-center gap-3">
               <Loader2 size={32} className="text-brand-red animate-spin" />
               <p className="text-sm text-text-secondary font-medium">{t('scanner.recognizing')}</p>
-              <p className="text-xs text-text-muted text-center">{t('scanner.analyzing')}</p>
-            </div>
-          </div>
-        )}
-
-        {/* LOADING (batch) */}
-        {phase === 'batch-loading' && (
-          <div className="flex flex-col items-center gap-6 pt-8">
-            <div className="flex flex-col items-center gap-3">
-              <Loader2 size={32} className="text-brand-red animate-spin" />
-              <p className="text-sm text-text-secondary font-medium">{t('scanner.batchScanning')}</p>
               <p className="text-xs text-text-muted text-center">{t('scanner.analyzing')}</p>
             </div>
           </div>
@@ -508,38 +641,68 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
           </div>
         )}
 
-        {/* RESULTS (batch) */}
-        {phase === 'batch-results' && batchResults && (
+        {/* REVIEW — queued batch, results stream in as the worker finishes them */}
+        {phase === 'review' && job && (
           <div className="space-y-3">
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
-              {t('scanner.batchResultsTitle')} ({batchResults.length})
-            </p>
-            {batchResults.map((result, i) => (
-              <ScanResultPanel
-                key={`${result.filename}-${i}`}
-                previewUrl={result.previewUrl}
-                result={result}
-                onSelectMatch={setAddModal}
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
+                {t('scanner.batchResultsTitle')} — {job.done}/{job.total}
+                {job.failed > 0 && ` (${job.failed} ${t('scanner.jobFailedSuffix')})`}
+              </p>
+              {job.pending > 0 && (
+                <span className="text-[10px] text-text-muted flex items-center gap-1.5">
+                  <Loader2 size={11} className="animate-spin" /> {t('scanner.jobRunning')}
+                </span>
+              )}
+            </div>
+
+            {job.pending > 0 && (
+              <p className="text-[11px] text-text-muted">{t('scanner.queueHint')}</p>
+            )}
+
+            {job.error_message && (
+              <p className="text-sm text-brand-red">{job.error_message}</p>
+            )}
+
+            {(job.items || []).map(item => (
+              <ScanItemPanel
+                key={item.id}
+                jobId={job.id}
+                item={item}
+                onSelectMatch={(scanItem, match) => setAddModal({ item: scanItem, match })}
+                onResolve={handleResolveItem}
                 t={t}
               />
             ))}
 
-            <button onClick={reset}
-              className="w-full py-3 rounded-xl flex items-center justify-center gap-2 text-sm font-semibold text-text-muted hover:text-white transition-colors"
-              style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
-              <RefreshCw size={15} /> {t('scanner.scanAgain')}
-            </button>
+            <div className="flex gap-2">
+              <button onClick={reset}
+                className="flex-1 py-3 rounded-xl flex items-center justify-center gap-2 text-sm font-semibold text-text-muted hover:text-white transition-colors"
+                style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
+                <RefreshCw size={15} /> {t('scanner.scanAgain')}
+              </button>
+              <button onClick={handleDiscardJob}
+                title={t('scanner.discardJobHint')}
+                className="px-4 py-3 rounded-xl flex items-center justify-center text-sm font-semibold text-text-muted hover:text-brand-red transition-colors"
+                style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
+                <Trash2 size={15} />
+              </button>
+            </div>
           </div>
         )}
       </div>
 
-      {/* Add-to-collection modal */}
+      {/* Add-to-collection modal. From the review list the match is wrapped with
+          its scan item so adding it can also mark that item reviewed. */}
       {addModal && (
         <ScanAddModal
-          match={addModal}
+          match={addModal.match || addModal}
           defaultLang={detectedLang}
           onClose={() => setAddModal(null)}
-          onAdded={() => setAddModal(null)}
+          onAdded={() => {
+            if (addModal.item) handleResolveItem(addModal.item)
+            setAddModal(null)
+          }}
         />
       )}
     </div>,

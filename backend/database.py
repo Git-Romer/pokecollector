@@ -389,6 +389,35 @@ def _run_migrations(conn):
         "ALTER TABLE users ALTER COLUMN is_profile_public SET NOT NULL",
         "ALTER TABLE users ALTER COLUMN public_show_values SET NOT NULL",
         "ALTER TABLE binders ALTER COLUMN is_public SET NOT NULL",
+        # Background scanner queue (handled by create_all, belt+suspenders here).
+        """CREATE TABLE IF NOT EXISTS scan_jobs (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER REFERENCES users(id),
+            status VARCHAR DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT NOW(),
+            started_at TIMESTAMP,
+            finished_at TIMESTAMP,
+            error_message TEXT
+        )""",
+        """CREATE TABLE IF NOT EXISTS scan_job_items (
+            id SERIAL PRIMARY KEY,
+            job_id INTEGER NOT NULL REFERENCES scan_jobs(id) ON DELETE CASCADE,
+            position INTEGER NOT NULL,
+            filename VARCHAR,
+            content_type VARCHAR DEFAULT 'image/jpeg',
+            image_data BYTEA,
+            batch_mode BOOLEAN DEFAULT TRUE,
+            status VARCHAR DEFAULT 'pending',
+            resolved BOOLEAN DEFAULT FALSE,
+            attempts INTEGER DEFAULT 0,
+            recognized JSON,
+            matches JSON,
+            error TEXT,
+            updated_at TIMESTAMP DEFAULT NOW()
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_scan_jobs_user_status ON scan_jobs(user_id, status)",
+        "CREATE INDEX IF NOT EXISTS idx_scan_job_items_job ON scan_job_items(job_id, position)",
+        "CREATE INDEX IF NOT EXISTS idx_scan_job_items_status ON scan_job_items(status)",
     ]
     for stmt in migrations:
         try:
