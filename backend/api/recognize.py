@@ -346,6 +346,13 @@ async def _phash_best_match(candidates: list[dict], photo_bytes: Optional[bytes]
     return best_card
 
 
+def _card_image_url(base: Optional[str], *, quality: str = "low", ext: str = "webp") -> Optional[str]:
+    """Build a TCGdex asset URL. Assets are served as {base}/{quality}.{ext}."""
+    if not base:
+        return None
+    return f"{base}/{quality}.{ext}"
+
+
 def _normalize_artist(value) -> Optional[str]:
     """Fold an illustrator credit for comparison ('Illus. Kagemaru  Himeno' -> 'kagemaru himeno').
 
@@ -537,7 +544,11 @@ async def _match_card_info(
                             "name": c.get("name"),
                             "set": c.get("set", {}).get("name") if isinstance(c.get("set"), dict) else None,
                             "number": c.get("localId"),
-                            "image": f"{c.get('image')}/low.webp" if c.get("image") else None,
+                            "image": _card_image_url(c.get("image")),
+                            # Full-size variant for the review zoom. Enlarging the
+                            # low.webp thumbnail would defeat the purpose — reading a
+                            # set symbol or card number needs the real resolution.
+                            "image_hd": _card_image_url(c.get("image"), quality="high"),
                             "rarity": c.get("rarity"),
                             "lang": lang,
                             "_lang": lang,  # internal dedup key field

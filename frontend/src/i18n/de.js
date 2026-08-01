@@ -1029,6 +1029,8 @@ const de = {
     backToScans: 'Zurück zu den Scans',
     jobStatusDone: 'Bereit',
     jobStatusFailed: 'Fehlgeschlagen',
+    expandCard: 'Karte vergrößern',
+    yourPhoto: 'Dein Foto',
     printedTotalMismatch: 'Erkannte Kartenanzahl passt nicht zu diesem Set — vor dem Hinzufügen prüfen',
   },
 

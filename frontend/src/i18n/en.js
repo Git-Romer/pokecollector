@@ -1039,6 +1039,8 @@ const en = {
     backToScans: 'Back to scans',
     jobStatusDone: 'Ready',
     jobStatusFailed: 'Failed',
+    expandCard: 'Expand card',
+    yourPhoto: 'Your photo',
     printedTotalMismatch: "Detected card total doesn't match this set — double-check before adding",
   },
 

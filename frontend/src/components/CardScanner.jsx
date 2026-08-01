@@ -5,7 +5,7 @@ import { Camera, Upload, ImagePlus, X, Loader2, RefreshCw } from 'lucide-react'
 import { recognizeCard, enqueueScanJob } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
-import { ScanAddModal, MatchesGrid } from './ScanReview'
+import { ScanAddModal, MatchesGrid, CardZoomModal } from './ScanReview'
 
 export default function CardScanner({ isOpen, onClose, onCardSelected }) {
   // capture -> loading -> results (single photo, answered inline)
@@ -15,6 +15,7 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
   const [results, setResults] = useState(null)
   const [stagedFiles, setStagedFiles] = useState([]) // [{ id, file, previewUrl, individual }]
   const [addModal, setAddModal] = useState(null) // match to add
+  const [zoomCard, setZoomCard] = useState(null)
   const fileRef = useRef()
   const multiFileRef = useRef()
   const { t } = useSettings()
@@ -247,7 +248,7 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted mb-3">
                   {t('scanner.matches')} ({results.matches.length})
                 </p>
-                <MatchesGrid matches={results.matches} onSelect={setAddModal} t={t} />
+                <MatchesGrid matches={results.matches} onSelect={setAddModal} onZoom={setZoomCard} t={t} />
               </div>
             ) : (
               <MatchesGrid matches={[]} onSelect={setAddModal} t={t} />
@@ -265,6 +266,10 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
 
       {/* Add-to-collection modal (single-photo scans only — queued batches are
           reviewed on /scans). */}
+      {zoomCard && (
+        <CardZoomModal card={zoomCard} photoUrl={preview} onClose={() => setZoomCard(null)} t={t} />
+      )}
+
       {addModal && (
         <ScanAddModal
           match={addModal}

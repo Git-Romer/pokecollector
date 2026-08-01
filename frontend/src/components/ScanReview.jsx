@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Check, Loader2, Plus } from 'lucide-react'
+import { X, Check, Loader2, Plus, Maximize2 } from 'lucide-react'
 import { addToCollection, fetchScanJobItemImage } from '../api/client'
 import { useQueryClient } from '@tanstack/react-query'
 import { useSettings } from '../contexts/SettingsContext'
@@ -149,7 +149,61 @@ export function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
 // Shared by the single-photo result view and each panel of a batch result,
 // so the card-tile rendering (image, language badge, hover-to-add) only
 // exists once.
-export function MatchesGrid({ matches, onSelect, t }) {
+// Full-screen look at a candidate, next to the user's own photo where we have
+// it. Comparing the two at real size is the decision the reviewer is actually
+// making, so the modal shows both rather than the candidate alone.
+export function CardZoomModal({ card, photoUrl, onClose, t }) {
+  useEffect(() => {
+    const onKey = e => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  if (!card && !photoUrl) return null
+  // Prefer the explicit high-res URL, but derive it for matches stored before
+  // that field existed — otherwise zooming an old job shows a 245px thumbnail,
+  // which is exactly what this modal is meant to avoid. Thumbnail as a last
+  // resort: a small image beats a broken one.
+  const full = card?.image_hd || card?.image?.replace('/low.webp', '/high.webp') || card?.image
+
+  return createPortal(
+    <div className="fixed inset-0 z-[400] bg-black/90 flex flex-col p-4" onClick={onClose}>
+      <div className="flex justify-end flex-shrink-0">
+        <button onClick={onClose} aria-label={t('common.close')}
+          className="w-9 h-9 rounded-full flex items-center justify-center bg-white/10 hover:bg-white/20 transition-colors">
+          <X size={18} className="text-white" />
+        </button>
+      </div>
+      <div
+        className="flex-1 min-h-0 flex flex-col md:flex-row items-center justify-center gap-4 md:gap-8 py-3"
+        onClick={e => e.stopPropagation()}
+      >
+        {photoUrl && (
+          <figure className="flex flex-col items-center min-h-0 max-h-full">
+            <img src={photoUrl} alt={t('scanner.yourPhoto')}
+              className="max-h-[70vh] md:max-h-[80vh] max-w-full object-contain rounded-xl" />
+            <figcaption className="text-[11px] text-text-muted mt-2">{t('scanner.yourPhoto')}</figcaption>
+          </figure>
+        )}
+        {full && (
+          <figure className="flex flex-col items-center min-h-0 max-h-full">
+            <img src={full} alt={card?.name}
+              className="max-h-[70vh] md:max-h-[80vh] max-w-full object-contain rounded-xl" />
+            <figcaption className="text-[11px] text-text-muted mt-2">
+              {card?.name}
+              {card?.set_abbreviation && (
+                <span className="font-mono text-brand-red/80"> {card.set_abbreviation.toUpperCase()} {card.number}</span>
+              )}
+            </figcaption>
+          </figure>
+        )}
+      </div>
+    </div>,
+    document.body
+  )
+}
+
+export function MatchesGrid({ matches, onSelect, onZoom, t }) {
   if (!matches?.length) {
     return (
       <div className="text-center py-6 space-y-2">
@@ -192,11 +246,22 @@ export function MatchesGrid({ matches, onSelect, t }) {
                   ⚠
                 </span>
               )}
-              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100 rounded-xl">
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 rounded-xl">
                 <div className="w-7 h-7 rounded-full flex items-center justify-center"
                   style={{ background: '#e3000b', boxShadow: '0 0 12px rgba(227,0,11,0.5)' }}>
                   <Plus size={14} className="text-white" />
                 </div>
+                {onZoom && match.image && (
+                  // stopPropagation: the tile itself opens add-to-collection.
+                  <button
+                    onClick={e => { e.stopPropagation(); onZoom(match) }}
+                    title={t('scanner.expandCard')}
+                    aria-label={t('scanner.expandCard')}
+                    className="w-7 h-7 rounded-full flex items-center justify-center bg-black/70 hover:bg-black/90 transition-colors"
+                  >
+                    <Maximize2 size={13} className="text-white" />
+                  </button>
+                )}
               </div>
             </div>
 
@@ -216,9 +281,10 @@ export function MatchesGrid({ matches, onSelect, t }) {
   )
 }
 
-// The stored photo for a queued item. Loaded as a blob because the endpoint is
-// authenticated, so it survives a page reload where a local blob: URL would not.
-export function ScanItemThumb({ jobId, item }) {
+// The stored photo for a queued item, as an object URL. Fetched as a blob
+// because the endpoint is authenticated (an <img src> cannot send the bearer
+// token), which also means it survives a reload where a local blob: URL would not.
+export function useScanItemPhoto(jobId, item) {
   const [url, setUrl] = useState(null)
 
   useEffect(() => {
@@ -241,22 +307,44 @@ export function ScanItemThumb({ jobId, item }) {
     }
   }, [jobId, item.id, item.has_image])
 
+  return url
+}
+
+// `self-start` matters: the panel is a flex row, so without it the image is
+// stretched to the full panel height (as tall as the match grid) and
+// aspect-ratio is ignored. `object-contain` then keeps the whole card visible
+// instead of cropping it to a narrow vertical slice.
+export function ScanItemThumb({ url, onZoom, t }) {
   if (!url) {
-    return <div className="w-16 aspect-[2.5/3.5] rounded-lg flex-shrink-0 bg-white/5" />
+    return <div className="w-24 aspect-[2.5/3.5] rounded-lg flex-shrink-0 self-start bg-white/5" />
   }
   return (
-    <img src={url} className="w-16 aspect-[2.5/3.5] object-cover rounded-lg flex-shrink-0"
-      style={{ border: '1px solid rgba(255,255,255,0.1)' }} />
+    <button
+      type="button"
+      onClick={onZoom}
+      title={t?.('scanner.expandCard')}
+      className="w-24 aspect-[2.5/3.5] flex-shrink-0 self-start rounded-lg overflow-hidden
+        ring-1 ring-white/10 hover:ring-brand-red/40 transition-all cursor-zoom-in"
+    >
+      <img src={url} alt="" className="w-full h-full object-contain" />
+    </button>
   )
 }
 
 // One queued photo in the review list: thumbnail + detected info + its own
 // MatchesGrid, or a pending/error state.
 export function ScanItemPanel({ jobId, item, onSelectMatch, onResolve, t }) {
+  const photoUrl = useScanItemPhoto(jobId, item)
+  // { card } for a candidate, null for "just the photo".
+  const [zoom, setZoom] = useState(null)
+
   return (
     <div className={`rounded-2xl p-3 flex gap-3 transition-opacity ${item.resolved ? 'opacity-40' : ''}`}
       style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-      <ScanItemThumb jobId={jobId} item={item} />
+      {zoom !== null && (
+        <CardZoomModal card={zoom.card} photoUrl={photoUrl} onClose={() => setZoom(null)} t={t} />
+      )}
+      <ScanItemThumb url={photoUrl} onZoom={() => setZoom({ card: null })} t={t} />
       <div className="flex-1 min-w-0">
         {item.status === 'pending' && (
           <p className="text-sm text-text-muted flex items-center gap-2">
@@ -287,7 +375,12 @@ export function ScanItemPanel({ jobId, item, onSelectMatch, onResolve, t }) {
             </div>
             {!item.resolved && (
               <div className="mt-2">
-                <MatchesGrid matches={item.matches} onSelect={match => onSelectMatch(item, match)} t={t} />
+                <MatchesGrid
+                  matches={item.matches}
+                  onSelect={match => onSelectMatch(item, match)}
+                  onZoom={card => setZoom({ card })}
+                  t={t}
+                />
               </div>
             )}
           </>
