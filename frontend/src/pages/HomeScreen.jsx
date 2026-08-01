@@ -4,11 +4,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   RefreshCw, TrendingUp, TrendingDown, Layers, Star, Wallet, LogOut,
   Search, Library, Grid2X2, BarChart3, Settings, Trophy, ArrowRightLeft, ListOrdered,
+  ScanLine,
 } from 'lucide-react'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts'
-import { getDashboard, triggerPriceSync, getSyncStatus, getInvestmentTracker } from '../api/client'
+import { getDashboard, triggerPriceSync, getSyncStatus, getInvestmentTracker, getScanJobs } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import { useAuth } from '../contexts/AuthContext'
 import toast from 'react-hot-toast'
@@ -16,6 +17,7 @@ import { format, parseISO } from 'date-fns'
 import { useTilt } from '../hooks/useTilt'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 import { collectionItemTargetUrl } from '../utils/navigation'
+import { SCAN_JOBS_QUERY_KEY, isJobActive, outstandingScanCount } from '../utils/scanJobs'
 import CardImage from '../components/CardImage'
 
 // Compact number formatter for mobile (1.2k, 3.4M, etc.)
@@ -93,6 +95,17 @@ export default function HomeScreen() {
     refetchInterval: 120000,
   })
 
+  // Scans recognize in the background, so without a badge here a finished batch
+  // stays invisible until the user thinks to go looking for it.
+  const { data: scanData } = useQuery({
+    queryKey: SCAN_JOBS_QUERY_KEY,
+    queryFn: getScanJobs,
+    refetchInterval: query => (
+      (query.state.data?.jobs || []).some(isJobActive) ? 5000 : 60000
+    ),
+  })
+  const outstandingScans = outstandingScanCount(scanData?.jobs || [])
+
   const trainerName = user?.username || 'Trainer'
 
   const syncMutation = useMutation({
@@ -155,6 +168,11 @@ export default function HomeScreen() {
     { to: '/analytics',  icon: BarChart3,  label: t('nav.analytics'),   color: '#f5c842' },
     { to: '/trades',     icon: ArrowRightLeft, label: t('nav.trades'),   color: '#ff8a65' },
     ...(multiUser ? [{ to: '/leaderboard', icon: Trophy, label: t('nav.leaderboard'), color: '#ffd54f' }] : []),
+    // Scans recognize in the background, so this only appears when there is
+    // something still running or waiting to be reviewed.
+    ...(outstandingScans > 0
+      ? [{ to: '/scans', icon: ScanLine, label: t('scanner.queueTitle'), color: '#e3000b', badge: outstandingScans }]
+      : []),
     { to: '/settings',   icon: Settings,   label: t('nav.settings'),    color: '#b0bec5' },
   ]
 
@@ -397,17 +415,23 @@ export default function HomeScreen() {
         <div>
           <p className="text-xs font-bold text-white uppercase tracking-wider mb-3">{t('home.navigation')}</p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-            {PORTAL_ITEMS.map(({ to, icon: Icon, label, color }) => (
+            {PORTAL_ITEMS.map(({ to, icon: Icon, label, color, badge }) => (
               <button
                 key={to}
                 onClick={() => navigate(to)}
                 className="flex flex-col items-center gap-2 py-4 px-2 rounded-2xl transition-all
-                  active:scale-95 group"
+                  active:scale-95 group relative"
                 style={{
                   background: 'rgba(255,255,255,0.04)',
                   border: '1px solid rgba(255,255,255,0.07)',
                 }}
               >
+                {badge > 0 && (
+                  <span className="absolute top-1.5 right-1.5 bg-brand-red text-white text-[10px] font-bold
+                    px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-tight">
+                    {badge}
+                  </span>
+                )}
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center transition-all
                   group-hover:scale-110"
                   style={{

@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { Camera, Upload, Images, X, Loader2, RefreshCw } from 'lucide-react'
+import { Camera, Upload, ImagePlus, X, Loader2, RefreshCw } from 'lucide-react'
 import { recognizeCard, enqueueScanJob } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
@@ -150,7 +150,7 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
             <button
               onClick={() => multiFileRef.current?.click()}
               className="text-sm text-text-muted hover:text-text-secondary flex items-center gap-2 transition-colors">
-              <Images size={14} /> {t('scanner.uploadMultiple')}
+              <ImagePlus size={14} /> {t('scanner.uploadMultiple')}
             </button>
 
             <p className="text-[11px] text-text-muted text-center max-w-xs">
