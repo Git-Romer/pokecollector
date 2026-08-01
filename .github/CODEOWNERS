@@ -1,4 +1,0 @@
-# Shared visual-system changes receive an intentional review without preventing proposals.
-/frontend/src/components/card-system/ @Git-Romer
-/frontend/scripts/check-card-system.mjs @Git-Romer
-/docs/CARD_SYSTEM.md @Git-Romer

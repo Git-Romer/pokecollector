@@ -15,7 +15,19 @@ const FALLBACK_COLORS = CARD_SYSTEM_TOKENS.border
 const NORMAL_BORDER = CARD_SYSTEM_TOKENS.border.default
 
 export function getCardFallbackKinds(card = {}) {
-  return FALLBACK_KIND_ORDER.filter((kind) => Boolean(card?.[`${kind}_source_lang`]))
+  const hasOfficialArtwork = Boolean(
+    card.images_small
+    || card.images_large
+    || card.images?.small
+    || card.images?.large
+    || card.image,
+  )
+  const hasManualArtworkFallback = Boolean(card.custom_image_url) && !hasOfficialArtwork
+
+  return FALLBACK_KIND_ORDER.filter((kind) => (
+    Boolean(card?.[`${kind}_source_lang`])
+    || (kind === 'image' && hasManualArtworkFallback)
+  ))
 }
 
 export function getFallbackBorderGradient(kinds = [], hovered = false) {

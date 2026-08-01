@@ -22,7 +22,7 @@ The frontend test command also validates literal translation keys. Add new user-
 
 ## Card interfaces
 
-Feature pages should use the public card system from `src/components/card-system` instead of building card frames, rows, badges, dialogs, or loading/error states themselves.
+The public card system in `src/components/card-system` is the normal starting point for card interfaces. It provides established frames, rows, badges, dialogs, and loading/error states so contributors can focus on the feature itself.
 
 ```jsx
 import { CardDisplay, CardLegend, CardRow, CardStack } from '../components/card-system'
@@ -35,17 +35,17 @@ import { CardDisplay, CardLegend, CardRow, CardStack } from '../components/card-
 
 This keeps new features visually consistent without asking contributors to memorize every design detail. The available components and variants are documented in [`docs/CARD_SYSTEM.md`](docs/CARD_SYSTEM.md).
 
-New visual ideas are encouraged. If an existing variant does not fit the feature, propose a new shared variant instead of creating a page-specific card:
+New visual ideas are encouraged. If an existing variant does not fit the feature, explain the difference and consider whether the idea should become a reusable shared variant:
 
 1. Describe why the existing variants do not fit.
 2. Add the behavior to the public card-system module.
 3. Add the new state or variant to the component gallery.
 4. Update its tests and documentation.
 
-That process gives contributors room to evolve the design while ensuring that an accepted improvement becomes available to every feature.
+That process gives contributors room to evolve the design while helping accepted improvements remain consistent across features. The guide is reviewed by maintainers; there is no automated rule rejecting an alternative implementation merely because it is new.
 
 ## Pull requests
 
-Keep pull requests focused and explain the reason for the change. Screenshots are useful for visual work. If a check rejects a card layout, it includes the shared extension path; it is an architecture prompt, not a ban on new designs.
+Keep pull requests focused and explain the reason for the change. Include desktop and mobile screenshots for visual work when practical. Reviewers use [`docs/CARD_SYSTEM.md`](docs/CARD_SYSTEM.md) as a consistency checklist and may suggest adapting a contribution to the shared visual language before merge.
 
 Be kind, clear, and assume good intent during review.

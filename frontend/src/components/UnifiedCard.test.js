@@ -57,13 +57,24 @@ describe('CompactCardArtwork', () => {
 })
 
 describe('getCardFallbackKinds', () => {
-  it('returns fallback kinds in a stable order and ignores custom images', () => {
+  it('returns fallback kinds in a stable order', () => {
     expect(getCardFallbackKinds({
       price_source_lang: 'en',
       image_source_lang: 'de',
       data_source_lang: 'fr',
       custom_image_url: 'https://example.test/card.webp',
     })).toEqual(['data', 'price', 'image'])
+  })
+
+  it('uses the shared image-fallback frame for manual artwork when official artwork is missing', () => {
+    expect(getCardFallbackKinds({
+      custom_image_url: 'https://example.test/card.webp',
+    })).toEqual(['image'])
+
+    expect(getCardFallbackKinds({
+      custom_image_url: 'https://example.test/card.webp',
+      images_small: 'https://example.test/official.webp',
+    })).toEqual([])
   })
 })
 
