@@ -13,6 +13,19 @@ const VIEWPORT_MARGIN = 300
 const webkitViewportFallbacks = new Map()
 let webkitViewportFrame = null
 let webkitViewportListenersAttached = false
+let webkitViewportRetryTimers = []
+
+function clearWebKitViewportRetries() {
+  webkitViewportRetryTimers.forEach(window.clearTimeout)
+  webkitViewportRetryTimers = []
+}
+
+function scheduleWebKitViewportRetries() {
+  if (webkitViewportRetryTimers.length > 0) return
+  webkitViewportRetryTimers = [0, 80, 300].map(delay => window.setTimeout(() => {
+    if (webkitViewportFallbacks.size > 0) checkWebKitViewportFallbacks()
+  }, delay))
+}
 
 function isWebKitBrowser() {
   if (typeof navigator === 'undefined') return false
@@ -33,8 +46,10 @@ function detachWebKitViewportListeners() {
   if (!webkitViewportListenersAttached || webkitViewportFallbacks.size > 0) return
   window.removeEventListener('scroll', scheduleWebKitViewportCheck, true)
   window.removeEventListener('resize', scheduleWebKitViewportCheck)
+  window.removeEventListener('pageshow', scheduleWebKitViewportCheck)
   document.removeEventListener('visibilitychange', scheduleWebKitViewportCheck)
   webkitViewportListenersAttached = false
+  clearWebKitViewportRetries()
 }
 
 function checkWebKitViewportFallbacks() {
@@ -62,10 +77,12 @@ function observeWebKitViewport(element, reveal) {
   if (!webkitViewportListenersAttached) {
     window.addEventListener('scroll', scheduleWebKitViewportCheck, true)
     window.addEventListener('resize', scheduleWebKitViewportCheck)
+    window.addEventListener('pageshow', scheduleWebKitViewportCheck)
     document.addEventListener('visibilitychange', scheduleWebKitViewportCheck)
     webkitViewportListenersAttached = true
   }
   scheduleWebKitViewportCheck()
+  scheduleWebKitViewportRetries()
 
   return () => {
     webkitViewportFallbacks.delete(element)

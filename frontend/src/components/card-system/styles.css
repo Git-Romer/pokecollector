@@ -62,6 +62,10 @@
   }
   .unified-card-frame-thumbnail .unified-card-art { border-radius: var(--pc-card-art-radius-compact); }
   .unified-card-compact-artwork { width: var(--pc-card-compact-width); }
+  .unified-card-compact-artwork .unified-card-art {
+    aspect-ratio: auto;
+    height: var(--pc-card-compact-art-height);
+  }
   .unified-card-frame-comparison {
     padding: var(--pc-card-frame-padding-comparison);
     border-radius: var(--pc-card-frame-radius-comparison);

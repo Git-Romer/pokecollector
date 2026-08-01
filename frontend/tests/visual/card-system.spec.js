@@ -92,6 +92,17 @@ test('Safari fallback loads visible rows when IntersectionObserver stalls', asyn
       disconnect() {}
       takeRecords() { return [] }
     }
+
+    const measurements = new WeakMap()
+    const getBoundingClientRect = Element.prototype.getBoundingClientRect
+    Element.prototype.getBoundingClientRect = function safariDelayedLayout() {
+      if (this.classList?.contains('unified-card-image')) {
+        const count = measurements.get(this) || 0
+        measurements.set(this, count + 1)
+        if (count < 2) return DOMRect.fromRect()
+      }
+      return getBoundingClientRect.call(this)
+    }
   })
 
   const cardBackResponse = await page.request.get('/cardback.jpg')
