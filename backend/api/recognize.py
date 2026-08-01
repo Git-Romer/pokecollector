@@ -336,6 +336,15 @@ _ARTIST_PREFIX = re.compile(
 # scored 4-18, while a wrong same-artwork reprint scored 4 against a correct 8.
 # So distance alone is not enough — the gap to the runner-up is what separates a
 # confident pick from a coin flip, and an ambiguous result defers to Gemini.
+#
+# Tolerance measured by transforming the same photos (rotation, shear, border):
+# top-1 degrades steadily past ~5 degrees of rotation, but the margin guard
+# refuses to act rather than answering wrongly — at 10 and 90 degrees it accepted
+# nothing at all. Across realistic transforms (baseline, <=5 deg, shear, padding)
+# it made 15 accepts and 0 mistakes. The one failure mode is aggressive INWARD
+# cropping: at 12% it wrongly accepted twice, because cropping away the border
+# removes the frame that distinguishes layouts. Guidance: never pre-crop tight
+# to the card art.
 PHASH_MAX_DISTANCE = 20
 PHASH_MIN_MARGIN = 5
 
