@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_METADATA_ENRICHMENT_PER_FULL_SYNC = 500
 METADATA_ENRICHMENT_PER_SEARCH_PAGE = 20
+METADATA_ENRICHMENT_COOLDOWN = datetime.timedelta(days=7)
 POKEMON_SUPERTYPE_VALUES = ("pokemon", "pokémon")
 ELEMENTAL_SUPERTYPE_VALUES = (*POKEMON_SUPERTYPE_VALUES, "energy")
 
@@ -61,10 +62,7 @@ def _has_value(value) -> bool:
     return True
 
 
-def card_needs_metadata_enrichment(card: Card) -> bool:
-    """Return true for brief or partially populated rows missing important base metadata."""
-    if not card or card.is_custom or not (card.tcg_card_id or card.id):
-        return False
+def _card_missing_key_metadata(card: Card) -> bool:
     if not any(_has_value(getattr(card, field, None)) for field in _ANY_METADATA_FIELDS):
         return True
     if any(not _has_value(getattr(card, field, None)) for field in _KEY_METADATA_FIELDS):
@@ -77,6 +75,23 @@ def card_needs_metadata_enrichment(card: Card) -> bool:
     ):
         return True
     return False
+
+
+def card_needs_metadata_enrichment(card: Card, *, now: datetime.datetime | None = None) -> bool:
+    """Return true for brief or partially populated rows missing important base metadata.
+
+    Cards still missing fields but attempted within METADATA_ENRICHMENT_COOLDOWN are
+    skipped: `updated_at` is already bumped on every attempt (success, missing, or
+    failed), so a card TCGdex genuinely has nothing more for would otherwise be
+    re-fetched on every search request that surfaces it, forever.
+    """
+    if not card or card.is_custom or not (card.tcg_card_id or card.id):
+        return False
+    if not _card_missing_key_metadata(card):
+        return False
+    if card.updated_at is None:
+        return True
+    return (now or datetime.datetime.utcnow()) - card.updated_at >= METADATA_ENRICHMENT_COOLDOWN
 
 
 def _card_detail_id(card: Card) -> str | None:

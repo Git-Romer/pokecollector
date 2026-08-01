@@ -1,8 +1,9 @@
+import datetime
 import unittest
 
 try:
     from models import Card
-    from services.card_metadata import card_needs_metadata_enrichment
+    from services.card_metadata import METADATA_ENRICHMENT_COOLDOWN, card_needs_metadata_enrichment
     API_TEST_DEPS_AVAILABLE = True
 except ModuleNotFoundError:
     API_TEST_DEPS_AVAILABLE = False
@@ -112,6 +113,32 @@ class CardMetadataEnrichmentTests(unittest.TestCase):
         )
 
         self.assertTrue(card_needs_metadata_enrichment(card))
+
+    def test_recently_attempted_card_is_within_cooldown(self):
+        now = datetime.datetime(2026, 8, 1, 12, 0, 0)
+        card = Card(
+            id="smp-SM170_en",
+            tcg_card_id="smp-SM170",
+            name="Promo Pikachu",
+            lang="en",
+            is_custom=False,
+            updated_at=now - datetime.timedelta(hours=1),
+        )
+
+        self.assertFalse(card_needs_metadata_enrichment(card, now=now))
+
+    def test_card_past_cooldown_needs_metadata_enrichment_again(self):
+        now = datetime.datetime(2026, 8, 1, 12, 0, 0)
+        card = Card(
+            id="smp-SM170_en",
+            tcg_card_id="smp-SM170",
+            name="Promo Pikachu",
+            lang="en",
+            is_custom=False,
+            updated_at=now - METADATA_ENRICHMENT_COOLDOWN - datetime.timedelta(seconds=1),
+        )
+
+        self.assertTrue(card_needs_metadata_enrichment(card, now=now))
 
     def test_custom_card_does_not_need_metadata_enrichment(self):
         card = Card(
