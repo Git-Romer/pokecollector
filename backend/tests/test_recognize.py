@@ -19,6 +19,8 @@ try:
         _normalize_number,
         _numbers_match,
         _printed_total_mismatch,
+        _artists_match,
+        _normalize_artist,
         _recognize_composite_chunk,
         _recognize_single_image,
     )
@@ -159,6 +161,24 @@ class PrintedTotalMismatchTests(unittest.TestCase):
         self.assertFalse(_printed_total_mismatch(None, 88))
         self.assertFalse(_printed_total_mismatch("088", None))
         self.assertFalse(_printed_total_mismatch("088", 0))
+
+
+@unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")
+class ArtistMatchTests(unittest.TestCase):
+    def test_folds_case_and_whitespace(self):
+        self.assertEqual(_normalize_artist("  Kagemaru   Himeno "), "kagemaru himeno")
+        self.assertTrue(_artists_match("Kagemaru Himeno", "kagemaru  himeno"))
+
+    def test_different_artists_do_not_match(self):
+        self.assertFalse(_artists_match("Kagemaru Himeno", "Ken Sugimori"))
+
+    def test_missing_artist_never_matches(self):
+        # Unknown must be neutral, not a false positive that promotes a wrong card.
+        self.assertIsNone(_normalize_artist(None))
+        self.assertIsNone(_normalize_artist("   "))
+        self.assertFalse(_artists_match(None, "Ken Sugimori"))
+        self.assertFalse(_artists_match("Ken Sugimori", None))
+        self.assertFalse(_artists_match(None, None))
 
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")
@@ -317,6 +337,93 @@ class RecognizeBatchEndpointTests(unittest.TestCase):
             resp = self.client.post("/api/cards/recognize/batch", files=files)
         self.assertEqual(resp.status_code, 400)
         self.assertIn("Gemini API Key", resp.json()["detail"])
+
+
+@unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")
+class CandidateRankingTests(NoWaitLimiterMixin, unittest.IsolatedAsyncioTestCase):
+    """Ranking behaviour for the numberless-card case.
+
+    Modelled on a real failure: a 1997 Japanese Jungle Jigglypuff prints no card
+    number and no set code, so number ranking has nothing to sort on. TCGdex also
+    has no image for it, so visual verification cannot rank it either — artist and
+    HP are the only remaining signals.
+    """
+
+    JA_CANDIDATES = [
+        {"id": "SV2D-026_ja", "tcg_card_id": "SV2D-026", "name": "プリン", "number": "026",
+         "image": "https://img/026", "_lang": "ja", "artist": "Yuu Nishida", "hp": "70"},
+        {"id": "PMCG2-035_ja", "tcg_card_id": "PMCG2-035", "name": "プリン", "number": "035",
+         "image": None, "_lang": "ja", "artist": "Kagemaru Himeno", "hp": "60"},
+        {"id": "SV2a-039_ja", "tcg_card_id": "SV2a-039", "name": "プリン", "number": "039",
+         "image": "https://img/039", "_lang": "ja", "artist": "saino misaki", "hp": "70"},
+    ]
+
+    async def test_artist_and_hp_promote_the_right_card_when_there_is_no_number(self):
+        from api.recognize import _artists_match, _numbers_match
+
+        card_info = {"artist": "Kagemaru Himeno", "hp": "60"}
+        # Same key the endpoint uses when number/set_code are absent.
+        def rank_key(card):
+            artist_ok = 0 if _artists_match(card_info["artist"], card.get("artist")) else 1
+            hp_ok = 0 if _numbers_match(card_info["hp"], card.get("hp")) else 1
+            return (artist_ok, hp_ok)
+
+        ranked = sorted(self.JA_CANDIDATES, key=rank_key)
+        self.assertEqual(ranked[0]["tcg_card_id"], "PMCG2-035")
+
+    async def test_detail_fetch_fills_artist_and_hp_from_tcgdex(self):
+        from api.recognize import _fill_candidate_details
+
+        candidates = [
+            {"id": "PMCG2-035_ja", "tcg_card_id": "PMCG2-035", "_lang": "ja"},
+        ]
+
+        class FakeResp:
+            status_code = 200
+            @staticmethod
+            def json():
+                return {"illustrator": "Kagemaru Himeno", "hp": 60}
+
+        class FakeClient:
+            async def __aenter__(self): return self
+            async def __aexit__(self, *a): return False
+            async def get(self, *a, **k): return FakeResp()
+
+        class FakeQuery:
+            def filter(self, *a, **k): return self
+            def all(self): return []
+
+        class FakeDb:
+            def query(self, *a, **k): return FakeQuery()
+
+        with patch("api.recognize.httpx.AsyncClient", return_value=FakeClient()):
+            await _fill_candidate_details(FakeDb(), candidates)
+
+        self.assertEqual(candidates[0]["artist"], "Kagemaru Himeno")
+        self.assertEqual(candidates[0]["hp"], 60)
+
+    async def test_detail_fetch_failure_is_non_fatal(self):
+        from api.recognize import _fill_candidate_details
+
+        candidates = [{"id": "X-1_ja", "tcg_card_id": "X-1", "_lang": "ja"}]
+
+        class BoomClient:
+            async def __aenter__(self): return self
+            async def __aexit__(self, *a): return False
+            async def get(self, *a, **k): raise RuntimeError("network down")
+
+        class FakeQuery:
+            def filter(self, *a, **k): return self
+            def all(self): return []
+
+        class FakeDb:
+            def query(self, *a, **k): return FakeQuery()
+
+        with patch("api.recognize.httpx.AsyncClient", return_value=BoomClient()):
+            await _fill_candidate_details(FakeDb(), candidates)
+
+        # No artist/hp added, but no exception — it is a tie-break, not a requirement.
+        self.assertIsNone(candidates[0].get("artist"))
 
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")

@@ -13,7 +13,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Backgro
 from sqlalchemy.orm import Session
 from api.auth import get_current_user
 from database import get_db
-from models import Setting, UserSetting, User, Set, ScanJob, ScanJobItem
+from models import Setting, UserSetting, User, Set, Card, ScanJob, ScanJobItem
 from services.scan_queue import drain_scan_queue, enqueue_scan_job, job_progress, resolve_item
 
 logger = logging.getLogger(__name__)
@@ -270,6 +270,66 @@ def _printed_total_mismatch(recognized_total, candidate_printed_total) -> bool:
     return normalized != str(int(candidate_printed_total))
 
 
+def _normalize_artist(value) -> Optional[str]:
+    """Fold an illustrator credit for comparison ('Kagemaru  Himeno' -> 'kagemaru himeno')."""
+    if not value:
+        return None
+    collapsed = " ".join(str(value).split()).strip().casefold()
+    return collapsed or None
+
+
+def _artists_match(a, b) -> bool:
+    na, nb = _normalize_artist(a), _normalize_artist(b)
+    return na is not None and na == nb
+
+
+async def _fill_candidate_details(db: Session, candidates: list[dict], *, limit: int = 8) -> None:
+    """Populate artist/hp on candidates so ranking can use them as tie-breaks.
+
+    Needed because TCGdex's name search returns only brief records (id, name,
+    image), while artist and HP are the only usable signals for cards that print
+    no number or set code — vintage and Japanese cards especially, which is also
+    the population TCGdex often has no image for, so visual verification cannot
+    help there either.
+
+    Local DB first (free), then a bounded concurrent TCGdex detail fetch for
+    whatever is still missing (e.g. languages this install does not sync).
+    """
+    targets = candidates[:limit]
+    if not targets:
+        return
+
+    ids = [c["id"] for c in targets if c.get("id")]
+    if ids:
+        rows = db.query(Card.id, Card.artist, Card.hp).filter(Card.id.in_(ids)).all()
+        local = {row.id: row for row in rows}
+        for card in targets:
+            row = local.get(card.get("id"))
+            if row:
+                card.setdefault("artist", row.artist)
+                card.setdefault("hp", row.hp)
+
+    missing = [c for c in targets if not c.get("artist") and not c.get("hp")]
+    if not missing:
+        return
+
+    async def fetch(card):
+        tcg_id, lang = card.get("tcg_card_id"), card.get("_lang", "en")
+        if not tcg_id:
+            return
+        try:
+            async with httpx.AsyncClient(timeout=8) as client:
+                resp = await client.get(f"https://api.tcgdex.net/v2/{lang}/cards/{tcg_id}")
+            if resp.status_code == 200:
+                detail = resp.json()
+                card["artist"] = detail.get("illustrator")
+                card["hp"] = detail.get("hp")
+        except Exception:
+            pass  # Tie-break only — a failed lookup just means no extra signal.
+
+    await asyncio.gather(*(fetch(c) for c in missing))
+
+
 def _extract_json(text: str, *, array: bool = False):
     """Parse the JSON object/array Gemini returned, tolerating stray markdown fences."""
     pattern = r"\[.*\]" if array else r"\{.*\}"
@@ -407,23 +467,33 @@ async def _match_card_info(db: Session, api_key: str, gemini_url: str, card_info
         f"Recognize dedup: {len(all_results)} before -> {len(deduped)} after dedup by (card_id, _lang)"
     )
 
-    # Rank results: cards with a matching local number first, and among those, a
-    # matching set_code as a tie-break (real-card data has cases like printed_total=198
-    # matching two different sets, where number alone can't disambiguate but set_code can).
+    # Rank results. Each signal contributes 0 (matches) or 1 (differs/unknown), so a
+    # signal we have no reading for is neutral and cannot reorder anything harmfully.
+    # Ordered by trust: printed number, then set code, then artist and HP.
+    #
+    # Artist/HP matter most for cards that print no number or set code (vintage and
+    # Japanese). Those are also the ones TCGdex frequently has no image for, so visual
+    # verification below cannot rank them either — metadata is the only route.
     recognized_number_local = card_info.get("number_local")
     recognized_set_code = (card_info.get("set_code") or "").strip().upper() or None
+    recognized_artist = card_info.get("artist")
+    recognized_hp = card_info.get("hp")
     target_num = _normalize_number(recognized_number_local)
     number_match_clear = False
 
-    if target_num is not None:
-        def rank_key(card):
+    def rank_key(card):
+        number_ok = 1
+        if target_num is not None:
             number_ok = 0 if _numbers_match(card.get("number"), target_num) else 1
-            set_ok = 1
-            if recognized_set_code:
-                card_abbr = (card.get("set_abbreviation") or "").upper()
-                set_ok = 0 if card_abbr == recognized_set_code else 1
-            return (number_ok, set_ok)
+        set_ok = 1
+        if recognized_set_code:
+            card_abbr = (card.get("set_abbreviation") or "").upper()
+            set_ok = 0 if card_abbr == recognized_set_code else 1
+        artist_ok = 0 if _artists_match(recognized_artist, card.get("artist")) else 1
+        hp_ok = 0 if (recognized_hp and _numbers_match(recognized_hp, card.get("hp"))) else 1
+        return (number_ok, set_ok, artist_ok, hp_ok)
 
+    if target_num is not None:
         deduped.sort(key=rank_key)
         number_matches = [card for card in deduped if rank_key(card)[0] == 0]
         if len(number_matches) == 1:
@@ -433,11 +503,26 @@ async def _match_card_info(db: Session, api_key: str, gemini_url: str, card_info
             number_match_clear = len(set_matches) == 1
         logger.info(f"Ranked results by number match (target: {target_num})")
 
+    # When the number did not settle it, artist/HP are worth fetching — they are
+    # absent from TCGdex's brief search records, so this is the only place they
+    # become available. Bounded, and skipped entirely when ranking is already clear.
+    if not number_match_clear and (recognized_artist or recognized_hp):
+        await _fill_candidate_details(db, deduped)
+        deduped.sort(key=rank_key)
+        exact = [c for c in deduped if rank_key(c)[2] == 0 and rank_key(c)[3] == 0]
+        if len(exact) == 1:
+            number_match_clear = True  # artist+HP pinned exactly one; skip the extra call
+            logger.info(
+                "Artist/HP tie-break resolved to %s (%s)", exact[0].get("tcg_card_id"), exact[0].get("name")
+            )
+
     # Visual verification: ask Gemini to pick the best match from candidate images.
-    # Skip this second Gemini call when number ranking is decisive or there
-    # are not enough candidate images to compare visually.
-    top_candidates = [card for card in deduped[:5] if card.get("image")]  # max 5 to keep costs low
-    if len(top_candidates) >= 2 and not number_match_clear:
+    # Skip this second Gemini call when ranking is decisive or there are not enough
+    # candidates to compare. Candidates without an image are still included — TCGdex
+    # has no scan for many vintage cards, and dropping them here used to hide the
+    # correct answer from Gemini entirely, which then (correctly) reported no match.
+    top_candidates = deduped[:5]  # max 5 to keep costs low
+    if sum(1 for c in top_candidates if c.get("image")) >= 2 and not number_match_clear:
         try:
             # Download candidate images
             candidate_parts = [
