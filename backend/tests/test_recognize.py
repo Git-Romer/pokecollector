@@ -162,6 +162,110 @@ class PrintedTotalMismatchTests(unittest.TestCase):
         self.assertFalse(_printed_total_mismatch("088", None))
         self.assertFalse(_printed_total_mismatch("088", 0))
 
+    def test_false_means_no_evidence_not_agreement(self):
+        # Regression guard: this returns False both for "they agree" and for
+        # "we have no total to compare". Callers that rank on it must set the
+        # flag only when a total was actually read, or every candidate in a
+        # synced set looks like a confirmed match and outranks the right card.
+        no_evidence = _printed_total_mismatch(None, 88)
+        agreement = _printed_total_mismatch("088", 88)
+        self.assertEqual(no_evidence, agreement)
+        self.assertIsNone(_normalize_number(None))
+
+
+@unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")
+class PhashMatchTests(unittest.IsolatedAsyncioTestCase):
+    """The pHash re-rank must only fire when the answer is unambiguous.
+
+    Benchmarking showed a wrong same-artwork reprint can score *better* than the
+    correct card, so distance alone is not trustworthy — the margin to the
+    runner-up is the guard, and anything close defers to Gemini.
+    """
+
+    @staticmethod
+    def _solid(seed):
+        """A deterministic textured image.
+
+        Deliberately not a flat colour: pHash is a DCT over frequency content,
+        so every solid image hashes identically and the fixture would prove
+        nothing.
+        """
+        import io as _io
+        import random
+        from PIL import Image
+        rng = random.Random(seed)
+        img = Image.new("RGB", (64, 64))
+        img.putdata([
+            (rng.randrange(256), rng.randrange(256), rng.randrange(256))
+            for _ in range(64 * 64)
+        ])
+        buf = _io.BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
+
+    def _patch_downloads(self, mapping):
+        class FakeResp:
+            def __init__(self, content):
+                self.status_code = 200
+                self.content = content
+
+        class FakeClient:
+            async def __aenter__(self): return self
+            async def __aexit__(self, *a): return False
+            async def get(self, url, *a, **k): return FakeResp(mapping[url])
+
+        return patch("api.recognize.httpx.AsyncClient", return_value=FakeClient())
+
+    async def test_returns_none_without_enough_images_to_compare(self):
+        from api.recognize import _phash_best_match
+        photo = self._solid(1)
+        self.assertIsNone(await _phash_best_match([{"image": "u1"}], photo))
+        self.assertIsNone(await _phash_best_match([{"image": None}, {"image": None}], photo))
+
+    async def test_returns_none_without_a_photo(self):
+        from api.recognize import _phash_best_match
+        self.assertIsNone(await _phash_best_match([{"image": "u1"}, {"image": "u2"}], None))
+
+    async def test_picks_the_visually_identical_candidate(self):
+        from api.recognize import _phash_best_match
+        photo = self._solid(7)
+        cands = [
+            {"tcg_card_id": "far", "image": "u_far"},
+            {"tcg_card_id": "near", "image": "u_near"},
+        ]
+        mapping = {"u_far": self._solid(99), "u_near": photo}
+        with self._patch_downloads(mapping):
+            winner = await _phash_best_match(cands, photo)
+        self.assertIsNotNone(winner)
+        self.assertEqual(winner["tcg_card_id"], "near")
+
+    async def test_defers_when_two_candidates_are_too_close(self):
+        # Same-artwork reprints land within a hair of each other; picking one
+        # would be a coin flip, so it must hand back to Gemini instead.
+        from api.recognize import _phash_best_match
+        photo = self._solid(7)
+        cands = [
+            {"tcg_card_id": "reprint_a", "image": "u_a"},
+            {"tcg_card_id": "reprint_b", "image": "u_b"},
+        ]
+        mapping = {"u_a": photo, "u_b": photo}  # identical -> zero margin
+        with self._patch_downloads(mapping):
+            self.assertIsNone(await _phash_best_match(cands, photo))
+
+    async def test_download_failure_is_non_fatal(self):
+        from api.recognize import _phash_best_match
+        photo = self._solid(7)
+
+        class BoomClient:
+            async def __aenter__(self): return self
+            async def __aexit__(self, *a): return False
+            async def get(self, *a, **k): raise RuntimeError("network down")
+
+        with patch("api.recognize.httpx.AsyncClient", return_value=BoomClient()):
+            self.assertIsNone(await _phash_best_match(
+                [{"image": "u1"}, {"image": "u2"}], photo
+            ))
+
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")
 class PromptConsistencyTests(unittest.TestCase):

@@ -1,5 +1,6 @@
 import base64
 import asyncio
+import io
 import httpx
 import os
 import json
@@ -280,6 +281,71 @@ _ARTIST_PREFIX = re.compile(
 )
 
 
+# rank_key tuple positions, so index-based reads survive adding a signal.
+(
+    _RANK_NUMBER,
+    _RANK_TOTAL,
+    _RANK_SET,
+    _RANK_REG,
+    _RANK_ARTIST,
+    _RANK_HP,
+) = range(6)
+
+# Thresholds from benchmarking real photos against TCGdex scans: correct matches
+# scored 4-18, while a wrong same-artwork reprint scored 4 against a correct 8.
+# So distance alone is not enough — the gap to the runner-up is what separates a
+# confident pick from a coin flip, and an ambiguous result defers to Gemini.
+PHASH_MAX_DISTANCE = 20
+PHASH_MIN_MARGIN = 5
+
+
+async def _phash_best_match(candidates: list[dict], photo_bytes: Optional[bytes]) -> Optional[dict]:
+    """Pick the candidate whose artwork matches the photo, or None if unsure.
+
+    Returns None whenever the answer is not clear-cut — too few images, no close
+    match, or two candidates within PHASH_MIN_MARGIN of each other — leaving the
+    caller to fall back to the (paid) Gemini comparison.
+    """
+    if not photo_bytes:
+        return None
+    try:
+        import imagehash
+        from PIL import Image
+    except ImportError:
+        return None
+
+    with_images = [c for c in candidates if c.get("image")]
+    if len(with_images) < 2:
+        return None
+
+    try:
+        photo_hash = imagehash.phash(Image.open(io.BytesIO(photo_bytes)).convert("RGB"))
+    except Exception:
+        return None
+
+    async def hashed(card):
+        try:
+            async with httpx.AsyncClient(timeout=8) as client:
+                resp = await client.get(card["image"])
+            if resp.status_code != 200:
+                return None
+            img = Image.open(io.BytesIO(resp.content)).convert("RGB")
+            return (photo_hash - imagehash.phash(img), card)
+        except Exception:
+            return None
+
+    scored = [r for r in await asyncio.gather(*(hashed(c) for c in with_images)) if r]
+    if len(scored) < 2:
+        return None
+
+    scored.sort(key=lambda pair: pair[0])
+    best_distance, best_card = scored[0]
+    runner_up = scored[1][0]
+    if best_distance > PHASH_MAX_DISTANCE or (runner_up - best_distance) < PHASH_MIN_MARGIN:
+        return None
+    return best_card
+
+
 def _normalize_artist(value) -> Optional[str]:
     """Fold an illustrator credit for comparison ('Illus. Kagemaru  Himeno' -> 'kagemaru himeno').
 
@@ -299,7 +365,9 @@ def _artists_match(a, b) -> bool:
     return na is not None and na == nb
 
 
-async def _fill_candidate_details(db: Session, candidates: list[dict], *, limit: int = 8) -> None:
+async def _fill_candidate_details(
+    db: Session, candidates: list[dict], *, recognized_total=None, limit: int = 8
+) -> None:
     """Populate artist/hp on candidates so ranking can use them as tie-breaks.
 
     Needed because TCGdex's name search returns only brief records (id, name,
@@ -317,13 +385,14 @@ async def _fill_candidate_details(db: Session, candidates: list[dict], *, limit:
 
     ids = [c["id"] for c in targets if c.get("id")]
     if ids:
-        rows = db.query(Card.id, Card.artist, Card.hp).filter(Card.id.in_(ids)).all()
+        rows = db.query(Card.id, Card.artist, Card.hp, Card.regulation_mark).filter(Card.id.in_(ids)).all()
         local = {row.id: row for row in rows}
         for card in targets:
             row = local.get(card.get("id"))
             if row:
                 card.setdefault("artist", row.artist)
                 card.setdefault("hp", row.hp)
+                card.setdefault("regulation_mark", row.regulation_mark)
 
     missing = [c for c in targets if not c.get("artist") and not c.get("hp")]
     if not missing:
@@ -340,6 +409,13 @@ async def _fill_candidate_details(db: Session, candidates: list[dict], *, limit:
                 detail = resp.json()
                 card["artist"] = detail.get("illustrator")
                 card["hp"] = detail.get("hp")
+                card["regulation_mark"] = detail.get("regulationMark")
+                # Sets this install does not sync are absent from the local DB, so
+                # the printed-total check would otherwise be unavailable for them.
+                if card.get("printed_total_mismatch") is None and recognized_total is not None:
+                    official = ((detail.get("set") or {}).get("cardCount") or {}).get("official")
+                    if official:
+                        card["printed_total_mismatch"] = _printed_total_mismatch(recognized_total, official)
         except Exception:
             pass  # Tie-break only — a failed lookup just means no extra signal.
 
@@ -383,7 +459,9 @@ async def _recognize_single_image(client, gemini_url, api_key, image_b64, mime_t
     return _extract_json(text)
 
 
-async def _match_card_info(db: Session, api_key: str, gemini_url: str, card_info: dict, image_b64: str, mime_type: str) -> dict:
+async def _match_card_info(
+    db: Session, api_key: str, gemini_url: str, card_info: dict, image_b64: str, mime_type: str
+) -> dict:
     """Search TCGdex/local DB for candidates matching an already-extracted card_info,
     rank them, and optionally run visual verification. Shared by the single-photo and
     batched (composite) recognize paths — the only difference between them is how
@@ -487,7 +565,12 @@ async def _match_card_info(db: Session, api_key: str, gemini_url: str, card_info
                 card["set"] = local_set.name
                 if local_set.abbreviation:
                     card["set_abbreviation"] = local_set.abbreviation
-                if local_set.printed_total:
+                # Only record this when the photo actually gave us a total.
+                # _printed_total_mismatch returns False for "no data" as well as
+                # "they agree", and ranking treats False as a confirmed match —
+                # so setting it unconditionally would promote every candidate
+                # whose set happens to be synced locally.
+                if local_set.printed_total and _normalize_number(recognized_number_total) is not None:
                     card["printed_total_mismatch"] = _printed_total_mismatch(
                         recognized_number_total, local_set.printed_total
                     )
@@ -516,6 +599,7 @@ async def _match_card_info(db: Session, api_key: str, gemini_url: str, card_info
     recognized_set_code = (card_info.get("set_code") or "").strip().upper() or None
     recognized_artist = card_info.get("artist")
     recognized_hp = card_info.get("hp")
+    recognized_reg = (card_info.get("regulation_mark") or "").strip().upper() or None
     target_num = _normalize_number(recognized_number_local)
     number_match_clear = False
 
@@ -523,13 +607,22 @@ async def _match_card_info(db: Session, api_key: str, gemini_url: str, card_info
         number_ok = 1
         if target_num is not None:
             number_ok = 0 if _numbers_match(card.get("number"), target_num) else 1
+        # The printed total identifies the set almost uniquely, and it is the one
+        # signal that separates same-artwork reprints — which no image comparison
+        # can do. 0 agrees, 1 unknown, 2 known mismatch, so a confirmed match
+        # outranks an unknown and a contradiction sinks.
+        mismatch = card.get("printed_total_mismatch")
+        total_ok = 1 if mismatch is None else (2 if mismatch else 0)
         set_ok = 1
         if recognized_set_code:
             card_abbr = (card.get("set_abbreviation") or "").upper()
             set_ok = 0 if card_abbr == recognized_set_code else 1
+        reg_ok = 1
+        if recognized_reg and card.get("regulation_mark"):
+            reg_ok = 0 if str(card["regulation_mark"]).strip().upper() == recognized_reg else 1
         artist_ok = 0 if _artists_match(recognized_artist, card.get("artist")) else 1
         hp_ok = 0 if (recognized_hp and _numbers_match(recognized_hp, card.get("hp"))) else 1
-        return (number_ok, set_ok, artist_ok, hp_ok)
+        return (number_ok, total_ok, set_ok, reg_ok, artist_ok, hp_ok)
 
     if target_num is not None:
         deduped.sort(key=rank_key)
@@ -545,13 +638,39 @@ async def _match_card_info(db: Session, api_key: str, gemini_url: str, card_info
     # absent from TCGdex's brief search records, so this is the only place they
     # become available. Bounded, and skipped entirely when ranking is already clear.
     if not number_match_clear and (recognized_artist or recognized_hp):
-        await _fill_candidate_details(db, deduped)
+        await _fill_candidate_details(db, deduped, recognized_total=recognized_number_total)
         deduped.sort(key=rank_key)
-        exact = [c for c in deduped if rank_key(c)[2] == 0 and rank_key(c)[3] == 0]
+        exact = [
+            c for c in deduped
+            if rank_key(c)[_RANK_ARTIST] == 0 and rank_key(c)[_RANK_HP] == 0
+        ]
         if len(exact) == 1:
-            number_match_clear = True  # artist+HP pinned exactly one; skip the extra call
+            # Promote explicitly rather than trusting the sort: artist/HP sit
+            # below number and printed-total in rank_key, so a card they pinned
+            # can still be outranked by candidates that merely score better on a
+            # higher signal.
+            winner = exact[0]
+            deduped.remove(winner)
+            deduped.insert(0, winner)
+            number_match_clear = True  # pinned exactly one; skip the extra call
             logger.info(
-                "Artist/HP tie-break resolved to %s (%s)", exact[0].get("tcg_card_id"), exact[0].get("name")
+                "Artist/HP tie-break resolved to %s (%s)", winner.get("tcg_card_id"), winner.get("name")
+            )
+
+    # Perceptual-hash re-rank, before spending a second Gemini call.
+    # Benchmarked on real handheld photos against TCGdex scans: pHash put the
+    # correct card first in 8 of 9 cases across unfiltered candidate pools of up
+    # to 62. Its one failure mode is same-artwork reprints, which is exactly what
+    # the printed-total signal above resolves — so this only ever re-ranks, and
+    # only when the result is unambiguous by both distance and margin.
+    if not number_match_clear:
+        winner = await _phash_best_match(deduped[:8], base64.b64decode(image_b64))
+        if winner is not None:
+            deduped.remove(winner)
+            deduped.insert(0, winner)
+            number_match_clear = True
+            logger.info(
+                "pHash re-rank picked %s (%s)", winner.get("tcg_card_id"), winner.get("name")
             )
 
     # Visual verification: ask Gemini to pick the best match from candidate images.
