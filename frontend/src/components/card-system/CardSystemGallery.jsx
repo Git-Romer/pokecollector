@@ -71,8 +71,8 @@ const FALLBACK_COMBINATIONS = [
   ['All three', CARDS.greninja, { data_source_lang: 'fr', price_source_lang: 'de', image_source_lang: 'en' }],
 ]
 
-function GalleryExample({ label, children }) {
-  return <div className="min-w-0 space-y-2 rounded-2xl border border-white/5 bg-black/20 p-2.5 shadow-[0_14px_35px_rgba(0,0,0,0.2)] sm:p-3">
+function GalleryExample({ label, children, testId }) {
+  return <div className="min-w-0 space-y-2 rounded-2xl border border-white/5 bg-black/20 p-2.5 shadow-[0_14px_35px_rgba(0,0,0,0.2)] sm:p-3" data-testid={testId}>
     <p className="truncate text-[10px] font-black uppercase tracking-[0.12em] text-text-secondary" title={label}>{label}</p>
     {children}
   </div>
@@ -162,10 +162,10 @@ export default function CardSystemGallery() {
             <GalleryExample label="Wishlist">
               <CardDisplay card={{ ...CARDS.tranquility, wishlisted: true }} image={imageFor(CARDS.tranquility)} price={priceFor(CARDS.tranquility)} loading="eager" />
             </GalleryExample>
-            <GalleryExample label="Binder · 0/1">
-              <CardDisplay card={CARDS.crobat} image={imageFor(CARDS.crobat)} price={priceFor(CARDS.crobat)} showStateIndicators={false} captionAccessory={binderProgress('0/1')} loading="eager" />
+            <GalleryExample label="Binder · 0/1" testId="binder-zero-state">
+              <CardDisplay card={CARDS.crobat} image={imageFor(CARDS.crobat)} price={priceFor(CARDS.crobat)} showStateIndicators={false} dimWhenUnowned captionAccessory={binderProgress('0/1')} loading="eager" />
             </GalleryExample>
-            <GalleryExample label="Binder · 2/4">
+            <GalleryExample label="Binder · 2/4" testId="binder-partial-state">
               <CardDisplay card={CARDS.greninja} image={imageFor(CARDS.greninja)} price={priceFor(CARDS.greninja)} showStateIndicators={false} captionAccessory={binderProgress('2/4')} loading="eager" />
             </GalleryExample>
             <GalleryExample label="Binder · complete">
@@ -178,9 +178,9 @@ export default function CardSystemGallery() {
           <GalleryHeading
             eyebrow="Purposeful feedback"
             title="Clear interaction states without visual drift"
-            description="Selection, availability, missing-card, and image-recovery behavior share the same card anatomy on every screen size."
+            description="Selection, availability, missing-card, image-recovery, and pointer-hover add behavior share the same card anatomy. On touch screens, adding continues through the card details flow."
           />
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
             <GalleryExample label="Selectable">
               <CardDisplay variant="selectable" card={CARDS.cinccino} image={imageFor(CARDS.cinccino)} onSelect={() => {}} loading="eager" />
             </GalleryExample>
@@ -195,6 +195,9 @@ export default function CardSystemGallery() {
             </GalleryExample>
             <GalleryExample label="Image error with retry">
               <CardDisplay card={CARDS.emma} image="/__card-system-missing-image.jpg" loading="eager" />
+            </GalleryExample>
+            <GalleryExample label="Hover · add to collection" testId="hover-add-state">
+              <CardDisplay className="gallery-hover-add" card={CARDS.beedrill} image={imageFor(CARDS.beedrill)} onClick={() => {}} onAdd={() => {}} loading="eager" />
             </GalleryExample>
           </div>
         </section>
@@ -227,8 +230,8 @@ export default function CardSystemGallery() {
             Remount compact cards
           </button>
           <div className="grid grid-cols-2 gap-5 sm:grid-cols-4">
-            <GalleryExample label="Carousel"><div className="w-32"><CardDisplay variant="carousel" card={CARDS.greninja} image={imageFor(CARDS.greninja)} loading="eager" /></div></GalleryExample>
-            <GalleryExample label="Ranking"><div className="w-32"><CardDisplay variant="ranking" card={CARDS.ampharos} image={imageFor(CARDS.ampharos)} loading="eager" /></div></GalleryExample>
+            <GalleryExample label="Carousel" testId="carousel-state"><div className="w-32"><CardDisplay variant="carousel" card={ownedAs(CARDS.greninja, [{ variant: 'Holo', quantity: 1 }])} image={imageFor(CARDS.greninja)} stateIndicatorProps={{ alwaysShowQuantity: true }} loading="eager" /></div></GalleryExample>
+            <GalleryExample label="Ranking" testId="ranking-state"><div className="w-32"><CardDisplay variant="ranking" card={ownedAs(CARDS.ampharos, [{ variant: 'Holo', quantity: 2 }])} image={imageFor(CARDS.ampharos)} stateIndicatorProps={{ alwaysShowQuantity: true }} loading="eager" /></div></GalleryExample>
             <GalleryExample label="Artwork"><div className="w-28"><CardDisplay variant="artwork" card={CARDS.emma} image={imageFor(CARDS.emma)} alt={CARDS.emma.name} loading="eager" /></div></GalleryExample>
             <GalleryExample label="Stack"><div className="w-28"><CardStack card={CARDS.crobat} image={imageFor(CARDS.crobat)} layers={2} alt={CARDS.crobat.name} loading="eager" /></div></GalleryExample>
           </div>

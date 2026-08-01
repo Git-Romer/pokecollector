@@ -761,7 +761,6 @@ export default function BinderDetail() {
             const ownedQuantity = Math.max(0, Number(card.owned_quantity) || 0)
             const requiredQuantity = Math.max(1, Number(card.required_quantity) || 1)
             const isComplete = ownedQuantity >= requiredQuantity
-            const isMissing = isWishlist && (card.missing_quantity || 0) > 0
             const progressLabel = `${t('binderTypes.progress')}: ${ownedQuantity}/${requiredQuantity}`
 
             return (
@@ -772,6 +771,7 @@ export default function BinderDetail() {
                 price={card.price_market > 0 ? formatPrice(card.price_market) : null}
                 variantEffectSource={card.variant}
                 showStateIndicators={!isWishlist}
+                dimWhenUnowned={isWishlist}
                 stateIndicatorProps={isCollection ? {
                   card: withCollectionItemState(card, card),
                   alwaysShowQuantity: true,
@@ -788,7 +788,6 @@ export default function BinderDetail() {
                     {isComplete ? <Check size={10} strokeWidth={3} aria-hidden /> : `${ownedQuantity}/${requiredQuantity}`}
                   </span>
                 ) : undefined}
-                unavailableReason={isMissing ? t('binderTypes.missing') : ''}
                 onClick={() => setSelectedCard(card)}
               />
             )

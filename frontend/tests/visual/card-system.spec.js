@@ -27,6 +27,15 @@ async function waitForGallery(page) {
 
 test('shared card variants and states remain consistent', async ({ page }) => {
   await waitForGallery(page)
+  await expect(page.getByTestId('binder-zero-state').locator('.unified-card-missing-overlay')).toHaveCount(1)
+  await expect(page.getByTestId('binder-partial-state').locator('.unified-card-missing-overlay')).toHaveCount(0)
+  await expect(page.getByTestId('carousel-state').locator('.lucide-sparkles')).toHaveCount(1)
+  await expect(page.getByTestId('ranking-state').locator('.lucide-sparkles')).toHaveCount(1)
+  if (await page.evaluate(() => window.matchMedia('(hover: hover) and (pointer: fine)').matches)) {
+    const hoverCard = page.getByTestId('hover-add-state')
+    await hoverCard.locator('.unified-card-frame').hover()
+    await expect(hoverCard.locator('.unified-card-add')).toHaveCSS('opacity', '1')
+  }
   await expect(page.getByTestId('card-system-gallery')).toHaveScreenshot('card-system-gallery.png')
 })
 
