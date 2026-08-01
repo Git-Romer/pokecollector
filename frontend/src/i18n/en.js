@@ -1015,6 +1015,15 @@ const en = {
     addedToCollection: 'added to collection',
     adding: 'Adding…',
     recognitionFailed: 'Card could not be recognized',
+    uploadMultiple: 'Upload multiple photos',
+    stagingTitle: 'Photos to scan',
+    noPhotosStaged: 'No photos selected',
+    processIndividually: 'Process individually',
+    processIndividuallyHint: 'More accurate for hard cards (vintage, non-Latin text) — sent one at a time instead of batched.',
+    scanCount: 'Scan',
+    batchScanning: 'Scanning cards…',
+    batchResultsTitle: 'Results',
+    printedTotalMismatch: "Detected card total doesn't match this set — double-check before adding",
   },
 
   // Language filter / card language

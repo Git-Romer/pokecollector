@@ -4,7 +4,9 @@ import httpx
 import os
 import json
 import re
+from typing import List, Optional
 from services.tcgdex_languages import is_supported_tcgdex_language, normalize_tcgdex_language
+from services.card_composite import build_composite, chunk_for_composite, GRID_SIZE as BATCH_GRID_SIZE
 import logging
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from sqlalchemy.orm import Session
@@ -127,92 +129,181 @@ async def post_gemini_generate(
     raise HTTPException(status_code=500, detail=f"Gemini Anfrage fehlgeschlagen: {last_error}")
 
 
-@router.post("/recognize")
-async def recognize_card(
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """
-    Accepts a card image, uses Gemini Vision to extract card details
-    including the card's language, then searches TCGdex in that language.
-    Supports configured TCGdex card languages automatically.
-    """
-    api_key = get_gemini_key(db, user_id=current_user.id)
-    if not api_key:
-        raise HTTPException(
-            status_code=400,
-            detail="Kein Gemini API Key konfiguriert. Bitte in den Einstellungen eintragen."
-        )
+# ─── Prompts ─────────────────────────────────────────────────────────────────
+# Both extract the same core identity fields, but set_code carries an explicit
+# anti-hallucination rule: real-card testing found Gemini would sometimes report
+# a set_code it recognized from training data (e.g. "BRS" for a Brilliant Stars
+# card) even when no code is actually printed on the card. The rule below was
+# confirmed to eliminate that at single-card and 4-card-grid scale.
 
-    # Read image
-    image_bytes = await file.read()
-    image_b64 = base64.b64encode(image_bytes).decode()
-    mime_type = file.content_type or "image/jpeg"
+RECOGNIZE_PROMPT = """Look at this Pokemon Trading Card Game card image. Extract the following.
 
-    # Call Gemini Vision — ask for language detection too
-    gemini_url = build_gemini_generate_url()
+IMPORTANT ACCURACY RULES:
+- Only report what is ACTUALLY VISIBLE as printed text/symbols in THIS image.
+- For number_local, number_total, set_code, and regulation_mark specifically: these are
+  small printed characters near the bottom of the card. Read them character by character.
+  If you are not fully confident in every character, return null for that field rather
+  than guessing — a null is far better than a wrong value.
+- For set_code in particular: only report a value if you can see actual printed
+  alphanumeric characters near the card number that form a code. Do NOT fill this in
+  because you recognize the Pokemon, the artwork, or the set by name — recognizing the
+  card is not the same as reading a printed code, and guessing from memory is not allowed
+  here even if you are confident which set it is.
+- set_name is different: you MAY infer this from visual style, symbol, or copyright era
+  even with no explicit set code printed, since that is a legitimate visual inference —
+  just don't invent a set_code to go with it if none is printed.
 
-    prompt = """Look at this Pokemon Trading Card Game card image. Extract the following:
-1. Card name (exactly as printed on the card, in the card's language)
-2. Card name in English (if the card is not English, give the English name; if already English, same as above)
-3. Card number (e.g. "136/182" — printed at the bottom)
-4. Set name or abbreviation if visible
-5. Card type (Pokemon, Trainer, or Energy)
-6. HP value if it's a Pokemon card
-7. Language of the card (2-letter ISO code: "en" for English, "de" for German, "fr" for French, "es" for Spanish, "it" for Italian, "pt" for Portuguese, "ja" for Japanese, etc.)
+Extract:
+1. Card name, exactly as printed, in the card's own language
+2. Card name in English (same as above if already English)
+3. Local card number as printed at the bottom, or null
+4. Total/denominator as printed at the bottom, or null
+5. Set code/abbreviation, per the accuracy rules above, or null
+6. Set name if you can infer it (from a symbol, copyright era, or other visual cue), or null
+7. Regulation mark: the single boxed letter near the number on Sword/Shield-era-onward cards, or null
+8. Card type: "Pokemon", "Trainer", or "Energy"
+9. HP value if it's a Pokemon card, or null
+10. Language as a 2-letter ISO code
+11. Artist name as printed, or null
+12. Rarity symbol shape: "circle", "diamond", "star", "other", or null
+13. Is this card a promo card? true/false
+14. Does the card art window show holographic foil? true/false
+15. Does the card background/border show a reverse-holo foil pattern? true/false
+16. Is there a "1st Edition" stamp visible? true/false
 
 Respond ONLY with this exact JSON (no markdown, no explanation):
 {
-  "name": "card name in card's language",
-  "name_en": "card name in English (same as name if card is English)",
-  "number": "card number or null",
-  "set_hint": "set name or abbreviation or null",
+  "name": "...",
+  "name_en": "...",
+  "number_local": "... or null",
+  "number_total": "... or null",
+  "set_code": "... or null",
+  "set_name": "... or null",
+  "regulation_mark": "... or null",
   "card_type": "Pokemon/Trainer/Energy",
-  "hp": "HP value or null",
-  "language": "en"
+  "hp": "... or null",
+  "language": "en",
+  "artist": "... or null",
+  "rarity_symbol": "circle/diamond/star/other/null",
+  "is_promo": false,
+  "holo_foil_visible": false,
+  "reverse_holo_pattern_visible": false,
+  "first_edition_stamp_visible": false
 }"""
 
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await post_gemini_generate(client, gemini_url, api_key, {
-                "contents": [{
-                    "parts": [
-                        {"text": prompt},
-                        {"inline_data": {"mime_type": mime_type, "data": image_b64}}
-                    ]
-                }]
-            })
+BATCH_PROMPT_TEMPLATE = """This image is a grid of {n} separate Pokemon Trading Card Game cards, laid
+out left-to-right then top-to-bottom (reading order), each with a small white index number
+burned into its top-left corner ("1" through "{n}"). Identify EVERY card in the grid.
 
-        result = resp.json()
-        text = result["candidates"][0]["content"]["parts"][0]["text"].strip()
+For each card, report which index number is printed in its corner (read the burned-in
+digit, do not assume order), plus the fields below.
 
-        # Parse JSON from Gemini response (handles markdown code blocks too)
-        json_match = re.search(r'\{.*\}', text, re.DOTALL)
-        if not json_match:
-            raise ValueError("No JSON found in Gemini response")
-        card_info = json.loads(json_match.group())
+IMPORTANT ACCURACY RULES:
+- number_local, number_total, set_code, and regulation_mark are small printed characters
+  near the bottom of each card. In a grid this dense, they are easy to misread. Read each
+  one character by character. If you are not fully confident in every character, return
+  null for that field rather than guessing — a null is far better than a wrong value.
+- For set_code specifically: only report it if you can see actual printed alphanumeric
+  characters forming a code near that card's number. Do NOT fill it in because you
+  recognize the Pokemon or the set by name — recognizing a card is not the same as
+  reading a printed code on it, and guessing from memory is not allowed even if you are
+  confident which set it is. Return null instead.
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erkennung fehlgeschlagen: {str(e)}")
+For each card:
+1. index (the burned-in corner number you actually read, as an integer)
+2. name (card's own language)
+3. name_en
+4. number_local (or null)
+5. number_total (or null)
+6. set_code (or null, per the accuracy rules above)
+7. regulation_mark (or null)
+8. card_type
+9. language (2-letter ISO code)
 
-    card_name = card_info.get("name", "").strip()
-    card_name_en = card_info.get("name_en", card_name).strip() or card_name
-    if not card_name:
-        raise HTTPException(status_code=422, detail="Kartenname konnte nicht erkannt werden.")
+Respond ONLY with this exact JSON (no markdown, no explanation) — an array with one object
+per card you found, in any order, each carrying its own "index":
+[
+  {{"index": 1, "name": "...", "name_en": "...", "number_local": "... or null", "number_total": "... or null", "set_code": "... or null", "regulation_mark": "... or null", "card_type": "...", "language": "en"}},
+  ...
+]"""
 
+
+# ─── Small pure helpers (unit tested directly, no network/DB needed) ────────
+
+def _normalize_number(value) -> Optional[str]:
+    """Strip a printed number down to a bare int string for comparison.
+
+    '063' / '63' / 63 / '63/88' (takes the first run of digits) all -> '63'.
+    Returns None when no digits are present.
+    """
+    if value is None:
+        return None
+    match = re.search(r"\d+", str(value))
+    if not match:
+        return None
+    return str(int(match.group()))
+
+
+def _numbers_match(a, b) -> bool:
+    na, nb = _normalize_number(a), _normalize_number(b)
+    return na is not None and na == nb
+
+
+def _printed_total_mismatch(recognized_total, candidate_printed_total) -> bool:
+    """True only when both sides are known and disagree — never flags on missing data."""
+    normalized = _normalize_number(recognized_total)
+    if normalized is None or not candidate_printed_total:
+        return False
+    return normalized != str(int(candidate_printed_total))
+
+
+def _extract_json(text: str, *, array: bool = False):
+    """Parse the JSON object/array Gemini returned, tolerating stray markdown fences."""
+    pattern = r"\[.*\]" if array else r"\{.*\}"
+    match = re.search(pattern, text, re.DOTALL)
+    if not match:
+        raise ValueError("No JSON found in Gemini response")
+    return json.loads(match.group())
+
+
+_SUFFIXES = re.compile(
+    r"[\s-]+(?:EX|ex|GX|gx|V|VMAX|VSTAR|VStar|TAG\s*TEAM|BREAK|LV\.?\s*X)\s*$",
+    re.IGNORECASE,
+)
+
+
+def _simplify_name(name: str) -> str:
     # Strip card suffixes for broader TCGdex search — exact variants differ between
     # printed text ("EX") and TCGdex naming ("ex", "-ex"). The number ranking and
     # visual verification will find the exact match from the broader result set.
-    _SUFFIXES = re.compile(
-        r"[\s-]+(?:EX|ex|GX|gx|V|VMAX|VSTAR|VStar|TAG\s*TEAM|BREAK|LV\.?\s*X)\s*$",
-        re.IGNORECASE,
-    )
+    return _SUFFIXES.sub("", name).strip()
 
-    def _simplify_name(name: str) -> str:
-        return _SUFFIXES.sub("", name).strip()
+
+async def _recognize_single_image(client, gemini_url, api_key, image_b64, mime_type) -> dict:
+    """One Gemini call, one photo, the full RECOGNIZE_PROMPT field set."""
+    resp = await post_gemini_generate(client, gemini_url, api_key, {
+        "contents": [{
+            "parts": [
+                {"text": RECOGNIZE_PROMPT},
+                {"inline_data": {"mime_type": mime_type, "data": image_b64}},
+            ]
+        }]
+    })
+    result = resp.json()
+    text = result["candidates"][0]["content"]["parts"][0]["text"].strip()
+    return _extract_json(text)
+
+
+async def _match_card_info(db: Session, api_key: str, gemini_url: str, card_info: dict, image_b64: str, mime_type: str) -> dict:
+    """Search TCGdex/local DB for candidates matching an already-extracted card_info,
+    rank them, and optionally run visual verification. Shared by the single-photo and
+    batched (composite) recognize paths — the only difference between them is how
+    card_info was produced (one Gemini call per photo, vs one call per composite grid).
+    """
+    card_name = (card_info.get("name") or "").strip()
+    card_name_en = (card_info.get("name_en") or card_name).strip() or card_name
+    if not card_name:
+        raise HTTPException(status_code=422, detail="Kartenname konnte nicht erkannt werden.")
 
     card_name_simple = _simplify_name(card_name)
     card_name_en_simple = _simplify_name(card_name_en)
@@ -265,7 +356,10 @@ Respond ONLY with this exact JSON (no markdown, no explanation):
         except Exception:
             continue
 
-    # Enrich results with set name from local DB
+    # Enrich results with set name/abbreviation/printed_total from local DB, and flag
+    # candidates whose printed_total disagrees with the recognized number_total — a
+    # near-unique identifier per real-card testing, and a strong "wrong match" signal.
+    recognized_number_total = card_info.get("number_total")
     for card in all_results:
         tcg_card_id = card.get("tcg_card_id", "")
         card_lang = card.get("_lang", "en")
@@ -282,6 +376,10 @@ Respond ONLY with this exact JSON (no markdown, no explanation):
                 card["set"] = local_set.name
                 if local_set.abbreviation:
                     card["set_abbreviation"] = local_set.abbreviation
+                if local_set.printed_total:
+                    card["printed_total_mismatch"] = _printed_total_mismatch(
+                        recognized_number_total, local_set.printed_total
+                    )
 
     # Dedup by (card_id, _lang) composite key — same card in different languages counts once per lang
     seen = set()
@@ -296,30 +394,31 @@ Respond ONLY with this exact JSON (no markdown, no explanation):
         f"Recognize dedup: {len(all_results)} before -> {len(deduped)} after dedup by (card_id, _lang)"
     )
 
-    # Rank results: cards with matching number first
-    recognized_number = card_info.get("number")
-    number_match_count = 0
+    # Rank results: cards with a matching local number first, and among those, a
+    # matching set_code as a tie-break (real-card data has cases like printed_total=198
+    # matching two different sets, where number alone can't disambiguate but set_code can).
+    recognized_number_local = card_info.get("number_local")
+    recognized_set_code = (card_info.get("set_code") or "").strip().upper() or None
+    target_num = _normalize_number(recognized_number_local)
     number_match_clear = False
-    if recognized_number:
-        # Normalize: "136/182" -> "136", "001" -> "1"
-        num_match = re.match(r"(\d+)", str(recognized_number).strip())
-        if num_match:
-            target_num = str(int(num_match.group(1)))  # strip leading zeros
 
-            def number_sort_key(card):
-                card_num = card.get("number", "")
-                if card_num:
-                    cn_match = re.match(r"(\d+)", str(card_num).strip())
-                    if cn_match and str(int(cn_match.group(1))) == target_num:
-                        return 0  # exact match first
-                return 1  # non-matches after
+    if target_num is not None:
+        def rank_key(card):
+            number_ok = 0 if _numbers_match(card.get("number"), target_num) else 1
+            set_ok = 1
+            if recognized_set_code:
+                card_abbr = (card.get("set_abbreviation") or "").upper()
+                set_ok = 0 if card_abbr == recognized_set_code else 1
+            return (number_ok, set_ok)
 
-            deduped.sort(key=number_sort_key)
-            number_match_count = sum(1 for card in deduped if number_sort_key(card) == 0)
-            number_match_clear = (
-                len(deduped) > 0 and number_sort_key(deduped[0]) == 0 and number_match_count == 1
-            )
-            logger.info(f"Ranked results by number match (target: {target_num})")
+        deduped.sort(key=rank_key)
+        number_matches = [card for card in deduped if rank_key(card)[0] == 0]
+        if len(number_matches) == 1:
+            number_match_clear = True
+        elif len(number_matches) > 1 and recognized_set_code:
+            set_matches = [card for card in number_matches if rank_key(card)[1] == 0]
+            number_match_clear = len(set_matches) == 1
+        logger.info(f"Ranked results by number match (target: {target_num})")
 
     # Visual verification: ask Gemini to pick the best match from candidate images.
     # Skip this second Gemini call when number ranking is decisive or there
@@ -405,3 +504,143 @@ Respond ONLY with this exact JSON (no markdown, no explanation):
         "recognized": card_info,
         "matches": deduped[:8],
     }
+
+
+@router.post("/recognize")
+async def recognize_card(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Accepts a card image, uses Gemini Vision to extract card details
+    including the card's language, then searches TCGdex in that language.
+    Supports configured TCGdex card languages automatically.
+    """
+    api_key = get_gemini_key(db, user_id=current_user.id)
+    if not api_key:
+        raise HTTPException(
+            status_code=400,
+            detail="Kein Gemini API Key konfiguriert. Bitte in den Einstellungen eintragen."
+        )
+
+    image_bytes = await file.read()
+    image_b64 = base64.b64encode(image_bytes).decode()
+    mime_type = file.content_type or "image/jpeg"
+    gemini_url = build_gemini_generate_url()
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            card_info = await _recognize_single_image(client, gemini_url, api_key, image_b64, mime_type)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erkennung fehlgeschlagen: {str(e)}")
+
+    return await _match_card_info(db, api_key, gemini_url, card_info, image_b64, mime_type)
+
+
+async def _recognize_composite_chunk(db: Session, api_key: str, gemini_url: str, chunk: list[dict]) -> list[dict]:
+    """chunk: list of {filename, bytes, mime_type}, at most BATCH_GRID_SIZE items.
+    Returns one result dict per input item, in the same order, each either
+    {"filename", "recognized", "matches"} or {"filename", "error"}.
+    """
+    try:
+        composite_bytes = build_composite([item["bytes"] for item in chunk])
+        composite_b64 = base64.b64encode(composite_bytes).decode()
+        prompt = BATCH_PROMPT_TEMPLATE.format(n=len(chunk))
+
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await post_gemini_generate(client, gemini_url, api_key, {
+                "contents": [{
+                    "parts": [
+                        {"text": prompt},
+                        {"inline_data": {"mime_type": "image/jpeg", "data": composite_b64}},
+                    ]
+                }]
+            })
+        result = resp.json()
+        text = result["candidates"][0]["content"]["parts"][0]["text"].strip()
+        parsed = _extract_json(text, array=True)
+    except HTTPException as e:
+        return [{"filename": item["filename"], "error": e.detail} for item in chunk]
+    except Exception as e:
+        return [{"filename": item["filename"], "error": f"Stapel-Erkennung fehlgeschlagen: {e}"} for item in chunk]
+
+    by_index = {entry.get("index"): entry for entry in parsed if isinstance(entry, dict)}
+
+    out = []
+    for i, item in enumerate(chunk, start=1):
+        card_info = by_index.get(i)
+        if not card_info:
+            out.append({"filename": item["filename"], "error": "Karte im Stapel nicht erkannt (Index fehlt)."})
+            continue
+        image_b64 = base64.b64encode(item["bytes"]).decode()
+        try:
+            match_result = await _match_card_info(db, api_key, gemini_url, card_info, image_b64, item["mime_type"])
+            out.append({"filename": item["filename"], **match_result})
+        except HTTPException as e:
+            out.append({"filename": item["filename"], "error": e.detail})
+        except Exception as e:
+            out.append({"filename": item["filename"], "error": f"Erkennung fehlgeschlagen: {e}"})
+
+    return out
+
+
+@router.post("/recognize/batch")
+async def recognize_cards_batch(
+    files: List[UploadFile] = File(default=[]),
+    singles: List[UploadFile] = File(default=[]),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Recognize many single-card photos in one request.
+
+    `files` are grouped into composite grids of up to BATCH_GRID_SIZE cards per
+    Gemini call — cheaper and faster (confirmed ~4x fewer image tokens and API
+    calls per card at this grid size), at a small accuracy cost on hard cards.
+    `singles` bypass batching entirely and go through the same one-photo-per-call
+    path as /recognize — the manual override for cards (vintage, non-Latin
+    script, etc.) where batching has shown lower accuracy on real cards.
+    """
+    if not files and not singles:
+        raise HTTPException(status_code=400, detail="Keine Bilder hochgeladen.")
+
+    api_key = get_gemini_key(db, user_id=current_user.id)
+    if not api_key:
+        raise HTTPException(
+            status_code=400,
+            detail="Kein Gemini API Key konfiguriert. Bitte in den Einstellungen eintragen."
+        )
+
+    gemini_url = build_gemini_generate_url()
+    single_results = []
+    batched_results = []
+
+    for f in singles:
+        image_bytes = await f.read()
+        image_b64 = base64.b64encode(image_bytes).decode()
+        mime_type = f.content_type or "image/jpeg"
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                card_info = await _recognize_single_image(client, gemini_url, api_key, image_b64, mime_type)
+            match_result = await _match_card_info(db, api_key, gemini_url, card_info, image_b64, mime_type)
+            single_results.append({"filename": f.filename, **match_result})
+        except HTTPException as e:
+            single_results.append({"filename": f.filename, "error": e.detail})
+        except Exception as e:
+            single_results.append({"filename": f.filename, "error": f"Erkennung fehlgeschlagen: {e}"})
+
+    file_payloads = []
+    for f in files:
+        image_bytes = await f.read()
+        file_payloads.append({
+            "filename": f.filename,
+            "bytes": image_bytes,
+            "mime_type": f.content_type or "image/jpeg",
+        })
+
+    for chunk in chunk_for_composite(file_payloads, size=BATCH_GRID_SIZE):
+        batched_results.extend(await _recognize_composite_chunk(db, api_key, gemini_url, chunk))
+
+    return {"batched": batched_results, "singles": single_results}

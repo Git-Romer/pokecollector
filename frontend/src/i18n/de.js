@@ -1005,6 +1005,15 @@ const de = {
     addedToCollection: 'zur Sammlung hinzugefügt',
     adding: 'Hinzufügen…',
     recognitionFailed: 'Karte konnte nicht erkannt werden',
+    uploadMultiple: 'Mehrere Fotos hochladen',
+    stagingTitle: 'Zu scannende Fotos',
+    noPhotosStaged: 'Keine Fotos ausgewählt',
+    processIndividually: 'Einzeln verarbeiten',
+    processIndividuallyHint: 'Genauer bei schwierigen Karten (Vintage, nicht-lateinische Schrift) — wird einzeln statt im Stapel gesendet.',
+    scanCount: 'Scannen',
+    batchScanning: 'Karten werden gescannt…',
+    batchResultsTitle: 'Ergebnisse',
+    printedTotalMismatch: 'Erkannte Kartenanzahl passt nicht zu diesem Set — vor dem Hinzufügen prüfen',
   },
 
   // Language filter / card language

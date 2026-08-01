@@ -107,6 +107,18 @@ export const recognizeCard = (imageFile) => {
   }).then(r => r.data)
 }
 
+// Batch recognition: `batched` photos are composited into grids server-side
+// (cheaper, slightly less accurate); `singles` bypass batching entirely and
+// are recognized one photo per call — the override for hard cards.
+export const recognizeCardsBatch = ({ batched = [], singles = [] }) => {
+  const formData = new FormData()
+  batched.forEach(file => formData.append('files', file))
+  singles.forEach(file => formData.append('singles', file))
+  return api.post('/cards/recognize/batch', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }).then(r => r.data)
+}
+
 // Custom card migration
 export const getCustomMatches = () => api.get('/cards/custom/matches')
 export const migrateCustomCard = (matchId) => api.post(`/cards/custom/migrate/${matchId}`)
