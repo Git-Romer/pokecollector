@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { Plus, X } from 'lucide-react'
+import { Check, Plus, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useSettings } from '../contexts/SettingsContext'
@@ -149,7 +149,7 @@ export function CardArtworkFrame({
         )}
         {selected && (
           <span className="unified-card-selection" aria-label={t('cardSearch.selected')}>
-            ✓
+            <Check size={14} strokeWidth={3} aria-hidden />
           </span>
         )}
         <CardImage

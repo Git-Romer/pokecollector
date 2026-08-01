@@ -2,6 +2,7 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import {
+  CardArtworkFrame,
   CardCaption,
   CompactCardArtwork,
   getCardFallbackKinds,
@@ -53,6 +54,19 @@ describe('CompactCardArtwork', () => {
     expect(markup).toContain('unified-card-compact-artwork')
     expect(markup).toContain('unified-card-frame-thumbnail')
     expect(markup).toContain('object-contain')
+  })
+})
+
+describe('CardArtworkFrame', () => {
+  it('renders selected state with a font-independent check icon', () => {
+    const markup = renderToStaticMarkup(createElement(CardArtworkFrame, {
+      card: { id: 'sv8-001', name: 'Pikachu' },
+      image: 'https://example.test/pikachu.webp',
+      selected: true,
+    }))
+
+    expect(markup).toContain('unified-card-selection')
+    expect(markup).toContain('lucide-check')
   })
 })
 
