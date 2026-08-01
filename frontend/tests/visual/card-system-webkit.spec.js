@@ -22,6 +22,7 @@ test('WebKit loads visible compact artwork in a large list', async ({ page, brow
     image.complete && image.naturalWidth > 0
   ))).toBe(true)
   await expect(firstArtwork.locator('.unified-card-skeleton')).toHaveCount(0)
+  await expect(page.getByTestId('lazy-card-stress-hidden').locator('img')).toHaveCount(0)
   expect(imageRequests).toBeLessThan(40)
 
   const lastArtwork = stress.locator('.unified-card-compact-artwork').last()

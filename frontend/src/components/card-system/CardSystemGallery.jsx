@@ -118,18 +118,30 @@ export default function CardSystemGallery() {
         </button>
 
         {lazyStressMounted && (
-          <section className="space-y-2" data-testid="lazy-card-stress">
-            {Array.from({ length: 80 }, (_, index) => (
-              <div key={index} className="rounded-xl border border-border bg-bg-card p-2">
+          <>
+            <section className="space-y-2" data-testid="lazy-card-stress">
+              {Array.from({ length: 80 }, (_, index) => (
+                <div key={index} className="rounded-xl border border-border bg-bg-card p-2">
+                  <CardIdentity
+                    card={{ ...BASE_CARD, id: `lazy-card-${index}` }}
+                    image={`/api/images/card/lazy-card-${index}/small`}
+                    name={`Lazy compact card ${index + 1}`}
+                    setNumber={`TST ${String(index + 1).padStart(3, '0')}`}
+                  />
+                </div>
+              ))}
+            </section>
+            <section className="hidden" data-testid="lazy-card-stress-hidden" aria-hidden>
+              {Array.from({ length: 80 }, (_, index) => (
                 <CardIdentity
-                  card={{ ...BASE_CARD, id: `lazy-card-${index}` }}
-                  image={`/api/images/card/lazy-card-${index}/small`}
-                  name={`Lazy compact card ${index + 1}`}
-                  setNumber={`TST ${String(index + 1).padStart(3, '0')}`}
+                  key={index}
+                  card={{ ...BASE_CARD, id: `lazy-hidden-card-${index}` }}
+                  image={`/api/images/card/lazy-hidden-card-${index}/small`}
+                  name={`Hidden responsive card ${index + 1}`}
                 />
-              </div>
-            ))}
-          </section>
+              ))}
+            </section>
+          </>
         )}
       </div>
 

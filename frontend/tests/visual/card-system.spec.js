@@ -69,6 +69,7 @@ test('compact artwork prioritizes visible rows in a large list', async ({ page }
     image.complete && image.naturalWidth > 0
   ))).toBe(true)
   await expect(firstArtwork.locator('.unified-card-skeleton')).toHaveCount(0)
+  await expect(page.getByTestId('lazy-card-stress-hidden').locator('img')).toHaveCount(0)
   expect(imageRequests).toBeLessThan(40)
 
   const lastArtwork = stress.locator('.unified-card-compact-artwork').last()
@@ -111,6 +112,7 @@ test('Safari fallback loads visible rows when IntersectionObserver stalls', asyn
     image.complete && image.naturalWidth > 0
   ))).toBe(true)
   await expect(firstArtwork.locator('.unified-card-skeleton')).toHaveCount(0)
+  await expect(page.getByTestId('lazy-card-stress-hidden').locator('img')).toHaveCount(0)
 
   const lastArtwork = stress.locator('.unified-card-compact-artwork').last()
   await expect(lastArtwork.locator('img')).toHaveCount(0)
