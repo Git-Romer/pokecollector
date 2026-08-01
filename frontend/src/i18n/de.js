@@ -1022,6 +1022,13 @@ const de = {
     markReviewed: 'Fertig',
     markReviewedHint: 'Karte als geprüft markieren und gespeichertes Foto entfernen',
     discardJobHint: 'Diesen Scan und alle gespeicherten Fotos verwerfen',
+    queueTitle: 'Scan-Warteschlange',
+    queueSubtitle: 'Karten werden im Hintergrund erkannt. Hier prüfen.',
+    noScans: 'Noch keine Scans',
+    goScan: 'Karten scannen',
+    backToScans: 'Zurück zu den Scans',
+    jobStatusDone: 'Bereit',
+    jobStatusFailed: 'Fehlgeschlagen',
     printedTotalMismatch: 'Erkannte Kartenanzahl passt nicht zu diesem Set — vor dem Hinzufügen prüfen',
   },
 

@@ -64,6 +64,10 @@ def job_progress(db: Session, job: ScanJob) -> dict:
         "done": done,
         "failed": failed,
         "pending": len(items) - done - failed,
+        # Anything still needing the user's attention: recognized but not yet
+        # reviewed, or not recognized yet. Drives the nav badge, so it must not
+        # count items the user already actioned.
+        "unresolved": sum(1 for i in items if not i.resolved and i.status != "failed"),
         "created_at": job.created_at.isoformat() if job.created_at else None,
         "finished_at": job.finished_at.isoformat() if job.finished_at else None,
         "error_message": job.error_message,

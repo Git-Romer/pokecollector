@@ -2,11 +2,13 @@ import { NavLink } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   LayoutDashboard, Search, Library, Grid2X2, Heart,
-  BookOpen, BarChart3, ShoppingBag, ArrowRightLeft, Settings, Zap, LogOut, ListOrdered
+  BookOpen, BarChart3, ShoppingBag, ArrowRightLeft, Settings, Zap, LogOut, ListOrdered,
+  ScanLine, Loader2
 } from 'lucide-react'
-import { getDashboard, getCustomMatches } from '../api/client'
+import { getDashboard, getCustomMatches, getScanJobs } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import { useAuth } from '../contexts/AuthContext'
+import { SCAN_JOBS_QUERY_KEY, isJobActive, outstandingScanCount } from '../utils/scanJobs'
 import clsx from 'clsx'
 
 export default function Sidebar() {
@@ -40,6 +42,19 @@ export default function Sidebar() {
   })
   const pendingMatchCount = matches.length
   const newSetsCount = data?.new_sets_count || 0
+
+  // Scans recognize in the background, so without a badge here a finished batch
+  // is invisible until the user happens to reopen the scanner.
+  const { data: scanData } = useQuery({
+    queryKey: SCAN_JOBS_QUERY_KEY,
+    queryFn: getScanJobs,
+    refetchInterval: query => (
+      (query.state.data?.jobs || []).some(isJobActive) ? 5000 : 60000
+    ),
+  })
+  const scanJobs = scanData?.jobs || []
+  const outstandingScans = outstandingScanCount(scanJobs)
+  const scansRunning = scanJobs.some(isJobActive)
 
   return (
     <aside className="hidden lg:flex w-56 bg-bg-surface border-r border-border flex-col flex-shrink-0">
@@ -77,6 +92,29 @@ export default function Sidebar() {
             )}
           </NavLink>
         ))}
+
+        {/* Scan queue — only when there is something running or to review */}
+        {outstandingScans > 0 && (
+          <NavLink
+            to="/scans"
+            className={({ isActive }) =>
+              clsx(
+                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 group relative min-w-0',
+                isActive
+                  ? 'bg-brand-red/20 text-brand-red border border-brand-red/30'
+                  : 'text-text-muted hover:text-text-primary hover:bg-bg-elevated'
+              )
+            }
+          >
+            {scansRunning
+              ? <Loader2 size={18} className="flex-shrink-0 animate-spin text-brand-red" />
+              : <ScanLine size={18} className="flex-shrink-0" />}
+            <span className="flex-1 min-w-0 truncate">{t('scanner.queueTitle')}</span>
+            <span className="ml-auto bg-brand-red text-white text-xs px-1.5 py-0.5 rounded-full min-w-[20px] text-center flex-shrink-0">
+              {outstandingScans}
+            </span>
+          </NavLink>
+        )}
 
         {/* Migration link — only when pending */}
         {pendingMatchCount > 0 && (

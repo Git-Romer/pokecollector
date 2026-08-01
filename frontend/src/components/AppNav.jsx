@@ -17,6 +17,7 @@ const PAGE_TITLE_KEYS = {
   '/achievements': 'nav.achievements',
   '/settings':   'nav.settings',
   '/migration':  'migration.title',
+  '/scans':      'scanner.queueTitle',
   '/dashboard':  'nav.dashboard',
 }
 

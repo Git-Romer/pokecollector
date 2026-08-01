@@ -1032,6 +1032,13 @@ const en = {
     markReviewed: 'Done',
     markReviewedHint: 'Mark this card reviewed and remove its stored photo',
     discardJobHint: 'Discard this scan and all its stored photos',
+    queueTitle: 'Scan queue',
+    queueSubtitle: 'Cards recognized in the background. Review them here.',
+    noScans: 'No scans yet',
+    goScan: 'Scan some cards',
+    backToScans: 'Back to scans',
+    jobStatusDone: 'Ready',
+    jobStatusFailed: 'Failed',
     printedTotalMismatch: "Detected card total doesn't match this set — double-check before adding",
   },
 

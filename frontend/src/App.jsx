@@ -25,6 +25,7 @@ const Products = lazy(() => import('./pages/Products'))
 const Trades = lazy(() => import('./pages/Trades'))
 const Settings = lazy(() => import('./pages/Settings'))
 const CardMigration = lazy(() => import('./pages/CardMigration'))
+const ScanQueue = lazy(() => import('./pages/ScanQueue'))
 const Login = lazy(() => import('./pages/Login'))
 const Leaderboard = lazy(() => import('./pages/Leaderboard'))
 const Compare = lazy(() => import('./pages/Compare'))
@@ -173,6 +174,8 @@ function ProtectedRoutes() {
         <Route path="achievements/:userId" element={lazyRoute(<Achievements />)} />
         <Route path="settings" element={lazyRoute(<Settings />)} />
         <Route path="migration" element={lazyRoute(<CardMigration />)} />
+        <Route path="scans" element={lazyRoute(<ScanQueue />)} />
+        <Route path="scans/:jobId" element={lazyRoute(<ScanQueue />)} />
       </Route>
     </Routes>
   )

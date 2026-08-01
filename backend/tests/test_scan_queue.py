@@ -79,6 +79,20 @@ class ScanQueueTests(unittest.TestCase):
         self.assertEqual(progress["failed"], 1)
         self.assertEqual(progress["pending"], 1)
 
+    def test_unresolved_count_drives_the_nav_badge(self):
+        # The badge must mean "there is something here for you", so reviewing an
+        # item has to decrement it and a failed item must not keep it lit.
+        job = enqueue_scan_job(self.db, self.user.id, _uploads(3))
+        items = self.db.query(ScanJobItem).filter(ScanJobItem.job_id == job.id).order_by(ScanJobItem.position).all()
+        self.assertEqual(job_progress(self.db, job)["unresolved"], 3)
+
+        items[0].status = "done"
+        items[0].resolved = True
+        items[1].status = "failed"
+        self.db.commit()
+
+        self.assertEqual(job_progress(self.db, job)["unresolved"], 1)
+
     def test_resolving_an_item_drops_its_stored_photo(self):
         # scan_job_items must not accumulate image bytes the way image_cache does.
         job = enqueue_scan_job(self.db, self.user.id, _uploads(1))

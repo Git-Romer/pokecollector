@@ -4,11 +4,13 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   LayoutDashboard, Search, Library, Grid2X2, MoreHorizontal,
-  Heart, BookOpen, BarChart3, ShoppingBag, ArrowRightLeft, Settings, X, Zap, LogOut, ListOrdered
+  Heart, BookOpen, BarChart3, ShoppingBag, ArrowRightLeft, Settings, X, Zap, LogOut, ListOrdered,
+  ScanLine
 } from 'lucide-react'
-import { getCustomMatches } from '../api/client'
+import { getCustomMatches, getScanJobs } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { useSettings } from '../contexts/SettingsContext'
+import { SCAN_JOBS_QUERY_KEY, isJobActive, outstandingScanCount } from '../utils/scanJobs'
 import clsx from 'clsx'
 
 export default function BottomNav() {
@@ -23,6 +25,15 @@ export default function BottomNav() {
     refetchInterval: 60000,
   })
   const pendingCount = matches.length
+
+  const { data: scanData } = useQuery({
+    queryKey: SCAN_JOBS_QUERY_KEY,
+    queryFn: getScanJobs,
+    refetchInterval: query => (
+      (query.state.data?.jobs || []).some(isJobActive) ? 5000 : 60000
+    ),
+  })
+  const outstandingScans = outstandingScanCount(scanData?.jobs || [])
 
   const mainNav = [
     { to: '/dashboard',  icon: LayoutDashboard, label: t('nav.dashboard') },
@@ -39,6 +50,9 @@ export default function BottomNav() {
     { to: '/products',   icon: ShoppingBag, label: t('nav.products') },
     { to: '/trades',     icon: ArrowRightLeft, label: t('nav.trades') },
     { to: '/settings',   icon: Settings,   label: t('nav.settings') },
+    ...(outstandingScans > 0
+      ? [{ to: '/scans', icon: ScanLine, label: t('scanner.queueTitle'), badge: outstandingScans }]
+      : []),
     ...(pendingCount > 0
       ? [{ to: '/migration', icon: Zap, label: t('migration.title'), badge: pendingCount }]
       : []),
