@@ -69,7 +69,7 @@ export default function PublicBinderView() {
             <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
               {t('setDetail.badgeLegend')}
             </p>
-            <CardLegend collapsible={false} showOwnershipFallback={false} showWishlist={false} />
+            <CardLegend collapsible={false} showWishlist={false} />
           </div>
         )}
 

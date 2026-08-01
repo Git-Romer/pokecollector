@@ -131,7 +131,6 @@ export default function Dashboard() {
       {(data?.recent_additions?.length > 0 || data?.top_cards?.length > 0) && (
         <CardLegend
           legendProps={{
-            showOwnershipFallback: false,
             showWishlist: false,
           }}
         />

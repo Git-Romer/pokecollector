@@ -960,7 +960,6 @@ const de = {
     ownedVersions: 'Besessene Versionen',
     badgeLegend: 'Badge-Legende',
     badgeQuantity: 'Besessene Anzahl',
-    ownedVariantUnknown: 'Besessen (Variante unbekannt)',
     sortBy: 'Sortieren nach',
     sort: {
       number: 'Sammlernummer',

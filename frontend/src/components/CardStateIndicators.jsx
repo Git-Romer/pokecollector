@@ -2,7 +2,7 @@ import clsx from 'clsx'
 import { useId, useState } from 'react'
 import { Check, Circle, Heart, HelpCircle, Medal, Package, Sparkles, SquareAsterisk } from 'lucide-react'
 import { useSettings } from '../contexts/SettingsContext'
-import { CARD_VARIANTS, getCardOwnedVariants, hasGenericOwnership, VARIANT_PILL_META } from '../utils/cardVariants'
+import { CARD_VARIANTS, getCardOwnedVariants, VARIANT_PILL_META } from '../utils/cardVariants'
 
 const VARIANT_ICONS = { Normal: Circle, Holo: Sparkles, 'Reverse Holo': SquareAsterisk, 'First Edition': Medal }
 
@@ -16,7 +16,6 @@ export const getCardState = (card = {}, showOwnership = true, showWishlist = tru
   const variants = showOwnership ? getCardOwnedVariants(card) : []
   return {
     variants,
-    genericOwned: showOwnership && variants.length === 0 && hasGenericOwnership(card),
     wishlisted: showWishlist && (card.wishlisted === true || Number(card.wishlist_count || 0) > 0),
   }
 }
@@ -32,8 +31,8 @@ export default function CardStateIndicators({
   className = '',
 }) {
   const { t } = useSettings()
-  const { variants, genericOwned, wishlisted } = getCardState(card, showOwnership, showWishlist)
-  if (!variants.length && !genericOwned && !wishlisted) return null
+  const { variants, wishlisted } = getCardState(card, showOwnership, showWishlist)
+  if (!variants.length && !wishlisted) return null
 
   return <div className={clsx('pointer-events-none flex items-start justify-between gap-1', className)}>
     <div className="flex flex-wrap items-start gap-1">
@@ -48,7 +47,6 @@ export default function CardStateIndicators({
           {quantityVisible && <span>×{quantity}</span>}
         </span>
       })}
-      {genericOwned && <span title={t('pokedex.owned')} aria-label={t('pokedex.owned')} className="inline-flex items-center rounded-full border border-green/40 bg-green/90 p-1 text-white shadow-lg"><Check size={compact ? 10 : 11} strokeWidth={3} aria-hidden /></span>}
     </div>
     {wishlisted && <span title={t('nav.wishlist')} aria-label={t('nav.wishlist')} className="inline-flex shrink-0 items-center rounded-full border border-pink-400/40 bg-pink-500/90 p-1 text-white shadow-lg"><Heart size={compact ? 10 : 11} fill="currentColor" aria-hidden /></span>}
   </div>
@@ -56,7 +54,6 @@ export default function CardStateIndicators({
 
 export function CardStateLegend({
   className = '',
-  showOwnershipFallback = true,
   showWishlist = true,
   showQuantity = true,
   showFallback = true,
@@ -82,14 +79,6 @@ export function CardStateLegend({
           </div>
         )
       })}
-      {showOwnershipFallback && <div className="flex items-center gap-2 min-w-0">
-        <span className="inline-flex flex-shrink-0 items-center rounded-full border border-green/40 bg-green/90 p-1 text-white shadow-lg">
-          <Check size={11} strokeWidth={3} aria-hidden />
-        </span>
-        <span className="text-xs leading-tight text-text-secondary" title={t('setDetail.ownedVariantUnknown')}>
-          {t('setDetail.ownedVariantUnknown')}
-        </span>
-      </div>}
       {showWishlist && <div className="flex items-center gap-2 min-w-0">
         <span className="inline-flex flex-shrink-0 items-center rounded-full border border-pink-400/40 bg-pink-500/90 p-1 text-white shadow-lg">
           <Heart size={11} fill="currentColor" aria-hidden />

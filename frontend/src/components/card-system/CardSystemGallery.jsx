@@ -156,8 +156,8 @@ export default function CardSystemGallery() {
             <GalleryExample label="Multiple variants">
               <CardDisplay card={ownedAs(CARDS.delphox, [{ variant: 'Normal', quantity: 1 }, { variant: 'Holo', quantity: 3 }])} image={imageFor(CARDS.delphox)} price={priceFor(CARDS.delphox)} loading="eager" />
             </GalleryExample>
-            <GalleryExample label="Variant unspecified">
-              <CardDisplay card={{ ...CARDS.ampharos, owned: true, owned_quantity: 1 }} image={imageFor(CARDS.ampharos)} price={priceFor(CARDS.ampharos)} loading="eager" />
+            <GalleryExample label="Owned · single Holo">
+              <CardDisplay card={ownedAs(CARDS.chespin, [{ variant: 'Holo', quantity: 1 }])} image={imageFor(CARDS.chespin)} price={priceFor(CARDS.chespin)} loading="eager" />
             </GalleryExample>
             <GalleryExample label="Wishlist">
               <CardDisplay card={{ ...CARDS.tranquility, wishlisted: true }} image={imageFor(CARDS.tranquility)} price={priceFor(CARDS.tranquility)} loading="eager" />

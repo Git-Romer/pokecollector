@@ -970,7 +970,6 @@ const en = {
     addOwnedToBinderFailed: 'Failed to add owned cards to binder.',
     badgeLegend: 'Badge legend',
     badgeQuantity: 'Quantity owned',
-    ownedVariantUnknown: 'Owned (variant unknown)',
     sortBy: 'Sort by',
     sort: {
       number: 'Collector number',

@@ -431,7 +431,6 @@ export default function HomeScreen() {
         {(recentCards.length > 0 || topCards.length > 0) && (
           <CardLegend
             legendProps={{
-              showOwnershipFallback: false,
               showWishlist: false,
             }}
           />

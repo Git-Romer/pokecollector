@@ -693,7 +693,6 @@ export default function BinderDetail() {
               </p>
               <CardLegend
                 collapsible={false}
-                showOwnershipFallback={false}
                 showWishlist={false}
                 showQuantity={!isCollection}
                 showSelection={showSearch}

@@ -191,7 +191,6 @@ export default function UserCollection() {
       {items.length > 0 && (
         <CardLegend
           legendProps={{
-            showOwnershipFallback: false,
             showWishlist: false,
           }}
         />

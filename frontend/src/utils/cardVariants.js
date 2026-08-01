@@ -70,5 +70,3 @@ export const getOwnedVariants = (rows = []) => {
 export const getCardOwnedVariants = (card = {}) => getOwnedVariants(
   Array.isArray(card.owned_variants) ? card.owned_variants : (card.owned_items || [])
 )
-
-export const hasGenericOwnership = (card = {}) => Boolean(card.owned || Number(card.owned_quantity) > 0)
