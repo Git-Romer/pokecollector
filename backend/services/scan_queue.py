@@ -120,7 +120,7 @@ async def _process_item_group(db: Session, api_key: str, gemini_url: str, items:
     for item in items:
         item.attempts = (item.attempts or 0) + 1
 
-    transient = False
+    outcome = NONE
     if batched:
         chunk = [
             {"filename": item.filename, "bytes": item.image_data, "mime_type": item.content_type}
@@ -128,7 +128,7 @@ async def _process_item_group(db: Session, api_key: str, gemini_url: str, items:
         ]
         results = await _recognize_composite_chunk(db, api_key, gemini_url, chunk, traces=traces)
         for item, result in zip(items, results):
-            transient |= _apply_result(item, result)
+            outcome = max(outcome, _apply_result(item, result))
     else:
         item = items[0]
         image_b64 = base64.b64encode(item.image_data).decode()
@@ -140,26 +140,31 @@ async def _process_item_group(db: Session, api_key: str, gemini_url: str, items:
             result = await _match_card_info(
                 db, api_key, gemini_url, card_info, image_b64, item.content_type, trace=traces[0]
             )
-            transient = _apply_result(item, result)
+            outcome = _apply_result(item, result)
         except HTTPException as exc:
             traces[0].record_error(str(exc.detail))
-            transient = _apply_result(item, {"error": str(exc.detail)})
+            outcome = _apply_result(item, {"error": str(exc.detail)})
         except Exception as exc:
             traces[0].record_error(str(exc))
-            transient = _apply_result(item, {"error": f"Erkennung fehlgeschlagen: {exc}"})
+            outcome = _apply_result(item, {"error": f"Erkennung fehlgeschlagen: {exc}"})
 
     # Traces are written even for transient failures: a rate-limited attempt is
     # still evidence about pacing, and a later retry writes its own trace.
     for tr in traces:
         tr.save()
-    return transient
+    return outcome
 
 
 # Errors that mean "come back later", not "this photo is bad". Being rate
 # limited is the normal cost of a large batch, so it must never consume an
 # item's retry budget — otherwise a busy quota permanently fails a job the
 # queue exists specifically to carry through.
-_TRANSIENT_MARKERS = ("rate limit", "429", "überlastet", "nicht erreicht", "temporarily")
+_TRANSIENT_MARKERS = ("rate limit", "429", "überlastet", "nicht erreicht", "temporarily", "tageslimit")
+
+# The daily allowance is gone for hours, so the short retry loop below would
+# only produce failing calls. Distinguished so the drain hands off to the
+# scheduled resume immediately instead of pausing eight times for nothing.
+_DAILY_QUOTA_MARKERS = ("tageslimit",)
 
 
 def _is_transient(message: str) -> bool:
@@ -167,8 +172,17 @@ def _is_transient(message: str) -> bool:
     return any(marker in lowered for marker in _TRANSIENT_MARKERS)
 
 
-def _apply_result(item: ScanJobItem, result: dict) -> bool:
-    """Record an outcome. Returns True when the failure was transient."""
+def _is_daily_quota(message: str) -> bool:
+    lowered = str(message or "").casefold()
+    return any(marker in lowered for marker in _DAILY_QUOTA_MARKERS)
+
+
+# Outcome of applying a result, ordered by how long the caller should wait.
+NONE, TRANSIENT, DAILY = 0, 1, 2
+
+
+def _apply_result(item: ScanJobItem, result: dict) -> int:
+    """Record an outcome. Returns NONE, TRANSIENT or DAILY."""
     if result.get("error"):
         item.error = str(result["error"])
         if _is_transient(item.error):
@@ -176,18 +190,20 @@ def _apply_result(item: ScanJobItem, result: dict) -> bool:
             item.attempts = max(0, (item.attempts or 1) - 1)
             item.status = "pending"
             item.updated_at = datetime.datetime.utcnow()
-            return True
+            return DAILY if _is_daily_quota(item.error) else TRANSIENT
         item.status = "pending" if (item.attempts or 0) < MAX_ATTEMPTS else "failed"
+        item.updated_at = datetime.datetime.utcnow()
+        return NONE
     else:
         item.recognized = result.get("recognized")
         item.matches = result.get("matches")
         item.error = None
         item.status = "done"
     item.updated_at = datetime.datetime.utcnow()
-    return False
+    return NONE
 
 
-async def _process_job(db: Session, job: ScanJob) -> bool:
+async def _process_job(db: Session, job: ScanJob) -> int:
     from api.recognize import build_gemini_generate_url, get_gemini_key
     from services.card_composite import chunk_for_composite, GRID_SIZE
 
@@ -197,7 +213,7 @@ async def _process_job(db: Session, job: ScanJob) -> bool:
         job.error_message = "Kein Gemini API Key konfiguriert. Bitte in den Einstellungen eintragen."
         job.finished_at = datetime.datetime.utcnow()
         db.commit()
-        return False
+        return NONE
 
     gemini_url = build_gemini_generate_url()
     job.status = "running"
@@ -219,16 +235,19 @@ async def _process_job(db: Session, job: ScanJob) -> bool:
     groups += [(chunk, True) for chunk in chunk_for_composite(batchable, size=GRID_SIZE)]
 
     for group, batched in groups:
-        transient = await _process_item_group(db, api_key, gemini_url, group, batched=batched)
+        outcome = await _process_item_group(db, api_key, gemini_url, group, batched=batched)
         db.commit()
-        if transient:
+        if outcome:
             # Stop the pass rather than marching through the rest — the quota is
             # exhausted, so every remaining group would fail too and the limiter
             # would make each one wait out its penalty first.
-            logger.info("Scan job %s paused: upstream rate limited", job.id)
+            logger.info(
+                "Scan job %s paused: %s",
+                job.id, "daily quota exhausted" if outcome == DAILY else "upstream rate limited",
+            )
             job.status = "pending"
             db.commit()
-            return True
+            return outcome
 
     remaining = (
         db.query(ScanJobItem)
@@ -242,7 +261,7 @@ async def _process_job(db: Session, job: ScanJob) -> bool:
         job.status = "done"
         job.finished_at = datetime.datetime.utcnow()
     db.commit()
-    return False
+    return NONE
 
 
 async def drain_scan_queue() -> None:
@@ -275,6 +294,14 @@ async def drain_scan_queue() -> None:
                 before = _pending_count(db, job)
                 paused = await _process_job(db, job)
                 after = _pending_count(db, job)
+
+                if paused == DAILY:
+                    # Hours away, not seconds. Leave it for the scheduled resume
+                    # rather than pausing eight times against a dead quota.
+                    logger.info(
+                        "Daily Gemini quota exhausted; leaving job %s for the scheduled resume", job.id
+                    )
+                    return
 
                 if paused:
                     # Rate limited. Nothing is wrong with the job — wait for the

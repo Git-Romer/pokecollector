@@ -23,6 +23,8 @@ try:
         _normalize_artist,
         _recognize_composite_chunk,
         _recognize_single_image,
+        gemini_quota_scope,
+        DAILY_QUOTA_MARKER,
     )
     from api.auth import get_current_user
     from database import get_db
@@ -115,6 +117,34 @@ class RecognizeApiTests(NoWaitLimiterMixin, unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(calls), 2)
         self.assertEqual(self.limiter.penalties, 1)
 
+    async def test_daily_quota_is_not_retried_and_says_so(self):
+        # Retrying a daily exhaustion only produces failing calls: the allowance
+        # is gone for hours. Shape taken from a real exhausted free-tier key.
+        calls = []
+        daily_body = {"error": {"code": 429, "details": [{
+            "@type": "type.googleapis.com/google.rpc.QuotaFailure",
+            "violations": [{
+                "quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+                "quotaValue": "20",
+            }],
+        }, {
+            # Present but useless: observed reporting seconds while the daily
+            # quota stayed exhausted, so it must not drive a retry.
+            "@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "29s",
+        }]}}
+
+        class DailyLimited:
+            async def post(self, *args, **kwargs):
+                calls.append(1)
+                return httpx.Response(429, json=daily_body)
+
+        with self.assertRaises(HTTPException) as ctx:
+            await post_gemini_generate(DailyLimited(), "https://example.test", "key", {})
+
+        self.assertEqual(ctx.exception.status_code, 429)
+        self.assertEqual(len(calls), 1, "a daily quota must not be retried")
+        self.assertIn(DAILY_QUOTA_MARKER, ctx.exception.detail)
+
     async def test_rate_limit_still_surfaces_once_retries_are_exhausted(self):
         class AlwaysLimited:
             async def post(self, *args, **kwargs):
@@ -125,6 +155,35 @@ class RecognizeApiTests(NoWaitLimiterMixin, unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(ctx.exception.status_code, 429)
         self.assertEqual(self.limiter.penalties, 2)
+
+
+@unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")
+class QuotaScopeTests(unittest.TestCase):
+    @staticmethod
+    def _resp(quota_id):
+        return httpx.Response(429, json={"error": {"details": [{
+            "@type": "type.googleapis.com/google.rpc.QuotaFailure",
+            "violations": [{"quotaId": quota_id}],
+        }]}})
+
+    def test_identifies_a_daily_quota(self):
+        self.assertEqual(
+            gemini_quota_scope(self._resp("GenerateRequestsPerDayPerProjectPerModel-FreeTier")),
+            "daily",
+        )
+
+    def test_identifies_a_per_minute_quota(self):
+        self.assertEqual(
+            gemini_quota_scope(self._resp("GenerateRequestsPerMinutePerProjectPerModel-FreeTier")),
+            "minute",
+        )
+
+    def test_unrecognised_or_bodyless_responses_are_unknown(self):
+        # Unknown must behave like the old short-backoff path, never like a
+        # daily exhaustion that stops the queue for an hour.
+        self.assertEqual(gemini_quota_scope(self._resp("SomethingElse")), "unknown")
+        self.assertEqual(gemini_quota_scope(httpx.Response(429, text="not json")), "unknown")
+        self.assertEqual(gemini_quota_scope(httpx.Response(429, json={})), "unknown")
 
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")

@@ -45,6 +45,35 @@ def build_gemini_generate_url(model: str | None = None) -> str:
     return f"{GEMINI_MODELS_BASE_URL}/{gemini_model}:generateContent"
 
 
+# A 429 says which quota was hit. "PerDay" means waiting seconds is pointless —
+# the allowance is gone until it resets (midnight Pacific on the free tier), and
+# retrying just burns failing calls. Verified against a real exhausted key:
+# quotaId "GenerateRequestsPerDayPerProjectPerModel-FreeTier", quotaValue 20.
+# The accompanying retryDelay is NOT a reset countdown — it was observed
+# reporting 13s/56s/29s while the daily quota stayed exhausted — so it is
+# deliberately ignored here.
+DAILY_QUOTA_MARKER = "Tageslimit"
+DAILY_QUOTA_BACKOFF_SECONDS = 3600
+
+
+def gemini_quota_scope(resp: httpx.Response) -> str:
+    """Return 'daily', 'minute' or 'unknown' for a 429 response."""
+    try:
+        details = (resp.json().get("error") or {}).get("details") or []
+    except ValueError:
+        return "unknown"
+    for detail in details:
+        if "QuotaFailure" not in str(detail.get("@type", "")):
+            continue
+        for violation in detail.get("violations") or []:
+            quota_id = str(violation.get("quotaId") or "")
+            if "PerDay" in quota_id:
+                return "daily"
+            if "PerMinute" in quota_id:
+                return "minute"
+    return "unknown"
+
+
 def gemini_error_message(resp: httpx.Response) -> str:
     """Extract the useful upstream Gemini error body when available."""
     try:
@@ -96,6 +125,17 @@ async def post_gemini_generate(
             )
 
             if resp.status_code == 429:
+                if gemini_quota_scope(resp) == "daily":
+                    # No amount of waiting inside this request will help.
+                    limiter.penalize(DAILY_QUOTA_BACKOFF_SECONDS)
+                    raise HTTPException(
+                        status_code=429,
+                        detail=(
+                            f"Gemini {DAILY_QUOTA_MARKER} erreicht – das Kontingent wird "
+                            "zurückgesetzt (Mitternacht US-Pazifik). Der Scan wird danach "
+                            "automatisch fortgesetzt."
+                        ),
+                    )
                 limiter.penalize()
                 if attempt < max_attempts - 1:
                     continue

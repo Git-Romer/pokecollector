@@ -10,6 +10,9 @@ try:
     from services import scan_queue
     from services.scan_queue import (
         MAX_ATTEMPTS,
+        DAILY,
+        TRANSIENT,
+        NONE,
         _apply_result,
         enqueue_scan_job,
         job_progress,
@@ -155,7 +158,7 @@ class ApplyResultTests(unittest.TestCase):
         item = self._item(attempts=MAX_ATTEMPTS)
         transient = _apply_result(item, {"error": "Gemini Rate Limit erreicht – bitte kurz warten."})
 
-        self.assertTrue(transient)
+        self.assertEqual(transient, TRANSIENT)
         self.assertEqual(item.status, "pending")
         self.assertLess(item.attempts, MAX_ATTEMPTS)
 
@@ -169,11 +172,26 @@ class ApplyResultTests(unittest.TestCase):
             self.assertTrue(_apply_result(item, {"error": message}), message)
             self.assertEqual(item.status, "pending", message)
 
+    def test_daily_quota_is_reported_distinctly_from_a_minute_limit(self):
+        # The drain loop reacts differently: seconds for a minute limit, hand off
+        # to the scheduled resume for a daily one.
+        minute = self._item(attempts=1)
+        daily = self._item(attempts=1)
+
+        self.assertEqual(_apply_result(minute, {"error": "Gemini Rate Limit erreicht"}), TRANSIENT)
+        self.assertEqual(
+            _apply_result(daily, {"error": "Gemini Tageslimit erreicht – Kontingent zurückgesetzt"}),
+            DAILY,
+        )
+        # Both stay retryable either way.
+        self.assertEqual(minute.status, "pending")
+        self.assertEqual(daily.status, "pending")
+
     def test_a_bad_photo_is_not_treated_as_transient(self):
         item = self._item(attempts=MAX_ATTEMPTS)
         transient = _apply_result(item, {"error": "Kartenname konnte nicht erkannt werden."})
 
-        self.assertFalse(transient)
+        self.assertEqual(transient, NONE)
         self.assertEqual(item.status, "failed")
 
     def test_error_stays_pending_while_attempts_remain(self):
