@@ -212,10 +212,10 @@ For each card, report which index number is printed in its corner (read the burn
 digit, do not assume order), plus the fields below.
 
 IMPORTANT ACCURACY RULES:
-- number_local, number_total, set_code, and regulation_mark are small printed characters
-  near the bottom of each card. In a grid this dense, they are easy to misread. Read each
-  one character by character. If you are not fully confident in every character, return
-  null for that field rather than guessing — a null is far better than a wrong value.
+- number_local, number_total, set_code, regulation_mark and artist are small printed
+  characters near the bottom of each card. In a grid this dense, they are easy to misread.
+  Read each one character by character. If you are not fully confident in every character,
+  return null for that field rather than guessing — a null is far better than a wrong value.
 - For set_code specifically: only report it if you can see actual printed alphanumeric
   characters forming a code near that card's number. Do NOT fill it in because you
   recognize the Pokemon or the set by name — recognizing a card is not the same as
@@ -232,11 +232,13 @@ For each card:
 7. regulation_mark (or null)
 8. card_type
 9. language (2-letter ISO code)
+10. hp — the HP value if it is a Pokemon card, or null
+11. artist — the illustrator credit as printed (usually "Illus. <name>"), or null
 
 Respond ONLY with this exact JSON (no markdown, no explanation) — an array with one object
 per card you found, in any order, each carrying its own "index":
 [
-  {{"index": 1, "name": "...", "name_en": "...", "number_local": "... or null", "number_total": "... or null", "set_code": "... or null", "regulation_mark": "... or null", "card_type": "...", "language": "en"}},
+  {{"index": 1, "name": "...", "name_en": "...", "number_local": "... or null", "number_total": "... or null", "set_code": "... or null", "regulation_mark": "... or null", "card_type": "...", "language": "en", "hp": "... or null", "artist": "... or null"}},
   ...
 ]"""
 
@@ -270,11 +272,25 @@ def _printed_total_mismatch(recognized_total, candidate_printed_total) -> bool:
     return normalized != str(int(candidate_printed_total))
 
 
+# The prefix token must end at a separator, so a name that merely begins with
+# the same letters ("Illustration Studio") is left alone.
+_ARTIST_PREFIX = re.compile(
+    r"^\s*(?:illus|illustrator|art|artwork)(?:\s*[.:]\s*|\s+by\s+|\s+)",
+    re.IGNORECASE,
+)
+
+
 def _normalize_artist(value) -> Optional[str]:
-    """Fold an illustrator credit for comparison ('Kagemaru  Himeno' -> 'kagemaru himeno')."""
+    """Fold an illustrator credit for comparison ('Illus. Kagemaru  Himeno' -> 'kagemaru himeno').
+
+    The credit is printed on the card as "Illus. <name>" but TCGdex stores just
+    the name, and Gemini includes or omits the prefix depending on how the field
+    was described. Strip it here so matching does not depend on prompt wording.
+    """
     if not value:
         return None
-    collapsed = " ".join(str(value).split()).strip().casefold()
+    stripped = _ARTIST_PREFIX.sub("", str(value))
+    collapsed = " ".join(stripped.split()).strip().casefold()
     return collapsed or None
 
 
@@ -395,6 +411,28 @@ async def _match_card_info(db: Session, api_key: str, gemini_url: str, card_info
         if card_name_en_simple != card_name_en:
             search_pairs.append(("en", card_name_en))
 
+    # TCGdex returns search results sorted ascending by card number, so a plain
+    # head slice keeps only the lowest-numbered printings and discards the
+    # target card for anything numbered above them. Float printings that match
+    # the recognized number to the front so they survive the per-search cap.
+    #
+    # Reads number_local (the split field) rather than the old combined `number`
+    # this fix was originally written against — the merge is otherwise a no-op,
+    # since card_info no longer carries a `number` key at all.
+    prefilter_number = _normalize_number(card_info.get("number_local"))
+
+    def _prioritize_by_number(cards: list) -> list:
+        if not prefilter_number:
+            return cards
+        matches = [c for c in cards if _normalize_number(c.get("localId")) == prefilter_number]
+        if not matches:
+            return cards
+        rest = [c for c in cards if _normalize_number(c.get("localId")) != prefilter_number]
+        logger.info(
+            f"Number pre-filter: {len(matches)} of {len(cards)} results match #{prefilter_number}"
+        )
+        return matches + rest
+
     # Collect all raw results first, setting _lang on each card
     all_results = []
     for lang, search_name in search_pairs:
@@ -410,7 +448,7 @@ async def _match_card_info(db: Session, api_key: str, gemini_url: str, card_info
                 tcgdex_cards = search_resp.json()
                 if isinstance(tcgdex_cards, list):
                     logger.info(f"TCGdex {lang} search for '{search_name}': {len(tcgdex_cards)} results")
-                    for c in tcgdex_cards[:8]:
+                    for c in _prioritize_by_number(tcgdex_cards)[:8]:
                         card_id = c.get("id")
                         if not card_id:
                             continue

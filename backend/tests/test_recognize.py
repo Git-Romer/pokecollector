@@ -164,10 +164,53 @@ class PrintedTotalMismatchTests(unittest.TestCase):
 
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")
+class PromptConsistencyTests(unittest.TestCase):
+    """The batch prompt must extract every field ranking depends on.
+
+    It previously omitted artist and hp, which silently made the artist/HP
+    tie-break inert for batched photos — the ranking behaved differently
+    depending on whether a card was composited or sent alone.
+    """
+
+    RANKING_FIELDS = ("number_local", "number_total", "set_code", "artist", "hp")
+
+    def test_batch_prompt_requests_every_field_ranking_uses(self):
+        batch = recognize_module.BATCH_PROMPT_TEMPLATE
+        for field in self.RANKING_FIELDS:
+            self.assertIn(field, batch, f"batch prompt must ask for {field}")
+
+    def test_single_prompt_requests_every_field_ranking_uses(self):
+        single = recognize_module.RECOGNIZE_PROMPT
+        for field in self.RANKING_FIELDS:
+            self.assertIn(field, single, f"single prompt must ask for {field}")
+
+    def test_both_prompts_keep_the_anti_hallucination_rule_for_set_code(self):
+        # Real-card testing showed Gemini filling set_code from training data for
+        # cards that print none; this wording is what stopped it.
+        for prompt in (recognize_module.RECOGNIZE_PROMPT, recognize_module.BATCH_PROMPT_TEMPLATE):
+            self.assertIn("guessing from memory is not allowed", prompt)
+
+
+@unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")
 class ArtistMatchTests(unittest.TestCase):
     def test_folds_case_and_whitespace(self):
         self.assertEqual(_normalize_artist("  Kagemaru   Himeno "), "kagemaru himeno")
         self.assertTrue(_artists_match("Kagemaru Himeno", "kagemaru  himeno"))
+
+    def test_strips_the_printed_illus_prefix(self):
+        # Cards print "Illus. <name>" but TCGdex stores the bare name, and the
+        # batch prompt was observed returning the prefix while the single prompt
+        # did not — matching must not depend on that.
+        self.assertEqual(_normalize_artist("Illus. Masako Tomii"), "masako tomii")
+        self.assertEqual(_normalize_artist("Illustrator: Ken Sugimori"), "ken sugimori")
+        self.assertTrue(_artists_match("Illus. Kagemaru Himeno", "Kagemaru Himeno"))
+
+    def test_does_not_eat_a_name_that_merely_starts_similarly(self):
+        # "Illustration Studio" is a plausible studio credit — the prefix token
+        # has to end at a separator, not just share opening letters.
+        self.assertEqual(_normalize_artist("Illustration Studio"), "illustration studio")
+        self.assertEqual(_normalize_artist("Sugimori"), "sugimori")
+        self.assertEqual(_normalize_artist("Studio Bora Inc."), "studio bora inc.")
 
     def test_different_artists_do_not_match(self):
         self.assertFalse(_artists_match("Kagemaru Himeno", "Ken Sugimori"))
