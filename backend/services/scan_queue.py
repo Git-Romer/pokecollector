@@ -24,8 +24,12 @@ from models import ScanJob, ScanJobItem
 logger = logging.getLogger(__name__)
 
 MAX_ATTEMPTS = 3
-# Items whose Gemini call failed transiently go back to pending; this bounds how
-# many times the drain loop will pick the same job up again before giving up.
+# How long to wait out an exhausted quota before retrying, and how many times,
+# before leaving the job for the scheduled resume rather than holding the drain
+# loop open indefinitely.
+RATE_LIMIT_PAUSE_SECONDS = 45
+MAX_RATE_LIMIT_PAUSES = 8
+
 _drain_lock = asyncio.Lock()
 _draining = False
 
@@ -89,15 +93,22 @@ def resolve_item(db: Session, item: ScanJobItem) -> ScanJobItem:
     return item
 
 
-async def _process_item_group(db: Session, api_key: str, gemini_url: str, items: list[ScanJobItem], *, batched: bool) -> None:
-    """Recognize one group: either a composite chunk or a single photo."""
+async def _process_item_group(db: Session, api_key: str, gemini_url: str, items: list[ScanJobItem], *, batched: bool) -> bool:
+    """Recognize one group: a composite chunk or a single photo.
+
+    Returns True when the group failed transiently (rate limited), so the caller
+    can stop the pass instead of burning the remaining groups against an
+    exhausted quota.
+    """
     from api.recognize import _recognize_composite_chunk, _recognize_single_image, _match_card_info
     import base64
     import httpx
+    from fastapi import HTTPException
 
     for item in items:
         item.attempts = (item.attempts or 0) + 1
 
+    transient = False
     if batched:
         chunk = [
             {"filename": item.filename, "bytes": item.image_data, "mime_type": item.content_type}
@@ -105,7 +116,7 @@ async def _process_item_group(db: Session, api_key: str, gemini_url: str, items:
         ]
         results = await _recognize_composite_chunk(db, api_key, gemini_url, chunk)
         for item, result in zip(items, results):
-            _apply_result(item, result)
+            transient |= _apply_result(item, result)
     else:
         item = items[0]
         image_b64 = base64.b64encode(item.image_data).decode()
@@ -113,16 +124,36 @@ async def _process_item_group(db: Session, api_key: str, gemini_url: str, items:
             async with httpx.AsyncClient(timeout=30) as client:
                 card_info = await _recognize_single_image(client, gemini_url, api_key, image_b64, item.content_type)
             result = await _match_card_info(db, api_key, gemini_url, card_info, image_b64, item.content_type)
-            _apply_result(item, result)
+            transient = _apply_result(item, result)
+        except HTTPException as exc:
+            transient = _apply_result(item, {"error": str(exc.detail)})
         except Exception as exc:
-            _apply_result(item, {"error": f"Erkennung fehlgeschlagen: {exc}"})
+            transient = _apply_result(item, {"error": f"Erkennung fehlgeschlagen: {exc}"})
+    return transient
 
 
-def _apply_result(item: ScanJobItem, result: dict) -> None:
+# Errors that mean "come back later", not "this photo is bad". Being rate
+# limited is the normal cost of a large batch, so it must never consume an
+# item's retry budget — otherwise a busy quota permanently fails a job the
+# queue exists specifically to carry through.
+_TRANSIENT_MARKERS = ("rate limit", "429", "überlastet", "nicht erreicht", "temporarily")
+
+
+def _is_transient(message: str) -> bool:
+    lowered = str(message or "").casefold()
+    return any(marker in lowered for marker in _TRANSIENT_MARKERS)
+
+
+def _apply_result(item: ScanJobItem, result: dict) -> bool:
+    """Record an outcome. Returns True when the failure was transient."""
     if result.get("error"):
-        # Leave it pending for another pass while attempts remain — most failures
-        # here are rate limiting or transient upstream errors, not bad photos.
         item.error = str(result["error"])
+        if _is_transient(item.error):
+            # Hand back the attempt — this was the quota's fault, not the card's.
+            item.attempts = max(0, (item.attempts or 1) - 1)
+            item.status = "pending"
+            item.updated_at = datetime.datetime.utcnow()
+            return True
         item.status = "pending" if (item.attempts or 0) < MAX_ATTEMPTS else "failed"
     else:
         item.recognized = result.get("recognized")
@@ -130,9 +161,10 @@ def _apply_result(item: ScanJobItem, result: dict) -> None:
         item.error = None
         item.status = "done"
     item.updated_at = datetime.datetime.utcnow()
+    return False
 
 
-async def _process_job(db: Session, job: ScanJob) -> None:
+async def _process_job(db: Session, job: ScanJob) -> bool:
     from api.recognize import build_gemini_generate_url, get_gemini_key
     from services.card_composite import chunk_for_composite, GRID_SIZE
 
@@ -142,7 +174,7 @@ async def _process_job(db: Session, job: ScanJob) -> None:
         job.error_message = "Kein Gemini API Key konfiguriert. Bitte in den Einstellungen eintragen."
         job.finished_at = datetime.datetime.utcnow()
         db.commit()
-        return
+        return False
 
     gemini_url = build_gemini_generate_url()
     job.status = "running"
@@ -160,13 +192,20 @@ async def _process_job(db: Session, job: ScanJob) -> None:
     singles = [i for i in pending if not i.batch_mode]
     batchable = [i for i in pending if i.batch_mode]
 
-    for item in singles:
-        await _process_item_group(db, api_key, gemini_url, [item], batched=False)
-        db.commit()
+    groups = [([item], False) for item in singles]
+    groups += [(chunk, True) for chunk in chunk_for_composite(batchable, size=GRID_SIZE)]
 
-    for chunk in chunk_for_composite(batchable, size=GRID_SIZE):
-        await _process_item_group(db, api_key, gemini_url, chunk, batched=True)
+    for group, batched in groups:
+        transient = await _process_item_group(db, api_key, gemini_url, group, batched=batched)
         db.commit()
+        if transient:
+            # Stop the pass rather than marching through the rest — the quota is
+            # exhausted, so every remaining group would fail too and the limiter
+            # would make each one wait out its penalty first.
+            logger.info("Scan job %s paused: upstream rate limited", job.id)
+            job.status = "pending"
+            db.commit()
+            return True
 
     remaining = (
         db.query(ScanJobItem)
@@ -180,6 +219,7 @@ async def _process_job(db: Session, job: ScanJob) -> None:
         job.status = "done"
         job.finished_at = datetime.datetime.utcnow()
     db.commit()
+    return False
 
 
 async def drain_scan_queue() -> None:
@@ -196,6 +236,7 @@ async def drain_scan_queue() -> None:
 
     from database import SessionLocal
 
+    rate_limit_pauses = 0
     try:
         while True:
             db = SessionLocal()
@@ -209,11 +250,28 @@ async def drain_scan_queue() -> None:
                 if not job:
                     return
                 before = _pending_count(db, job)
-                await _process_job(db, job)
+                paused = await _process_job(db, job)
                 after = _pending_count(db, job)
+
+                if paused:
+                    # Rate limited. Nothing is wrong with the job — wait for the
+                    # quota to recover and try again. Bounded so a persistently
+                    # exhausted quota hands off to the scheduled resume instead
+                    # of spinning here forever.
+                    rate_limit_pauses += 1
+                    if rate_limit_pauses > MAX_RATE_LIMIT_PAUSES:
+                        logger.info(
+                            "Scan queue still rate limited after %s pauses; leaving job %s "
+                            "pending for the scheduled resume",
+                            rate_limit_pauses, job.id,
+                        )
+                        return
+                    await asyncio.sleep(RATE_LIMIT_PAUSE_SECONDS)
+                    continue
+
                 if job.status == "pending" and after >= before:
-                    # No forward progress (e.g. every item exhausted its attempts
-                    # but was left pending) — fail the job instead of spinning.
+                    # No forward progress and it was not a rate limit — the items
+                    # are genuinely stuck, so fail rather than spin.
                     logger.warning("Scan job %s made no progress, marking failed", job.id)
                     _fail_stalled_job(db, job)
             except Exception:

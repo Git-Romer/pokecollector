@@ -147,6 +147,35 @@ class ApplyResultTests(unittest.TestCase):
         self.assertEqual(item.recognized["name"], "Gengar")
         self.assertIsNone(item.error)
 
+    def test_rate_limiting_does_not_consume_the_retry_budget(self):
+        # Being rate limited is the normal cost of a large batch. If it burned
+        # attempts, a busy quota would permanently fail a job — which is exactly
+        # what the queue exists to prevent. Observed for real: five items all
+        # failed on one exhausted quota and the job was marked failed.
+        item = self._item(attempts=MAX_ATTEMPTS)
+        transient = _apply_result(item, {"error": "Gemini Rate Limit erreicht – bitte kurz warten."})
+
+        self.assertTrue(transient)
+        self.assertEqual(item.status, "pending")
+        self.assertLess(item.attempts, MAX_ATTEMPTS)
+
+    def test_overload_and_unreachable_are_also_transient(self):
+        for message in (
+            "Gemini ist gerade temporär überlastet oder nicht verfügbar.",
+            "Gemini konnte gerade nicht erreicht werden.",
+            "429 Too Many Requests",
+        ):
+            item = self._item(attempts=MAX_ATTEMPTS)
+            self.assertTrue(_apply_result(item, {"error": message}), message)
+            self.assertEqual(item.status, "pending", message)
+
+    def test_a_bad_photo_is_not_treated_as_transient(self):
+        item = self._item(attempts=MAX_ATTEMPTS)
+        transient = _apply_result(item, {"error": "Kartenname konnte nicht erkannt werden."})
+
+        self.assertFalse(transient)
+        self.assertEqual(item.status, "failed")
+
     def test_error_stays_pending_while_attempts_remain(self):
         # Most failures here are rate limiting, so the item must be retryable
         # rather than permanently failed on the first error.
@@ -157,8 +186,11 @@ class ApplyResultTests(unittest.TestCase):
         self.assertIn("Rate Limit", item.error)
 
     def test_error_fails_permanently_once_attempts_are_exhausted(self):
+        # Uses a non-transient error deliberately: rate limiting is explicitly
+        # exempt from the attempt budget (see the transient tests above), so it
+        # cannot be used to demonstrate exhaustion.
         item = self._item(attempts=MAX_ATTEMPTS)
-        _apply_result(item, {"error": "Gemini Rate Limit erreicht"})
+        _apply_result(item, {"error": "Karte im Stapel nicht erkannt (Index fehlt)."})
 
         self.assertEqual(item.status, "failed")
 
@@ -208,6 +240,31 @@ class DrainQueueTests(unittest.IsolatedAsyncioTestCase):
         refreshed = self.db.query(ScanJob).filter(ScanJob.id == job.id).first()
         self.assertEqual(refreshed.status, "failed")
         self.assertIn("Gemini API Key", refreshed.error_message)
+
+    async def test_rate_limited_job_is_left_pending_not_failed(self):
+        # The regression that motivated this: a rate-limited pass looks identical
+        # to "no forward progress", so the stall guard used to fail the whole job.
+        job = enqueue_scan_job(self.db, self.user.id, _uploads(2))
+
+        async def rate_limited(db, api_key, gemini_url, items, *, batched):
+            for item in items:
+                item.attempts = (item.attempts or 0) + 1
+                _apply_result(item, {"error": "Gemini Rate Limit erreicht"})
+            return True
+
+        with patch("database.SessionLocal", self.Session), \
+                patch.object(scan_queue, "_process_item_group", side_effect=rate_limited), \
+                patch.object(scan_queue, "RATE_LIMIT_PAUSE_SECONDS", 0), \
+                patch.object(scan_queue, "MAX_RATE_LIMIT_PAUSES", 2), \
+                patch("api.recognize.get_gemini_key", return_value="key"), \
+                patch("api.recognize.build_gemini_generate_url", return_value="https://example.test"):
+            await scan_queue.drain_scan_queue()
+
+        self.db.expire_all()
+        refreshed = self.db.query(ScanJob).filter(ScanJob.id == job.id).first()
+        self.assertEqual(refreshed.status, "pending", "a rate-limited job must stay retryable")
+        items = self.db.query(ScanJobItem).filter(ScanJobItem.job_id == job.id).all()
+        self.assertTrue(all(i.status == "pending" for i in items))
 
     async def test_a_permanently_stuck_job_is_failed_instead_of_looping_forever(self):
         job = enqueue_scan_job(self.db, self.user.id, _uploads(1))
