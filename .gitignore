@@ -16,3 +16,8 @@ node_modules/
 # Local persistent data / caches
 /data/
 /backups/
+
+# Photos used for scanner accuracy testing. Kept out of the repo deliberately:
+# they are ~90 MB of third-party card artwork, and the filenames record when
+# each photo was taken. Keep them locally under test-images/ instead.
+/test-images/
