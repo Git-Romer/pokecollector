@@ -12,7 +12,7 @@
     touch-action: manipulation;
   }
   .unified-card-frame-interactive:hover,
-  .unified-card-frame-interactive:focus-visible {
+  .unified-card-frame-interactive:focus-within {
     background: var(--card-frame-hover-gradient, #c6ccd7);
     box-shadow:
       0 0 0 1px rgba(255,255,255,0.45),
@@ -30,6 +30,19 @@
     border-radius: var(--pc-card-art-radius);
     background: var(--color-elevated);
   }
+  .unified-card-action-layer { position: relative; }
+  .unified-card-primary-action {
+    position: absolute;
+    inset: 0;
+    z-index: 25;
+    width: 100%;
+    border: 0;
+    border-radius: var(--pc-card-art-radius);
+    background: transparent;
+    cursor: pointer;
+  }
+  .unified-card-primary-action:focus-visible { outline: none; }
+  .unified-card-primary-action:disabled { cursor: not-allowed; }
   .unified-card-caption {
     height: var(--pc-card-caption-height);
     overflow: hidden;
@@ -81,7 +94,7 @@
     transition: background 160ms ease;
   }
   .unified-card-frame-interactive:hover .unified-card-missing-overlay,
-  .unified-card-frame-interactive:focus-visible .unified-card-missing-overlay { background: rgba(38, 43, 51, 0.34); }
+  .unified-card-frame-interactive:focus-within .unified-card-missing-overlay { background: rgba(38, 43, 51, 0.34); }
   .unified-card-add {
     position: absolute;
     inset: 0;

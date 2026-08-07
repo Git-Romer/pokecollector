@@ -116,10 +116,7 @@ export function CardArtworkFrame({
   const { t } = useSettings()
   const kinds = getCardFallbackKinds(card)
   const label = fallbackAriaLabel(t, kinds)
-  const handleKeyDown = (event) => {
-    if (!interactive || unavailableReason) return
-    handleKeyboardActivation(event, onClick, onSelect)
-  }
+  const actionLabel = [alt, label].filter(Boolean).join(' · ') || undefined
 
   return (
     <div
@@ -134,38 +131,47 @@ export function CardArtworkFrame({
         '--card-frame-gradient': getFallbackBorderGradient(kinds),
         '--card-frame-hover-gradient': getFallbackBorderGradient(kinds, true),
       }}
-      onClick={interactive && !unavailableReason ? (onClick || onSelect) : undefined}
-      onKeyDown={handleKeyDown}
-      role={interactive ? 'button' : undefined}
-      tabIndex={interactive && !unavailableReason ? 0 : undefined}
-      aria-disabled={unavailableReason ? true : undefined}
-      aria-label={[alt, label].filter(Boolean).join(' · ') || undefined}
       title={label}
     >
-      <div className={clsx('unified-card-art', getCardVariantEffectClass(variantEffectSource))}>
-        {showStateIndicators && (
-          <CardStateIndicators
-            card={card}
-            compact
-            className="absolute left-1 right-1 top-1 z-20 sm:left-2 sm:right-2 sm:top-2"
-            {...stateIndicatorProps}
+      <div className="unified-card-action-layer">
+        <div className={clsx('unified-card-art', getCardVariantEffectClass(variantEffectSource))}>
+          {showStateIndicators && (
+            <CardStateIndicators
+              card={card}
+              compact
+              className="absolute left-1 right-1 top-1 z-20 sm:left-2 sm:right-2 sm:top-2"
+              {...stateIndicatorProps}
+            />
+          )}
+          {selected && (
+            <span className="unified-card-selection" aria-label={t('cardSearch.selected')}>
+              <Check size={14} strokeWidth={3} aria-hidden />
+            </span>
+          )}
+          <CardImage
+            src={image}
+            alt={alt}
+            className={imageClassName}
+            loading={loading}
+            onLoadingChange={onLoadingChange}
+            compactError={thumbnail}
+          />
+          {dimmed && <span className="unified-card-missing-overlay" aria-hidden />}
+          {overlay}
+          {unavailableReason && (
+            <span className="unified-card-unavailable-reason">{unavailableReason}</span>
+          )}
+        </div>
+        {interactive && (
+          <button
+            type="button"
+            className="unified-card-primary-action"
+            onClick={onClick || onSelect}
+            disabled={Boolean(unavailableReason)}
+            aria-disabled={unavailableReason ? true : undefined}
+            aria-label={actionLabel}
           />
         )}
-        {selected && (
-          <span className="unified-card-selection" aria-label={t('cardSearch.selected')}>
-            <Check size={14} strokeWidth={3} aria-hidden />
-          </span>
-        )}
-        <CardImage
-          src={image}
-          alt={alt}
-          className={imageClassName}
-          loading={loading}
-          onLoadingChange={onLoadingChange}
-          compactError={thumbnail}
-        />
-        {dimmed && <span className="unified-card-missing-overlay" aria-hidden />}
-        {overlay}
         {onAdd && !unavailableReason && (
           <button
             type="button"
@@ -178,9 +184,6 @@ export function CardArtworkFrame({
           >
             <Plus size={20} strokeWidth={2.5} aria-hidden />
           </button>
-        )}
-        {unavailableReason && (
-          <span className="unified-card-unavailable-reason">{unavailableReason}</span>
         )}
       </div>
     </div>
@@ -250,9 +253,18 @@ export function UnifiedCardDialog({
       }
       if (event.key !== 'Tab') return
 
-      const focusable = [...(dialogRef.current?.querySelectorAll(
+      const dialogElement = dialogRef.current
+      const focusable = [...(dialogElement?.querySelectorAll(
         'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ) || [])].filter(element => !element.hasAttribute('hidden'))
+      ) || [])].filter((element) => {
+        if (element.tabIndex < 0 || element.hasAttribute('hidden')) return false
+        for (let node = element; node && node !== dialogElement; node = node.parentElement) {
+          if (node.matches('[aria-hidden="true"], [inert]')) return false
+          const style = window.getComputedStyle(node)
+          if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return false
+        }
+        return element.getClientRects().length > 0
+      })
       if (focusable.length === 0) return
       const first = focusable[0]
       const last = focusable[focusable.length - 1]
@@ -342,7 +354,7 @@ export function UnifiedCardDialog({
                     type="button"
                     role="tab"
                     aria-selected={activeTab === tab.id}
-                    aria-controls={`${tabIdPrefix}-tabpanel-${tab.id}`}
+                    aria-controls={`${tabIdPrefix}-tabpanel`}
                     tabIndex={activeTab === tab.id ? 0 : -1}
                     onClick={() => onTabChange?.(tab.id)}
                     onKeyDown={(event) => {
@@ -371,7 +383,7 @@ export function UnifiedCardDialog({
             )}
             <div
               role={tabs.length > 0 ? 'tabpanel' : undefined}
-              id={tabs.length > 0 ? `${tabIdPrefix}-tabpanel-${activeTab}` : undefined}
+              id={tabs.length > 0 ? `${tabIdPrefix}-tabpanel` : undefined}
               aria-labelledby={tabs.length > 0 ? `${tabIdPrefix}-tab-${activeTab}` : undefined}
             >
               {children}

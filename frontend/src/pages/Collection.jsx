@@ -562,6 +562,7 @@ function CollectionEditModal({ item, onClose }) {
         <div className="grid overflow-hidden [perspective:1200px]">
           <div
             aria-hidden={showAddVersionForm}
+            inert={showAddVersionForm ? '' : undefined}
             className={clsx(
               'col-start-1 row-start-1 transition-all duration-300 ease-out transform-gpu',
               showAddVersionForm
@@ -717,6 +718,7 @@ function CollectionEditModal({ item, onClose }) {
 
           <form
             aria-hidden={!showAddVersionForm}
+            inert={!showAddVersionForm ? '' : undefined}
             className={clsx(
               'col-start-1 row-start-1 transition-all duration-300 ease-out transform-gpu',
               showAddVersionForm

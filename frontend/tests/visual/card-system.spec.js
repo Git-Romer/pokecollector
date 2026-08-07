@@ -51,7 +51,7 @@ test('shared card dialog remains consistent', async ({ page }) => {
 test('shared card keyboard and touch paths activate the intended action', async ({ page }) => {
   await waitForGallery(page)
   const card = page.getByTestId('hover-add-state')
-  const frame = card.locator('.unified-card-frame')
+  const frame = card.locator('.unified-card-primary-action')
   const add = card.locator('.unified-card-add')
 
   await frame.focus()
@@ -75,18 +75,44 @@ test('shared dialog traps focus and provides keyboard tab navigation', async ({ 
   const close = dialog.getByRole('button', { name: /close/i })
   const overview = dialog.getByRole('tab', { name: 'Overview' })
   const prices = dialog.getByRole('tab', { name: 'Prices' })
+  const panel = dialog.getByRole('tabpanel')
+
+  await expect(overview).toHaveAttribute('aria-selected', 'true')
+  const panelId = await panel.getAttribute('id')
+  await expect(overview).toHaveAttribute('aria-controls', panelId)
+  await expect(prices).toHaveAttribute('aria-controls', panelId)
+
+  await panel.evaluate((element) => {
+    const visible = document.createElement('button')
+    visible.type = 'button'
+    visible.dataset.testid = 'visible-dialog-action'
+    visible.textContent = 'Visible action'
+    element.appendChild(visible)
+
+    const hiddenPane = document.createElement('div')
+    hiddenPane.setAttribute('aria-hidden', 'true')
+    hiddenPane.setAttribute('inert', '')
+    hiddenPane.style.opacity = '0'
+    hiddenPane.style.pointerEvents = 'none'
+    const hidden = document.createElement('button')
+    hidden.type = 'button'
+    hidden.dataset.testid = 'hidden-dialog-action'
+    hidden.textContent = 'Hidden action'
+    hiddenPane.appendChild(hidden)
+    element.appendChild(hiddenPane)
+  })
+
+  const visibleAction = dialog.getByTestId('visible-dialog-action')
+  await close.focus()
+  await page.keyboard.press('Shift+Tab')
+  await expect(visibleAction).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(close).toBeFocused()
 
   await overview.focus()
   await page.keyboard.press('ArrowRight')
   await expect(prices).toBeFocused()
   await expect(prices).toHaveAttribute('aria-selected', 'true')
-  await expect(prices).toHaveAttribute('aria-controls', /tabpanel-prices$/)
-
-  await close.focus()
-  await page.keyboard.press('Shift+Tab')
-  await expect(prices).toBeFocused()
-  await page.keyboard.press('Tab')
-  await expect(close).toBeFocused()
 })
 
 test('lazy compact artwork loads again after a cached view remount', async ({ page }) => {
