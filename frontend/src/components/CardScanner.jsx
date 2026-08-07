@@ -12,6 +12,7 @@ import MoneyInput from './MoneyInput'
 import { parseMoneyInputValue } from '../utils/moneyInput'
 import { CardDisplay } from './card-system'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
+import { isSupportedScannerImage, SCANNER_IMAGE_ACCEPT } from '../utils/scannerImages'
 
 // ─── Add-to-Collection Modal für Scan-Ergebnis ──────────────────────────────
 function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
@@ -159,6 +160,10 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
 
   const handleFile = async (file) => {
     if (!file) return
+    if (!isSupportedScannerImage(file)) {
+      toast.error(t('scanner.recognitionFailed'))
+      return
+    }
     setPreview(URL.createObjectURL(file))
     setPhase('loading')
     try {
@@ -216,7 +221,7 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
               <p className="text-xs text-text-muted text-center px-6">{t('scanner.alignCard')}</p>
             </div>
 
-            <input ref={fileRef} type="file" accept="image/*" capture="environment"
+            <input ref={fileRef} type="file" accept={SCANNER_IMAGE_ACCEPT} capture="environment"
               className="hidden" onChange={e => handleFile(e.target.files?.[0])} />
 
             <button onClick={() => fileRef.current?.click()}
@@ -265,7 +270,7 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
                 <p className="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
                   {t('scanner.yourScan')}
                 </p>
-                {preview && (
+                {preview && preview.startsWith('blob:') && (
                   <img
                     src={preview}
                     alt={t('scanner.yourScan')}
