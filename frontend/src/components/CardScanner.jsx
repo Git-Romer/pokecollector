@@ -149,7 +149,6 @@ function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
 
 export default function CardScanner({ isOpen, onClose, onCardSelected }) {
   const [phase, setPhase] = useState('capture') // 'capture' | 'loading' | 'results'
-  const [preview, setPreview] = useState(null)
   const [results, setResults] = useState(null)
   const [selectedMatch, setSelectedMatch] = useState(null)
   const [addModal, setAddModal] = useState(null) // match to show modal for
@@ -164,7 +163,6 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
       toast.error(t('scanner.recognitionFailed'))
       return
     }
-    setPreview(URL.createObjectURL(file))
     setPhase('loading')
     try {
       const data = await recognizeCard(file)
@@ -175,13 +173,11 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
       const msg = e?.response?.data?.detail || t('scanner.recognitionFailed')
       toast.error(msg)
       setPhase('capture')
-      setPreview(null)
     }
   }
 
   const reset = () => {
     setPhase('capture')
-    setPreview(null)
     setResults(null)
     setSelectedMatch(null)
     setAddModal(null)
@@ -250,10 +246,6 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
         {/* LOADING */}
         {phase === 'loading' && (
           <div className="flex flex-col items-center gap-6 pt-8">
-            {preview && preview.startsWith("blob:") && (
-              <img src={preview} className="w-40 aspect-[2.5/3.5] object-cover rounded-xl"
-                style={{ border: '1px solid rgba(255,255,255,0.1)' }} />
-            )}
             <div className="flex flex-col items-center gap-3">
               <Loader2 size={32} className="text-brand-red animate-spin" />
               <p className="text-sm text-text-secondary font-medium">{t('scanner.recognizing')}</p>
@@ -270,13 +262,12 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
                 <p className="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
                   {t('scanner.yourScan')}
                 </p>
-                {preview && preview.startsWith('blob:') && (
-                  <img
-                    src={preview}
-                    alt={t('scanner.yourScan')}
-                    className="mx-auto max-h-[28rem] w-full rounded-xl object-contain"
-                  />
-                )}
+                <div className="grid aspect-[2.5/3.5] place-items-center rounded-xl border border-dashed border-white/10 bg-bg-primary/50 text-center">
+                  <div className="space-y-2 text-text-muted">
+                    <Camera size={36} className="mx-auto opacity-50" aria-hidden />
+                    <p className="text-xs">{t('scanner.recognizing')}</p>
+                  </div>
+                </div>
               </div>
 
               <div className="space-y-4">
