@@ -1,4 +1,5 @@
 import clsx from 'clsx'
+import { Flag } from 'lucide-react'
 import { useSettings } from '../contexts/SettingsContext'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 
@@ -12,10 +13,36 @@ export default function FallbackBadges({ card, className = '', compact = false, 
   const imageLang = card.image_source_lang
   if (!dataLang && !priceLang && !imageLang) return null
 
+  const fallbackDescriptions = [
+    dataLang && t('fallback.dataFrom').replace('{lang}', sourceLabel(dataLang)),
+    priceLang && t('fallback.priceFrom').replace('{lang}', sourceLabel(priceLang)),
+    imageLang && t('fallback.imageFrom').replace('{lang}', sourceLabel(imageLang)),
+    hasCustomImage && t('fallback.customImageDesc'),
+  ].filter(Boolean)
+
+  if (compact) {
+    const description = fallbackDescriptions.join(' · ')
+    return (
+      <span
+        className={clsx('group/fallback relative inline-flex flex-shrink-0', className)}
+        tabIndex={0}
+        aria-label={description}
+      >
+        <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-amber-500/40 bg-amber-500/15 text-amber-300">
+          <Flag size={10} strokeWidth={2.5} aria-hidden="true" />
+        </span>
+        <span
+          role="tooltip"
+          className="pointer-events-none absolute bottom-full right-0 z-30 mb-2 hidden w-max max-w-56 rounded-lg border border-border bg-bg-elevated px-2.5 py-2 text-left text-[10px] font-medium leading-relaxed text-text-secondary shadow-xl group-hover/fallback:block group-focus/fallback:block"
+        >
+          {fallbackDescriptions.map((item) => <span key={item} className="block">{item}</span>)}
+        </span>
+      </span>
+    )
+  }
+
   const overlay = variant === 'overlay'
-  const baseClass = compact
-    ? 'inline-flex min-h-[16px] items-center justify-center rounded px-1.5 py-0.5 text-[9px] leading-none'
-    : 'inline-flex min-h-[18px] items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] leading-none'
+  const baseClass = 'inline-flex min-h-[18px] items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] leading-none'
   const badgeClass = (tone) => clsx(
     baseClass,
     'font-bold whitespace-nowrap',
