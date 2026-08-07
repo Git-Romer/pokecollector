@@ -31,6 +31,7 @@ jobs:
     steps:
       - name: Checkout repository
         shell: bash
+        working-directory: .
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -38,7 +39,7 @@ jobs:
           git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
           auth_header="$(printf 'x-access-token:%s' "${GH_TOKEN}" | base64 -w0)"
           echo "::add-mask::${auth_header}"
-          git -c "http.https://github.com/.extraheader=AUTHORIZATION: Basic ${auth_header}" fetch --force origin "${GITHUB_SHA}"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: Basic ${auth_header}" fetch --force origin "${GITHUB_REF}"
           git checkout --detach FETCH_HEAD
 
       - name: Show Node.js toolchain
