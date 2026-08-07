@@ -1,7 +1,8 @@
 import clsx from 'clsx'
-import { Check, Circle, Heart, Medal, Sparkles, SquareAsterisk } from 'lucide-react'
+import { useId, useState } from 'react'
+import { Check, Circle, Heart, HelpCircle, Medal, Package, Sparkles, SquareAsterisk } from 'lucide-react'
 import { useSettings } from '../contexts/SettingsContext'
-import { CARD_VARIANTS, getCardOwnedVariants, hasGenericOwnership, VARIANT_PILL_META } from '../utils/cardVariants'
+import { CARD_VARIANTS, getCardOwnedVariants, VARIANT_PILL_META } from '../utils/cardVariants'
 
 const VARIANT_ICONS = { Normal: Circle, Holo: Sparkles, 'Reverse Holo': SquareAsterisk, 'First Edition': Medal }
 
@@ -15,7 +16,6 @@ export const getCardState = (card = {}, showOwnership = true, showWishlist = tru
   const variants = showOwnership ? getCardOwnedVariants(card) : []
   return {
     variants,
-    genericOwned: showOwnership && variants.length === 0 && hasGenericOwnership(card),
     wishlisted: showWishlist && (card.wishlisted === true || Number(card.wishlist_count || 0) > 0),
   }
 }
@@ -31,8 +31,8 @@ export default function CardStateIndicators({
   className = '',
 }) {
   const { t } = useSettings()
-  const { variants, genericOwned, wishlisted } = getCardState(card, showOwnership, showWishlist)
-  if (!variants.length && !genericOwned && !wishlisted) return null
+  const { variants, wishlisted } = getCardState(card, showOwnership, showWishlist)
+  if (!variants.length && !wishlisted) return null
 
   return <div className={clsx('pointer-events-none flex items-start justify-between gap-1', className)}>
     <div className="flex flex-wrap items-start gap-1">
@@ -47,7 +47,6 @@ export default function CardStateIndicators({
           {quantityVisible && <span>×{quantity}</span>}
         </span>
       })}
-      {genericOwned && <span title={t('pokedex.owned')} aria-label={t('pokedex.owned')} className="inline-flex items-center rounded-full border border-green/40 bg-green/90 p-1 text-white shadow-lg"><Check size={compact ? 10 : 11} strokeWidth={3} aria-hidden /></span>}
     </div>
     {wishlisted && <span title={t('nav.wishlist')} aria-label={t('nav.wishlist')} className="inline-flex shrink-0 items-center rounded-full border border-pink-400/40 bg-pink-500/90 p-1 text-white shadow-lg"><Heart size={compact ? 10 : 11} fill="currentColor" aria-hidden /></span>}
   </div>
@@ -55,9 +54,12 @@ export default function CardStateIndicators({
 
 export function CardStateLegend({
   className = '',
-  showOwnershipFallback = true,
   showWishlist = true,
   showQuantity = true,
+  showFallback = true,
+  showProductSource = false,
+  showSelection = false,
+  showBinderProgress = false,
 }) {
   const { t } = useSettings()
 
@@ -77,14 +79,6 @@ export function CardStateLegend({
           </div>
         )
       })}
-      {showOwnershipFallback && <div className="flex items-center gap-2 min-w-0">
-        <span className="inline-flex flex-shrink-0 items-center rounded-full border border-green/40 bg-green/90 p-1 text-white shadow-lg">
-          <Check size={11} strokeWidth={3} aria-hidden />
-        </span>
-        <span className="text-xs leading-tight text-text-secondary" title={t('setDetail.ownedVariantUnknown')}>
-          {t('setDetail.ownedVariantUnknown')}
-        </span>
-      </div>}
       {showWishlist && <div className="flex items-center gap-2 min-w-0">
         <span className="inline-flex flex-shrink-0 items-center rounded-full border border-pink-400/40 bg-pink-500/90 p-1 text-white shadow-lg">
           <Heart size={11} fill="currentColor" aria-hidden />
@@ -101,6 +95,79 @@ export function CardStateLegend({
           {t('setDetail.badgeQuantity')}
         </span>
       </div>}
+      {showFallback && <>
+        {[
+          ['data', 'bg-purple-400', t('fallback.dataBorder')],
+          ['price', 'bg-amber-400', t('fallback.priceBorder')],
+          ['image', 'bg-sky-400', t('fallback.imageBorder')],
+        ].map(([kind, colorClass, label]) => (
+          <div key={kind} className="flex min-w-0 items-center gap-2">
+            <span className={clsx('h-1 w-7 flex-shrink-0 rounded-full', colorClass)} aria-hidden />
+            <span className="text-xs leading-tight text-text-secondary">{label}</span>
+          </div>
+        ))}
+      </>}
+      {showProductSource && <div className="flex min-w-0 items-center gap-2">
+        <span className="inline-flex flex-shrink-0 items-center rounded-full border border-yellow/40 bg-yellow/90 p-1 text-black shadow-lg">
+          <Package size={11} strokeWidth={2.5} aria-hidden />
+        </span>
+        <span className="text-xs leading-tight text-text-secondary">{t('collection.foundIn')}</span>
+      </div>}
+      {showSelection && <div className="flex min-w-0 items-center gap-2">
+        <span className="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md border border-white/50 bg-brand-red text-white shadow-lg">
+          <Check size={12} strokeWidth={3} aria-hidden />
+        </span>
+        <span className="text-xs leading-tight text-text-secondary">{t('cardSearch.selected')}</span>
+      </div>}
+      {showBinderProgress && <div className="flex min-w-0 items-center gap-2">
+        <span className="inline-flex flex-shrink-0 items-center gap-1">
+          <span className="inline-flex rounded-full border border-white/20 bg-bg-elevated px-2 py-1 text-[10px] font-bold text-text-secondary">
+            2/4
+          </span>
+          <span className="inline-flex items-center justify-center rounded-full border border-green/40 bg-green/90 p-1 text-white shadow-sm">
+            <Check size={10} strokeWidth={3} aria-hidden />
+          </span>
+        </span>
+        <span className="text-xs leading-tight text-text-secondary">{t('binderTypes.cardRequirementProgress')}</span>
+      </div>}
+    </div>
+  )
+}
+
+export function CardStateLegendDisclosure({
+  className = '',
+  legendClassName = '',
+  legendProps = {},
+}) {
+  const { t } = useSettings()
+  const [open, setOpen] = useState(false)
+  const contentId = useId()
+
+  return (
+    <div className={clsx('space-y-2', className)}>
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => setOpen(value => !value)}
+          className={clsx(
+            'btn-ghost px-3 py-2 text-sm',
+            open && 'border-brand-red/30 bg-brand-red/10 text-brand-red',
+          )}
+          aria-expanded={open}
+          aria-controls={contentId}
+        >
+          <HelpCircle size={15} aria-hidden />
+          <span>{t('setDetail.badgeLegend')}</span>
+        </button>
+      </div>
+      {open && (
+        <div id={contentId} className="card p-3">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
+            {t('setDetail.badgeLegend')}
+          </p>
+          <CardStateLegend className={legendClassName} {...legendProps} />
+        </div>
+      )}
     </div>
   )
 }

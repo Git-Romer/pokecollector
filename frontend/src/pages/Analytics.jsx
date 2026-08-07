@@ -12,7 +12,8 @@ import {
   getInvestmentTracker, getTradeStats, getAnalyticsNewSets, getProducts, createProduct
 } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
-import CardListItem from '../components/CardListItem'
+import { CardIdentity, CardRow } from '../components/card-system'
+import { CardModal } from '../components/CardItem'
 import { format, parseISO } from 'date-fns'
 import clsx from 'clsx'
 import PeriodSelector, { CARD_PERIODS, PERIOD_DAYS } from '../components/PeriodSelector'
@@ -157,6 +158,7 @@ export default function Analytics() {
   const [moversSort, setMoversSort] = useState('percentage')
   const [activeTab, setActiveTab] = useState('duplicates')
   const [showExpenseModal, setShowExpenseModal] = useState(false)
+  const [selectedCard, setSelectedCard] = useState(null)
   const queryClient = useQueryClient()
   const { data: duplicates = [], isLoading: dupLoading } = useQuery({
     queryKey: ['duplicates', pricePrimaryField],
@@ -279,12 +281,12 @@ export default function Analytics() {
                     {duplicates.map((item) => (
                       <tr key={item.id} className="border-b border-border/50 hover:bg-bg-elevated/50">
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-3">
-                            {resolveCardImageUrl(item) && (
-                              <img src={resolveCardImageUrl(item)} alt={item.name} className="w-8 h-10 object-cover rounded flex-shrink-0" loading="lazy" />
-                            )}
-                            <span className="text-sm font-medium text-text-primary">{item.name}</span>
-                          </div>
+                          <CardIdentity
+                            card={item}
+                            image={resolveCardImageUrl(item)}
+                            name={item.name}
+                            onClick={() => setSelectedCard({ ...item, id: item.card_id || item.id })}
+                          />
                         </td>
                         <td className="px-4 py-3 text-text-secondary text-xs">{item.set_name || '-'}</td>
                         <td className="px-4 py-3 text-text-secondary text-xs">{item.rarity || '-'}</td>
@@ -298,8 +300,9 @@ export default function Analytics() {
               </div>
               <div className="md:hidden space-y-2 p-2">
                 {duplicates.map((item) => (
-                  <CardListItem
+                  <CardRow
                     key={item.id}
+                    card={item}
                     image={resolveCardImageUrl(item)}
                     name={item.name}
                     subtext={item.set_name || '-'}
@@ -309,6 +312,7 @@ export default function Analytics() {
                     ]}
                     value={formatPrice(item.total_value)}
                     valueSecondary={formatPrice(item.price_market)}
+                    onClick={() => setSelectedCard({ ...item, id: item.card_id || item.id })}
                   />
                 ))}
               </div>
@@ -355,28 +359,29 @@ export default function Analytics() {
           ) : (
             <div className="space-y-2">
               {topMovers.map((card) => (
-                <div key={card.card_id} className="card flex items-center gap-4">
-                  {resolveCardImageUrl(card) && (
-                    <img src={resolveCardImageUrl(card)} alt={card.name} className="w-10 h-14 object-cover rounded flex-shrink-0" loading="lazy" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-text-primary truncate">{card.name}</p>
-                    <p className="text-xs text-text-muted">{card.rarity}</p>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <p className="text-sm text-text-secondary">{formatPrice(card.old_price)} → {formatPrice(card.current_price)}</p>
-                    <div className={clsx(
-                      'flex items-center justify-end gap-1 font-bold',
-                      card.change_pct >= 0 ? 'text-green' : 'text-brand-red'
-                    )}>
-                      {card.change_pct >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-                      {card.change_pct >= 0 ? '+' : ''}{card.change_pct}%
-                      <span className="text-xs font-normal ml-1">
-                        ({card.change_abs >= 0 ? '+' : ''}{formatPrice(card.change_abs)})
-                      </span>
+                <CardRow
+                  key={card.card_id}
+                  card={card}
+                  image={resolveCardImageUrl(card)}
+                  name={card.name}
+                  subtext={card.rarity}
+                  onClick={() => setSelectedCard({ ...card, id: card.card_id })}
+                  rightAction={(
+                    <div className="flex-shrink-0 text-right">
+                      <p className="text-sm text-text-secondary">{formatPrice(card.old_price)} → {formatPrice(card.current_price)}</p>
+                      <div className={clsx(
+                        'flex items-center justify-end gap-1 font-bold',
+                        card.change_pct >= 0 ? 'text-green' : 'text-brand-red'
+                      )}>
+                        {card.change_pct >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                        {card.change_pct >= 0 ? '+' : ''}{card.change_pct}%
+                        <span className="ml-1 text-xs font-normal">
+                          ({card.change_abs >= 0 ? '+' : ''}{formatPrice(card.change_abs)})
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                </div>
+                  )}
+                />
               ))}
             </div>
           )}
@@ -695,6 +700,13 @@ export default function Analytics() {
         <AddExpenseModal
           onClose={() => setShowExpenseModal(false)}
           onSuccess={() => queryClient.invalidateQueries({ queryKey: ['investment-tracker'] })}
+        />
+      )}
+      {selectedCard && (
+        <CardModal
+          card={selectedCard}
+          onClose={() => setSelectedCard(null)}
+          initialTab="overview"
         />
       )}
     </div>

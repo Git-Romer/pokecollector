@@ -12,6 +12,9 @@ build/
 venv/
 node_modules/
 *.log
+frontend/playwright-report/
+frontend/test-results/
+frontend/test-results-webkit/
 
 # Local persistent data / caches
 /data/

@@ -112,8 +112,15 @@ def get_dashboard(
             "price_avg30": card.price_avg30,
             "display_price": display_price,
             "quantity": item.quantity,
+            "variant": item.variant,
+            "condition": item.condition,
+            "lang": item.lang,
             "total_value": round(display_price * item.quantity, 2),
             "rarity": card.rarity,
+            "custom_image_url": card.custom_image_url,
+            "data_source_lang": card.data_source_lang,
+            "price_source_lang": card.price_source_lang,
+            "image_source_lang": card.image_source_lang,
         })
 
     # Portfolio value history (last 90 days)
@@ -150,8 +157,15 @@ def get_dashboard(
                 "name": item.card.name,
                 "images_small": item.card.images_small,
                 "quantity": item.quantity,
+                "variant": item.variant,
+                "condition": item.condition,
+                "lang": item.lang,
                 "added_at": item.added_at.isoformat() if item.added_at else None,
                 "price_market": effective_market_price(item.card, item.variant, price_field),
+                "custom_image_url": item.card.custom_image_url,
+                "data_source_lang": item.card.data_source_lang,
+                "price_source_lang": item.card.price_source_lang,
+                "image_source_lang": item.card.image_source_lang,
             })
 
     # Last sync

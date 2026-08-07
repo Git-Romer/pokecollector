@@ -1,13 +1,17 @@
 {
   "name": "pokemon-tcg-collection",
   "private": true,
-  "version": "1.27.4",
+  "version": "1.28.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "check:translations": "node scripts/check-translations.mjs",
     "preview": "vite preview",
-    "test": "vitest run",
+    "test": "npm run check:translations && vitest run src",
+    "test:visual": "playwright test",
+    "test:visual:webkit": "playwright test --config=playwright.webkit.config.js",
+    "test:visual:update": "playwright test --update-snapshots",
     "test:watch": "vitest"
   },
   "dependencies": {
@@ -19,15 +23,16 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-hot-toast": "^2.4.1",
-    "react-router-dom": "^7.18.1",
+    "react-router-dom": "^7.18.2",
     "recharts": "^2.12.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@types/react": "^18.2.55",
     "@types/react-dom": "^18.2.19",
     "@vitejs/plugin-react": "^6.0.2",
     "autoprefixer": "^10.4.17",
-    "postcss": "^8.5.12",
+    "postcss": "^8.5.26",
     "tailwindcss": "^3.4.1",
     "vite": "^8.0.16",
     "vitest": "^4.1.10"

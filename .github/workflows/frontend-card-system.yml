@@ -1,0 +1,66 @@
+name: Frontend Card System
+
+on:
+  pull_request:
+    paths:
+      - frontend/**
+      - docs/CARD_SYSTEM.md
+      - docs/FRONTEND.md
+      - CONTRIBUTING.md
+      - .github/workflows/frontend-card-system.yml
+  push:
+    branches:
+      - main
+    paths:
+      - frontend/**
+      - docs/CARD_SYSTEM.md
+      - docs/FRONTEND.md
+      - CONTRIBUTING.md
+      - .github/workflows/frontend-card-system.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  card-system:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout repository
+        shell: bash
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git init .
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          auth_header="$(printf 'x-access-token:%s' "${GH_TOKEN}" | base64 -w0)"
+          echo "::add-mask::${auth_header}"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: Basic ${auth_header}" fetch --force origin "${GITHUB_REF}"
+          git checkout --detach FETCH_HEAD
+
+      - name: Show Node.js toolchain
+        run: |
+          node --version
+          npm --version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run translation and unit tests
+        run: npm test
+
+      - name: Build production frontend
+        run: npm run build
+
+      - name: Install visual-test browsers
+        run: npx playwright install --with-deps chromium webkit
+
+      - name: Run desktop and mobile visual regression tests
+        run: npm run test:visual
+
+      - name: Run WebKit card-list regression test
+        run: npm run test:visual:webkit

@@ -1,0 +1,492 @@
+import clsx from 'clsx'
+import { Check, Plus, X } from 'lucide-react'
+import { useEffect, useId, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { useSettings } from '../contexts/SettingsContext'
+import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
+import CardImage from './CardImage'
+import FallbackBadges from './FallbackBadges'
+import CardStateIndicators from './CardStateIndicators'
+import { CARD_SYSTEM_TOKENS } from './card-system/tokens'
+
+export const FALLBACK_KIND_ORDER = ['data', 'price', 'image']
+
+const FALLBACK_COLORS = CARD_SYSTEM_TOKENS.border
+const NORMAL_BORDER = CARD_SYSTEM_TOKENS.border.default
+
+export function getCardFallbackKinds(card = {}) {
+  const hasOfficialArtwork = Boolean(
+    card.images_small
+    || card.images_large
+    || card.images?.small
+    || card.images?.large
+    || card.image,
+  )
+  const hasManualArtworkFallback = Boolean(card.has_custom_image_fallback)
+    || (Boolean(card.custom_image_url) && !hasOfficialArtwork)
+
+  return FALLBACK_KIND_ORDER.filter((kind) => (
+    Boolean(card?.[`${kind}_source_lang`])
+    || (kind === 'image' && hasManualArtworkFallback)
+  ))
+}
+
+export function handleKeyboardActivation(event, onClick, onSelect) {
+  if (event.target !== event.currentTarget) return false
+  if (event.key !== 'Enter' && event.key !== ' ') return false
+
+  event.preventDefault()
+  if (onClick) onClick(event)
+  else onSelect?.(event)
+  return true
+}
+
+export function getFallbackBorderGradient(kinds = [], hovered = false) {
+  const color = (kind) => FALLBACK_COLORS[kind]?.[hovered ? 'hover' : 'base'] || NORMAL_BORDER[hovered ? 'hover' : 'base']
+  const normalized = FALLBACK_KIND_ORDER.filter((kind) => kinds.includes(kind))
+
+  if (normalized.length === 0) return NORMAL_BORDER[hovered ? 'hover' : 'base']
+  if (normalized.length === 1) return color(normalized[0])
+  if (normalized.length === 2) {
+    const [first, second] = normalized
+    return `conic-gradient(from 45deg, ${color(first)} 0 46%, ${color(second)} 54% 96%, ${color(first)} 100%)`
+  }
+  return `conic-gradient(from -90deg, ${color('data')} 0 30%, ${color('price')} 36% 63%, ${color('image')} 69% 96%, ${color('data')} 100%)`
+}
+
+export function getCardSetNumber(card = {}) {
+  const setCode = card.set?.abbreviation
+    || card.set_ref?.abbreviation
+    || card.set_abbreviation
+    || card.set?.id
+    || card.set_ref?.id
+    || card.set_id
+    || ''
+  const number = card.localId || card.number || ''
+  return [String(setCode || '').toUpperCase(), number].filter(Boolean).join(' ')
+}
+
+export function withCollectionItemState(card = {}, item = {}) {
+  const quantity = Math.max(0, Number(item.quantity) || 0)
+  return {
+    ...card,
+    owned: quantity > 0,
+    owned_quantity: quantity,
+    owned_variants: quantity > 0
+      ? [{ variant: item.variant || 'Normal', quantity }]
+      : [],
+  }
+}
+
+export function shouldDimUnownedCard(card = {}, dimWhenUnowned = false) {
+  return Boolean(dimWhenUnowned && !card.owned && Number(card.owned_quantity || 0) <= 0)
+}
+
+function fallbackAriaLabel(t, kinds) {
+  if (kinds.length === 0) return undefined
+  const labels = kinds.map((kind) => {
+    const key = `fallback.${kind}`
+    const translated = t(key)
+    return translated === key ? kind : translated
+  })
+  return labels.join(', ')
+}
+
+export function CardArtworkFrame({
+  card,
+  image,
+  alt,
+  variantEffectSource = card,
+  interactive = false,
+  onClick,
+  onSelect,
+  onAdd,
+  selected = false,
+  unavailableReason = '',
+  showStateIndicators = true,
+  stateIndicatorProps = {},
+  dimmed = false,
+  thumbnail = false,
+  onLoadingChange,
+  overlay,
+  className = '',
+  imageClassName = 'w-full h-full object-cover',
+  loading = 'lazy',
+}) {
+  const { t } = useSettings()
+  const kinds = getCardFallbackKinds(card)
+  const label = fallbackAriaLabel(t, kinds)
+  const actionLabel = [alt, label].filter(Boolean).join(' · ') || undefined
+
+  return (
+    <div
+      className={clsx(
+        'unified-card-frame',
+        interactive && 'unified-card-frame-interactive',
+        unavailableReason && 'unified-card-frame-unavailable',
+        thumbnail && 'unified-card-frame-thumbnail',
+        className,
+      )}
+      style={{
+        '--card-frame-gradient': getFallbackBorderGradient(kinds),
+        '--card-frame-hover-gradient': getFallbackBorderGradient(kinds, true),
+      }}
+      title={label}
+    >
+      <div className="unified-card-action-layer">
+        <div className={clsx('unified-card-art', getCardVariantEffectClass(variantEffectSource))}>
+          {showStateIndicators && (
+            <CardStateIndicators
+              card={card}
+              compact
+              className="absolute left-1 right-1 top-1 z-20 sm:left-2 sm:right-2 sm:top-2"
+              {...stateIndicatorProps}
+            />
+          )}
+          {selected && (
+            <span className="unified-card-selection" aria-label={t('cardSearch.selected')}>
+              <Check size={14} strokeWidth={3} aria-hidden />
+            </span>
+          )}
+          <CardImage
+            src={image}
+            alt={alt}
+            className={imageClassName}
+            loading={loading}
+            onLoadingChange={onLoadingChange}
+            compactError={thumbnail}
+          />
+          {dimmed && <span className="unified-card-missing-overlay" aria-hidden />}
+          {overlay}
+          {unavailableReason && (
+            <span className="unified-card-unavailable-reason">{unavailableReason}</span>
+          )}
+        </div>
+        {interactive && (
+          <button
+            type="button"
+            className="unified-card-primary-action"
+            onClick={onClick || onSelect}
+            disabled={Boolean(unavailableReason)}
+            aria-disabled={unavailableReason ? true : undefined}
+            aria-label={actionLabel}
+          />
+        )}
+        {onAdd && !unavailableReason && (
+          <button
+            type="button"
+            className="unified-card-add"
+            onClick={(event) => {
+              event.stopPropagation()
+              onAdd(event)
+            }}
+            aria-label={`${t('common.add')} ${alt || ''}`.trim()}
+          >
+            <Plus size={20} strokeWidth={2.5} aria-hidden />
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Shared artwork primitive for rows, tables, rankings, trades, and other
+ * compact displays. Sizing can vary by context; fit and frame treatment do not.
+ */
+export function CompactCardArtwork({
+  card = {},
+  image,
+  alt,
+  variantEffectSource,
+  className = '',
+  ...frameProps
+}) {
+  return (
+    <div className={clsx('unified-card-compact-artwork flex-shrink-0', className)}>
+      <CardArtworkFrame
+        card={card}
+        image={image}
+        alt={alt}
+        variantEffectSource={variantEffectSource}
+        showStateIndicators={false}
+        imageClassName="h-full w-full object-contain"
+        thumbnail
+        {...frameProps}
+      />
+    </div>
+  )
+}
+
+export function UnifiedCardDialog({
+  card,
+  image,
+  variantEffectSource = card,
+  price,
+  tabs = [],
+  activeTab,
+  onTabChange,
+  onClose,
+  closeButtonRef,
+  children,
+  className = '',
+}) {
+  const { t } = useSettings()
+  const internalCloseButtonRef = useRef(null)
+  const resolvedCloseButtonRef = closeButtonRef || internalCloseButtonRef
+  const onCloseRef = useRef(onClose)
+  const dialogRef = useRef(null)
+  const tabIdPrefix = useId().replace(/:/g, '')
+
+  useEffect(() => {
+    onCloseRef.current = onClose
+  }, [onClose])
+
+  useEffect(() => {
+    if (!card) return undefined
+    const previousFocus = document.activeElement
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        onCloseRef.current?.()
+        return
+      }
+      if (event.key !== 'Tab') return
+
+      const dialogElement = dialogRef.current
+      const focusable = [...(dialogElement?.querySelectorAll(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) || [])].filter((element) => {
+        if (element.tabIndex < 0 || element.hasAttribute('hidden')) return false
+        for (let node = element; node && node !== dialogElement; node = node.parentElement) {
+          if (node.matches('[aria-hidden="true"], [inert]')) return false
+          const style = window.getComputedStyle(node)
+          if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) return false
+        }
+        return element.getClientRects().length > 0
+      })
+      if (focusable.length === 0) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    resolvedCloseButtonRef.current?.focus()
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      previousFocus?.focus?.()
+    }
+  }, [card?.id, resolvedCloseButtonRef])
+
+  if (!card) return null
+
+  const setNumber = getCardSetNumber(card)
+  const dialog = (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm sm:p-6"
+      onClick={onClose}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={card.name}
+        className={clsx(
+          'relative max-h-[calc(100dvh-1.5rem)] w-full max-w-6xl overflow-y-auto rounded-2xl border border-white/10 bg-bg-surface shadow-2xl sm:max-h-[calc(100dvh-3rem)]',
+          className,
+        )}
+        onClick={event => event.stopPropagation()}
+      >
+        <button
+          ref={resolvedCloseButtonRef}
+          type="button"
+          onClick={onClose}
+          className="absolute right-3 top-3 z-50 grid h-9 w-9 place-items-center rounded-full border border-white/15 bg-black/75 text-white shadow-lg transition-colors hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red"
+          aria-label={t('common.close')}
+        >
+          <X size={18} aria-hidden />
+        </button>
+
+        <div className="grid gap-4 p-4 sm:grid-cols-[minmax(220px,300px)_minmax(0,1fr)] sm:gap-6 sm:p-6">
+          <aside className="min-w-0 sm:border-r sm:border-white/8 sm:pr-6">
+            <div className="flex items-start gap-4 sm:block">
+              <div className="w-24 flex-shrink-0 sm:w-full">
+                <CardArtworkFrame
+                  card={card}
+                  image={image}
+                  alt={card.name}
+                  variantEffectSource={variantEffectSource}
+                  showStateIndicators={false}
+                  loading="eager"
+                />
+              </div>
+              <div className="min-w-0 flex-1 pr-9 sm:mt-4 sm:pr-0">
+                <h2 className="break-words text-base font-black text-text-primary sm:text-xl">{card.name}</h2>
+                {(setNumber || price) && (
+                  <div className="mt-1.5 flex min-w-0 items-center justify-between gap-2">
+                    <span className="truncate font-mono text-xs font-black text-brand-red">{setNumber}</span>
+                    {price && <span className="shrink-0 text-sm font-black text-green">{price}</span>}
+                  </div>
+                )}
+                {card.rarity && <p className="mt-1 text-xs text-text-muted">{card.rarity}</p>}
+                <FallbackBadges card={card} className="mt-2" />
+              </div>
+            </div>
+          </aside>
+
+          <section className="min-w-0">
+            {tabs.length > 0 && (
+              <div
+                className="-mx-1 mb-4 flex gap-1 overflow-x-auto px-1 pb-1 pr-10"
+                role="tablist"
+                aria-label={card.name}
+              >
+                {tabs.map((tab, index) => (
+                  <button
+                    key={tab.id}
+                    id={`${tabIdPrefix}-tab-${tab.id}`}
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === tab.id}
+                    aria-controls={`${tabIdPrefix}-tabpanel`}
+                    tabIndex={activeTab === tab.id ? 0 : -1}
+                    onClick={() => onTabChange?.(tab.id)}
+                    onKeyDown={(event) => {
+                      let nextIndex = null
+                      if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabs.length
+                      else if (event.key === 'ArrowLeft') nextIndex = (index - 1 + tabs.length) % tabs.length
+                      else if (event.key === 'Home') nextIndex = 0
+                      else if (event.key === 'End') nextIndex = tabs.length - 1
+                      if (nextIndex === null) return
+                      event.preventDefault()
+                      const nextTab = tabs[nextIndex]
+                      onTabChange?.(nextTab.id)
+                      dialogRef.current?.querySelector(`#${tabIdPrefix}-tab-${nextTab.id}`)?.focus()
+                    }}
+                    className={clsx(
+                      'inline-flex min-h-9 shrink-0 items-center justify-center rounded-lg px-3 py-2 text-center text-xs font-bold leading-tight transition-colors',
+                      activeTab === tab.id
+                        ? 'bg-brand-red text-white shadow-[0_0_14px_rgba(227,0,11,0.3)]'
+                        : 'bg-bg-card text-text-secondary hover:bg-bg-elevated hover:text-text-primary',
+                    )}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div
+              role={tabs.length > 0 ? 'tabpanel' : undefined}
+              id={tabs.length > 0 ? `${tabIdPrefix}-tabpanel` : undefined}
+              aria-labelledby={tabs.length > 0 ? `${tabIdPrefix}-tab-${activeTab}` : undefined}
+            >
+              {children}
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  )
+
+  return createPortal(dialog, document.body)
+}
+
+export function CardCaption({
+  card,
+  name = card?.name,
+  setNumber = getCardSetNumber(card),
+  price,
+  languageLabel,
+  captionAccessory,
+  custom = card?.is_custom,
+  loading = false,
+  className = '',
+}) {
+  return (
+    <div className={clsx('unified-card-caption', className)}>
+      {loading ? (
+        <>
+          <div className="unified-card-caption-skeleton h-3 w-3/5 rounded" />
+          <div className="unified-card-caption-skeleton mt-2 h-2 w-2/5 rounded" />
+        </>
+      ) : (
+        <>
+          <div className="flex h-5 min-w-0 items-center gap-1.5 overflow-hidden">
+            {name && <h3 className="unified-card-caption-name" title={name}>{name}</h3>}
+            {custom && <span className="badge-yellow shrink-0 px-1.5 py-0.5 text-[9px]">Custom</span>}
+            {languageLabel && <span className="badge-gray shrink-0 px-1.5 py-0.5 text-[9px]">{languageLabel}</span>}
+            {captionAccessory && <span className="ml-auto flex shrink-0 items-center">{captionAccessory}</span>}
+          </div>
+          {(setNumber || price) && (
+            <div className="mt-1 flex h-4 min-w-0 items-center justify-between gap-2 overflow-hidden">
+              <span className="truncate font-mono text-[11px] font-bold text-brand-red">{setNumber}</span>
+              {price && <span className="shrink-0 text-xs font-extrabold text-green">{price}</span>}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+export default function UnifiedCard({
+  card,
+  image,
+  price,
+  languageLabel,
+  captionAccessory,
+  variantEffectSource = card,
+  onClick,
+  onSelect,
+  onAdd,
+  interactive = Boolean(onClick || onSelect),
+  selected = false,
+  unavailableReason = '',
+  showStateIndicators = true,
+  stateIndicatorProps,
+  dimWhenUnowned = false,
+  overlay,
+  compact = false,
+  loading = 'lazy',
+  className = '',
+}) {
+  const [artworkLoading, setArtworkLoading] = useState(true)
+
+  return (
+    <div className={clsx('min-w-0', className)}>
+      <CardArtworkFrame
+        card={card}
+        image={image}
+        alt={card?.name}
+        variantEffectSource={variantEffectSource}
+        interactive={interactive}
+        onClick={onClick}
+        onSelect={onSelect}
+        onAdd={onAdd}
+        selected={selected}
+        unavailableReason={unavailableReason}
+        showStateIndicators={showStateIndicators}
+        stateIndicatorProps={stateIndicatorProps}
+        dimmed={shouldDimUnownedCard(card, dimWhenUnowned)}
+        onLoadingChange={setArtworkLoading}
+        overlay={overlay}
+        loading={loading}
+      />
+      {!compact && (
+        <CardCaption
+          card={card}
+          price={price}
+          languageLabel={languageLabel}
+          captionAccessory={captionAccessory}
+          loading={artworkLoading}
+        />
+      )}
+    </div>
+  )
+}
