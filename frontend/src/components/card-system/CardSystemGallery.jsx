@@ -159,6 +159,8 @@ function HomeRankingExample() {
 
 export default function CardSystemGallery() {
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [dialogTab, setDialogTab] = useState('overview')
+  const [interactionResult, setInteractionResult] = useState('')
   const [compactRevision, setCompactRevision] = useState(0)
   const [lazyStressMounted, setLazyStressMounted] = useState(false)
 
@@ -256,9 +258,17 @@ export default function CardSystemGallery() {
               <CardDisplay card={CARDS.emma} image="/__card-system-missing-image.jpg" loading="eager" />
             </GalleryExample>
             <GalleryExample label="Hover · add to collection" testId="hover-add-state">
-              <CardDisplay className="gallery-hover-add" card={CARDS.beedrill} image={imageFor(CARDS.beedrill)} onClick={() => {}} onAdd={() => {}} loading="eager" />
+              <CardDisplay
+                className="gallery-hover-add"
+                card={CARDS.beedrill}
+                image={imageFor(CARDS.beedrill)}
+                onClick={() => setInteractionResult('details')}
+                onAdd={() => setInteractionResult('add')}
+                loading="eager"
+              />
             </GalleryExample>
           </div>
+          {interactionResult && <output className="sr-only" data-testid="interaction-result">{interactionResult}</output>}
         </section>
 
         <section className={sectionClassName} data-testid="display-variants">
@@ -311,7 +321,7 @@ export default function CardSystemGallery() {
           </div>
         </section>
 
-        <button type="button" className="btn-primary" onClick={() => setDialogOpen(true)} data-testid="open-card-dialog">
+        <button type="button" className="btn-primary" onClick={() => { setDialogTab('overview'); setDialogOpen(true) }} data-testid="open-card-dialog">
           Open shared card dialog
         </button>
         <button
@@ -356,7 +366,8 @@ export default function CardSystemGallery() {
           card={FALLBACK_CARD}
           image={imageFor(FALLBACK_CARD)}
           tabs={[{ id: 'overview', label: 'Overview' }, { id: 'prices', label: 'Prices' }]}
-          activeTab="overview"
+          activeTab={dialogTab}
+          onTabChange={setDialogTab}
           onClose={() => setDialogOpen(false)}
         >
           <div className="rounded-xl border border-border bg-bg-card p-4 text-sm text-text-secondary">

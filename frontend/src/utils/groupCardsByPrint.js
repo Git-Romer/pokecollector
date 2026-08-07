@@ -18,6 +18,7 @@ export function groupCardsByPrint(cards) {
         data_source_lang: c.data_source_lang,
         price_source_lang: c.price_source_lang,
         image_source_lang: c.image_source_lang,
+        has_custom_image_fallback: c.has_custom_image_fallback,
         prints: [],
       }
       byId.set(c.id, tile)

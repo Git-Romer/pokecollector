@@ -135,6 +135,26 @@ class SerializationTests(unittest.TestCase):
         self.assertIsNone(detail["cards"][0]["market_value"])
         self.assertIsNone(detail["total_value"])
 
+    def test_public_card_includes_fallback_metadata_without_exposing_custom_url(self):
+        db = self._db()
+        _, binder = self._seed(db, show_values=False)
+        card = db.query(Card).filter(Card.id == "sv1-1_en").one()
+        card.data_source_lang = "fr"
+        card.price_source_lang = "de"
+        card.image_source_lang = "ja"
+        card.images_small = None
+        card.images_large = None
+        card.custom_image_url = "https://private.example/manual.webp"
+        db.commit()
+
+        public_card = pp.serialize_binder_detail(db, binder, show_values=False)["cards"][0]
+
+        self.assertEqual(public_card["data_source_lang"], "fr")
+        self.assertEqual(public_card["price_source_lang"], "de")
+        self.assertEqual(public_card["image_source_lang"], "ja")
+        self.assertTrue(public_card["has_custom_image_fallback"])
+        self.assertNotIn("custom_image_url", public_card)
+
     def test_public_card_proxy_url_encodes_custom_identifiers(self):
         self.assertEqual(
             pp._public_card_image_url("custom card#1"),
@@ -153,7 +173,7 @@ class SerializationTests(unittest.TestCase):
         _, binder = self._seed(db, show_values=True)
         detail = pp.serialize_binder_detail(db, binder, show_values=True)
         card = detail["cards"][0]
-        for banned in ("purchase_price", "condition", "user_id", "username"):
+        for banned in ("purchase_price", "condition", "user_id", "username", "custom_image_url"):
             self.assertNotIn(banned, card)
 
     def test_serialized_card_includes_variant(self):

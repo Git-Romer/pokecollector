@@ -11,6 +11,7 @@ import { normalizeSearchText, textIncludes } from '../utils/textSearch'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import { BINDER_SORT_OPTIONS, sortBinderCards } from '../utils/binderCards'
+import { partitionSettledResults } from '../utils/settledResults'
 import { CardDialog, CardDisplay, CardLegend, withCollectionItemState } from '../components/card-system'
 
 const SPRITE_BASE_URL = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated'
@@ -202,21 +203,31 @@ export default function BinderDetail() {
   }, [collectionData])
 
   const pickerSelectionMutation = useMutation({
-    mutationFn: async () => {
-      if (isWishlist) {
-        await Promise.all(selectedPickerIds.map(cardId => addCardToBinder(parseInt(binderId), cardId, 1)))
+    mutationFn: async (pickerIds) => {
+      const requests = pickerIds.map(id => (
+        isWishlist
+          ? addCardToBinder(parseInt(binderId), id, 1)
+          : addCollectionItemToBinder(parseInt(binderId), id)
+      ))
+      const results = await Promise.allSettled(requests)
+      return partitionSettledResults(pickerIds, results)
+    },
+    onSuccess: ({ succeededIds, failed }) => {
+      setSelectedPickerIds(current => current.filter(id => !succeededIds.includes(id)))
+      if (failed.length === 0) {
+        toast.success(`${t('common.add')} ${succeededIds.length} ✓`)
+      } else if (succeededIds.length > 0) {
+        toast.error(`${succeededIds.length} ✓ · ${failed.length} ${t('card.addFailed')}`)
       } else {
-        await Promise.all(selectedPickerIds.map(itemId => addCollectionItemToBinder(parseInt(binderId), itemId)))
+        const detail = failed[0]?.reason?.response?.data?.detail
+        toast.error(detail || t('card.addFailed'))
       }
     },
-    onSuccess: () => {
-      toast.success(`${t('common.add')} ${selectedPickerIds.length} ✓`)
-      setSelectedPickerIds([])
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['binder-cards', binderId] })
       queryClient.invalidateQueries({ queryKey: ['binders'] })
       invalidateTcgdexFilterLanguages(queryClient)
     },
-    onError: (error) => toast.error(error?.response?.data?.detail || t('card.addFailed')),
   })
 
   const togglePickerSelection = (id) => {
@@ -557,7 +568,7 @@ export default function BinderDetail() {
               type="button"
               className="btn-primary-sm hidden sm:inline-flex"
               disabled={selectedPickerIds.length === 0 || pickerSelectionMutation.isPending}
-              onClick={() => pickerSelectionMutation.mutate()}
+              onClick={() => pickerSelectionMutation.mutate([...selectedPickerIds])}
             >
               {t('common.add')} {selectedPickerIds.length > 0 ? `(${selectedPickerIds.length})` : ''}
             </button>
@@ -662,7 +673,7 @@ export default function BinderDetail() {
               type="button"
               className="btn-primary-sm justify-center"
               disabled={selectedPickerIds.length === 0 || pickerSelectionMutation.isPending}
-              onClick={() => pickerSelectionMutation.mutate()}
+              onClick={() => pickerSelectionMutation.mutate([...selectedPickerIds])}
             >
               {t('common.add')} {selectedPickerIds.length > 0 ? `(${selectedPickerIds.length})` : ''}
             </button>

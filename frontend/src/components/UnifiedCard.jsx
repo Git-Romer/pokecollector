@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { Check, Plus, X } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useSettings } from '../contexts/SettingsContext'
 import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
@@ -22,12 +22,23 @@ export function getCardFallbackKinds(card = {}) {
     || card.images?.large
     || card.image,
   )
-  const hasManualArtworkFallback = Boolean(card.custom_image_url) && !hasOfficialArtwork
+  const hasManualArtworkFallback = Boolean(card.has_custom_image_fallback)
+    || (Boolean(card.custom_image_url) && !hasOfficialArtwork)
 
   return FALLBACK_KIND_ORDER.filter((kind) => (
     Boolean(card?.[`${kind}_source_lang`])
     || (kind === 'image' && hasManualArtworkFallback)
   ))
+}
+
+export function handleKeyboardActivation(event, onClick, onSelect) {
+  if (event.target !== event.currentTarget) return false
+  if (event.key !== 'Enter' && event.key !== ' ') return false
+
+  event.preventDefault()
+  if (onClick) onClick(event)
+  else onSelect?.(event)
+  return true
 }
 
 export function getFallbackBorderGradient(kinds = [], hovered = false) {
@@ -107,14 +118,7 @@ export function CardArtworkFrame({
   const label = fallbackAriaLabel(t, kinds)
   const handleKeyDown = (event) => {
     if (!interactive || unavailableReason) return
-    if (event.key === 'Enter') {
-      event.preventDefault()
-      if (onClick) onClick(event)
-      else onSelect?.(event)
-    } else if (event.key === ' ' && onSelect) {
-      event.preventDefault()
-      onSelect(event)
-    }
+    handleKeyboardActivation(event, onClick, onSelect)
   }
 
   return (
@@ -130,7 +134,7 @@ export function CardArtworkFrame({
         '--card-frame-gradient': getFallbackBorderGradient(kinds),
         '--card-frame-hover-gradient': getFallbackBorderGradient(kinds, true),
       }}
-      onClick={interactive && !unavailableReason ? onClick : undefined}
+      onClick={interactive && !unavailableReason ? (onClick || onSelect) : undefined}
       onKeyDown={handleKeyDown}
       role={interactive ? 'button' : undefined}
       tabIndex={interactive && !unavailableReason ? 0 : undefined}
@@ -228,6 +232,8 @@ export function UnifiedCardDialog({
   const internalCloseButtonRef = useRef(null)
   const resolvedCloseButtonRef = closeButtonRef || internalCloseButtonRef
   const onCloseRef = useRef(onClose)
+  const dialogRef = useRef(null)
+  const tabIdPrefix = useId().replace(/:/g, '')
 
   useEffect(() => {
     onCloseRef.current = onClose
@@ -237,7 +243,26 @@ export function UnifiedCardDialog({
     if (!card) return undefined
     const previousFocus = document.activeElement
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape') onCloseRef.current?.()
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        onCloseRef.current?.()
+        return
+      }
+      if (event.key !== 'Tab') return
+
+      const focusable = [...(dialogRef.current?.querySelectorAll(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) || [])].filter(element => !element.hasAttribute('hidden'))
+      if (focusable.length === 0) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
     }
     document.addEventListener('keydown', handleKeyDown)
     resolvedCloseButtonRef.current?.focus()
@@ -256,6 +281,7 @@ export function UnifiedCardDialog({
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label={card.name}
@@ -309,13 +335,28 @@ export function UnifiedCardDialog({
                 role="tablist"
                 aria-label={card.name}
               >
-                {tabs.map(tab => (
+                {tabs.map((tab, index) => (
                   <button
                     key={tab.id}
+                    id={`${tabIdPrefix}-tab-${tab.id}`}
                     type="button"
                     role="tab"
                     aria-selected={activeTab === tab.id}
+                    aria-controls={`${tabIdPrefix}-tabpanel-${tab.id}`}
+                    tabIndex={activeTab === tab.id ? 0 : -1}
                     onClick={() => onTabChange?.(tab.id)}
+                    onKeyDown={(event) => {
+                      let nextIndex = null
+                      if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabs.length
+                      else if (event.key === 'ArrowLeft') nextIndex = (index - 1 + tabs.length) % tabs.length
+                      else if (event.key === 'Home') nextIndex = 0
+                      else if (event.key === 'End') nextIndex = tabs.length - 1
+                      if (nextIndex === null) return
+                      event.preventDefault()
+                      const nextTab = tabs[nextIndex]
+                      onTabChange?.(nextTab.id)
+                      dialogRef.current?.querySelector(`#${tabIdPrefix}-tab-${nextTab.id}`)?.focus()
+                    }}
                     className={clsx(
                       'inline-flex min-h-9 shrink-0 items-center justify-center rounded-lg px-3 py-2 text-center text-xs font-bold leading-tight transition-colors',
                       activeTab === tab.id
@@ -328,7 +369,13 @@ export function UnifiedCardDialog({
                 ))}
               </div>
             )}
-            {children}
+            <div
+              role={tabs.length > 0 ? 'tabpanel' : undefined}
+              id={tabs.length > 0 ? `${tabIdPrefix}-tabpanel-${activeTab}` : undefined}
+              aria-labelledby={tabs.length > 0 ? `${tabIdPrefix}-tab-${activeTab}` : undefined}
+            >
+              {children}
+            </div>
           </section>
         </div>
       </div>

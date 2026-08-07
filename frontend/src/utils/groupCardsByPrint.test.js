@@ -35,6 +35,22 @@ describe('groupCardsByPrint', () => {
     expect(out[0].variantCount).toBe(1)
   })
 
+  it('preserves public fallback metadata on the grouped tile', () => {
+    const out = groupCardsByPrint([card({
+      data_source_lang: 'fr',
+      price_source_lang: 'en',
+      image_source_lang: 'de',
+      has_custom_image_fallback: true,
+    })])
+
+    expect(out[0]).toMatchObject({
+      data_source_lang: 'fr',
+      price_source_lang: 'en',
+      image_source_lang: 'de',
+      has_custom_image_fallback: true,
+    })
+  })
+
   it('sums value across prints as market_value * quantity', () => {
     const out = groupCardsByPrint([
       card({ variant: 'Normal', quantity: 2, market_value: 5 }),

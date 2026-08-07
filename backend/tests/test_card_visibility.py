@@ -311,6 +311,28 @@ class CardVisibilityTests(unittest.TestCase):
         self.assertEqual(digital_binder_card.required_quantity, 3)
         self.assertEqual(self.db.query(WishlistItem).filter(WishlistItem.card_id == "A1-1_en").count(), 1)
 
+    def test_social_best_card_has_dialog_id_and_fallback_metadata(self):
+        card = self.db.query(Card).filter(Card.id == "sv2-1_fr").one()
+        card.data_source_lang = "en"
+        card.price_source_lang = "de"
+        card.image_source_lang = "ja"
+        card.custom_image_url = "https://private.example/manual.webp"
+        card.images_small = None
+        card.images_large = None
+        card.price_trend = 12.5
+        self.db.commit()
+
+        leaderboard = get_leaderboard(price_field="price_trend", db=self.db, current_user=self.user)
+        best = next(entry for entry in leaderboard if entry["user_id"] == self.user.id)["most_valuable_card"]
+
+        self.assertEqual(best["id"], "sv2-1_fr")
+        self.assertEqual(best["card_id"], "sv2-1_fr")
+        self.assertEqual(best["data_source_lang"], "en")
+        self.assertEqual(best["price_source_lang"], "de")
+        self.assertEqual(best["image_source_lang"], "ja")
+        self.assertTrue(best["has_custom_image_fallback"])
+        self.assertNotIn("custom_image_url", best)
+
     def test_full_sync_price_plan_includes_all_cards_in_pinned_set(self):
         plan = _price_sync_plan(self.db, force=True, include_pinned_sets=True)
 

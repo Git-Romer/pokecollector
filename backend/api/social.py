@@ -215,6 +215,11 @@ def _load_user_stats(db: Session, user_ids: list[int] | None = None, price_field
         Card.id.label("card_db_id"),
         Card.name,
         Card.images_small,
+        Card.images_large,
+        Card.data_source_lang,
+        Card.price_source_lang,
+        Card.image_source_lang,
+        Card.custom_image_url,
         Card.price_market,
         Card.price_low,
         Card.price_trend,
@@ -302,10 +307,19 @@ def _load_user_stats(db: Session, user_ids: list[int] | None = None, price_field
         if rows:
             most_valuable_row = max(rows, key=lambda row: _get_price(row))
             most_valuable = {
+                "id": most_valuable_row.card_db_id,
+                "card_id": most_valuable_row.card_db_id,
                 "name": most_valuable_row.name,
                 "images_small": most_valuable_row.images_small,
                 "price_market": round(_get_price(most_valuable_row), 2),
                 "set_id": most_valuable_row.set_id,
+                "data_source_lang": most_valuable_row.data_source_lang,
+                "price_source_lang": most_valuable_row.price_source_lang,
+                "image_source_lang": most_valuable_row.image_source_lang,
+                "has_custom_image_fallback": bool(
+                    most_valuable_row.custom_image_url
+                    and not (most_valuable_row.images_small or most_valuable_row.images_large)
+                ),
             }
 
         owned_by_set = defaultdict(set)
@@ -407,6 +421,11 @@ def compare_users(
             CollectionItem.quantity,
             Card.name,
             Card.images_small,
+            Card.images_large,
+            Card.data_source_lang,
+            Card.price_source_lang,
+            Card.image_source_lang,
+            Card.custom_image_url,
         ).join(
             Card, CollectionItem.card_id == Card.id
         ).filter(
@@ -421,6 +440,11 @@ def compare_users(
             CollectionItem.quantity,
             Card.name,
             Card.images_small,
+            Card.images_large,
+            Card.data_source_lang,
+            Card.price_source_lang,
+            Card.image_source_lang,
+            Card.custom_image_url,
         ).join(
             Card, CollectionItem.card_id == Card.id
         ).filter(
@@ -466,6 +490,12 @@ def compare_users(
                 "card_id": card_id,
                 "card_name": row.name,
                 "images_small": row.images_small,
+                "data_source_lang": row.data_source_lang,
+                "price_source_lang": row.price_source_lang,
+                "image_source_lang": row.image_source_lang,
+                "has_custom_image_fallback": bool(
+                    row.custom_image_url and not (row.images_small or row.images_large)
+                ),
                 "owner_username": owner_stats["username"],
                 "wants_username": wants_stats["username"],
             })

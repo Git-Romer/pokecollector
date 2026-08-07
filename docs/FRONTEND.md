@@ -174,7 +174,7 @@ The system centralizes card structure, borders, image handling, badges, ownershi
 
 Approved `CardDisplay` variants include `grid`, `carousel`, `ranking`, `selectable`, `artwork`, and `compact-artwork`. A development-only component gallery is available at `/__card-system`.
 
-See [`CARD_SYSTEM.md`](CARD_SYSTEM.md) for usage, design tokens, automated enforcement, and the contributor-friendly process for proposing a new shared variant.
+See [`CARD_SYSTEM.md`](CARD_SYSTEM.md) for usage, design tokens, review guidance, and the contributor-friendly process for proposing a new shared variant.
 
 `CardItem.jsx`, `UnifiedCard.jsx`, and the low-level state components remain implementation details of this public system and should not be imported by feature pages.
 

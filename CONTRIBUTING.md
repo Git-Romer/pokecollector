@@ -38,9 +38,9 @@ This keeps new features visually consistent without asking contributors to memor
 New visual ideas are encouraged. If an existing variant does not fit the feature, explain the difference and consider whether the idea should become a reusable shared variant:
 
 1. Describe why the existing variants do not fit.
-2. Add the behavior to the public card-system module.
-3. Add the new state or variant to the component gallery.
-4. Update its tests and documentation.
+2. Decide with the reviewer whether the idea is feature-specific or broadly reusable.
+3. For a reusable idea, add it to the public card-system module and component gallery.
+4. Update the relevant tests and documentation for either approach.
 
 That process gives contributors room to evolve the design while helping accepted improvements remain consistent across features. The guide is reviewed by maintainers; there is no automated rule rejecting an alternative implementation merely because it is new.
 

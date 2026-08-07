@@ -335,7 +335,8 @@ export default function Wishlist() {
                       <th className="text-left px-4 py-3 text-text-muted font-medium">{t('common.rarity')}</th>
                       <th className="text-center px-4 py-3 text-text-muted font-medium">{t('common.quantity')}</th>
                       <th className="text-right px-4 py-3 text-text-muted font-medium">{t('wishlist.marketPrice')}</th>
-                      <th className="text-center px-4 py-3 text-text-muted font-medium">{t('wishlist.belowLabel')}</th>
+                      <th className="text-center px-4 py-3 text-text-muted font-medium">{t('wishlist.priceAlerts')}</th>
+                      <th className="text-center px-4 py-3 text-text-muted font-medium">{t('wishlist.lastNotified')}</th>
                       <th className="px-4 py-3" />
                     </tr>
                   </thead>
@@ -386,10 +387,13 @@ export default function Wishlist() {
                               <WishlistItemEditor item={item} onDone={() => setEditingId(null)} />
                             ) : (
                               <div className="flex items-center justify-center gap-3">
-                                {item.price_alert_below && (
-                                  <span className="badge badge-green text-xs">{formatPrice(item.price_alert_below)}</span>
+                                {item.price_alert_above && (
+                                  <span className="badge badge-yellow text-xs">↑ {formatPrice(item.price_alert_above)}</span>
                                 )}
-                                {!item.price_alert_below && (
+                                {item.price_alert_below && (
+                                  <span className="badge badge-blue text-xs">↓ {formatPrice(item.price_alert_below)}</span>
+                                )}
+                                {!item.price_alert_above && !item.price_alert_below && (
                                   <span className="text-text-muted text-xs">{t('wishlist.noAlerts')}</span>
                                 )}
                                 <button onClick={() => setEditingId(item.id)} className="text-text-muted hover:text-text-primary transition-colors">
@@ -397,6 +401,12 @@ export default function Wishlist() {
                                 </button>
                               </div>
                             )}
+                          </td>
+                          <td className="px-4 py-3 text-center text-xs text-text-muted">
+                            {item.notified_at
+                              ? new Date(item.notified_at).toLocaleDateString()
+                              : <span className="text-text-muted">{t('wishlist.never')}</span>
+                            }
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-1 justify-end">

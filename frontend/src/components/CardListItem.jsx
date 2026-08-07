@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { CompactCardArtwork } from './UnifiedCard'
+import { CompactCardArtwork, handleKeyboardActivation } from './UnifiedCard'
 
 export function CompactCardIdentity({
   image,
@@ -95,7 +95,7 @@ export default function CardListItem({
       onClick={onClick}
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
-      onKeyDown={onClick ? (e) => e.key === 'Enter' && onClick(e) : undefined}
+      onKeyDown={onClick ? event => handleKeyboardActivation(event, onClick) : undefined}
     >
       <CompactCardIdentity
         className="flex-1"

@@ -1421,8 +1421,9 @@ export default function Collection() {
                   </tbody>
                   <tfoot>
                     <tr className="border-t border-border bg-bg/50">
-                      <td colSpan={6} className="px-4 py-3 text-text-muted text-sm">{filtered.length} {t('collection.filtered')}</td>
-                      <td className="px-4 py-3 text-right font-bold text-green">{formatPrice(totalValue)}</td>
+                      <td colSpan={5} className="px-4 py-3 text-text-muted text-sm">{filtered.length} {t('collection.filtered')}</td>
+                      <td className="px-4 py-3 text-right font-bold text-green" aria-label={t('collection.totalValue')}>{formatPrice(totalValue)}</td>
+                      <td />
                       <td />
                     </tr>
                   </tfoot>

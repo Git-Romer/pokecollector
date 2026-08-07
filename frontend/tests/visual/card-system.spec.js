@@ -48,6 +48,47 @@ test('shared card dialog remains consistent', async ({ page }) => {
   await expect(dialog).toHaveScreenshot('card-system-dialog.png')
 })
 
+test('shared card keyboard and touch paths activate the intended action', async ({ page }) => {
+  await waitForGallery(page)
+  const card = page.getByTestId('hover-add-state')
+  const frame = card.locator('.unified-card-frame')
+  const add = card.locator('.unified-card-add')
+
+  await frame.focus()
+  await page.keyboard.press('Space')
+  await expect(page.getByTestId('interaction-result')).toHaveText('details')
+
+  await add.focus()
+  await page.keyboard.press('Enter')
+  await expect(page.getByTestId('interaction-result')).toHaveText('add')
+
+  if (await page.evaluate(() => matchMedia('(hover: none), (pointer: coarse)').matches)) {
+    await frame.tap()
+    await expect(page.getByTestId('interaction-result')).toHaveText('details')
+  }
+})
+
+test('shared dialog traps focus and provides keyboard tab navigation', async ({ page }) => {
+  await waitForGallery(page)
+  await page.getByTestId('open-card-dialog').click()
+  const dialog = page.getByRole('dialog')
+  const close = dialog.getByRole('button', { name: /close/i })
+  const overview = dialog.getByRole('tab', { name: 'Overview' })
+  const prices = dialog.getByRole('tab', { name: 'Prices' })
+
+  await overview.focus()
+  await page.keyboard.press('ArrowRight')
+  await expect(prices).toBeFocused()
+  await expect(prices).toHaveAttribute('aria-selected', 'true')
+  await expect(prices).toHaveAttribute('aria-controls', /tabpanel-prices$/)
+
+  await close.focus()
+  await page.keyboard.press('Shift+Tab')
+  await expect(prices).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(close).toBeFocused()
+})
+
 test('lazy compact artwork loads again after a cached view remount', async ({ page }) => {
   await waitForGallery(page)
   const compact = page.getByTestId('compact-card-variants')

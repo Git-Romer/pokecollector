@@ -8,6 +8,7 @@ import {
   getCardFallbackKinds,
   getCardSetNumber,
   getFallbackBorderGradient,
+  handleKeyboardActivation,
   shouldDimUnownedCard,
   withCollectionItemState,
 } from './UnifiedCard'
@@ -78,6 +79,39 @@ describe('CardArtworkFrame', () => {
     expect(markup).toContain('unified-card-selection')
     expect(markup).toContain('lucide-check')
   })
+
+  it('marks unavailable artwork as disabled and removes it from keyboard order', () => {
+    const markup = renderToStaticMarkup(createElement(CardArtworkFrame, {
+      card: { id: 'sv8-001', name: 'Pikachu' },
+      image: 'https://example.test/pikachu.webp',
+      interactive: true,
+      unavailableReason: 'Already assigned',
+    }))
+
+    expect(markup).toContain('aria-disabled="true"')
+    expect(markup).not.toContain('tabindex="0"')
+  })
+})
+
+describe('handleKeyboardActivation', () => {
+  it.each(['Enter', ' '])('activates the frame with %s', (key) => {
+    const onClick = vi.fn()
+    const currentTarget = {}
+    const event = { key, target: currentTarget, currentTarget, preventDefault: vi.fn() }
+
+    expect(handleKeyboardActivation(event, onClick)).toBe(true)
+    expect(event.preventDefault).toHaveBeenCalledOnce()
+    expect(onClick).toHaveBeenCalledWith(event)
+  })
+
+  it('ignores keyboard events from nested action buttons', () => {
+    const onClick = vi.fn()
+    const event = { key: 'Enter', target: {}, currentTarget: {}, preventDefault: vi.fn() }
+
+    expect(handleKeyboardActivation(event, onClick)).toBe(false)
+    expect(event.preventDefault).not.toHaveBeenCalled()
+    expect(onClick).not.toHaveBeenCalled()
+  })
 })
 
 describe('getCardFallbackKinds', () => {
@@ -99,6 +133,13 @@ describe('getCardFallbackKinds', () => {
       custom_image_url: 'https://example.test/card.webp',
       images_small: 'https://example.test/official.webp',
     })).toEqual([])
+  })
+
+  it('accepts a privacy-safe manual fallback signal from public APIs', () => {
+    expect(getCardFallbackKinds({
+      image: '/api/images/card/custom/small',
+      has_custom_image_fallback: true,
+    })).toEqual(['image'])
   })
 })
 
