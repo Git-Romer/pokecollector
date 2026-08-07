@@ -211,7 +211,7 @@ export default function CardImage({
         />
       )}
       {failed && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-bg-elevated p-3 text-center">
+        <div className="unified-card-image-error absolute inset-0 flex flex-col items-center justify-center gap-2 bg-bg-elevated p-3 text-center">
           {!compactError && (
             <>
               <span className="grid h-10 w-10 place-items-center rounded-full border border-brand-red/40 bg-brand-red/15 text-brand-red">

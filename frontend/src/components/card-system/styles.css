@@ -43,6 +43,7 @@
   }
   .unified-card-primary-action:focus-visible { outline: none; }
   .unified-card-primary-action:disabled { cursor: not-allowed; }
+  .unified-card-image-error { z-index: 40; }
   .unified-card-caption {
     height: var(--pc-card-caption-height);
     overflow: hidden;
@@ -145,6 +146,7 @@
     font-size: 13px;
     font-weight: 900;
     box-shadow: 0 4px 12px rgba(0,0,0,0.42);
+    pointer-events: none;
   }
   .unified-card-unavailable-reason {
     position: absolute;

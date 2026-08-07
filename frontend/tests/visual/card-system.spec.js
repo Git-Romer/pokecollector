@@ -48,7 +48,7 @@ test('shared card dialog remains consistent', async ({ page }) => {
   await expect(dialog).toHaveScreenshot('card-system-dialog.png')
 })
 
-test('shared card keyboard and touch paths activate the intended action', async ({ page }) => {
+test('shared card keyboard and touch paths activate the intended action', async ({ page }, testInfo) => {
   await waitForGallery(page)
   const card = page.getByTestId('hover-add-state')
   const frame = card.locator('.unified-card-primary-action')
@@ -62,10 +62,34 @@ test('shared card keyboard and touch paths activate the intended action', async 
   await page.keyboard.press('Enter')
   await expect(page.getByTestId('interaction-result')).toHaveText('add')
 
-  if (await page.evaluate(() => matchMedia('(hover: none), (pointer: coarse)').matches)) {
+  if (testInfo.project.use.hasTouch) {
     await frame.tap()
     await expect(page.getByTestId('interaction-result')).toHaveText('details')
   }
+})
+
+test('retry and selected markers preserve their intended pointer targets', async ({ page }, testInfo) => {
+  await waitForGallery(page)
+  const retry = page.getByTestId('image-error-state').getByRole('button', { name: /retry/i })
+  await retry.click()
+  await expect(page.getByTestId('interaction-result')).toHaveCount(0)
+
+  const selectedCard = page.getByTestId('selected-card-state')
+  const marker = selectedCard.locator('.unified-card-selection')
+  const box = await marker.boundingBox()
+  if (!box) throw new Error('Selected marker is not rendered')
+  const x = box.x + box.width / 2
+  const y = box.y + box.height / 2
+  const primary = selectedCard.locator('.unified-card-primary-action')
+  const primaryBox = await primary.boundingBox()
+  if (!primaryBox) throw new Error('Selected card action is not rendered')
+  const position = { x: x - primaryBox.x, y: y - primaryBox.y }
+  if (testInfo.project.use.hasTouch) {
+    await primary.tap({ position })
+  } else {
+    await primary.click({ position })
+  }
+  await expect(page.getByTestId('interaction-result')).toHaveText('selected')
 })
 
 test('shared dialog traps focus and provides keyboard tab navigation', async ({ page }) => {

@@ -245,8 +245,8 @@ export default function CardSystemGallery() {
             <GalleryExample label="Selectable">
               <CardDisplay variant="selectable" card={CARDS.cinccino} image={imageFor(CARDS.cinccino)} onSelect={() => {}} loading="eager" />
             </GalleryExample>
-            <GalleryExample label="Selectable, selected">
-              <CardDisplay variant="selectable" card={CARDS.tranquility} image={imageFor(CARDS.tranquility)} selected onSelect={() => {}} loading="eager" />
+            <GalleryExample label="Selectable, selected" testId="selected-card-state">
+              <CardDisplay variant="selectable" card={CARDS.tranquility} image={imageFor(CARDS.tranquility)} selected onSelect={() => setInteractionResult('selected')} loading="eager" />
             </GalleryExample>
             <GalleryExample label="Unowned / missing">
               <CardDisplay card={CARDS.ampharos} image={imageFor(CARDS.ampharos)} dimWhenUnowned loading="eager" />
@@ -254,8 +254,8 @@ export default function CardSystemGallery() {
             <GalleryExample label="Unavailable">
               <CardDisplay card={CARDS.chespin} image={imageFor(CARDS.chespin)} unavailableReason="Already used" loading="eager" />
             </GalleryExample>
-            <GalleryExample label="Image error with retry">
-              <CardDisplay card={CARDS.emma} image="/__card-system-missing-image.jpg" loading="eager" />
+            <GalleryExample label="Image error with retry" testId="image-error-state">
+              <CardDisplay card={CARDS.emma} image="/__card-system-missing-image.jpg" onClick={() => setInteractionResult('details')} loading="eager" />
             </GalleryExample>
             <GalleryExample label="Hover · add to collection" testId="hover-add-state">
               <CardDisplay
