@@ -265,7 +265,7 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
                 <div className="grid aspect-[2.5/3.5] place-items-center rounded-xl border border-dashed border-white/10 bg-bg-primary/50 text-center">
                   <div className="space-y-2 text-text-muted">
                     <Camera size={36} className="mx-auto opacity-50" aria-hidden />
-                    <p className="text-xs">{t('scanner.recognizing')}</p>
+                    <p className="text-xs">{t('scanner.yourScan')}</p>
                   </div>
                 </div>
               </div>
