@@ -984,7 +984,7 @@ const ja = {
     importCsv: 'CSV をインポート',
     importingCsv: 'インポート中...',
     exportCsv: 'CSV をエクスポート',
-    csvFormatHint: 'CSV インポートで使用: set_code,number,required_quantity,lang',
+    csvFormatHint: 'CSV インポートで使用: set_code,number,required_quantity,lang,variant,condition,collection_item_id',
     csvImportTitle: 'バインダー CSV インポート形式',
     csvImportWishlistDescription: '厳密な CSV 形式からウィッシュリストバインダーのデッキリストをインポートします。',
     csvImportCollectionDescription: 'CSV からコレクションバインダーリストをインポートします。すでに所持しているカードのみ追加されます。',

@@ -1161,7 +1161,7 @@ const en = {
     importCsv: 'Import CSV',
     importingCsv: 'Importing...',
     exportCsv: 'Export CSV',
-    csvFormatHint: 'CSV import uses: set_code,number,required_quantity,lang',
+    csvFormatHint: 'CSV import uses: set_code,number,required_quantity,lang,variant,condition,collection_item_id',
     csvImportTitle: 'Binder CSV import format',
     csvImportWishlistDescription: 'Import a wishlist binder decklist from a strict CSV format.',
     csvImportCollectionDescription: 'Import a collection binder list from CSV. Only cards you already own will be added.',

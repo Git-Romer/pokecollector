@@ -974,7 +974,7 @@ const sv = {
     importCsv: 'Importera CSV',
     importingCsv: 'Importerar...',
     exportCsv: 'Exportera CSV',
-    csvFormatHint: 'CSV-import använder: set_code,number,required_quantity,lang',
+    csvFormatHint: 'CSV-import använder: set_code,number,required_quantity,lang,variant,condition,collection_item_id',
     csvImportTitle: 'Pärm-CSV-importformat',
     csvImportWishlistDescription: 'Importera en önskelista-pärm-decklist från ett strikt CSV-format.',
     csvImportCollectionDescription: 'Importera en samlingspärmlista från CSV. Bara kort du redan äger läggs till.',

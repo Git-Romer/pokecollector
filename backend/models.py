@@ -228,14 +228,17 @@ class BinderCard(Base):
     binder_id = Column(Integer, ForeignKey("binders.id"), nullable=False)
     card_id = Column(String, ForeignKey("cards.id"), nullable=False)
     collection_item_id = Column(Integer, ForeignKey("collection.id"), nullable=True)
-    required_quantity = Column(Integer, default=1)
+    required_quantity = Column(Integer, default=1, nullable=False)
     added_at = Column(DateTime, default=func.now())
 
     binder = relationship("Binder", back_populates="binder_cards")
     card = relationship("Card", back_populates="binder_cards")
     collection_item = relationship("CollectionItem")
 
-    __table_args__ = (UniqueConstraint("binder_id", "collection_item_id", name="uq_binder_collection_item"),)
+    __table_args__ = (
+        CheckConstraint("required_quantity >= 1 AND required_quantity <= 99", name="ck_binder_card_quantity_range"),
+        UniqueConstraint("binder_id", "collection_item_id", name="uq_binder_collection_item"),
+    )
 
 
 class ProductPurchase(Base):

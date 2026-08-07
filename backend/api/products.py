@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from api.auth import get_current_user
 from database import get_db
-from models import BinderCard, Card, CollectionItem, ProductCard, ProductLedgerEntry, ProductPurchase, User
+from models import Card, CollectionItem, ProductCard, ProductLedgerEntry, ProductPurchase, User
 from schemas import (
     ProductCardLinkCreate,
     ProductCardResponse,
@@ -20,6 +20,7 @@ from schemas import (
     ProductPurchaseUpdate,
 )
 from services.card_values import normalize_price_field
+from services.binder_allocations import collection_item_allocated_quantity
 from services.product_ledger import (
     entry_live_value,
     entry_realized_value,
@@ -177,10 +178,6 @@ def _available_collection_quantity(db: Session, current_user: User, collection_i
         ProductCard.collection_item_id == collection_item.id,
     ).scalar() or 0
     return max(int(collection_item.quantity or 0) - int(linked_active or 0), 0)
-
-
-def _delete_collection_item_references(db: Session, collection_item_id: int) -> None:
-    db.query(BinderCard).filter(BinderCard.collection_item_id == collection_item_id).delete(synchronize_session=False)
 
 
 def _refresh_product_response(db: Session, current_user: User, product: ProductPurchase, price_field: str) -> ProductPurchaseResponse:
@@ -487,22 +484,33 @@ def sell_product_card(
         ProductCard.id == product_card_id,
         ProductCard.product_id == product.id,
         ProductCard.user_id == current_user.id,
+    ).first()
+    if not product_card:
+        raise HTTPException(status_code=404, detail="Linked product card not found")
+
+    collection_item_id = product_card.collection_item_id
+    collection_item = None
+    if collection_item_id:
+        collection_item = db.query(CollectionItem).filter(
+            CollectionItem.id == collection_item_id,
+            CollectionItem.user_id == current_user.id,
+        ).with_for_update(of=CollectionItem).first()
+
+    product_card = db.query(ProductCard).options(joinedload(ProductCard.card)).filter(
+        ProductCard.id == product_card_id,
+        ProductCard.product_id == product.id,
+        ProductCard.user_id == current_user.id,
     ).with_for_update(of=ProductCard).first()
     if not product_card:
         raise HTTPException(status_code=404, detail="Linked product card not found")
+    if product_card.collection_item_id != collection_item_id:
+        raise HTTPException(status_code=409, detail="Linked collection item changed; please try again")
     if not positive_quantity(sale.quantity, PRODUCT_LINK_MAX_QUANTITY):
         raise HTTPException(status_code=422, detail="quantity must be between 1 and 999")
     if sale.quantity > product_card.active_quantity:
         raise HTTPException(status_code=409, detail="Cannot sell more copies than are active on this product")
     if not sale_total_is_valid(sale.sold_price):
         raise HTTPException(status_code=422, detail="sold_price must be a finite, non-negative flat sale total")
-
-    collection_item = None
-    if product_card.collection_item_id:
-        collection_item = db.query(CollectionItem).filter(
-            CollectionItem.id == product_card.collection_item_id,
-            CollectionItem.user_id == current_user.id,
-        ).with_for_update().first()
 
     if not collection_item:
         raise HTTPException(
@@ -515,10 +523,17 @@ def sell_product_card(
             detail=f"Only {collection_item.quantity} active collection copie(s) remain for this linked card",
         )
 
-    if collection_item.quantity > sale.quantity:
-        collection_item.quantity -= sale.quantity
+    remaining_quantity = int(collection_item.quantity or 0) - sale.quantity
+    allocated_quantity = collection_item_allocated_quantity(db, current_user.id, collection_item.id)
+    if remaining_quantity < allocated_quantity:
+        raise HTTPException(
+            status_code=409,
+            detail=f"This sale would leave fewer copies than the {allocated_quantity} assigned to binders. Reduce binder quantities first.",
+        )
+
+    if remaining_quantity > 0:
+        collection_item.quantity = remaining_quantity
     else:
-        _delete_collection_item_references(db, collection_item.id)
         db.delete(collection_item)
 
     product_card.active_quantity -= sale.quantity

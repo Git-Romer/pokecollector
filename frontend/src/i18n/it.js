@@ -984,7 +984,7 @@ const it = {
     importCsv: 'Importa CSV',
     importingCsv: 'Importazione...',
     exportCsv: 'Esporta CSV',
-    csvFormatHint: 'Import CSV usa: set_code,number,required_quantity,lang',
+    csvFormatHint: 'Import CSV usa: set_code,number,required_quantity,lang,variant,condition,collection_item_id',
     csvImportTitle: 'Formato import CSV raccoglitore',
     csvImportWishlistDescription: 'Importa una decklist per raccoglitore lista desideri da un formato CSV rigoroso.',
     csvImportCollectionDescription: 'Importa una lista per raccoglitore collezione da CSV. Verranno aggiunte solo carte che già possiedi.',

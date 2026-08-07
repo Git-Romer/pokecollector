@@ -68,7 +68,8 @@ class AddOwnedSetToBinderTests(unittest.TestCase):
 
         self.assertEqual(result["added"], 1)
         self.assertEqual(result["owned_total"], 1)
-        self.assertEqual(self.db.query(BinderCard).filter(BinderCard.binder_id == binder.id).count(), 1)
+        entry = self.db.query(BinderCard).filter(BinderCard.binder_id == binder.id).one()
+        self.assertEqual(entry.required_quantity, 3)
 
     def test_item_already_in_binder_is_skipped(self):
         item = self._own(self.card_a.id, variant="Normal")
@@ -117,6 +118,8 @@ class AddOwnedSetToBinderTests(unittest.TestCase):
 
         self.assertEqual(result["added"], 1)
         self.assertEqual(result["skipped_no_capacity"], 0)
+        entry = self.db.query(BinderCard).filter(BinderCard.binder_id == target.id).one()
+        self.assertEqual(entry.required_quantity, 1)
 
     def test_wishlist_binder_is_rejected(self):
         self._own(self.card_a.id, variant="Normal")

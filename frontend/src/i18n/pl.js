@@ -984,7 +984,7 @@ const pl = {
     importCsv: 'Importuj CSV',
     importingCsv: 'Importowanie...',
     exportCsv: 'Eksportuj CSV',
-    csvFormatHint: 'Import CSV używa: set_code,number,required_quantity,lang',
+    csvFormatHint: 'Import CSV używa: set_code,number,required_quantity,lang,variant,condition,collection_item_id',
     csvImportTitle: 'Format importu CSV segregatora',
     csvImportWishlistDescription: 'Importuj decklistę segregatora listy życzeń ze ścisłego formatu CSV.',
     csvImportCollectionDescription: 'Importuj listę segregatora kolekcji z CSV. Dodane zostaną tylko karty, które już posiadasz.',

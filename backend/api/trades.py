@@ -8,10 +8,11 @@ from sqlalchemy.orm import Session, joinedload
 from api.auth import get_current_user
 from api.collection import ensure_card_exists
 from database import get_db
-from models import BinderCard, Card, CollectionItem, ProductCard, ProductLedgerEntry, ProductPurchase, Trade, TradeItem, User
+from models import Card, CollectionItem, ProductCard, ProductLedgerEntry, ProductPurchase, Trade, TradeItem, User
 from schemas import TradeCreate, TradeResponse, TradeValuationRequest
 from services import pokemon_api
 from services.card_values import effective_market_price, normalize_price_field
+from services.binder_allocations import collection_item_allocated_quantity
 from services.collection_csv import normalize_collection_variant
 from services.product_ledger import finite_non_negative, positive_quantity
 from services.tcgdex_languages import is_supported_tcgdex_language, normalize_tcgdex_language
@@ -35,10 +36,6 @@ def _normalize_lang(lang: str | None) -> str:
     if not is_supported_tcgdex_language(normalized):
         raise HTTPException(status_code=422, detail="lang is not supported")
     return normalized
-
-
-def _delete_collection_item_references(db: Session, collection_item_id: int) -> None:
-    db.query(BinderCard).filter(BinderCard.collection_item_id == collection_item_id).delete(synchronize_session=False)
 
 
 def _card_snapshot(card: Card | None) -> dict:
@@ -310,6 +307,13 @@ def create_trade(
                 raise HTTPException(status_code=404, detail="Outgoing collection item not found")
             if int(collection_item.quantity or 0) < outgoing.quantity:
                 raise HTTPException(status_code=409, detail="Cannot trade more copies than are in your collection")
+            remaining_quantity = int(collection_item.quantity or 0) - outgoing.quantity
+            allocated_quantity = collection_item_allocated_quantity(db, current_user.id, collection_item.id)
+            if remaining_quantity < allocated_quantity:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"This trade would leave fewer copies than the {allocated_quantity} assigned to binders. Reduce binder quantities first.",
+                )
 
             value_per_card = _snapshot_price(collection_item.card, collection_item.variant, outgoing.value_per_card, price_field)
             value_total = round(value_per_card * outgoing.quantity, 2)
@@ -344,10 +348,9 @@ def create_trade(
                 trade_item,
             )
 
-            if collection_item.quantity > outgoing.quantity:
-                collection_item.quantity -= outgoing.quantity
+            if remaining_quantity > 0:
+                collection_item.quantity = remaining_quantity
             else:
-                _delete_collection_item_references(db, collection_item.id)
                 db.delete(collection_item)
 
         if incoming_cash > 0:

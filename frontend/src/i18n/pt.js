@@ -985,7 +985,7 @@ const pt = {
     importCsv: 'Importar CSV',
     importingCsv: 'A importar...',
     exportCsv: 'Exportar CSV',
-    csvFormatHint: 'A importação CSV usa: set_code,number,required_quantity,lang',
+    csvFormatHint: 'A importação CSV usa: set_code,number,required_quantity,lang,variant,condition,collection_item_id',
     csvImportTitle: 'Formato de importação CSV do fichário',
     csvImportWishlistDescription: 'Importe uma decklist de fichário da lista de desejos a partir de um formato CSV rigoroso.',
     csvImportCollectionDescription: 'Importe uma lista de fichário de coleção a partir de CSV. Só cartas que já possui serão adicionadas.',

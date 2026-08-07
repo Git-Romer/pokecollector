@@ -1151,7 +1151,7 @@ const de = {
     importCsv: 'CSV importieren',
     importingCsv: 'Importiere...',
     exportCsv: 'CSV exportieren',
-    csvFormatHint: 'CSV-Import nutzt: set_code,number,required_quantity,lang',
+    csvFormatHint: 'CSV-Import nutzt: set_code,number,required_quantity,lang,variant,condition,collection_item_id',
     csvImportTitle: 'Binder-CSV-Importformat',
     csvImportWishlistDescription: 'Importiere eine Wunschbinder-Deckliste aus einem festen CSV-Format.',
     csvImportCollectionDescription: 'Importiere eine Liste für einen echten Binder aus CSV. Nur Karten, die du besitzt, werden hinzugefügt.',

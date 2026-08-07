@@ -984,7 +984,7 @@ const ko = {
     importCsv: 'CSV 가져오기',
     importingCsv: '가져오는 중...',
     exportCsv: 'CSV 내보내기',
-    csvFormatHint: 'CSV 가져오기는 다음을 사용합니다: set_code,number,required_quantity,lang',
+    csvFormatHint: 'CSV 가져오기는 다음을 사용합니다: set_code,number,required_quantity,lang,variant,condition,collection_item_id',
     csvImportTitle: '바인더 CSV 가져오기 형식',
     csvImportWishlistDescription: '엄격한 CSV 형식에서 위시리스트 바인더 덱리스트를 가져옵니다.',
     csvImportCollectionDescription: 'CSV에서 컬렉션 바인더 목록을 가져옵니다. 이미 보유한 카드만 추가됩니다.',

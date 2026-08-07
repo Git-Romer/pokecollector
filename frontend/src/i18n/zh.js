@@ -983,7 +983,7 @@ const zh = {
     importCsv: '导入 CSV',
     importingCsv: '导入中...',
     exportCsv: '导出 CSV',
-    csvFormatHint: 'CSV 导入格式：set_code,number,required_quantity,lang',
+    csvFormatHint: 'CSV 导入格式：set_code,number,required_quantity,lang,variant,condition,collection_item_id',
     csvImportTitle: '活页夹 CSV 导入格式',
     csvImportWishlistDescription: '用固定 CSV 格式导入愿望活页夹牌表。',
     csvImportCollectionDescription: '用 CSV 导入收藏活页夹列表。只会添加你已拥有的卡牌。',

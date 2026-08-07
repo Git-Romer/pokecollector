@@ -981,7 +981,7 @@ const nl = {
     importCsv: 'CSV Importeren',
     importingCsv: 'Importeren...',
     exportCsv: 'CSV Exporteren',
-    csvFormatHint: 'CSV import gebruikt: set_code,number,required_quantity,lang',
+    csvFormatHint: 'CSV import gebruikt: set_code,number,required_quantity,lang,variant,condition,collection_item_id',
     csvImportTitle: 'Map CSV importformaat',
     csvImportWishlistDescription: 'Importeer een decklist voor een verlanglijstmap vanuit een strikt CSV-formaat.',
     csvImportCollectionDescription: 'Importeer een lijst voor een collectiemap vanuit CSV. Alleen kaarten die je al bezit, worden toegevoegd.',

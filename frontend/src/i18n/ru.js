@@ -984,7 +984,7 @@ const ru = {
     importCsv: 'Импорт CSV',
     importingCsv: 'Импорт...',
     exportCsv: 'Экспорт CSV',
-    csvFormatHint: 'Импорт CSV использует: set_code,number,required_quantity,lang',
+    csvFormatHint: 'Импорт CSV использует: set_code,number,required_quantity,lang,variant,condition,collection_item_id',
     csvImportTitle: 'Формат импорта CSV для альбома',
     csvImportWishlistDescription: 'Импортируйте decklist альбома списка желаний из строгого формата CSV.',
     csvImportCollectionDescription: 'Импортируйте список альбома коллекции из CSV. Будут добавлены только карты, которые у вас уже есть.',

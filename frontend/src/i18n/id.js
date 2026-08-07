@@ -984,7 +984,7 @@ const id = {
     importCsv: 'Impor CSV',
     importingCsv: 'Mengimpor...',
     exportCsv: 'Ekspor CSV',
-    csvFormatHint: 'Impor CSV menggunakan: set_code,number,required_quantity,lang',
+    csvFormatHint: 'Impor CSV menggunakan: set_code,number,required_quantity,lang,variant,condition,collection_item_id',
     csvImportTitle: 'Format impor CSV binder',
     csvImportWishlistDescription: 'Impor decklist binder wishlist dari format CSV ketat.',
     csvImportCollectionDescription: 'Impor daftar binder koleksi dari CSV. Hanya kartu yang sudah Anda miliki yang akan ditambahkan.',

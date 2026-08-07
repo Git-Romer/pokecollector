@@ -984,7 +984,7 @@ const esMx = {
     importCsv: 'Importar CSV',
     importingCsv: 'Importando...',
     exportCsv: 'Exportar CSV',
-    csvFormatHint: 'La importación CSV usa: set_code,number,required_quantity,lang',
+    csvFormatHint: 'La importación CSV usa: set_code,number,required_quantity,lang,variant,condition,collection_item_id',
     csvImportTitle: 'Formato de importación CSV de carpeta',
     csvImportWishlistDescription: 'Importa una lista de baraja de carpeta de lista de deseos desde un formato CSV estricto.',
     csvImportCollectionDescription: 'Importa una lista de carpeta de colección desde CSV. Solo se agregarán cartas que ya posees.',

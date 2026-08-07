@@ -5,6 +5,7 @@ import clsx from 'clsx'
 import { getPublicBinder } from '../api/publicClient'
 import { formatEur } from '../utils/formatEur'
 import { groupCardsByPrint } from '../utils/groupCardsByPrint'
+import { formatBinderCountSummary } from '../utils/binderCounts'
 import { useSettings } from '../contexts/SettingsContext'
 import { CardLegend, CardStack } from '../components/card-system'
 
@@ -41,7 +42,7 @@ export default function PublicBinderView() {
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-text-muted">{t('publicProfiles.sharedBinder')}</p>
             <h1 className="text-2xl font-bold">{binder.name}</h1>
             <p className="mt-1 text-sm text-text-secondary">
-              {binder.unique_card_count} {binder.unique_card_count === 1 ? t('binders.uniqueCard') : t('binders.uniqueCards')}
+              {formatBinderCountSummary(binder.card_count, binder.unique_card_count, t)}
             </p>
           </div>
           {binder.total_value != null && (

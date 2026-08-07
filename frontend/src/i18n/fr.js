@@ -981,7 +981,7 @@ const fr = {
     importCsv: 'Importer un CSV',
     importingCsv: 'Importation...',
     exportCsv: 'Exporter en CSV',
-    csvFormatHint: 'L\'importation CSV utilise : set_code,number,required_quantity,lang',
+    csvFormatHint: 'L\'importation CSV utilise : set_code,number,required_quantity,lang,variant,condition,collection_item_id',
     csvImportTitle: 'Format d\'import CSV pour classeur',
     csvImportWishlistDescription: 'Importez un deck ou une liste de souhaits depuis un format CSV strict.',
     csvImportCollectionDescription: 'Importez une liste de classeur de collection depuis un CSV. Seules les cartes que vous possédez déjà seront ajoutées.',

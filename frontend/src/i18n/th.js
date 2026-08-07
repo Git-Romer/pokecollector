@@ -982,7 +982,7 @@ const th = {
     importCsv: 'นำเข้า CSV',
     importingCsv: 'กำลังนำเข้า...',
     exportCsv: 'ส่งออก CSV',
-    csvFormatHint: 'การนำเข้า CSV ใช้: set_code,number,required_quantity,lang',
+    csvFormatHint: 'การนำเข้า CSV ใช้: set_code,number,required_quantity,lang,variant,condition,collection_item_id',
     csvImportTitle: 'รูปแบบการนำเข้า CSV ของแฟ้ม',
     csvImportWishlistDescription: 'นำเข้าเด็คลิสต์ของแฟ้มรายการที่อยากได้จากรูปแบบ CSV แบบเข้มงวด',
     csvImportCollectionDescription: 'นำเข้ารายการแฟ้มคอลเลกชันจาก CSV เฉพาะการ์ดที่คุณมีอยู่แล้วเท่านั้นที่จะถูกเพิ่ม',
