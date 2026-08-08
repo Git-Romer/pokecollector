@@ -2,6 +2,7 @@ import datetime
 import logging
 import uuid
 from typing import List, Optional
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
@@ -25,6 +26,7 @@ from schemas import (
 )
 from services.card_values import normalize_price_field
 from services.binder_allocations import collection_item_allocated_quantity
+from services.image_url_security import validate_public_https_image_url
 from services.product_ledger import (
     entry_live_value,
     entry_realized_value,
@@ -36,12 +38,56 @@ from services.product_ledger import (
     product_lifecycle_status,
     sale_total_is_valid,
 )
+from services.product_images import cleanup_product_image_cache_if_unreferenced, product_image_token
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 PRODUCT_TYPES = ["Booster Pack", "Booster Box", "Elite Trainer Box", "Tin", "Bundle", "Collection Box", "Blister", "Other"]
 PRODUCT_LINK_MAX_QUANTITY = 999
+
+
+def _normalize_image_url(value: str | None) -> str | None:
+    image_url = (value or "").strip()
+    if not image_url:
+        return None
+    try:
+        return validate_public_https_image_url(image_url)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+def _normalize_cardmarket_url(value: str | None) -> str | None:
+    cardmarket_url = (value or "").strip()
+    if not cardmarket_url:
+        return None
+
+    parsed = urlparse(cardmarket_url)
+    host = (parsed.hostname or "").rstrip(".").lower()
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Cardmarket URL has an invalid port") from exc
+
+    path_parts = [part for part in parsed.path.split("/") if part]
+    is_product_path = (
+        len(path_parts) >= 5
+        and path_parts[1].lower() == "pokemon"
+        and path_parts[2].lower() == "products"
+    )
+    if (
+        parsed.scheme != "https"
+        or host not in {"cardmarket.com", "www.cardmarket.com"}
+        or parsed.username
+        or parsed.password
+        or port not in (None, 443)
+        or not is_product_path
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Cardmarket URL must be an HTTPS Pokémon product page",
+        )
+    return cardmarket_url
 
 
 def _validate_money(value, field_name: str, *, required: bool = False) -> None:
@@ -75,6 +121,8 @@ def _new_product_purchase(
     *,
     user_id: int,
     created_at: datetime.datetime,
+    image_url: str | None,
+    cardmarket_url: str | None,
     batch_id: str | None = None,
 ) -> ProductPurchase:
     has_sale = product_has_completed_sale(product)
@@ -88,6 +136,8 @@ def _new_product_purchase(
         sold_date=product.sold_date,
         lifecycle_status="sold" if has_sale else product.lifecycle_status,
         batch_id=batch_id,
+        image_url=image_url,
+        cardmarket_url=cardmarket_url,
         notes=product.notes,
         user_id=user_id,
         created_at=created_at,
@@ -238,6 +288,14 @@ def _product_response(
         sold_date=product.sold_date,
         lifecycle_status=product_lifecycle_status(product, bool(product_cards or flat_ledger_entries)),
         batch_id=product.batch_id,
+        image_url=product.image_url,
+        image_proxy_url=(
+            f"/api/images/product/{product.id}?token="
+            f"{product_image_token(product.id, product.user_id, product.image_url)}"
+            if product.image_url
+            else None
+        ),
+        cardmarket_url=product.cardmarket_url,
         notes=product.notes,
         created_at=product.created_at,
         pnl=pnl,
@@ -430,10 +488,14 @@ def create_product(
     has_sale = product_has_completed_sale(product)
     if has_sale and product.lifecycle_status == "opened":
         raise HTTPException(status_code=409, detail="An opened product cannot also be sold as a sealed product")
+    image_url = _normalize_image_url(product.image_url)
+    cardmarket_url = _normalize_cardmarket_url(product.cardmarket_url)
     db_product = _new_product_purchase(
         product,
         user_id=current_user.id,
         created_at=datetime.datetime.utcnow(),
+        image_url=image_url,
+        cardmarket_url=cardmarket_url,
     )
     db.add(db_product)
     db.commit()
@@ -456,11 +518,15 @@ def create_product_batch(
 
     created_at = datetime.datetime.utcnow()
     batch_id = uuid.uuid4().hex if product.quantity > 1 else None
+    image_url = _normalize_image_url(product.image_url)
+    cardmarket_url = _normalize_cardmarket_url(product.cardmarket_url)
     products = [
         _new_product_purchase(
             product,
             user_id=current_user.id,
             created_at=created_at,
+            image_url=image_url,
+            cardmarket_url=cardmarket_url,
             batch_id=batch_id,
         )
         for _ in range(product.quantity)
@@ -518,16 +584,32 @@ def update_product(
     update_data = update.model_dump(exclude_unset=True)
     requested_lifecycle = update_data.pop("lifecycle_status", None)
     previous_lifecycle = product.lifecycle_status
-    previous_batch_identity = (product.product_name, product.product_type, product.purchase_date)
+    previous_image_url = product.image_url
+    previous_batch_identity = (
+        product.product_name,
+        product.product_type,
+        product.purchase_date,
+        product.image_url,
+        product.cardmarket_url,
+    )
     for field, value in update_data.items():
         if field == "product_name" and value is not None:
             value = value.strip()
+        elif field == "image_url":
+            value = _normalize_image_url(value)
+        elif field == "cardmarket_url":
+            value = _normalize_cardmarket_url(value)
         setattr(product, field, value)
+
+    if previous_image_url != product.image_url:
+        cleanup_product_image_cache_if_unreferenced(db, previous_image_url)
 
     if product.batch_id and previous_batch_identity != (
         product.product_name,
         product.product_type,
         product.purchase_date,
+        product.image_url,
+        product.cardmarket_url,
     ):
         product.batch_id = None
 
@@ -586,7 +668,10 @@ def delete_product(
             detail="Product has linked card or sale history and cannot be deleted. Unlink active cards first; sold history is kept permanently.",
         )
 
+    image_url = product.image_url
     db.delete(product)
+    db.flush()
+    cleanup_product_image_cache_if_unreferenced(db, image_url)
     db.commit()
     return {"message": "Product deleted"}
 

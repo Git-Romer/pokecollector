@@ -4,7 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell
 } from 'recharts'
-import { Plus, Trash2, Edit2, TrendingUp, TrendingDown, Package, Check, X, SortAsc, Filter, ChevronUp, ChevronDown, Link2, DollarSign, History, AlertCircle, Search } from 'lucide-react'
+import { Plus, Trash2, Edit2, TrendingUp, TrendingDown, Package, Check, X, SortAsc, Filter, ChevronUp, ChevronDown, Link2, DollarSign, History, AlertCircle, Search, ExternalLink } from 'lucide-react'
 import { getProducts, createProductBatch, updateProduct, bulkUpdateProductLifecycle, deleteProduct, getProductsSummary, getCollection, linkProductCards, unlinkProductCard, sellProductCard, addProductLedgerEntry, getApiErrorMessage } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import { CardRow } from '../components/card-system'
@@ -15,7 +15,7 @@ import Modal from '../components/ui/Modal'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
 import { formatMoneyInputValue, isValidMoneyInputValue, parseMoneyInputValue } from '../utils/moneyInput'
-import { resolveCardImageUrl } from '../utils/imageUrl'
+import { productImageUrl, resolveCardImageUrl } from '../utils/imageUrl'
 import {
   PRODUCT_CARD_SELECTION_LIMIT,
   PRODUCT_CARD_TIME_RANGES,
@@ -46,6 +46,8 @@ function ProductForm({ initial = {}, onSubmit, onCancel, loading }) {
       ? initial.lifecycle_status
       : initial.lifecycle_status ? '' : 'sealed',
     quantity: initial.quantity || 1,
+    image_url: initial.image_url || '',
+    cardmarket_url: initial.cardmarket_url || '',
     notes: initial.notes || '',
   })
   const [moneyTouched, setMoneyTouched] = useState(false)
@@ -163,6 +165,32 @@ function ProductForm({ initial = {}, onSubmit, onCancel, loading }) {
           {t('products.batchTotal').replace('{total}', formatPrice(batchPurchaseTotal))}
         </div>
       )}
+      <div className="col-span-2">
+        <label htmlFor={fieldId('image-url')} className="text-xs text-text-muted mb-1 block">{t('products.imageUrl')}</label>
+        <input
+          id={fieldId('image-url')}
+          type="url"
+          maxLength={2048}
+          placeholder="https://example.com/product.webp"
+          value={form.image_url}
+          onChange={(e) => set('image_url', e.target.value)}
+          className="input"
+        />
+        <p className="mt-1 text-xs text-text-muted">{t('products.imageUrlHelp')}</p>
+      </div>
+      <div className="col-span-2">
+        <label htmlFor={fieldId('cardmarket-url')} className="text-xs text-text-muted mb-1 block">{t('products.cardmarketUrl')}</label>
+        <input
+          id={fieldId('cardmarket-url')}
+          type="url"
+          maxLength={2048}
+          placeholder="https://www.cardmarket.com/en/Pokemon/Products/..."
+          value={form.cardmarket_url}
+          onChange={(e) => set('cardmarket_url', e.target.value)}
+          className="input"
+        />
+        <p className="mt-1 text-xs text-text-muted">{t('products.cardmarketUrlHelp')}</p>
+      </div>
       <div className="col-span-2">
         <label htmlFor={fieldId('notes')} className="text-xs text-text-muted mb-1 block">{t('products.notes')}</label>
         <input id={fieldId('notes')} type="text" placeholder={t('products.notesHint')} value={form.notes}
@@ -1098,10 +1126,20 @@ export default function Products() {
                     return (
                       <tr key={row.key} className="border-b border-border bg-bg-elevated/40">
                         <td className="px-4 py-3">
-                          <p className="font-semibold text-text-primary">{first.product_name}</p>
-                          <span className="badge badge-gray mt-1 text-xs">
-                            {t('products.batchItems').replace('{count}', row.products.length)}
-                          </span>
+                          <div className="flex min-w-0 items-center gap-3">
+                            <img
+                              src={productImageUrl(first)}
+                              alt=""
+                              className="h-12 w-10 flex-shrink-0 rounded-md border border-border bg-bg-elevated object-contain"
+                              loading="lazy"
+                            />
+                            <div className="min-w-0">
+                              <p className="truncate font-semibold text-text-primary">{first.product_name}</p>
+                              <span className="badge badge-gray mt-1 text-xs">
+                                {t('products.batchItems').replace('{count}', row.products.length)}
+                              </span>
+                            </div>
+                          </div>
                         </td>
                         <td className="px-4 py-3 text-xs text-text-secondary">{first.product_type || '-'}</td>
                         <td className="px-4 py-3 text-xs text-text-secondary">{first.purchase_date}</td>
@@ -1142,21 +1180,31 @@ export default function Products() {
                   return (
                   <tr key={row.key} className="border-b border-border/50 hover:bg-bg-elevated/50">
                         <td className="px-4 py-3">
-                          <p className="text-sm font-medium text-text-primary">{p.product_name}</p>
-                          {row.batchPosition && (
-                            <p className="text-[10px] text-text-muted">
-                              {t('products.batchItem')
-                                .replace('{position}', row.batchPosition)
-                                .replace('{count}', row.batchSize)}
-                            </p>
-                          )}
-                          {p.notes && <p className="text-xs text-text-muted truncate max-w-[160px]">{p.notes}</p>}
-                          <span className={clsx(
-                            'badge mt-1 text-xs',
-                            getProductLifecycleStatus(p) === 'sold' ? 'badge-green' : 'badge-gray',
-                          )}>
-                            {getProductLifecycleLabel(p, t)}
-                          </span>
+                          <div className="flex min-w-0 items-start gap-3">
+                            <img
+                              src={productImageUrl(p)}
+                              alt=""
+                              className="h-12 w-10 flex-shrink-0 rounded-md border border-border bg-bg-elevated object-contain"
+                              loading="lazy"
+                            />
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-text-primary">{p.product_name}</p>
+                              {row.batchPosition && (
+                                <p className="text-[10px] text-text-muted">
+                                  {t('products.batchItem')
+                                    .replace('{position}', row.batchPosition)
+                                    .replace('{count}', row.batchSize)}
+                                </p>
+                              )}
+                              {p.notes && <p className="max-w-[160px] truncate text-xs text-text-muted">{p.notes}</p>}
+                              <span className={clsx(
+                                'badge mt-1 text-xs',
+                                getProductLifecycleStatus(p) === 'sold' ? 'badge-green' : 'badge-gray',
+                              )}>
+                                {getProductLifecycleLabel(p, t)}
+                              </span>
+                            </div>
+                          </div>
                           {getProductLifecycleStatus(p) === 'review' && (
                             <div className="mt-2 flex flex-wrap gap-1">
                               <button
@@ -1204,6 +1252,17 @@ export default function Products() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1 justify-end">
+                            {p.cardmarket_url && (
+                              <a
+                                href={p.cardmarket_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="btn-ghost whitespace-nowrap px-2 py-1.5 text-xs"
+                                aria-label={`${t('products.openCardmarket')}: ${p.product_name}`}
+                              >
+                                <ExternalLink size={13} /> Cardmarket
+                              </a>
+                            )}
                             <button
                               type="button"
                               onClick={() => setCardProductId(p.id)}
@@ -1239,6 +1298,7 @@ export default function Products() {
                 return (
                   <CardRow
                     key={row.key}
+                    image={productImageUrl(first)}
                     name={first.product_name}
                     subtext={`${first.purchase_date} · ${t('products.paidPrice')}: ${formatPrice(totals.purchasePrice)} · ${t('products.valueLabel')}: ${totals.currentValue != null ? formatPrice(totals.currentValue) : '-'}`}
                     badges={[
@@ -1273,40 +1333,55 @@ export default function Products() {
               if (p.value_source === 'needs_review') badges.push({ label: t('products.excludedUntilReviewed'), variant: 'gray' })
 
               return (
-                <Fragment key={row.key}>
+                <div key={row.key}>
                   <CardRow
+                    image={productImageUrl(p)}
                     name={p.product_name}
                     subtext={`${row.batchPosition ? `${t('products.batchItem').replace('{position}', row.batchPosition).replace('{count}', row.batchSize)} · ` : ''}${p.purchase_date} · ${formatPrice(p.purchase_price)} · ${t('products.valueLabel')}: ${p.value_source === 'needs_review' ? '-' : p.computed_current_value != null ? formatPrice(p.computed_current_value) : '-'}`}
                     badges={badges}
                     value={p.pnl !== null ? `${p.pnl >= 0 ? '+' : ''}${formatPrice(p.pnl)}` : '-'}
                     valueSecondary={p.pnl_percent !== null ? `${p.pnl_percent >= 0 ? '+' : ''}${p.pnl_percent?.toFixed(1)}%` : undefined}
-                    rightAction={
-                      <div className="flex flex-col items-end gap-1.5">
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); setCardProductId(p.id) }}
-                          className="flex min-h-[44px] items-center gap-1 rounded-lg border border-border px-2 text-[11px] font-medium text-text-secondary transition-colors hover:border-brand-red/40 hover:text-text-primary"
-                          aria-label={`${getCardsActionLabel(p, t)}: ${p.product_name}`}
-                        >
-                          <Link2 size={12} /> {getCardsActionLabel(p, t)}
-                        </button>
-                        <div className="flex gap-1">
-                          <button onClick={(e) => { e.stopPropagation(); setEditingId(p.id) }}
-                            className="text-text-muted hover:text-text-primary p-1 transition-colors"
-                            aria-label={`${t('common.edit')}: ${p.product_name}`}>
-                            <Edit2 size={12} />
-                          </button>
-                          <button onClick={(e) => {
-                            e.stopPropagation()
-                            if (confirm(`${t('products.deleteConfirm')} "${p.product_name}"?`)) deleteMutation.mutate(p.id)
-                          }} className="text-text-muted hover:text-brand-red p-1 transition-colors"
-                            aria-label={`${t('common.delete')}: ${p.product_name}`}>
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
-                      </div>
-                    }
+                    className="!rounded-b-none"
                   />
+                  <div className="flex min-h-[52px] items-center justify-end gap-1 rounded-b-xl border border-t-0 border-[rgba(255,255,255,0.05)] bg-[rgba(20,20,40,0.6)] px-2">
+                    {p.cardmarket_url && (
+                      <a
+                        href={p.cardmarket_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex min-h-[44px] items-center gap-1 whitespace-nowrap rounded-lg px-1 text-[11px] font-medium text-text-secondary transition-colors hover:text-text-primary"
+                        aria-label={`${t('products.openCardmarket')}: ${p.product_name}`}
+                      >
+                        <ExternalLink size={12} /> Cardmarket
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setCardProductId(p.id)}
+                      className="flex min-h-[44px] items-center gap-1 whitespace-nowrap rounded-lg px-1 text-[11px] font-medium text-text-secondary transition-colors hover:text-text-primary"
+                      aria-label={`${getCardsActionLabel(p, t)}: ${p.product_name}`}
+                    >
+                      <Link2 size={12} /> {getCardsActionLabel(p, t)}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingId(p.id)}
+                      className="flex h-11 w-11 items-center justify-center rounded-lg text-text-muted transition-colors hover:text-text-primary"
+                      aria-label={`${t('common.edit')}: ${p.product_name}`}
+                    >
+                      <Edit2 size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm(`${t('products.deleteConfirm')} "${p.product_name}"?`)) deleteMutation.mutate(p.id)
+                      }}
+                      className="flex h-11 w-11 items-center justify-center rounded-lg text-text-muted transition-colors hover:text-brand-red"
+                      aria-label={`${t('common.delete')}: ${p.product_name}`}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
                   {getProductLifecycleStatus(p) === 'review' && (
                     <div className="mx-1 flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-2">
                       <button
@@ -1325,7 +1400,7 @@ export default function Products() {
                       </button>
                     </div>
                   )}
-                </Fragment>
+                </div>
               )
             })}
           </div>

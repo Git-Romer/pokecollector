@@ -421,6 +421,9 @@ def _run_migrations(conn):
         # shared creation group for convenient presentation.
         "ALTER TABLE product_purchases ADD COLUMN IF NOT EXISTS batch_id VARCHAR",
         "CREATE INDEX IF NOT EXISTS ix_product_purchases_user_batch ON product_purchases(user_id, batch_id)",
+        # v56: Optional manual imagery and Cardmarket references for sealed products.
+        "ALTER TABLE product_purchases ADD COLUMN IF NOT EXISTS image_url VARCHAR",
+        "ALTER TABLE product_purchases ADD COLUMN IF NOT EXISTS cardmarket_url VARCHAR",
         """UPDATE sets
            SET is_digital = TRUE
            WHERE COALESCE(is_digital, FALSE) = FALSE
