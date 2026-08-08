@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowRightLeft, Check, History, PenLine, Plus, Search, Trash2, Wallet } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -264,6 +264,20 @@ export default function Trades() {
   const [incomingCash, setIncomingCash] = useState('')
   const [showCustomModal, setShowCustomModal] = useState(false)
   const [editingTradeId, setEditingTradeId] = useState(null)
+  const [isFinalizeVisible, setIsFinalizeVisible] = useState(false)
+  const finalizeRef = useRef(null)
+
+  useEffect(() => {
+    const finalize = finalizeRef.current
+    if (!finalize || typeof IntersectionObserver === 'undefined') return undefined
+
+    const observer = new IntersectionObserver(
+      ([entry]) => setIsFinalizeVisible(entry.isIntersecting),
+      { threshold: 0.1 },
+    )
+    observer.observe(finalize)
+    return () => observer.disconnect()
+  }, [tab])
 
   const { data: collectionItems = [] } = useQuery({
     queryKey: ['collection', 'trades'],
@@ -646,7 +660,7 @@ export default function Trades() {
             </section>
           </div>
 
-          <div id="trade-finalize" className="scroll-mt-24 rounded-lg border border-border bg-bg-card p-4 space-y-3">
+          <div ref={finalizeRef} id="trade-finalize" className="scroll-mt-24 rounded-lg border border-border bg-bg-card p-4 space-y-3">
             {editingTradeId !== null && (
               <div className="flex items-center justify-between gap-3 rounded-lg border border-brand-red/30 bg-brand-red/10 px-3 py-2">
                 <span className="text-sm font-bold text-text-primary">{t('common.edit')}: #{editingTradeId}</span>
@@ -672,7 +686,7 @@ export default function Trades() {
             <input value={notes} onChange={(event) => setNotes(event.target.value)} className="input" placeholder={t('common.notes')} />
           </div>
 
-          {(outgoing.length > 0 || incoming.length > 0) && (
+          {(outgoing.length > 0 || incoming.length > 0) && !isFinalizeVisible && (
             <div className="fixed bottom-20 left-3 right-3 z-40 flex items-center gap-3 rounded-2xl border border-white/15 bg-bg-surface/95 p-3 shadow-2xl backdrop-blur md:hidden">
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-bold text-text-primary">

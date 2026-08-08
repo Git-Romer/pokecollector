@@ -201,6 +201,13 @@ test('trade history opens a prefilled edit draft and submits immutable values', 
   // that row a current-value snapshot instead of extending the historical row.
   await page.getByRole('button', { name: 'Add' }).first().click()
 
+  // The mobile review shortcut must not cover the final fields or save action.
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.evaluate(() => window.scrollTo(0, 0))
+  await expect(page.getByRole('button', { name: 'Review trade' })).toBeVisible()
+  await page.locator('#trade-finalize').scrollIntoViewIfNeeded()
+  await expect(page.getByRole('button', { name: 'Review trade' })).toBeHidden()
+
   const updateRequest = page.waitForRequest(request => (
     request.method() === 'PUT' && request.url().endsWith('/api/trades/7?price_field=price_trend')
   ))
