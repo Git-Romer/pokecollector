@@ -480,15 +480,17 @@ def sell_product_card(
 ):
     """Mark linked card copies as sold, remove them from active collection, and keep ledger history."""
     product = _get_product_or_404(db, current_user, product_id)
-    product_card = db.query(ProductCard).options(joinedload(ProductCard.card)).filter(
+    # Resolve the linked item first, then lock CollectionItem before ProductCard.
+    # Other inventory flows use this same lock order to avoid cross-request deadlocks.
+    product_card_link = db.query(ProductCard.collection_item_id).filter(
         ProductCard.id == product_card_id,
         ProductCard.product_id == product.id,
         ProductCard.user_id == current_user.id,
     ).first()
-    if not product_card:
+    if not product_card_link:
         raise HTTPException(status_code=404, detail="Linked product card not found")
 
-    collection_item_id = product_card.collection_item_id
+    collection_item_id = product_card_link.collection_item_id
     collection_item = None
     if collection_item_id:
         collection_item = db.query(CollectionItem).filter(

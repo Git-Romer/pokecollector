@@ -643,9 +643,10 @@ def get_binder_cards(
 
         # Check if in collection. New collection binders can point at an exact
         # CollectionItem so variants/conditions are represented correctly.
-        col_item = None
+        exact_col_item = None
         if bc.collection_item_id:
-            col_item = bc.collection_item if bc.collection_item and bc.collection_item.user_id == current_user.id else None
+            exact_col_item = bc.collection_item if bc.collection_item and bc.collection_item.user_id == current_user.id else None
+        col_item = exact_col_item
         if not col_item:
             col_item = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).filter(
                 CollectionItem.card_id == bc.card_id,
@@ -692,12 +693,12 @@ def get_binder_cards(
             "variant": col_item.variant if col_item else None,
             "condition": col_item.condition if col_item else None,
             "lang": col_item.lang if col_item else (bc.card.lang or "en"),
-            "collection_item_id": col_item.id if col_item else None,
+            "collection_item_id": exact_col_item.id if exact_col_item else None,
             "binder_card_id": bc.id,
         }
-        if binder_type == "collection" and col_item:
-            allocated_elsewhere = max(int(usage_counts.get(col_item.id, 0) or 0) - required_quantity, 0)
-            card_dict["available_quantity"] = max(collection_quantity - int(usage_counts.get(col_item.id, 0) or 0), 0)
+        if binder_type == "collection" and exact_col_item:
+            allocated_elsewhere = max(int(usage_counts.get(exact_col_item.id, 0) or 0) - required_quantity, 0)
+            card_dict["available_quantity"] = max(collection_quantity - int(usage_counts.get(exact_col_item.id, 0) or 0), 0)
             card_dict["max_assignable_quantity"] = min(99, max(collection_quantity - allocated_elsewhere, 0))
         if bc.card.set_ref:
             card_dict["set_name"] = bc.card.set_ref.name
@@ -1678,7 +1679,12 @@ async def import_binder_csv(
     if reader.fieldnames not in (BINDER_CSV_COLUMNS, BINDER_CSV_PHYSICAL_COLUMNS, BINDER_CSV_LEGACY_COLUMNS):
         raise HTTPException(
             status_code=422,
-            detail=f"CSV header must be: {','.join(BINDER_CSV_COLUMNS)} (legacy four-column files are also accepted)",
+            detail=(
+                "CSV header must be one of: "
+                f"{','.join(BINDER_CSV_COLUMNS)}; "
+                f"{','.join(BINDER_CSV_PHYSICAL_COLUMNS)}; or "
+                f"{','.join(BINDER_CSV_LEGACY_COLUMNS)}"
+            ),
         )
 
     added = 0

@@ -13,6 +13,7 @@ import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/q
 import { BINDER_SORT_OPTIONS, sortBinderCards } from '../utils/binderCards'
 import { partitionSettledResults } from '../utils/settledResults'
 import { formatBinderCountSummary } from '../utils/binderCounts'
+import { binderQuantityPromptKey } from '../utils/binderQuantity'
 import { CardDialog, CardDisplay, CardLegend, withCollectionItemState } from '../components/card-system'
 
 const SPRITE_BASE_URL = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated'
@@ -20,9 +21,9 @@ const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
 const BINDER_CSV_IMPORT_HEADER = 'set_code,number,required_quantity,lang,variant,condition,collection_item_id'
 const BINDER_CSV_IMPORT_TEMPLATE = `${BINDER_CSV_IMPORT_HEADER}\nBLK,057,4,de,Holo,NM,\n`
 
-function askQuantity(t, defaultQuantity = 1) {
+function askQuantity(t, defaultQuantity = 1, promptKey = 'wishlist.quantityPrompt') {
   const initialQuantity = Math.max(1, Math.min(99, parseInt(defaultQuantity, 10) || 1))
-  const input = window.prompt(t('wishlist.quantityPrompt'), String(initialQuantity))
+  const input = window.prompt(t(promptKey), String(initialQuantity))
   if (input === null) return null
   const quantity = parseInt(input, 10)
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) {
@@ -238,7 +239,7 @@ export default function BinderDetail() {
   }
 
   const submitPickerSelection = () => {
-    const quantity = askQuantity(t, 1)
+    const quantity = askQuantity(t, 1, binderQuantityPromptKey(isWishlist))
     if (!quantity) return
     pickerSelectionMutation.mutate({ pickerIds: [...selectedPickerIds], quantity })
   }
@@ -971,7 +972,7 @@ export default function BinderDetail() {
                     <div className="rounded-lg bg-bg-card p-2"><p className="text-xs text-text-muted">{t('binderTypes.owned')}</p><p className="font-bold text-green">{isCollection ? (selectedCard.collection_quantity || 0) : (selectedCard.owned_quantity || 0)}</p></div>
                     <div className="rounded-lg bg-bg-card p-2"><p className="text-xs text-text-muted">{t('binderTypes.missing')}</p><p className="font-bold text-brand-red">{selectedCard.missing_quantity || 0}</p></div>
                   </div>
-                  {(isWishlist || isCollection) ? (
+                  {(isWishlist || (isCollection && selectedCard.collection_item_id)) ? (
                     <div>
                       <p className="text-xs text-text-muted mb-1">{isCollection ? t('binderTypes.amountInBinder') : t('binderTypes.requiredInBinder')}</p>
                       <div className="flex items-center gap-2">

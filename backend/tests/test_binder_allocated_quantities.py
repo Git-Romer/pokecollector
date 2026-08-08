@@ -144,6 +144,26 @@ class BinderAllocatedQuantityTests(unittest.TestCase):
         self.assertEqual(result["cards"][0]["collection_quantity"], 4)
         self.assertEqual(result["cards"][0]["max_assignable_quantity"], 3)
 
+    def test_unlinked_legacy_entry_does_not_report_exact_item_capacity(self):
+        self.db.add(BinderCard(
+            binder_id=self.first.id,
+            card_id=self.card.id,
+            collection_item_id=None,
+            required_quantity=2,
+        ))
+        self.db.commit()
+
+        result = get_binder_cards(
+            self.first.id,
+            price_field="price_trend",
+            current_user=self.user,
+            db=self.db,
+        )
+
+        self.assertIsNone(result["cards"][0]["collection_item_id"])
+        self.assertNotIn("available_quantity", result["cards"][0])
+        self.assertNotIn("max_assignable_quantity", result["cards"][0])
+
     def test_collection_cannot_be_reduced_or_deleted_below_allocations(self):
         add_collection_item_to_binder(
             self.first.id, self.item.id, quantity=3, current_user=self.user, db=self.db
@@ -198,6 +218,26 @@ class BinderAllocatedQuantityTests(unittest.TestCase):
         entry = self.db.query(BinderCard).filter(BinderCard.binder_id == self.first.id).one()
         self.assertEqual(entry.collection_item_id, self.item.id)
         self.assertEqual(entry.required_quantity, 3)
+
+    def test_csv_header_error_lists_every_supported_format(self):
+        upload = UploadFile(
+            filename="binder.csv",
+            file=io.BytesIO(b"set_code,number,quantity\nSV1,25,1\n"),
+        )
+
+        with self.assertRaises(HTTPException) as context:
+            asyncio.run(import_binder_csv(
+                self.first.id,
+                upload,
+                current_user=self.user,
+                db=self.db,
+            ))
+
+        self.assertEqual(context.exception.status_code, 422)
+        detail = context.exception.detail
+        self.assertIn("set_code,number,required_quantity,lang,variant,condition,collection_item_id", detail)
+        self.assertIn("set_code,number,required_quantity,lang,variant,condition", detail)
+        self.assertIn("set_code,number,required_quantity,lang", detail)
 
     def test_collection_csv_roundtrip_preserves_identical_exact_rows(self):
         duplicate = CollectionItem(
