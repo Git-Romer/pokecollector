@@ -110,8 +110,8 @@ export default function Leaderboard() {
                 onClick={() => trainer.user_id !== currentUser?.id && navigate(`/leaderboard/compare/${trainer.user_id}`)}
                 className={`w-full rounded-2xl border border-border bg-bg-card p-4 text-left transition-all ${trainer.user_id !== currentUser?.id ? 'hover:border-yellow/40 hover:bg-bg-elevated cursor-pointer' : ''}`}
               >
-                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                  <div className="flex items-start gap-3">
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:gap-6">
+                  <div className="flex items-start gap-3 md:flex-1 md:min-w-0">
                     <div className="flex h-12 min-w-12 items-center justify-center rounded-2xl bg-bg-primary text-lg font-black">
                       {rankLabel(index + 1)}
                     </div>
@@ -145,7 +145,7 @@ export default function Leaderboard() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:items-center">
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-[6rem_5rem_15rem_6rem] md:items-center md:gap-4 md:shrink-0">
                     <div>
                       <p className="text-[11px] uppercase tracking-[0.2em] text-text-muted">{t('leaderboard.value')}</p>
                       <p className="mt-1 text-sm font-semibold text-yellow">{formatPrice(trainer.total_value)}</p>
@@ -154,7 +154,7 @@ export default function Leaderboard() {
                       <p className="text-[11px] uppercase tracking-[0.2em] text-text-muted">{t('leaderboard.cards')}</p>
                       <p className="mt-1 text-sm font-semibold text-text-primary">{Number(trainer.total_cards ?? 0).toLocaleString()}</p>
                     </div>
-                    <div className="col-span-2 md:col-span-1">
+                    <div className="col-span-2 min-w-0 md:col-span-1">
                       <p className="text-[11px] uppercase tracking-[0.2em] text-text-muted">{t('leaderboard.bestCard')}</p>
                       {bestCard ? (
                         <CardIdentity
