@@ -592,6 +592,8 @@ def update_binder(
         if type_changed:
             # A type conversion always requires a fresh sharing decision.
             binder.is_public = False
+            if requested_type != "collection":
+                binder.auto_owned_set_id = None
     if "format" in update.model_fields_set:
         binder.format = _clean_binder_format(update.format)
     if "icon_pokemon_id" in update.model_fields_set:
@@ -713,6 +715,67 @@ def convert_wishlist_binder_to_collection(
         "message": "Wishlist binder converted to a collection binder",
         "binder": _binder_response(binder, total_count, unique_count),
         "allocated_copies": allocated_copies,
+    }
+
+
+@router.post("/{binder_id}/convert-to-wishlist")
+def convert_collection_binder_to_wishlist(
+    binder_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Release exact allocations and turn a collection binder into a wishlist."""
+    binder = db.query(Binder).filter(
+        Binder.id == binder_id,
+        Binder.user_id == current_user.id,
+    ).with_for_update(of=Binder).first()
+    if not binder:
+        raise HTTPException(status_code=404, detail="Binder not found")
+    if (binder.binder_type or "collection") != "collection":
+        raise HTTPException(status_code=400, detail="Only collection binders can be converted")
+
+    entries = db.query(BinderCard).filter(
+        BinderCard.binder_id == binder.id,
+    ).order_by(BinderCard.id.asc()).with_for_update(of=BinderCard).all()
+
+    entries_by_card: dict[str, list[BinderCard]] = {}
+    for entry in entries:
+        entries_by_card.setdefault(entry.card_id, []).append(entry)
+
+    released_copies = 0
+    for card_entries in entries_by_card.values():
+        total_quantity = sum(
+            _safe_required_quantity(entry.required_quantity)
+            for entry in card_entries
+        )
+        released_copies += sum(
+            _safe_required_quantity(entry.required_quantity)
+            for entry in card_entries
+            if entry.collection_item_id is not None
+        )
+        chunks = []
+        remaining = total_quantity
+        while remaining > 0:
+            chunk = min(remaining, 99)
+            chunks.append(chunk)
+            remaining -= chunk
+
+        for entry, quantity in zip(card_entries, chunks):
+            entry.collection_item_id = None
+            entry.required_quantity = quantity
+        for extra_entry in card_entries[len(chunks):]:
+            db.delete(extra_entry)
+
+    binder.binder_type = "wishlist"
+    binder.is_public = False
+    binder.auto_owned_set_id = None
+    db.commit()
+    db.refresh(binder)
+    total_count, unique_count = _binder_counts(db, binder)
+    return {
+        "message": "Collection binder converted to a wishlist binder",
+        "binder": _binder_response(binder, total_count, unique_count),
+        "released_copies": released_copies,
     }
 
 

@@ -14,18 +14,20 @@ try:
         add_card_to_binder,
         add_binder_cards_to_wishlist,
         apply_binder_print_optimization,
+        convert_collection_binder_to_wishlist,
         convert_wishlist_binder_to_collection,
         export_binder_csv,
         get_binder_cards,
         import_binder_csv,
         switch_binder_entry_card,
+        update_binder,
         update_binder_entry,
     )
     from api.collection import remove_from_collection, update_collection_item
     import database
     from database import Base, migrate_legacy_collection_binder_entries
     from models import Binder, BinderCard, Card, CollectionItem, Set, User, WishlistItem
-    from schemas import BinderCardSwitch, BinderCardUpdate, CollectionItemUpdate
+    from schemas import BinderCardSwitch, BinderCardUpdate, BinderUpdate, CollectionItemUpdate
     API_TEST_DEPS_AVAILABLE = True
 except ModuleNotFoundError:
     HTTPException = Exception
@@ -286,6 +288,146 @@ class BinderAllocatedQuantityTests(unittest.TestCase):
         )
         self.assertEqual(other_result["owned_count"], 0)
         self.assertEqual(other_result["missing_count"], 4)
+
+    def test_collection_conversion_releases_allocations_and_merges_same_card_rows(self):
+        second_item = CollectionItem(
+            card_id=self.card.id,
+            user_id=self.user.id,
+            quantity=3,
+            condition="LP",
+            variant="Normal",
+            lang="en",
+        )
+        self.first.is_public = True
+        self.db.add(second_item)
+        self.db.commit()
+        add_collection_item_to_binder(
+            self.first.id, self.item.id, quantity=2, current_user=self.user, db=self.db
+        )
+        add_collection_item_to_binder(
+            self.first.id, second_item.id, quantity=3, current_user=self.user, db=self.db
+        )
+
+        result = convert_collection_binder_to_wishlist(
+            self.first.id,
+            current_user=self.user,
+            db=self.db,
+        )
+
+        self.assertEqual(result["released_copies"], 5)
+        self.assertEqual(result["binder"].binder_type, "wishlist")
+        self.assertFalse(result["binder"].is_public)
+        rows = self.db.query(BinderCard).filter(BinderCard.binder_id == self.first.id).all()
+        self.assertEqual(len(rows), 1)
+        self.assertIsNone(rows[0].collection_item_id)
+        self.assertEqual(rows[0].required_quantity, 5)
+
+        add_collection_item_to_binder(
+            self.second.id, self.item.id, quantity=4, current_user=self.user, db=self.db
+        )
+        wishlist = get_binder_cards(
+            self.first.id,
+            price_field="price_trend",
+            current_user=self.user,
+            db=self.db,
+        )
+        self.assertEqual(wishlist["owned_count"], 3)
+        self.assertEqual(wishlist["missing_count"], 2)
+
+    def test_collection_conversion_preserves_totals_above_single_row_limit(self):
+        self.item.quantity = 99
+        second_item = CollectionItem(
+            card_id=self.card.id,
+            user_id=self.user.id,
+            quantity=51,
+            condition="LP",
+            variant="Normal",
+            lang="en",
+        )
+        self.db.add(second_item)
+        self.db.commit()
+        add_collection_item_to_binder(
+            self.first.id, self.item.id, quantity=99, current_user=self.user, db=self.db
+        )
+        add_collection_item_to_binder(
+            self.first.id, second_item.id, quantity=51, current_user=self.user, db=self.db
+        )
+
+        convert_collection_binder_to_wishlist(
+            self.first.id,
+            current_user=self.user,
+            db=self.db,
+        )
+
+        rows = self.db.query(BinderCard).filter(BinderCard.binder_id == self.first.id).all()
+        self.assertEqual(sorted(row.required_quantity for row in rows), [51, 99])
+        self.assertTrue(all(row.collection_item_id is None for row in rows))
+
+    def test_empty_collection_binder_can_be_converted_to_wishlist(self):
+        result = convert_collection_binder_to_wishlist(
+            self.first.id,
+            current_user=self.user,
+            db=self.db,
+        )
+
+        self.assertEqual(result["released_copies"], 0)
+        self.assertEqual(result["binder"].binder_type, "wishlist")
+
+    def test_collection_conversion_does_not_report_legacy_unlinked_rows_as_released(self):
+        self.db.add(BinderCard(
+            binder_id=self.first.id,
+            card_id=self.card.id,
+            required_quantity=3,
+        ))
+        self.db.commit()
+
+        result = convert_collection_binder_to_wishlist(
+            self.first.id,
+            current_user=self.user,
+            db=self.db,
+        )
+
+        self.assertEqual(result["released_copies"], 0)
+        row = self.db.query(BinderCard).filter(BinderCard.binder_id == self.first.id).one()
+        self.assertEqual(row.required_quantity, 3)
+        self.assertIsNone(row.collection_item_id)
+
+    def test_collection_conversion_releases_auto_owned_set_identity(self):
+        self.first.auto_owned_set_id = self.set.id
+        self.db.commit()
+
+        convert_collection_binder_to_wishlist(
+            self.first.id,
+            current_user=self.user,
+            db=self.db,
+        )
+
+        self.db.refresh(self.first)
+        self.assertIsNone(self.first.auto_owned_set_id)
+        replacement = Binder(
+            name="Scarlet & Violet (owned)",
+            user_id=self.user.id,
+            binder_type="collection",
+            auto_owned_set_id=self.set.id,
+        )
+        self.db.add(replacement)
+        self.db.commit()
+        self.assertIsNotNone(replacement.id)
+
+    def test_generic_empty_binder_type_change_releases_auto_owned_set_identity(self):
+        self.first.auto_owned_set_id = self.set.id
+        self.db.commit()
+
+        update_binder(
+            self.first.id,
+            BinderUpdate(binder_type="wishlist"),
+            current_user=self.user,
+            db=self.db,
+        )
+
+        self.db.refresh(self.first)
+        self.assertEqual(self.first.binder_type, "wishlist")
+        self.assertIsNone(self.first.auto_owned_set_id)
 
     def test_incomplete_wishlist_conversion_is_atomic(self):
         wishlist = Binder(name="Wishlist", user_id=self.user.id, binder_type="wishlist")
