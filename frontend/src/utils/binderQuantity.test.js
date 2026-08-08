@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { binderPickerItemsWithQuantities, binderPickerQuantitiesAreValid, canConvertWishlistBinder } from './binderQuantity'
+import { binderPickerItemsWithQuantities, binderPickerQuantitiesAreValid, binderPickerQuantityMaximum, canConvertWishlistBinder, clampBinderPickerQuantity } from './binderQuantity'
 
 describe('canConvertWishlistBinder', () => {
   it('allows only complete, non-empty wishlist binders', () => {
@@ -26,5 +26,21 @@ describe('binder picker quantities', () => {
     expect(binderPickerQuantitiesAreValid([{ id: 'a', quantity: 0 }])).toBe(false)
     expect(binderPickerQuantitiesAreValid([{ id: 'a', quantity: 1.5 }])).toBe(false)
     expect(binderPickerQuantitiesAreValid([{ id: 'a', quantity: 100 }])).toBe(false)
+  })
+
+  it('uses and enforces each collection items available maximum', () => {
+    const limited = { id: 'a', maxQuantity: 3 }
+    expect(binderPickerQuantityMaximum(limited)).toBe(3)
+    expect(clampBinderPickerQuantity('8', limited)).toBe(3)
+    expect(clampBinderPickerQuantity('0', limited)).toBe(1)
+    expect(clampBinderPickerQuantity('', limited)).toBe('')
+    expect(clampBinderPickerQuantity('1', { id: 'none', maxQuantity: 0 })).toBe('')
+    expect(binderPickerQuantitiesAreValid([{ ...limited, quantity: 3 }])).toBe(true)
+    expect(binderPickerQuantitiesAreValid([{ ...limited, quantity: 4 }])).toBe(false)
+  })
+
+  it('keeps the wishlist maximum at 99 when availability is not applicable', () => {
+    expect(binderPickerQuantityMaximum({ id: 'a' })).toBe(99)
+    expect(clampBinderPickerQuantity('150', { id: 'a' })).toBe(99)
   })
 })

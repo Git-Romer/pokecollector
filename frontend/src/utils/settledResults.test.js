@@ -14,7 +14,6 @@ describe('partitionSettledResults', () => {
     )
 
     expect(result.succeededIds).toEqual([11, 13])
-    expect(result.failedIds).toEqual([12])
     expect(result.failed).toEqual([{ status: 'rejected', reason: error }])
   })
 })

@@ -13,7 +13,7 @@ import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/q
 import { BINDER_SORT_OPTIONS, sortBinderCards } from '../utils/binderCards'
 import { partitionSettledResults } from '../utils/settledResults'
 import { formatBinderCountSummary } from '../utils/binderCounts'
-import { binderPickerItemsWithQuantities, binderPickerQuantitiesAreValid, canConvertWishlistBinder } from '../utils/binderQuantity'
+import { binderPickerItemsWithQuantities, binderPickerQuantitiesAreValid, binderPickerQuantityMaximum, canConvertWishlistBinder, clampBinderPickerQuantity } from '../utils/binderQuantity'
 import { CardDialog, CardDisplay, CardLegend, withCollectionItemState } from '../components/card-system'
 import Modal from '../components/ui/Modal'
 
@@ -53,6 +53,7 @@ function BinderQuantityModal({ t, dialog, quantities, onQuantityChange, onClose,
           {items.map(item => {
             const quantity = quantities[item.id] ?? '1'
             const numericQuantity = Number(quantity)
+            const maximum = binderPickerQuantityMaximum(item)
             return (
               <div key={item.id} className="flex items-center gap-3 rounded-xl border border-border bg-bg-elevated/40 p-3">
                 {item.image ? (
@@ -63,6 +64,9 @@ function BinderQuantityModal({ t, dialog, quantities, onQuantityChange, onClose,
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-text-primary">{item.name}</p>
                   {item.subtitle && <p className="truncate text-xs text-text-muted">{item.subtitle}</p>}
+                  {item.maxQuantity !== undefined && (
+                    <p className="mt-1 text-xs font-medium text-blue">{maximum} {t('products.available')}</p>
+                  )}
                 </div>
                 <div className="flex flex-shrink-0 items-center gap-1">
                   <button
@@ -77,19 +81,19 @@ function BinderQuantityModal({ t, dialog, quantities, onQuantityChange, onClose,
                   <input
                     type="number"
                     min="1"
-                    max="99"
+                    max={maximum}
                     inputMode="numeric"
                     className="input w-16 px-2 text-center"
                     value={quantity}
                     disabled={isSubmitting}
-                    onChange={event => onQuantityChange(item.id, event.target.value)}
+                    onChange={event => onQuantityChange(item.id, clampBinderPickerQuantity(event.target.value, item))}
                     aria-label={`${t('common.quantity')}: ${item.name}`}
                   />
                   <button
                     type="button"
                     className="btn-ghost px-2"
-                    disabled={isSubmitting || !Number.isInteger(numericQuantity) || numericQuantity >= 99}
-                    onClick={() => onQuantityChange(item.id, Math.min(99, numericQuantity + 1))}
+                    disabled={isSubmitting || !Number.isInteger(numericQuantity) || numericQuantity >= maximum}
+                    onClick={() => onQuantityChange(item.id, Math.min(maximum, numericQuantity + 1))}
                     aria-label={`${t('common.quantity')} +`}
                   >
                     <Plus size={14} />
@@ -247,6 +251,7 @@ export default function BinderDetail() {
   const binderType = binder?.binder_type || 'collection'
   const isWishlist = binderType === 'wishlist'
   const isCollection = binderType === 'collection'
+  const availableCollectionItemQuantities = data?.available_collection_item_quantities || {}
 
   const { data: collectionData } = useQuery({
     queryKey: ['collection'],
@@ -311,7 +316,7 @@ export default function BinderDetail() {
       const results = await Promise.allSettled(requests)
       return partitionSettledResults(pickerIds, results)
     },
-    onSuccess: ({ succeededIds, failedIds, failed }) => {
+    onSuccess: ({ succeededIds, failed }) => {
       setSelectedPickerIds(current => current.filter(id => !succeededIds.includes(id)))
       setPickerSelectionMeta(current => {
         const next = { ...current }
@@ -323,17 +328,18 @@ export default function BinderDetail() {
         setQuantityDialog(null)
       } else if (succeededIds.length > 0) {
         toast.error(`${succeededIds.length} ✓ · ${failed.length} ${t('card.addFailed')}`)
-        setQuantityDialog(current => current?.mode === 'picker'
-          ? { ...current, items: current.items.filter(item => failedIds.includes(item.id)) }
-          : current)
+        setQuantityDialog(null)
       } else {
         const detail = failed[0]?.reason?.response?.data?.detail
         toast.error(detail || t('card.addFailed'))
+        setQuantityDialog(null)
       }
     },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['binder-cards', binderId] })
-      queryClient.invalidateQueries({ queryKey: ['binders'] })
+    onSettled: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['binder-cards', binderId] }),
+        queryClient.invalidateQueries({ queryKey: ['binders'] }),
+      ])
       invalidateTcgdexFilterLanguages(queryClient)
     },
   })
@@ -357,9 +363,24 @@ export default function BinderDetail() {
   }
 
   const submitPickerSelection = () => {
-    const items = selectedPickerIds.map(id => pickerSelectionMeta[id]).filter(Boolean)
+    const items = selectedPickerIds.map(id => {
+      const item = pickerSelectionMeta[id]
+      if (!item || isWishlist) return item
+      return {
+        ...item,
+        maxQuantity: availableCollectionItemQuantities[id] ?? item.maxQuantity,
+      }
+    }).filter(item => item && binderPickerQuantityMaximum(item) > 0)
+    const itemIds = new Set(items.map(item => String(item.id)))
+    setSelectedPickerIds(items.map(item => item.id))
+    setPickerSelectionMeta(current => Object.fromEntries(
+      Object.entries(current).filter(([id]) => itemIds.has(id)),
+    ))
     if (!items.length) return
-    setPickerQuantities(Object.fromEntries(items.map(item => [item.id, pickerQuantities[item.id] ?? '1'])))
+    setPickerQuantities(Object.fromEntries(items.map(item => [
+      item.id,
+      clampBinderPickerQuantity(pickerQuantities[item.id] ?? '1', item),
+    ])))
     setQuantityDialog({ mode: 'picker', items })
   }
 
@@ -888,17 +909,19 @@ export default function BinderDetail() {
                           alwaysShowQuantity: true,
                           showWishlist: false,
                         }}
-                        onClick={() => !unavailable && togglePickerSelection({
+                        onClick={() => (!unavailable || selected) && togglePickerSelection({
                           id: item.id,
                           name: card.name,
                           subtitle: [card.set_ref?.name, card.number, item.variant || 'Normal', item.condition].filter(Boolean).join(' · '),
                           image: resolveCardImageUrl(card),
+                          maxQuantity: availableCollectionItemQuantities[item.id] ?? 0,
                         })}
-                        onSelect={() => !unavailable && togglePickerSelection({
+                        onSelect={() => (!unavailable || selected) && togglePickerSelection({
                           id: item.id,
                           name: card.name,
                           subtitle: [card.set_ref?.name, card.number, item.variant || 'Normal', item.condition].filter(Boolean).join(' · '),
                           image: resolveCardImageUrl(card),
+                          maxQuantity: availableCollectionItemQuantities[item.id] ?? 0,
                         })}
                         unavailableReason={unavailable ? t('binderTypes.alreadyUsed') : ''}
                         overlay={(

@@ -551,6 +551,42 @@ class BinderAllocatedQuantityTests(unittest.TestCase):
         self.assertEqual(result["cards"][0]["collection_quantity"], 4)
         self.assertEqual(result["cards"][0]["max_assignable_quantity"], 3)
 
+    def test_detail_reports_each_collection_items_addable_quantity(self):
+        add_collection_item_to_binder(
+            self.first.id, self.item.id, quantity=2, current_user=self.user, db=self.db
+        )
+        add_collection_item_to_binder(
+            self.second.id, self.item.id, quantity=1, current_user=self.user, db=self.db
+        )
+
+        result = get_binder_cards(
+            self.first.id,
+            price_field="price_trend",
+            current_user=self.user,
+            db=self.db,
+        )
+
+        self.assertEqual(result["available_collection_item_quantities"][self.item.id], 1)
+        self.assertEqual(result["available_collection_item_quantities"][self.alt_item.id], 4)
+        self.assertNotIn(self.item.id, result["unavailable_collection_item_ids"])
+
+        existing = self.db.query(BinderCard).filter(
+            BinderCard.binder_id == self.first.id,
+            BinderCard.collection_item_id == self.item.id,
+        ).one()
+        existing.required_quantity = 99
+        self.item.quantity = 100
+        self.db.commit()
+
+        result = get_binder_cards(
+            self.first.id,
+            price_field="price_trend",
+            current_user=self.user,
+            db=self.db,
+        )
+        self.assertEqual(result["available_collection_item_quantities"][self.item.id], 0)
+        self.assertIn(self.item.id, result["unavailable_collection_item_ids"])
+
     def test_unlinked_legacy_entry_does_not_report_exact_item_capacity(self):
         self.db.add(BinderCard(
             binder_id=self.first.id,

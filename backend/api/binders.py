@@ -849,14 +849,29 @@ def get_binder_cards(
     remaining_available_by_card = dict(available_collection_quantities)
     usage_counts = _collection_binder_usage_counts(db, current_user)
     unavailable_collection_item_ids = []
+    available_collection_item_quantities = {}
     if binder_type == "collection":
         owned_items = db.query(CollectionItem.id, CollectionItem.quantity).join(Card, Card.id == CollectionItem.card_id).filter(
             CollectionItem.user_id == current_user.id,
             visible_card_filter(db, current_user.id, "all"),
         ).all()
+        current_binder_quantities = {}
+        for binder_card in binder_cards:
+            if binder_card.collection_item_id is not None:
+                current_binder_quantities[binder_card.collection_item_id] = (
+                    current_binder_quantities.get(binder_card.collection_item_id, 0)
+                    + _safe_required_quantity(binder_card.required_quantity)
+                )
+        available_collection_item_quantities = {
+            item_id: min(
+                max(int(quantity or 0) - int(usage_counts.get(item_id, 0) or 0), 0),
+                max(99 - int(current_binder_quantities.get(item_id, 0) or 0), 0),
+            )
+            for item_id, quantity in owned_items
+        }
         unavailable_collection_item_ids = [
-            item_id for item_id, quantity in owned_items
-            if usage_counts.get(item_id, 0) >= (quantity or 1)
+            item_id for item_id, maximum in available_collection_item_quantities.items()
+            if maximum < 1
         ]
 
     cards = []
@@ -969,6 +984,7 @@ def get_binder_cards(
         "current_value": round(current_value, 2),
         "cost_to_complete": round(cost_to_complete, 2),
         "unavailable_collection_item_ids": unavailable_collection_item_ids,
+        "available_collection_item_quantities": available_collection_item_quantities,
     }
 
 
