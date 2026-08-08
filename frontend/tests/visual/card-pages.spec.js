@@ -51,6 +51,53 @@ const duplicates = collection.map(item => ({
   total_value: (item.card.price_market || 0) * (item.quantity + 1),
 }))
 
+const trades = [{
+  id: 7,
+  partner_name: 'Misty',
+  trade_date: '2026-08-08',
+  notes: 'Original trade note',
+  outgoing_value: 9,
+  incoming_value: 14,
+  value_delta: 5,
+  items: [
+    {
+      id: 71,
+      trade_id: 7,
+      direction: 'outgoing',
+      card_id: collection[0].card_id,
+      original_collection_item_id: collection[0].id,
+      quantity: 1,
+      value_per_card: 9,
+      value_total: 9,
+      card_name: collection[0].card.name,
+      set_id: collection[0].card.set_id,
+      card_number: collection[0].card.number,
+      variant: collection[0].variant,
+      condition: collection[0].condition,
+      lang: collection[0].lang,
+      notes: 'Outgoing note',
+      card: collection[0].card,
+    },
+    {
+      id: 72,
+      trade_id: 7,
+      direction: 'incoming',
+      card_id: collection[1].card_id,
+      created_collection_item_id: collection[1].id,
+      quantity: 1,
+      value_per_card: 14,
+      value_total: 14,
+      card_name: collection[1].card.name,
+      set_id: collection[1].card.set_id,
+      card_number: collection[1].card.number,
+      variant: collection[1].variant,
+      condition: collection[1].condition,
+      lang: collection[1].lang,
+      card: collection[1].card,
+    },
+  ],
+}]
+
 async function installApiFixtures(page) {
   const cardBackResponse = await page.request.get('/cardback.jpg')
   const cardBack = await cardBackResponse.body()
@@ -98,6 +145,7 @@ async function installApiFixtures(page) {
       '/api/analytics/trades-summary': { trade_count: 0 },
       '/api/analytics/new-sets': [],
       '/api/products/': [],
+      '/api/trades/': trades,
     }
 
     await route.fulfill({
@@ -137,4 +185,40 @@ test('real Analytics duplicate list stays visually aligned with Collection', asy
   await expect(page.getByRole('heading', { name: 'Analytics' })).toBeVisible()
   await expectVisibleArtwork(page)
   await expect(page.locator('main')).toHaveScreenshot('analytics-duplicates.png')
+})
+
+test('trade history opens a prefilled edit draft and submits immutable values', async ({ page }) => {
+  await page.goto('/trades')
+  await page.getByRole('button', { name: 'History' }).click()
+  await expect(page.getByText('Misty')).toBeVisible()
+  await page.getByRole('button', { name: 'Edit' }).click()
+
+  await expect(page.locator('input[placeholder="Trade partner"]')).toHaveValue('Misty')
+  await expect(page.getByText('Edit: #7')).toBeVisible()
+  await expect(page.locator('input[type="number"]:disabled')).toHaveCount(2)
+
+  // Adding the same card again must create a new row. The backend then gives
+  // that row a current-value snapshot instead of extending the historical row.
+  await page.getByRole('button', { name: 'Add' }).first().click()
+
+  // The mobile review shortcut must not cover the final fields or save action.
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.evaluate(() => window.scrollTo(0, 0))
+  await expect(page.getByRole('button', { name: 'Review trade' })).toBeVisible()
+  await page.locator('#trade-finalize').scrollIntoViewIfNeeded()
+  await expect(page.getByRole('button', { name: 'Review trade' })).toBeHidden()
+
+  const updateRequest = page.waitForRequest(request => (
+    request.method() === 'PUT' && request.url().endsWith('/api/trades/7?price_field=price_trend')
+  ))
+  await page.locator('#trade-finalize').getByRole('button', { name: 'Save' }).click()
+  const request = await updateRequest
+  const payload = request.postDataJSON()
+
+  expect(payload.outgoing[0]).toMatchObject({ trade_item_id: 71, quantity: 1, notes: 'Outgoing note' })
+  expect(payload.outgoing[1]).toMatchObject({ collection_item_id: collection[0].id, quantity: 1 })
+  expect(payload.outgoing).toHaveLength(2)
+  expect(payload.incoming[0]).toMatchObject({ trade_item_id: 72, quantity: 1 })
+  expect(payload.outgoing[0]).not.toHaveProperty('value_per_card')
+  expect(payload.incoming[0]).not.toHaveProperty('value_per_card')
 })

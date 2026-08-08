@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowRightLeft, Check, History, PenLine, Plus, Search, Trash2, Wallet } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -8,8 +8,10 @@ import {
   getApiErrorMessage,
   getCollection,
   getCustomCards,
+  getTrade,
   getTrades,
   searchCards,
+  updateTrade,
 } from '../api/client'
 import MoneyInput from '../components/MoneyInput'
 import { CustomCardModal } from '../components/CardItem'
@@ -20,6 +22,7 @@ import { CardIdentity } from '../components/card-system'
 import { getEffectiveCardPrice, priceFieldFromPrimary } from '../utils/prices'
 import { formatMoneyInputValue, parseMoneyInputValue } from '../utils/moneyInput'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
+import { buildTradeUpdatePayload, findNewTradeDraftItem, isCashTradeItem, snapshotTradeCard, tradeToDraft } from '../utils/tradeDraft'
 
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
 
@@ -40,26 +43,6 @@ function cardSubtitle(card) {
   const setName = source?.set_ref?.name || source?.set_id || '-'
   const number = source?.number ? ` #${source.number}` : ''
   return `${setName}${number}`
-}
-
-function snapshotCard(item) {
-  return {
-    ...(item.card || {}),
-    id: item.card_id,
-    name: item.card_name || item.card?.name,
-    set_id: item.set_id || item.card?.set_id,
-    number: item.card_number || item.card?.number,
-    images_small: item.card?.images_small,
-    images_large: item.card?.images_large,
-    custom_image_url: item.card?.custom_image_url,
-  }
-}
-
-function isCashTradeItem(item) {
-  if (item?.card_id) return false
-  if ((item?.card_name || '').toLowerCase() !== 'cash') return false
-  if ((item?.set_id || '').toLowerCase() === 'cash' && (item?.card_number || '').toLowerCase() === 'cash') return true
-  return ['cash added to trade', 'cash received in trade'].includes((item?.notes || '').toLowerCase())
 }
 
 function moneyToEur(value, exchangeRate) {
@@ -153,7 +136,7 @@ function MiniCardRow({ card, variant, meta, value, rightAction }) {
   )
 }
 
-function DraftItem({ item, side, onUpdate, onRemove, t, formatPrice, exchangeRate }) {
+function DraftItem({ item, side, onUpdate, onRemove, t, formatPrice, exchangeRate, valueLocked = false }) {
   const card = side === 'outgoing' ? item.collectionItem.card : item.card
   const total = moneyToEur(item.value_per_card, exchangeRate) * (Number(item.quantity) || 1)
 
@@ -176,7 +159,7 @@ function DraftItem({ item, side, onUpdate, onRemove, t, formatPrice, exchangeRat
           <input
             type="number"
             min="1"
-            max={side === 'outgoing' ? item.collectionItem.quantity : 999}
+            max={side === 'outgoing' ? (item.maxQuantity || item.collectionItem.quantity) : 999}
             value={item.quantity}
             onChange={(event) => onUpdate({ quantity: Number(event.target.value) || 1 })}
             className="input"
@@ -184,7 +167,11 @@ function DraftItem({ item, side, onUpdate, onRemove, t, formatPrice, exchangeRat
         </div>
         <div>
           <label className="text-xs text-text-muted mb-1 block">{t('trades.valuePerCard')}</label>
-          <MoneyInput value={item.value_per_card} onChange={(event) => onUpdate({ value_per_card: event.target.value })} />
+          <MoneyInput
+            value={item.value_per_card}
+            onChange={(event) => onUpdate({ value_per_card: event.target.value })}
+            disabled={valueLocked}
+          />
         </div>
       </div>
       {side === 'incoming' && (
@@ -197,11 +184,27 @@ function DraftItem({ item, side, onUpdate, onRemove, t, formatPrice, exchangeRat
           </select>
         </div>
       )}
+      {side === 'outgoing' && item.trade_item_id && (
+        <select
+          className="select"
+          value={item.condition}
+          onChange={(event) => onUpdate({ condition: event.target.value })}
+          disabled={item.collectionItem.product_sources?.length > 0}
+        >
+          {CONDITIONS.map(condition => <option key={condition} value={condition}>{condition}</option>)}
+        </select>
+      )}
       {side === 'outgoing' && item.collectionItem.product_sources?.length > 0 && (
         <p className="rounded border border-yellow/20 bg-yellow/10 px-2 py-1 text-xs text-yellow">
           {t('trades.productLinked')}
         </p>
       )}
+      <input
+        value={item.notes || ''}
+        onChange={(event) => onUpdate({ notes: event.target.value })}
+        className="input"
+        placeholder={t('common.notes')}
+      />
     </div>
   )
 }
@@ -260,6 +263,21 @@ export default function Trades() {
   const [outgoingCash, setOutgoingCash] = useState('')
   const [incomingCash, setIncomingCash] = useState('')
   const [showCustomModal, setShowCustomModal] = useState(false)
+  const [editingTradeId, setEditingTradeId] = useState(null)
+  const [isFinalizeVisible, setIsFinalizeVisible] = useState(false)
+  const finalizeRef = useRef(null)
+
+  useEffect(() => {
+    const finalize = finalizeRef.current
+    if (!finalize || typeof IntersectionObserver === 'undefined') return undefined
+
+    const observer = new IntersectionObserver(
+      ([entry]) => setIsFinalizeVisible(entry.isIntersecting),
+      { threshold: 0.1 },
+    )
+    observer.observe(finalize)
+    return () => observer.disconnect()
+  }, [tab])
 
   const { data: collectionItems = [] } = useQuery({
     queryKey: ['collection', 'trades'],
@@ -305,9 +323,11 @@ export default function Trades() {
   const addOutgoing = (collectionItem) => {
     const price = getEffectiveCardPrice(collectionItem.card, collectionItem.variant, priceField)
     setOutgoing(prev => {
-      const existing = prev.find(item => item.collectionItem.id === collectionItem.id)
+      // A copy added while editing is a new trade item with today's price.
+      // Only merge it into another newly-added draft row, never a historical one.
+      const existing = findNewTradeDraftItem(prev, item => item.collectionItem.id === collectionItem.id)
       if (existing) {
-        return prev.map(item => item.collectionItem.id === collectionItem.id
+        return prev.map(item => item.key === existing.key
           ? { ...item, quantity: Math.min((Number(item.quantity) || 1) + 1, 999) }
           : item)
       }
@@ -329,7 +349,9 @@ export default function Trades() {
     const lang = card.lang || card._lang || 'en'
     const price = getEffectiveCardPrice(card, variant, priceField)
     setIncoming(prev => {
-      const existing = prev.find(item => item.card.id === card.id)
+      // Keep new copies separate from historical rows so their current value
+      // is snapshotted independently by the update endpoint.
+      const existing = findNewTradeDraftItem(prev, item => item.card.id === card.id)
       if (existing) {
         return prev.map(item => item.key === existing.key
           ? { ...item, quantity: Math.min((Number(item.quantity) || 1) + 1, 999) }
@@ -380,6 +402,21 @@ export default function Trades() {
     setIncoming([])
     setOutgoingCash('')
     setIncomingCash('')
+    setEditingTradeId(null)
+  }
+
+  const startEditing = (trade) => {
+    const draft = tradeToDraft(trade, exchangeRate)
+    setPartnerName(draft.partnerName)
+    setTradeDate(draft.tradeDate)
+    setNotes(draft.notes)
+    setOutgoingCash(draft.outgoingCash)
+    setIncomingCash(draft.incomingCash)
+    setOutgoing(draft.outgoing)
+    setIncoming(draft.incoming)
+    setEditingTradeId(trade.id)
+    setTab('live')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const createMutation = useMutation({
@@ -393,6 +430,7 @@ export default function Trades() {
         collection_item_id: item.collectionItem.id,
         quantity: Number(item.quantity) || 1,
         value_per_card: parseMoneyInputValue(item.value_per_card, exchangeRate, null),
+        notes: item.notes || null,
       })),
       incoming: incoming.map(item => {
         const value = parseMoneyInputValue(item.value_per_card, exchangeRate, null)
@@ -404,6 +442,7 @@ export default function Trades() {
           lang: item.lang || item.card.lang || 'en',
           value_per_card: value,
           purchase_price: value,
+          notes: item.notes || null,
         }
       }),
     }, { price_field: priceField }),
@@ -419,12 +458,49 @@ export default function Trades() {
     onError: (error) => toast.error(getApiErrorMessage(error, t('trades.saveFailed'))),
   })
 
+  const updateMutation = useMutation({
+    mutationFn: () => updateTrade(editingTradeId, buildTradeUpdatePayload({
+      partnerName,
+      tradeDate,
+      notes,
+      outgoingCash,
+      incomingCash,
+      outgoing,
+      incoming,
+    }, exchangeRate), { price_field: priceField }),
+    onSuccess: () => {
+      toast.success(t('common.saved'))
+      resetDraft()
+      queryClient.invalidateQueries({ queryKey: ['trades'] })
+      queryClient.invalidateQueries({ queryKey: ['analytics'] })
+      invalidateCardState(queryClient)
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+      invalidateTcgdexFilterLanguages(queryClient)
+      setTab('history')
+    },
+    onError: async (error) => {
+      toast.error(getApiErrorMessage(error, t('trades.saveFailed')))
+      queryClient.invalidateQueries({ queryKey: ['trades'] })
+      invalidateCardState(queryClient)
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+      if (error?.response?.status === 409 && editingTradeId !== null) {
+        try {
+          const refreshedTrade = await getTrade(editingTradeId)
+          startEditing(refreshedTrade)
+        } catch {
+          resetDraft()
+          setTab('history')
+        }
+      }
+    },
+  })
+
   const canSave = (
     outgoing.length > 0
     || incoming.length > 0
     || moneyToEur(outgoingCash, exchangeRate) > 0
     || moneyToEur(incomingCash, exchangeRate) > 0
-  ) && tradeDate && !createMutation.isPending
+  ) && tradeDate && !createMutation.isPending && !updateMutation.isPending
 
   return (
     <div className="space-y-4 pb-2">
@@ -511,6 +587,7 @@ export default function Trades() {
                     t={t}
                     formatPrice={formatPrice}
                     exchangeRate={exchangeRate}
+                    valueLocked={editingTradeId !== null}
                   />
                 ))}
                 {outgoing.length === 0 && moneyToEur(outgoingCash, exchangeRate) <= 0 && (
@@ -573,6 +650,7 @@ export default function Trades() {
                     t={t}
                     formatPrice={formatPrice}
                     exchangeRate={exchangeRate}
+                    valueLocked={editingTradeId !== null}
                   />
                 ))}
                 {incoming.length === 0 && moneyToEur(incomingCash, exchangeRate) <= 0 && (
@@ -582,19 +660,33 @@ export default function Trades() {
             </section>
           </div>
 
-          <div id="trade-finalize" className="scroll-mt-24 rounded-lg border border-border bg-bg-card p-4 space-y-3">
+          <div ref={finalizeRef} id="trade-finalize" className="scroll-mt-24 rounded-lg border border-border bg-bg-card p-4 space-y-3">
+            {editingTradeId !== null && (
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-brand-red/30 bg-brand-red/10 px-3 py-2">
+                <span className="text-sm font-bold text-text-primary">{t('common.edit')}: #{editingTradeId}</span>
+                <button type="button" onClick={resetDraft} className="btn-ghost text-sm">
+                  {t('common.cancel')}
+                </button>
+              </div>
+            )}
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
               <input value={partnerName} onChange={(event) => setPartnerName(event.target.value)} className="input" placeholder={t('trades.partnerName')} />
               <input type="date" value={tradeDate} onChange={(event) => setTradeDate(event.target.value)} className="input" />
-              <button onClick={() => createMutation.mutate()} disabled={!canSave} className="btn-primary justify-center">
+              <button
+                onClick={() => editingTradeId !== null ? updateMutation.mutate() : createMutation.mutate()}
+                disabled={!canSave}
+                className="btn-primary justify-center"
+              >
                 <Check size={16} />
-                {createMutation.isPending ? t('common.saving') : t('trades.commitTrade')}
+                {(createMutation.isPending || updateMutation.isPending)
+                  ? t('common.saving')
+                  : (editingTradeId !== null ? t('common.save') : t('trades.commitTrade'))}
               </button>
             </div>
             <input value={notes} onChange={(event) => setNotes(event.target.value)} className="input" placeholder={t('common.notes')} />
           </div>
 
-          {(outgoing.length > 0 || incoming.length > 0) && (
+          {(outgoing.length > 0 || incoming.length > 0) && !isFinalizeVisible && (
             <div className="fixed bottom-20 left-3 right-3 z-40 flex items-center gap-3 rounded-2xl border border-white/15 bg-bg-surface/95 p-3 shadow-2xl backdrop-blur md:hidden">
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-bold text-text-primary">
@@ -623,11 +715,21 @@ export default function Trades() {
                   <p className="font-bold text-text-primary">{trade.partner_name || t('trades.unnamedTrade')}</p>
                   <p className="text-xs text-text-muted">{trade.trade_date}</p>
                 </div>
-                <div className="text-right">
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => startEditing(trade)}
+                    className="btn-ghost px-3 py-2 text-sm"
+                  >
+                    <PenLine size={14} />
+                    {t('common.edit')}
+                  </button>
+                  <div className="text-right">
                   <p className={clsx('text-sm font-bold', trade.value_delta >= 0 ? 'text-green' : 'text-brand-red')}>
                     {trade.value_delta >= 0 ? '+' : ''}{formatPrice(trade.value_delta)}
                   </p>
                   <p className="text-xs text-text-muted">{formatPrice(trade.outgoing_value)} -&gt; {formatPrice(trade.incoming_value)}</p>
+                  </div>
                 </div>
               </div>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -642,9 +744,9 @@ export default function Trades() {
                       ) : (
                         <MiniCardRow
                           key={item.id}
-                          card={snapshotCard(item)}
+                          card={snapshotTradeCard(item)}
                           variant={item.variant}
-                          meta={`${item.quantity} - ${item.variant || 'Normal'} - ${item.condition || 'NM'}`}
+                          meta={`${item.quantity} - ${item.variant || 'Normal'} - ${item.condition || 'NM'}${item.notes ? ` · ${item.notes}` : ''}`}
                           value={formatPrice(item.value_total)}
                         />
                       )

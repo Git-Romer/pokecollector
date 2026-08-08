@@ -226,6 +226,7 @@ export const addProductLedgerEntry = (productId, data) => api.post(`/products/${
 export const getTrades = () => api.get('/trades/').then(r => r.data)
 export const getTrade = (id) => api.get(`/trades/${id}`).then(r => r.data)
 export const createTrade = (data, params = {}) => api.post('/trades/', data, { params }).then(r => r.data)
+export const updateTrade = (id, data, params = {}) => api.put(`/trades/${id}`, data, { params }).then(r => r.data)
 export const valueTrade = (data, params = {}) => api.post('/trades/value', data, { params }).then(r => r.data)
 
 // Export

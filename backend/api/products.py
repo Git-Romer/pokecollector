@@ -453,11 +453,14 @@ def unlink_product_card(
 ):
     """Remove an active product-card link without touching collection inventory."""
     product = _get_product_or_404(db, current_user, product_id)
+    # Serialize the history check with sales and trade-outs. Without the row
+    # lock, an unlink can read the pre-trade state and delete this provenance
+    # immediately after a concurrent trade commits.
     product_card = db.query(ProductCard).filter(
         ProductCard.id == product_card_id,
         ProductCard.product_id == product.id,
         ProductCard.user_id == current_user.id,
-    ).first()
+    ).with_for_update(of=ProductCard).first()
     if not product_card:
         raise HTTPException(status_code=404, detail="Linked product card not found")
     if product_card.sold_quantity > 0 or product_card.ledger_entries:
