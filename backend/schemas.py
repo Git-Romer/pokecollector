@@ -306,6 +306,10 @@ class ProductCardLinkCreate(BaseModel):
     notes: Optional[str] = None
 
 
+class ProductCardBulkLinkCreate(BaseModel):
+    items: List[ProductCardLinkCreate] = Field(min_length=1, max_length=200)
+
+
 class ProductCardSaleCreate(BaseModel):
     quantity: int = Field(default=1, ge=1, le=999)
     sold_price: float = Field(ge=0)

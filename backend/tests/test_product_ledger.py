@@ -14,6 +14,7 @@ try:
         create_product,
         get_products_summary,
         link_collection_item_to_product,
+        link_collection_items_to_product,
         sell_product_card,
         update_product,
     )
@@ -24,6 +25,7 @@ try:
     from schemas import (
         CollectionItemUpdate,
         ProductCardLinkCreate,
+        ProductCardBulkLinkCreate,
         ProductCardSaleCreate,
         ProductLifecycleBulkUpdate,
         ProductPurchaseCreate,
@@ -451,6 +453,71 @@ class ProductLedgerApiTests(unittest.TestCase):
             )
 
         self.assertEqual(ctx.exception.status_code, 404)
+
+    def test_bulk_link_adds_multiple_collection_rows_and_opens_product(self):
+        product = self.add_product()
+        first_item = self.add_collection_item(quantity=2)
+        second_item = self.add_collection_item(quantity=1)
+
+        response = link_collection_items_to_product(
+            product.id,
+            ProductCardBulkLinkCreate(items=[
+                ProductCardLinkCreate(collection_item_id=first_item.id, quantity=2),
+                ProductCardLinkCreate(collection_item_id=second_item.id, quantity=1),
+            ]),
+            current_user=self.user,
+            db=self.db,
+        )
+
+        rows = self.db.query(ProductCard).order_by(ProductCard.collection_item_id).all()
+        self.assertEqual([(row.collection_item_id, row.active_quantity) for row in rows], [
+            (first_item.id, 2),
+            (second_item.id, 1),
+        ])
+        self.assertEqual(response.lifecycle_status, "opened")
+        self.assertEqual(response.active_linked_cards_count, 3)
+
+    def test_bulk_link_validation_is_atomic(self):
+        product = self.add_product()
+        original_status = product.lifecycle_status
+        valid_item = self.add_collection_item(quantity=1)
+        insufficient_item = self.add_collection_item(quantity=1)
+
+        with self.assertRaises(HTTPException) as ctx:
+            link_collection_items_to_product(
+                product.id,
+                ProductCardBulkLinkCreate(items=[
+                    ProductCardLinkCreate(collection_item_id=valid_item.id, quantity=1),
+                    ProductCardLinkCreate(collection_item_id=insufficient_item.id, quantity=2),
+                ]),
+                current_user=self.user,
+                db=self.db,
+            )
+
+        self.assertEqual(ctx.exception.status_code, 409)
+        self.db.rollback()
+        self.assertEqual(self.db.query(ProductCard).count(), 0)
+        self.db.refresh(product)
+        self.assertEqual(product.lifecycle_status, original_status)
+
+    def test_bulk_link_rejects_duplicate_collection_rows(self):
+        product = self.add_product()
+        item = self.add_collection_item(quantity=2)
+
+        with self.assertRaises(HTTPException) as ctx:
+            link_collection_items_to_product(
+                product.id,
+                ProductCardBulkLinkCreate(items=[
+                    ProductCardLinkCreate(collection_item_id=item.id, quantity=1),
+                    ProductCardLinkCreate(collection_item_id=item.id, quantity=1),
+                ]),
+                current_user=self.user,
+                db=self.db,
+            )
+
+        self.assertEqual(ctx.exception.status_code, 422)
+        self.db.rollback()
+        self.assertEqual(self.db.query(ProductCard).count(), 0)
 
     def test_selling_one_linked_copy_reduces_collection_and_keeps_history(self):
         product = self.add_product()

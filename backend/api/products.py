@@ -10,6 +10,7 @@ from api.auth import get_current_user
 from database import get_db
 from models import Card, CollectionItem, ProductCard, ProductLedgerEntry, ProductPurchase, User
 from schemas import (
+    ProductCardBulkLinkCreate,
     ProductCardLinkCreate,
     ProductCardResponse,
     ProductCardSaleCreate,
@@ -226,12 +227,95 @@ def _product_response(
     )
 
 
-def _available_collection_quantity(db: Session, current_user: User, collection_item: CollectionItem) -> int:
-    linked_active = db.query(func.coalesce(func.sum(ProductCard.active_quantity), 0)).filter(
+def _link_collection_items(
+    db: Session,
+    current_user: User,
+    product: ProductPurchase,
+    links: list[ProductCardLinkCreate],
+) -> None:
+    """Validate and link exact collection rows as one atomic operation."""
+    collection_item_ids = [link.collection_item_id for link in links]
+    if len(collection_item_ids) != len(set(collection_item_ids)):
+        raise HTTPException(status_code=422, detail="Each collection item can only appear once")
+    if any(not positive_quantity(link.quantity, PRODUCT_LINK_MAX_QUANTITY) for link in links):
+        raise HTTPException(status_code=422, detail="quantity must be between 1 and 999")
+
+    collection_items = db.query(CollectionItem).options(joinedload(CollectionItem.card)).filter(
+        CollectionItem.id.in_(collection_item_ids),
+        CollectionItem.user_id == current_user.id,
+    ).order_by(CollectionItem.id.asc()).with_for_update(of=CollectionItem).all()
+    if len(collection_items) != len(collection_item_ids):
+        raise HTTPException(status_code=404, detail="One or more collection items were not found")
+
+    linked_totals = dict(db.query(
+        ProductCard.collection_item_id,
+        func.coalesce(func.sum(ProductCard.active_quantity), 0),
+    ).filter(
         ProductCard.user_id == current_user.id,
-        ProductCard.collection_item_id == collection_item.id,
-    ).scalar() or 0
-    return max(int(collection_item.quantity or 0) - int(linked_active or 0), 0)
+        ProductCard.collection_item_id.in_(collection_item_ids),
+    ).group_by(ProductCard.collection_item_id).all())
+    collection_items_by_id = {item.id: item for item in collection_items}
+    for link in links:
+        collection_item = collection_items_by_id[link.collection_item_id]
+        available_quantity = max(
+            int(collection_item.quantity or 0) - int(linked_totals.get(collection_item.id, 0) or 0),
+            0,
+        )
+        if link.quantity > available_quantity:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Only {available_quantity} unlinked copies are available for collection item {collection_item.id}",
+            )
+
+    existing_rows = db.query(ProductCard).filter(
+        ProductCard.product_id == product.id,
+        ProductCard.user_id == current_user.id,
+        ProductCard.collection_item_id.in_(collection_item_ids),
+        ProductCard.sold_quantity == 0,
+    ).all()
+    existing_by_key = {
+        (
+            row.collection_item_id,
+            row.card_id,
+            row.variant,
+            row.condition,
+            row.lang,
+            row.purchase_price,
+        ): row
+        for row in existing_rows
+    }
+    linked_at = datetime.datetime.utcnow()
+    for link in links:
+        collection_item = collection_items_by_id[link.collection_item_id]
+        key = (
+            collection_item.id,
+            collection_item.card_id,
+            collection_item.variant,
+            collection_item.condition,
+            collection_item.lang,
+            collection_item.purchase_price,
+        )
+        existing = existing_by_key.get(key)
+        if existing:
+            existing.initial_quantity += link.quantity
+            existing.active_quantity += link.quantity
+            continue
+        db.add(ProductCard(
+            product_id=product.id,
+            user_id=current_user.id,
+            card_id=collection_item.card_id,
+            collection_item_id=collection_item.id,
+            initial_quantity=link.quantity,
+            active_quantity=link.quantity,
+            sold_quantity=0,
+            condition=collection_item.condition,
+            variant=collection_item.variant,
+            lang=collection_item.lang,
+            purchase_price=collection_item.purchase_price,
+            linked_at=linked_at,
+        ))
+
+    product.lifecycle_status = "opened"
 
 
 def _refresh_product_response(db: Session, current_user: User, product: ProductPurchase, price_field: str) -> ProductPurchaseResponse:
@@ -517,54 +601,27 @@ def link_collection_item_to_product(
     has_activity = _product_has_activity(db, current_user, product.id)
     if product_lifecycle_status(product, has_activity) == "sold":
         raise HTTPException(status_code=409, detail="A sold sealed product cannot have cards linked to it")
-    collection_item = db.query(CollectionItem).options(joinedload(CollectionItem.card)).filter(
-        CollectionItem.id == link.collection_item_id,
-        CollectionItem.user_id == current_user.id,
-    ).with_for_update(of=CollectionItem).first()
-    if not collection_item:
-        raise HTTPException(status_code=404, detail="Collection item not found")
-    if not positive_quantity(link.quantity, PRODUCT_LINK_MAX_QUANTITY):
-        raise HTTPException(status_code=422, detail="quantity must be between 1 and 999")
+    _link_collection_items(db, current_user, product, [link])
 
-    available_quantity = _available_collection_quantity(db, current_user, collection_item)
-    if link.quantity > available_quantity:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Only {available_quantity} unlinked copie(s) are available for this exact collection item",
-        )
+    db.commit()
+    db.refresh(product)
+    return _refresh_product_response(db, current_user, product, normalize_price_field(price_field))
 
-    existing = db.query(ProductCard).filter(
-        ProductCard.product_id == product.id,
-        ProductCard.user_id == current_user.id,
-        ProductCard.collection_item_id == collection_item.id,
-        ProductCard.card_id == collection_item.card_id,
-        ProductCard.variant == collection_item.variant,
-        ProductCard.condition == collection_item.condition,
-        ProductCard.lang == collection_item.lang,
-        ProductCard.purchase_price == collection_item.purchase_price,
-        ProductCard.sold_quantity == 0,
-    ).first()
 
-    if existing:
-        existing.initial_quantity += link.quantity
-        existing.active_quantity += link.quantity
-    else:
-        db.add(ProductCard(
-            product_id=product.id,
-            user_id=current_user.id,
-            card_id=collection_item.card_id,
-            collection_item_id=collection_item.id,
-            initial_quantity=link.quantity,
-            active_quantity=link.quantity,
-            sold_quantity=0,
-            condition=collection_item.condition,
-            variant=collection_item.variant,
-            lang=collection_item.lang,
-            purchase_price=collection_item.purchase_price,
-            linked_at=datetime.datetime.utcnow(),
-        ))
-
-    product.lifecycle_status = "opened"
+@router.post("/{product_id}/cards/bulk", response_model=ProductPurchaseResponse)
+def link_collection_items_to_product(
+    product_id: int,
+    payload: ProductCardBulkLinkCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    price_field: str = Query(default="price_trend", description="Cardmarket price field for linked-card valuation"),
+):
+    """Link multiple exact collection rows to one product transactionally."""
+    product = _get_product_or_404(db, current_user, product_id, lock=True)
+    has_activity = _product_has_activity(db, current_user, product.id)
+    if product_lifecycle_status(product, has_activity) == "sold":
+        raise HTTPException(status_code=409, detail="A sold sealed product cannot have cards linked to it")
+    _link_collection_items(db, current_user, product, payload.items)
 
     db.commit()
     db.refresh(product)

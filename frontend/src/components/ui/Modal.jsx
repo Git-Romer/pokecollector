@@ -1,8 +1,10 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import Sheet from './Sheet'
 import { useSettings } from '../../contexts/SettingsContext'
+
+const DESKTOP_MEDIA_QUERY = '(min-width: 1024px)'
 
 /**
  * Modal — Centered overlay modal on desktop, Sheet on mobile.
@@ -26,6 +28,20 @@ export default function Modal({
   mobileSheet = true,
 }) {
   const { t } = useSettings()
+  const [isDesktop, setIsDesktop] = useState(() => (
+    typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia(DESKTOP_MEDIA_QUERY).matches
+  ))
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined
+    const mediaQuery = window.matchMedia(DESKTOP_MEDIA_QUERY)
+    const updateViewport = event => setIsDesktop(event.matches)
+    setIsDesktop(mediaQuery.matches)
+    mediaQuery.addEventListener('change', updateViewport)
+    return () => mediaQuery.removeEventListener('change', updateViewport)
+  }, [])
 
   // Close on Escape
   useEffect(() => {
@@ -56,29 +72,25 @@ export default function Modal({
 
   // On mobile — render as bottom sheet
   if (mobileSheet) {
-    return (
-      <>
-        {/* Mobile: Sheet */}
-        <div className="lg:hidden">
-          <Sheet isOpen={isOpen} onClose={onClose} title={title} className={className}>
-            {children}
-          </Sheet>
-        </div>
+    if (!isDesktop) {
+      return (
+        <Sheet isOpen={isOpen} onClose={onClose} title={title} className={className}>
+          {children}
+        </Sheet>
+      )
+    }
 
-        {/* Desktop: centered modal */}
-        <div className="hidden lg:block">
-          <DesktopModal
-            isOpen={isOpen}
-            onClose={onClose}
-            title={title}
-            sizeClass={sizeClass}
-            className={className}
-            closeLabel={t('common.close')}
-          >
-            {children}
-          </DesktopModal>
-        </div>
-      </>
+    return (
+      <DesktopModal
+        isOpen={isOpen}
+        onClose={onClose}
+        title={title}
+        sizeClass={sizeClass}
+        className={className}
+        closeLabel={t('common.close')}
+      >
+        {children}
+      </DesktopModal>
     )
   }
 
