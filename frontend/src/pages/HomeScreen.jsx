@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useId, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   RefreshCw, TrendingUp, TrendingDown, Layers, Star, Wallet, LogOut,
-  Search, Library, Grid2X2, BarChart3, Settings, Trophy, ArrowRightLeft, ListOrdered,
+  Search, Library, Grid2X2, BarChart3, Settings, Trophy, ArrowRightLeft, ListOrdered, Info,
 } from 'lucide-react'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -71,6 +71,65 @@ function CardThumb({ card, onClick }) {
   )
 }
 
+function ProductValueFallbackInfo({ count, label, detailsLabel, message }) {
+  const [hovered, setHovered] = useState(false)
+  const [focused, setFocused] = useState(false)
+  const [dismissed, setDismissed] = useState(false)
+  const descriptionId = useId()
+  const visible = !dismissed && (hovered || focused)
+  const explanation = `${count} ${message}`
+
+  useEffect(() => {
+    if (!visible) return undefined
+    const dismissOnEscape = (event) => {
+      if (event.key === 'Escape') setDismissed(true)
+    }
+    window.addEventListener('keydown', dismissOnEscape)
+    return () => window.removeEventListener('keydown', dismissOnEscape)
+  }, [visible])
+
+  return (
+    <span
+      className="relative inline-flex items-center justify-center gap-1.5"
+      onMouseEnter={() => {
+        setHovered(true)
+        setDismissed(false)
+      }}
+      onMouseLeave={() => {
+        setHovered(false)
+      }}
+      onFocus={() => {
+        setFocused(true)
+        setDismissed(false)
+      }}
+      onBlur={() => {
+        setFocused(false)
+      }}
+    >
+      <span className="text-[11px] text-text-muted uppercase tracking-[0.2em]">{label}</span>
+      <button
+        type="button"
+        aria-label={`${label}: ${detailsLabel}`}
+        aria-describedby={descriptionId}
+        className="inline-flex h-6 w-6 items-center justify-center rounded-full text-text-muted transition-colors hover:text-yellow focus-visible:text-yellow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow/60"
+      >
+        <Info size={12} aria-hidden="true" />
+      </button>
+      <span id={descriptionId} className="sr-only">{explanation}</span>
+      {visible && (
+        <span
+          aria-hidden="true"
+          className="absolute left-1/2 top-full z-30 w-[min(16rem,calc(100vw-2rem))] -translate-x-1/2 pt-2"
+        >
+          <span className="block rounded-lg border border-border bg-bg-surface px-3 py-2 text-left text-[10px] font-normal normal-case leading-relaxed tracking-normal text-text-secondary shadow-xl">
+            {explanation}
+          </span>
+        </span>
+      )}
+    </span>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function HomeScreen() {
   const navigate = useNavigate()
@@ -128,8 +187,7 @@ export default function HomeScreen() {
   const showingPortfolioValue = portfolioDisplayMode === 'portfolio_value'
   const headlineValue = showingPortfolioValue ? totalValue : netInvested
   const headlineLabel = showingPortfolioValue ? t('home.portfolioValue') : t('home.capitalInvested')
-  const secondaryValue = showingPortfolioValue ? netInvested : totalValue
-  const secondaryLabel = showingPortfolioValue ? t('home.capitalInvested') : t('home.portfolioValue')
+  const productValueFallbackCount = Number(data?.product_value_fallback_count ?? 0)
 
   const setPortfolioDisplayMode = (mode) => {
     if (mode === portfolioDisplayMode) return
@@ -297,7 +355,18 @@ export default function HomeScreen() {
               )
             })}
           </div>
-          <p className="text-[11px] text-text-muted uppercase tracking-[0.2em] mb-2">{headlineLabel}</p>
+          <div className="relative mb-2 flex w-full items-center justify-center gap-1.5">
+            {showingPortfolioValue && productValueFallbackCount > 0 ? (
+              <ProductValueFallbackInfo
+                count={productValueFallbackCount}
+                label={headlineLabel}
+                detailsLabel={t('home.details')}
+                message={t('home.productValueFallback')}
+              />
+            ) : (
+              <p className="text-[11px] text-text-muted uppercase tracking-[0.2em]">{headlineLabel}</p>
+            )}
+          </div>
           {isLoading ? (
             <div className="skeleton h-14 w-48 mx-auto rounded-xl" />
           ) : (
@@ -312,15 +381,9 @@ export default function HomeScreen() {
             </p>
           )}
 
-          {!isLoading && (
-            <p className="mt-2 text-xs text-text-muted">
-              {secondaryLabel}: <span className="font-bold text-text-secondary">{formatPrice(secondaryValue)}</span>
-            </p>
-          )}
-
           {/* ── G&V ── */}
           {!isLoading && (
-            <div className="flex flex-col items-center gap-1.5 mt-3">
+            <div className="mt-2 flex flex-col items-center gap-1.5">
               <div className="flex items-center gap-2">
                 <div
                   className="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-black"
@@ -357,11 +420,6 @@ export default function HomeScreen() {
                     {t('analytics.realizedPnl')}: {realizedPnl >= 0 ? '+' : '-'}{formatPrice(Math.abs(realizedPnl))}
                   </span>
                 </div>
-              )}
-              {Number(data?.product_value_fallback_count ?? 0) > 0 && (
-                <p className="max-w-xs text-center text-[10px] leading-relaxed text-text-muted">
-                  {data.product_value_fallback_count} {t('home.productValueFallback')}
-                </p>
               )}
             </div>
           )}

@@ -6,7 +6,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   AreaChart, Area
 } from 'recharts'
-import { TrendingUp, TrendingDown, Copy, BarChart3, Activity, Plus, X, ShoppingCart } from 'lucide-react'
+import { TrendingUp, TrendingDown, Copy, BarChart3, Activity, Plus, X, ShoppingCart, Info } from 'lucide-react'
 import {
   getDuplicates, getTopMovers, getRarityStats,
   getInvestmentTracker, getTradeStats, getAnalyticsNewSets, getProducts, createProduct
@@ -519,8 +519,9 @@ export default function Analytics() {
           )}
 
           {latestSnapshot?.product_value_fallback_count > 0 && (
-            <p className="rounded-lg border border-yellow/20 bg-yellow/5 px-3 py-2 text-xs text-text-muted">
-              {latestSnapshot.product_value_fallback_count} {t('home.productValueFallback')}
+            <p className="flex items-start gap-2 rounded-lg border border-yellow/20 bg-yellow/5 px-3 py-2 text-xs text-text-muted">
+              <Info size={14} className="mt-0.5 shrink-0 text-yellow" aria-hidden="true" />
+              <span>{latestSnapshot.product_value_fallback_count} {t('home.productValueFallback')}</span>
             </p>
           )}
 
