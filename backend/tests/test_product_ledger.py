@@ -6,12 +6,14 @@ from services.product_ledger import product_effective_value
 
 try:
     from fastapi import HTTPException
+    from pydantic import ValidationError
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 
     from api.products import (
         bulk_update_product_lifecycle,
         create_product,
+        create_product_batch,
         get_products_summary,
         link_collection_item_to_product,
         link_collection_items_to_product,
@@ -28,6 +30,7 @@ try:
         ProductCardBulkLinkCreate,
         ProductCardSaleCreate,
         ProductLifecycleBulkUpdate,
+        ProductPurchaseBatchCreate,
         ProductPurchaseCreate,
         ProductPurchaseUpdate,
     )
@@ -347,6 +350,91 @@ class ProductLedgerApiTests(unittest.TestCase):
             )
 
         self.assertEqual(ctx.exception.status_code, 409)
+
+    def test_batch_create_makes_independent_products_with_shared_batch(self):
+        responses = create_product_batch(
+            ProductPurchaseBatchCreate(
+                product_name="Booster Pack",
+                product_type="Booster Pack",
+                purchase_price=4.5,
+                current_value=5,
+                purchase_date=datetime.date(2026, 8, 8),
+                lifecycle_status="sealed",
+                quantity=3,
+            ),
+            current_user=self.user,
+            db=self.db,
+        )
+
+        self.assertEqual(len(responses), 3)
+        self.assertEqual(len({response.id for response in responses}), 3)
+        self.assertEqual(len({response.batch_id for response in responses}), 1)
+        self.assertIsNotNone(responses[0].batch_id)
+        self.assertTrue(all(response.purchase_price == 4.5 for response in responses))
+
+        first = self.db.get(ProductPurchase, responses[0].id)
+        first.lifecycle_status = "opened"
+        self.db.commit()
+        siblings = self.db.query(ProductPurchase).filter(
+            ProductPurchase.batch_id == responses[0].batch_id,
+        ).order_by(ProductPurchase.id).all()
+        self.assertEqual([product.lifecycle_status for product in siblings], ["opened", "sealed", "sealed"])
+
+    def test_single_batch_create_does_not_create_a_group(self):
+        responses = create_product_batch(
+            ProductPurchaseBatchCreate(
+                product_name="Single Tin",
+                product_type="Tin",
+                purchase_price=20,
+                purchase_date=datetime.date(2026, 8, 8),
+                quantity=1,
+            ),
+            current_user=self.user,
+            db=self.db,
+        )
+
+        self.assertEqual(len(responses), 1)
+        self.assertIsNone(responses[0].batch_id)
+
+    def test_batch_quantity_accepts_boundaries_and_rejects_invalid_values(self):
+        base = {
+            "product_name": "Booster Pack",
+            "product_type": "Booster Pack",
+            "purchase_price": 4.5,
+            "purchase_date": datetime.date(2026, 8, 8),
+        }
+
+        self.assertEqual(ProductPurchaseBatchCreate(**base, quantity=1).quantity, 1)
+        self.assertEqual(ProductPurchaseBatchCreate(**base, quantity=200).quantity, 200)
+        for invalid_quantity in (0, 201, 2.5):
+            with self.subTest(quantity=invalid_quantity), self.assertRaises(ValidationError):
+                ProductPurchaseBatchCreate(**base, quantity=invalid_quantity)
+
+    def test_editing_batch_identity_detaches_only_that_product(self):
+        responses = create_product_batch(
+            ProductPurchaseBatchCreate(
+                product_name="Booster Pack",
+                product_type="Booster Pack",
+                purchase_price=4.5,
+                purchase_date=datetime.date(2026, 8, 8),
+                quantity=3,
+            ),
+            current_user=self.user,
+            db=self.db,
+        )
+
+        updated = update_product(
+            responses[0].id,
+            ProductPurchaseUpdate(product_name="Opened Booster Pack"),
+            current_user=self.user,
+            db=self.db,
+        )
+        siblings = self.db.query(ProductPurchase).filter(
+            ProductPurchase.id.in_([response.id for response in responses[1:]]),
+        ).all()
+
+        self.assertIsNone(updated.batch_id)
+        self.assertEqual({product.batch_id for product in siblings}, {responses[1].batch_id})
 
     def test_create_rejects_sale_date_without_sale_price(self):
         with self.assertRaises(HTTPException) as ctx:

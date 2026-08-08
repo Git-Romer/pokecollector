@@ -1,11 +1,11 @@
-import { Fragment, useEffect, useState, useMemo } from 'react'
+import { Fragment, useEffect, useId, useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell
 } from 'recharts'
 import { Plus, Trash2, Edit2, TrendingUp, TrendingDown, Package, Check, X, SortAsc, Filter, ChevronUp, ChevronDown, Link2, DollarSign, History, Eye, AlertCircle, Search } from 'lucide-react'
-import { getProducts, createProduct, updateProduct, bulkUpdateProductLifecycle, deleteProduct, getProductsSummary, getCollection, linkProductCards, unlinkProductCard, sellProductCard, addProductLedgerEntry, getApiErrorMessage } from '../api/client'
+import { getProducts, createProductBatch, updateProduct, bulkUpdateProductLifecycle, deleteProduct, getProductsSummary, getCollection, linkProductCards, unlinkProductCard, sellProductCard, addProductLedgerEntry, getApiErrorMessage } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import { CardRow } from '../components/card-system'
 import MoneyInput from '../components/MoneyInput'
@@ -24,12 +24,16 @@ import {
   selectVisibleProductCardCandidates,
 } from '../utils/productCardPicker'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
+import { buildProductDisplayRows, summarizeProductBatch } from '../utils/productBatches'
 
 const PRODUCT_TYPES = ['Booster Pack', 'Booster Box', 'Elite Trainer Box', 'Tin', 'Bundle', 'Collection Box', 'Blister', 'Other']
 
 function ProductForm({ initial = {}, onSubmit, onCancel, loading }) {
-  const { t, exchangeRate, exchangeRateReady } = useSettings()
+  const { t, formatPrice, exchangeRate, exchangeRateReady } = useSettings()
   const today = new Date().toISOString().split('T')[0]
+  const isCreating = !initial.id
+  const formId = useId()
+  const fieldId = (name) => `${formId}-${name}`
   const [form, setForm] = useState({
     product_name: initial.product_name || '',
     product_type: initial.product_type || 'Booster Pack',
@@ -41,6 +45,7 @@ function ProductForm({ initial = {}, onSubmit, onCancel, loading }) {
     lifecycle_status: ['sealed', 'opened'].includes(initial.lifecycle_status)
       ? initial.lifecycle_status
       : initial.lifecycle_status ? '' : 'sealed',
+    quantity: initial.quantity || 1,
     notes: initial.notes || '',
   })
   const [moneyTouched, setMoneyTouched] = useState(false)
@@ -63,6 +68,8 @@ function ProductForm({ initial = {}, onSubmit, onCancel, loading }) {
   const purchasePriceValid = isValidMoneyInputValue(form.purchase_price)
   const currentValueValid = form.current_value === '' || isValidMoneyInputValue(form.current_value)
   const soldPriceValid = form.sold_price === '' || isValidMoneyInputValue(form.sold_price)
+  const quantity = Number(form.quantity)
+  const quantityValid = Number.isInteger(quantity) && quantity >= 1 && quantity <= 200
   const hasSale = form.sold_price !== ''
   const saleDateWithoutPrice = form.sold_date !== '' && !hasSale
   const saleConflictsWithOpened = hasSale && form.lifecycle_status === 'opened'
@@ -71,34 +78,57 @@ function ProductForm({ initial = {}, onSubmit, onCancel, loading }) {
     && purchasePriceValid
     && currentValueValid
     && soldPriceValid
+    && (!isCreating || quantityValid)
     && !saleDateWithoutPrice
     && !saleConflictsWithOpened
     && (hasSale || form.lifecycle_status)
     && exchangeRateReady
+  const batchPurchaseTotal = isCreating && quantity > 1 && purchasePriceValid && form.purchase_price !== ''
+    ? parseMoneyInputValue(form.purchase_price, exchangeRate) * quantity
+    : null
 
   return (
     <div className="grid grid-cols-2 gap-3">
       <div className="col-span-2">
-        <label className="text-xs text-text-muted mb-1 block">{t('products.productName')}</label>
-        <input type="text" placeholder={t('products.productNamePlaceholder')}
+        <label htmlFor={fieldId('name')} className="text-xs text-text-muted mb-1 block">{t('products.productName')}</label>
+        <input id={fieldId('name')} type="text" placeholder={t('products.productNamePlaceholder')}
           value={form.product_name} onChange={(e) => set('product_name', e.target.value)} className="input" />
       </div>
       <div>
-        <label className="text-xs text-text-muted mb-1 block">{t('products.productType')}</label>
-        <select className="select" value={form.product_type} onChange={(e) => set('product_type', e.target.value)}>
+        <label htmlFor={fieldId('type')} className="text-xs text-text-muted mb-1 block">{t('products.productType')}</label>
+        <select id={fieldId('type')} className="select" value={form.product_type} onChange={(e) => set('product_type', e.target.value)}>
           {PRODUCT_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
         </select>
       </div>
-      <div>
-        <label className="text-xs text-text-muted mb-1 block">{t('products.purchaseDate')}</label>
-        <input type="date" value={form.purchase_date} onChange={(e) => set('purchase_date', e.target.value)} className="input" />
+      {isCreating && (
+        <div>
+          <label htmlFor={fieldId('quantity')} className="text-xs text-text-muted mb-1 block">{t('products.quantity')}</label>
+          <input
+            id={fieldId('quantity')}
+            type="number"
+            min="1"
+            max="200"
+            step="1"
+            value={form.quantity}
+            onChange={(e) => set('quantity', e.target.value)}
+            className="input"
+          />
+          <p className="mt-1 text-xs text-text-muted">{t('products.quantityHelp')}</p>
+          {!quantityValid && (
+            <p className="mt-1 text-xs text-brand-red">{t('products.quantityInvalid')}</p>
+          )}
+        </div>
+      )}
+      <div className={isCreating ? 'col-span-2' : ''}>
+        <label htmlFor={fieldId('purchase-date')} className="text-xs text-text-muted mb-1 block">{t('products.purchaseDate')}</label>
+        <input id={fieldId('purchase-date')} type="date" value={form.purchase_date} onChange={(e) => set('purchase_date', e.target.value)} className="input" />
       </div>
       <div className="col-span-2">
-        <label className="text-xs text-text-muted mb-1 block">{t('products.lifecycleStatus')}</label>
+        <label htmlFor={fieldId('status')} className="text-xs text-text-muted mb-1 block">{t('products.lifecycleStatus')}</label>
         {hasSale && !saleConflictsWithOpened ? (
-          <div className="input flex items-center text-text-secondary">{t('products.statusSold')}</div>
+          <div id={fieldId('status')} className="input flex items-center text-text-secondary">{t('products.statusSold')}</div>
         ) : (
-          <select className="select" value={form.lifecycle_status} onChange={(e) => set('lifecycle_status', e.target.value)}>
+          <select id={fieldId('status')} className="select" value={form.lifecycle_status} onChange={(e) => set('lifecycle_status', e.target.value)}>
             {!form.lifecycle_status && <option value="">{t('products.chooseStatus')}</option>}
             <option value="sealed">{t('products.statusSealed')}</option>
             <option value="opened">{t('products.statusOpened')}</option>
@@ -107,20 +137,20 @@ function ProductForm({ initial = {}, onSubmit, onCancel, loading }) {
         <p className="mt-1 text-xs text-text-muted">{t('products.lifecycleHelp')}</p>
       </div>
       <div>
-        <label className="text-xs text-text-muted mb-1 block">{t('products.purchasePrice')}</label>
-        <MoneyInput value={form.purchase_price} onChange={(e) => setMoney('purchase_price', e.target.value)} />
+        <label htmlFor={fieldId('purchase-price')} className="text-xs text-text-muted mb-1 block">{t('products.purchasePricePerItem')}</label>
+        <MoneyInput id={fieldId('purchase-price')} value={form.purchase_price} onChange={(e) => setMoney('purchase_price', e.target.value)} />
       </div>
       <div>
-        <label className="text-xs text-text-muted mb-1 block">{t('products.currentValueLabel')}</label>
-        <MoneyInput value={form.current_value} onChange={(e) => setMoney('current_value', e.target.value)} />
+        <label htmlFor={fieldId('current-value')} className="text-xs text-text-muted mb-1 block">{t('products.currentValuePerItem')}</label>
+        <MoneyInput id={fieldId('current-value')} value={form.current_value} onChange={(e) => setMoney('current_value', e.target.value)} />
       </div>
       <div>
-        <label className="text-xs text-text-muted mb-1 block">{t('products.soldPrice')}</label>
-        <MoneyInput placeholder={t('products.soldPriceHint')} value={form.sold_price} onChange={(e) => setMoney('sold_price', e.target.value)} />
+        <label htmlFor={fieldId('sold-price')} className="text-xs text-text-muted mb-1 block">{t('products.soldPricePerItem')}</label>
+        <MoneyInput id={fieldId('sold-price')} placeholder={t('products.soldPriceHint')} value={form.sold_price} onChange={(e) => setMoney('sold_price', e.target.value)} />
       </div>
       <div>
-        <label className="text-xs text-text-muted mb-1 block">{t('products.soldDate')}</label>
-        <input type="date" value={form.sold_date} onChange={(e) => set('sold_date', e.target.value)} className="input" />
+        <label htmlFor={fieldId('sold-date')} className="text-xs text-text-muted mb-1 block">{t('products.soldDate')}</label>
+        <input id={fieldId('sold-date')} type="date" value={form.sold_date} onChange={(e) => set('sold_date', e.target.value)} className="input" />
       </div>
       {saleDateWithoutPrice && (
         <p className="col-span-2 text-xs text-brand-red">{t('products.salePriceRequired')}</p>
@@ -128,9 +158,14 @@ function ProductForm({ initial = {}, onSubmit, onCancel, loading }) {
       {saleConflictsWithOpened && (
         <p className="col-span-2 text-xs text-brand-red">{t('products.openedSaleConflict')}</p>
       )}
+      {batchPurchaseTotal != null && (
+        <div className="col-span-2 rounded-lg border border-border bg-bg-elevated/50 px-3 py-2 text-sm text-text-secondary">
+          {t('products.batchTotal').replace('{total}', formatPrice(batchPurchaseTotal))}
+        </div>
+      )}
       <div className="col-span-2">
-        <label className="text-xs text-text-muted mb-1 block">{t('products.notes')}</label>
-        <input type="text" placeholder={t('products.notesHint')} value={form.notes}
+        <label htmlFor={fieldId('notes')} className="text-xs text-text-muted mb-1 block">{t('products.notes')}</label>
+        <input id={fieldId('notes')} type="text" placeholder={t('products.notesHint')} value={form.notes}
           onChange={(e) => set('notes', e.target.value)} className="input" />
       </div>
       <div className="col-span-2 flex gap-2">
@@ -142,6 +177,8 @@ function ProductForm({ initial = {}, onSubmit, onCancel, loading }) {
             sold_price: parseMoneyInputValue(form.sold_price, exchangeRate, null),
             sold_date: form.sold_date || null,
           }
+          if (isCreating) payload.quantity = quantity
+          else delete payload.quantity
           if (hasSale && !form.lifecycle_status) delete payload.lifecycle_status
           onSubmit(payload)
         }} disabled={!canSubmit || loading || !exchangeRateReady} className="btn-primary flex-1">
@@ -600,6 +637,7 @@ export default function Products() {
   const [creating, setCreating] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [expandedProductId, setExpandedProductId] = useState(null)
+  const [expandedBatchIds, setExpandedBatchIds] = useState(() => new Set())
   const [period, setPeriod] = useState('total')
   const [sortBy, setSortBy] = useState('purchase_date')
   const [sortOrder, setSortOrder] = useState('desc')
@@ -633,13 +671,17 @@ export default function Products() {
   }
 
   const createMutation = useMutation({
-    mutationFn: createProduct,
-    onSuccess: () => {
-      toast.success(t('products.added'))
+    mutationFn: createProductBatch,
+    onSuccess: (response) => {
+      toast.success(
+        response.data.length === 1
+          ? t('products.added')
+          : t('products.addedCount').replace('{count}', response.data.length),
+      )
       invalidateProducts()
       setCreating(false)
     },
-    onError: () => toast.error(t('products.addFailed')),
+    onError: (error) => toast.error(getApiErrorMessage(error, t('products.addFailed'))),
   })
 
   const updateMutation = useMutation({
@@ -729,7 +771,7 @@ export default function Products() {
   }, [products, periodCutoff])
 
   const filteredAndSorted = useMemo(() => {
-    let result = products.filter(p => {
+    return products.filter(p => {
       if (filterType && p.product_type !== filterType) return false
       if (filterDateFrom && p.purchase_date < filterDateFrom) return false
       if (filterDateTo && p.purchase_date > filterDateTo) return false
@@ -738,23 +780,21 @@ export default function Products() {
       if (periodCutoff && p.purchase_date < periodCutoff) return false
       return true
     })
+  }, [products, filterType, filterDateFrom, filterDateTo, filterPnl, periodCutoff])
 
-    result = [...result].sort((a, b) => {
-      let valA, valB
-      switch (sortBy) {
-        case 'purchase_date': valA = a.purchase_date || ''; valB = b.purchase_date || ''; break
-        case 'purchase_price': valA = a.purchase_price ?? 0; valB = b.purchase_price ?? 0; break
-        case 'product_name': valA = (a.product_name || '').toLowerCase(); valB = (b.product_name || '').toLowerCase(); break
-        case 'pnl': valA = a.pnl ?? -Infinity; valB = b.pnl ?? -Infinity; break
-        default: return 0
-      }
-      if (valA < valB) return sortOrder === 'asc' ? -1 : 1
-      if (valA > valB) return sortOrder === 'asc' ? 1 : -1
-      return 0
+  const productDisplayRows = useMemo(
+    () => buildProductDisplayRows(filteredAndSorted, expandedBatchIds, { sortBy, sortOrder }),
+    [filteredAndSorted, expandedBatchIds, sortBy, sortOrder],
+  )
+
+  const toggleBatch = (batchId) => {
+    setExpandedBatchIds(current => {
+      const next = new Set(current)
+      if (next.has(batchId)) next.delete(batchId)
+      else next.add(batchId)
+      return next
     })
-
-    return result
-  }, [products, filterType, filterDateFrom, filterDateTo, filterPnl, sortBy, sortOrder, periodCutoff])
+  }
 
   const resetFilters = () => { setFilterType(''); setFilterDateFrom(''); setFilterDateTo(''); setFilterPnl('all') }
 
@@ -981,8 +1021,57 @@ export default function Products() {
                 </tr>
               </thead>
               <tbody>
-                {filteredAndSorted.map((p) => (
-                  <Fragment key={p.id}>
+                {productDisplayRows.map((row) => {
+                  if (row.kind === 'batch') {
+                    const first = row.products[0]
+                    const totals = summarizeProductBatch(row.products)
+                    const isExpanded = expandedBatchIds.has(row.batchId)
+                    return (
+                      <tr key={row.key} className="border-b border-border bg-bg-elevated/40">
+                        <td className="px-4 py-3">
+                          <p className="font-semibold text-text-primary">{first.product_name}</p>
+                          <span className="badge badge-gray mt-1 text-xs">
+                            {t('products.batchItems').replace('{count}', row.products.length)}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-text-secondary">{first.product_type || '-'}</td>
+                        <td className="px-4 py-3 text-xs text-text-secondary">{first.purchase_date}</td>
+                        <td className="px-4 py-3 text-right font-semibold text-text-primary">{formatPrice(totals.purchasePrice)}</td>
+                        <td className="px-4 py-3 text-right text-text-primary">
+                          {totals.currentValue != null ? formatPrice(totals.currentValue) : '-'}
+                        </td>
+                        <td className="px-4 py-3 text-right font-semibold">
+                          {totals.pnl != null ? (
+                            <span className={totals.pnl >= 0 ? 'text-green' : 'text-brand-red'}>
+                              {totals.pnl >= 0 ? '+' : ''}{formatPrice(totals.pnl)}
+                            </span>
+                          ) : '-'}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {totals.pnlPercent != null ? (
+                            <span className={clsx('text-xs font-medium', totals.pnlPercent >= 0 ? 'text-green' : 'text-brand-red')}>
+                              {totals.pnlPercent >= 0 ? '+' : ''}{totals.pnlPercent.toFixed(1)}%
+                            </span>
+                          ) : '-'}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => toggleBatch(row.batchId)}
+                            className="p-1 text-text-muted transition-colors hover:text-text-primary"
+                            aria-label={`${t(isExpanded ? 'products.collapseBatch' : 'products.expandBatch')}: ${first.product_name}`}
+                            aria-expanded={isExpanded}
+                          >
+                            <ChevronDown size={16} className={clsx('transition-transform', !isExpanded && '-rotate-90')} />
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  }
+
+                  const p = row.product
+                  return (
+                  <Fragment key={row.key}>
                   <tr className="border-b border-border/50 hover:bg-bg-elevated/50">
                     {editingId === p.id ? (
                       <td colSpan={8} className="px-4 py-4">
@@ -993,6 +1082,13 @@ export default function Products() {
                       <>
                         <td className="px-4 py-3">
                           <p className="text-sm font-medium text-text-primary">{p.product_name}</p>
+                          {row.batchPosition && (
+                            <p className="text-[10px] text-text-muted">
+                              {t('products.batchItem')
+                                .replace('{position}', row.batchPosition)
+                                .replace('{count}', row.batchSize)}
+                            </p>
+                          )}
                           {p.notes && <p className="text-xs text-text-muted truncate max-w-[160px]">{p.notes}</p>}
                           <span className={clsx(
                             'badge mt-1 text-xs',
@@ -1086,17 +1182,48 @@ export default function Products() {
                     </tr>
                   )}
                   </Fragment>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>
 
           {/* Mobile Card Layout */}
           <div className="md:hidden space-y-2 p-2">
-            {filteredAndSorted.map((p) => {
+            {productDisplayRows.map((row) => {
+              if (row.kind === 'batch') {
+                const first = row.products[0]
+                const totals = summarizeProductBatch(row.products)
+                const isExpanded = expandedBatchIds.has(row.batchId)
+                return (
+                  <CardRow
+                    key={row.key}
+                    name={first.product_name}
+                    subtext={`${first.purchase_date} · ${t('products.paidPrice')}: ${formatPrice(totals.purchasePrice)} · ${t('products.valueLabel')}: ${totals.currentValue != null ? formatPrice(totals.currentValue) : '-'}`}
+                    badges={[
+                      { label: t('products.batchItems').replace('{count}', row.products.length), variant: 'gray' },
+                      ...(first.product_type ? [{ label: first.product_type, variant: 'gray' }] : []),
+                    ]}
+                    value={totals.pnl != null ? `${totals.pnl >= 0 ? '+' : ''}${formatPrice(totals.pnl)}` : '-'}
+                    valueSecondary={totals.pnlPercent != null ? `${totals.pnlPercent >= 0 ? '+' : ''}${totals.pnlPercent.toFixed(1)}%` : undefined}
+                    onClick={() => toggleBatch(row.batchId)}
+                    ariaLabel={`${t(isExpanded ? 'products.collapseBatch' : 'products.expandBatch')}: ${first.product_name}`}
+                    ariaExpanded={isExpanded}
+                    rightAction={
+                      <ChevronDown
+                        size={16}
+                        className={clsx('text-text-muted transition-transform', !isExpanded && '-rotate-90')}
+                        aria-hidden="true"
+                      />
+                    }
+                  />
+                )
+              }
+
+              const p = row.product
               if (editingId === p.id) {
                 return (
-                  <div key={p.id} className="bg-bg-card border border-border rounded-lg p-3 space-y-3">
+                  <div key={row.key} className="bg-bg-card border border-border rounded-lg p-3 space-y-3">
                     <p className="text-sm font-medium text-text-primary truncate">{p.product_name}</p>
                     <ProductForm initial={p} onSubmit={(data) => updateMutation.mutate({ id: p.id, data })}
                       onCancel={() => setEditingId(null)} loading={updateMutation.isPending} />
@@ -1115,10 +1242,10 @@ export default function Products() {
               if (p.value_source === 'needs_review') badges.push({ label: t('products.excludedUntilReviewed'), variant: 'gray' })
 
               return (
-                <Fragment key={p.id}>
+                <Fragment key={row.key}>
                   <CardRow
                     name={p.product_name}
-                    subtext={`${p.purchase_date} · ${formatPrice(p.purchase_price)} · ${t('products.valueLabel')}: ${p.value_source === 'needs_review' ? '-' : p.computed_current_value != null ? formatPrice(p.computed_current_value) : '-'}`}
+                    subtext={`${row.batchPosition ? `${t('products.batchItem').replace('{position}', row.batchPosition).replace('{count}', row.batchSize)} · ` : ''}${p.purchase_date} · ${formatPrice(p.purchase_price)} · ${t('products.valueLabel')}: ${p.value_source === 'needs_review' ? '-' : p.computed_current_value != null ? formatPrice(p.computed_current_value) : '-'}`}
                     badges={badges}
                     value={p.pnl !== null ? `${p.pnl >= 0 ? '+' : ''}${formatPrice(p.pnl)}` : '-'}
                     valueSecondary={p.pnl_percent !== null ? `${p.pnl_percent >= 0 ? '+' : ''}${p.pnl_percent?.toFixed(1)}%` : undefined}

@@ -417,6 +417,10 @@ def _run_migrations(conn):
         "ALTER TABLE product_purchases ALTER COLUMN lifecycle_status SET NOT NULL",
         "ALTER TABLE product_purchases DROP CONSTRAINT IF EXISTS ck_product_purchases_lifecycle_status",
         "ALTER TABLE product_purchases ADD CONSTRAINT ck_product_purchases_lifecycle_status CHECK (lifecycle_status IN ('sealed', 'opened', 'sold', 'review'))",
+        # v55: Batch-created products remain independent while retaining their
+        # shared creation group for convenient presentation.
+        "ALTER TABLE product_purchases ADD COLUMN IF NOT EXISTS batch_id VARCHAR",
+        "CREATE INDEX IF NOT EXISTS ix_product_purchases_user_batch ON product_purchases(user_id, batch_id)",
         """UPDATE sets
            SET is_digital = TRUE
            WHERE COALESCE(is_digital, FALSE) = FALSE

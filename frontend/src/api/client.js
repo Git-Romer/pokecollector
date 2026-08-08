@@ -215,6 +215,7 @@ export const reschedulePriceSync = (intervalMinutes) => api.post('/sync/reschedu
 export const getProducts = (params = {}) => api.get('/products/', { params })
 export const getProductTypes = () => api.get('/products/types')
 export const createProduct = (data) => api.post('/products/', data)
+export const createProductBatch = (data) => api.post('/products/batch', data)
 export const updateProduct = (id, data) => api.put(`/products/${id}`, data)
 export const bulkUpdateProductLifecycle = (data) => api.put('/products/lifecycle/bulk', data)
 export const deleteProduct = (id) => api.delete(`/products/${id}`)

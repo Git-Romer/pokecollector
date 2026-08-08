@@ -283,6 +283,10 @@ class ProductPurchaseCreate(BaseModel):
     notes: Optional[str] = None
 
 
+class ProductPurchaseBatchCreate(ProductPurchaseCreate):
+    quantity: int = Field(default=1, ge=1, le=200)
+
+
 class ProductPurchaseUpdate(BaseModel):
     product_name: Optional[str] = None
     product_type: Optional[str] = None
@@ -381,6 +385,7 @@ class ProductPurchaseResponse(BaseModel):
     purchase_date: date
     sold_date: Optional[date] = None
     lifecycle_status: Literal["sealed", "opened", "sold", "review"]
+    batch_id: Optional[str] = None
     notes: Optional[str] = None
     created_at: Optional[datetime] = None
     pnl: Optional[float] = None
