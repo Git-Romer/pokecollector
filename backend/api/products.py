@@ -1,5 +1,6 @@
 import datetime
 import logging
+import uuid
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -17,6 +18,7 @@ from schemas import (
     ProductLedgerEntryCreate,
     ProductLedgerEntryResponse,
     ProductLifecycleBulkUpdate,
+    ProductPurchaseBatchCreate,
     ProductPurchaseCreate,
     ProductPurchaseResponse,
     ProductPurchaseUpdate,
@@ -51,7 +53,7 @@ def _validate_money(value, field_name: str, *, required: bool = False) -> None:
         raise HTTPException(status_code=422, detail=f"{field_name} must be a finite, non-negative number")
 
 
-def _validate_product_payload(product: ProductPurchaseCreate | ProductPurchaseUpdate) -> None:
+def _validate_product_payload(product: ProductPurchaseCreate | ProductPurchaseBatchCreate | ProductPurchaseUpdate) -> None:
     data = product.model_dump(exclude_unset=True)
     if "purchase_price" in data:
         _validate_money(data.get("purchase_price"), "purchase_price", required=True)
@@ -66,6 +68,30 @@ def _validate_product_payload(product: ProductPurchaseCreate | ProductPurchaseUp
 def _validate_whole_product_sale(product) -> None:
     if getattr(product, "sold_date", None) is not None and not product_has_completed_sale(product):
         raise HTTPException(status_code=422, detail="sold_price is required when sold_date is set")
+
+
+def _new_product_purchase(
+    product: ProductPurchaseCreate,
+    *,
+    user_id: int,
+    created_at: datetime.datetime,
+    batch_id: str | None = None,
+) -> ProductPurchase:
+    has_sale = product_has_completed_sale(product)
+    return ProductPurchase(
+        product_name=product.product_name.strip(),
+        product_type=product.product_type,
+        purchase_price=product.purchase_price,
+        current_value=product.current_value,
+        sold_price=product.sold_price,
+        purchase_date=product.purchase_date,
+        sold_date=product.sold_date,
+        lifecycle_status="sold" if has_sale else product.lifecycle_status,
+        batch_id=batch_id,
+        notes=product.notes,
+        user_id=user_id,
+        created_at=created_at,
+    )
 
 
 def _get_product_or_404(
@@ -211,6 +237,7 @@ def _product_response(
         purchase_date=product.purchase_date,
         sold_date=product.sold_date,
         lifecycle_status=product_lifecycle_status(product, bool(product_cards or flat_ledger_entries)),
+        batch_id=product.batch_id,
         notes=product.notes,
         created_at=product.created_at,
         pnl=pnl,
@@ -324,6 +351,48 @@ def _refresh_product_response(db: Session, current_user: User, product: ProductP
     return _product_response(product, product_cards, flat_ledger_entries, price_field)
 
 
+def _product_responses(
+    db: Session,
+    current_user: User,
+    products: list[ProductPurchase],
+    price_field: str,
+) -> list[ProductPurchaseResponse]:
+    if not products:
+        return []
+    product_ids = [product.id for product in products]
+    product_cards = db.query(ProductCard).options(
+        joinedload(ProductCard.card).joinedload(Card.set_ref),
+        joinedload(ProductCard.ledger_entries).joinedload(ProductLedgerEntry.card).joinedload(Card.set_ref),
+    ).filter(
+        ProductCard.product_id.in_(product_ids),
+        ProductCard.user_id == current_user.id,
+    ).order_by(ProductCard.linked_at.asc(), ProductCard.id.asc()).all()
+    flat_ledger_entries = db.query(ProductLedgerEntry).options(
+        joinedload(ProductLedgerEntry.card).joinedload(Card.set_ref),
+    ).filter(
+        ProductLedgerEntry.product_id.in_(product_ids),
+        ProductLedgerEntry.user_id == current_user.id,
+        ProductLedgerEntry.product_card_id.is_(None),
+    ).order_by(ProductLedgerEntry.event_date.asc(), ProductLedgerEntry.id.asc()).all()
+
+    cards_by_product: dict[int, list[ProductCard]] = {product_id: [] for product_id in product_ids}
+    ledger_by_product: dict[int, list[ProductLedgerEntry]] = {product_id: [] for product_id in product_ids}
+    for product_card in product_cards:
+        cards_by_product[product_card.product_id].append(product_card)
+    for ledger_entry in flat_ledger_entries:
+        ledger_by_product[ledger_entry.product_id].append(ledger_entry)
+
+    return [
+        _product_response(
+            product,
+            cards_by_product[product.id],
+            ledger_by_product[product.id],
+            price_field,
+        )
+        for product in products
+    ]
+
+
 @router.get("/types")
 def get_product_types():
     """Get available product types."""
@@ -341,13 +410,12 @@ def get_products(
     products = db.query(ProductPurchase).filter(
         ProductPurchase.user_id == current_user.id
     ).order_by(
-        ProductPurchase.purchase_date.desc()
+        ProductPurchase.purchase_date.desc(),
+        ProductPurchase.created_at.desc(),
+        ProductPurchase.id.asc(),
     ).all()
 
-    return [
-        _refresh_product_response(db, current_user, product, price_field)
-        for product in products
-    ]
+    return _product_responses(db, current_user, products, price_field)
 
 
 @router.post("/", response_model=ProductPurchaseResponse)
@@ -362,20 +430,8 @@ def create_product(
     has_sale = product_has_completed_sale(product)
     if has_sale and product.lifecycle_status == "opened":
         raise HTTPException(status_code=409, detail="An opened product cannot also be sold as a sealed product")
-    db_product = ProductPurchase(
-        product_name=product.product_name.strip(),
-        product_type=product.product_type,
-        purchase_price=product.purchase_price,
-        current_value=product.current_value,
-        sold_price=product.sold_price,
-        purchase_date=product.purchase_date,
-        sold_date=product.sold_date,
-        lifecycle_status=(
-            "sold"
-            if has_sale
-            else product.lifecycle_status
-        ),
-        notes=product.notes,
+    db_product = _new_product_purchase(
+        product,
         user_id=current_user.id,
         created_at=datetime.datetime.utcnow(),
     )
@@ -383,6 +439,37 @@ def create_product(
     db.commit()
     db.refresh(db_product)
     return _refresh_product_response(db, current_user, db_product, "price_trend")
+
+
+@router.post("/batch", response_model=List[ProductPurchaseResponse])
+def create_product_batch(
+    product: ProductPurchaseBatchCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Create independent, identically priced product purchases in one transaction."""
+    _validate_product_payload(product)
+    _validate_whole_product_sale(product)
+    has_sale = product_has_completed_sale(product)
+    if has_sale and product.lifecycle_status == "opened":
+        raise HTTPException(status_code=409, detail="An opened product cannot also be sold as a sealed product")
+
+    created_at = datetime.datetime.utcnow()
+    batch_id = uuid.uuid4().hex if product.quantity > 1 else None
+    products = [
+        _new_product_purchase(
+            product,
+            user_id=current_user.id,
+            created_at=created_at,
+            batch_id=batch_id,
+        )
+        for _ in range(product.quantity)
+    ]
+    db.add_all(products)
+    db.commit()
+    for db_product in products:
+        db.refresh(db_product)
+    return [_product_response(db_product, [], [], "price_trend") for db_product in products]
 
 
 @router.put("/lifecycle/bulk")
@@ -431,10 +518,18 @@ def update_product(
     update_data = update.model_dump(exclude_unset=True)
     requested_lifecycle = update_data.pop("lifecycle_status", None)
     previous_lifecycle = product.lifecycle_status
+    previous_batch_identity = (product.product_name, product.product_type, product.purchase_date)
     for field, value in update_data.items():
         if field == "product_name" and value is not None:
             value = value.strip()
         setattr(product, field, value)
+
+    if product.batch_id and previous_batch_identity != (
+        product.product_name,
+        product.product_type,
+        product.purchase_date,
+    ):
+        product.batch_id = None
 
     _validate_whole_product_sale(product)
     has_activity = _product_has_activity(db, current_user, product.id)
@@ -508,10 +603,7 @@ def get_products_summary(
         ProductPurchase.user_id == current_user.id
     ).all()
 
-    product_responses = [
-        _refresh_product_response(db, current_user, product, price_field)
-        for product in products
-    ]
+    product_responses = _product_responses(db, current_user, products, price_field)
 
     total_invested = sum(p.purchase_price for p in product_responses)
     total_current_value = sum(

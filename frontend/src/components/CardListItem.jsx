@@ -77,6 +77,8 @@ export default function CardListItem({
   value,
   valueSecondary,
   onClick,
+  ariaLabel,
+  ariaExpanded,
   rightAction,
   className = '',
   variantEffectSource = null,
@@ -95,6 +97,8 @@ export default function CardListItem({
       onClick={onClick}
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
+      aria-label={ariaLabel}
+      aria-expanded={ariaExpanded}
       onKeyDown={onClick ? event => handleKeyboardActivation(event, onClick) : undefined}
     >
       <CompactCardIdentity

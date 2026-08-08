@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import Sheet from './Sheet'
 import { useSettings } from '../../contexts/SettingsContext'
+import { useDialogBehavior } from './dialogBehavior'
 
 const DESKTOP_MEDIA_QUERY = '(min-width: 1024px)'
 
@@ -26,13 +27,21 @@ export default function Modal({
   size = 'md',
   className = '',
   mobileSheet = true,
+  isObscured = false,
 }) {
   const { t } = useSettings()
+  const returnFocusRef = useRef(null)
+  const wasOpenRef = useRef(false)
   const [isDesktop, setIsDesktop] = useState(() => (
     typeof window !== 'undefined'
     && typeof window.matchMedia === 'function'
     && window.matchMedia(DESKTOP_MEDIA_QUERY).matches
   ))
+
+  if (isOpen && !wasOpenRef.current && typeof document !== 'undefined') {
+    returnFocusRef.current = document.activeElement
+  }
+  wasOpenRef.current = isOpen
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined
@@ -43,22 +52,24 @@ export default function Modal({
     return () => mediaQuery.removeEventListener('change', updateViewport)
   }, [])
 
-  // Close on Escape
-  useEffect(() => {
-    if (!isOpen) return
-    const handle = (e) => { if (e.key === 'Escape') onClose?.() }
-    document.addEventListener('keydown', handle)
-    return () => document.removeEventListener('keydown', handle)
-  }, [isOpen, onClose])
-
   // Lock body scroll
   useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = ''
+    if (!isOpen) return undefined
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = previousOverflow }
+  }, [isOpen])
+
+  // Keep focus restoration owned by the responsive wrapper so switching
+  // between Sheet and DesktopModal does not lose the original trigger.
+  useLayoutEffect(() => {
+    if (!isOpen) return undefined
+    return () => {
+      const returnFocus = returnFocusRef.current
+      requestAnimationFrame(() => {
+        if (returnFocus instanceof HTMLElement && returnFocus.isConnected) returnFocus.focus()
+      })
     }
-    return () => { document.body.style.overflow = '' }
   }, [isOpen])
 
   if (!isOpen) return null
@@ -74,7 +85,7 @@ export default function Modal({
   if (mobileSheet) {
     if (!isDesktop) {
       return (
-        <Sheet isOpen={isOpen} onClose={onClose} title={title} className={className}>
+        <Sheet isOpen={isOpen} onClose={onClose} title={title} className={className} manageBodyScroll={false} restoreFocus={false} isObscured={isObscured}>
           {children}
         </Sheet>
       )
@@ -88,6 +99,8 @@ export default function Modal({
         sizeClass={sizeClass}
         className={className}
         closeLabel={t('common.close')}
+        dialogLabel={t('common.dialog')}
+        isObscured={isObscured}
       >
         {children}
       </DesktopModal>
@@ -103,13 +116,17 @@ export default function Modal({
       sizeClass={sizeClass}
       className={className}
       closeLabel={t('common.close')}
+      dialogLabel={t('common.dialog')}
+      isObscured={isObscured}
     >
       {children}
     </DesktopModal>
   )
 }
 
-function DesktopModal({ isOpen, onClose, title, children, sizeClass, className = '', closeLabel = 'Close' }) {
+function DesktopModal({ isOpen, onClose, title, children, sizeClass, className = '', closeLabel = 'Close', dialogLabel = 'Dialog', isObscured = false }) {
+  const titleId = useId()
+  const { dialogRef, onDialogKeyDown } = useDialogBehavior(isOpen, onClose, { restoreFocus: false })
   if (!isOpen) return null
 
   return createPortal(
@@ -121,6 +138,7 @@ function DesktopModal({ isOpen, onClose, title, children, sizeClass, className =
       >
         {/* Panel — stop propagation so clicks inside don't close */}
         <div
+          ref={dialogRef}
           className={[
             'relative w-full mx-4',
             sizeClass,
@@ -131,12 +149,17 @@ function DesktopModal({ isOpen, onClose, title, children, sizeClass, className =
           ].join(' ')}
           onClick={(e) => e.stopPropagation()}
           role="dialog"
-          aria-modal="true"
+          aria-modal={isObscured ? undefined : 'true'}
+          aria-hidden={isObscured ? 'true' : undefined}
+          aria-labelledby={title ? titleId : undefined}
+          aria-label={title ? undefined : dialogLabel}
+          tabIndex={-1}
+          onKeyDown={onDialogKeyDown}
         >
           {/* Header */}
           {title && (
             <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
-              <h2 className="text-base font-semibold text-text-primary">{title}</h2>
+              <h2 id={titleId} className="text-base font-semibold text-text-primary">{title}</h2>
               <button
                 onClick={onClose}
                 className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-bg-elevated transition-colors"
