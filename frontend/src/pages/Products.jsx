@@ -4,16 +4,25 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell
 } from 'recharts'
-import { Plus, Trash2, Edit2, TrendingUp, TrendingDown, Package, Check, X, SortAsc, Filter, ChevronUp, ChevronDown, Link2, DollarSign, History, Eye } from 'lucide-react'
-import { getProducts, createProduct, updateProduct, deleteProduct, getProductsSummary, getCollection, linkProductCard, unlinkProductCard, sellProductCard, addProductLedgerEntry, getApiErrorMessage } from '../api/client'
+import { Plus, Trash2, Edit2, TrendingUp, TrendingDown, Package, Check, X, SortAsc, Filter, ChevronUp, ChevronDown, Link2, DollarSign, History, Eye, AlertCircle, Search } from 'lucide-react'
+import { getProducts, createProduct, updateProduct, bulkUpdateProductLifecycle, deleteProduct, getProductsSummary, getCollection, linkProductCards, unlinkProductCard, sellProductCard, addProductLedgerEntry, getApiErrorMessage } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import { CardRow } from '../components/card-system'
 import MoneyInput from '../components/MoneyInput'
 import PeriodSelector, { PRODUCT_PERIODS, getPeriodCutoff } from '../components/PeriodSelector'
 import AnalyticsSectionNav from '../components/AnalyticsSectionNav'
+import Modal from '../components/ui/Modal'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
 import { formatMoneyInputValue, isValidMoneyInputValue, parseMoneyInputValue } from '../utils/moneyInput'
+import { resolveCardImageUrl } from '../utils/imageUrl'
+import {
+  PRODUCT_CARD_SELECTION_LIMIT,
+  PRODUCT_CARD_TIME_RANGES,
+  filterProductCardCandidates,
+  parseCollectionAddedAt,
+  selectVisibleProductCardCandidates,
+} from '../utils/productCardPicker'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 
 const PRODUCT_TYPES = ['Booster Pack', 'Booster Box', 'Elite Trainer Box', 'Tin', 'Bundle', 'Collection Box', 'Blister', 'Other']
@@ -29,6 +38,9 @@ function ProductForm({ initial = {}, onSubmit, onCancel, loading }) {
     sold_price: formatMoneyInputValue(initial.sold_price, exchangeRate),
     purchase_date: initial.purchase_date || today,
     sold_date: initial.sold_date || '',
+    lifecycle_status: ['sealed', 'opened'].includes(initial.lifecycle_status)
+      ? initial.lifecycle_status
+      : initial.lifecycle_status ? '' : 'sealed',
     notes: initial.notes || '',
   })
   const [moneyTouched, setMoneyTouched] = useState(false)
@@ -51,11 +63,17 @@ function ProductForm({ initial = {}, onSubmit, onCancel, loading }) {
   const purchasePriceValid = isValidMoneyInputValue(form.purchase_price)
   const currentValueValid = form.current_value === '' || isValidMoneyInputValue(form.current_value)
   const soldPriceValid = form.sold_price === '' || isValidMoneyInputValue(form.sold_price)
+  const hasSale = form.sold_price !== ''
+  const saleDateWithoutPrice = form.sold_date !== '' && !hasSale
+  const saleConflictsWithOpened = hasSale && form.lifecycle_status === 'opened'
   const canSubmit = form.product_name.trim()
     && form.purchase_price !== ''
     && purchasePriceValid
     && currentValueValid
     && soldPriceValid
+    && !saleDateWithoutPrice
+    && !saleConflictsWithOpened
+    && (hasSale || form.lifecycle_status)
     && exchangeRateReady
 
   return (
@@ -75,6 +93,19 @@ function ProductForm({ initial = {}, onSubmit, onCancel, loading }) {
         <label className="text-xs text-text-muted mb-1 block">{t('products.purchaseDate')}</label>
         <input type="date" value={form.purchase_date} onChange={(e) => set('purchase_date', e.target.value)} className="input" />
       </div>
+      <div className="col-span-2">
+        <label className="text-xs text-text-muted mb-1 block">{t('products.lifecycleStatus')}</label>
+        {hasSale && !saleConflictsWithOpened ? (
+          <div className="input flex items-center text-text-secondary">{t('products.statusSold')}</div>
+        ) : (
+          <select className="select" value={form.lifecycle_status} onChange={(e) => set('lifecycle_status', e.target.value)}>
+            {!form.lifecycle_status && <option value="">{t('products.chooseStatus')}</option>}
+            <option value="sealed">{t('products.statusSealed')}</option>
+            <option value="opened">{t('products.statusOpened')}</option>
+          </select>
+        )}
+        <p className="mt-1 text-xs text-text-muted">{t('products.lifecycleHelp')}</p>
+      </div>
       <div>
         <label className="text-xs text-text-muted mb-1 block">{t('products.purchasePrice')}</label>
         <MoneyInput value={form.purchase_price} onChange={(e) => setMoney('purchase_price', e.target.value)} />
@@ -91,19 +122,29 @@ function ProductForm({ initial = {}, onSubmit, onCancel, loading }) {
         <label className="text-xs text-text-muted mb-1 block">{t('products.soldDate')}</label>
         <input type="date" value={form.sold_date} onChange={(e) => set('sold_date', e.target.value)} className="input" />
       </div>
+      {saleDateWithoutPrice && (
+        <p className="col-span-2 text-xs text-brand-red">{t('products.salePriceRequired')}</p>
+      )}
+      {saleConflictsWithOpened && (
+        <p className="col-span-2 text-xs text-brand-red">{t('products.openedSaleConflict')}</p>
+      )}
       <div className="col-span-2">
         <label className="text-xs text-text-muted mb-1 block">{t('products.notes')}</label>
         <input type="text" placeholder={t('products.notesHint')} value={form.notes}
           onChange={(e) => set('notes', e.target.value)} className="input" />
       </div>
       <div className="col-span-2 flex gap-2">
-        <button onClick={() => onSubmit({
-          ...form,
-          purchase_price: parseMoneyInputValue(form.purchase_price, exchangeRate),
-          current_value: parseMoneyInputValue(form.current_value, exchangeRate, null),
-          sold_price: parseMoneyInputValue(form.sold_price, exchangeRate, null),
-          sold_date: form.sold_date || null,
-        })} disabled={!canSubmit || loading || !exchangeRateReady} className="btn-primary flex-1">
+        <button onClick={() => {
+          const payload = {
+            ...form,
+            purchase_price: parseMoneyInputValue(form.purchase_price, exchangeRate),
+            current_value: parseMoneyInputValue(form.current_value, exchangeRate, null),
+            sold_price: parseMoneyInputValue(form.sold_price, exchangeRate, null),
+            sold_date: form.sold_date || null,
+          }
+          if (hasSale && !form.lifecycle_status) delete payload.lifecycle_status
+          onSubmit(payload)
+        }} disabled={!canSubmit || loading || !exchangeRateReady} className="btn-primary flex-1">
           <Check size={14} /> {loading ? t('common.saving') : t('common.save')}
         </button>
         <button onClick={onCancel} className="btn-ghost">
@@ -121,12 +162,19 @@ const getProductValue = (product) => {
   return product?.purchase_price ?? 0
 }
 
-function collectionItemLabel(item, formatPrice) {
-  const card = item.card || {}
-  const setName = card.set_ref?.name || card.set_id || '-'
-  const price = item.purchase_price != null ? ` · ${formatPrice(item.purchase_price)}` : ''
-  return `${card.name || item.card_id} · ${setName} #${card.number || '?'} · ${item.variant || 'Normal'} · ${item.condition || 'NM'} · ${item.lang || 'en'} · owned ${item.quantity}${price}`
+const getProductLifecycleStatus = (product) => {
+  if (product?.lifecycle_status) return product.lifecycle_status
+  if (product?.sold_price != null || product?.sold_date) return 'sold'
+  if ((product?.product_cards?.length || 0) > 0 || (product?.ledger_entries?.length || 0) > 0) return 'opened'
+  return 'sealed'
 }
+
+const getProductLifecycleLabel = (product, t) => ({
+  sealed: t('products.statusSealed'),
+  opened: t('products.statusOpened'),
+  sold: t('products.statusSold'),
+  review: t('products.statusReview'),
+})[getProductLifecycleStatus(product)]
 
 function linkedActiveQuantityByCollectionItem(products) {
   const totals = new Map()
@@ -139,23 +187,245 @@ function linkedActiveQuantityByCollectionItem(products) {
   return totals
 }
 
+function ProductCardPicker({ isOpen, onClose, product, candidates, formatPrice, t, onLink, loading }) {
+  const [search, setSearch] = useState('')
+  const [timeRange, setTimeRange] = useState('all')
+  const [selections, setSelections] = useState({})
+  const [selectionNotice, setSelectionNotice] = useState('')
+  const filteredCandidates = useMemo(
+    () => filterProductCardCandidates(candidates, { search, timeRange }),
+    [candidates, search, timeRange],
+  )
+  const selectedCount = Object.keys(selections).length
+  const visibleUnselectedCount = filteredCandidates.filter(({ item }) => selections[item.id] == null).length
+  const displayedSelectionNotice = selectionNotice || (
+    selectedCount >= PRODUCT_CARD_SELECTION_LIMIT
+      ? t('products.selectionMaximum').replace('{limit}', PRODUCT_CARD_SELECTION_LIMIT)
+      : ''
+  )
+
+  useEffect(() => {
+    if (isOpen) return
+    setSearch('')
+    setTimeRange('all')
+    setSelections({})
+    setSelectionNotice('')
+  }, [isOpen])
+
+  const toggleSelection = (itemId, available) => {
+    setSelectionNotice('')
+    setSelections(current => {
+      if (current[itemId]) {
+        const next = { ...current }
+        delete next[itemId]
+        return next
+      }
+      if (Object.keys(current).length >= PRODUCT_CARD_SELECTION_LIMIT) return current
+      return { ...current, [itemId]: Math.min(1, available) }
+    })
+  }
+
+  const selectAllVisible = () => {
+    const remainingSlots = Math.max(PRODUCT_CARD_SELECTION_LIMIT - selectedCount, 0)
+    const newlySelected = Math.min(visibleUnselectedCount, remainingSlots)
+    const skipped = Math.max(visibleUnselectedCount - newlySelected, 0)
+    setSelections(current => selectVisibleProductCardCandidates(current, filteredCandidates))
+    setSelectionNotice(
+      skipped > 0
+        ? t('products.selectVisibleLimit')
+          .replace('{selected}', newlySelected)
+          .replace('{skipped}', skipped)
+          .replace('{limit}', PRODUCT_CARD_SELECTION_LIMIT)
+        : t('products.selectVisibleResult').replace('{count}', newlySelected),
+    )
+  }
+
+  const clearSelections = () => {
+    setSelections({})
+    setSelectionNotice('')
+  }
+
+  const setQuantity = (itemId, value, available) => {
+    const quantity = Number(value)
+    setSelections(current => ({
+      ...current,
+      [itemId]: Number.isInteger(quantity) ? Math.max(1, Math.min(quantity, available)) : 1,
+    }))
+  }
+
+  const submit = async () => {
+    const items = Object.entries(selections).map(([collectionItemId, quantity]) => ({
+      collection_item_id: Number(collectionItemId),
+      quantity,
+    }))
+    if (!items.length) return
+    await onLink(product.id, items)
+    onClose()
+  }
+
+  const timeRangeLabel = {
+    hour: t('products.addedLastHour'),
+    day: t('products.addedLastDay'),
+    week: t('products.addedLastWeek'),
+    month: t('products.addedLastMonth'),
+    all: t('products.allCards'),
+  }
+
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={t('products.selectCardsTitle').replace('{product}', product.product_name)}
+      size="xl"
+    >
+      <div className="p-4 sm:p-5 space-y-4">
+        <div className="relative">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
+          <input
+            type="search"
+            className="input pl-9"
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value)
+              setSelectionNotice('')
+            }}
+            placeholder={t('products.searchCollectionCards')}
+            autoFocus
+          />
+        </div>
+
+        <div className="flex gap-2 overflow-x-auto pb-1" aria-label={t('products.filterByAddedTime')}>
+          {PRODUCT_CARD_TIME_RANGES.map(option => (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => {
+                setTimeRange(option.id)
+                setSelectionNotice('')
+              }}
+              className={clsx(
+                'flex-shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+                timeRange === option.id
+                  ? 'border-brand-red bg-brand-red/10 text-brand-red'
+                  : 'border-border bg-bg-elevated text-text-secondary hover:text-text-primary',
+              )}
+              aria-pressed={timeRange === option.id}
+            >
+              {timeRangeLabel[option.id]}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs text-text-muted">
+            {t('products.visibleCards').replace('{count}', filteredCandidates.length)}
+          </p>
+          <button
+            type="button"
+            className="btn-ghost px-3 py-1.5 text-xs"
+            onClick={selectAllVisible}
+            disabled={!visibleUnselectedCount || selectedCount >= PRODUCT_CARD_SELECTION_LIMIT || loading}
+          >
+            {t('products.selectAllVisible')}
+          </button>
+        </div>
+
+        {displayedSelectionNotice && (
+          <p className="text-xs text-text-secondary" role="status" aria-live="polite">
+            {displayedSelectionNotice}
+          </p>
+        )}
+
+        <div className="max-h-[48vh] divide-y divide-border overflow-y-auto rounded-xl border border-border bg-bg-elevated/30">
+          {filteredCandidates.length ? filteredCandidates.map(({ item, available }) => {
+            const card = item.card || {}
+            const selected = selections[item.id] != null
+            const addedAtTimestamp = parseCollectionAddedAt(item.added_at)
+            const addedAt = Number.isFinite(addedAtTimestamp) ? new Date(addedAtTimestamp).toLocaleString() : null
+            return (
+              <div key={item.id} className={clsx('flex items-center gap-3 p-3', selected && 'bg-brand-red/5')}>
+                <input
+                  type="checkbox"
+                  checked={selected}
+                  onChange={() => toggleSelection(item.id, available)}
+                  className="h-5 w-5 flex-shrink-0 accent-brand-red"
+                  aria-label={t('products.selectCard').replace('{card}', card.name || item.card_id)}
+                />
+                <img
+                  src={resolveCardImageUrl(card)}
+                  alt=""
+                  className="h-14 w-10 flex-shrink-0 rounded object-cover bg-bg-card"
+                  loading="lazy"
+                />
+                <button
+                  type="button"
+                  onClick={() => toggleSelection(item.id, available)}
+                  className="min-w-0 flex-1 text-left"
+                >
+                  <p className="truncate text-sm font-semibold text-text-primary">{card.name || item.card_id}</p>
+                  <p className="truncate text-xs text-text-muted">
+                    {card.set_ref?.name || card.set_id || '-'} #{card.number || '?'} · {item.variant || 'Normal'} · {item.condition || 'NM'} · {item.lang || 'en'}
+                  </p>
+                  <p className="mt-1 text-xs text-text-secondary">
+                    {t('products.availableCopies').replace('{count}', available)}
+                    {item.purchase_price != null ? ` · ${t('products.paidPerCard').replace('{price}', formatPrice(item.purchase_price))}` : ''}
+                    {addedAt ? ` · ${t('products.addedOn').replace('{date}', addedAt)}` : ''}
+                  </p>
+                </button>
+                {selected && (
+                  <div className="w-16 flex-shrink-0 sm:w-20">
+                    <label className="mb-1 block text-[10px] text-text-muted" htmlFor={`product-card-quantity-${item.id}`}>
+                      {t('common.quantity')}
+                    </label>
+                    <input
+                      id={`product-card-quantity-${item.id}`}
+                      type="number"
+                      min="1"
+                      max={available}
+                      step="1"
+                      className="input px-2 py-1.5 text-sm"
+                      value={selections[item.id]}
+                      onChange={(event) => setQuantity(item.id, event.target.value, available)}
+                    />
+                  </div>
+                )}
+              </div>
+            )
+          }) : (
+            <div className="p-8 text-center text-sm text-text-muted">
+              {candidates.length ? t('products.noCardsInRange') : t('products.noUnlinkedCards')}
+            </div>
+          )}
+        </div>
+
+        <div className="sticky bottom-0 z-10 flex flex-col gap-2 border-t border-border bg-bg-surface pb-2 pt-4 sm:static sm:flex-row sm:items-center sm:justify-between sm:bg-transparent sm:pb-1">
+          <p className="text-sm text-text-muted">{t('products.selectedCards').replace('{count}', selectedCount)}</p>
+          <div className="flex gap-2">
+            {selectedCount > 0 && (
+              <button type="button" className="btn-ghost flex-1 sm:flex-none" onClick={clearSelections} disabled={loading}>
+                {t('products.clearSelection')}
+              </button>
+            )}
+            <button type="button" className="btn-primary flex-1 sm:flex-none" onClick={submit} disabled={!selectedCount || loading}>
+              <Link2 size={14} /> {t('products.linkSelectedCards')}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 function ProductLedgerPanel({ product, products, collectionItems, formatPrice, t, onLink, onUnlink, onSell, onFlatGain, loading }) {
   const { exchangeRate, exchangeRateReady } = useSettings()
   const today = new Date().toISOString().split('T')[0]
-  const [collectionItemId, setCollectionItemId] = useState('')
-  const [linkQuantity, setLinkQuantity] = useState(1)
+  const [linkPickerOpen, setLinkPickerOpen] = useState(false)
   const [saleForms, setSaleForms] = useState({})
   const [flatGain, setFlatGain] = useState({ amount: '', event_date: today, notes: '' })
   const linkedByItem = useMemo(() => linkedActiveQuantityByCollectionItem(products), [products])
   const availableCollectionItems = collectionItems
     .map(item => ({ item, available: Math.max((item.quantity || 0) - (linkedByItem.get(item.id) || 0), 0) }))
     .filter(({ available }) => available > 0)
-  const selectedAvailable = availableCollectionItems.find(({ item }) => item.id === Number(collectionItemId))?.available || 0
-  const normalizedLinkQuantity = Number(linkQuantity)
-  const canLink = Boolean(collectionItemId)
-    && Number.isInteger(normalizedLinkQuantity)
-    && normalizedLinkQuantity >= 1
-    && normalizedLinkQuantity <= selectedAvailable
   const canAddFlatGain = exchangeRateReady && isValidMoneyInputValue(flatGain.amount)
 
   const updateSaleForm = (entryId, key, value) => {
@@ -177,17 +447,6 @@ function ProductLedgerPanel({ product, products, collectionItems, formatPrice, t
       const copy = { ...prev }
       delete copy[entryId]
       return copy
-    })
-  }
-
-  const submitLink = () => {
-    if (!canLink) return
-    onLink(product.id, {
-      collection_item_id: Number(collectionItemId),
-      quantity: normalizedLinkQuantity,
-    }).then(() => {
-      setCollectionItemId('')
-      setLinkQuantity(1)
     })
   }
 
@@ -236,26 +495,26 @@ function ProductLedgerPanel({ product, products, collectionItems, formatPrice, t
         </div>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-[1.5fr_0.6fr_auto]">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <label className="text-xs text-text-muted mb-1 block">{t('products.linkOwnedCard')}</label>
-          <select className="select" value={collectionItemId} onChange={(e) => setCollectionItemId(e.target.value)}>
-            <option value="">{availableCollectionItems.length ? t('products.chooseCollectionCard') : t('products.noUnlinkedCards')}</option>
-            {availableCollectionItems.map(({ item, available }) => (
-              <option key={item.id} value={item.id}>{collectionItemLabel(item, formatPrice)} · {t('products.available')}: {available}</option>
-            ))}
-          </select>
+          <p className="text-sm font-medium text-text-primary">{t('products.linkOwnedCards')}</p>
+          <p className="text-xs text-text-muted">{t('products.linkOwnedCardsHelp')}</p>
         </div>
-        <div>
-          <label className="text-xs text-text-muted mb-1 block">{t('common.quantity')}</label>
-          <input type="number" min="1" max={selectedAvailable || 999} step="1" className="input" value={linkQuantity} onChange={(e) => setLinkQuantity(e.target.value)} />
-        </div>
-        <div className="flex items-end">
-          <button disabled={!canLink || loading} onClick={submitLink} className="btn-primary w-full lg:w-auto">
-            <Link2 size={14} /> {t('products.linkCard')}
-          </button>
-        </div>
+        <button disabled={!availableCollectionItems.length || loading} onClick={() => setLinkPickerOpen(true)} className="btn-primary w-full sm:w-auto">
+          <Link2 size={14} /> {t('products.selectCards')}
+        </button>
       </div>
+
+      <ProductCardPicker
+        isOpen={linkPickerOpen}
+        onClose={() => setLinkPickerOpen(false)}
+        product={product}
+        candidates={availableCollectionItems}
+        formatPrice={formatPrice}
+        t={t}
+        onLink={onLink}
+        loading={loading}
+      />
 
       {(product.product_cards || []).length > 0 ? (
         <div className="space-y-3">
@@ -390,6 +649,16 @@ export default function Products() {
       invalidateProducts()
       setEditingId(null)
     },
+    onError: (error) => toast.error(getApiErrorMessage(error, t('products.updateFailed'))),
+  })
+
+  const bulkLifecycleMutation = useMutation({
+    mutationFn: bulkUpdateProductLifecycle,
+    onSuccess: (response) => {
+      toast.success(t('products.classifiedCount').replace('{count}', response.data.updated))
+      invalidateProducts()
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error, t('products.classificationFailed'))),
   })
 
   const deleteMutation = useMutation({
@@ -401,10 +670,10 @@ export default function Products() {
     onError: (error) => toast.error(getApiErrorMessage(error, t('products.deleteFailed'))),
   })
 
-  const linkCardMutation = useMutation({
-    mutationFn: ({ productId, data }) => linkProductCard(productId, data),
-    onSuccess: () => {
-      toast.success(t('products.cardLinked'))
+  const linkCardsMutation = useMutation({
+    mutationFn: ({ productId, items }) => linkProductCards(productId, { items }),
+    onSuccess: (_response, variables) => {
+      toast.success(t('products.cardsLinked').replace('{count}', variables.items.length))
       invalidateProducts()
     },
     onError: (error) => toast.error(getApiErrorMessage(error, t('products.cardLinkFailed'))),
@@ -440,6 +709,10 @@ export default function Products() {
   })
 
   const hasActiveFilters = filterType || filterDateFrom || filterDateTo || filterPnl !== 'all'
+  const reviewProducts = useMemo(
+    () => products.filter(product => getProductLifecycleStatus(product) === 'review'),
+    [products],
+  )
   const periodCutoff = useMemo(() => getPeriodCutoff(period), [period])
 
   const periodStats = useMemo(() => {
@@ -497,13 +770,55 @@ export default function Products() {
           <h1 className="text-xl font-bold text-text-primary">{t('products.title')}</h1>
           <p className="text-sm text-text-secondary mt-1">{t('products.subtitle')}</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex w-full flex-col items-stretch gap-3 sm:w-auto sm:flex-row sm:items-center">
           <PeriodSelector value={period} onChange={setPeriod} periods={PRODUCT_PERIODS} />
-          <button onClick={() => setCreating(true)} className="btn-primary">
+          <button onClick={() => setCreating(true)} className="btn-primary justify-center whitespace-nowrap">
             <Plus size={16} /> {t('products.logPurchase')}
           </button>
         </div>
       </div>
+
+      {reviewProducts.length > 0 && (
+        <div className="card border-amber-500/30 bg-amber-500/5">
+          <div className="flex items-start gap-3">
+            <AlertCircle size={20} className="mt-0.5 shrink-0 text-amber-400" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <h2 className="font-semibold text-text-primary">
+                {t('products.reviewTitle').replace('{count}', reviewProducts.length)}
+              </h2>
+              <p className="mt-1 text-sm text-text-secondary">{t('products.reviewDescription')}</p>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <button
+                  className="btn-ghost justify-center"
+                  disabled={bulkLifecycleMutation.isPending}
+                  onClick={() => {
+                    if (!confirm(t('products.confirmAllOpened').replace('{count}', reviewProducts.length))) return
+                    bulkLifecycleMutation.mutate({
+                      product_ids: reviewProducts.map(product => product.id),
+                      lifecycle_status: 'opened',
+                    })
+                  }}
+                >
+                  {t('products.markAllOpened')}
+                </button>
+                <button
+                  className="btn-ghost justify-center"
+                  disabled={bulkLifecycleMutation.isPending}
+                  onClick={() => {
+                    if (!confirm(t('products.confirmAllSealed').replace('{count}', reviewProducts.length))) return
+                    bulkLifecycleMutation.mutate({
+                      product_ids: reviewProducts.map(product => product.id),
+                      lifecycle_status: 'sealed',
+                    })
+                  }}
+                >
+                  {t('products.markAllSealed')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Summary Cards */}
       {products.length > 0 && (
@@ -525,8 +840,8 @@ export default function Products() {
           </div>
           <div className="stat-card">
             <p className="stat-label uppercase tracking-wide">{t('products.return')}</p>
-            <div className={clsx('flex items-center gap-1 text-xl font-bold', periodStats.pnlPct >= 0 ? 'text-green' : 'text-brand-red')}>
-              {periodStats.pnlPct >= 0 ? <TrendingUp size={20} /> : <TrendingDown size={20} />}
+            <div className={clsx('flex items-center gap-1 whitespace-nowrap text-lg font-bold sm:text-xl', periodStats.pnlPct >= 0 ? 'text-green' : 'text-brand-red')}>
+              {periodStats.pnlPct >= 0 ? <TrendingUp size={18} className="shrink-0" /> : <TrendingDown size={18} className="shrink-0" />}
               {periodStats.pnlPct >= 0 ? '+' : ''}{periodStats.pnlPct.toFixed(2)}%
             </div>
           </div>
@@ -679,14 +994,42 @@ export default function Products() {
                         <td className="px-4 py-3">
                           <p className="text-sm font-medium text-text-primary">{p.product_name}</p>
                           {p.notes && <p className="text-xs text-text-muted truncate max-w-[160px]">{p.notes}</p>}
-                          {p.sold_date && <span className="badge badge-green text-xs">{t('common.sold')}</span>}
+                          <span className={clsx(
+                            'badge mt-1 text-xs',
+                            getProductLifecycleStatus(p) === 'sold' ? 'badge-green' : 'badge-gray',
+                          )}>
+                            {getProductLifecycleLabel(p, t)}
+                          </span>
+                          {getProductLifecycleStatus(p) === 'review' && (
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              <button
+                                className="rounded border border-border px-2 py-1 text-[10px] text-text-secondary hover:text-text-primary"
+                                disabled={updateMutation.isPending}
+                                onClick={() => updateMutation.mutate({ id: p.id, data: { lifecycle_status: 'opened' } })}
+                              >
+                                {t('products.markOpened')}
+                              </button>
+                              <button
+                                className="rounded border border-border px-2 py-1 text-[10px] text-text-secondary hover:text-text-primary"
+                                disabled={updateMutation.isPending}
+                                onClick={() => updateMutation.mutate({ id: p.id, data: { lifecycle_status: 'sealed' } })}
+                              >
+                                {t('products.markSealed')}
+                              </button>
+                            </div>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-text-secondary text-xs">{p.product_type || '-'}</td>
                         <td className="px-4 py-3 text-text-secondary text-xs">{p.purchase_date}</td>
                         <td className="px-4 py-3 text-right font-medium text-text-primary">{formatPrice(p.purchase_price)}</td>
                         <td className="px-4 py-3 text-right text-text-primary">
-                          {p.computed_current_value != null ? formatPrice(p.computed_current_value) : '-'}
+                          {p.value_source === 'needs_review'
+                            ? '-'
+                            : p.computed_current_value != null ? formatPrice(p.computed_current_value) : '-'}
                           {p.value_source === 'linked_cards' && <p className="text-[10px] text-text-muted">{t('products.dynamic')}</p>}
+                          {p.value_source === 'purchase_cost_fallback' && <p className="text-[10px] text-text-muted">{t('products.costFallback')}</p>}
+                          {p.value_source === 'opened_unlinked' && <p className="text-[10px] text-text-muted">{t('products.openedUnlinked')}</p>}
+                          {p.value_source === 'needs_review' && <p className="text-[10px] text-amber-400">{t('products.excludedUntilReviewed')}</p>}
                         </td>
                         <td className="px-4 py-3 text-right font-medium">
                           {p.pnl !== null ? (
@@ -704,7 +1047,11 @@ export default function Products() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1 justify-end">
-                            <button onClick={() => setExpandedProductId(id => id === p.id ? null : p.id)} className="text-text-muted hover:text-text-primary p-1 transition-colors">
+                            <button
+                              onClick={() => setExpandedProductId(id => id === p.id ? null : p.id)}
+                              className="text-text-muted hover:text-text-primary p-1 transition-colors"
+                              aria-label={`${t('products.openLedger')} ${p.product_name}`}
+                            >
                               <Eye size={14} />
                             </button>
                             <button onClick={() => setEditingId(p.id)} className="text-text-muted hover:text-text-primary p-1 transition-colors">
@@ -729,8 +1076,8 @@ export default function Products() {
                           collectionItems={collectionItems}
                           formatPrice={formatPrice}
                           t={t}
-                          loading={linkCardMutation.isPending || unlinkCardMutation.isPending || sellCardMutation.isPending || flatGainMutation.isPending}
-                          onLink={(productId, data) => linkCardMutation.mutateAsync({ productId, data })}
+                          loading={linkCardsMutation.isPending || unlinkCardMutation.isPending || sellCardMutation.isPending || flatGainMutation.isPending}
+                          onLink={(productId, items) => linkCardsMutation.mutateAsync({ productId, items })}
                           onUnlink={(productId, productCardId) => unlinkCardMutation.mutateAsync({ productId, productCardId })}
                           onSell={(productId, productCardId, data) => sellCardMutation.mutateAsync({ productId, productCardId, data })}
                           onFlatGain={(productId, data) => flatGainMutation.mutateAsync({ productId, data })}
@@ -759,20 +1106,27 @@ export default function Products() {
 
               const badges = []
               if (p.product_type) badges.push({ label: p.product_type, variant: 'gray' })
-              if (p.sold_date) badges.push({ label: t('common.sold'), variant: 'green' })
+              badges.push({
+                label: getProductLifecycleLabel(p, t),
+                variant: getProductLifecycleStatus(p) === 'sold' ? 'green' : 'gray',
+              })
+              if (p.value_source === 'purchase_cost_fallback') badges.push({ label: t('products.costFallback'), variant: 'gray' })
+              if (p.value_source === 'opened_unlinked') badges.push({ label: t('products.openedUnlinked'), variant: 'gray' })
+              if (p.value_source === 'needs_review') badges.push({ label: t('products.excludedUntilReviewed'), variant: 'gray' })
 
               return (
                 <Fragment key={p.id}>
                   <CardRow
                     name={p.product_name}
-                    subtext={`${p.purchase_date} · ${formatPrice(p.purchase_price)} · ${t('products.valueLabel')}: ${p.computed_current_value != null ? formatPrice(p.computed_current_value) : '-'}`}
+                    subtext={`${p.purchase_date} · ${formatPrice(p.purchase_price)} · ${t('products.valueLabel')}: ${p.value_source === 'needs_review' ? '-' : p.computed_current_value != null ? formatPrice(p.computed_current_value) : '-'}`}
                     badges={badges}
                     value={p.pnl !== null ? `${p.pnl >= 0 ? '+' : ''}${formatPrice(p.pnl)}` : '-'}
                     valueSecondary={p.pnl_percent !== null ? `${p.pnl_percent >= 0 ? '+' : ''}${p.pnl_percent?.toFixed(1)}%` : undefined}
                     rightAction={
                       <div className="flex flex-col gap-1">
                         <button onClick={(e) => { e.stopPropagation(); setExpandedProductId(id => id === p.id ? null : p.id) }}
-                          className="text-text-muted hover:text-text-primary p-1 transition-colors">
+                          className="text-text-muted hover:text-text-primary p-1 transition-colors"
+                          aria-label={`${t('products.openLedger')} ${p.product_name}`}>
                           <Eye size={12} />
                         </button>
                         <button onClick={(e) => { e.stopPropagation(); setEditingId(p.id) }}
@@ -788,6 +1142,24 @@ export default function Products() {
                       </div>
                     }
                   />
+                  {getProductLifecycleStatus(p) === 'review' && (
+                    <div className="mx-1 flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-2">
+                      <button
+                        className="btn-ghost flex-1 justify-center py-1.5 text-xs"
+                        disabled={updateMutation.isPending}
+                        onClick={() => updateMutation.mutate({ id: p.id, data: { lifecycle_status: 'opened' } })}
+                      >
+                        {t('products.markOpened')}
+                      </button>
+                      <button
+                        className="btn-ghost flex-1 justify-center py-1.5 text-xs"
+                        disabled={updateMutation.isPending}
+                        onClick={() => updateMutation.mutate({ id: p.id, data: { lifecycle_status: 'sealed' } })}
+                      >
+                        {t('products.markSealed')}
+                      </button>
+                    </div>
+                  )}
                   {expandedProductId === p.id && (
                     <ProductLedgerPanel
                       product={p}
@@ -795,8 +1167,8 @@ export default function Products() {
                       collectionItems={collectionItems}
                       formatPrice={formatPrice}
                       t={t}
-                      loading={linkCardMutation.isPending || unlinkCardMutation.isPending || sellCardMutation.isPending || flatGainMutation.isPending}
-                      onLink={(productId, data) => linkCardMutation.mutateAsync({ productId, data })}
+                      loading={linkCardsMutation.isPending || unlinkCardMutation.isPending || sellCardMutation.isPending || flatGainMutation.isPending}
+                      onLink={(productId, items) => linkCardsMutation.mutateAsync({ productId, items })}
                       onUnlink={(productId, productCardId) => unlinkCardMutation.mutateAsync({ productId, productCardId })}
                       onSell={(productId, productCardId, data) => sellCardMutation.mutateAsync({ productId, productCardId, data })}
                       onFlatGain={(productId, data) => flatGainMutation.mutateAsync({ productId, data })}

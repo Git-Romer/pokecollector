@@ -18,7 +18,7 @@ import AnalyticsSectionNav from '../components/AnalyticsSectionNav'
 import { CardDisplay, CardLegend, withCollectionItemState } from '../components/card-system'
 
 const CustomTooltip = ({ active, payload, label }) => {
-  const { formatPrice } = useSettings()
+  const { formatPrice, t } = useSettings()
   if (active && payload && payload.length) {
     return (
       <div className="bg-bg-surface border border-border rounded-lg p-3 text-sm shadow-xl">
@@ -28,6 +28,9 @@ const CustomTooltip = ({ active, payload, label }) => {
             {entry.name}: {formatPrice(entry.value)}
           </p>
         ))}
+        {payload[0]?.payload?.legacy && (
+          <p className="mt-1 text-[10px] text-text-muted">{t('home.legacySnapshot')}</p>
+        )}
       </div>
     )
   }
@@ -95,10 +98,12 @@ export default function Dashboard() {
     date: format(parseISO(item.date), 'MMM d'),
     value: item.value,
     cost: item.cost,
+    legacy: Boolean(item.legacy),
   }))
 
   const pnl = data?.pnl || 0
-  const pnlPct = data?.total_cost > 0 ? (pnl / data.total_cost * 100) : 0
+  const performanceCostBasis = Number(data?.performance_cost_basis ?? data?.total_cost ?? 0)
+  const pnlPct = performanceCostBasis > 0 ? (pnl / performanceCostBasis * 100) : 0
   const totalValue = data?.total_value || 0
   const totalCards = data?.total_cards || 0
   const uniqueCards = data?.unique_cards || 0
@@ -177,11 +182,11 @@ export default function Dashboard() {
         <div className="grid grid-cols-3 gap-2">
           {[
             { label: t('dashboard.totalCards'), value: totalCards.toLocaleString() },
-            { label: t('dashboard.collectionValue'), value: formatPrice(Number(totalValue)), gold: true },
+            { label: t('home.portfolioValue'), value: formatPrice(Number(totalValue)), gold: true },
             { label: t('dashboard.sets'), value: `${ownedSets}/${totalSets}` },
           ].map(stat => (
             <div key={stat.label} className="bg-bg-card border border-border rounded-xl p-3 text-center">
-              <p className={`text-xl font-black leading-none ${stat.gold ? 'text-gold' : 'text-white'}`}>
+              <p className={`whitespace-nowrap text-base font-black leading-none tracking-tight sm:text-xl ${stat.gold ? 'text-gold' : 'text-white'}`}>
                 {stat.value}
               </p>
               <p className="text-[10px] text-text-muted uppercase tracking-wider mt-1">{stat.label}</p>
@@ -236,7 +241,7 @@ export default function Dashboard() {
               <p className="text-lg font-black text-white">{formatPrice(data.total_cost || 0)}</p>
             </div>
             <div>
-              <p className="text-[10px] text-text-muted uppercase tracking-wider mb-1">{t('dashboard.collectionValue')}</p>
+              <p className="text-[10px] text-text-muted uppercase tracking-wider mb-1">{t('home.portfolioValue')}</p>
               <p className="text-lg font-black text-gold">{formatPrice(Number(totalValue))}</p>
             </div>
             <div>

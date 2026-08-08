@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useId, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   RefreshCw, TrendingUp, TrendingDown, Layers, Star, Wallet, LogOut,
-  Search, Library, Grid2X2, BarChart3, Settings, Trophy, ArrowRightLeft, ListOrdered,
+  Search, Library, Grid2X2, BarChart3, Settings, Trophy, ArrowRightLeft, ListOrdered, Info,
 } from 'lucide-react'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -45,6 +45,9 @@ function ChartTooltip({ active, payload, label, formatPrice }) {
       <p className="font-black" style={{ color: '#f5c842' }}>
         {formatPrice(Number(payload[0].value))}
       </p>
+      {payload[0]?.payload?.legacy && (
+        <p className="mt-1 text-[10px] text-text-muted">{payload[0].payload.legacyLabel}</p>
+      )}
     </div>
   )
 }
@@ -68,11 +71,68 @@ function CardThumb({ card, onClick }) {
   )
 }
 
+function ProductValueInfo({ label, detailsLabel, explanation }) {
+  const [hovered, setHovered] = useState(false)
+  const [focused, setFocused] = useState(false)
+  const [dismissed, setDismissed] = useState(false)
+  const descriptionId = useId()
+  const visible = !dismissed && (hovered || focused)
+  useEffect(() => {
+    if (!visible) return undefined
+    const dismissOnEscape = (event) => {
+      if (event.key === 'Escape') setDismissed(true)
+    }
+    window.addEventListener('keydown', dismissOnEscape)
+    return () => window.removeEventListener('keydown', dismissOnEscape)
+  }, [visible])
+
+  return (
+    <span
+      className="relative inline-flex items-center justify-center gap-1.5"
+      onMouseEnter={() => {
+        setHovered(true)
+        setDismissed(false)
+      }}
+      onMouseLeave={() => {
+        setHovered(false)
+      }}
+      onFocus={() => {
+        setFocused(true)
+        setDismissed(false)
+      }}
+      onBlur={() => {
+        setFocused(false)
+      }}
+    >
+      <span className="text-[11px] text-text-muted uppercase tracking-[0.2em]">{label}</span>
+      <button
+        type="button"
+        aria-label={`${label}: ${detailsLabel}`}
+        aria-describedby={descriptionId}
+        className="inline-flex h-6 w-6 items-center justify-center rounded-full text-text-muted transition-colors hover:text-yellow focus-visible:text-yellow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow/60"
+      >
+        <Info size={12} aria-hidden="true" />
+      </button>
+      <span id={descriptionId} className="sr-only">{explanation}</span>
+      {visible && (
+        <span
+          aria-hidden="true"
+          className="absolute left-1/2 top-full z-30 w-[min(16rem,calc(100vw-2rem))] -translate-x-1/2 pt-2"
+        >
+          <span className="block rounded-lg border border-border bg-bg-surface px-3 py-2 text-left text-[10px] font-normal normal-case leading-relaxed tracking-normal text-text-secondary shadow-xl">
+            {explanation}
+          </span>
+        </span>
+      )}
+    </span>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function HomeScreen() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { formatPrice, t, pricePrimaryField } = useSettings()
+  const { formatPrice, t, pricePrimaryField, settings, updateSettings } = useSettings()
   const { user, logout, multiUser } = useAuth()
   const [chartPeriod, setChartPeriod] = useState('1W')
 
@@ -111,14 +171,37 @@ export default function HomeScreen() {
 
   const totalValue = Number(data?.total_value ?? 0)
   const totalCost = Number(data?.total_cost ?? 0)
+  const performanceCostBasis = Number(data?.performance_cost_basis ?? totalCost)
   const pnl = Number(data?.pnl ?? 0)
-  const pnlPct = totalCost > 0 ? (pnl / totalCost) * 100 : 0
+  const pnlPct = performanceCostBasis > 0 ? (pnl / performanceCostBasis) * 100 : 0
   const pnlPositive = pnl >= 0
-  const productsRealizedPnl = Number(data?.products_realized_pnl ?? 0)
-  const productsSoldRevenue = Number(data?.products_sold_revenue ?? 0)
-  const productsSoldCost = Number(data?.products_sold_cost ?? 0)
+  const realizedPnl = Number(data?.realized_pnl ?? 0)
+  const realizedValue = Number(data?.realized_value ?? 0)
   // Net invested = cards cost + unsold products cost — i.e. money currently deployed
   const netInvested = totalCost
+  const portfolioDisplayMode = settings?.portfolio_display_mode === 'capital_invested'
+    ? 'capital_invested'
+    : 'portfolio_value'
+  const showingPortfolioValue = portfolioDisplayMode === 'portfolio_value'
+  const headlineValue = showingPortfolioValue ? totalValue : netInvested
+  const headlineLabel = showingPortfolioValue ? t('home.portfolioValue') : t('home.capitalInvested')
+  const productValueFallbackCount = Number(data?.product_value_fallback_count ?? 0)
+  const productsNeedingReviewCount = Number(data?.products_needing_review_count ?? 0)
+  const productValueExplanation = [
+    productsNeedingReviewCount > 0
+      ? `${productsNeedingReviewCount} ${t('home.productsNeedReview')}`
+      : '',
+    productValueFallbackCount > 0
+      ? `${productValueFallbackCount} ${t('home.productValueFallback')}`
+      : '',
+  ].filter(Boolean).join(' ')
+
+  const setPortfolioDisplayMode = (mode) => {
+    if (mode === portfolioDisplayMode) return
+    updateSettings({ portfolio_display_mode: mode }).catch(() => {
+      toast.error(t('home.displayModeSaveFailed'))
+    })
+  }
 
   const recentCards = data?.recent_additions?.slice(0, 12) ?? []
   const topCards = data?.top_cards?.slice(0, 8) ?? []
@@ -137,9 +220,11 @@ export default function HomeScreen() {
           ? format(snapshotDate, 'EEE dd.MM HH:mm')
           : format(snapshotDate, dateFmt),
         value: d.value,
+        legacy: Boolean(d.legacy),
+        legacyLabel: t('home.legacySnapshot'),
       }
     })
-  }, [investmentData, chartPeriod])
+  }, [investmentData, chartPeriod, t])
 
   // Determine chart color based on trend
   const chartColor = useMemo(() => {
@@ -249,19 +334,62 @@ export default function HomeScreen() {
               {t('home.hello')}, <span className="font-black" style={{ color: '#f5c842' }}>{trainerName}</span>! 👋
             </p>
           </div>
-          <p className="text-[11px] text-text-muted uppercase tracking-[0.2em] mb-2">{t('home.portfolioValue')}</p>
+          <div
+            className="mx-auto mb-3 grid w-full max-w-[320px] grid-cols-2 rounded-xl p-1"
+            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+            aria-label={t('home.portfolioDisplayMode')}
+          >
+            {[
+              ['portfolio_value', t('home.portfolioValue')],
+              ['capital_invested', t('home.capitalInvested')],
+            ].map(([mode, label]) => {
+              const selected = portfolioDisplayMode === mode
+              return (
+                <button
+                  key={mode}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => setPortfolioDisplayMode(mode)}
+                  className="min-w-0 rounded-lg px-2 py-2 text-[10px] font-bold leading-tight transition-all sm:text-xs"
+                  style={{
+                    background: selected ? 'rgba(245,200,66,0.14)' : 'transparent',
+                    border: selected ? '1px solid rgba(245,200,66,0.28)' : '1px solid transparent',
+                    color: selected ? '#f5c842' : 'rgba(255,255,255,0.45)',
+                  }}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+          <div className="relative mb-2 flex w-full items-center justify-center gap-1.5">
+            {showingPortfolioValue && productValueExplanation ? (
+              <ProductValueInfo
+                label={headlineLabel}
+                detailsLabel={t('home.details')}
+                explanation={productValueExplanation}
+              />
+            ) : (
+              <p className="text-[11px] text-text-muted uppercase tracking-[0.2em]">{headlineLabel}</p>
+            )}
+          </div>
           {isLoading ? (
             <div className="skeleton h-14 w-48 mx-auto rounded-xl" />
           ) : (
             <p className="text-4xl sm:text-5xl font-black tracking-tight"
-              style={{ color: '#f5c842', textShadow: '0 0 40px rgba(245,200,66,0.25)' }}>
-              {formatPrice(totalValue)}
+              style={{
+                color: showingPortfolioValue ? '#f5c842' : '#4fc3f7',
+                textShadow: showingPortfolioValue
+                  ? '0 0 40px rgba(245,200,66,0.25)'
+                  : '0 0 40px rgba(79,195,247,0.2)',
+              }}>
+              {formatPrice(headlineValue)}
             </p>
           )}
 
           {/* ── G&V ── */}
           {!isLoading && (
-            <div className="flex flex-col items-center gap-1.5 mt-3">
+            <div className="mt-2 flex flex-col items-center gap-1.5">
               <div className="flex items-center gap-2">
                 <div
                   className="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-black"
@@ -278,25 +406,24 @@ export default function HomeScreen() {
                   <span>
                     {pnlPositive ? '+' : ''}{formatPrice(pnl)}
                   </span>
-                  {totalCost > 0 && (
+                  {performanceCostBasis > 0 && (
                     <span className="opacity-75">
                       ({pnlPositive ? '+' : ''}{pnlPct.toFixed(1)}%)
                     </span>
                   )}
                 </div>
               </div>
-              {/* Realized P&L badge from sold products */}
-              {productsSoldRevenue > 0 && (
+              {(realizedValue > 0 || realizedPnl !== 0) && (
                 <div className="flex items-center gap-1.5">
                   <span
                     className="text-[10px] font-semibold px-2.5 py-1 rounded-full"
                     style={{
-                      background: productsRealizedPnl >= 0 ? 'rgba(102,187,106,0.1)' : 'rgba(227,0,11,0.1)',
-                      border: `1px solid ${productsRealizedPnl >= 0 ? 'rgba(102,187,106,0.25)' : 'rgba(227,0,11,0.25)'}`,
-                      color: productsRealizedPnl >= 0 ? '#66bb6a' : '#e3000b',
+                      background: realizedPnl >= 0 ? 'rgba(102,187,106,0.1)' : 'rgba(227,0,11,0.1)',
+                      border: `1px solid ${realizedPnl >= 0 ? 'rgba(102,187,106,0.25)' : 'rgba(227,0,11,0.25)'}`,
+                      color: realizedPnl >= 0 ? '#66bb6a' : '#e3000b',
                     }}
                   >
-                    {t('common.sold')}: {formatPrice(productsSoldRevenue)} ({productsRealizedPnl >= 0 ? '+' : ''}{formatPrice(productsRealizedPnl)})
+                    {t('analytics.realizedPnl')}: {realizedPnl >= 0 ? '+' : '-'}{formatPrice(Math.abs(realizedPnl))}
                   </span>
                 </div>
               )}

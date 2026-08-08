@@ -10,15 +10,27 @@ try:
     from sqlalchemy.orm import sessionmaker
 
     from api.products import (
+        bulk_update_product_lifecycle,
+        create_product,
         get_products_summary,
         link_collection_item_to_product,
+        link_collection_items_to_product,
         sell_product_card,
+        update_product,
     )
     from api.cards import delete_custom_card
     from api.collection import get_collection, update_collection_item
     from database import Base
     from models import Binder, BinderCard, Card, CollectionItem, ProductCard, ProductLedgerEntry, ProductPurchase, User
-    from schemas import CollectionItemUpdate, ProductCardLinkCreate, ProductCardSaleCreate
+    from schemas import (
+        CollectionItemUpdate,
+        ProductCardLinkCreate,
+        ProductCardBulkLinkCreate,
+        ProductCardSaleCreate,
+        ProductLifecycleBulkUpdate,
+        ProductPurchaseCreate,
+        ProductPurchaseUpdate,
+    )
     API_TEST_DEPS_AVAILABLE = True
 except ModuleNotFoundError:
     HTTPException = Exception
@@ -56,6 +68,57 @@ class ProductLedgerTests(unittest.TestCase):
         self.assertEqual(source, "manual_current")
         self.assertEqual(value, 0)
         self.assertEqual(totals.dynamic_value, 0)
+
+    def test_product_effective_value_uses_purchase_cost_when_current_value_is_missing(self):
+        product = SimpleNamespace(purchase_price=25, current_value=None, sold_price=None)
+
+        value, source, totals = product_effective_value(product, [])
+
+        self.assertEqual(source, "purchase_cost_fallback")
+        self.assertEqual(value, 25)
+        self.assertEqual(totals.dynamic_value, 0)
+
+    def test_opened_unlinked_product_has_no_separate_asset_value(self):
+        product = SimpleNamespace(
+            purchase_price=50,
+            current_value=80,
+            sold_price=None,
+            sold_date=None,
+            lifecycle_status="opened",
+        )
+
+        value, source, _totals = product_effective_value(product, [])
+
+        self.assertEqual(source, "opened_unlinked")
+        self.assertEqual(value, 0)
+
+    def test_review_product_is_excluded_until_classified(self):
+        product = SimpleNamespace(
+            purchase_price=50,
+            current_value=80,
+            sold_price=None,
+            sold_date=None,
+            lifecycle_status="review",
+        )
+
+        value, source, _totals = product_effective_value(product, [])
+
+        self.assertEqual(source, "needs_review")
+        self.assertEqual(value, 0)
+
+    def test_date_only_legacy_sale_requires_review_instead_of_becoming_zero_value_sale(self):
+        product = SimpleNamespace(
+            purchase_price=50,
+            current_value=80,
+            sold_price=None,
+            sold_date=datetime.date(2026, 6, 1),
+            lifecycle_status="sold",
+        )
+
+        value, source, _totals = product_effective_value(product, [])
+
+        self.assertEqual(source, "needs_review")
+        self.assertEqual(value, 0)
 
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/SQLAlchemy are not installed in this lightweight test environment")
@@ -125,6 +188,244 @@ class ProductLedgerApiTests(unittest.TestCase):
         self.assertEqual(summary["total_current_value"], 0)
         self.assertEqual(summary["total_pnl"], -50)
 
+    def test_bulk_classification_updates_only_owned_legacy_products(self):
+        first = self.add_product()
+        second = self.add_product()
+        first.lifecycle_status = "review"
+        second.lifecycle_status = "review"
+        self.db.commit()
+
+        response = bulk_update_product_lifecycle(
+            ProductLifecycleBulkUpdate(
+                product_ids=[first.id, second.id],
+                lifecycle_status="opened",
+            ),
+            current_user=self.user,
+            db=self.db,
+        )
+
+        self.db.refresh(first)
+        self.db.refresh(second)
+        self.assertEqual(response["updated"], 2)
+        self.assertEqual(first.lifecycle_status, "opened")
+        self.assertEqual(second.lifecycle_status, "opened")
+
+    def test_bulk_classification_rejects_foreign_product_without_partial_update(self):
+        own = self.add_product()
+        foreign = self.add_product(user=self.other_user)
+        own.lifecycle_status = "review"
+        foreign.lifecycle_status = "review"
+        self.db.commit()
+
+        with self.assertRaises(HTTPException) as ctx:
+            bulk_update_product_lifecycle(
+                ProductLifecycleBulkUpdate(
+                    product_ids=[own.id, foreign.id],
+                    lifecycle_status="sealed",
+                ),
+                current_user=self.user,
+                db=self.db,
+            )
+
+        self.assertEqual(ctx.exception.status_code, 404)
+        self.db.refresh(own)
+        self.assertEqual(own.lifecycle_status, "review")
+
+    def test_bulk_classification_rejects_stale_status_without_partial_update(self):
+        pending = self.add_product()
+        already_classified = self.add_product()
+        pending.lifecycle_status = "review"
+        already_classified.lifecycle_status = "opened"
+        self.db.commit()
+
+        with self.assertRaises(HTTPException) as ctx:
+            bulk_update_product_lifecycle(
+                ProductLifecycleBulkUpdate(
+                    product_ids=[pending.id, already_classified.id],
+                    lifecycle_status="sealed",
+                ),
+                current_user=self.user,
+                db=self.db,
+            )
+
+        self.assertEqual(ctx.exception.status_code, 409)
+        self.db.refresh(pending)
+        self.assertEqual(pending.lifecycle_status, "review")
+
+    def test_bulk_classification_rejects_incomplete_date_only_sale(self):
+        product = self.add_product()
+        product.lifecycle_status = "review"
+        product.sold_date = datetime.date(2026, 6, 1)
+        self.db.commit()
+
+        with self.assertRaises(HTTPException) as ctx:
+            bulk_update_product_lifecycle(
+                ProductLifecycleBulkUpdate(
+                    product_ids=[product.id],
+                    lifecycle_status="opened",
+                ),
+                current_user=self.user,
+                db=self.db,
+            )
+
+        self.assertEqual(ctx.exception.status_code, 422)
+        self.db.rollback()
+        self.db.refresh(product)
+        self.assertEqual(product.lifecycle_status, "review")
+
+    def test_sealed_product_update_with_sale_becomes_sold(self):
+        product = self.add_product()
+
+        response = update_product(
+            product.id,
+            ProductPurchaseUpdate(
+                sold_price=80,
+                sold_date=datetime.date(2026, 6, 1),
+                lifecycle_status="sealed",
+            ),
+            current_user=self.user,
+            db=self.db,
+        )
+
+        self.db.refresh(product)
+        self.assertEqual(product.lifecycle_status, "sold")
+        self.assertEqual(response.lifecycle_status, "sold")
+        self.assertEqual(response.computed_current_value, 80)
+
+    def test_opened_unlinked_product_cannot_be_sold_as_sealed(self):
+        product = self.add_product()
+        product.lifecycle_status = "opened"
+        self.db.commit()
+
+        with self.assertRaises(HTTPException) as ctx:
+            update_product(
+                product.id,
+                ProductPurchaseUpdate(
+                    sold_price=80,
+                    sold_date=datetime.date(2026, 6, 1),
+                ),
+                current_user=self.user,
+                db=self.db,
+            )
+
+        self.assertEqual(ctx.exception.status_code, 409)
+
+    def test_linked_product_cannot_receive_whole_product_sale_fields(self):
+        product = self.add_product()
+        item = self.add_collection_item()
+        link_collection_item_to_product(
+            product.id,
+            ProductCardLinkCreate(collection_item_id=item.id, quantity=1),
+            current_user=self.user,
+            db=self.db,
+        )
+
+        with self.assertRaises(HTTPException) as ctx:
+            update_product(
+                product.id,
+                ProductPurchaseUpdate(sold_price=80, sold_date=datetime.date(2026, 6, 1)),
+                current_user=self.user,
+                db=self.db,
+            )
+
+        self.assertEqual(ctx.exception.status_code, 409)
+
+    def test_create_rejects_opened_product_with_whole_product_sale(self):
+        with self.assertRaises(HTTPException) as ctx:
+            create_product(
+                ProductPurchaseCreate(
+                    product_name="Opened Box",
+                    product_type="Booster Box",
+                    purchase_price=50,
+                    sold_price=80,
+                    purchase_date=datetime.date(2026, 5, 30),
+                    sold_date=datetime.date(2026, 6, 1),
+                    lifecycle_status="opened",
+                ),
+                current_user=self.user,
+                db=self.db,
+            )
+
+        self.assertEqual(ctx.exception.status_code, 409)
+
+    def test_create_rejects_sale_date_without_sale_price(self):
+        with self.assertRaises(HTTPException) as ctx:
+            create_product(
+                ProductPurchaseCreate(
+                    product_name="Incomplete Sale",
+                    product_type="Booster Box",
+                    purchase_price=50,
+                    purchase_date=datetime.date(2026, 5, 30),
+                    sold_date=datetime.date(2026, 6, 1),
+                ),
+                current_user=self.user,
+                db=self.db,
+            )
+
+        self.assertEqual(ctx.exception.status_code, 422)
+
+    def test_zero_sale_price_is_a_valid_explicit_sale(self):
+        response = create_product(
+            ProductPurchaseCreate(
+                product_name="Disposed Product",
+                product_type="Booster Box",
+                purchase_price=50,
+                purchase_date=datetime.date(2026, 5, 30),
+                sold_price=0,
+                sold_date=datetime.date(2026, 6, 1),
+            ),
+            current_user=self.user,
+            db=self.db,
+        )
+
+        self.assertEqual(response.lifecycle_status, "sold")
+        self.assertEqual(response.computed_current_value, 0)
+
+    def test_update_rejects_clearing_sale_price_while_sale_date_remains(self):
+        product = self.add_product()
+        product.lifecycle_status = "sold"
+        product.sold_price = 80
+        product.sold_date = datetime.date(2026, 6, 1)
+        self.db.commit()
+
+        with self.assertRaises(HTTPException) as ctx:
+            update_product(
+                product.id,
+                ProductPurchaseUpdate(sold_price=None),
+                current_user=self.user,
+                db=self.db,
+            )
+
+        self.assertEqual(ctx.exception.status_code, 422)
+        self.db.rollback()
+        self.db.refresh(product)
+        self.assertEqual(product.sold_price, 80)
+        self.assertEqual(product.lifecycle_status, "sold")
+
+    def test_update_can_clear_sale_and_reclassify_in_the_same_request(self):
+        product = self.add_product()
+        product.lifecycle_status = "sold"
+        product.sold_price = 80
+        product.sold_date = datetime.date(2026, 6, 1)
+        self.db.commit()
+
+        response = update_product(
+            product.id,
+            ProductPurchaseUpdate(
+                sold_price=None,
+                sold_date=None,
+                lifecycle_status="opened",
+            ),
+            current_user=self.user,
+            db=self.db,
+        )
+
+        self.db.refresh(product)
+        self.assertIsNone(product.sold_price)
+        self.assertIsNone(product.sold_date)
+        self.assertEqual(product.lifecycle_status, "opened")
+        self.assertEqual(response.lifecycle_status, "opened")
+
     def test_link_rejects_more_than_unlinked_owned_quantity(self):
         product = self.add_product()
         item = self.add_collection_item(quantity=1)
@@ -152,6 +453,71 @@ class ProductLedgerApiTests(unittest.TestCase):
             )
 
         self.assertEqual(ctx.exception.status_code, 404)
+
+    def test_bulk_link_adds_multiple_collection_rows_and_opens_product(self):
+        product = self.add_product()
+        first_item = self.add_collection_item(quantity=2)
+        second_item = self.add_collection_item(quantity=1)
+
+        response = link_collection_items_to_product(
+            product.id,
+            ProductCardBulkLinkCreate(items=[
+                ProductCardLinkCreate(collection_item_id=first_item.id, quantity=2),
+                ProductCardLinkCreate(collection_item_id=second_item.id, quantity=1),
+            ]),
+            current_user=self.user,
+            db=self.db,
+        )
+
+        rows = self.db.query(ProductCard).order_by(ProductCard.collection_item_id).all()
+        self.assertEqual([(row.collection_item_id, row.active_quantity) for row in rows], [
+            (first_item.id, 2),
+            (second_item.id, 1),
+        ])
+        self.assertEqual(response.lifecycle_status, "opened")
+        self.assertEqual(response.active_linked_cards_count, 3)
+
+    def test_bulk_link_validation_is_atomic(self):
+        product = self.add_product()
+        original_status = product.lifecycle_status
+        valid_item = self.add_collection_item(quantity=1)
+        insufficient_item = self.add_collection_item(quantity=1)
+
+        with self.assertRaises(HTTPException) as ctx:
+            link_collection_items_to_product(
+                product.id,
+                ProductCardBulkLinkCreate(items=[
+                    ProductCardLinkCreate(collection_item_id=valid_item.id, quantity=1),
+                    ProductCardLinkCreate(collection_item_id=insufficient_item.id, quantity=2),
+                ]),
+                current_user=self.user,
+                db=self.db,
+            )
+
+        self.assertEqual(ctx.exception.status_code, 409)
+        self.db.rollback()
+        self.assertEqual(self.db.query(ProductCard).count(), 0)
+        self.db.refresh(product)
+        self.assertEqual(product.lifecycle_status, original_status)
+
+    def test_bulk_link_rejects_duplicate_collection_rows(self):
+        product = self.add_product()
+        item = self.add_collection_item(quantity=2)
+
+        with self.assertRaises(HTTPException) as ctx:
+            link_collection_items_to_product(
+                product.id,
+                ProductCardBulkLinkCreate(items=[
+                    ProductCardLinkCreate(collection_item_id=item.id, quantity=1),
+                    ProductCardLinkCreate(collection_item_id=item.id, quantity=1),
+                ]),
+                current_user=self.user,
+                db=self.db,
+            )
+
+        self.assertEqual(ctx.exception.status_code, 422)
+        self.db.rollback()
+        self.assertEqual(self.db.query(ProductCard).count(), 0)
 
     def test_selling_one_linked_copy_reduces_collection_and_keeps_history(self):
         product = self.add_product()

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Literal
 from datetime import datetime, date
 
 
@@ -279,6 +279,7 @@ class ProductPurchaseCreate(BaseModel):
     sold_price: Optional[float] = None
     purchase_date: date
     sold_date: Optional[date] = None
+    lifecycle_status: Literal["sealed", "opened"] = "sealed"
     notes: Optional[str] = None
 
 
@@ -290,13 +291,23 @@ class ProductPurchaseUpdate(BaseModel):
     sold_price: Optional[float] = None
     purchase_date: Optional[date] = None
     sold_date: Optional[date] = None
+    lifecycle_status: Optional[Literal["sealed", "opened"]] = None
     notes: Optional[str] = None
+
+
+class ProductLifecycleBulkUpdate(BaseModel):
+    product_ids: List[int] = Field(min_length=1)
+    lifecycle_status: Literal["sealed", "opened"]
 
 
 class ProductCardLinkCreate(BaseModel):
     collection_item_id: int
     quantity: int = Field(default=1, ge=1, le=999)
     notes: Optional[str] = None
+
+
+class ProductCardBulkLinkCreate(BaseModel):
+    items: List[ProductCardLinkCreate] = Field(min_length=1, max_length=200)
 
 
 class ProductCardSaleCreate(BaseModel):
@@ -369,6 +380,7 @@ class ProductPurchaseResponse(BaseModel):
     sold_price: Optional[float] = None
     purchase_date: date
     sold_date: Optional[date] = None
+    lifecycle_status: Literal["sealed", "opened", "sold", "review"]
     notes: Optional[str] = None
     created_at: Optional[datetime] = None
     pnl: Optional[float] = None

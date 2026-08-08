@@ -10,11 +10,13 @@ from api.auth import get_current_user
 from database import get_db
 from models import Card, CollectionItem, ProductCard, ProductLedgerEntry, ProductPurchase, User
 from schemas import (
+    ProductCardBulkLinkCreate,
     ProductCardLinkCreate,
     ProductCardResponse,
     ProductCardSaleCreate,
     ProductLedgerEntryCreate,
     ProductLedgerEntryResponse,
+    ProductLifecycleBulkUpdate,
     ProductPurchaseCreate,
     ProductPurchaseResponse,
     ProductPurchaseUpdate,
@@ -28,6 +30,8 @@ from services.product_ledger import (
     ledger_totals,
     positive_quantity,
     product_effective_value,
+    product_has_completed_sale,
+    product_lifecycle_status,
     sale_total_is_valid,
 )
 
@@ -59,11 +63,25 @@ def _validate_product_payload(product: ProductPurchaseCreate | ProductPurchaseUp
         raise HTTPException(status_code=422, detail="product_name cannot be blank")
 
 
-def _get_product_or_404(db: Session, current_user: User, product_id: int) -> ProductPurchase:
-    product = db.query(ProductPurchase).filter(
+def _validate_whole_product_sale(product) -> None:
+    if getattr(product, "sold_date", None) is not None and not product_has_completed_sale(product):
+        raise HTTPException(status_code=422, detail="sold_price is required when sold_date is set")
+
+
+def _get_product_or_404(
+    db: Session,
+    current_user: User,
+    product_id: int,
+    *,
+    lock: bool = False,
+) -> ProductPurchase:
+    query = db.query(ProductPurchase).filter(
         ProductPurchase.id == product_id,
         ProductPurchase.user_id == current_user.id,
-    ).first()
+    )
+    if lock:
+        query = query.with_for_update(of=ProductPurchase)
+    product = query.first()
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
     return product
@@ -87,6 +105,42 @@ def _load_flat_ledger_entries(db: Session, current_user: User, product_id: int) 
         ProductLedgerEntry.user_id == current_user.id,
         ProductLedgerEntry.product_card_id.is_(None),
     ).order_by(ProductLedgerEntry.event_date.asc(), ProductLedgerEntry.id.asc()).all()
+
+
+def _product_has_activity(db: Session, current_user: User, product_id: int) -> bool:
+    has_cards = db.query(ProductCard.id).filter(
+        ProductCard.product_id == product_id,
+        ProductCard.user_id == current_user.id,
+    ).first()
+    if has_cards:
+        return True
+    return db.query(ProductLedgerEntry.id).filter(
+        ProductLedgerEntry.product_id == product_id,
+        ProductLedgerEntry.user_id == current_user.id,
+    ).first() is not None
+
+
+def _product_activity_ids(db: Session, current_user: User, product_ids: list[int]) -> set[int]:
+    card_product_ids = db.query(ProductCard.product_id).filter(
+        ProductCard.user_id == current_user.id,
+        ProductCard.product_id.in_(product_ids),
+    ).distinct().all()
+    ledger_product_ids = db.query(ProductLedgerEntry.product_id).filter(
+        ProductLedgerEntry.user_id == current_user.id,
+        ProductLedgerEntry.product_id.in_(product_ids),
+    ).distinct().all()
+    return {row[0] for row in card_product_ids + ledger_product_ids}
+
+
+def _validate_lifecycle_choice(
+    product: ProductPurchase,
+    lifecycle_status: str,
+    has_activity: bool,
+) -> None:
+    if lifecycle_status == "sealed" and has_activity:
+        raise HTTPException(status_code=409, detail="Products with linked-card or ledger history cannot be marked sealed")
+    if product_has_completed_sale(product):
+        raise HTTPException(status_code=409, detail="Clear the product sale before changing its lifecycle status")
 
 
 def _ledger_entry_response(entry: ProductLedgerEntry) -> ProductLedgerEntryResponse:
@@ -143,7 +197,7 @@ def _product_response(
     effective_value, value_source, totals = product_effective_value(product, product_cards, price_field, flat_ledger_entries)
     pnl = None
     pnl_percent = None
-    if effective_value is not None:
+    if effective_value is not None and value_source not in {"opened_unlinked", "needs_review"}:
         pnl = round(effective_value - product.purchase_price, 2)
         pnl_percent = round((pnl / product.purchase_price * 100) if product.purchase_price > 0 else 0, 2)
 
@@ -156,6 +210,7 @@ def _product_response(
         sold_price=product.sold_price,
         purchase_date=product.purchase_date,
         sold_date=product.sold_date,
+        lifecycle_status=product_lifecycle_status(product, bool(product_cards or flat_ledger_entries)),
         notes=product.notes,
         created_at=product.created_at,
         pnl=pnl,
@@ -172,12 +227,95 @@ def _product_response(
     )
 
 
-def _available_collection_quantity(db: Session, current_user: User, collection_item: CollectionItem) -> int:
-    linked_active = db.query(func.coalesce(func.sum(ProductCard.active_quantity), 0)).filter(
+def _link_collection_items(
+    db: Session,
+    current_user: User,
+    product: ProductPurchase,
+    links: list[ProductCardLinkCreate],
+) -> None:
+    """Validate and link exact collection rows as one atomic operation."""
+    collection_item_ids = [link.collection_item_id for link in links]
+    if len(collection_item_ids) != len(set(collection_item_ids)):
+        raise HTTPException(status_code=422, detail="Each collection item can only appear once")
+    if any(not positive_quantity(link.quantity, PRODUCT_LINK_MAX_QUANTITY) for link in links):
+        raise HTTPException(status_code=422, detail="quantity must be between 1 and 999")
+
+    collection_items = db.query(CollectionItem).options(joinedload(CollectionItem.card)).filter(
+        CollectionItem.id.in_(collection_item_ids),
+        CollectionItem.user_id == current_user.id,
+    ).order_by(CollectionItem.id.asc()).with_for_update(of=CollectionItem).all()
+    if len(collection_items) != len(collection_item_ids):
+        raise HTTPException(status_code=404, detail="One or more collection items were not found")
+
+    linked_totals = dict(db.query(
+        ProductCard.collection_item_id,
+        func.coalesce(func.sum(ProductCard.active_quantity), 0),
+    ).filter(
         ProductCard.user_id == current_user.id,
-        ProductCard.collection_item_id == collection_item.id,
-    ).scalar() or 0
-    return max(int(collection_item.quantity or 0) - int(linked_active or 0), 0)
+        ProductCard.collection_item_id.in_(collection_item_ids),
+    ).group_by(ProductCard.collection_item_id).all())
+    collection_items_by_id = {item.id: item for item in collection_items}
+    for link in links:
+        collection_item = collection_items_by_id[link.collection_item_id]
+        available_quantity = max(
+            int(collection_item.quantity or 0) - int(linked_totals.get(collection_item.id, 0) or 0),
+            0,
+        )
+        if link.quantity > available_quantity:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Only {available_quantity} unlinked copies are available for collection item {collection_item.id}",
+            )
+
+    existing_rows = db.query(ProductCard).filter(
+        ProductCard.product_id == product.id,
+        ProductCard.user_id == current_user.id,
+        ProductCard.collection_item_id.in_(collection_item_ids),
+        ProductCard.sold_quantity == 0,
+    ).all()
+    existing_by_key = {
+        (
+            row.collection_item_id,
+            row.card_id,
+            row.variant,
+            row.condition,
+            row.lang,
+            row.purchase_price,
+        ): row
+        for row in existing_rows
+    }
+    linked_at = datetime.datetime.utcnow()
+    for link in links:
+        collection_item = collection_items_by_id[link.collection_item_id]
+        key = (
+            collection_item.id,
+            collection_item.card_id,
+            collection_item.variant,
+            collection_item.condition,
+            collection_item.lang,
+            collection_item.purchase_price,
+        )
+        existing = existing_by_key.get(key)
+        if existing:
+            existing.initial_quantity += link.quantity
+            existing.active_quantity += link.quantity
+            continue
+        db.add(ProductCard(
+            product_id=product.id,
+            user_id=current_user.id,
+            card_id=collection_item.card_id,
+            collection_item_id=collection_item.id,
+            initial_quantity=link.quantity,
+            active_quantity=link.quantity,
+            sold_quantity=0,
+            condition=collection_item.condition,
+            variant=collection_item.variant,
+            lang=collection_item.lang,
+            purchase_price=collection_item.purchase_price,
+            linked_at=linked_at,
+        ))
+
+    product.lifecycle_status = "opened"
 
 
 def _refresh_product_response(db: Session, current_user: User, product: ProductPurchase, price_field: str) -> ProductPurchaseResponse:
@@ -220,6 +358,10 @@ def create_product(
 ):
     """Log a new product purchase."""
     _validate_product_payload(product)
+    _validate_whole_product_sale(product)
+    has_sale = product_has_completed_sale(product)
+    if has_sale and product.lifecycle_status == "opened":
+        raise HTTPException(status_code=409, detail="An opened product cannot also be sold as a sealed product")
     db_product = ProductPurchase(
         product_name=product.product_name.strip(),
         product_type=product.product_type,
@@ -228,6 +370,11 @@ def create_product(
         sold_price=product.sold_price,
         purchase_date=product.purchase_date,
         sold_date=product.sold_date,
+        lifecycle_status=(
+            "sold"
+            if has_sale
+            else product.lifecycle_status
+        ),
         notes=product.notes,
         user_id=current_user.id,
         created_at=datetime.datetime.utcnow(),
@@ -238,6 +385,38 @@ def create_product(
     return _refresh_product_response(db, current_user, db_product, "price_trend")
 
 
+@router.put("/lifecycle/bulk")
+def bulk_update_product_lifecycle(
+    update: ProductLifecycleBulkUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Classify ambiguous legacy products transactionally."""
+    product_ids = list(dict.fromkeys(update.product_ids))
+    products = db.query(ProductPurchase).filter(
+        ProductPurchase.user_id == current_user.id,
+        ProductPurchase.id.in_(product_ids),
+    ).with_for_update().all()
+    if len(products) != len(product_ids):
+        raise HTTPException(status_code=404, detail="One or more products were not found")
+
+    if any(product.lifecycle_status != "review" for product in products):
+        raise HTTPException(
+            status_code=409,
+            detail="One or more products were already classified. Refresh the page and try again.",
+        )
+    activity_ids = _product_activity_ids(db, current_user, product_ids)
+    for product in products:
+        has_activity = product.id in activity_ids
+        _validate_whole_product_sale(product)
+        _validate_lifecycle_choice(product, update.lifecycle_status, has_activity)
+    for product in products:
+        product.lifecycle_status = update.lifecycle_status
+
+    db.commit()
+    return {"updated": len(products), "lifecycle_status": update.lifecycle_status}
+
+
 @router.put("/{product_id}", response_model=ProductPurchaseResponse)
 def update_product(
     product_id: int,
@@ -246,13 +425,40 @@ def update_product(
     db: Session = Depends(get_db),
 ):
     """Update a product purchase."""
-    product = _get_product_or_404(db, current_user, product_id)
+    product = _get_product_or_404(db, current_user, product_id, lock=True)
     _validate_product_payload(update)
 
-    for field, value in update.model_dump(exclude_unset=True).items():
+    update_data = update.model_dump(exclude_unset=True)
+    requested_lifecycle = update_data.pop("lifecycle_status", None)
+    previous_lifecycle = product.lifecycle_status
+    for field, value in update_data.items():
         if field == "product_name" and value is not None:
             value = value.strip()
         setattr(product, field, value)
+
+    _validate_whole_product_sale(product)
+    has_activity = _product_has_activity(db, current_user, product.id)
+    has_sale = product_has_completed_sale(product)
+    if has_activity:
+        if has_sale:
+            raise HTTPException(
+                status_code=409,
+                detail="Products with linked-card or ledger history cannot also be sold as sealed products",
+            )
+        if requested_lifecycle == "sealed":
+            raise HTTPException(status_code=409, detail="Products with linked-card or ledger history cannot be marked sealed")
+        product.lifecycle_status = "opened"
+    elif has_sale:
+        if requested_lifecycle == "opened" or (
+            requested_lifecycle is None and previous_lifecycle == "opened"
+        ):
+            raise HTTPException(status_code=409, detail="An opened product cannot also be sold as a sealed product")
+        product.lifecycle_status = "sold"
+    elif requested_lifecycle is not None:
+        _validate_lifecycle_choice(product, requested_lifecycle, has_activity)
+        product.lifecycle_status = requested_lifecycle
+    elif previous_lifecycle == "sold":
+        product.lifecycle_status = "review"
 
     db.commit()
     db.refresh(product)
@@ -270,7 +476,7 @@ def delete_product(
     Products with linked cards or realized ledger history are protected from
     accidental deletion so sold-card history is not silently erased.
     """
-    product = _get_product_or_404(db, current_user, product_id)
+    product = _get_product_or_404(db, current_user, product_id, lock=True)
     linked_count = db.query(ProductCard).filter(
         ProductCard.product_id == product_id,
         ProductCard.user_id == current_user.id,
@@ -362,6 +568,7 @@ def get_products_summary(
         "total_pnl": round(total_pnl, 2),
         "total_pnl_pct": round(total_pnl_pct, 2),
         "total_products": len(product_responses),
+        "needs_review_count": sum(p.lifecycle_status == "review" for p in product_responses),
         "linked_live_value": round(sum(p.linked_live_value for p in product_responses), 2),
         "realized_gains": round(sum(p.realized_gains for p in product_responses), 2),
         "by_type": by_type_list,
@@ -390,53 +597,31 @@ def link_collection_item_to_product(
     price_field: str = Query(default="price_trend", description="Cardmarket price field for linked-card valuation"),
 ):
     """Link exact owned collection copies to a product without removing them from active inventory."""
-    product = _get_product_or_404(db, current_user, product_id)
-    collection_item = db.query(CollectionItem).options(joinedload(CollectionItem.card)).filter(
-        CollectionItem.id == link.collection_item_id,
-        CollectionItem.user_id == current_user.id,
-    ).with_for_update(of=CollectionItem).first()
-    if not collection_item:
-        raise HTTPException(status_code=404, detail="Collection item not found")
-    if not positive_quantity(link.quantity, PRODUCT_LINK_MAX_QUANTITY):
-        raise HTTPException(status_code=422, detail="quantity must be between 1 and 999")
+    product = _get_product_or_404(db, current_user, product_id, lock=True)
+    has_activity = _product_has_activity(db, current_user, product.id)
+    if product_lifecycle_status(product, has_activity) == "sold":
+        raise HTTPException(status_code=409, detail="A sold sealed product cannot have cards linked to it")
+    _link_collection_items(db, current_user, product, [link])
 
-    available_quantity = _available_collection_quantity(db, current_user, collection_item)
-    if link.quantity > available_quantity:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Only {available_quantity} unlinked copie(s) are available for this exact collection item",
-        )
+    db.commit()
+    db.refresh(product)
+    return _refresh_product_response(db, current_user, product, normalize_price_field(price_field))
 
-    existing = db.query(ProductCard).filter(
-        ProductCard.product_id == product.id,
-        ProductCard.user_id == current_user.id,
-        ProductCard.collection_item_id == collection_item.id,
-        ProductCard.card_id == collection_item.card_id,
-        ProductCard.variant == collection_item.variant,
-        ProductCard.condition == collection_item.condition,
-        ProductCard.lang == collection_item.lang,
-        ProductCard.purchase_price == collection_item.purchase_price,
-        ProductCard.sold_quantity == 0,
-    ).first()
 
-    if existing:
-        existing.initial_quantity += link.quantity
-        existing.active_quantity += link.quantity
-    else:
-        db.add(ProductCard(
-            product_id=product.id,
-            user_id=current_user.id,
-            card_id=collection_item.card_id,
-            collection_item_id=collection_item.id,
-            initial_quantity=link.quantity,
-            active_quantity=link.quantity,
-            sold_quantity=0,
-            condition=collection_item.condition,
-            variant=collection_item.variant,
-            lang=collection_item.lang,
-            purchase_price=collection_item.purchase_price,
-            linked_at=datetime.datetime.utcnow(),
-        ))
+@router.post("/{product_id}/cards/bulk", response_model=ProductPurchaseResponse)
+def link_collection_items_to_product(
+    product_id: int,
+    payload: ProductCardBulkLinkCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    price_field: str = Query(default="price_trend", description="Cardmarket price field for linked-card valuation"),
+):
+    """Link multiple exact collection rows to one product transactionally."""
+    product = _get_product_or_404(db, current_user, product_id, lock=True)
+    has_activity = _product_has_activity(db, current_user, product.id)
+    if product_lifecycle_status(product, has_activity) == "sold":
+        raise HTTPException(status_code=409, detail="A sold sealed product cannot have cards linked to it")
+    _link_collection_items(db, current_user, product, payload.items)
 
     db.commit()
     db.refresh(product)
@@ -452,7 +637,7 @@ def unlink_product_card(
     price_field: str = Query(default="price_trend", description="Cardmarket price field for linked-card valuation"),
 ):
     """Remove an active product-card link without touching collection inventory."""
-    product = _get_product_or_404(db, current_user, product_id)
+    product = _get_product_or_404(db, current_user, product_id, lock=True)
     # Serialize the history check with sales and trade-outs. Without the row
     # lock, an unlink can read the pre-trade state and delete this provenance
     # immediately after a concurrent trade commits.
@@ -482,7 +667,8 @@ def sell_product_card(
     price_field: str = Query(default="price_trend", description="Cardmarket price field for linked-card valuation"),
 ):
     """Mark linked card copies as sold, remove them from active collection, and keep ledger history."""
-    product = _get_product_or_404(db, current_user, product_id)
+    product = _get_product_or_404(db, current_user, product_id, lock=True)
+    product.lifecycle_status = "opened"
     # Resolve the linked item first, then lock CollectionItem before ProductCard.
     # Other inventory flows use this same lock order to avoid cross-request deadlocks.
     product_card_link = db.query(ProductCard.collection_item_id).filter(
@@ -578,7 +764,10 @@ def add_product_ledger_entry(
     price_field: str = Query(default="price_trend", description="Cardmarket price field for linked-card valuation"),
 ):
     """Add a flat realized gain to a product ledger."""
-    product = _get_product_or_404(db, current_user, product_id)
+    product = _get_product_or_404(db, current_user, product_id, lock=True)
+    has_activity = _product_has_activity(db, current_user, product.id)
+    if product_lifecycle_status(product, has_activity) == "sold":
+        raise HTTPException(status_code=409, detail="A sold sealed product cannot receive opened-product ledger entries")
     if entry.entry_type != "flat_gain":
         raise HTTPException(status_code=422, detail="entry_type must be flat_gain")
     if not finite_non_negative(entry.amount):
@@ -598,6 +787,7 @@ def add_product_ledger_entry(
         notes=entry.notes,
         created_at=datetime.datetime.utcnow(),
     ))
+    product.lifecycle_status = "opened"
     db.commit()
     db.refresh(product)
     return _refresh_product_response(db, current_user, product, normalize_price_field(price_field))

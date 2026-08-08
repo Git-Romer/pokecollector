@@ -1,11 +1,15 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func, desc
 from api.auth import get_current_user
 from database import get_db
-from models import CollectionItem, Card, Set, PortfolioSnapshot, SyncLog, ProductLedgerEntry, ProductPurchase, User
+from models import CollectionItem, Card, Set, PortfolioSnapshot, SyncLog, User
 from services.card_values import effective_market_price, normalize_price_field
 from services.card_visibility import visible_card_filter, visible_set_filter
+from services.portfolio_valuation import (
+    PORTFOLIO_CALCULATION_VERSION,
+    calculate_portfolio_valuation,
+    portfolio_snapshot_payload,
+)
 import datetime
 
 router = APIRouter()
@@ -31,46 +35,15 @@ def get_dashboard(
     total_cards = sum(item.quantity for item in items)
     unique_cards = len(items)
 
-    total_value = sum(
-        effective_market_price(item.card, item.variant, price_field) * item.quantity
-        for item in items if item.card
+    valuation = calculate_portfolio_valuation(
+        db,
+        current_user.id,
+        price_field,
+        collection_items=items,
     )
-
-    # G&V = current portfolio value - ALL active expenses + realized product P&L
-    # Individual card purchase prices
-    cards_cost = sum(
-        (item.purchase_price or 0) * item.quantity for item in items
-    )
-    # Product purchases (booster packs, displays, ETB, etc.)
-    # Only count UNSOLD products — sold ones are no longer actively invested
-    all_products = db.query(ProductPurchase).filter(
-        ProductPurchase.user_id == current_user.id
-    ).all()
-    # A product is "sold" when sold_price is explicitly set, including zero-value write-offs.
-    unsold_products = [p for p in all_products if p.sold_price is None]
-    sold_products = [p for p in all_products if p.sold_price is not None]
-
-    products_cost = sum(
-        p.purchase_price for p in unsold_products
-        if p.purchase_price is not None
-    )
-    products_sold_cost = sum(
-        p.purchase_price for p in sold_products
-        if p.purchase_price is not None
-    )
-    products_sold_revenue = sum(
-        p.sold_price for p in sold_products
-        if p.sold_price is not None
-    )
-    product_card_realized_gains = db.query(func.coalesce(func.sum(ProductLedgerEntry.amount), 0)).filter(
-        ProductLedgerEntry.user_id == current_user.id,
-        ProductLedgerEntry.entry_type.in_(["card_sale", "trade_out", "flat_gain"]),
-    ).scalar() or 0
-    products_realized_pnl = products_sold_revenue - products_sold_cost + product_card_realized_gains
-
-    total_cost = cards_cost + products_cost
-    # P&L = (current card value - card costs) + (sold product revenue - sold product costs) - unsold product costs
-    pnl = total_value - total_cost + products_realized_pnl
+    total_value = valuation.total_value
+    total_cost = valuation.active_cost_basis
+    pnl = valuation.total_pnl
 
     # Sets stats
     total_sets = db.query(Set).filter(visible_set_filter(db, current_user.id, "all")).count()
@@ -127,17 +100,11 @@ def get_dashboard(
     snapshots = db.query(PortfolioSnapshot).filter(
         PortfolioSnapshot.user_id == current_user.id
     ).order_by(
-        PortfolioSnapshot.date.asc()
+        PortfolioSnapshot.date.desc()
     ).limit(90).all()
+    snapshots.reverse()
 
-    value_history = [
-        {
-            "date": s.date.isoformat(),
-            "value": round(s.total_value, 2),
-            "cost": round(s.total_cost, 2),
-        }
-        for s in snapshots
-    ]
+    value_history = [portfolio_snapshot_payload(snapshot) for snapshot in snapshots]
 
     # Recent additions (last 12)
     recent = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).options(
@@ -197,11 +164,20 @@ def get_dashboard(
         "unique_cards": unique_cards,
         "total_value": round(total_value, 2),
         "total_cost": round(total_cost, 2),
-        "cards_cost": round(cards_cost, 2),
-        "products_cost": round(products_cost, 2),
-        "products_sold_cost": round(products_sold_cost, 2),
-        "products_sold_revenue": round(products_sold_revenue, 2),
-        "products_realized_pnl": round(products_realized_pnl, 2),
+        "card_value": valuation.card_value,
+        "product_value": valuation.product_value,
+        "cards_cost": valuation.card_cost_basis,
+        "products_cost": valuation.product_cost_basis,
+        "performance_cost_basis": valuation.performance_cost_basis,
+        "realized_value": valuation.realized_value,
+        "unrealized_pnl": valuation.unrealized_pnl,
+        "realized_pnl": valuation.realized_pnl,
+        "product_value_fallback_count": valuation.product_value_fallback_count,
+        "products_needing_review_count": valuation.products_needing_review_count,
+        "calculation_version": PORTFOLIO_CALCULATION_VERSION,
+        "products_sold_cost": valuation.products_sold_cost,
+        "products_sold_revenue": valuation.products_sold_revenue,
+        "products_realized_pnl": valuation.products_realized_pnl,
         "pnl": round(pnl, 2),
         "total_sets": total_sets,
         "owned_sets": len(owned_set_ids),

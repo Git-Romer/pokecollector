@@ -1,10 +1,11 @@
+import datetime
 import unittest
 
 try:
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
     from database import Base
-    from models import User, Binder, Setting
+    from models import User, Binder, ProductPurchase, Setting
     DEPS = True
 except ModuleNotFoundError:
     DEPS = False
@@ -635,6 +636,30 @@ except ModuleNotFoundError:
 
 @unittest.skipUnless(SOCIAL_DEPS, "social deps unavailable")
 class LeaderboardHandleTests(unittest.TestCase):
+    def test_stats_use_combined_portfolio_valuation(self):
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        db = sessionmaker(bind=engine)()
+        user = User(username="brock", hashed_password="x", role="trainer", is_active=True)
+        db.add(user)
+        db.commit()
+        db.add(ProductPurchase(
+            product_name="Booster Box",
+            product_type="Display",
+            purchase_price=50,
+            current_value=70,
+            purchase_date=datetime.date(2026, 8, 8),
+            user_id=user.id,
+        ))
+        db.commit()
+
+        stats = _load_user_stats(db, user_ids=[user.id])
+
+        self.assertEqual(stats[user.id]["total_value"], 70)
+        self.assertEqual(stats[user.id]["total_invested"], 50)
+        self.assertEqual(stats[user.id]["pnl"], 20)
+        self.assertEqual(stats[user.id]["pnl_pct"], 40)
+
     def test_row_includes_public_handle(self):
         engine = create_engine("sqlite:///:memory:")
         Base.metadata.create_all(engine)
