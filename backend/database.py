@@ -34,6 +34,7 @@ DEFAULT_SETTINGS = {
     "language": "en",
     "price_display": '["trend", "avg", "avg1", "avg7", "avg30", "low"]',
     "price_primary": "trend",
+    "portfolio_display_mode": "portfolio_value",
     "multi_user_mode": "false",
     "tcgdex_sync_languages": "en,de",
     "tcgdex_digital_sets_enabled": "true",
@@ -381,6 +382,21 @@ def _run_migrations(conn):
         "ALTER TABLE product_ledger_entries DROP CONSTRAINT IF EXISTS product_ledger_entries_trade_item_id_fkey",
         "ALTER TABLE product_ledger_entries ADD CONSTRAINT product_ledger_entries_trade_item_id_fkey FOREIGN KEY (trade_item_id) REFERENCES trade_items(id) ON DELETE SET NULL",
         "CREATE INDEX IF NOT EXISTS idx_product_ledger_trade_item ON product_ledger_entries(trade_item_id)",
+        # v53: Versioned combined card and sealed-product portfolio snapshots.
+        # Existing rows remain calculation_version=1 and retain their historical values.
+        "ALTER TABLE portfolio_snapshots ADD COLUMN IF NOT EXISTS calculation_version INTEGER NOT NULL DEFAULT 1",
+        "ALTER TABLE portfolio_snapshots ADD COLUMN IF NOT EXISTS cards_value FLOAT",
+        "ALTER TABLE portfolio_snapshots ADD COLUMN IF NOT EXISTS products_value FLOAT",
+        "ALTER TABLE portfolio_snapshots ADD COLUMN IF NOT EXISTS cards_cost FLOAT",
+        "ALTER TABLE portfolio_snapshots ADD COLUMN IF NOT EXISTS products_cost FLOAT",
+        "ALTER TABLE portfolio_snapshots ADD COLUMN IF NOT EXISTS performance_cost_basis FLOAT",
+        "ALTER TABLE portfolio_snapshots ADD COLUMN IF NOT EXISTS realized_value FLOAT",
+        "ALTER TABLE portfolio_snapshots ADD COLUMN IF NOT EXISTS unrealized_pnl FLOAT",
+        "ALTER TABLE portfolio_snapshots ADD COLUMN IF NOT EXISTS realized_pnl FLOAT",
+        "ALTER TABLE portfolio_snapshots ADD COLUMN IF NOT EXISTS total_pnl FLOAT",
+        "ALTER TABLE portfolio_snapshots ADD COLUMN IF NOT EXISTS product_value_fallback_count INTEGER",
+        "CREATE INDEX IF NOT EXISTS ix_product_purchases_user_id ON product_purchases(user_id)",
+        "CREATE INDEX IF NOT EXISTS ix_portfolio_snapshots_user_date ON portfolio_snapshots(user_id, date)",
         """UPDATE sets
            SET is_digital = TRUE
            WHERE COALESCE(is_digital, FALSE) = FALSE
@@ -672,7 +688,7 @@ def init_db():
                 "language", "currency", "price_primary", "price_display",
                 "telegram_bot_token", "telegram_chat_id", "telegram_enabled",
                 "price_alerts_enabled", "price_alert_threshold",
-                "gemini_api_key", "trainer_name",
+                "gemini_api_key", "trainer_name", "portfolio_display_mode",
             }
             for key in per_user_keys:
                 existing_user_setting = db.query(UserSetting).filter(

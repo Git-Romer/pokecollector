@@ -3,6 +3,7 @@ import unittest
 try:
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
+    from fastapi import HTTPException
 
     from api.settings import _get_user_settings, update_settings
     from api.sets import MarkSetsSeenRequest, mark_sets_seen
@@ -37,6 +38,36 @@ class SetOverviewSettingsTests(unittest.TestCase):
 
         self.assertEqual(settings["set_overview_filters"], "{}")
         self.assertEqual(settings["hidden_set_ids"], "[]")
+        self.assertEqual(settings["portfolio_display_mode"], "portfolio_value")
+
+    def test_portfolio_display_mode_is_per_user_and_validated(self):
+        update_settings(
+            {"portfolio_display_mode": "capital_invested"},
+            db=self.db,
+            current_user=self.user,
+        )
+
+        self.assertEqual(
+            _get_user_settings(self.db, self.user.id)["portfolio_display_mode"],
+            "capital_invested",
+        )
+        self.assertEqual(
+            _get_user_settings(self.db, self.other_user.id)["portfolio_display_mode"],
+            "portfolio_value",
+        )
+
+        with self.assertRaises(HTTPException) as context:
+            update_settings(
+                {"portfolio_display_mode": "cash_flow"},
+                db=self.db,
+                current_user=self.user,
+            )
+
+        self.assertEqual(context.exception.status_code, 422)
+        self.assertEqual(
+            _get_user_settings(self.db, self.user.id)["portfolio_display_mode"],
+            "capital_invested",
+        )
 
     def test_set_overview_settings_are_per_user(self):
         update_settings({

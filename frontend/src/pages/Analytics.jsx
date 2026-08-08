@@ -40,6 +40,9 @@ function CustomTooltip({ active, payload, label, formatPrice }) {
             {entry.name}: {typeof entry.value === 'number' ? formatPrice(entry.value) : entry.value}
           </p>
         ))}
+        {payload[0]?.payload?.legacy && (
+          <p className="mt-1 text-[10px] text-text-muted">{payload[0].payload.legacyLabel}</p>
+        )}
       </div>
     )
   }
@@ -208,18 +211,16 @@ export default function Analytics() {
     value: s.value,
     cost: s.cost,
     pnl: s.pnl,
+    legacy: Boolean(s.legacy),
+    legacyLabel: t('home.legacySnapshot'),
   }))
 
   // Investment summary
   const latestSnapshot = investmentData.length > 0 ? investmentData[investmentData.length - 1] : null
-  const soldProducts = products.filter(p => p.sold_price != null)
-  const unsoldProducts = products.filter(p => p.sold_price == null)
-  const totalProductsCost = unsoldProducts.reduce((sum, p) => sum + (p.purchase_price || 0), 0)
-  const totalSoldRevenue = soldProducts.reduce((sum, p) => sum + (p.sold_price || 0), 0)
-  const totalSoldCost = soldProducts.reduce((sum, p) => sum + (p.purchase_price || 0), 0)
-  const productCardRealizedGains = products.reduce((sum, p) => sum + (p.realized_gains || 0), 0)
-  const realizedPnl = totalSoldRevenue - totalSoldCost + productCardRealizedGains
-  const unrealizedPnl = (latestSnapshot?.value ?? 0) - (latestSnapshot?.cost ?? 0)
+  const totalProductsCost = products.reduce((sum, p) => sum + (p.purchase_price || 0), 0)
+  const performanceCostBasis = latestSnapshot?.performance_cost_basis ?? latestSnapshot?.cost ?? 0
+  const realizedValue = latestSnapshot?.realized_value ?? 0
+  const totalPnl = latestSnapshot?.pnl ?? 0
   const hasTradeStats = tradeStats && tradeStats.trade_count > 0
 
   return (
@@ -485,8 +486,8 @@ export default function Analytics() {
                 <p className="text-xs text-text-muted mt-0.5">
                   {t('analytics.current')}: <span className="text-green font-bold">{formatPrice(latestSnapshot.value)}</span>
                   {' · '}{t('dashboard.invested')}: <span className="text-text-primary font-medium">{formatPrice(latestSnapshot.cost)}</span>
-                  {totalProductsCost > 0 && (
-                    <> · {t('analytics.products')}: <span className="text-yellow font-medium">{formatPrice(totalProductsCost)}</span></>
+                  {Number(latestSnapshot.products_value ?? 0) > 0 && (
+                    <> · {t('analytics.products')}: <span className="text-yellow font-medium">{formatPrice(latestSnapshot.products_value)}</span></>
                   )}
                 </p>
               )}
@@ -499,14 +500,14 @@ export default function Analytics() {
             </button>
           </div>
 
-          {/* Summary stats — Gesamt-Investiert, Verkaufserlöse, Realisierter G&V, Unrealisierter G&V */}
+          {/* Summary stats use the same versioned portfolio calculation as the dashboard. */}
           {(products.length > 0 || latestSnapshot) && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {[
-                { label: t('analytics.totalInvested'), value: formatPrice((latestSnapshot?.cost ?? 0) + totalSoldCost), color: '#90a4ae' },
-                { label: t('analytics.totalSoldRevenue'), value: formatPrice(totalSoldRevenue), color: '#66bb6a' },
-                { label: t('analytics.realizedPnl'), value: formatPrice(realizedPnl), color: realizedPnl >= 0 ? '#66bb6a' : '#e3000b' },
-                { label: t('analytics.unrealizedPnl'), value: formatPrice(unrealizedPnl), color: unrealizedPnl >= 0 ? '#66bb6a' : '#e3000b' },
+                { label: t('analytics.trackedCost'), value: formatPrice(performanceCostBasis), color: '#90a4ae' },
+                { label: t('home.portfolioValue'), value: formatPrice(latestSnapshot?.value ?? 0), color: '#f5c842' },
+                { label: t('analytics.trackedProceeds'), value: formatPrice(realizedValue), color: '#66bb6a' },
+                { label: t('analytics.totalPnl'), value: formatPrice(totalPnl), color: totalPnl >= 0 ? '#66bb6a' : '#e3000b' },
               ].map(stat => (
                 <div key={stat.label} className="rounded-xl p-3 text-center"
                   style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
@@ -515,6 +516,18 @@ export default function Analytics() {
                 </div>
               ))}
             </div>
+          )}
+
+          {latestSnapshot?.product_value_fallback_count > 0 && (
+            <p className="rounded-lg border border-yellow/20 bg-yellow/5 px-3 py-2 text-xs text-text-muted">
+              {latestSnapshot.product_value_fallback_count} {t('home.productValueFallback')}
+            </p>
+          )}
+
+          {chartData.some(point => point.legacy) && (
+            <p className="rounded-lg border border-border bg-bg-elevated/40 px-3 py-2 text-xs text-text-muted">
+              {t('analytics.legacySnapshotNotice')}
+            </p>
           )}
 
           {hasTradeStats && (
@@ -654,14 +667,17 @@ export default function Analytics() {
                       const pnlPositive = pnl >= 0
 
                       return (
-                        <div key={p.id} className="flex items-center justify-between py-2 border-b border-border/30 last:border-0">
+                        <div key={p.id} className="flex flex-col gap-2 border-b border-border/30 py-2 last:border-0 sm:flex-row sm:items-center sm:justify-between">
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-text-primary truncate">{p.product_name}</p>
                             <p className="text-xs text-text-muted">
                               {p.product_type} · {p.purchase_date}
                             </p>
+                            {p.value_source === 'purchase_cost_fallback' && (
+                              <p className="text-[10px] text-text-muted">{t('products.costFallback')}</p>
+                            )}
                           </div>
-                          <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                          <div className="flex flex-wrap items-center gap-2 sm:ml-2 sm:flex-shrink-0">
                             {isSold ? (
                               <span className="text-xs bg-green/20 text-green px-1.5 py-0.5 rounded">{t('analytics.statusSold')}</span>
                             ) : (
@@ -687,7 +703,7 @@ export default function Analytics() {
                   </div>
                   <div className="border-t border-border pt-2 mt-2 flex justify-between text-sm">
                     <span className="text-text-muted">{t('analytics.totalInvestedProducts')}</span>
-                    <span className="font-bold text-brand-red">{formatPrice(totalProductsCost + totalSoldCost)}</span>
+                    <span className="font-bold text-brand-red">{formatPrice(totalProductsCost)}</span>
                   </div>
                 </div>
               )}

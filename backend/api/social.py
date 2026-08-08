@@ -6,11 +6,12 @@ from sqlalchemy.orm import Session
 
 from api.auth import get_current_user
 from database import get_db
-from models import Card, CollectionItem, ProductLedgerEntry, ProductPurchase, Set, User, WishlistItem
+from models import Card, CollectionItem, ProductPurchase, Set, User, WishlistItem
 from services.card_values import effective_market_price, normalize_price_field
 from services.card_visibility import visible_card_filter
 from services.digital_sets import digital_sets_enabled
 from services.public_profile_feature import public_profiles_enabled
+from services.portfolio_valuation import calculate_portfolio_valuation
 
 router = APIRouter()
 
@@ -296,12 +297,7 @@ def _load_user_stats(db: Session, user_ids: list[int] | None = None, price_field
         rows = items_by_user.get(user.id, [])
         total_cards = sum(row.quantity or 0 for row in rows)
         unique_card_ids = {row.card_id for row in rows}
-        total_value = sum(_get_price(row) * (row.quantity or 0) for row in rows)
-        total_invested = sum(
-            (row.purchase_price or 0) * (row.quantity or 0)
-            for row in rows
-            if row.purchase_price is not None
-        )
+        valuation = calculate_portfolio_valuation(db, user.id, price_field)
 
         most_valuable = None
         if rows:
@@ -338,24 +334,10 @@ def _load_user_stats(db: Session, user_ids: list[int] | None = None, price_field
             if total_in_set > 0 and len(owned_cards) >= total_in_set:
                 sets_completed += 1
 
-        user_products = db.query(ProductPurchase).filter(
-            ProductPurchase.user_id == user.id
-        ).all()
-        unsold_products = [p for p in user_products if p.sold_price is None]
-        sold_products = [p for p in user_products if p.sold_price is not None]
-
-        products_cost = sum(p.purchase_price for p in unsold_products if p.purchase_price is not None)
-        products_sold_cost = sum(p.purchase_price for p in sold_products if p.purchase_price is not None)
-        products_sold_revenue = sum(p.sold_price for p in sold_products if p.sold_price is not None)
-        product_card_realized_gains = db.query(func.coalesce(func.sum(ProductLedgerEntry.amount), 0)).filter(
-            ProductLedgerEntry.user_id == user.id,
-            ProductLedgerEntry.entry_type.in_(["card_sale", "trade_out", "flat_gain"]),
-        ).scalar() or 0
-        products_realized_pnl = products_sold_revenue - products_sold_cost + product_card_realized_gains
-
-        total_cost = total_invested + products_cost
-        pnl = total_value - total_cost + products_realized_pnl
-        pnl_pct = ((total_value / total_cost) - 1) * 100 if total_cost > 0 else None
+        total_value = valuation.total_value
+        total_cost = valuation.active_cost_basis
+        pnl = valuation.total_pnl
+        pnl_pct = (pnl / valuation.performance_cost_basis) * 100 if valuation.performance_cost_basis > 0 else None
 
         stats[user.id] = {
             "user_id": user.id,

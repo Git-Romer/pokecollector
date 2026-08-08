@@ -57,6 +57,15 @@ class ProductLedgerTests(unittest.TestCase):
         self.assertEqual(value, 0)
         self.assertEqual(totals.dynamic_value, 0)
 
+    def test_product_effective_value_uses_purchase_cost_when_current_value_is_missing(self):
+        product = SimpleNamespace(purchase_price=25, current_value=None, sold_price=None)
+
+        value, source, totals = product_effective_value(product, [])
+
+        self.assertEqual(source, "purchase_cost_fallback")
+        self.assertEqual(value, 25)
+        self.assertEqual(totals.dynamic_value, 0)
+
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/SQLAlchemy are not installed in this lightweight test environment")
 class ProductLedgerApiTests(unittest.TestCase):

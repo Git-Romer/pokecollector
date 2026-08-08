@@ -111,7 +111,9 @@ def product_effective_value(product, entries: Iterable, price_field: str | None 
 
     Products with any linked-card ledger rows are dynamically valued as active
     linked cards plus realized sales. Older products without ledger rows keep the
-    existing sold_price/current_value behavior.
+    existing sold_price/current_value behavior. A sealed product without a
+    manual current value uses its purchase cost as a neutral fallback so every
+    product view reports the same value and zero unrealized gain or loss.
     """
     entry_list = list(entries)
     flat_entry_list = list(flat_entries or [])
@@ -122,4 +124,7 @@ def product_effective_value(product, entries: Iterable, price_field: str | None 
         return round(float(product.sold_price), 2), "manual_sold", totals
     if getattr(product, "current_value", None) is not None:
         return round(float(product.current_value), 2), "manual_current", totals
+    purchase_price = getattr(product, "purchase_price", None)
+    if finite_non_negative(purchase_price):
+        return round(float(purchase_price), 2), "purchase_cost_fallback", totals
     return None, "none", totals

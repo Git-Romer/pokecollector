@@ -497,9 +497,9 @@ export default function Products() {
           <h1 className="text-xl font-bold text-text-primary">{t('products.title')}</h1>
           <p className="text-sm text-text-secondary mt-1">{t('products.subtitle')}</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex w-full flex-col items-stretch gap-3 sm:w-auto sm:flex-row sm:items-center">
           <PeriodSelector value={period} onChange={setPeriod} periods={PRODUCT_PERIODS} />
-          <button onClick={() => setCreating(true)} className="btn-primary">
+          <button onClick={() => setCreating(true)} className="btn-primary justify-center whitespace-nowrap">
             <Plus size={16} /> {t('products.logPurchase')}
           </button>
         </div>
@@ -687,6 +687,7 @@ export default function Products() {
                         <td className="px-4 py-3 text-right text-text-primary">
                           {p.computed_current_value != null ? formatPrice(p.computed_current_value) : '-'}
                           {p.value_source === 'linked_cards' && <p className="text-[10px] text-text-muted">{t('products.dynamic')}</p>}
+                          {p.value_source === 'purchase_cost_fallback' && <p className="text-[10px] text-text-muted">{t('products.costFallback')}</p>}
                         </td>
                         <td className="px-4 py-3 text-right font-medium">
                           {p.pnl !== null ? (
@@ -760,6 +761,7 @@ export default function Products() {
               const badges = []
               if (p.product_type) badges.push({ label: p.product_type, variant: 'gray' })
               if (p.sold_date) badges.push({ label: t('common.sold'), variant: 'green' })
+              if (p.value_source === 'purchase_cost_fallback') badges.push({ label: t('products.costFallback'), variant: 'gray' })
 
               return (
                 <Fragment key={p.id}>

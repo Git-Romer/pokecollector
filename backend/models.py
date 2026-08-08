@@ -8,6 +8,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from database import Base
 
 POKEDEX_JSON = JSON(none_as_null=True).with_variant(JSONB(none_as_null=True), "postgresql")
+PORTFOLIO_CALCULATION_VERSION = 2
 
 
 class Set(Base):
@@ -256,6 +257,10 @@ class ProductPurchase(Base):
     notes = Column(Text)
     created_at = Column(DateTime, default=func.now())
 
+    __table_args__ = (
+        Index("ix_product_purchases_user_id", "user_id"),
+    )
+
 
 class ProductCard(Base):
     __tablename__ = "product_cards"
@@ -415,6 +420,21 @@ class PortfolioSnapshot(Base):
     total_value = Column(Float, default=0)
     total_cards = Column(Integer, default=0)
     total_cost = Column(Float, default=0)
+    calculation_version = Column(Integer, default=PORTFOLIO_CALCULATION_VERSION, nullable=False)
+    cards_value = Column(Float, nullable=True)
+    products_value = Column(Float, nullable=True)
+    cards_cost = Column(Float, nullable=True)
+    products_cost = Column(Float, nullable=True)
+    performance_cost_basis = Column(Float, nullable=True)
+    realized_value = Column(Float, nullable=True)
+    unrealized_pnl = Column(Float, nullable=True)
+    realized_pnl = Column(Float, nullable=True)
+    total_pnl = Column(Float, nullable=True)
+    product_value_fallback_count = Column(Integer, nullable=True)
+
+    __table_args__ = (
+        Index("ix_portfolio_snapshots_user_date", "user_id", "date"),
+    )
 
 
 class Setting(Base):
