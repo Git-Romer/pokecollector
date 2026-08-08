@@ -129,10 +129,10 @@ function BinderConversionModal({ t, target, onClose, onConfirm, isSubmitting }) 
         <p className="text-sm text-text-secondary">
           {isCollectionTarget ? t('binderTypes.convertWishlistConfirm') : t('binderTypes.convertCollectionConfirm')}
         </p>
-        <div className="flex justify-end gap-2 border-t border-border pt-4">
-          <button type="button" className="btn-ghost" disabled={isSubmitting} onClick={onClose}>{t('common.cancel')}</button>
-          <button type="button" className="btn-primary" disabled={isSubmitting} onClick={onConfirm}>
-            {isCollectionTarget ? <Package size={16} /> : <Star size={16} />}
+        <div className="flex flex-col gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
+          <button type="button" className="btn-ghost w-full sm:w-auto" disabled={isSubmitting} onClick={onClose}>{t('common.cancel')}</button>
+          <button type="button" className="btn-primary w-full whitespace-normal px-5 sm:w-auto sm:whitespace-nowrap" disabled={isSubmitting} onClick={onConfirm}>
+            {isCollectionTarget ? <Package size={16} className="flex-shrink-0" /> : <Star size={16} className="flex-shrink-0" />}
             {isCollectionTarget ? t('binderTypes.convertWishlist') : t('binderTypes.convertCollection')}
           </button>
         </div>
@@ -700,12 +700,12 @@ export default function BinderDetail() {
             <button
               type="button"
               onClick={() => setConversionTarget('wishlist')}
-              className="btn-ghost flex-shrink-0 px-2"
+              className="btn-ghost w-full max-w-full flex-shrink-0 whitespace-normal px-4 sm:w-auto sm:whitespace-nowrap"
               disabled={convertCollectionMutation.isPending}
               title={t('binderTypes.convertCollection')}
               aria-label={t('binderTypes.convertCollection')}
             >
-              <Star size={16} /> {t('binderTypes.convertCollection')}
+              <Star size={16} className="flex-shrink-0" /> {t('binderTypes.convertCollection')}
             </button>
           )}
           <button
