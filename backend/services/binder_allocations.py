@@ -40,6 +40,34 @@ def collection_binder_allocation_counts(
     }
 
 
+def collection_binder_allocated_card_counts(
+    db: Session,
+    user_id: int,
+    card_ids: list[str] | set[str] | tuple[str, ...] | None = None,
+) -> dict[str, int]:
+    """Sum exact-copy allocations by card across collection binders only."""
+    query = db.query(
+        CollectionItem.card_id,
+        func.coalesce(func.sum(func.coalesce(BinderCard.required_quantity, 1)), 0),
+    ).join(Binder, Binder.id == BinderCard.binder_id).join(
+        CollectionItem, CollectionItem.id == BinderCard.collection_item_id
+    ).filter(
+        Binder.user_id == user_id,
+        CollectionItem.user_id == user_id,
+        or_(Binder.binder_type == "collection", Binder.binder_type.is_(None)),
+        BinderCard.collection_item_id.isnot(None),
+    )
+    if card_ids is not None:
+        ids = list(card_ids)
+        if not ids:
+            return {}
+        query = query.filter(CollectionItem.card_id.in_(ids))
+    return {
+        str(card_id): int(quantity or 0)
+        for card_id, quantity in query.group_by(CollectionItem.card_id).all()
+    }
+
+
 def collection_item_allocated_quantity(
     db: Session,
     user_id: int,

@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Plus, Trash2, Package, Star, Download, Upload, X, Heart, Minus, HelpCircle, Check } from 'lucide-react'
-import { getBinderCards, removeCardFromBinder, removeBinderEntry, addCardToBinder, addCollectionItemToBinder, searchCards, getCollection, updateBinderEntry, getBinderEntryEquivalentPrints, getBinderPrintOptimization, applyBinderPrintOptimization, switchBinderEntryCard, addBinderEntryToWishlist, addBinderCardsToWishlist, importBinderCsv, exportBinderCsv, getApiErrorMessage } from '../api/client'
+import { getBinderCards, removeCardFromBinder, removeBinderEntry, addCardToBinder, addCollectionItemToBinder, searchCards, getCollection, updateBinderEntry, getBinderEntryEquivalentPrints, getBinderPrintOptimization, applyBinderPrintOptimization, switchBinderEntryCard, addBinderEntryToWishlist, addBinderCardsToWishlist, convertWishlistBinderToCollection, importBinderCsv, exportBinderCsv, getApiErrorMessage } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
 import { resolveCardImageUrl } from '../utils/imageUrl'
@@ -13,7 +13,7 @@ import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/q
 import { BINDER_SORT_OPTIONS, sortBinderCards } from '../utils/binderCards'
 import { partitionSettledResults } from '../utils/settledResults'
 import { formatBinderCountSummary } from '../utils/binderCounts'
-import { binderQuantityPromptKey } from '../utils/binderQuantity'
+import { binderQuantityPromptKey, canConvertWishlistBinder } from '../utils/binderQuantity'
 import { CardDialog, CardDisplay, CardLegend, withCollectionItemState } from '../components/card-system'
 
 const SPRITE_BASE_URL = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated'
@@ -326,6 +326,23 @@ export default function BinderDetail() {
     onError: (e) => toast.error(e.response?.data?.detail || t('card.addFailed')),
   })
 
+  const convertWishlistMutation = useMutation({
+    mutationFn: () => convertWishlistBinderToCollection(parseInt(binderId)),
+    onSuccess: () => {
+      toast.success(t('binderTypes.convertWishlistSuccess'))
+      queryClient.invalidateQueries({ queryKey: ['binder-cards', binderId] })
+      queryClient.invalidateQueries({ queryKey: ['binders'] })
+      queryClient.invalidateQueries({ queryKey: ['collection'] })
+      queryClient.invalidateQueries({ queryKey: ['binder-print-optimization', binderId] })
+      invalidateTcgdexFilterLanguages(queryClient)
+      setShowPrintOptimizer(false)
+    },
+    onError: (e) => {
+      queryClient.invalidateQueries({ queryKey: ['binder-cards', binderId] })
+      toast.error(e.response?.data?.detail || t('binderTypes.convertWishlistFailed'))
+    },
+  })
+
   const importMutation = useMutation({
     mutationFn: (file) => importBinderCsv(parseInt(binderId), file),
     onSuccess: (result) => {
@@ -406,6 +423,7 @@ export default function BinderDetail() {
   const hasMissingPriceData = cards.length > 0 && displayedValue === 0 && (!isWishlist || missingCount > 0) && cards.some(c => !c.price_market || c.price_market <= 0)
   const hasMissingCurrentValueData = isWishlist && ownedCount > 0 && currentValue === 0 && cards.some(c => (c.owned_quantity || 0) > 0 && (!c.price_market || c.price_market <= 0))
   const progressPct = totalCount > 0 ? Math.round((ownedCount / totalCount) * 100) : 0
+  const canConvertWishlist = canConvertWishlistBinder(isWishlist, totalCount, missingCount)
   const binderSets = [...new Set(cards.map(c => c.set_name || c.set_id).filter(Boolean))].sort()
   const printOptimizationRecommendations = printOptimizationData?.recommendations || []
   const selectedPrintOptimizationIdSet = new Set(selectedPrintOptimizationIds)
@@ -557,7 +575,7 @@ export default function BinderDetail() {
       )}
 
       {isWishlist && cards.length > 0 && (
-        <div className="card">
+        <div className="card space-y-3">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium text-text-primary">{t('binderTypes.progress')}</span>
             <span className="text-sm text-text-secondary">
@@ -571,6 +589,23 @@ export default function BinderDetail() {
             <span className="text-green">{ownedCount} {t('binderTypes.owned')}</span>
             <span className="text-brand-red">{missingCount} {t('binderTypes.missing')}</span>
           </div>
+          {canConvertWishlist && (
+            <div className="flex items-center justify-between gap-3 border-t border-border pt-3 flex-wrap">
+              <p className="text-xs text-green">{t('binderTypes.convertWishlistReady')}</p>
+              <button
+                type="button"
+                className="btn-primary justify-center"
+                disabled={convertWishlistMutation.isPending}
+                onClick={() => {
+                  if (window.confirm(t('binderTypes.convertWishlistConfirm'))) {
+                    convertWishlistMutation.mutate()
+                  }
+                }}
+              >
+                <Package size={16} /> {t('binderTypes.convertWishlist')}
+              </button>
+            </div>
+          )}
         </div>
       )}
 

@@ -1,6 +1,7 @@
 import asyncio
 import io
 import unittest
+from unittest.mock import patch
 
 try:
     from fastapi import HTTPException, UploadFile
@@ -10,7 +11,10 @@ try:
 
     from api.binders import (
         add_collection_item_to_binder,
+        add_card_to_binder,
+        add_binder_cards_to_wishlist,
         apply_binder_print_optimization,
+        convert_wishlist_binder_to_collection,
         export_binder_csv,
         get_binder_cards,
         import_binder_csv,
@@ -20,7 +24,7 @@ try:
     from api.collection import remove_from_collection, update_collection_item
     import database
     from database import Base, migrate_legacy_collection_binder_entries
-    from models import Binder, BinderCard, Card, CollectionItem, Set, User
+    from models import Binder, BinderCard, Card, CollectionItem, Set, User, WishlistItem
     from schemas import BinderCardSwitch, BinderCardUpdate, CollectionItemUpdate
     API_TEST_DEPS_AVAILABLE = True
 except ModuleNotFoundError:
@@ -119,6 +123,267 @@ class BinderAllocatedQuantityTests(unittest.TestCase):
         self.assertEqual(
             sum(row.required_quantity for row in self.db.query(BinderCard).all()),
             4,
+        )
+
+    def test_wishlist_does_not_reserve_and_progress_uses_unallocated_copies(self):
+        wishlist = Binder(name="Wishlist", user_id=self.user.id, binder_type="wishlist")
+        self.db.add(wishlist)
+        self.db.flush()
+        self.db.add(BinderCard(
+            binder_id=wishlist.id,
+            card_id=self.card.id,
+            required_quantity=4,
+        ))
+        self.db.commit()
+
+        before = get_binder_cards(
+            wishlist.id,
+            price_field="price_trend",
+            current_user=self.user,
+            db=self.db,
+        )
+        self.assertEqual(before["owned_count"], 4)
+        self.assertEqual(before["missing_count"], 0)
+
+        add_collection_item_to_binder(
+            self.first.id, self.item.id, quantity=1, current_user=self.user, db=self.db
+        )
+
+        after = get_binder_cards(
+            wishlist.id,
+            price_field="price_trend",
+            current_user=self.user,
+            db=self.db,
+        )
+        self.assertEqual(after["cards"][0]["owned_quantity"], 3)
+        self.assertEqual(after["owned_count"], 3)
+        self.assertEqual(after["missing_count"], 1)
+
+        wishlist_result = add_binder_cards_to_wishlist(
+            wishlist.id,
+            current_user=self.user,
+            db=self.db,
+        )
+        self.assertEqual(wishlist_result["added_copies"], 1)
+        global_wishlist = self.db.query(WishlistItem).filter(
+            WishlistItem.user_id == self.user.id,
+            WishlistItem.card_id == self.card.id,
+        ).one()
+        self.assertEqual(global_wishlist.quantity, 1)
+
+    def test_allocation_progress_uses_the_exact_collection_item_card(self):
+        wishlist = Binder(name="Wishlist", user_id=self.user.id, binder_type="wishlist")
+        self.db.add(wishlist)
+        self.db.flush()
+        self.db.add_all([
+            BinderCard(
+                binder_id=self.first.id,
+                card_id=self.alt_card.id,
+                collection_item_id=self.item.id,
+                required_quantity=1,
+            ),
+            BinderCard(
+                binder_id=wishlist.id,
+                card_id=self.card.id,
+                required_quantity=4,
+            ),
+        ])
+        self.db.commit()
+
+        detail = get_binder_cards(
+            wishlist.id,
+            price_field="price_trend",
+            current_user=self.user,
+            db=self.db,
+        )
+
+        self.assertEqual(detail["owned_count"], 3)
+        self.assertEqual(detail["missing_count"], 1)
+
+    def test_card_add_rechecks_binder_type_after_a_cache_commit(self):
+        wishlist = Binder(name="Wishlist", user_id=self.user.id, binder_type="wishlist")
+        self.db.add(wishlist)
+        self.db.commit()
+
+        def convert_during_cache(_db, _card_id):
+            locked = self.db.query(Binder).filter(Binder.id == wishlist.id).one()
+            locked.binder_type = "collection"
+            self.db.commit()
+            return self.card
+
+        with patch("api.binders.ensure_card_exists", side_effect=convert_during_cache):
+            with self.assertRaises(HTTPException) as context:
+                add_card_to_binder(
+                    wishlist.id,
+                    self.card.id,
+                    current_user=self.user,
+                    db=self.db,
+                )
+
+        self.assertEqual(context.exception.status_code, 409)
+        self.assertEqual(
+            self.db.query(BinderCard).filter(BinderCard.binder_id == wishlist.id).count(),
+            0,
+        )
+
+    def test_complete_wishlist_conversion_allocates_exact_owned_rows(self):
+        self.item.quantity = 2
+        second_item = CollectionItem(
+            card_id=self.card.id,
+            user_id=self.user.id,
+            quantity=2,
+            condition="LP",
+            variant="Normal",
+            lang="en",
+        )
+        wishlist = Binder(
+            name="Wishlist",
+            user_id=self.user.id,
+            binder_type="wishlist",
+            is_public=True,
+        )
+        other_wishlist = Binder(
+            name="Other wishlist",
+            user_id=self.user.id,
+            binder_type="wishlist",
+        )
+        self.db.add_all([second_item, wishlist, other_wishlist])
+        self.db.flush()
+        self.db.add_all([
+            BinderCard(
+                binder_id=wishlist.id,
+                card_id=self.card.id,
+                required_quantity=4,
+            ),
+            BinderCard(
+                binder_id=other_wishlist.id,
+                card_id=self.card.id,
+                required_quantity=4,
+            ),
+        ])
+        self.db.commit()
+
+        result = convert_wishlist_binder_to_collection(
+            wishlist.id,
+            current_user=self.user,
+            db=self.db,
+        )
+
+        self.assertEqual(result["allocated_copies"], 4)
+        self.assertEqual(result["binder"].binder_type, "collection")
+        self.assertFalse(result["binder"].is_public)
+        rows = self.db.query(BinderCard).filter(BinderCard.binder_id == wishlist.id).all()
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(
+            {row.collection_item_id: row.required_quantity for row in rows},
+            {self.item.id: 2, second_item.id: 2},
+        )
+        other_result = get_binder_cards(
+            other_wishlist.id,
+            price_field="price_trend",
+            current_user=self.user,
+            db=self.db,
+        )
+        self.assertEqual(other_result["owned_count"], 0)
+        self.assertEqual(other_result["missing_count"], 4)
+
+    def test_incomplete_wishlist_conversion_is_atomic(self):
+        wishlist = Binder(name="Wishlist", user_id=self.user.id, binder_type="wishlist")
+        self.db.add(wishlist)
+        self.db.flush()
+        wishlist_entry = BinderCard(
+            binder_id=wishlist.id,
+            card_id=self.card.id,
+            required_quantity=4,
+        )
+        self.db.add(wishlist_entry)
+        self.db.commit()
+        add_collection_item_to_binder(
+            self.first.id, self.item.id, quantity=1, current_user=self.user, db=self.db
+        )
+
+        with self.assertRaises(HTTPException) as context:
+            convert_wishlist_binder_to_collection(
+                wishlist.id,
+                current_user=self.user,
+                db=self.db,
+            )
+
+        self.assertEqual(context.exception.status_code, 409)
+        self.assertIn("1 more unallocated", context.exception.detail)
+        self.db.refresh(wishlist)
+        self.db.refresh(wishlist_entry)
+        self.assertEqual(wishlist.binder_type, "wishlist")
+        self.assertIsNone(wishlist_entry.collection_item_id)
+        self.assertEqual(wishlist_entry.required_quantity, 4)
+
+    def test_duplicate_wishlist_rows_share_available_progress_and_merge_on_conversion(self):
+        self.item.quantity = 2
+        wishlist = Binder(name="Legacy wishlist", user_id=self.user.id, binder_type="wishlist")
+        self.db.add(wishlist)
+        self.db.flush()
+        self.db.add_all([
+            BinderCard(binder_id=wishlist.id, card_id=self.card.id, required_quantity=1),
+            BinderCard(binder_id=wishlist.id, card_id=self.card.id, required_quantity=1),
+        ])
+        self.db.commit()
+
+        detail = get_binder_cards(
+            wishlist.id,
+            price_field="price_trend",
+            current_user=self.user,
+            db=self.db,
+        )
+        self.assertEqual(detail["owned_count"], 2)
+        self.assertEqual(detail["missing_count"], 0)
+        self.assertEqual(sum(card["owned_quantity"] for card in detail["cards"]), 2)
+
+        result = convert_wishlist_binder_to_collection(
+            wishlist.id,
+            current_user=self.user,
+            db=self.db,
+        )
+
+        self.assertEqual(result["allocated_copies"], 2)
+        rows = self.db.query(BinderCard).filter(BinderCard.binder_id == wishlist.id).all()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].collection_item_id, self.item.id)
+        self.assertEqual(rows[0].required_quantity, 2)
+
+    def test_duplicate_wishlist_rows_cannot_reuse_the_same_available_copies(self):
+        self.item.quantity = 2
+        wishlist = Binder(name="Legacy wishlist", user_id=self.user.id, binder_type="wishlist")
+        self.db.add(wishlist)
+        self.db.flush()
+        self.db.add_all([
+            BinderCard(binder_id=wishlist.id, card_id=self.card.id, required_quantity=2),
+            BinderCard(binder_id=wishlist.id, card_id=self.card.id, required_quantity=2),
+        ])
+        self.db.commit()
+
+        detail = get_binder_cards(
+            wishlist.id,
+            price_field="price_trend",
+            current_user=self.user,
+            db=self.db,
+        )
+        self.assertEqual(detail["owned_count"], 2)
+        self.assertEqual(detail["missing_count"], 2)
+        self.assertEqual(sum(card["owned_quantity"] for card in detail["cards"]), 2)
+
+        with self.assertRaises(HTTPException) as context:
+            convert_wishlist_binder_to_collection(
+                wishlist.id,
+                current_user=self.user,
+                db=self.db,
+            )
+
+        self.assertEqual(context.exception.status_code, 409)
+        self.db.refresh(wishlist)
+        self.assertEqual(wishlist.binder_type, "wishlist")
+        self.assertEqual(
+            self.db.query(BinderCard).filter(BinderCard.binder_id == wishlist.id).count(),
+            2,
         )
 
     def test_detail_totals_and_value_use_assigned_copies(self):
