@@ -4,12 +4,13 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from api.auth import get_current_user
 from database import get_db
-from models import CollectionItem, Card, ProductCard, ProductPurchase, Set, User
+from models import BinderCard, CollectionItem, Card, ProductCard, ProductPurchase, Set, User
 from schemas import CollectionItemCreate, CollectionItemUpdate, CollectionItemResponse, BulkCollectionAddRequest, BulkCollectionAddResponse
 from services import pokemon_api
 from services.card_fallbacks import apply_cross_language_fallbacks, build_missing_language_card
 from services.card_numbers import card_number_matches
 from services.card_visibility import visible_card_filter
+from services.binder_allocations import collection_item_allocated_quantity
 from services.digital_sets import digital_sets_enabled
 from services.standard_legality import is_standard_legal_card, is_standard_regulation_mark
 from services.tcgdex_languages import SUPPORTED_TCGDEX_LANGUAGES, has_lang_suffix, is_supported_tcgdex_language, normalize_tcgdex_language
@@ -700,7 +701,7 @@ def update_collection_item(
     item = db.query(CollectionItem).filter(
         CollectionItem.id == item_id,
         CollectionItem.user_id == current_user.id,
-    ).first()
+    ).with_for_update(of=CollectionItem).first()
     if not item:
         raise HTTPException(status_code=404, detail="Collection item not found")
 
@@ -710,11 +711,17 @@ def update_collection_item(
     if "variant" in update_data:
         update_data["variant"] = _normalize_collection_variant(update_data.get("variant"))
     active_linked_quantity = _active_product_link_quantity(db, current_user, item.id)
+    allocated_quantity = collection_item_allocated_quantity(db, current_user.id, item.id)
     if "quantity" in update_data and update_data["quantity"] is not None:
         if update_data["quantity"] < active_linked_quantity:
             raise HTTPException(
                 status_code=409,
                 detail=f"Collection quantity cannot be lower than {active_linked_quantity} active product-linked copie(s). Sell or unlink those product cards first.",
+            )
+        if update_data["quantity"] < allocated_quantity:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Collection quantity cannot be lower than {allocated_quantity} copie(s) assigned to binders. Reduce the binder quantities first.",
             )
 
     protected_changes = {
@@ -738,6 +745,12 @@ def update_collection_item(
             ensure_card_exists(db, new_card_id, lang=new_lang)
             update_data["card_id"] = new_card_id
 
+    if "card_id" in update_data and update_data["card_id"] != item.card_id:
+        db.query(BinderCard).filter(BinderCard.collection_item_id == item.id).update(
+            {BinderCard.card_id: update_data["card_id"]},
+            synchronize_session=False,
+        )
+
     for field, value in update_data.items():
         setattr(item, field, value)
 
@@ -756,7 +769,7 @@ def remove_from_collection(
     item = db.query(CollectionItem).filter(
         CollectionItem.id == item_id,
         CollectionItem.user_id == current_user.id,
-    ).first()
+    ).with_for_update(of=CollectionItem).first()
     if not item:
         raise HTTPException(status_code=404, detail="Collection item not found")
 
@@ -765,6 +778,13 @@ def remove_from_collection(
         raise HTTPException(
             status_code=409,
             detail="This collection item is linked to a product. Sell or unlink the product card before removing it from the active collection.",
+        )
+
+    allocated_quantity = collection_item_allocated_quantity(db, current_user.id, item.id)
+    if allocated_quantity > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"This collection item has {allocated_quantity} copie(s) assigned to binders. Remove them from those binders first.",
         )
 
     db.delete(item)

@@ -242,12 +242,20 @@ def _run_migrations(conn):
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS playable_fingerprint VARCHAR",
         "CREATE INDEX IF NOT EXISTS idx_cards_playable_fingerprint ON cards(playable_fingerprint)",
         "UPDATE binder_cards SET required_quantity = 1 WHERE required_quantity IS NULL",
-        """UPDATE binder_cards
-           SET required_quantity = 1
-           FROM binders
-           WHERE binder_cards.binder_id = binders.id
-             AND binder_cards.collection_item_id IS NOT NULL
-             AND (binders.binder_type = 'collection' OR binders.binder_type IS NULL)""",
+        "UPDATE binder_cards SET required_quantity = 1 WHERE required_quantity < 1",
+        "UPDATE binder_cards SET required_quantity = 99 WHERE required_quantity > 99",
+        "ALTER TABLE binder_cards ALTER COLUMN required_quantity SET DEFAULT 1",
+        "ALTER TABLE binder_cards ALTER COLUMN required_quantity SET NOT NULL",
+        """DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'ck_binder_card_quantity_range'
+            ) THEN
+                ALTER TABLE binder_cards ADD CONSTRAINT ck_binder_card_quantity_range
+                    CHECK (required_quantity >= 1 AND required_quantity <= 99);
+            END IF;
+        END$$""",
         "ALTER TABLE binder_cards DROP CONSTRAINT IF EXISTS uq_binder_card",
         """DO $$
         BEGIN
@@ -450,6 +458,54 @@ def migrate_collection_variants():
         db.close()
 
 
+def migrate_legacy_collection_binder_entries():
+    """Link legacy card-level collection binder rows to an owned exact item."""
+    from models import Binder, BinderCard, CollectionItem
+    from services.binder_allocations import collection_binder_allocation_counts, stored_binder_quantity
+
+    db = SessionLocal()
+    try:
+        entries = db.query(BinderCard, Binder.user_id).join(
+            Binder, Binder.id == BinderCard.binder_id
+        ).filter(
+            (Binder.binder_type == "collection") | Binder.binder_type.is_(None),
+            BinderCard.collection_item_id.is_(None),
+        ).order_by(BinderCard.id.asc()).all()
+        if not entries:
+            return
+
+        migrated = 0
+        for entry, user_id in entries:
+            requested = min(stored_binder_quantity(entry.required_quantity), 99)
+            candidates = db.query(CollectionItem).filter(
+                CollectionItem.user_id == user_id,
+                CollectionItem.card_id == entry.card_id,
+                CollectionItem.quantity > 0,
+            ).order_by(CollectionItem.id.asc()).all()
+            usage = collection_binder_allocation_counts(db, user_id, [item.id for item in candidates])
+            target = next(
+                (
+                    item for item in candidates
+                    if int(item.quantity or 0) - int(usage.get(item.id, 0) or 0) >= requested
+                ),
+                None,
+            )
+            if not target:
+                continue
+            entry.collection_item_id = target.id
+            entry.required_quantity = requested
+            migrated += 1
+
+        db.commit()
+        if migrated:
+            logger.info("migrate_legacy_collection_binder_entries: migrated %s row(s)", migrated)
+    except Exception as e:
+        db.rollback()
+        logger.warning("migrate_legacy_collection_binder_entries: migration aborted: %s", e)
+    finally:
+        db.close()
+
+
 def migrate_card_ids():
     """Migrate card IDs from plain TCGdex format (e.g. 'sv1-1') to composite format (e.g. 'sv1-1_de').
 
@@ -557,6 +613,12 @@ def init_db():
     # Migrate old rarity-like variant values to physical variants (idempotent)
     try:
         migrate_collection_variants()
+    except Exception:
+        pass  # Non-blocking
+
+    # Link old card-level collection binder rows to exact owned rows.
+    try:
+        migrate_legacy_collection_binder_entries()
     except Exception:
         pass  # Non-blocking
 

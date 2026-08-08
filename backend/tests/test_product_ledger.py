@@ -290,7 +290,7 @@ class ProductLedgerApiTests(unittest.TestCase):
 
         self.assertEqual(collection[0].product_sources, [])
 
-    def test_selling_final_collection_copy_removes_active_row_but_keeps_ledger_and_cleans_binder_ref(self):
+    def test_selling_an_allocated_final_copy_is_blocked_without_mutation(self):
         product = self.add_product()
         item = self.add_collection_item(quantity=1)
         binder = Binder(name="Favorites", user_id=self.user.id, binder_type="collection")
@@ -307,20 +307,22 @@ class ProductLedgerApiTests(unittest.TestCase):
         )
         product_card = self.db.query(ProductCard).one()
 
-        sell_product_card(
-            product.id,
-            product_card.id,
-            ProductCardSaleCreate(quantity=1, sold_price=0, sold_date=datetime.date(2026, 5, 30)),
-            current_user=self.user,
-            db=self.db,
-        )
+        with self.assertRaises(HTTPException) as context:
+            sell_product_card(
+                product.id,
+                product_card.id,
+                ProductCardSaleCreate(quantity=1, sold_price=0, sold_date=datetime.date(2026, 5, 30)),
+                current_user=self.user,
+                db=self.db,
+            )
 
-        self.assertIsNone(self.db.query(CollectionItem).filter(CollectionItem.id == item.id).first())
-        self.assertEqual(self.db.query(BinderCard).filter(BinderCard.collection_item_id == item.id).count(), 0)
-        self.assertEqual(self.db.query(ProductLedgerEntry).filter(ProductLedgerEntry.card_id == self.card.id).count(), 1)
+        self.assertEqual(context.exception.status_code, 409)
+        self.assertIsNotNone(self.db.query(CollectionItem).filter(CollectionItem.id == item.id).first())
+        self.assertEqual(self.db.query(BinderCard).filter(BinderCard.collection_item_id == item.id).count(), 1)
+        self.assertEqual(self.db.query(ProductLedgerEntry).filter(ProductLedgerEntry.card_id == self.card.id).count(), 0)
         product_card = self.db.query(ProductCard).one()
-        self.assertEqual(product_card.active_quantity, 0)
-        self.assertEqual(product_card.sold_quantity, 1)
+        self.assertEqual(product_card.active_quantity, 1)
+        self.assertEqual(product_card.sold_quantity, 0)
 
     def test_deleting_custom_card_is_blocked_for_active_product_link(self):
         custom_card = Card(

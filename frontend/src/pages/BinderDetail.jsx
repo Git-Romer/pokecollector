@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Plus, Trash2, Package, Star, Download, Upload, X, Heart, Minus, HelpCircle, Check } from 'lucide-react'
-import { getBinderCards, removeCardFromBinder, removeBinderEntry, addCardToBinder, addCollectionItemToBinder, searchCards, getCollection, updateBinderEntry, getBinderEntryEquivalentPrints, getBinderPrintOptimization, applyBinderPrintOptimization, switchBinderEntryCard, addBinderEntryToWishlist, addBinderCardsToWishlist, importBinderCsv, exportBinderCsv, getApiErrorMessage } from '../api/client'
+import { getBinderCards, removeCardFromBinder, removeBinderEntry, addCardToBinder, addCollectionItemToBinder, searchCards, getCollection, updateBinderEntry, getBinderEntryEquivalentPrints, getBinderPrintOptimization, applyBinderPrintOptimization, switchBinderEntryCard, addBinderEntryToWishlist, addBinderCardsToWishlist, convertWishlistBinderToCollection, convertCollectionBinderToWishlist, importBinderCsv, exportBinderCsv, getApiErrorMessage } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
 import { resolveCardImageUrl } from '../utils/imageUrl'
@@ -12,24 +12,15 @@ import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import { BINDER_SORT_OPTIONS, sortBinderCards } from '../utils/binderCards'
 import { partitionSettledResults } from '../utils/settledResults'
+import { formatBinderCountSummary } from '../utils/binderCounts'
+import { binderPickerItemsWithQuantities, binderPickerQuantitiesAreValid, binderPickerQuantityMaximum, canConvertWishlistBinder, clampBinderPickerQuantity } from '../utils/binderQuantity'
 import { CardDialog, CardDisplay, CardLegend, withCollectionItemState } from '../components/card-system'
+import Modal from '../components/ui/Modal'
 
 const SPRITE_BASE_URL = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated'
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
-const BINDER_CSV_IMPORT_HEADER = 'set_code,number,required_quantity,lang'
-const BINDER_CSV_IMPORT_TEMPLATE = `${BINDER_CSV_IMPORT_HEADER}\nBLK,057,4,de\n`
-
-function askQuantity(t, defaultQuantity = 1) {
-  const initialQuantity = Math.max(1, Math.min(99, parseInt(defaultQuantity, 10) || 1))
-  const input = window.prompt(t('wishlist.quantityPrompt'), String(initialQuantity))
-  if (input === null) return null
-  const quantity = parseInt(input, 10)
-  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) {
-    toast.error(t('wishlist.quantityInvalid'))
-    return null
-  }
-  return quantity
-}
+const BINDER_CSV_IMPORT_HEADER = 'set_code,number,required_quantity,lang,variant,condition,collection_item_id'
+const BINDER_CSV_IMPORT_TEMPLATE = `${BINDER_CSV_IMPORT_HEADER}\nBLK,057,4,de,Holo,NM,\n`
 
 const downloadBinderCsvTemplate = () => {
   const blob = new Blob([BINDER_CSV_IMPORT_TEMPLATE], { type: 'text/csv;charset=utf-8' })
@@ -41,6 +32,114 @@ const downloadBinderCsvTemplate = () => {
   link.click()
   document.body.removeChild(link)
   URL.revokeObjectURL(url)
+}
+
+function BinderQuantityModal({ t, dialog, quantities, onQuantityChange, onClose, onSubmit, isSubmitting }) {
+  const items = dialog?.items || []
+  const isValid = binderPickerQuantitiesAreValid(binderPickerItemsWithQuantities(items, quantities))
+
+  return (
+    <Modal
+      isOpen={Boolean(dialog)}
+      onClose={isSubmitting ? undefined : onClose}
+      title={`${t('common.add')} · ${t('common.quantity')}`}
+      size="lg"
+    >
+      <div className="space-y-4 p-4 sm:p-5">
+        <p className="text-sm text-text-secondary">
+          {items.length} {t('cardSearch.selected')}
+        </p>
+        <div className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
+          {items.map(item => {
+            const quantity = quantities[item.id] ?? '1'
+            const numericQuantity = Number(quantity)
+            const maximum = binderPickerQuantityMaximum(item)
+            return (
+              <div key={item.id} className="flex items-center gap-3 rounded-xl border border-border bg-bg-elevated/40 p-3">
+                {item.image ? (
+                  <img src={item.image} alt="" className="h-16 w-12 flex-shrink-0 rounded object-cover" />
+                ) : (
+                  <div className="h-16 w-12 flex-shrink-0 rounded bg-bg-elevated" />
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-text-primary">{item.name}</p>
+                  {item.subtitle && <p className="truncate text-xs text-text-muted">{item.subtitle}</p>}
+                  {item.maxQuantity !== undefined && (
+                    <p className="mt-1 text-xs font-medium text-blue">{maximum} {t('products.available')}</p>
+                  )}
+                </div>
+                <div className="flex flex-shrink-0 items-center gap-1">
+                  <button
+                    type="button"
+                    className="btn-ghost px-2"
+                    disabled={isSubmitting || !Number.isInteger(numericQuantity) || numericQuantity <= 1}
+                    onClick={() => onQuantityChange(item.id, Math.max(1, numericQuantity - 1))}
+                    aria-label={`${t('common.quantity')} -`}
+                  >
+                    <Minus size={14} />
+                  </button>
+                  <input
+                    type="number"
+                    min="1"
+                    max={maximum}
+                    inputMode="numeric"
+                    className="input w-16 px-2 text-center"
+                    value={quantity}
+                    disabled={isSubmitting}
+                    onChange={event => onQuantityChange(item.id, clampBinderPickerQuantity(event.target.value, item))}
+                    aria-label={`${t('common.quantity')}: ${item.name}`}
+                  />
+                  <button
+                    type="button"
+                    className="btn-ghost px-2"
+                    disabled={isSubmitting || !Number.isInteger(numericQuantity) || numericQuantity >= maximum}
+                    onClick={() => onQuantityChange(item.id, Math.min(maximum, numericQuantity + 1))}
+                    aria-label={`${t('common.quantity')} +`}
+                  >
+                    <Plus size={14} />
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        <div className="flex justify-end gap-2 border-t border-border pt-4">
+          <button type="button" className="btn-ghost" disabled={isSubmitting} onClick={onClose}>
+            {t('common.cancel')}
+          </button>
+          <button type="button" className="btn-primary" disabled={!isValid || isSubmitting} onClick={onSubmit}>
+            <Plus size={16} /> {isSubmitting ? t('card.adding') : t('common.add')}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+function BinderConversionModal({ t, target, onClose, onConfirm, isSubmitting }) {
+  const isCollectionTarget = target === 'collection'
+  return (
+    <Modal
+      isOpen={Boolean(target)}
+      onClose={isSubmitting ? undefined : onClose}
+      title={isCollectionTarget ? t('binderTypes.convertWishlist') : t('binderTypes.convertCollection')}
+      size="md"
+      mobileSheet={false}
+    >
+      <div className="space-y-4 p-5">
+        <p className="text-sm text-text-secondary">
+          {isCollectionTarget ? t('binderTypes.convertWishlistConfirm') : t('binderTypes.convertCollectionConfirm')}
+        </p>
+        <div className="flex flex-col gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
+          <button type="button" className="btn-ghost w-full sm:w-auto" disabled={isSubmitting} onClick={onClose}>{t('common.cancel')}</button>
+          <button type="button" className="btn-primary w-full whitespace-normal px-5 sm:w-auto" disabled={isSubmitting} onClick={onConfirm}>
+            {isCollectionTarget ? <Package size={16} className="flex-shrink-0" /> : <Star size={16} className="flex-shrink-0" />}
+            {isCollectionTarget ? t('binderTypes.convertWishlist') : t('binderTypes.convertCollection')}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
 }
 
 function BinderCsvImportModal({ t, isWishlist, onClose, onChooseFile, onDownloadTemplate, isImporting }) {
@@ -137,6 +236,10 @@ export default function BinderDetail() {
   const [showPrintOptimizer, setShowPrintOptimizer] = useState(false)
   const [selectedPrintOptimizationIds, setSelectedPrintOptimizationIds] = useState([])
   const [selectedPickerIds, setSelectedPickerIds] = useState([])
+  const [pickerSelectionMeta, setPickerSelectionMeta] = useState({})
+  const [quantityDialog, setQuantityDialog] = useState(null)
+  const [pickerQuantities, setPickerQuantities] = useState({})
+  const [conversionTarget, setConversionTarget] = useState(null)
   const fileInputRef = useRef(null)
   const selectedCardCloseRef = useRef(null)
 
@@ -149,6 +252,7 @@ export default function BinderDetail() {
   const binderType = binder?.binder_type || 'collection'
   const isWishlist = binderType === 'wishlist'
   const isCollection = binderType === 'collection'
+  const availableCollectionItemQuantities = data?.available_collection_item_quantities || {}
 
   const { data: collectionData } = useQuery({
     queryKey: ['collection'],
@@ -203,37 +307,82 @@ export default function BinderDetail() {
   }, [collectionData])
 
   const pickerSelectionMutation = useMutation({
-    mutationFn: async (pickerIds) => {
-      const requests = pickerIds.map(id => (
+    mutationFn: async ({ items }) => {
+      const pickerIds = items.map(item => item.id)
+      const requests = items.map(({ id, quantity }) => (
         isWishlist
-          ? addCardToBinder(parseInt(binderId), id, 1)
-          : addCollectionItemToBinder(parseInt(binderId), id)
+          ? addCardToBinder(parseInt(binderId), id, quantity)
+          : addCollectionItemToBinder(parseInt(binderId), id, quantity)
       ))
       const results = await Promise.allSettled(requests)
       return partitionSettledResults(pickerIds, results)
     },
     onSuccess: ({ succeededIds, failed }) => {
       setSelectedPickerIds(current => current.filter(id => !succeededIds.includes(id)))
+      setPickerSelectionMeta(current => {
+        const next = { ...current }
+        succeededIds.forEach(id => { delete next[id] })
+        return next
+      })
       if (failed.length === 0) {
         toast.success(`${t('common.add')} ${succeededIds.length} ✓`)
+        setQuantityDialog(null)
       } else if (succeededIds.length > 0) {
         toast.error(`${succeededIds.length} ✓ · ${failed.length} ${t('card.addFailed')}`)
+        setQuantityDialog(null)
       } else {
         const detail = failed[0]?.reason?.response?.data?.detail
         toast.error(detail || t('card.addFailed'))
+        setQuantityDialog(null)
       }
     },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['binder-cards', binderId] })
-      queryClient.invalidateQueries({ queryKey: ['binders'] })
+    onSettled: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['binder-cards', binderId] }),
+        queryClient.invalidateQueries({ queryKey: ['binders'] }),
+      ])
       invalidateTcgdexFilterLanguages(queryClient)
     },
   })
 
-  const togglePickerSelection = (id) => {
+  const togglePickerSelection = (item) => {
+    const id = item.id
     setSelectedPickerIds(current => current.includes(id)
       ? current.filter(value => value !== id)
       : [...current, id])
+    setPickerSelectionMeta(current => {
+      const next = { ...current }
+      if (next[id]) delete next[id]
+      else next[id] = item
+      return next
+    })
+  }
+
+  const clearPickerSelection = () => {
+    setSelectedPickerIds([])
+    setPickerSelectionMeta({})
+  }
+
+  const submitPickerSelection = () => {
+    const items = selectedPickerIds.map(id => {
+      const item = pickerSelectionMeta[id]
+      if (!item || isWishlist) return item
+      return {
+        ...item,
+        maxQuantity: availableCollectionItemQuantities[id] ?? item.maxQuantity,
+      }
+    }).filter(item => item && binderPickerQuantityMaximum(item) > 0)
+    const itemIds = new Set(items.map(item => String(item.id)))
+    setSelectedPickerIds(items.map(item => item.id))
+    setPickerSelectionMeta(current => Object.fromEntries(
+      Object.entries(current).filter(([id]) => itemIds.has(id)),
+    ))
+    if (!items.length) return
+    setPickerQuantities(Object.fromEntries(items.map(item => [
+      item.id,
+      clampBinderPickerQuantity(pickerQuantities[item.id] ?? '1', item),
+    ])))
+    setQuantityDialog({ mode: 'picker', items })
   }
 
   const removeMutation = useMutation({
@@ -253,10 +402,16 @@ export default function BinderDetail() {
     onSuccess: (_data, variables) => {
       setSelectedCard(prev => {
         if (!prev || prev.binder_card_id !== variables.binderCardId) return prev
+        const priorQuantity = prev.required_quantity || 1
         return {
           ...prev,
           required_quantity: variables.requiredQuantity,
-          missing_quantity: Math.max(variables.requiredQuantity - (prev.owned_quantity || 0), 0),
+          owned_quantity: isCollection ? variables.requiredQuantity : prev.owned_quantity,
+          quantity: isCollection ? variables.requiredQuantity : prev.quantity,
+          available_quantity: isCollection
+            ? Math.max((prev.available_quantity || 0) + priorQuantity - variables.requiredQuantity, 0)
+            : prev.available_quantity,
+          missing_quantity: isCollection ? 0 : Math.max(variables.requiredQuantity - (prev.owned_quantity || 0), 0),
         }
       })
       queryClient.invalidateQueries({ queryKey: ['binder-cards', binderId] })
@@ -290,6 +445,7 @@ export default function BinderDetail() {
       }
       invalidateCardState(queryClient)
       invalidateTcgdexFilterLanguages(queryClient)
+      setQuantityDialog(current => current?.mode === 'wishlist' ? null : current)
     },
     onError: (e) => toast.error(e.response?.data?.detail || t('card.addFailed')),
   })
@@ -311,6 +467,76 @@ export default function BinderDetail() {
     },
     onError: (e) => toast.error(e.response?.data?.detail || t('card.addFailed')),
   })
+
+  const convertWishlistMutation = useMutation({
+    mutationFn: () => convertWishlistBinderToCollection(parseInt(binderId)),
+    onSuccess: () => {
+      toast.success(t('binderTypes.convertWishlistSuccess'))
+      queryClient.invalidateQueries({ queryKey: ['binder-cards', binderId] })
+      queryClient.invalidateQueries({ queryKey: ['binders'] })
+      queryClient.invalidateQueries({ queryKey: ['collection'] })
+      queryClient.invalidateQueries({ queryKey: ['binder-print-optimization', binderId] })
+      invalidateTcgdexFilterLanguages(queryClient)
+      setShowPrintOptimizer(false)
+      setConversionTarget(null)
+    },
+    onError: (e) => {
+      queryClient.invalidateQueries({ queryKey: ['binder-cards', binderId] })
+      toast.error(e.response?.data?.detail || t('binderTypes.convertWishlistFailed'))
+    },
+  })
+
+  const convertCollectionMutation = useMutation({
+    mutationFn: () => convertCollectionBinderToWishlist(parseInt(binderId)),
+    onSuccess: () => {
+      toast.success(t('binderTypes.convertCollectionSuccess'))
+      queryClient.invalidateQueries({ queryKey: ['binder-cards', binderId] })
+      queryClient.invalidateQueries({ queryKey: ['binders'] })
+      queryClient.invalidateQueries({ queryKey: ['collection'] })
+      queryClient.invalidateQueries({ queryKey: ['binder-print-optimization', binderId] })
+      invalidateTcgdexFilterLanguages(queryClient)
+      setShowPrintOptimizer(false)
+      setSelectedCard(null)
+      clearPickerSelection()
+      setQuantityDialog(null)
+      setConversionTarget(null)
+    },
+    onError: (e) => {
+      queryClient.invalidateQueries({ queryKey: ['binder-cards', binderId] })
+      queryClient.invalidateQueries({ queryKey: ['binders'] })
+      toast.error(e.response?.data?.detail || t('binderTypes.convertCollectionFailed'))
+    },
+  })
+
+  const updatePickerQuantity = (id, value) => {
+    setPickerQuantities(current => ({ ...current, [id]: value }))
+  }
+
+  const submitQuantityDialog = () => {
+    if (!quantityDialog) return
+    const items = binderPickerItemsWithQuantities(quantityDialog.items, pickerQuantities)
+    if (!binderPickerQuantitiesAreValid(items)) {
+      toast.error(t('wishlist.quantityInvalid'))
+      return
+    }
+    if (quantityDialog.mode === 'wishlist') {
+      wishlistMutation.mutate({ binderCardId: items[0].id, quantity: items[0].quantity })
+      return
+    }
+    pickerSelectionMutation.mutate({ items })
+  }
+
+  const openWishlistQuantityDialog = (card) => {
+    const item = {
+      id: card.binder_card_id,
+      name: card.name,
+      subtitle: [card.set_name, card.number, card.variant, card.condition].filter(Boolean).join(' · '),
+      image: resolveCardImageUrl(card),
+    }
+    setPickerQuantities({ [item.id]: '1' })
+    setSelectedCard(null)
+    setQuantityDialog({ mode: 'wishlist', items: [item] })
+  }
 
   const importMutation = useMutation({
     mutationFn: (file) => importBinderCsv(parseInt(binderId), file),
@@ -383,6 +609,7 @@ export default function BinderDetail() {
   const unavailableCollectionItemIds = new Set(data?.unavailable_collection_item_ids || [])
   const ownedCount = data?.owned_count ?? cards.reduce((sum, c) => sum + Math.min(c.owned_quantity || 0, c.required_quantity || 1), 0)
   const totalCount = data?.total_required_count ?? data?.total_count ?? cards.length
+  const uniqueCount = data?.unique_count ?? new Set(cards.map(card => card.id)).size
   const missingCount = data?.missing_count ?? cards.reduce((sum, c) => sum + (c.missing_quantity || 0), 0)
   const binderValue = data?.binder_value ?? cards.reduce((sum, c) => sum + ((c.price_market || 0) * (isWishlist ? (c.required_quantity || 1) : (c.quantity || 0))), 0)
   const currentValue = data?.current_value ?? cards.reduce((sum, c) => sum + ((c.price_market || 0) * (isWishlist ? Math.min(c.owned_quantity || 0, c.required_quantity || 1) : (c.quantity || 0))), 0)
@@ -391,6 +618,7 @@ export default function BinderDetail() {
   const hasMissingPriceData = cards.length > 0 && displayedValue === 0 && (!isWishlist || missingCount > 0) && cards.some(c => !c.price_market || c.price_market <= 0)
   const hasMissingCurrentValueData = isWishlist && ownedCount > 0 && currentValue === 0 && cards.some(c => (c.owned_quantity || 0) > 0 && (!c.price_market || c.price_market <= 0))
   const progressPct = totalCount > 0 ? Math.round((ownedCount / totalCount) * 100) : 0
+  const canConvertWishlist = canConvertWishlistBinder(isWishlist, totalCount, missingCount)
   const binderSets = [...new Set(cards.map(c => c.set_name || c.set_id).filter(Boolean))].sort()
   const printOptimizationRecommendations = printOptimizationData?.recommendations || []
   const selectedPrintOptimizationIdSet = new Set(selectedPrintOptimizationIds)
@@ -410,7 +638,8 @@ export default function BinderDetail() {
   }), binderSortBy, { isWishlist })
 
   const changeRequiredQuantity = (card, delta) => {
-    const next = Math.max(1, Math.min(99, (card.required_quantity || 1) + delta))
+    const maximum = isCollection ? (card.max_assignable_quantity || 1) : 99
+    const next = Math.max(1, Math.min(maximum, (card.required_quantity || 1) + delta))
     updateEntryMutation.mutate({ binderCardId: card.binder_card_id, requiredQuantity: next })
   }
 
@@ -456,18 +685,30 @@ export default function BinderDetail() {
             </span>
           </div>
           {binder?.description && <p className="text-sm text-text-secondary mt-1">{binder.description}</p>}
-          <p className="text-xs text-text-muted mt-1">{totalCount} {t('binderTypes.cards')}</p>
+          <p className="text-xs text-text-muted mt-1">{formatBinderCountSummary(totalCount, uniqueCount, t)}</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => {
-              if (showSearch) setSelectedPickerIds([])
+              if (showSearch) clearPickerSelection()
               setShowSearch(!showSearch)
             }}
             className="btn-primary flex-shrink-0"
           >
             <Plus size={16} /> {t('common.add')} {t('nav.cards')}
           </button>
+          {isCollection && (
+            <button
+              type="button"
+              onClick={() => setConversionTarget('wishlist')}
+              className="btn-ghost flex-shrink-0 px-2"
+              disabled={convertCollectionMutation.isPending}
+              title={t('binderTypes.convertCollection')}
+              aria-label={t('binderTypes.convertCollection')}
+            >
+              <Star size={16} className="flex-shrink-0" /> {t('binderTypes.convertCollection')}
+            </button>
+          )}
           <button
             onClick={() => setShowPrintOptimizer(true)}
             className="btn-ghost flex-shrink-0 px-2"
@@ -541,7 +782,7 @@ export default function BinderDetail() {
       )}
 
       {isWishlist && cards.length > 0 && (
-        <div className="card">
+        <div className="card space-y-3">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium text-text-primary">{t('binderTypes.progress')}</span>
             <span className="text-sm text-text-secondary">
@@ -555,6 +796,19 @@ export default function BinderDetail() {
             <span className="text-green">{ownedCount} {t('binderTypes.owned')}</span>
             <span className="text-brand-red">{missingCount} {t('binderTypes.missing')}</span>
           </div>
+          {canConvertWishlist && (
+            <div className="flex items-center justify-between gap-3 border-t border-border pt-3 flex-wrap">
+              <p className="text-xs text-green">{t('binderTypes.convertWishlistReady')}</p>
+              <button
+                type="button"
+                className="btn-primary justify-center"
+                disabled={convertWishlistMutation.isPending}
+                onClick={() => setConversionTarget('collection')}
+              >
+                <Package size={16} /> {t('binderTypes.convertWishlist')}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -568,7 +822,7 @@ export default function BinderDetail() {
               type="button"
               className="btn-primary-sm hidden sm:inline-flex"
               disabled={selectedPickerIds.length === 0 || pickerSelectionMutation.isPending}
-              onClick={() => pickerSelectionMutation.mutate([...selectedPickerIds])}
+              onClick={submitPickerSelection}
             >
               {t('common.add')} {selectedPickerIds.length > 0 ? `(${selectedPickerIds.length})` : ''}
             </button>
@@ -611,8 +865,18 @@ export default function BinderDetail() {
                         compact
                         selected={selected}
                         unavailableReason={alreadyAdded ? t('binderTypes.alreadyUsed') : ''}
-                        onClick={() => !alreadyAdded && togglePickerSelection(card.id)}
-                        onSelect={() => !alreadyAdded && togglePickerSelection(card.id)}
+                        onClick={() => !alreadyAdded && togglePickerSelection({
+                          id: card.id,
+                          name: card.name,
+                          subtitle: [card.set_name || card.set_ref?.name, card.number].filter(Boolean).join(' · '),
+                          image: resolveCardImageUrl(card),
+                        })}
+                        onSelect={() => !alreadyAdded && togglePickerSelection({
+                          id: card.id,
+                          name: card.name,
+                          subtitle: [card.set_name || card.set_ref?.name, card.number].filter(Boolean).join(' · '),
+                          image: resolveCardImageUrl(card),
+                        })}
                       />
                     )
                   })}
@@ -631,7 +895,6 @@ export default function BinderDetail() {
                   {collectionSearchResults.map((item) => {
                     const card = item.card
                     if (!card) return null
-                    const alreadyAdded = cards.some(c => c.collection_item_id === item.id)
                     const unavailable = unavailableCollectionItemIds.has(item.id)
                     const selected = selectedPickerIds.includes(item.id)
                     return (
@@ -647,9 +910,21 @@ export default function BinderDetail() {
                           alwaysShowQuantity: true,
                           showWishlist: false,
                         }}
-                        onClick={() => !alreadyAdded && !unavailable && togglePickerSelection(item.id)}
-                        onSelect={() => !alreadyAdded && !unavailable && togglePickerSelection(item.id)}
-                        unavailableReason={alreadyAdded || unavailable ? t('binderTypes.alreadyUsed') : ''}
+                        onClick={() => (!unavailable || selected) && togglePickerSelection({
+                          id: item.id,
+                          name: card.name,
+                          subtitle: [card.set_ref?.name, card.number, item.variant || 'Normal', item.condition].filter(Boolean).join(' · '),
+                          image: resolveCardImageUrl(card),
+                          maxQuantity: availableCollectionItemQuantities[item.id] ?? 0,
+                        })}
+                        onSelect={() => (!unavailable || selected) && togglePickerSelection({
+                          id: item.id,
+                          name: card.name,
+                          subtitle: [card.set_ref?.name, card.number, item.variant || 'Normal', item.condition].filter(Boolean).join(' · '),
+                          image: resolveCardImageUrl(card),
+                          maxQuantity: availableCollectionItemQuantities[item.id] ?? 0,
+                        })}
+                        unavailableReason={unavailable ? t('binderTypes.alreadyUsed') : ''}
                         overlay={(
                           <div className="absolute bottom-2 left-2 right-2 z-20 truncate rounded-full bg-black/80 px-2 py-1 text-center text-[9px] text-white">
                             {[item.variant || 'Normal', item.condition].filter(Boolean).join(' · ')}
@@ -673,7 +948,7 @@ export default function BinderDetail() {
               type="button"
               className="btn-primary-sm justify-center"
               disabled={selectedPickerIds.length === 0 || pickerSelectionMutation.isPending}
-              onClick={() => pickerSelectionMutation.mutate([...selectedPickerIds])}
+              onClick={submitPickerSelection}
             >
               {t('common.add')} {selectedPickerIds.length > 0 ? `(${selectedPickerIds.length})` : ''}
             </button>
@@ -935,6 +1210,27 @@ export default function BinderDetail() {
         </div>
       )}
 
+      <BinderQuantityModal
+        t={t}
+        dialog={quantityDialog}
+        quantities={pickerQuantities}
+        onQuantityChange={updatePickerQuantity}
+        onClose={() => setQuantityDialog(null)}
+        onSubmit={submitQuantityDialog}
+        isSubmitting={pickerSelectionMutation.isPending || wishlistMutation.isPending}
+      />
+
+      <BinderConversionModal
+        t={t}
+        target={conversionTarget}
+        onClose={() => setConversionTarget(null)}
+        onConfirm={() => {
+          if (conversionTarget === 'collection') convertWishlistMutation.mutate()
+          else if (conversionTarget === 'wishlist') convertCollectionMutation.mutate()
+        }}
+        isSubmitting={convertWishlistMutation.isPending || convertCollectionMutation.isPending}
+      />
+
       {selectedCard && (
         <CardDialog
           card={selectedCard}
@@ -954,21 +1250,20 @@ export default function BinderDetail() {
             <div className="space-y-4">
                 <div className="space-y-3 text-sm">
                   <div className="grid grid-cols-2 gap-2">
-                    <div className="rounded-lg bg-bg-card p-2"><p className="text-xs text-text-muted">{t('binderTypes.owned')}</p><p className="font-bold text-green">{selectedCard.owned_quantity || 0}</p></div>
+                    <div className="rounded-lg bg-bg-card p-2"><p className="text-xs text-text-muted">{t('binderTypes.owned')}</p><p className="font-bold text-green">{isCollection ? (selectedCard.collection_quantity || 0) : (selectedCard.owned_quantity || 0)}</p></div>
                     <div className="rounded-lg bg-bg-card p-2"><p className="text-xs text-text-muted">{t('binderTypes.missing')}</p><p className="font-bold text-brand-red">{selectedCard.missing_quantity || 0}</p></div>
                   </div>
-                  {isWishlist ? (
+                  {(isWishlist || (isCollection && selectedCard.collection_item_id)) ? (
                     <div>
-                      <p className="text-xs text-text-muted mb-1">{t('binderTypes.requiredInBinder')}</p>
+                      <p className="text-xs text-text-muted mb-1">{isCollection ? t('binderTypes.amountInBinder') : t('binderTypes.requiredInBinder')}</p>
                       <div className="flex items-center gap-2">
                         <button className="btn-ghost px-2" onClick={() => changeRequiredQuantity(selectedCard, -1)} disabled={updateEntryMutation.isPending || (selectedCard.required_quantity || 1) <= 1}><Minus size={14} /></button>
                         <span className="text-lg font-bold text-text-primary min-w-8 text-center">{selectedCard.required_quantity || 1}</span>
-                        <button className="btn-ghost px-2" onClick={() => changeRequiredQuantity(selectedCard, 1)} disabled={updateEntryMutation.isPending}><Plus size={14} /></button>
+                        <button className="btn-ghost px-2" onClick={() => changeRequiredQuantity(selectedCard, 1)} disabled={updateEntryMutation.isPending || (selectedCard.required_quantity || 1) >= (isCollection ? (selectedCard.max_assignable_quantity || 1) : 99)}><Plus size={14} /></button>
                       </div>
+                      {isCollection && <p className="mt-1 text-xs text-text-muted">{selectedCard.available_quantity || 0} {t('products.available')}</p>}
                     </div>
-                  ) : (
-                    <p className="text-xs text-text-muted">{t('binderTypes.collectionQuantityLocked')}</p>
-                  )}
+                  ) : null}
                   <p className="text-xs text-text-muted">
                     {t('binderTypes.marketPrice')}: {selectedCard.price_market > 0 ? (
                       <span className="text-green font-semibold">{formatPrice(selectedCard.price_market)}</span>
@@ -985,8 +1280,7 @@ export default function BinderDetail() {
                     wishlistMutation.mutate({ binderCardId: selectedCard.binder_card_id })
                     return
                   }
-                  const wishlistQuantity = askQuantity(t, 1)
-                  if (wishlistQuantity) wishlistMutation.mutate({ binderCardId: selectedCard.binder_card_id, quantity: wishlistQuantity })
+                  openWishlistQuantityDialog(selectedCard)
                 }}>
                   <Heart size={16} /> {isWishlist ? t('binderTypes.addMissingToWishlist') : t('binderTypes.addToWishlist')}
                 </button>
@@ -1034,14 +1328,14 @@ export default function BinderDetail() {
                                 {print.variant && <span>{print.variant}</span>}
                                 {print.condition && <span>{print.condition}</span>}
                                 {print.owned && <span className="text-green font-semibold">{t('binderTypes.owned')} {print.owned_quantity}x</span>}
-                                {isCollection && !print.is_current && print.available_quantity === 0 && <span className="text-yellow font-semibold">{t('binderTypes.alreadyUsed')}</span>}
+                                {isCollection && !print.is_current && print.available_quantity < (selectedCard.required_quantity || 1) && <span className="text-yellow font-semibold">{t('binderTypes.alreadyUsed')}</span>}
                                 {print.is_current && <span className="text-yellow font-semibold">{t('binderTypes.currentPrint')}</span>}
                               </div>
                             </div>
                             <button
                               type="button"
                               className="btn-ghost px-2 py-1 text-xs flex-shrink-0"
-                              disabled={print.is_current || switchPrintMutation.isPending || (isCollection && print.available_quantity === 0)}
+                              disabled={print.is_current || switchPrintMutation.isPending || (isCollection && print.available_quantity < (selectedCard.required_quantity || 1))}
                               onClick={() => switchPrintMutation.mutate({ binderCardId: selectedCard.binder_card_id, cardId: print.id, collectionItemId: print.collection_item_id })}
                             >
                               {print.is_current ? t('binderTypes.currentPrint') : t('binderTypes.switchPrint')}

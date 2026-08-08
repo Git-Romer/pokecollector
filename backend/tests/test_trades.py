@@ -10,7 +10,7 @@ try:
     from api.analytics import get_trades_summary
     from api.trades import create_trade, get_trades
     from database import Base
-    from models import Card, CollectionItem, ProductCard, ProductLedgerEntry, ProductPurchase, Trade, TradeItem, User
+    from models import Binder, BinderCard, Card, CollectionItem, ProductCard, ProductLedgerEntry, ProductPurchase, Trade, TradeItem, User
     from schemas import TradeCreate, TradeIncomingItemCreate, TradeOutgoingItemCreate
     API_TEST_DEPS_AVAILABLE = True
 except ModuleNotFoundError:
@@ -118,6 +118,34 @@ class TradeApiTests(unittest.TestCase):
         self.assertEqual(len(trade_items), 2)
         self.assertEqual({item.direction for item in trade_items}, {"outgoing", "incoming"})
         self.assertEqual(self.db.query(ProductLedgerEntry).count(), 0)
+
+    def test_trade_cannot_reduce_owned_quantity_below_binder_allocation(self):
+        outgoing = self.add_collection_item(quantity=2)
+        binder = Binder(name="Deck", user_id=self.user.id, binder_type="collection")
+        self.db.add(binder)
+        self.db.commit()
+        self.db.add(BinderCard(
+            binder_id=binder.id,
+            card_id=outgoing.card_id,
+            collection_item_id=outgoing.id,
+            required_quantity=2,
+        ))
+        self.db.commit()
+
+        with self.assertRaises(HTTPException) as context:
+            create_trade(
+                TradeCreate(
+                    trade_date=datetime.date(2026, 7, 15),
+                    outgoing=[TradeOutgoingItemCreate(collection_item_id=outgoing.id, quantity=1)],
+                ),
+                current_user=self.user,
+                db=self.db,
+                price_field="price_trend",
+            )
+
+        self.assertEqual(context.exception.status_code, 409)
+        self.assertEqual(self.db.query(CollectionItem).filter(CollectionItem.id == outgoing.id).one().quantity, 2)
+        self.assertEqual(self.db.query(Trade).count(), 0)
 
     def test_create_trade_can_add_manual_incoming_card(self):
         response = create_trade(
