@@ -16,7 +16,13 @@ import toast from 'react-hot-toast'
 import clsx from 'clsx'
 import { formatMoneyInputValue, isValidMoneyInputValue, parseMoneyInputValue } from '../utils/moneyInput'
 import { resolveCardImageUrl } from '../utils/imageUrl'
-import { PRODUCT_CARD_TIME_RANGES, filterProductCardCandidates, parseCollectionAddedAt } from '../utils/productCardPicker'
+import {
+  PRODUCT_CARD_SELECTION_LIMIT,
+  PRODUCT_CARD_TIME_RANGES,
+  filterProductCardCandidates,
+  parseCollectionAddedAt,
+  selectVisibleProductCardCandidates,
+} from '../utils/productCardPicker'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 
 const PRODUCT_TYPES = ['Booster Pack', 'Booster Box', 'Elite Trainer Box', 'Tin', 'Bundle', 'Collection Box', 'Blister', 'Other']
@@ -185,29 +191,58 @@ function ProductCardPicker({ isOpen, onClose, product, candidates, formatPrice, 
   const [search, setSearch] = useState('')
   const [timeRange, setTimeRange] = useState('all')
   const [selections, setSelections] = useState({})
+  const [selectionNotice, setSelectionNotice] = useState('')
   const filteredCandidates = useMemo(
     () => filterProductCardCandidates(candidates, { search, timeRange }),
     [candidates, search, timeRange],
   )
   const selectedCount = Object.keys(selections).length
+  const visibleUnselectedCount = filteredCandidates.filter(({ item }) => selections[item.id] == null).length
+  const displayedSelectionNotice = selectionNotice || (
+    selectedCount >= PRODUCT_CARD_SELECTION_LIMIT
+      ? t('products.selectionMaximum').replace('{limit}', PRODUCT_CARD_SELECTION_LIMIT)
+      : ''
+  )
 
   useEffect(() => {
     if (isOpen) return
     setSearch('')
     setTimeRange('all')
     setSelections({})
+    setSelectionNotice('')
   }, [isOpen])
 
   const toggleSelection = (itemId, available) => {
+    setSelectionNotice('')
     setSelections(current => {
       if (current[itemId]) {
         const next = { ...current }
         delete next[itemId]
         return next
       }
-      if (Object.keys(current).length >= 200) return current
+      if (Object.keys(current).length >= PRODUCT_CARD_SELECTION_LIMIT) return current
       return { ...current, [itemId]: Math.min(1, available) }
     })
+  }
+
+  const selectAllVisible = () => {
+    const remainingSlots = Math.max(PRODUCT_CARD_SELECTION_LIMIT - selectedCount, 0)
+    const newlySelected = Math.min(visibleUnselectedCount, remainingSlots)
+    const skipped = Math.max(visibleUnselectedCount - newlySelected, 0)
+    setSelections(current => selectVisibleProductCardCandidates(current, filteredCandidates))
+    setSelectionNotice(
+      skipped > 0
+        ? t('products.selectVisibleLimit')
+          .replace('{selected}', newlySelected)
+          .replace('{skipped}', skipped)
+          .replace('{limit}', PRODUCT_CARD_SELECTION_LIMIT)
+        : t('products.selectVisibleResult').replace('{count}', newlySelected),
+    )
+  }
+
+  const clearSelections = () => {
+    setSelections({})
+    setSelectionNotice('')
   }
 
   const setQuantity = (itemId, value, available) => {
@@ -250,7 +285,10 @@ function ProductCardPicker({ isOpen, onClose, product, candidates, formatPrice, 
             type="search"
             className="input pl-9"
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => {
+              setSearch(event.target.value)
+              setSelectionNotice('')
+            }}
             placeholder={t('products.searchCollectionCards')}
             autoFocus
           />
@@ -261,7 +299,10 @@ function ProductCardPicker({ isOpen, onClose, product, candidates, formatPrice, 
             <button
               key={option.id}
               type="button"
-              onClick={() => setTimeRange(option.id)}
+              onClick={() => {
+                setTimeRange(option.id)
+                setSelectionNotice('')
+              }}
               className={clsx(
                 'flex-shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
                 timeRange === option.id
@@ -274,6 +315,26 @@ function ProductCardPicker({ isOpen, onClose, product, candidates, formatPrice, 
             </button>
           ))}
         </div>
+
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs text-text-muted">
+            {t('products.visibleCards').replace('{count}', filteredCandidates.length)}
+          </p>
+          <button
+            type="button"
+            className="btn-ghost px-3 py-1.5 text-xs"
+            onClick={selectAllVisible}
+            disabled={!visibleUnselectedCount || selectedCount >= PRODUCT_CARD_SELECTION_LIMIT || loading}
+          >
+            {t('products.selectAllVisible')}
+          </button>
+        </div>
+
+        {displayedSelectionNotice && (
+          <p className="text-xs text-text-secondary" role="status" aria-live="polite">
+            {displayedSelectionNotice}
+          </p>
+        )}
 
         <div className="max-h-[48vh] divide-y divide-border overflow-y-auto rounded-xl border border-border bg-bg-elevated/30">
           {filteredCandidates.length ? filteredCandidates.map(({ item, available }) => {
@@ -341,7 +402,7 @@ function ProductCardPicker({ isOpen, onClose, product, candidates, formatPrice, 
           <p className="text-sm text-text-muted">{t('products.selectedCards').replace('{count}', selectedCount)}</p>
           <div className="flex gap-2">
             {selectedCount > 0 && (
-              <button type="button" className="btn-ghost flex-1 sm:flex-none" onClick={() => setSelections({})} disabled={loading}>
+              <button type="button" className="btn-ghost flex-1 sm:flex-none" onClick={clearSelections} disabled={loading}>
                 {t('products.clearSelection')}
               </button>
             )}

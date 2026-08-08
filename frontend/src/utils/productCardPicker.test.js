@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { filterProductCardCandidates, parseCollectionAddedAt } from './productCardPicker'
+import {
+  PRODUCT_CARD_SELECTION_LIMIT,
+  filterProductCardCandidates,
+  parseCollectionAddedAt,
+  selectVisibleProductCardCandidates,
+} from './productCardPicker'
 
 const NOW = Date.parse('2026-08-08T19:00:00Z')
 
@@ -59,5 +64,37 @@ describe('filterProductCardCandidates', () => {
     const missingTimestamp = candidate(4, 'Mew', null)
     expect(filterProductCardCandidates([missingTimestamp], { timeRange: 'day', now: NOW })).toEqual([])
     expect(filterProductCardCandidates([missingTimestamp], { timeRange: 'all', now: NOW })).toHaveLength(1)
+  })
+})
+
+describe('selectVisibleProductCardCandidates', () => {
+  it('selects only the visible rows and preserves selections from other filters', () => {
+    const visible = [
+      candidate(1, 'Pikachu', '2026-08-08T18:30:00Z'),
+      candidate(2, 'Charizard', '2026-08-08T18:15:00Z', { quantity: 3 }),
+    ]
+
+    expect(selectVisibleProductCardCandidates({ 3: 2 }, visible)).toEqual({ 1: 1, 2: 1, 3: 2 })
+  })
+
+  it('preserves an edited quantity for an already visible selection', () => {
+    const visible = [candidate(1, 'Pikachu', '2026-08-08T18:30:00Z')]
+
+    expect(selectVisibleProductCardCandidates({ 1: 4 }, visible)).toEqual({ 1: 4 })
+  })
+
+  it('does not exceed the batch selection limit', () => {
+    const existing = Object.fromEntries(
+      Array.from({ length: PRODUCT_CARD_SELECTION_LIMIT - 1 }, (_, index) => [index + 1, 1]),
+    )
+    const visible = [
+      candidate(500, 'Pikachu', '2026-08-08T18:30:00Z'),
+      candidate(501, 'Charizard', '2026-08-08T18:15:00Z'),
+    ]
+
+    const selected = selectVisibleProductCardCandidates(existing, visible)
+    expect(Object.keys(selected)).toHaveLength(PRODUCT_CARD_SELECTION_LIMIT)
+    expect(selected[500]).toBe(1)
+    expect(selected[501]).toBeUndefined()
   })
 })

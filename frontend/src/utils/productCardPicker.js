@@ -8,6 +8,22 @@ export const PRODUCT_CARD_TIME_RANGES = [
   { id: 'all', milliseconds: null },
 ]
 
+export const PRODUCT_CARD_SELECTION_LIMIT = 200
+
+export function selectVisibleProductCardCandidates(selections, visibleCandidates) {
+  const next = { ...selections }
+  let remaining = Math.max(PRODUCT_CARD_SELECTION_LIMIT - Object.keys(next).length, 0)
+
+  for (const { item, available } of visibleCandidates) {
+    if (next[item.id] != null) continue
+    if (remaining === 0) break
+    next[item.id] = Math.min(1, available)
+    remaining -= 1
+  }
+
+  return next
+}
+
 export function parseCollectionAddedAt(value) {
   if (!value) return NaN
   const normalized = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value : `${value}Z`
