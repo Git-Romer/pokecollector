@@ -123,7 +123,8 @@ function BinderConversionModal({ t, target, onClose, onConfirm, isSubmitting }) 
       isOpen={Boolean(target)}
       onClose={isSubmitting ? undefined : onClose}
       title={isCollectionTarget ? t('binderTypes.convertWishlist') : t('binderTypes.convertCollection')}
-      size="sm"
+      size="md"
+      mobileSheet={false}
     >
       <div className="space-y-4 p-5">
         <p className="text-sm text-text-secondary">
@@ -131,7 +132,7 @@ function BinderConversionModal({ t, target, onClose, onConfirm, isSubmitting }) 
         </p>
         <div className="flex flex-col gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
           <button type="button" className="btn-ghost w-full sm:w-auto" disabled={isSubmitting} onClick={onClose}>{t('common.cancel')}</button>
-          <button type="button" className="btn-primary w-full whitespace-normal px-5 sm:w-auto sm:whitespace-nowrap" disabled={isSubmitting} onClick={onConfirm}>
+          <button type="button" className="btn-primary w-full whitespace-normal px-5 sm:w-auto" disabled={isSubmitting} onClick={onConfirm}>
             {isCollectionTarget ? <Package size={16} className="flex-shrink-0" /> : <Star size={16} className="flex-shrink-0" />}
             {isCollectionTarget ? t('binderTypes.convertWishlist') : t('binderTypes.convertCollection')}
           </button>
@@ -700,7 +701,7 @@ export default function BinderDetail() {
             <button
               type="button"
               onClick={() => setConversionTarget('wishlist')}
-              className="btn-ghost w-full max-w-full flex-shrink-0 whitespace-normal px-4 sm:w-auto sm:whitespace-nowrap"
+              className="btn-ghost flex-shrink-0 px-2"
               disabled={convertCollectionMutation.isPending}
               title={t('binderTypes.convertCollection')}
               aria-label={t('binderTypes.convertCollection')}
