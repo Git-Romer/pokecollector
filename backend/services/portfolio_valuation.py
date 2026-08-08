@@ -16,7 +16,7 @@ from models import (
 )
 from services.card_values import effective_market_price, normalize_price_field
 from services.card_visibility import visible_card_filter
-from services.product_ledger import product_effective_value
+from services.product_ledger import product_effective_value, product_lifecycle_status
 
 
 @dataclass(frozen=True)
@@ -34,6 +34,7 @@ class PortfolioValuation:
     total_pnl: float
     total_cards: int
     product_value_fallback_count: int
+    products_needing_review_count: int
     products_sold_cost: float
     products_sold_revenue: float
     product_card_realized_gains: float
@@ -55,6 +56,7 @@ class PortfolioValuation:
             "total_pnl": round(self.total_pnl, 2),
             "total_cards": self.total_cards,
             "product_value_fallback_count": self.product_value_fallback_count,
+            "products_needing_review_count": self.products_needing_review_count,
             "products_sold_cost": round(self.products_sold_cost, 2),
             "products_sold_revenue": round(self.products_sold_revenue, 2),
             "product_card_realized_gains": round(self.product_card_realized_gains, 2),
@@ -181,6 +183,7 @@ def calculate_portfolio_valuation(
     performance_product_cost = 0.0
     realized_value = 0.0
     product_value_fallback_count = 0
+    products_needing_review_count = 0
     product_returns = 0.0
     products_sold_cost = 0.0
     products_sold_revenue = 0.0
@@ -191,6 +194,7 @@ def calculate_portfolio_valuation(
         performance_product_cost += purchase_price
         linked_entries = product_cards_by_product.get(product.id, [])
         flat_entries = flat_entries_by_product.get(product.id, [])
+        lifecycle_status = product_lifecycle_status(product, bool(linked_entries or flat_entries))
 
         if linked_entries or flat_entries:
             effective_value, _source, totals = product_effective_value(
@@ -206,12 +210,20 @@ def calculate_portfolio_valuation(
                 product_cost_basis += purchase_price
             continue
 
-        if product.sold_price is not None:
+        if lifecycle_status == "sold":
             sold_price = float(product.sold_price or 0)
             product_returns += sold_price
             realized_value += sold_price
             products_sold_cost += purchase_price
             products_sold_revenue += sold_price
+            continue
+
+        if lifecycle_status in {"opened", "review"}:
+            # These products do not add a second asset value on top of the
+            # collection cards. Their purchase cost remains invested capital.
+            product_cost_basis += purchase_price
+            if lifecycle_status == "review":
+                products_needing_review_count += 1
             continue
 
         current_value = product.current_value
@@ -260,6 +272,7 @@ def calculate_portfolio_valuation(
         total_pnl=round(total_pnl, 2),
         total_cards=total_cards,
         product_value_fallback_count=product_value_fallback_count,
+        products_needing_review_count=products_needing_review_count,
         products_sold_cost=round(products_sold_cost, 2),
         products_sold_revenue=round(products_sold_revenue, 2),
         product_card_realized_gains=round(product_card_realized_gains, 2),

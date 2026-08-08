@@ -173,6 +173,7 @@ def get_dashboard(
         "unrealized_pnl": valuation.unrealized_pnl,
         "realized_pnl": valuation.realized_pnl,
         "product_value_fallback_count": valuation.product_value_fallback_count,
+        "products_needing_review_count": valuation.products_needing_review_count,
         "calculation_version": PORTFOLIO_CALCULATION_VERSION,
         "products_sold_cost": valuation.products_sold_cost,
         "products_sold_revenue": valuation.products_sold_revenue,

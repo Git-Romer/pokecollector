@@ -4,8 +4,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell
 } from 'recharts'
-import { Plus, Trash2, Edit2, TrendingUp, TrendingDown, Package, Check, X, SortAsc, Filter, ChevronUp, ChevronDown, Link2, DollarSign, History, Eye } from 'lucide-react'
-import { getProducts, createProduct, updateProduct, deleteProduct, getProductsSummary, getCollection, linkProductCard, unlinkProductCard, sellProductCard, addProductLedgerEntry, getApiErrorMessage } from '../api/client'
+import { Plus, Trash2, Edit2, TrendingUp, TrendingDown, Package, Check, X, SortAsc, Filter, ChevronUp, ChevronDown, Link2, DollarSign, History, Eye, AlertCircle } from 'lucide-react'
+import { getProducts, createProduct, updateProduct, bulkUpdateProductLifecycle, deleteProduct, getProductsSummary, getCollection, linkProductCard, unlinkProductCard, sellProductCard, addProductLedgerEntry, getApiErrorMessage } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import { CardRow } from '../components/card-system'
 import MoneyInput from '../components/MoneyInput'
@@ -29,6 +29,9 @@ function ProductForm({ initial = {}, onSubmit, onCancel, loading }) {
     sold_price: formatMoneyInputValue(initial.sold_price, exchangeRate),
     purchase_date: initial.purchase_date || today,
     sold_date: initial.sold_date || '',
+    lifecycle_status: ['sealed', 'opened'].includes(initial.lifecycle_status)
+      ? initial.lifecycle_status
+      : initial.lifecycle_status ? '' : 'sealed',
     notes: initial.notes || '',
   })
   const [moneyTouched, setMoneyTouched] = useState(false)
@@ -51,11 +54,17 @@ function ProductForm({ initial = {}, onSubmit, onCancel, loading }) {
   const purchasePriceValid = isValidMoneyInputValue(form.purchase_price)
   const currentValueValid = form.current_value === '' || isValidMoneyInputValue(form.current_value)
   const soldPriceValid = form.sold_price === '' || isValidMoneyInputValue(form.sold_price)
+  const hasSale = form.sold_price !== ''
+  const saleDateWithoutPrice = form.sold_date !== '' && !hasSale
+  const saleConflictsWithOpened = hasSale && form.lifecycle_status === 'opened'
   const canSubmit = form.product_name.trim()
     && form.purchase_price !== ''
     && purchasePriceValid
     && currentValueValid
     && soldPriceValid
+    && !saleDateWithoutPrice
+    && !saleConflictsWithOpened
+    && (hasSale || form.lifecycle_status)
     && exchangeRateReady
 
   return (
@@ -75,6 +84,19 @@ function ProductForm({ initial = {}, onSubmit, onCancel, loading }) {
         <label className="text-xs text-text-muted mb-1 block">{t('products.purchaseDate')}</label>
         <input type="date" value={form.purchase_date} onChange={(e) => set('purchase_date', e.target.value)} className="input" />
       </div>
+      <div className="col-span-2">
+        <label className="text-xs text-text-muted mb-1 block">{t('products.lifecycleStatus')}</label>
+        {hasSale && !saleConflictsWithOpened ? (
+          <div className="input flex items-center text-text-secondary">{t('products.statusSold')}</div>
+        ) : (
+          <select className="select" value={form.lifecycle_status} onChange={(e) => set('lifecycle_status', e.target.value)}>
+            {!form.lifecycle_status && <option value="">{t('products.chooseStatus')}</option>}
+            <option value="sealed">{t('products.statusSealed')}</option>
+            <option value="opened">{t('products.statusOpened')}</option>
+          </select>
+        )}
+        <p className="mt-1 text-xs text-text-muted">{t('products.lifecycleHelp')}</p>
+      </div>
       <div>
         <label className="text-xs text-text-muted mb-1 block">{t('products.purchasePrice')}</label>
         <MoneyInput value={form.purchase_price} onChange={(e) => setMoney('purchase_price', e.target.value)} />
@@ -91,19 +113,29 @@ function ProductForm({ initial = {}, onSubmit, onCancel, loading }) {
         <label className="text-xs text-text-muted mb-1 block">{t('products.soldDate')}</label>
         <input type="date" value={form.sold_date} onChange={(e) => set('sold_date', e.target.value)} className="input" />
       </div>
+      {saleDateWithoutPrice && (
+        <p className="col-span-2 text-xs text-brand-red">{t('products.salePriceRequired')}</p>
+      )}
+      {saleConflictsWithOpened && (
+        <p className="col-span-2 text-xs text-brand-red">{t('products.openedSaleConflict')}</p>
+      )}
       <div className="col-span-2">
         <label className="text-xs text-text-muted mb-1 block">{t('products.notes')}</label>
         <input type="text" placeholder={t('products.notesHint')} value={form.notes}
           onChange={(e) => set('notes', e.target.value)} className="input" />
       </div>
       <div className="col-span-2 flex gap-2">
-        <button onClick={() => onSubmit({
-          ...form,
-          purchase_price: parseMoneyInputValue(form.purchase_price, exchangeRate),
-          current_value: parseMoneyInputValue(form.current_value, exchangeRate, null),
-          sold_price: parseMoneyInputValue(form.sold_price, exchangeRate, null),
-          sold_date: form.sold_date || null,
-        })} disabled={!canSubmit || loading || !exchangeRateReady} className="btn-primary flex-1">
+        <button onClick={() => {
+          const payload = {
+            ...form,
+            purchase_price: parseMoneyInputValue(form.purchase_price, exchangeRate),
+            current_value: parseMoneyInputValue(form.current_value, exchangeRate, null),
+            sold_price: parseMoneyInputValue(form.sold_price, exchangeRate, null),
+            sold_date: form.sold_date || null,
+          }
+          if (hasSale && !form.lifecycle_status) delete payload.lifecycle_status
+          onSubmit(payload)
+        }} disabled={!canSubmit || loading || !exchangeRateReady} className="btn-primary flex-1">
           <Check size={14} /> {loading ? t('common.saving') : t('common.save')}
         </button>
         <button onClick={onCancel} className="btn-ghost">
@@ -120,6 +152,20 @@ const getProductValue = (product) => {
   if (product?.current_value != null) return product.current_value
   return product?.purchase_price ?? 0
 }
+
+const getProductLifecycleStatus = (product) => {
+  if (product?.lifecycle_status) return product.lifecycle_status
+  if (product?.sold_price != null || product?.sold_date) return 'sold'
+  if ((product?.product_cards?.length || 0) > 0 || (product?.ledger_entries?.length || 0) > 0) return 'opened'
+  return 'sealed'
+}
+
+const getProductLifecycleLabel = (product, t) => ({
+  sealed: t('products.statusSealed'),
+  opened: t('products.statusOpened'),
+  sold: t('products.statusSold'),
+  review: t('products.statusReview'),
+})[getProductLifecycleStatus(product)]
 
 function collectionItemLabel(item, formatPrice) {
   const card = item.card || {}
@@ -390,6 +436,16 @@ export default function Products() {
       invalidateProducts()
       setEditingId(null)
     },
+    onError: (error) => toast.error(getApiErrorMessage(error, t('products.updateFailed'))),
+  })
+
+  const bulkLifecycleMutation = useMutation({
+    mutationFn: bulkUpdateProductLifecycle,
+    onSuccess: (response) => {
+      toast.success(t('products.classifiedCount').replace('{count}', response.data.updated))
+      invalidateProducts()
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error, t('products.classificationFailed'))),
   })
 
   const deleteMutation = useMutation({
@@ -440,6 +496,10 @@ export default function Products() {
   })
 
   const hasActiveFilters = filterType || filterDateFrom || filterDateTo || filterPnl !== 'all'
+  const reviewProducts = useMemo(
+    () => products.filter(product => getProductLifecycleStatus(product) === 'review'),
+    [products],
+  )
   const periodCutoff = useMemo(() => getPeriodCutoff(period), [period])
 
   const periodStats = useMemo(() => {
@@ -505,6 +565,48 @@ export default function Products() {
         </div>
       </div>
 
+      {reviewProducts.length > 0 && (
+        <div className="card border-amber-500/30 bg-amber-500/5">
+          <div className="flex items-start gap-3">
+            <AlertCircle size={20} className="mt-0.5 shrink-0 text-amber-400" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <h2 className="font-semibold text-text-primary">
+                {t('products.reviewTitle').replace('{count}', reviewProducts.length)}
+              </h2>
+              <p className="mt-1 text-sm text-text-secondary">{t('products.reviewDescription')}</p>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <button
+                  className="btn-ghost justify-center"
+                  disabled={bulkLifecycleMutation.isPending}
+                  onClick={() => {
+                    if (!confirm(t('products.confirmAllOpened').replace('{count}', reviewProducts.length))) return
+                    bulkLifecycleMutation.mutate({
+                      product_ids: reviewProducts.map(product => product.id),
+                      lifecycle_status: 'opened',
+                    })
+                  }}
+                >
+                  {t('products.markAllOpened')}
+                </button>
+                <button
+                  className="btn-ghost justify-center"
+                  disabled={bulkLifecycleMutation.isPending}
+                  onClick={() => {
+                    if (!confirm(t('products.confirmAllSealed').replace('{count}', reviewProducts.length))) return
+                    bulkLifecycleMutation.mutate({
+                      product_ids: reviewProducts.map(product => product.id),
+                      lifecycle_status: 'sealed',
+                    })
+                  }}
+                >
+                  {t('products.markAllSealed')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Summary Cards */}
       {products.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -525,8 +627,8 @@ export default function Products() {
           </div>
           <div className="stat-card">
             <p className="stat-label uppercase tracking-wide">{t('products.return')}</p>
-            <div className={clsx('flex items-center gap-1 text-xl font-bold', periodStats.pnlPct >= 0 ? 'text-green' : 'text-brand-red')}>
-              {periodStats.pnlPct >= 0 ? <TrendingUp size={20} /> : <TrendingDown size={20} />}
+            <div className={clsx('flex items-center gap-1 whitespace-nowrap text-lg font-bold sm:text-xl', periodStats.pnlPct >= 0 ? 'text-green' : 'text-brand-red')}>
+              {periodStats.pnlPct >= 0 ? <TrendingUp size={18} className="shrink-0" /> : <TrendingDown size={18} className="shrink-0" />}
               {periodStats.pnlPct >= 0 ? '+' : ''}{periodStats.pnlPct.toFixed(2)}%
             </div>
           </div>
@@ -679,15 +781,42 @@ export default function Products() {
                         <td className="px-4 py-3">
                           <p className="text-sm font-medium text-text-primary">{p.product_name}</p>
                           {p.notes && <p className="text-xs text-text-muted truncate max-w-[160px]">{p.notes}</p>}
-                          {p.sold_date && <span className="badge badge-green text-xs">{t('common.sold')}</span>}
+                          <span className={clsx(
+                            'badge mt-1 text-xs',
+                            getProductLifecycleStatus(p) === 'sold' ? 'badge-green' : 'badge-gray',
+                          )}>
+                            {getProductLifecycleLabel(p, t)}
+                          </span>
+                          {getProductLifecycleStatus(p) === 'review' && (
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              <button
+                                className="rounded border border-border px-2 py-1 text-[10px] text-text-secondary hover:text-text-primary"
+                                disabled={updateMutation.isPending}
+                                onClick={() => updateMutation.mutate({ id: p.id, data: { lifecycle_status: 'opened' } })}
+                              >
+                                {t('products.markOpened')}
+                              </button>
+                              <button
+                                className="rounded border border-border px-2 py-1 text-[10px] text-text-secondary hover:text-text-primary"
+                                disabled={updateMutation.isPending}
+                                onClick={() => updateMutation.mutate({ id: p.id, data: { lifecycle_status: 'sealed' } })}
+                              >
+                                {t('products.markSealed')}
+                              </button>
+                            </div>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-text-secondary text-xs">{p.product_type || '-'}</td>
                         <td className="px-4 py-3 text-text-secondary text-xs">{p.purchase_date}</td>
                         <td className="px-4 py-3 text-right font-medium text-text-primary">{formatPrice(p.purchase_price)}</td>
                         <td className="px-4 py-3 text-right text-text-primary">
-                          {p.computed_current_value != null ? formatPrice(p.computed_current_value) : '-'}
+                          {p.value_source === 'needs_review'
+                            ? '-'
+                            : p.computed_current_value != null ? formatPrice(p.computed_current_value) : '-'}
                           {p.value_source === 'linked_cards' && <p className="text-[10px] text-text-muted">{t('products.dynamic')}</p>}
                           {p.value_source === 'purchase_cost_fallback' && <p className="text-[10px] text-text-muted">{t('products.costFallback')}</p>}
+                          {p.value_source === 'opened_unlinked' && <p className="text-[10px] text-text-muted">{t('products.openedUnlinked')}</p>}
+                          {p.value_source === 'needs_review' && <p className="text-[10px] text-amber-400">{t('products.excludedUntilReviewed')}</p>}
                         </td>
                         <td className="px-4 py-3 text-right font-medium">
                           {p.pnl !== null ? (
@@ -760,14 +889,19 @@ export default function Products() {
 
               const badges = []
               if (p.product_type) badges.push({ label: p.product_type, variant: 'gray' })
-              if (p.sold_date) badges.push({ label: t('common.sold'), variant: 'green' })
+              badges.push({
+                label: getProductLifecycleLabel(p, t),
+                variant: getProductLifecycleStatus(p) === 'sold' ? 'green' : 'gray',
+              })
               if (p.value_source === 'purchase_cost_fallback') badges.push({ label: t('products.costFallback'), variant: 'gray' })
+              if (p.value_source === 'opened_unlinked') badges.push({ label: t('products.openedUnlinked'), variant: 'gray' })
+              if (p.value_source === 'needs_review') badges.push({ label: t('products.excludedUntilReviewed'), variant: 'gray' })
 
               return (
                 <Fragment key={p.id}>
                   <CardRow
                     name={p.product_name}
-                    subtext={`${p.purchase_date} · ${formatPrice(p.purchase_price)} · ${t('products.valueLabel')}: ${p.computed_current_value != null ? formatPrice(p.computed_current_value) : '-'}`}
+                    subtext={`${p.purchase_date} · ${formatPrice(p.purchase_price)} · ${t('products.valueLabel')}: ${p.value_source === 'needs_review' ? '-' : p.computed_current_value != null ? formatPrice(p.computed_current_value) : '-'}`}
                     badges={badges}
                     value={p.pnl !== null ? `${p.pnl >= 0 ? '+' : ''}${formatPrice(p.pnl)}` : '-'}
                     valueSecondary={p.pnl_percent !== null ? `${p.pnl_percent >= 0 ? '+' : ''}${p.pnl_percent?.toFixed(1)}%` : undefined}
@@ -790,6 +924,24 @@ export default function Products() {
                       </div>
                     }
                   />
+                  {getProductLifecycleStatus(p) === 'review' && (
+                    <div className="mx-1 flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-2">
+                      <button
+                        className="btn-ghost flex-1 justify-center py-1.5 text-xs"
+                        disabled={updateMutation.isPending}
+                        onClick={() => updateMutation.mutate({ id: p.id, data: { lifecycle_status: 'opened' } })}
+                      >
+                        {t('products.markOpened')}
+                      </button>
+                      <button
+                        className="btn-ghost flex-1 justify-center py-1.5 text-xs"
+                        disabled={updateMutation.isPending}
+                        onClick={() => updateMutation.mutate({ id: p.id, data: { lifecycle_status: 'sealed' } })}
+                      >
+                        {t('products.markSealed')}
+                      </button>
+                    </div>
+                  )}
                   {expandedProductId === p.id && (
                     <ProductLedgerPanel
                       product={p}

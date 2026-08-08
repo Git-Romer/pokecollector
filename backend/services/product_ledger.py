@@ -5,6 +5,9 @@ from typing import Iterable
 from services.card_values import effective_market_price, normalize_price_field
 
 
+PRODUCT_LIFECYCLE_STATUSES = {"sealed", "opened", "sold", "review"}
+
+
 @dataclass(frozen=True)
 class ProductLedgerTotals:
     live_cards_value: float
@@ -106,6 +109,29 @@ def ledger_totals(entries: Iterable, price_field: str | None = "price_trend", fl
     )
 
 
+def product_has_completed_sale(product) -> bool:
+    """A whole-product sale is complete only when its proceeds are explicit."""
+    return getattr(product, "sold_price", None) is not None
+
+
+def product_lifecycle_status(product, has_activity: bool = False) -> str:
+    """Return a safe effective lifecycle state for new and legacy objects."""
+    if has_activity:
+        return "opened"
+    if product_has_completed_sale(product):
+        return "sold"
+    if getattr(product, "sold_date", None) is not None:
+        return "review"
+    status = getattr(product, "lifecycle_status", None)
+    if status == "sold":
+        return "review"
+    if status in PRODUCT_LIFECYCLE_STATUSES:
+        return status
+    # Test doubles and pre-migration objects historically represented sealed
+    # products when they had no card or sale activity.
+    return "sealed"
+
+
 def product_effective_value(product, entries: Iterable, price_field: str | None = "price_trend", flat_entries: Iterable | None = None):
     """Return the value used for product P&L without breaking old manual products.
 
@@ -118,10 +144,15 @@ def product_effective_value(product, entries: Iterable, price_field: str | None 
     entry_list = list(entries)
     flat_entry_list = list(flat_entries or [])
     totals = ledger_totals(entry_list, price_field, flat_entry_list)
+    lifecycle_status = product_lifecycle_status(product, bool(entry_list or flat_entry_list))
     if entry_list or flat_entry_list:
         return totals.dynamic_value, "linked_cards", totals
-    if getattr(product, "sold_price", None) is not None:
-        return round(float(product.sold_price), 2), "manual_sold", totals
+    if lifecycle_status == "sold":
+        return round(float(getattr(product, "sold_price", 0) or 0), 2), "manual_sold", totals
+    if lifecycle_status == "opened":
+        return 0.0, "opened_unlinked", totals
+    if lifecycle_status == "review":
+        return 0.0, "needs_review", totals
     if getattr(product, "current_value", None) is not None:
         return round(float(product.current_value), 2), "manual_current", totals
     purchase_price = getattr(product, "purchase_price", None)

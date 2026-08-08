@@ -218,6 +218,7 @@ export default function Analytics() {
   // Investment summary
   const latestSnapshot = investmentData.length > 0 ? investmentData[investmentData.length - 1] : null
   const totalProductsCost = products.reduce((sum, p) => sum + (p.purchase_price || 0), 0)
+  const productsNeedingReviewCount = products.filter(p => p.lifecycle_status === 'review').length
   const performanceCostBasis = latestSnapshot?.performance_cost_basis ?? latestSnapshot?.cost ?? 0
   const realizedValue = latestSnapshot?.realized_value ?? 0
   const totalPnl = latestSnapshot?.pnl ?? 0
@@ -522,6 +523,13 @@ export default function Analytics() {
             <p className="flex items-start gap-2 rounded-lg border border-yellow/20 bg-yellow/5 px-3 py-2 text-xs text-text-muted">
               <Info size={14} className="mt-0.5 shrink-0 text-yellow" aria-hidden="true" />
               <span>{latestSnapshot.product_value_fallback_count} {t('home.productValueFallback')}</span>
+            </p>
+          )}
+
+          {productsNeedingReviewCount > 0 && (
+            <p className="flex items-start gap-2 rounded-lg border border-yellow/20 bg-yellow/5 px-3 py-2 text-xs text-text-muted">
+              <Info size={14} className="mt-0.5 shrink-0 text-yellow" aria-hidden="true" />
+              <span>{productsNeedingReviewCount} {t('home.productsNeedReview')}</span>
             </p>
           )}
 

@@ -397,6 +397,26 @@ def _run_migrations(conn):
         "ALTER TABLE portfolio_snapshots ADD COLUMN IF NOT EXISTS product_value_fallback_count INTEGER",
         "CREATE INDEX IF NOT EXISTS ix_product_purchases_user_id ON product_purchases(user_id)",
         "CREATE INDEX IF NOT EXISTS ix_portfolio_snapshots_user_date ON portfolio_snapshots(user_id, date)",
+        # v54: Explicit product lifecycle. Legacy products without enough
+        # provenance are held for review instead of being assumed sealed.
+        "ALTER TABLE product_purchases ADD COLUMN IF NOT EXISTS lifecycle_status VARCHAR",
+        """UPDATE product_purchases
+           SET lifecycle_status = CASE
+               WHEN EXISTS (
+                   SELECT 1 FROM product_cards
+                   WHERE product_cards.product_id = product_purchases.id
+               ) OR EXISTS (
+                   SELECT 1 FROM product_ledger_entries
+                   WHERE product_ledger_entries.product_id = product_purchases.id
+               ) THEN 'opened'
+               WHEN sold_price IS NOT NULL THEN 'sold'
+               ELSE 'review'
+           END
+           WHERE lifecycle_status IS NULL""",
+        "ALTER TABLE product_purchases ALTER COLUMN lifecycle_status SET DEFAULT 'sealed'",
+        "ALTER TABLE product_purchases ALTER COLUMN lifecycle_status SET NOT NULL",
+        "ALTER TABLE product_purchases DROP CONSTRAINT IF EXISTS ck_product_purchases_lifecycle_status",
+        "ALTER TABLE product_purchases ADD CONSTRAINT ck_product_purchases_lifecycle_status CHECK (lifecycle_status IN ('sealed', 'opened', 'sold', 'review'))",
         """UPDATE sets
            SET is_digital = TRUE
            WHERE COALESCE(is_digital, FALSE) = FALSE

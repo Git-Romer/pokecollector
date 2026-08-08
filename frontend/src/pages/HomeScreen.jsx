@@ -71,14 +71,12 @@ function CardThumb({ card, onClick }) {
   )
 }
 
-function ProductValueFallbackInfo({ count, label, detailsLabel, message }) {
+function ProductValueInfo({ label, detailsLabel, explanation }) {
   const [hovered, setHovered] = useState(false)
   const [focused, setFocused] = useState(false)
   const [dismissed, setDismissed] = useState(false)
   const descriptionId = useId()
   const visible = !dismissed && (hovered || focused)
-  const explanation = `${count} ${message}`
-
   useEffect(() => {
     if (!visible) return undefined
     const dismissOnEscape = (event) => {
@@ -188,6 +186,15 @@ export default function HomeScreen() {
   const headlineValue = showingPortfolioValue ? totalValue : netInvested
   const headlineLabel = showingPortfolioValue ? t('home.portfolioValue') : t('home.capitalInvested')
   const productValueFallbackCount = Number(data?.product_value_fallback_count ?? 0)
+  const productsNeedingReviewCount = Number(data?.products_needing_review_count ?? 0)
+  const productValueExplanation = [
+    productsNeedingReviewCount > 0
+      ? `${productsNeedingReviewCount} ${t('home.productsNeedReview')}`
+      : '',
+    productValueFallbackCount > 0
+      ? `${productValueFallbackCount} ${t('home.productValueFallback')}`
+      : '',
+  ].filter(Boolean).join(' ')
 
   const setPortfolioDisplayMode = (mode) => {
     if (mode === portfolioDisplayMode) return
@@ -356,12 +363,11 @@ export default function HomeScreen() {
             })}
           </div>
           <div className="relative mb-2 flex w-full items-center justify-center gap-1.5">
-            {showingPortfolioValue && productValueFallbackCount > 0 ? (
-              <ProductValueFallbackInfo
-                count={productValueFallbackCount}
+            {showingPortfolioValue && productValueExplanation ? (
+              <ProductValueInfo
                 label={headlineLabel}
                 detailsLabel={t('home.details')}
-                message={t('home.productValueFallback')}
+                explanation={productValueExplanation}
               />
             ) : (
               <p className="text-[11px] text-text-muted uppercase tracking-[0.2em]">{headlineLabel}</p>

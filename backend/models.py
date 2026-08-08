@@ -254,11 +254,16 @@ class ProductPurchase(Base):
     sold_price = Column(Float)
     purchase_date = Column(Date, nullable=False)
     sold_date = Column(Date)
+    lifecycle_status = Column(String, nullable=False, default="sealed", server_default="sealed")
     notes = Column(Text)
     created_at = Column(DateTime, default=func.now())
 
     __table_args__ = (
         Index("ix_product_purchases_user_id", "user_id"),
+        CheckConstraint(
+            "lifecycle_status IN ('sealed', 'opened', 'sold', 'review')",
+            name="ck_product_purchases_lifecycle_status",
+        ),
     )
 
 

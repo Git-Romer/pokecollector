@@ -66,7 +66,15 @@ class PortfolioValuationTests(unittest.TestCase):
         item.card = self.card
         return item
 
-    def add_product(self, *, purchase_price=50, current_value=None, sold_price=None, user=None):
+    def add_product(
+        self,
+        *,
+        purchase_price=50,
+        current_value=None,
+        sold_price=None,
+        lifecycle_status="sealed",
+        user=None,
+    ):
         product = ProductPurchase(
             product_name="Elite Trainer Box",
             product_type="Elite Trainer Box",
@@ -75,6 +83,7 @@ class PortfolioValuationTests(unittest.TestCase):
             sold_price=sold_price,
             purchase_date=datetime.date(2026, 8, 8),
             sold_date=datetime.date(2026, 8, 8) if sold_price is not None else None,
+            lifecycle_status="sold" if sold_price is not None else lifecycle_status,
             user_id=(user or self.user).id,
         )
         self.db.add(product)
@@ -124,6 +133,32 @@ class PortfolioValuationTests(unittest.TestCase):
         self.assertEqual(result.unrealized_pnl, -50)
         self.assertEqual(result.total_pnl, -50)
         self.assertEqual(result.product_value_fallback_count, 0)
+
+    def test_unlinked_opened_product_does_not_duplicate_collection_value(self):
+        item = self.add_item(quantity=30, purchase_price=0)
+        self.add_product(purchase_price=500, current_value=500, lifecycle_status="opened")
+
+        result = self.valuation([item])
+
+        self.assertEqual(result.card_value, 300)
+        self.assertEqual(result.product_value, 0)
+        self.assertEqual(result.total_value, 300)
+        self.assertEqual(result.product_cost_basis, 500)
+        self.assertEqual(result.active_cost_basis, 500)
+        self.assertEqual(result.total_pnl, -200)
+        self.assertEqual(result.product_value_fallback_count, 0)
+        self.assertEqual(result.products_needing_review_count, 0)
+
+    def test_ambiguous_legacy_product_is_excluded_until_reviewed(self):
+        self.add_product(purchase_price=500, current_value=650, lifecycle_status="review")
+
+        result = self.valuation()
+
+        self.assertEqual(result.product_value, 0)
+        self.assertEqual(result.active_cost_basis, 500)
+        self.assertEqual(result.total_pnl, -500)
+        self.assertEqual(result.product_value_fallback_count, 0)
+        self.assertEqual(result.products_needing_review_count, 1)
 
     def test_standalone_cards_and_sealed_product_reconcile_together(self):
         item = self.add_item(quantity=2, purchase_price=3)
