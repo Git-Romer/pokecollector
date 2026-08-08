@@ -370,6 +370,17 @@ def _run_migrations(conn):
         "ALTER TABLE trade_items DROP CONSTRAINT IF EXISTS trade_items_card_id_fkey",
         "ALTER TABLE trade_items ALTER COLUMN card_id DROP NOT NULL",
         "ALTER TABLE trade_items ADD CONSTRAINT trade_items_card_id_fkey FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE SET NULL",
+        # v52: Exact inventory and product-ledger provenance for atomic trade edits.
+        "ALTER TABLE trade_items ADD COLUMN IF NOT EXISTS purchase_price FLOAT",
+        "ALTER TABLE trade_items ADD COLUMN IF NOT EXISTS snapshot_version INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE trade_items DROP CONSTRAINT IF EXISTS ck_trade_items_purchase_price_non_negative",
+        "ALTER TABLE trade_items ADD CONSTRAINT ck_trade_items_purchase_price_non_negative CHECK (purchase_price IS NULL OR purchase_price >= 0)",
+        "ALTER TABLE trade_items DROP CONSTRAINT IF EXISTS ck_trade_items_snapshot_version_non_negative",
+        "ALTER TABLE trade_items ADD CONSTRAINT ck_trade_items_snapshot_version_non_negative CHECK (snapshot_version >= 0)",
+        "ALTER TABLE product_ledger_entries ADD COLUMN IF NOT EXISTS trade_item_id INTEGER",
+        "ALTER TABLE product_ledger_entries DROP CONSTRAINT IF EXISTS product_ledger_entries_trade_item_id_fkey",
+        "ALTER TABLE product_ledger_entries ADD CONSTRAINT product_ledger_entries_trade_item_id_fkey FOREIGN KEY (trade_item_id) REFERENCES trade_items(id) ON DELETE SET NULL",
+        "CREATE INDEX IF NOT EXISTS idx_product_ledger_trade_item ON product_ledger_entries(trade_item_id)",
         """UPDATE sets
            SET is_digital = TRUE
            WHERE COALESCE(is_digital, FALSE) = FALSE

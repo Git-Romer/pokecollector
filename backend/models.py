@@ -302,6 +302,7 @@ class ProductLedgerEntry(Base):
     entry_type = Column(String, nullable=False, default="card_sale")  # card_sale / flat_gain / adjustment
     card_id = Column(String, ForeignKey("cards.id", ondelete="SET NULL"), nullable=True)
     original_collection_item_id = Column(Integer, nullable=True)
+    trade_item_id = Column(Integer, ForeignKey("trade_items.id", ondelete="SET NULL"), nullable=True)
     quantity = Column(Integer, default=1, nullable=False)
     amount = Column(Float, nullable=False)  # Flat total for this ledger event
     event_date = Column(Date, nullable=False)
@@ -363,6 +364,10 @@ class TradeItem(Base):
     original_collection_item_id = Column(Integer, nullable=True)
     created_collection_item_id = Column(Integer, nullable=True)
     product_card_id = Column(Integer, nullable=True)
+    # Inventory provenance added for editable trades. Legacy rows keep
+    # snapshot_version=0 so unsafe reversals can be rejected explicitly.
+    purchase_price = Column(Float, nullable=True)
+    snapshot_version = Column(Integer, default=1, nullable=False)
     quantity = Column(Integer, default=1, nullable=False)
     value_per_card = Column(Float, default=0, nullable=False)
     value_total = Column(Float, default=0, nullable=False)
@@ -383,6 +388,8 @@ class TradeItem(Base):
         CheckConstraint("quantity >= 1", name="ck_trade_items_quantity_positive"),
         CheckConstraint("value_per_card >= 0", name="ck_trade_items_value_per_card_non_negative"),
         CheckConstraint("value_total >= 0", name="ck_trade_items_value_total_non_negative"),
+        CheckConstraint("purchase_price IS NULL OR purchase_price >= 0", name="ck_trade_items_purchase_price_non_negative"),
+        CheckConstraint("snapshot_version >= 0", name="ck_trade_items_snapshot_version_non_negative"),
     )
 
 

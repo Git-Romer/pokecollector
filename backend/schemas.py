@@ -405,6 +405,34 @@ class TradeIncomingItemCreate(BaseModel):
     notes: Optional[str] = None
 
 
+class TradeOutgoingItemUpdate(BaseModel):
+    trade_item_id: Optional[int] = None
+    collection_item_id: Optional[int] = None
+    quantity: int = Field(default=1, ge=1, le=999)
+    condition: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class TradeIncomingItemUpdate(BaseModel):
+    trade_item_id: Optional[int] = None
+    card_id: Optional[str] = None
+    quantity: int = Field(default=1, ge=1, le=999)
+    condition: str = "NM"
+    variant: Optional[str] = "Normal"
+    lang: str = "en"
+    notes: Optional[str] = None
+
+
+class TradeUpdate(BaseModel):
+    partner_name: Optional[str] = None
+    trade_date: date
+    notes: Optional[str] = None
+    outgoing_cash: Optional[float] = Field(default=0, ge=0)
+    incoming_cash: Optional[float] = Field(default=0, ge=0)
+    outgoing: List[TradeOutgoingItemUpdate] = Field(default_factory=list)
+    incoming: List[TradeIncomingItemUpdate] = Field(default_factory=list)
+
+
 class TradeCreate(BaseModel):
     partner_name: Optional[str] = None
     trade_date: date
@@ -423,6 +451,8 @@ class TradeItemResponse(BaseModel):
     original_collection_item_id: Optional[int] = None
     created_collection_item_id: Optional[int] = None
     product_card_id: Optional[int] = None
+    purchase_price: Optional[float] = None
+    snapshot_version: int = 0
     quantity: int
     value_per_card: float
     value_total: float
