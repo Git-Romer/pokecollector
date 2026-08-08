@@ -563,6 +563,7 @@ const de = {
     monthlyPnl: 'Monatlicher G&V',
     byType: 'Nach Produkttyp',
     logNew: 'Neuen Kauf erfassen',
+    editPurchase: 'Kauf bearbeiten',
     productName: 'Produktname *',
     productNamePlaceholder: 'z.B. Karmesin & Purpur Booster-Box',
     productType: 'Typ',

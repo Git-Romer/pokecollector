@@ -564,6 +564,7 @@ const en = {
     monthlyPnl: 'Monthly P&L',
     byType: 'By Product Type',
     logNew: 'Log New Purchase',
+    editPurchase: 'Edit Purchase',
     productName: 'Product Name *',
     productNamePlaceholder: 'e.g. Scarlet & Violet Booster Box',
     productType: 'Type',

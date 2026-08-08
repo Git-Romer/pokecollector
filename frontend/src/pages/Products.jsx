@@ -168,8 +168,8 @@ function ProductForm({ initial = {}, onSubmit, onCancel, loading }) {
         <input id={fieldId('notes')} type="text" placeholder={t('products.notesHint')} value={form.notes}
           onChange={(e) => set('notes', e.target.value)} className="input" />
       </div>
-      <div className="col-span-2 flex gap-2">
-        <button onClick={() => {
+      <div className="col-span-2 sticky bottom-0 z-10 -mx-4 flex gap-2 border-t border-border bg-bg-surface px-4 pb-2 pt-3 sm:-mx-5 sm:px-5 lg:static lg:mx-0 lg:border-0 lg:bg-transparent lg:p-0">
+        <button type="button" onClick={() => {
           const payload = {
             ...form,
             purchase_price: parseMoneyInputValue(form.purchase_price, exchangeRate),
@@ -184,7 +184,7 @@ function ProductForm({ initial = {}, onSubmit, onCancel, loading }) {
         }} disabled={!canSubmit || loading || !exchangeRateReady} className="btn-primary flex-1">
           <Check size={14} /> {loading ? t('common.saving') : t('common.save')}
         </button>
-        <button onClick={onCancel} className="btn-ghost">
+        <button type="button" onClick={onCancel} disabled={loading} className="btn-ghost">
           <X size={14} /> {t('common.cancel')}
         </button>
       </div>
@@ -861,6 +861,7 @@ export default function Products() {
     () => buildProductDisplayRows(filteredAndSorted, expandedBatchIds, { sortBy, sortOrder }),
     [filteredAndSorted, expandedBatchIds, sortBy, sortOrder],
   )
+  const editingProduct = products.find(product => product.id === editingId) || null
   const cardProduct = products.find(product => product.id === cardProductId) || null
 
   const toggleBatch = (batchId) => {
@@ -982,14 +983,6 @@ export default function Products() {
         </div>
       )}
 
-      {/* Create Form */}
-      {creating && (
-        <div className="card border-brand-red/30">
-          <h3 className="text-base font-semibold text-text-primary mb-4">{t('products.logNew')}</h3>
-          <ProductForm onSubmit={(data) => createMutation.mutate(data)} onCancel={() => setCreating(false)} loading={createMutation.isPending} />
-        </div>
-      )}
-
       {/* Sort & Filter Bar */}
       {products.length > 0 && (
         <div className="card space-y-3">
@@ -1067,7 +1060,7 @@ export default function Products() {
       {/* Products List */}
       {isLoading ? (
         <div className="skeleton h-64 rounded-xl" />
-      ) : products.length === 0 && !creating ? (
+      ) : products.length === 0 ? (
         <div className="card text-center py-20">
           <Package size={48} className="mx-auto mb-4 text-text-muted" />
           <p className="text-text-muted">{t('products.empty')}</p>
@@ -1147,15 +1140,7 @@ export default function Products() {
 
                   const p = row.product
                   return (
-                  <Fragment key={row.key}>
-                  <tr className="border-b border-border/50 hover:bg-bg-elevated/50">
-                    {editingId === p.id ? (
-                      <td colSpan={8} className="px-4 py-4">
-                        <ProductForm initial={p} onSubmit={(data) => updateMutation.mutate({ id: p.id, data })}
-                          onCancel={() => setEditingId(null)} loading={updateMutation.isPending} />
-                      </td>
-                    ) : (
-                      <>
+                  <tr key={row.key} className="border-b border-border/50 hover:bg-bg-elevated/50">
                         <td className="px-4 py-3">
                           <p className="text-sm font-medium text-text-primary">{p.product_name}</p>
                           {row.batchPosition && (
@@ -1237,10 +1222,7 @@ export default function Products() {
                             </button>
                           </div>
                         </td>
-                      </>
-                    )}
                   </tr>
-                  </Fragment>
                   )
                 })}
               </tbody>
@@ -1280,16 +1262,6 @@ export default function Products() {
               }
 
               const p = row.product
-              if (editingId === p.id) {
-                return (
-                  <div key={row.key} className="bg-bg-card border border-border rounded-lg p-3 space-y-3">
-                    <p className="text-sm font-medium text-text-primary truncate">{p.product_name}</p>
-                    <ProductForm initial={p} onSubmit={(data) => updateMutation.mutate({ id: p.id, data })}
-                      onCancel={() => setEditingId(null)} loading={updateMutation.isPending} />
-                  </div>
-                )
-              }
-
               const badges = []
               if (p.product_type) badges.push({ label: p.product_type, variant: 'gray' })
               badges.push({
@@ -1359,6 +1331,44 @@ export default function Products() {
           </div>
         </div>
       )}
+
+      <Modal
+        isOpen={creating}
+        onClose={() => {
+          if (!createMutation.isPending) setCreating(false)
+        }}
+        title={t('products.logNew')}
+        size="lg"
+      >
+        <div className="p-4 sm:p-5">
+          <ProductForm
+            onSubmit={(data) => createMutation.mutate(data)}
+            onCancel={() => setCreating(false)}
+            loading={createMutation.isPending}
+          />
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={Boolean(editingProduct)}
+        onClose={() => {
+          if (!updateMutation.isPending) setEditingId(null)
+        }}
+        title={t('products.editPurchase')}
+        size="lg"
+      >
+        {editingProduct && (
+          <div className="p-4 sm:p-5">
+            <ProductForm
+              key={editingProduct.id}
+              initial={editingProduct}
+              onSubmit={(data) => updateMutation.mutate({ id: editingProduct.id, data })}
+              onCancel={() => setEditingId(null)}
+              loading={updateMutation.isPending}
+            />
+          </div>
+        )}
+      </Modal>
 
       <ProductCardsModal
         product={cardProduct}
