@@ -4,7 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell
 } from 'recharts'
-import { Plus, Trash2, Edit2, TrendingUp, TrendingDown, Package, Check, X, SortAsc, Filter, ChevronUp, ChevronDown, Link2, DollarSign, History, Eye, AlertCircle, Search } from 'lucide-react'
+import { Plus, Trash2, Edit2, TrendingUp, TrendingDown, Package, Check, X, SortAsc, Filter, ChevronUp, ChevronDown, Link2, DollarSign, History, AlertCircle, Search } from 'lucide-react'
 import { getProducts, createProductBatch, updateProduct, bulkUpdateProductLifecycle, deleteProduct, getProductsSummary, getCollection, linkProductCards, unlinkProductCard, sellProductCard, addProductLedgerEntry, getApiErrorMessage } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import { CardRow } from '../components/card-system'
@@ -453,10 +453,25 @@ function ProductCardPicker({ isOpen, onClose, product, candidates, formatPrice, 
   )
 }
 
-function ProductLedgerPanel({ product, products, collectionItems, formatPrice, t, onLink, onUnlink, onSell, onFlatGain, loading }) {
+function ProductLedgerPanel({
+  product,
+  products,
+  collectionItems,
+  formatPrice,
+  t,
+  onLink,
+  onUnlink,
+  onSell,
+  onFlatGain,
+  loading,
+  linkPickerOpen,
+  onLinkPickerOpenChange,
+}) {
   const { exchangeRate, exchangeRateReady } = useSettings()
   const today = new Date().toISOString().split('T')[0]
-  const [linkPickerOpen, setLinkPickerOpen] = useState(false)
+  const [internalLinkPickerOpen, setInternalLinkPickerOpen] = useState(false)
+  const isLinkPickerOpen = linkPickerOpen ?? internalLinkPickerOpen
+  const setLinkPickerOpen = onLinkPickerOpenChange ?? setInternalLinkPickerOpen
   const [saleForms, setSaleForms] = useState({})
   const [flatGain, setFlatGain] = useState({ amount: '', event_date: today, notes: '' })
   const linkedByItem = useMemo(() => linkedActiveQuantityByCollectionItem(products), [products])
@@ -512,7 +527,7 @@ function ProductLedgerPanel({ product, products, collectionItems, formatPrice, t
   }
 
   return (
-    <div className="bg-bg-elevated/40 border border-border rounded-xl p-4 space-y-4">
+    <div className="space-y-4 p-4 sm:p-5">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="stat-card p-3">
           <p className="stat-label">{t('products.liveCardsValue')}</p>
@@ -543,7 +558,7 @@ function ProductLedgerPanel({ product, products, collectionItems, formatPrice, t
       </div>
 
       <ProductCardPicker
-        isOpen={linkPickerOpen}
+        isOpen={isLinkPickerOpen}
         onClose={() => setLinkPickerOpen(false)}
         product={product}
         candidates={availableCollectionItems}
@@ -576,7 +591,7 @@ function ProductLedgerPanel({ product, products, collectionItems, formatPrice, t
                       {t('products.active')}: {entry.active_quantity} · {t('common.sold')}: {entry.sold_quantity} · {t('products.live')}: {formatPrice(entry.live_value || 0)} · {t('products.realized')}: {formatPrice(entry.realized_gains || 0)}
                     </p>
                   </div>
-                  <button disabled={loading || entry.sold_quantity > 0} onClick={() => onUnlink(product.id, entry.id)} className="btn-ghost text-xs py-1.5">
+                  <button disabled={loading || entry.sold_quantity > 0} onClick={() => onUnlink(product.id, entry.id)} className="btn-ghost shrink-0 whitespace-nowrap px-2 text-xs py-1.5">
                     <X size={12} /> {t('products.unlink')}
                   </button>
                 </div>
@@ -632,11 +647,71 @@ function ProductLedgerPanel({ product, products, collectionItems, formatPrice, t
   )
 }
 
+const getLinkedCardCount = (product) => (
+  (product.active_linked_cards_count || 0) + (product.sold_linked_cards_count || 0)
+)
+
+const getCardsActionLabel = (product, t) => {
+  const count = getLinkedCardCount(product)
+  return count > 0
+    ? t('products.cardsCount').replace('{count}', count)
+    : t('products.linkCardsAction')
+}
+
+function ProductCardsModal({
+  product,
+  products,
+  collectionItems,
+  formatPrice,
+  t,
+  onClose,
+  onLink,
+  onUnlink,
+  onSell,
+  onFlatGain,
+  loading,
+}) {
+  const [linkPickerOpen, setLinkPickerOpen] = useState(false)
+
+  useEffect(() => {
+    setLinkPickerOpen(false)
+  }, [product?.id])
+
+  if (!product) return null
+
+  return (
+    <Modal
+      isOpen
+      onClose={() => {
+        if (!linkPickerOpen) onClose()
+      }}
+      title={t('products.cardsFor').replace('{product}', product.product_name)}
+      size="xl"
+      isObscured={linkPickerOpen}
+    >
+      <ProductLedgerPanel
+        product={product}
+        products={products}
+        collectionItems={collectionItems}
+        formatPrice={formatPrice}
+        t={t}
+        loading={loading}
+        linkPickerOpen={linkPickerOpen}
+        onLinkPickerOpenChange={setLinkPickerOpen}
+        onLink={onLink}
+        onUnlink={onUnlink}
+        onSell={onSell}
+        onFlatGain={onFlatGain}
+      />
+    </Modal>
+  )
+}
+
 export default function Products() {
   const { t, formatPrice, pricePrimaryField } = useSettings()
   const [creating, setCreating] = useState(false)
   const [editingId, setEditingId] = useState(null)
-  const [expandedProductId, setExpandedProductId] = useState(null)
+  const [cardProductId, setCardProductId] = useState(null)
   const [expandedBatchIds, setExpandedBatchIds] = useState(() => new Set())
   const [period, setPeriod] = useState('total')
   const [sortBy, setSortBy] = useState('purchase_date')
@@ -786,6 +861,7 @@ export default function Products() {
     () => buildProductDisplayRows(filteredAndSorted, expandedBatchIds, { sortBy, sortOrder }),
     [filteredAndSorted, expandedBatchIds, sortBy, sortOrder],
   )
+  const cardProduct = products.find(product => product.id === cardProductId) || null
 
   const toggleBatch = (batchId) => {
     setExpandedBatchIds(current => {
@@ -1144,18 +1220,19 @@ export default function Products() {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1 justify-end">
                             <button
-                              onClick={() => setExpandedProductId(id => id === p.id ? null : p.id)}
-                              className="text-text-muted hover:text-text-primary p-1 transition-colors"
-                              aria-label={`${t('products.openLedger')} ${p.product_name}`}
+                              type="button"
+                              onClick={() => setCardProductId(p.id)}
+                              className="btn-ghost whitespace-nowrap px-2 py-1.5 text-xs"
+                              aria-label={`${getCardsActionLabel(p, t)}: ${p.product_name}`}
                             >
-                              <Eye size={14} />
+                              <Link2 size={13} /> {getCardsActionLabel(p, t)}
                             </button>
-                            <button onClick={() => setEditingId(p.id)} className="text-text-muted hover:text-text-primary p-1 transition-colors">
+                            <button onClick={() => setEditingId(p.id)} className="text-text-muted hover:text-text-primary p-1 transition-colors" aria-label={`${t('common.edit')}: ${p.product_name}`}>
                               <Edit2 size={14} />
                             </button>
                             <button onClick={() => {
                               if (confirm(`${t('products.deleteConfirm')} "${p.product_name}"?`)) deleteMutation.mutate(p.id)
-                            }} className="text-text-muted hover:text-brand-red p-1 transition-colors">
+                            }} className="text-text-muted hover:text-brand-red p-1 transition-colors" aria-label={`${t('common.delete')}: ${p.product_name}`}>
                               <Trash2 size={14} />
                             </button>
                           </div>
@@ -1163,24 +1240,6 @@ export default function Products() {
                       </>
                     )}
                   </tr>
-                  {expandedProductId === p.id && editingId !== p.id && (
-                    <tr className="border-b border-border/50">
-                      <td colSpan={8} className="px-4 py-4">
-                        <ProductLedgerPanel
-                          product={p}
-                          products={products}
-                          collectionItems={collectionItems}
-                          formatPrice={formatPrice}
-                          t={t}
-                          loading={linkCardsMutation.isPending || unlinkCardMutation.isPending || sellCardMutation.isPending || flatGainMutation.isPending}
-                          onLink={(productId, items) => linkCardsMutation.mutateAsync({ productId, items })}
-                          onUnlink={(productId, productCardId) => unlinkCardMutation.mutateAsync({ productId, productCardId })}
-                          onSell={(productId, productCardId, data) => sellCardMutation.mutateAsync({ productId, productCardId, data })}
-                          onFlatGain={(productId, data) => flatGainMutation.mutateAsync({ productId, data })}
-                        />
-                      </td>
-                    </tr>
-                  )}
                   </Fragment>
                   )
                 })}
@@ -1250,22 +1309,29 @@ export default function Products() {
                     value={p.pnl !== null ? `${p.pnl >= 0 ? '+' : ''}${formatPrice(p.pnl)}` : '-'}
                     valueSecondary={p.pnl_percent !== null ? `${p.pnl_percent >= 0 ? '+' : ''}${p.pnl_percent?.toFixed(1)}%` : undefined}
                     rightAction={
-                      <div className="flex flex-col gap-1">
-                        <button onClick={(e) => { e.stopPropagation(); setExpandedProductId(id => id === p.id ? null : p.id) }}
-                          className="text-text-muted hover:text-text-primary p-1 transition-colors"
-                          aria-label={`${t('products.openLedger')} ${p.product_name}`}>
-                          <Eye size={12} />
+                      <div className="flex flex-col items-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setCardProductId(p.id) }}
+                          className="flex min-h-[44px] items-center gap-1 rounded-lg border border-border px-2 text-[11px] font-medium text-text-secondary transition-colors hover:border-brand-red/40 hover:text-text-primary"
+                          aria-label={`${getCardsActionLabel(p, t)}: ${p.product_name}`}
+                        >
+                          <Link2 size={12} /> {getCardsActionLabel(p, t)}
                         </button>
-                        <button onClick={(e) => { e.stopPropagation(); setEditingId(p.id) }}
-                          className="text-text-muted hover:text-text-primary p-1 transition-colors">
-                          <Edit2 size={12} />
-                        </button>
-                        <button onClick={(e) => {
-                          e.stopPropagation()
-                          if (confirm(`${t('products.deleteConfirm')} "${p.product_name}"?`)) deleteMutation.mutate(p.id)
-                        }} className="text-text-muted hover:text-brand-red p-1 transition-colors">
-                          <Trash2 size={12} />
-                        </button>
+                        <div className="flex gap-1">
+                          <button onClick={(e) => { e.stopPropagation(); setEditingId(p.id) }}
+                            className="text-text-muted hover:text-text-primary p-1 transition-colors"
+                            aria-label={`${t('common.edit')}: ${p.product_name}`}>
+                            <Edit2 size={12} />
+                          </button>
+                          <button onClick={(e) => {
+                            e.stopPropagation()
+                            if (confirm(`${t('products.deleteConfirm')} "${p.product_name}"?`)) deleteMutation.mutate(p.id)
+                          }} className="text-text-muted hover:text-brand-red p-1 transition-colors"
+                            aria-label={`${t('common.delete')}: ${p.product_name}`}>
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
                       </div>
                     }
                   />
@@ -1287,26 +1353,26 @@ export default function Products() {
                       </button>
                     </div>
                   )}
-                  {expandedProductId === p.id && (
-                    <ProductLedgerPanel
-                      product={p}
-                      products={products}
-                      collectionItems={collectionItems}
-                      formatPrice={formatPrice}
-                      t={t}
-                      loading={linkCardsMutation.isPending || unlinkCardMutation.isPending || sellCardMutation.isPending || flatGainMutation.isPending}
-                      onLink={(productId, items) => linkCardsMutation.mutateAsync({ productId, items })}
-                      onUnlink={(productId, productCardId) => unlinkCardMutation.mutateAsync({ productId, productCardId })}
-                      onSell={(productId, productCardId, data) => sellCardMutation.mutateAsync({ productId, productCardId, data })}
-                      onFlatGain={(productId, data) => flatGainMutation.mutateAsync({ productId, data })}
-                    />
-                  )}
                 </Fragment>
               )
             })}
           </div>
         </div>
       )}
+
+      <ProductCardsModal
+        product={cardProduct}
+        products={products}
+        collectionItems={collectionItems}
+        formatPrice={formatPrice}
+        t={t}
+        onClose={() => setCardProductId(null)}
+        loading={linkCardsMutation.isPending || unlinkCardMutation.isPending || sellCardMutation.isPending || flatGainMutation.isPending}
+        onLink={(productId, items) => linkCardsMutation.mutateAsync({ productId, items })}
+        onUnlink={(productId, productCardId) => unlinkCardMutation.mutateAsync({ productId, productCardId })}
+        onSell={(productId, productCardId, data) => sellCardMutation.mutateAsync({ productId, productCardId, data })}
+        onFlatGain={(productId, data) => flatGainMutation.mutateAsync({ productId, data })}
+      />
 
       {/* By Type Breakdown */}
       {summary?.by_type?.length > 0 && (
