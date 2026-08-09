@@ -10,7 +10,9 @@ try:
         build_gemini_generate_url,
         get_gemini_model,
         gemini_error_message,
+        normalize_scanner_card_number,
         post_gemini_generate,
+        prioritize_cards_by_number,
     )
     API_TEST_DEPS_AVAILABLE = True
 except ModuleNotFoundError:
@@ -29,6 +31,67 @@ class RecognizeConfigTests(unittest.TestCase):
         with patch.dict("os.environ", {"GEMINI_MODEL": "models/gemini-3.5-flash"}):
             self.assertEqual(get_gemini_model(), "gemini-3.5-flash")
             self.assertIn("/gemini-3.5-flash:generateContent", build_gemini_generate_url())
+
+
+@unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")
+class RecognizeCardNumberTests(unittest.TestCase):
+    def test_normalizes_leading_zeros_and_fractional_printed_numbers(self):
+        self.assertEqual(normalize_scanner_card_number("063"), "63")
+        self.assertEqual(normalize_scanner_card_number("136/182"), "136")
+
+    def test_rejects_missing_and_non_leading_numbers(self):
+        self.assertIsNone(normalize_scanner_card_number(None))
+        self.assertIsNone(normalize_scanner_card_number(""))
+        self.assertIsNone(normalize_scanner_card_number("No. 039"))
+        self.assertIsNone(normalize_scanner_card_number("TG01"))
+
+    def test_high_numbered_match_survives_candidate_cap(self):
+        cards = [
+            {"id": f"card-{number}", "localId": str(number)}
+            for number in range(1, 65)
+        ]
+
+        prioritized, match_count = prioritize_cards_by_number(
+            cards,
+            "63/100",
+            number_field="localId",
+        )
+
+        self.assertEqual(match_count, 1)
+        self.assertEqual(prioritized[0]["id"], "card-63")
+        self.assertIn("card-63", [card["id"] for card in prioritized[:8]])
+
+    def test_leading_zero_matches_and_preserves_stable_order(self):
+        cards = [
+            {"id": "before", "number": "5"},
+            {"id": "first-match", "number": "063"},
+            {"id": "between", "number": "9"},
+            {"id": "second-match", "number": "63/100"},
+            {"id": "after", "number": "70"},
+        ]
+
+        prioritized, match_count = prioritize_cards_by_number(cards, "063/100")
+
+        self.assertEqual(match_count, 2)
+        self.assertEqual(
+            [card["id"] for card in prioritized],
+            ["first-match", "second-match", "before", "between", "after"],
+        )
+
+    def test_missing_unusual_or_unmatched_number_keeps_original_order(self):
+        cards = [
+            {"id": "first", "number": "1"},
+            {"id": "second", "number": "2"},
+        ]
+
+        for recognized_number in (None, "No. 039", "999"):
+            with self.subTest(recognized_number=recognized_number):
+                prioritized, match_count = prioritize_cards_by_number(
+                    cards,
+                    recognized_number,
+                )
+                self.assertIs(prioritized, cards)
+                self.assertEqual(match_count, 0)
 
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")
