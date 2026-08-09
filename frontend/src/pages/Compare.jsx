@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeftRight } from 'lucide-react'
@@ -6,6 +6,8 @@ import { compareUsers } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import { useAuth } from '../contexts/AuthContext'
 import { resolveCardImageUrl } from '../utils/imageUrl'
+import { CardIdentity } from '../components/card-system'
+import { CardModal } from '../components/CardItem'
 
 function TrainerAvatar({ avatarId, username }) {
   if (!avatarId) {
@@ -30,7 +32,7 @@ function StatBlock({ label, value, accent }) {
   )
 }
 
-function TrainerPanel({ trainer, formatPrice, t }) {
+function TrainerPanel({ trainer, formatPrice, t, onCardClick }) {
   const pnl = Number(trainer?.pnl ?? 0)
   const bestCard = trainer?.most_valuable_card
 
@@ -61,15 +63,14 @@ function TrainerPanel({ trainer, formatPrice, t }) {
       <div>
         <p className="mb-2 text-[11px] uppercase tracking-[0.2em] text-text-muted">{t('leaderboard.bestCard')}</p>
         {bestCard ? (
-          <div className="flex items-center gap-3 rounded-2xl border border-border bg-bg-primary/60 p-3">
-            <div className="h-16 w-12 overflow-hidden rounded-lg border border-border bg-bg-card">
-              <img src={resolveCardImageUrl(bestCard)} alt={bestCard.name} className="h-full w-full object-cover" loading="lazy" />
-            </div>
-            <div className="min-w-0">
-              <p className="truncate font-semibold text-text-primary">{bestCard.name}</p>
-              <p className="text-sm text-text-secondary">{formatPrice(bestCard.price_market)}</p>
-            </div>
-          </div>
+          <CardIdentity
+            className="w-full rounded-2xl border border-border bg-bg-primary/60 p-3"
+            card={bestCard}
+            image={resolveCardImageUrl(bestCard)}
+            name={bestCard.name}
+            subtext={formatPrice(bestCard.price_market)}
+            onClick={() => onCardClick(bestCard)}
+          />
         ) : (
           <div className="rounded-2xl border border-border bg-bg-primary/60 p-3 text-sm text-text-muted">-</div>
         )}
@@ -83,6 +84,7 @@ export default function Compare() {
   const navigate = useNavigate()
   const { t, formatPrice, pricePrimaryField } = useSettings()
   const { multiUser } = useAuth()
+  const [selectedCard, setSelectedCard] = useState(null)
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['compare', userId, pricePrimaryField],
@@ -126,7 +128,7 @@ export default function Compare() {
       ) : (
         <>
           <div className="grid gap-4 lg:grid-cols-[1fr_320px_1fr]">
-            <TrainerPanel trainer={data.user_a} formatPrice={formatPrice} t={t} />
+            <TrainerPanel trainer={data.user_a} formatPrice={formatPrice} t={t} onCardClick={setSelectedCard} />
 
             <div className="card flex flex-col items-center justify-center gap-4 text-center">
               <div className="relative flex h-44 w-full max-w-[260px] items-center justify-center">
@@ -154,7 +156,7 @@ export default function Compare() {
               </div>
             </div>
 
-            <TrainerPanel trainer={data.user_b} formatPrice={formatPrice} t={t} />
+            <TrainerPanel trainer={data.user_b} formatPrice={formatPrice} t={t} onCardClick={setSelectedCard} />
           </div>
 
           <div className="card">
@@ -167,16 +169,14 @@ export default function Compare() {
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {data.trade_suggestions.map((trade) => (
                   <div key={`${trade.card_id}-${trade.owner_username}-${trade.wants_username}`} className="rounded-2xl border border-border bg-bg-primary/60 p-3">
-                    <div className="flex items-center gap-3">
-                      <div className="h-16 w-12 overflow-hidden rounded-lg border border-border bg-bg-card">
-                        <img src={resolveCardImageUrl(trade)} alt={trade.card_name} className="h-full w-full object-cover" loading="lazy" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="truncate font-semibold text-text-primary">{trade.card_name}</p>
-                        <p className="text-sm text-text-secondary">{trade.owner_username} {t('compare.has')}</p>
-                        <p className="text-sm text-text-secondary">{trade.wants_username} {t('compare.wants')}</p>
-                      </div>
-                    </div>
+                    <CardIdentity
+                      className="w-full"
+                      card={trade}
+                      image={resolveCardImageUrl(trade)}
+                      name={trade.card_name}
+                      subtext={`${trade.owner_username} ${t('compare.has')} · ${trade.wants_username} ${t('compare.wants')}`}
+                      onClick={() => setSelectedCard({ ...trade, id: trade.card_id, name: trade.card_name })}
+                    />
                   </div>
                 ))}
               </div>
@@ -187,6 +187,12 @@ export default function Compare() {
             )}
           </div>
         </>
+      )}
+      {selectedCard && (
+        <CardModal
+          card={{ ...selectedCard, id: selectedCard.card_id || selectedCard.id }}
+          onClose={() => setSelectedCard(null)}
+        />
       )}
     </div>
   )

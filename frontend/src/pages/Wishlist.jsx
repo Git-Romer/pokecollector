@@ -3,14 +3,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Trash2, Edit2, Check, X, Heart, Filter, SortAsc, ChevronUp, ChevronDown, Library, BookOpen, Minus, Plus } from 'lucide-react'
 import { getWishlist, removeFromWishlist, updateWishlistItem, addToCollection } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
-import CardListItem from '../components/CardListItem'
+import { CardDialog, CardIdentity, CardRow, getCardSetNumber } from '../components/card-system'
 import TabNav from '../components/TabNav'
 import toast from 'react-hot-toast'
 import { resolveCardImageUrl } from '../utils/imageUrl'
-import FallbackBadges from '../components/FallbackBadges'
 import { getEffectiveCardPrice } from '../utils/prices'
-import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
+import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 
 function WishlistItemEditor({ item, onDone }) {
   const [quantity, setQuantity] = useState(item.quantity || 1)
@@ -65,9 +64,70 @@ function WishlistItemEditor({ item, onDone }) {
   )
 }
 
+function WishlistCardModal({ item, onClose, onAddToCollection, onRemove }) {
+  const { t, formatPrice, pricePrimaryField } = useSettings()
+  const [activeTab, setActiveTab] = useState('wishlist')
+  const card = item.card
+  const price = getEffectiveCardPrice(card, null, pricePrimaryField)
+
+  return (
+    <CardDialog
+      card={card}
+      image={resolveCardImageUrl(card)}
+      price={price > 0 ? formatPrice(price) : null}
+      tabs={[
+        { id: 'overview', label: t('cardTabs.overview') },
+        { id: 'prices', label: t('cardTabs.prices') },
+        { id: 'wishlist', label: t('cardTabs.wishlist') },
+      ]}
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+      onClose={onClose}
+    >
+      {activeTab === 'overview' && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {[
+            [t('card.rarity'), card?.rarity],
+            [t('card.type'), card?.supertype],
+            [t('card.artist'), card?.artist],
+            [t('common.quantity'), item.quantity || 1],
+          ].filter(([, value]) => value).map(([label, value]) => (
+            <div key={label} className="rounded-xl border border-border bg-bg-card p-3">
+              <p className="text-xs text-text-muted">{label}</p>
+              <p className="mt-1 text-sm font-bold text-text-primary">{value}</p>
+            </div>
+          ))}
+        </div>
+      )}
+      {activeTab === 'prices' && (
+        <div className="rounded-xl border border-border bg-bg-card p-4">
+          <p className="text-xs font-bold uppercase tracking-wide text-text-muted">{t('wishlist.marketPrice')}</p>
+          <p className="mt-2 text-2xl font-black text-green">{price > 0 ? formatPrice(price) : '—'}</p>
+        </div>
+      )}
+      {activeTab === 'wishlist' && (
+        <div className="space-y-4">
+          <div className="rounded-xl border border-border bg-bg-card p-4">
+            <WishlistItemEditor item={item} onDone={onClose} />
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <button type="button" className="btn-primary justify-center" onClick={() => onAddToCollection(item.card_id)}>
+              <Check size={14} /> {t('wishlist.addToCollection')}
+            </button>
+            <button type="button" className="btn-ghost justify-center text-brand-red" onClick={() => onRemove(item)}>
+              <Trash2 size={14} /> {t('common.remove')}
+            </button>
+          </div>
+        </div>
+      )}
+    </CardDialog>
+  )
+}
+
 export default function Wishlist() {
   const { t, formatPrice, pricePrimaryField } = useSettings()
   const [editingId, setEditingId] = useState(null)
+  const [selectedItem, setSelectedItem] = useState(null)
   const [sortBy, setSortBy] = useState('created_at')
   const [sortOrder, setSortOrder] = useState('desc')
   const [filterSet, setFilterSet] = useState('')
@@ -272,8 +332,8 @@ export default function Wishlist() {
                   <thead>
                     <tr className="border-b border-border bg-bg/50">
                       <th className="text-left px-4 py-3 text-text-muted font-medium">{t('wishlist.card')}</th>
+                      <th className="text-left px-4 py-3 text-text-muted font-medium">{t('common.rarity')}</th>
                       <th className="text-center px-4 py-3 text-text-muted font-medium">{t('common.quantity')}</th>
-                      <th className="text-left px-4 py-3 text-text-muted font-medium">{t('common.set')}</th>
                       <th className="text-right px-4 py-3 text-text-muted font-medium">{t('wishlist.marketPrice')}</th>
                       <th className="text-center px-4 py-3 text-text-muted font-medium">{t('wishlist.priceAlerts')}</th>
                       <th className="text-center px-4 py-3 text-text-muted font-medium">{t('wishlist.lastNotified')}</th>
@@ -290,21 +350,16 @@ export default function Wishlist() {
                       return (
                         <tr key={item.id} className="border-b border-border/50 hover:bg-bg-elevated/50 transition-colors">
                           <td className="px-4 py-3">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-10 flex-shrink-0 rounded overflow-hidden">
-                                {resolveCardImageUrl(card) ? (
-                                  <img src={resolveCardImageUrl(card)} alt={card?.name} className="w-full h-full object-cover" />
-                                ) : (
-                                  <div className="w-full h-full bg-border" />
-                                )}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-sm font-medium text-text-primary">{card?.name}</p>
-                                <FallbackBadges card={card} compact />
-                                {card?.rarity && <p className="text-xs text-text-muted">{card.rarity}</p>}
-                              </div>
-                            </div>
+                            <CardIdentity
+                              card={card}
+                              image={resolveCardImageUrl(card)}
+                              name={card?.name}
+                              setNumber={getCardSetNumber(card)}
+                              languageLabel={card?.lang ? tcgdexLanguageLabel(card.lang) : null}
+                              onClick={() => setSelectedItem(item)}
+                            />
                           </td>
+                          <td className="px-4 py-3 text-xs text-text-secondary">{card?.rarity || '—'}</td>
                           <td className="px-4 py-3 text-center">
                             <div className="inline-flex items-center gap-1 rounded-full bg-bg-surface border border-border px-1.5 py-1">
                               <button onClick={() => changeQuantity(item, -1)} disabled={(item.quantity || 1) <= 1 || quantityMutation.isPending}
@@ -318,7 +373,6 @@ export default function Wishlist() {
                               </button>
                             </div>
                           </td>
-                          <td className="px-4 py-3 text-text-secondary text-xs">{card?.set_ref?.name || '-'}</td>
                           <td className="px-4 py-3 text-right">
                             {price ? (
                               <span className={`font-bold ${alertAbove ? 'text-yellow' : alertBelow ? 'text-blue' : 'text-green'}`}>
@@ -396,18 +450,19 @@ export default function Wishlist() {
                   if (item.price_alert_above) badges.push({ label: `↑ ${formatPrice(item.price_alert_above)}`, variant: 'yellow' })
                   if (item.price_alert_below) badges.push({ label: `↓ ${formatPrice(item.price_alert_below)}`, variant: 'blue' })
                   if (card?.rarity) badges.push({ label: card.rarity, variant: 'gray' })
-                  if (card?.data_source_lang) badges.push({ label: `${t('fallback.data')} ${tcgdexLanguageLabel(card.data_source_lang)}`, variant: 'purple' })
-                  if (card?.price_source_lang) badges.push({ label: `${t('fallback.price')} ${tcgdexLanguageLabel(card.price_source_lang)}`, variant: 'yellow' })
-                  if (card?.image_source_lang) badges.push({ label: `${t('fallback.image')} ${tcgdexLanguageLabel(card.image_source_lang)}`, variant: 'blue' })
 
                   return (
-                    <CardListItem
+                    <CardRow
                       key={item.id}
+                      card={card}
                       image={resolveCardImageUrl(card)}
                       name={card?.name}
-                      subtext={card?.set_ref?.name || '-'}
+                      setNumber={getCardSetNumber(card)}
+                      languageLabel={card?.lang ? tcgdexLanguageLabel(card.lang) : null}
                       badges={badges}
                       value={price ? formatPrice(price) : '-'}
+                      valueSecondary={item.price_alert_below ? `${t('wishlist.belowLabel')} ${formatPrice(item.price_alert_below)}` : t('wishlist.noAlerts')}
+                      onClick={() => setSelectedItem(item)}
                       rightAction={
                         <div className="flex flex-col gap-1">
                           <button onClick={(e) => { e.stopPropagation(); setEditingId(item.id) }}
@@ -433,6 +488,19 @@ export default function Wishlist() {
             </div>
           )}
         </>
+      )}
+      {selectedItem && (
+        <WishlistCardModal
+          item={selectedItem}
+          onClose={() => setSelectedItem(null)}
+          onAddToCollection={(cardId) => addToColMutation.mutate(cardId)}
+          onRemove={(item) => {
+            if (confirm(`${item.card?.name} ${t('wishlist.removeConfirm')}`)) {
+              removeMutation.mutate(item.id)
+              setSelectedItem(null)
+            }
+          }}
+        />
       )}
     </div>
   )

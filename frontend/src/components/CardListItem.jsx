@@ -1,12 +1,58 @@
-import CardImage from './CardImage'
 import clsx from 'clsx'
-import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
+import { CompactCardArtwork, handleKeyboardActivation } from './UnifiedCard'
+
+export function CompactCardIdentity({
+  image,
+  card = {},
+  name,
+  subtext,
+  setNumber,
+  languageLabel,
+  variantEffectSource = null,
+  details,
+  onClick,
+  loading = 'lazy',
+  className = '',
+}) {
+  const Component = onClick ? 'button' : 'div'
+
+  return (
+    <Component
+      type={onClick ? 'button' : undefined}
+      className={clsx(
+        'flex min-w-0 items-center gap-3 text-left',
+        onClick && 'rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/70',
+        className,
+      )}
+      onClick={onClick}
+    >
+      <CompactCardArtwork
+        card={card}
+        image={image}
+        alt={name}
+        variantEffectSource={variantEffectSource}
+        loading={loading}
+      />
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        {name && <p className="truncate text-sm font-semibold leading-tight text-text-primary">{name}</p>}
+        {(setNumber || languageLabel) && (
+          <p className="flex min-w-0 items-center gap-1.5 text-xs leading-tight">
+            {setNumber && <span className="truncate font-mono font-bold text-brand-red">{setNumber}</span>}
+            {languageLabel && <span className="truncate text-text-muted">{languageLabel}</span>}
+          </p>
+        )}
+        {subtext && <p className="truncate text-xs leading-tight text-text-muted">{subtext}</p>}
+        {details}
+      </div>
+    </Component>
+  )
+}
 
 /**
  * CardListItem — Reusable card row for Collection, Wishlist, Search results, etc.
  *
  * Layout (mobile-first, no overflow):
- *   [Image 48×68] [Content flex-1 min-w-0] [Value flex-shrink-0]
+ *   [Shared compact artwork] [Content flex-1 min-w-0] [Value flex-shrink-0]
  *
  * Props:
  *   image       {string}    — card image URL
@@ -22,15 +68,21 @@ import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
  */
 export default function CardListItem({
   image,
+  card = {},
   name,
   subtext,
+  setNumber,
+  languageLabel,
   badges = [],
   value,
   valueSecondary,
   onClick,
+  ariaLabel,
+  ariaExpanded,
   rightAction,
   className = '',
   variantEffectSource = null,
+  loading = 'lazy',
 }) {
   return (
     <div
@@ -39,39 +91,27 @@ export default function CardListItem({
         'bg-[rgba(20,20,40,0.6)] backdrop-blur-xl',
         'border-[rgba(255,255,255,0.05)]',
         onClick && 'cursor-pointer hover:border-brand-red/30 hover:bg-bg-elevated hover:shadow-glow active:bg-bg-elevated transition-all duration-200',
+        onClick && 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/70',
         className
       )}
       onClick={onClick}
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
-      onKeyDown={onClick ? (e) => e.key === 'Enter' && onClick(e) : undefined}
+      aria-label={ariaLabel}
+      aria-expanded={ariaExpanded}
+      onKeyDown={onClick ? event => handleKeyboardActivation(event, onClick) : undefined}
     >
-      {/* Card thumbnail */}
-      <div className={clsx(
-        'flex-shrink-0 w-12 h-[68px] rounded-lg overflow-hidden bg-bg-elevated shadow-lg ring-1 ring-white/5',
-        getCardVariantEffectClass(variantEffectSource)
-      )}>
-        <CardImage src={image} alt={name} className="w-full h-full object-cover" />
-      </div>
-
-      {/* Content — flex-1 min-w-0 so it shrinks and wraps instead of overflowing */}
-      <div className="flex-1 flex flex-col gap-0.5" style={{ minWidth: 0, overflow: "visible" }}>
-        {/* Card name — truncated single line */}
-        {name && (
-          <p className="text-sm font-semibold text-text-primary truncate leading-tight">
-            {name}
-          </p>
-        )}
-
-        {/* Subtext — set name, etc. — also truncated */}
-        {subtext && (
-          <p className="text-xs text-text-muted truncate leading-tight">
-            {subtext}
-          </p>
-        )}
-
-        {/* Badges row */}
-        {badges.length > 0 && (
+      <CompactCardIdentity
+        className="flex-1"
+        card={card}
+        image={image}
+        name={name}
+        subtext={subtext}
+        setNumber={setNumber}
+        languageLabel={languageLabel}
+        variantEffectSource={variantEffectSource}
+        loading={loading}
+        details={badges.length > 0 ? (
           <div className="flex flex-wrap gap-1 mt-0.5">
             {badges.map((badge, i) => (
               <span
@@ -85,8 +125,8 @@ export default function CardListItem({
               </span>
             ))}
           </div>
-        )}
-      </div>
+        ) : null}
+      />
 
       {/* Right: value + optional action */}
       <div className="flex-shrink-0 flex items-center gap-2">

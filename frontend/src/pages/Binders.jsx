@@ -19,6 +19,7 @@ const FORMAT_OPTIONS = ['Standard', 'Expanded', 'Unlimited', 'Casual']
 
 function BinderForm({ initial = {}, onSubmit, onCancel, loading }) {
   const { t } = useSettings()
+  const isEditing = Boolean(initial.id)
   const [name, setName] = useState(initial.name || '')
   const [desc, setDesc] = useState(initial.description || '')
   const [color, setColor] = useState(initial.color || '#EF1515')
@@ -34,7 +35,7 @@ function BinderForm({ initial = {}, onSubmit, onCancel, loading }) {
       <input type="text" placeholder={t('binders.description')} value={desc}
         onChange={(e) => setDesc(e.target.value)} className="input" />
 
-      <div>
+      {!isEditing && <div>
         <label className="text-xs text-text-muted mb-2 block">{t('binderTypes.typeLabel')}</label>
         <div className="flex gap-2">
           <button type="button" onClick={() => setBinderType('collection')}
@@ -57,7 +58,7 @@ function BinderForm({ initial = {}, onSubmit, onCancel, loading }) {
         <p className="text-xs text-text-muted mt-1.5">
           {binderType === 'collection' ? t('binderTypes.collectionDesc') : t('binderTypes.wishlistDesc')}
         </p>
-      </div>
+      </div>}
 
       <div>
         <label className="text-xs text-text-muted mb-2 block">{t('binderTypes.format')}</label>
@@ -112,7 +113,14 @@ function BinderForm({ initial = {}, onSubmit, onCancel, loading }) {
         </div>
       </div>
       <div className="flex gap-2">
-        <button onClick={() => onSubmit({ name, description: desc, color, binder_type: binderType, format: format || null, icon_pokemon_id: iconPokemonId })}
+        <button onClick={() => onSubmit({
+          name,
+          description: desc,
+          color,
+          ...(!isEditing && { binder_type: binderType }),
+          format: format || null,
+          icon_pokemon_id: iconPokemonId,
+        })}
           disabled={!name || loading} className="btn-primary flex-1">
           <Check size={14} /> {loading ? t('common.saving') : t('common.save')}
         </button>

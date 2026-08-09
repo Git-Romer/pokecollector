@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Literal
 from datetime import datetime, date
 
 
@@ -279,7 +279,14 @@ class ProductPurchaseCreate(BaseModel):
     sold_price: Optional[float] = None
     purchase_date: date
     sold_date: Optional[date] = None
+    lifecycle_status: Literal["sealed", "opened"] = "sealed"
+    image_url: Optional[str] = Field(default=None, max_length=2048)
+    cardmarket_url: Optional[str] = Field(default=None, max_length=2048)
     notes: Optional[str] = None
+
+
+class ProductPurchaseBatchCreate(ProductPurchaseCreate):
+    quantity: int = Field(default=1, ge=1, le=200)
 
 
 class ProductPurchaseUpdate(BaseModel):
@@ -290,13 +297,25 @@ class ProductPurchaseUpdate(BaseModel):
     sold_price: Optional[float] = None
     purchase_date: Optional[date] = None
     sold_date: Optional[date] = None
+    lifecycle_status: Optional[Literal["sealed", "opened"]] = None
+    image_url: Optional[str] = Field(default=None, max_length=2048)
+    cardmarket_url: Optional[str] = Field(default=None, max_length=2048)
     notes: Optional[str] = None
+
+
+class ProductLifecycleBulkUpdate(BaseModel):
+    product_ids: List[int] = Field(min_length=1)
+    lifecycle_status: Literal["sealed", "opened"]
 
 
 class ProductCardLinkCreate(BaseModel):
     collection_item_id: int
     quantity: int = Field(default=1, ge=1, le=999)
     notes: Optional[str] = None
+
+
+class ProductCardBulkLinkCreate(BaseModel):
+    items: List[ProductCardLinkCreate] = Field(min_length=1, max_length=200)
 
 
 class ProductCardSaleCreate(BaseModel):
@@ -369,6 +388,11 @@ class ProductPurchaseResponse(BaseModel):
     sold_price: Optional[float] = None
     purchase_date: date
     sold_date: Optional[date] = None
+    lifecycle_status: Literal["sealed", "opened", "sold", "review"]
+    batch_id: Optional[str] = None
+    image_url: Optional[str] = None
+    image_proxy_url: Optional[str] = None
+    cardmarket_url: Optional[str] = None
     notes: Optional[str] = None
     created_at: Optional[datetime] = None
     pnl: Optional[float] = None
@@ -405,6 +429,34 @@ class TradeIncomingItemCreate(BaseModel):
     notes: Optional[str] = None
 
 
+class TradeOutgoingItemUpdate(BaseModel):
+    trade_item_id: Optional[int] = None
+    collection_item_id: Optional[int] = None
+    quantity: int = Field(default=1, ge=1, le=999)
+    condition: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class TradeIncomingItemUpdate(BaseModel):
+    trade_item_id: Optional[int] = None
+    card_id: Optional[str] = None
+    quantity: int = Field(default=1, ge=1, le=999)
+    condition: str = "NM"
+    variant: Optional[str] = "Normal"
+    lang: str = "en"
+    notes: Optional[str] = None
+
+
+class TradeUpdate(BaseModel):
+    partner_name: Optional[str] = None
+    trade_date: date
+    notes: Optional[str] = None
+    outgoing_cash: Optional[float] = Field(default=0, ge=0)
+    incoming_cash: Optional[float] = Field(default=0, ge=0)
+    outgoing: List[TradeOutgoingItemUpdate] = Field(default_factory=list)
+    incoming: List[TradeIncomingItemUpdate] = Field(default_factory=list)
+
+
 class TradeCreate(BaseModel):
     partner_name: Optional[str] = None
     trade_date: date
@@ -423,6 +475,8 @@ class TradeItemResponse(BaseModel):
     original_collection_item_id: Optional[int] = None
     created_collection_item_id: Optional[int] = None
     product_card_id: Optional[int] = None
+    purchase_price: Optional[float] = None
+    snapshot_version: int = 0
     quantity: int
     value_per_card: float
     value_total: float

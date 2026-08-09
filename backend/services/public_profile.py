@@ -257,6 +257,10 @@ def _serialize_card(bc: BinderCard, show_values: bool) -> dict:
         "rarity": card.rarity,
         "lang": card.lang,
         "variant": variant,
+        "data_source_lang": card.data_source_lang,
+        "price_source_lang": card.price_source_lang,
+        "image_source_lang": card.image_source_lang,
+        "has_custom_image_fallback": bool(card.custom_image_url and not (card.images_small or card.images_large)),
         "quantity": quantity,
         "market_value": value,
     }

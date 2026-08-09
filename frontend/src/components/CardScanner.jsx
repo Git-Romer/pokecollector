@@ -10,6 +10,9 @@ import TcgdexLanguageSelect from './TcgdexLanguageSelect'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import MoneyInput from './MoneyInput'
 import { parseMoneyInputValue } from '../utils/moneyInput'
+import { CardDisplay } from './card-system'
+import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
+import { isSupportedScannerImage, SCANNER_IMAGE_ACCEPT } from '../utils/scannerImages'
 
 // ─── Add-to-Collection Modal für Scan-Ergebnis ──────────────────────────────
 function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
@@ -49,31 +52,33 @@ function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[300] bg-black/80 flex items-end md:items-center justify-center"
+      className="fixed inset-0 z-[300] flex items-end justify-center bg-black/80 p-2 backdrop-blur-sm sm:items-center sm:p-3"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-t-2xl md:rounded-2xl bg-bg-surface border-t md:border border-border overflow-y-auto max-h-[85dvh]"
+        className="relative max-h-[calc(100dvh-1rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-border bg-bg-surface shadow-2xl sm:max-h-[calc(100dvh-1.5rem)]"
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex justify-center pt-3 pb-1 md:hidden">
-          <div className="w-10 h-1 bg-border rounded-full" />
-        </div>
+        <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-white/20 sm:hidden" aria-hidden />
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-3 top-3 z-50 grid h-9 w-9 place-items-center rounded-full border border-white/15 bg-black/70 text-white shadow-lg hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red"
+          aria-label={t('common.close')}
+        >
+          <X size={18} />
+        </button>
         <div className="p-5">
           {/* Card Info */}
           <div className="flex items-center gap-3 mb-4">
-            {match.image && (
-              <img src={match.image} alt={match.name}
-                className="w-16 h-22 object-cover rounded-xl border border-white/10 flex-shrink-0" />
-            )}
-            <div className="flex-1 min-w-0">
+            <div className="w-16 flex-shrink-0">
+              <CardDisplay variant="artwork" card={match} image={match.image} alt={match.name} showStateIndicators={false} loading="eager" />
+            </div>
+            <div className="flex-1 min-w-0 pr-9">
               <p className="font-bold text-white text-base truncate">{match.name}</p>
               <p className="text-xs font-mono text-brand-red/80 font-semibold">{`${(match.set_abbreviation || '').toUpperCase()} ${match.number || ''}`.trim()}</p>
               {match.rarity && <p className="text-[11px] text-text-muted">{match.rarity}</p>}
             </div>
-            <button onClick={onClose} className="text-text-muted hover:text-text-primary p-1 flex-shrink-0">
-              <X size={18} />
-            </button>
           </div>
 
           <div className="space-y-3">
@@ -144,8 +149,8 @@ function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
 
 export default function CardScanner({ isOpen, onClose, onCardSelected }) {
   const [phase, setPhase] = useState('capture') // 'capture' | 'loading' | 'results'
-  const [preview, setPreview] = useState(null)
   const [results, setResults] = useState(null)
+  const [selectedMatch, setSelectedMatch] = useState(null)
   const [addModal, setAddModal] = useState(null) // match to show modal for
   const fileRef = useRef()
   const { t } = useSettings()
@@ -154,24 +159,27 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
 
   const handleFile = async (file) => {
     if (!file) return
-    setPreview(URL.createObjectURL(file))
+    if (!isSupportedScannerImage(file)) {
+      toast.error(t('scanner.recognitionFailed'))
+      return
+    }
     setPhase('loading')
     try {
       const data = await recognizeCard(file)
       setResults(data)
+      setSelectedMatch(data.matches?.[0] || null)
       setPhase('results')
     } catch (e) {
       const msg = e?.response?.data?.detail || t('scanner.recognitionFailed')
       toast.error(msg)
       setPhase('capture')
-      setPreview(null)
     }
   }
 
   const reset = () => {
     setPhase('capture')
-    setPreview(null)
     setResults(null)
+    setSelectedMatch(null)
     setAddModal(null)
   }
 
@@ -209,7 +217,7 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
               <p className="text-xs text-text-muted text-center px-6">{t('scanner.alignCard')}</p>
             </div>
 
-            <input ref={fileRef} type="file" accept="image/*" capture="environment"
+            <input ref={fileRef} type="file" accept={SCANNER_IMAGE_ACCEPT} capture="environment"
               className="hidden" onChange={e => handleFile(e.target.files?.[0])} />
 
             <button onClick={() => fileRef.current?.click()}
@@ -238,10 +246,6 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
         {/* LOADING */}
         {phase === 'loading' && (
           <div className="flex flex-col items-center gap-6 pt-8">
-            {preview && preview.startsWith("blob:") && (
-              <img src={preview} className="w-40 aspect-[2.5/3.5] object-cover rounded-xl"
-                style={{ border: '1px solid rgba(255,255,255,0.1)' }} />
-            )}
             <div className="flex flex-col items-center gap-3">
               <Loader2 size={32} className="text-brand-red animate-spin" />
               <p className="text-sm text-text-secondary font-medium">{t('scanner.recognizing')}</p>
@@ -252,92 +256,88 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
 
         {/* RESULTS */}
         {phase === 'results' && results && (
-          <div className="space-y-4">
-            <div className="rounded-2xl p-4"
-              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted mb-2">{t('scanner.detected')}</p>
-              <p className="font-bold text-white text-lg">{results.recognized?.name || '—'}</p>
-              {results.recognized?.number && (
-                <p className="text-sm text-text-muted">Nr. {results.recognized.number}</p>
-              )}
-              {results.recognized?.language && (
-                <p className="text-xs text-text-muted mt-0.5 uppercase tracking-wider">
-                  {t('scanner.detectedLanguage')} {results.recognized.language}
+          <div className="mx-auto max-w-6xl space-y-4 pb-24 sm:pb-4">
+            <div className="grid gap-4 lg:grid-cols-[minmax(220px,0.8fr)_minmax(0,1.2fr)]">
+              <div className="hidden rounded-2xl border border-white/10 bg-white/[0.04] p-4 sm:block">
+                <p className="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
+                  {t('scanner.yourScan')}
                 </p>
-              )}
-            </div>
-
-            {results.matches?.length > 0 ? (
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted mb-3">
-                  {t('scanner.matches')} ({results.matches.length})
-                </p>
-                {/* Grid layout — like Sets overview */}
-                <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-7 gap-2">
-                  {results.matches.map(match => {
-                    const matchLang = match.lang || match._lang || 'en'
-                    // Format card ID as "SETCODE NUMBER", e.g. "OBF 125"
-                    const setCode = (match.set_abbreviation || match.set?.id || (match.id || '').split('-')[0]).toUpperCase()
-                    const localNum = match.localId || match.number || ''
-                    const cardIdLabel = `${setCode} ${localNum}`.trim()
-                    return (
-                      <div key={`${match.id}-${matchLang}`}
-                        className="flex flex-col cursor-pointer group hover:shadow-glow transition-all duration-200 hover:rotate-1"
-                        onClick={() => setAddModal(match)}
-                      >
-                        {/* Card image — full width, portrait aspect ratio — exact CardItem hover effect */}
-                        <div className="relative w-full aspect-[2.5/3.5] overflow-hidden rounded-xl ring-1 ring-white/5 group-hover:ring-2 group-hover:ring-brand-red/30 transition-all duration-200">
-                          {match.image
-                            ? <img src={match.image} alt={match.name}
-                                className="w-full h-full object-cover shadow-lg group-hover:scale-[1.02] transition-transform duration-300" />
-                            : <div className="w-full h-full bg-bg-surface rounded-xl flex items-center justify-center">
-                                <span className="text-[9px] text-text-muted text-center p-1">{match.name}</span>
-                              </div>
-                          }
-                          {/* Language badge — top right overlay */}
-                          <span className={`absolute top-1 right-1 text-[8px] font-black px-1 py-0.5 rounded leading-none ${
-                            matchLang === 'de'
-                              ? 'bg-yellow-500/80 text-yellow-900 border border-yellow-500/50'
-                              : 'bg-blue-500/80 text-white border border-blue-500/50'
-                          }`}>
-                            {matchLang === 'de' ? '🇩🇪' : '🇬🇧'}
-                          </span>
-                          {/* Hover overlay with add button */}
-                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100 rounded-xl">
-                            <div className="w-7 h-7 rounded-full flex items-center justify-center"
-                              style={{ background: '#e3000b', boxShadow: '0 0 12px rgba(227,0,11,0.5)' }}>
-                              <Plus size={14} className="text-white" />
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Card info */}
-                        <div className="pt-1 flex flex-col gap-0.5">
-                          <p className="font-bold text-white text-[10px] leading-tight line-clamp-2">{match.name}</p>
-                          {cardIdLabel && (
-                            <p className="text-[9px] font-mono text-brand-red/80 font-semibold">{cardIdLabel}</p>
-                          )}
-                          {match.rarity && (
-                            <p className="text-[9px] text-text-muted truncate">{match.rarity}</p>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
+                <div className="grid aspect-[2.5/3.5] place-items-center rounded-xl border border-dashed border-white/10 bg-bg-primary/50 text-center">
+                  <div className="space-y-2 text-text-muted">
+                    <Camera size={36} className="mx-auto opacity-50" aria-hidden />
+                    <p className="text-xs">{t('scanner.yourScan')}</p>
+                  </div>
                 </div>
               </div>
-            ) : (
-              <div className="text-center py-6 space-y-2">
-                <p className="text-text-muted text-sm">{t('scanner.noMatches')}</p>
-                <p className="text-xs text-text-muted">{t('scanner.noMatchTip')}</p>
+
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                  <p className="mb-2 text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">{t('scanner.detected')}</p>
+                  <p className="text-lg font-bold text-white">{results.recognized?.name || '—'}</p>
+                  {results.recognized?.number && <p className="text-sm text-text-muted">Nr. {results.recognized.number}</p>}
+                  {results.recognized?.language && (
+                    <p className="mt-0.5 text-xs uppercase tracking-wider text-text-muted">
+                      {t('scanner.detectedLanguage')} {results.recognized.language}
+                    </p>
+                  )}
+                </div>
+
+                {results.matches?.length > 0 ? (
+                  <div>
+                    <p className="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
+                      {t('scanner.bestMatches')} ({results.matches.length})
+                    </p>
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                      {results.matches.map(match => {
+                        const matchLang = match.lang || match._lang || 'en'
+                        const selected = selectedMatch?.id === match.id
+                          && (selectedMatch?.lang || selectedMatch?._lang || 'en') === matchLang
+                        return (
+                          <CardDisplay
+                            key={`${match.id}-${matchLang}`}
+                            variant="selectable"
+                            card={match}
+                            image={match.image}
+                            languageLabel={tcgdexLanguageLabel(matchLang)}
+                            selected={selected}
+                            onClick={() => setSelectedMatch(match)}
+                            onSelect={() => setSelectedMatch(match)}
+                          />
+                        )
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2 py-6 text-center">
+                    <p className="text-sm text-text-muted">{t('scanner.noMatches')}</p>
+                    <p className="text-xs text-text-muted">{t('scanner.noMatchTip')}</p>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
 
             <button onClick={reset}
               className="w-full py-3 rounded-xl flex items-center justify-center gap-2 text-sm font-semibold text-text-muted hover:text-white transition-colors"
               style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
               <RefreshCw size={15} /> {t('scanner.scanAgain')}
             </button>
+
+            {selectedMatch && (
+              <div className="fixed bottom-3 left-3 right-3 z-20 rounded-2xl border border-white/15 bg-bg-surface/95 p-3 shadow-2xl backdrop-blur sm:sticky sm:bottom-3 sm:mx-auto sm:flex sm:max-w-xl sm:items-center sm:gap-3">
+                <div className="mb-2 min-w-0 flex-1 sm:mb-0">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-text-muted">{t('scanner.selectedMatch')}</p>
+                  <p className="truncate text-sm font-bold text-text-primary">{selectedMatch.name}</p>
+                </div>
+                <button
+                  type="button"
+                  className="btn-primary w-full justify-center sm:w-auto"
+                  onClick={() => setAddModal(selectedMatch)}
+                >
+                  <Check size={16} />
+                  {t('scanner.useSelectedMatch')}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

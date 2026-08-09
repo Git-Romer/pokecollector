@@ -3,35 +3,20 @@ import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
-import { Plus, Heart, BookOpen, X, PenLine, Pencil, Trash2, ExternalLink } from 'lucide-react'
+import { Plus, Heart, X, PenLine, Pencil, Trash2, ExternalLink } from 'lucide-react'
 import { addToCollection, addToWishlist, createCustomCard, updateCustomCard, updateCardCustomImage, deleteCustomCard, getSets, getPriceHistory } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
-import { useTilt } from '../hooks/useTilt'
 import { cardImageUrl, resolveCardImageUrl } from '../utils/imageUrl'
-import { CARD_VARIANTS, getAvailableVariants, getDefaultVariant, getDefaultVariantOrNull } from '../utils/cardVariants'
-import FallbackBadges from './FallbackBadges'
+import { CARD_VARIANTS, getAvailableVariants, getDefaultVariant } from '../utils/cardVariants'
 import MoneyInput from './MoneyInput'
 import { getEffectiveCardPrice } from '../utils/prices'
-import { tcgdexLanguageBadgeClass, tcgdexLanguageLabel, getTcgdexLanguage } from '../utils/tcgdexLanguages'
+import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import { parseMoneyInputValue } from '../utils/moneyInput'
 import { cardmarketLinks } from '../utils/cardmarket'
-import CardStateIndicators from './CardStateIndicators'
-import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
-
-function askWishlistQuantity(t, defaultQuantity = 1) {
-  const initialQuantity = Math.max(1, Math.min(99, parseInt(defaultQuantity, 10) || 1))
-  const input = window.prompt(t('wishlist.quantityPrompt'), String(initialQuantity))
-  if (input === null) return null
-  const quantity = parseInt(input, 10)
-  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) {
-    toast.error(t('wishlist.quantityInvalid'))
-    return null
-  }
-  return quantity
-}
+import UnifiedCard, { UnifiedCardDialog } from './UnifiedCard'
 
 const RARITY_COLORS = {
   'Common': 'text-text-secondary',
@@ -388,36 +373,14 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
   )
 }
 
-export const CardItem = memo(function CardItem({ card, showActions = true, onAddToBinder = null, compact = false, lang = null }) {
+export const CardItem = memo(function CardItem({ card, showActions = true, onAddToBinder = null, compact = false, lang = null, dimWhenUnowned = false }) {
   const [showModal, setShowModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
+  const [modalTab, setModalTab] = useState('overview')
   const { t, pricePrimary, pricePrimaryField, formatPrice } = useSettings()
   const queryClient = useQueryClient()
 
-  const addMutation = useMutation({
-    mutationFn: (data) => addToCollection(data),
-    onSuccess: () => {
-      toast.success(`${card.name} ${t('card.addedToCollection')}`)
-      invalidateCardState(queryClient)
-      invalidateTcgdexFilterLanguages(queryClient)
-    },
-    onError: () => toast.error(t('card.addFailed')),
-  })
-
-  const wishlistMutation = useMutation({
-    mutationFn: (data) => addToWishlist(data),
-    onSuccess: () => {
-      toast.success(`${card.name} ${t('card.addedToWishlist')}`)
-      invalidateCardState(queryClient)
-      invalidateTcgdexFilterLanguages(queryClient)
-    },
-    onError: () => toast.error(t('card.wishlistFailed')),
-  })
-
   const cardImage = card.images?.small || resolveCardImageUrl(card) || (card.image ? `${card.image}/low.webp` : null)
-  const cardName = card.name
-  const cardRarity = card.rarity
-  const setName = card.set?.name || card.set_ref?.name || ''
   const selectedPrice = getEffectiveCardPrice(card, null, pricePrimaryField)
   const price = selectedPrice > 0
     ? selectedPrice
@@ -425,115 +388,37 @@ export const CardItem = memo(function CardItem({ card, showActions = true, onAdd
       ?? card.cardmarket?.prices?.trendPrice
       ?? card.price_market
       ?? card.price_trend)
-
-  const rarityColor = RARITY_COLORS[cardRarity] || 'text-text-secondary'
-  const variantEffectClass = getCardVariantEffectClass(card)
-  const { ref: tiltRef, onMouseMove: tiltMove, onMouseLeave: tiltLeave } = useTilt(10)
-
-  if (compact) {
-    return (
-      <div ref={tiltRef} className="card cursor-pointer group p-2 hover:border-brand-red/20 transition-all" onClick={() => setShowModal(true)} onMouseMove={tiltMove} onMouseLeave={tiltLeave}>
-        <div className={clsx('relative aspect-[2.5/3.5] w-full rounded-xl overflow-hidden ring-1 ring-white/5 group-hover:ring-2 group-hover:ring-brand-red/30 transition-all duration-200', variantEffectClass)}>
-          <CardStateIndicators card={card} compact className="absolute left-1.5 right-1.5 top-1.5 z-10" />
-          {cardImage ? (
-            <img src={cardImage} alt={cardName} className="w-full h-full object-cover shadow-lg group-hover:scale-[1.02] transition-transform duration-300" loading="lazy" />
-          ) : (
-            <div className="w-full h-full bg-bg-surface rounded flex items-center justify-center text-text-muted text-xs">
-              {t('common.noImage')}
-            </div>
-          )}
-        </div>
-      </div>
-    )
+  const openModal = (tab = 'overview') => {
+    setModalTab(tab)
+    setShowModal(true)
   }
+  const languageLabel = lang ? tcgdexLanguageLabel(lang) : null
+  const formattedPrice = price ? formatPrice(price) : null
 
   return (
     <>
-      <div ref={tiltRef} className="card cursor-pointer group hover:border-brand-red/20 transition-all" onClick={() => setShowModal(true)} onMouseMove={tiltMove} onMouseLeave={tiltLeave}>
-        <div className={clsx('relative aspect-[2.5/3.5] w-full mb-3 rounded-xl overflow-hidden ring-1 ring-white/5 group-hover:ring-2 group-hover:ring-brand-red/30 transition-all duration-200', variantEffectClass)}>
-          <CardStateIndicators card={card} className="absolute left-2 right-2 top-2 z-10" />
-          {cardImage ? (
-            <img src={cardImage} alt={cardName} className="w-full h-full object-cover shadow-lg group-hover:scale-[1.02] transition-transform duration-300" loading="lazy" />
-          ) : (
-            <div className="w-full h-full bg-bg-surface rounded flex items-center justify-center text-text-muted text-sm">
-              {t('common.noImage')}
-            </div>
-          )}
-        </div>
-
-        <div className="space-y-1 min-w-0">
-          <div className="flex items-center gap-1">
-            <h3 className="text-sm font-medium text-text-primary truncate">{cardName}</h3>
-            {card.is_custom && (
-              <span className="flex-shrink-0 text-xs bg-yellow/20 text-yellow px-1 py-0.5 rounded" title={t('migration.custom')}>✏️</span>
-            )}
-            {lang && (
-              <span className={clsx(
-                'flex-shrink-0 text-[10px] font-black px-1 py-0.5 rounded leading-none',
-                tcgdexLanguageBadgeClass(lang)
-              )} title={getTcgdexLanguage(lang).name}>
-                {tcgdexLanguageLabel(lang)}
-              </span>
-            )}
-            <FallbackBadges card={card} compact />
-          </div>
-          {setName && <p className="text-xs text-text-muted truncate">{setName}</p>}
-
-          {/* Card ID: "OBF 125" format */}
-          {(() => {
-            const setCode = card.set?.id?.toUpperCase() || ''
-            const localNum = card.localId || card.number || ''
-            const cardIdLabel = `${setCode} ${localNum}`.trim()
-            return cardIdLabel ? (
-              <p className="text-[10px] font-mono text-brand-red/70 font-semibold">{cardIdLabel}</p>
-            ) : null
-          })()}
-
-          <div className="flex items-center justify-between">
-            {cardRarity && (
-              <span className={clsx('text-xs truncate', rarityColor)}>{cardRarity}</span>
-            )}
-            {price && (
-              <span className="text-xs font-bold text-green">{formatPrice(price)}</span>
-            )}
-          </div>
-        </div>
-
-        {showActions && (
-          <div className="mt-3 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button
-              className="flex-1 bg-brand-red/20 hover:bg-brand-red/40 text-brand-red text-xs py-1.5 rounded-lg font-medium transition-all flex items-center justify-center gap-1"
-              onClick={(e) => {
-                e.stopPropagation()
-                addMutation.mutate({ card_id: card.id, quantity: 1, condition: 'NM', variant: getDefaultVariantOrNull(card), lang: card.lang || 'en' })
-              }}>
-              <Plus size={12} /> {t('common.add')}
-            </button>
-            <button
-              className="bg-bg-surface hover:bg-bg-elevated text-text-secondary hover:text-pink-400 text-xs px-2 py-1.5 rounded-lg transition-all"
-              onClick={(e) => {
-                e.stopPropagation()
-                const wishlistQuantity = askWishlistQuantity(t, 1)
-                if (wishlistQuantity) wishlistMutation.mutate({ card_id: card.id, quantity: wishlistQuantity })
-              }}>
-              <Heart size={12} />
-            </button>
-            {onAddToBinder && (
-              <button
-                className="bg-bg-surface hover:bg-bg-elevated text-text-secondary hover:text-blue text-xs px-2 py-1.5 rounded-lg transition-all"
-                onClick={(e) => { e.stopPropagation(); onAddToBinder(card.id) }}>
-                <BookOpen size={12} />
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+      <UnifiedCard
+        card={card}
+        image={cardImage}
+        price={formattedPrice}
+        languageLabel={languageLabel}
+        compact={compact}
+        dimWhenUnowned={dimWhenUnowned}
+        onClick={() => openModal('overview')}
+        onAdd={showActions
+          ? () => {
+              if (onAddToBinder) onAddToBinder(card.id)
+              else openModal('add')
+            }
+          : undefined}
+      />
 
       {showModal && (
         <CardModal
           card={card}
           onClose={() => setShowModal(false)}
           onEdit={card.is_custom ? () => { setShowModal(false); setShowEditModal(true) } : undefined}
+          initialTab={modalTab}
         />
       )}
       {showEditModal && (
@@ -551,9 +436,10 @@ export const CardItem = memo(function CardItem({ card, showActions = true, onAdd
   )
 })
 
-export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItems = null }) {
+export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItems = null, initialTab = 'overview' }) {
   if (!card || !card.id) return null
 
+  const [activeTab, setActiveTab] = useState(initialTab)
   const [quantity, setQuantity] = useState(1)
   const [condition, setCondition] = useState('NM')
   const [variant, setVariant] = useState(() => getDefaultVariant(card))
@@ -563,16 +449,9 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
   const [savedCustomImageUrl, setSavedCustomImageUrl] = useState(card.custom_image_url || '')
   const [customImageVersion, setCustomImageVersion] = useState(0)
   const customImageInputId = useId()
-  const { t, settings, formatPrice, formatUsdPrice, pricePrimary, pricePrimaryField, exchangeRate, exchangeRateReady } = useSettings()
+  const { t, formatPrice, formatUsdPrice, pricePrimary, pricePrimaryField, exchangeRate, exchangeRateReady } = useSettings()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-
-  const { data: modalSets = [] } = useQuery({
-    queryKey: ['sets', settings.language || 'en'],
-    queryFn: () => getSets().then(r => r.data),
-    enabled: Boolean(card.set_ref?.id || card.set?.id || card.set_id),
-    staleTime: 5 * 60 * 1000,
-  })
 
   // Price history chart
   const cardIdForHistory = card?.card_id || (typeof card?.id === 'string' ? card.id : null)
@@ -605,20 +484,6 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
     || customImageProxyUrl
     || resolveCardImageUrl(card, 'large')
     || resolveCardImageUrl(card)
-  const setName = card.set?.name || card.set_ref?.name
-  const setCandidates = [
-    card.set_ref?.id,
-    card.set_ref?.tcg_set_id,
-    card.set?.id,
-    card.set?.tcg_set_id,
-    card.set_id,
-  ].filter(Boolean)
-  const setLanguage = card.set_ref?.lang || card.set?.lang || card.lang || defaultLang
-  const setDetailId = card.set_ref?.id
-    || modalSets.find(set => setCandidates.includes(set.id) && (!setLanguage || set.lang === setLanguage))?.id
-    || modalSets.find(set => setCandidates.includes(set.tcg_set_id) && (!setLanguage || set.lang === setLanguage))?.id
-    || modalSets.find(set => setCandidates.includes(set.id) || setCandidates.includes(set.tcg_set_id))?.id
-    || null
   const dexIds = [...new Set(
     (Array.isArray(card.dex_ids) ? card.dex_ids : card.dex_id != null ? [card.dex_id] : [])
       .map(Number)
@@ -724,91 +589,28 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
   const historyPriceField = ['price_market', 'price_trend', 'price_low'].includes(pricePrimaryField) ? pricePrimaryField : 'price_market'
   const historyDataKey = historyPriceField
   const historyPriceLabel = pricePrimaryField === historyPriceField ? t(`prices.${pricePrimary}`) : t('prices.avg')
+  const modalTabs = [
+    { id: 'overview', label: t('cardTabs.overview') },
+    { id: 'prices', label: t('cardTabs.prices') },
+    ...(ownedQuantity > 0 ? [{ id: 'owned', label: t('cardTabs.owned') }] : []),
+    { id: 'add', label: t('cardTabs.add') },
+    { id: 'wishlist', label: t('cardTabs.wishlist') },
+  ]
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 bg-black/60 md:flex md:items-center md:justify-center md:bg-black/80 md:backdrop-blur-sm"
-      onClick={onClose}>
-      <div className={[
-        'fixed bottom-0 left-0 right-0 rounded-t-2xl max-h-[90dvh] overflow-y-auto',
-        'bg-bg-surface border-t border-border more-sheet-enter',
-        'md:static md:rounded-2xl md:border md:max-w-2xl md:w-full md:max-h-[85vh] md:animate-none',
-      ].join(' ')} onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-center pt-3 pb-1 md:hidden">
-          <div className="w-10 h-1 bg-border rounded-full" />
-        </div>
+  return (
+    <UnifiedCardDialog
+      card={card}
+      image={cardImage}
+      variantEffectSource={variant}
+      price={selectedPrimaryPrice > 0 ? formatPrice(selectedPrimaryPrice) : null}
+      tabs={modalTabs}
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+      onClose={onClose}
+    >
+      <div className="min-w-0 space-y-4">
 
-        <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 p-4 sm:p-6">
-          <div className="flex-shrink-0">
-            <div className="flex sm:block items-start gap-4">
-              <div className={`w-28 sm:w-48 flex-shrink-0 rounded-xl overflow-hidden ${getCardVariantEffectClass(variant)}`}>
-                {cardImage ? (
-                  <img src={cardImage} alt={card.name} className="w-full shadow-2xl" />
-                ) : (
-                  <div className="w-full aspect-[2.5/3.5] bg-bg-card rounded-xl flex items-center justify-center text-text-muted text-sm">
-                    {t('common.noImage')}
-                  </div>
-                )}
-              </div>
-
-              <div className="sm:hidden flex-1 min-w-0 pt-1">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <h2 className="text-base font-bold text-text-primary break-words">{card.name}</h2>
-                    {setName && (
-                      <p className="text-xs text-text-secondary mt-0.5">
-                        {setDetailId ? (
-                          <button
-                            type="button"
-                            onClick={() => navigateFromModal(`/sets/${setDetailId}`)}
-                            className="font-medium hover:text-brand-red hover:underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/50 rounded"
-                          >
-                            {setName}
-                          </button>
-                        ) : setName}
-                        {card.number ? ` · #${card.number}` : ''}
-                      </p>
-                    )}
-                    <FallbackBadges card={card} className="mt-1" />
-                    {card.rarity && (
-                      <p className={`text-xs mt-0.5 ${(RARITY_COLORS[card.rarity] || 'text-text-secondary')}`}>
-                        {card.rarity}
-                      </p>
-                    )}
-                  </div>
-                  <button onClick={onClose} className="text-text-muted hover:text-text-primary transition-colors flex-shrink-0 p-1">
-                    <X size={18} />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex-1 min-w-0 space-y-4">
-            <div className="hidden sm:flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <h2 className="text-xl font-bold text-text-primary break-words">{card.name}</h2>
-                {setName && (
-                  <p className="text-sm text-text-secondary">
-                    {setDetailId ? (
-                      <button
-                        type="button"
-                        onClick={() => navigateFromModal(`/sets/${setDetailId}`)}
-                        className="font-medium hover:text-brand-red hover:underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/50 rounded"
-                      >
-                        {setName}
-                      </button>
-                    ) : setName}
-                    {card.number ? ` · #${card.number}` : ''}
-                  </p>
-                )}
-                <FallbackBadges card={card} className="mt-1" />
-              </div>
-              <button onClick={onClose} className="text-text-muted hover:text-text-primary transition-colors flex-shrink-0">
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 text-sm">
+            {activeTab === 'overview' && <div className="grid grid-cols-2 gap-3 text-sm">
               {card.rarity && (
                 <div className="hidden sm:block">
                   <span className="text-text-muted">{t('card.rarity')}</span>
@@ -858,9 +660,9 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
                   </div>
                 </div>
               )}
-            </div>
+            </div>}
 
-            {selectedPriceBreakdown.length > 0 && (
+            {activeTab === 'prices' && selectedPriceBreakdown.length > 0 && (
               <div className="bg-bg-card rounded-xl p-3 space-y-3">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <p className="text-xs text-text-muted font-medium uppercase tracking-wide">
@@ -883,7 +685,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
               </div>
             )}
 
-            {!card.is_custom && marketLinks.length > 0 && (
+            {activeTab === 'prices' && !card.is_custom && marketLinks.length > 0 && (
               <div className="bg-bg-card rounded-xl p-3 space-y-2 border border-border">
                 <p className="text-xs text-text-muted font-medium uppercase tracking-wide">
                   {t('cardmarket.buy')}
@@ -910,7 +712,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
               </div>
             )}
 
-            {tcgPrices.length > 0 && (
+            {activeTab === 'prices' && tcgPrices.length > 0 && (
               <div className="bg-bg-card rounded-xl p-3 space-y-2">
                 <p className="text-xs text-text-muted font-medium uppercase tracking-wide">
                   TCGPlayer
@@ -926,7 +728,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
               </div>
             )}
 
-            {canEditCustomImage && (
+            {activeTab === 'overview' && canEditCustomImage && (
               <div className="bg-bg-card rounded-xl p-3 space-y-2 border border-border">
                 <div>
                   <label htmlFor={customImageInputId} className="text-xs text-text-muted font-medium uppercase tracking-wide block">
@@ -974,7 +776,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
 
 
             {/* Price History Chart */}
-            {safePriceHistory && safePriceHistory.length > 0 && (
+            {activeTab === 'prices' && safePriceHistory && safePriceHistory.length > 0 && (
               <div className="bg-bg-card rounded-xl p-3 space-y-2">
                 <p className="text-xs text-text-muted font-medium uppercase tracking-wide">
                   {t('prices.history')}
@@ -1042,7 +844,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
               </div>
             )}
             <div className="space-y-3">
-              {ownedQuantity > 0 && (
+              {activeTab === 'owned' && ownedQuantity > 0 && (
                 <div className="rounded-xl border border-green/30 bg-green/10 p-3">
                   <p className="text-sm font-semibold text-green">✓ {t('cardSearch.alreadyOwned')} · {ownedQuantity}x</p>
                   {modalOwnedItems.length > 0 && (
@@ -1056,6 +858,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
                   )}
                 </div>
               )}
+              {activeTab === 'add' && <>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-text-muted mb-1 block">{t('card.quantity')}</label>
@@ -1097,7 +900,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
                 />
               </div>
 
-              <div className="flex gap-2 pb-safe">
+              <div className="flex gap-2">
                 <button className="btn-primary flex-1" onClick={() => addMutation.mutate({
                   card_id: resolvedCardId, quantity, condition,
                   variant,
@@ -1105,10 +908,6 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
                   lang: card.lang || 'en',
                 })} disabled={addMutation.isPending || !exchangeRateReady}>
                   <Plus size={16} /> {addMutation.isPending ? t('card.adding') : t('card.addToCollection')}
-                </button>
-                <button className="btn-ghost" onClick={() => wishlistMutation.mutate({ card_id: card.id, quantity: Math.max(1, Math.min(99, quantity)) })}
-                  disabled={wishlistMutation.isPending}>
-                  <Heart size={16} />
                 </button>
                 {card.is_custom && onEdit && (
                   <button
@@ -1119,12 +918,34 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
                   </button>
                 )}
               </div>
+              </>}
+              {activeTab === 'wishlist' && (
+                <div className="space-y-3 rounded-xl border border-border bg-bg-card p-4">
+                  <div>
+                    <label className="mb-1 block text-xs text-text-muted">{t('card.quantity')}</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="99"
+                      value={quantity}
+                      onChange={(e) => setQuantity(Math.max(1, Math.min(99, parseInt(e.target.value, 10) || 1)))}
+                      className="input"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-primary w-full"
+                    onClick={() => wishlistMutation.mutate({ card_id: card.id, quantity: Math.max(1, Math.min(99, quantity)) })}
+                    disabled={wishlistMutation.isPending}
+                  >
+                    <Heart size={16} />
+                    {wishlistMutation.isPending ? t('common.saving') : t('binderTypes.addToWishlist')}
+                  </button>
+                </div>
+              )}
             </div>
-          </div>
-        </div>
       </div>
-    </div>,
-    document.body
+    </UnifiedCardDialog>
   )
 }
 

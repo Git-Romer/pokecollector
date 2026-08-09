@@ -108,6 +108,46 @@ class CatalogLanguageTests(unittest.TestCase):
             {"base1-1_en", "base1-1_de"},
         )
 
+    def test_card_search_schedules_metadata_without_waiting_for_tcgdex(self):
+        class RecordingBackgroundTasks:
+            def __init__(self):
+                self.tasks = []
+
+            def add_task(self, function, *args, **kwargs):
+                self.tasks.append((function, args, kwargs))
+
+        background_tasks = RecordingBackgroundTasks()
+        self.db.add_all([
+            UserSetting(user_id=self.user.id, key="language", value="en"),
+            Card(
+                id="base1-1_en",
+                tcg_card_id="base1-1",
+                name="Alakazam",
+                set_id="base1",
+                number="1",
+                lang="en",
+                is_custom=False,
+            ),
+        ])
+        self.db.commit()
+
+        with patch("api.cards.pokemon_api.get_card") as get_card_api:
+            result = search_cards(
+                type_filter=None,
+                lang=None,
+                db=self.db,
+                current_user=self.user,
+                background_tasks=background_tasks,
+            )
+
+        self.assertEqual([card["id"] for card in result["data"]], ["base1-1_en"])
+        get_card_api.assert_not_called()
+        self.assertEqual(len(background_tasks.tasks), 1)
+        function, args, kwargs = background_tasks.tasks[0]
+        self.assertEqual(function.__name__, "enrich_card_metadata_ids_in_background")
+        self.assertEqual(args, (["base1-1_en"],))
+        self.assertEqual(kwargs, {})
+
     def test_card_search_includes_current_users_compact_card_state(self):
         card = Card(id="base1-1_en", tcg_card_id="base1-1", name="Alakazam", set_id="base1", number="1", lang="en", is_custom=False)
         other = User(username="misty", hashed_password="x", role="trainer", is_active=True)

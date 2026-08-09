@@ -14,7 +14,13 @@ from services.card_fallbacks import apply_cross_language_fallbacks
 from services.card_upsert import upsert_card
 from services.card_values import effective_market_price, normalize_price_field
 from services.card_visibility import visible_card_filter, visible_set_filter
+from services.collection_csv import normalize_collection_variant
 from services.binder_csv import BINDER_CSV_DUPLICATE_QUANTITY_ERROR, combine_binder_required_quantity
+from services.binder_allocations import (
+    collection_binder_allocated_card_counts,
+    collection_binder_allocation_counts,
+    stored_binder_quantity,
+)
 from services.wishlist_missing import plan_missing_wishlist_additions
 from services.tcgdex_languages import SUPPORTED_TCGDEX_LANGUAGES, is_supported_tcgdex_language, normalize_tcgdex_language
 from services.public_profile_feature import public_profiles_enabled
@@ -27,7 +33,9 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 ALLOWED_BINDER_FORMATS = {"Standard", "Expanded", "Unlimited", "Casual"}
-BINDER_CSV_COLUMNS = ["set_code", "number", "required_quantity", "lang"]
+BINDER_CSV_LEGACY_COLUMNS = ["set_code", "number", "required_quantity", "lang"]
+BINDER_CSV_PHYSICAL_COLUMNS = [*BINDER_CSV_LEGACY_COLUMNS, "variant", "condition"]
+BINDER_CSV_COLUMNS = [*BINDER_CSV_PHYSICAL_COLUMNS, "collection_item_id"]
 BINDER_CSV_MAX_BYTES = 256 * 1024
 BINDER_CSV_MAX_ROWS = 1000
 
@@ -58,31 +66,19 @@ def _safe_required_quantity(value: int | None) -> int:
 
 
 def _collection_binder_usage_counts(db: Session, current_user: User) -> dict[int, int]:
-    """Return how often each exact collection item is already used in collection binders."""
-    return dict(
-        db.query(BinderCard.collection_item_id, func.count(BinderCard.id))
-        .join(Binder, Binder.id == BinderCard.binder_id)
-        .filter(
-            Binder.user_id == current_user.id,
-            or_(Binder.binder_type == "collection", Binder.binder_type.is_(None)),
-            BinderCard.collection_item_id.isnot(None),
-        )
-        .group_by(BinderCard.collection_item_id)
-        .all()
-    )
+    """Return allocated copies for each exact item across collection binders."""
+    return collection_binder_allocation_counts(db, current_user.id)
 
 
 def _binder_counts(db: Session, binder: Binder) -> tuple[int, int]:
-    binder_type = binder.binder_type or "collection"
     base_query = db.query(BinderCard).join(Card, Card.id == BinderCard.card_id).filter(
         BinderCard.binder_id == binder.id,
         visible_card_filter(db, binder.user_id, "all"),
     )
     unique_count = base_query.with_entities(func.count(func.distinct(BinderCard.card_id))).scalar() or 0
-    if binder_type == "collection":
-        total_count = base_query.with_entities(func.count(BinderCard.id)).scalar() or 0
-    else:
-        total_count = base_query.with_entities(func.coalesce(func.sum(func.coalesce(BinderCard.required_quantity, 1)), 0)).scalar() or 0
+    total_count = base_query.with_entities(
+        func.coalesce(func.sum(func.coalesce(BinderCard.required_quantity, 1)), 0)
+    ).scalar() or 0
     return int(total_count), int(unique_count)
 
 
@@ -116,6 +112,26 @@ def _user_collection_quantities(db: Session, current_user: User, card_ids: list[
     return {
         card_id: int(quantity or 0)
         for card_id, quantity in query.group_by(CollectionItem.card_id).all()
+    }
+
+
+def _available_collection_card_quantities(
+    db: Session,
+    current_user: User,
+    card_ids: list[str] | None = None,
+    owned_quantities: dict[str, int] | None = None,
+) -> dict[str, int]:
+    """Return owned copies not currently allocated to collection binders."""
+    if owned_quantities is None:
+        owned_quantities = _user_collection_quantities(db, current_user, card_ids)
+    allocated_quantities = collection_binder_allocated_card_counts(
+        db,
+        current_user.id,
+        list(owned_quantities),
+    )
+    return {
+        card_id: max(int(quantity or 0) - int(allocated_quantities.get(card_id, 0) or 0), 0)
+        for card_id, quantity in owned_quantities.items()
     }
 
 
@@ -239,6 +255,27 @@ def _cache_same_name_cards_for_equivalents(db: Session, source_card: Card) -> No
         db.commit()
 
 
+def _relock_binder_for_write(
+    db: Session,
+    binder_id: int,
+    user_id: int,
+    expected_type: str,
+) -> Binder:
+    """Reacquire a binder lock after cache helpers that may commit."""
+    binder = db.query(Binder).filter(
+        Binder.id == binder_id,
+        Binder.user_id == user_id,
+    ).populate_existing().with_for_update(of=Binder).first()
+    if not binder:
+        raise HTTPException(status_code=404, detail="Binder not found")
+    if (binder.binder_type or "collection") != expected_type:
+        raise HTTPException(
+            status_code=409,
+            detail="Binder type changed while processing this request; please try again",
+        )
+    return binder
+
+
 def _binder_card_summary(
     card: Card,
     owned_quantity: int,
@@ -315,11 +352,16 @@ def _collection_optimizer_candidates(
     source_card: Card,
     source_item_id: int | None,
     excluded_collection_item_ids: set[int] | None = None,
+    required_quantity: int = 1,
+    reserved_collection_item_quantities: dict[int, int] | None = None,
+    binder_collection_item_quantities: dict[int, int] | None = None,
     price_field: str | None = "price_trend",
 ) -> list[tuple[CollectionItem, Card, float]]:
     """Return cheaper owned playable-equivalent collection items for collection binders."""
     usage_counts = _collection_binder_usage_counts(db, current_user)
     excluded_collection_item_ids = excluded_collection_item_ids or set()
+    reserved_collection_item_quantities = reserved_collection_item_quantities or {}
+    binder_collection_item_quantities = binder_collection_item_quantities or {}
     collection_items = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).options(
         joinedload(CollectionItem.card).joinedload(Card.set_ref)
     ).filter(
@@ -335,8 +377,11 @@ def _collection_optimizer_candidates(
     candidates = []
     for item in collection_items:
         used_quantity = int(usage_counts.get(item.id, 0) or 0)
-        available_quantity = max(int(item.quantity or 0) - used_quantity, 0)
-        if available_quantity < 1:
+        reserved_quantity = int(reserved_collection_item_quantities.get(item.id, 0) or 0)
+        stock_capacity = int(item.quantity or 0) - used_quantity - reserved_quantity
+        row_capacity = 99 - int(binder_collection_item_quantities.get(item.id, 0) or 0) - reserved_quantity
+        available_quantity = max(min(stock_capacity, row_capacity), 0)
+        if available_quantity < required_quantity:
             continue
         card = _ensure_card_gameplay_data(db, item.card)
         if not card or card.playable_fingerprint != source_card.playable_fingerprint:
@@ -364,10 +409,17 @@ def _build_print_optimization_preview(db: Session, binder: Binder, current_user:
 
     recommendations = []
     candidate_cache: dict[str, Card | None] = {}
-    current_binder_collection_item_ids = {
-        bc.collection_item_id for bc in binder_cards if bc.collection_item_id is not None
+    reserved_suggested_quantities: dict[int, int] = {}
+    binder_collection_item_quantities = {
+        collection_item_id: sum(
+            stored_binder_quantity(entry.required_quantity)
+            for entry in binder_cards
+            if entry.collection_item_id == collection_item_id
+        )
+        for collection_item_id in {
+            entry.collection_item_id for entry in binder_cards if entry.collection_item_id is not None
+        }
     }
-    used_suggested_collection_item_ids: set[int] = set()
     for bc in binder_cards:
         if not bc.card:
             continue
@@ -382,12 +434,16 @@ def _build_print_optimization_preview(db: Session, binder: Binder, current_user:
             current_price = _price_sort_value(source_card, source_item.variant, price_field)
             if current_price is None:
                 continue
+            required_quantity = stored_binder_quantity(bc.required_quantity)
             candidates = _collection_optimizer_candidates(
                 db,
                 current_user,
                 source_card,
                 source_item.id,
-                current_binder_collection_item_ids | used_suggested_collection_item_ids,
+                None,
+                required_quantity,
+                reserved_suggested_quantities,
+                binder_collection_item_quantities,
                 price_field,
             )
             cheaper_candidates = [item for item in candidates if item[2] < current_price]
@@ -397,8 +453,9 @@ def _build_print_optimization_preview(db: Session, binder: Binder, current_user:
                 cheaper_candidates,
                 key=lambda item: (item[2], item[1].set_id or "", item[1].number or "", item[0].id),
             )
-            used_suggested_collection_item_ids.add(target_item.id)
-            required_quantity = 1
+            reserved_suggested_quantities[target_item.id] = (
+                reserved_suggested_quantities.get(target_item.id, 0) + required_quantity
+            )
             savings_per_copy = current_price - suggested_price
             recommendations.append({
                 "binder_card_id": bc.id,
@@ -500,7 +557,7 @@ def update_binder(
     binder = db.query(Binder).filter(
         Binder.id == binder_id,
         Binder.user_id == current_user.id,
-    ).first()
+    ).with_for_update(of=Binder).first()
     if not binder:
         raise HTTPException(status_code=404, detail="Binder not found")
 
@@ -535,6 +592,8 @@ def update_binder(
         if type_changed:
             # A type conversion always requires a fresh sharing decision.
             binder.is_public = False
+            if requested_type != "collection":
+                binder.auto_owned_set_id = None
     if "format" in update.model_fields_set:
         binder.format = _clean_binder_format(update.format)
     if "icon_pokemon_id" in update.model_fields_set:
@@ -548,6 +607,178 @@ def update_binder(
     return _binder_response(binder, total_count, unique_count)
 
 
+@router.post("/{binder_id}/convert-to-collection")
+def convert_wishlist_binder_to_collection(
+    binder_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Atomically replace a complete wishlist with exact owned allocations."""
+    binder = db.query(Binder).filter(
+        Binder.id == binder_id,
+        Binder.user_id == current_user.id,
+    ).with_for_update(of=Binder).first()
+    if not binder:
+        raise HTTPException(status_code=404, detail="Binder not found")
+    if (binder.binder_type or "collection") != "wishlist":
+        raise HTTPException(status_code=400, detail="Only wishlist binders can be converted")
+
+    entries = db.query(BinderCard).options(joinedload(BinderCard.card)).filter(
+        BinderCard.binder_id == binder.id,
+    ).order_by(BinderCard.id.asc()).with_for_update(of=BinderCard).all()
+    if not entries:
+        raise HTTPException(status_code=400, detail="An empty wishlist binder cannot be converted")
+    if any(entry.collection_item_id is not None for entry in entries):
+        raise HTTPException(status_code=409, detail="This wishlist contains invalid exact-copy links and cannot be converted safely")
+
+    card_ids = sorted({entry.card_id for entry in entries if entry.card_id})
+    owned_items = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).filter(
+        CollectionItem.user_id == current_user.id,
+        CollectionItem.card_id.in_(card_ids),
+        CollectionItem.quantity > 0,
+        visible_card_filter(db, current_user.id, "all"),
+    ).order_by(CollectionItem.id.asc()).with_for_update(of=CollectionItem).all()
+
+    usage_counts = _collection_binder_usage_counts(db, current_user)
+    items_by_card: dict[str, list[CollectionItem]] = {}
+    remaining_by_item: dict[int, int] = {}
+    for item in owned_items:
+        items_by_card.setdefault(item.card_id, []).append(item)
+        remaining_by_item[item.id] = max(
+            int(item.quantity or 0) - int(usage_counts.get(item.id, 0) or 0),
+            0,
+        )
+
+    entries_by_card: dict[str, list[BinderCard]] = {}
+    for entry in entries:
+        entries_by_card.setdefault(entry.card_id, []).append(entry)
+
+    assignments: dict[str, list[tuple[CollectionItem, int]]] = {}
+    shortages: list[str] = []
+    for card_id, card_entries in entries_by_card.items():
+        required = sum(_safe_required_quantity(entry.required_quantity) for entry in card_entries)
+        remaining = required
+        planned = []
+        for item in items_by_card.get(card_id, []):
+            available = remaining_by_item.get(item.id, 0)
+            assigned = min(remaining, available, 99)
+            if assigned <= 0:
+                continue
+            planned.append((item, assigned))
+            remaining_by_item[item.id] = available - assigned
+            remaining -= assigned
+            if remaining == 0:
+                break
+        if remaining > 0:
+            representative = card_entries[0]
+            card_label = representative.card.name if representative.card and representative.card.name else card_id
+            copy_label = "copy" if remaining == 1 else "copies"
+            shortages.append(f"{card_label}: {remaining} more unallocated {copy_label} needed")
+        assignments[card_id] = planned
+
+    if shortages:
+        displayed_shortages = shortages[:10]
+        if len(shortages) > len(displayed_shortages):
+            displayed_shortages.append(f"and {len(shortages) - len(displayed_shortages)} more card(s)")
+        raise HTTPException(
+            status_code=409,
+            detail="Wishlist is not complete with unallocated copies. " + "; ".join(displayed_shortages),
+        )
+
+    allocated_copies = 0
+    for card_id, card_entries in entries_by_card.items():
+        planned = assignments[card_id]
+        entry = card_entries[0]
+        first_item, first_quantity = planned[0]
+        entry.card_id = first_item.card_id
+        entry.collection_item_id = first_item.id
+        entry.required_quantity = first_quantity
+        allocated_copies += first_quantity
+        for duplicate in card_entries[1:]:
+            db.delete(duplicate)
+        for item, quantity in planned[1:]:
+            db.add(BinderCard(
+                binder_id=binder.id,
+                card_id=item.card_id,
+                collection_item_id=item.id,
+                required_quantity=quantity,
+                added_at=entry.added_at or datetime.datetime.utcnow(),
+            ))
+            allocated_copies += quantity
+
+    binder.binder_type = "collection"
+    binder.is_public = False
+    db.commit()
+    db.refresh(binder)
+    total_count, unique_count = _binder_counts(db, binder)
+    return {
+        "message": "Wishlist binder converted to a collection binder",
+        "binder": _binder_response(binder, total_count, unique_count),
+        "allocated_copies": allocated_copies,
+    }
+
+
+@router.post("/{binder_id}/convert-to-wishlist")
+def convert_collection_binder_to_wishlist(
+    binder_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Release exact allocations and turn a collection binder into a wishlist."""
+    binder = db.query(Binder).filter(
+        Binder.id == binder_id,
+        Binder.user_id == current_user.id,
+    ).with_for_update(of=Binder).first()
+    if not binder:
+        raise HTTPException(status_code=404, detail="Binder not found")
+    if (binder.binder_type or "collection") != "collection":
+        raise HTTPException(status_code=400, detail="Only collection binders can be converted")
+
+    entries = db.query(BinderCard).filter(
+        BinderCard.binder_id == binder.id,
+    ).order_by(BinderCard.id.asc()).with_for_update(of=BinderCard).all()
+
+    entries_by_card: dict[str, list[BinderCard]] = {}
+    for entry in entries:
+        entries_by_card.setdefault(entry.card_id, []).append(entry)
+
+    released_copies = 0
+    for card_entries in entries_by_card.values():
+        total_quantity = sum(
+            _safe_required_quantity(entry.required_quantity)
+            for entry in card_entries
+        )
+        released_copies += sum(
+            _safe_required_quantity(entry.required_quantity)
+            for entry in card_entries
+            if entry.collection_item_id is not None
+        )
+        chunks = []
+        remaining = total_quantity
+        while remaining > 0:
+            chunk = min(remaining, 99)
+            chunks.append(chunk)
+            remaining -= chunk
+
+        for entry, quantity in zip(card_entries, chunks):
+            entry.collection_item_id = None
+            entry.required_quantity = quantity
+        for extra_entry in card_entries[len(chunks):]:
+            db.delete(extra_entry)
+
+    binder.binder_type = "wishlist"
+    binder.is_public = False
+    binder.auto_owned_set_id = None
+    db.commit()
+    db.refresh(binder)
+    total_count, unique_count = _binder_counts(db, binder)
+    return {
+        "message": "Collection binder converted to a wishlist binder",
+        "binder": _binder_response(binder, total_count, unique_count),
+        "released_copies": released_copies,
+    }
+
+
 @router.delete("/{binder_id}")
 def delete_binder(
     binder_id: int,
@@ -558,7 +789,7 @@ def delete_binder(
     binder = db.query(Binder).filter(
         Binder.id == binder_id,
         Binder.user_id == current_user.id,
-    ).first()
+    ).with_for_update(of=Binder).first()
     if not binder:
         raise HTTPException(status_code=404, detail="Binder not found")
 
@@ -605,16 +836,42 @@ def get_binder_cards(
         .group_by(CollectionItem.card_id)
         .all()
     )
+    available_collection_quantities = (
+        _available_collection_card_quantities(
+            db,
+            current_user,
+            list(collection_quantities),
+            owned_quantities=collection_quantities,
+        )
+        if binder_type == "wishlist"
+        else collection_quantities
+    )
+    remaining_available_by_card = dict(available_collection_quantities)
     usage_counts = _collection_binder_usage_counts(db, current_user)
     unavailable_collection_item_ids = []
+    available_collection_item_quantities = {}
     if binder_type == "collection":
         owned_items = db.query(CollectionItem.id, CollectionItem.quantity).join(Card, Card.id == CollectionItem.card_id).filter(
             CollectionItem.user_id == current_user.id,
             visible_card_filter(db, current_user.id, "all"),
         ).all()
+        current_binder_quantities = {}
+        for binder_card in binder_cards:
+            if binder_card.collection_item_id is not None:
+                current_binder_quantities[binder_card.collection_item_id] = (
+                    current_binder_quantities.get(binder_card.collection_item_id, 0)
+                    + _safe_required_quantity(binder_card.required_quantity)
+                )
+        available_collection_item_quantities = {
+            item_id: min(
+                max(int(quantity or 0) - int(usage_counts.get(item_id, 0) or 0), 0),
+                max(99 - int(current_binder_quantities.get(item_id, 0) or 0), 0),
+            )
+            for item_id, quantity in owned_items
+        }
         unavailable_collection_item_ids = [
-            item_id for item_id, quantity in owned_items
-            if usage_counts.get(item_id, 0) >= (quantity or 1)
+            item_id for item_id, maximum in available_collection_item_quantities.items()
+            if maximum < 1
         ]
 
     cards = []
@@ -631,23 +888,40 @@ def get_binder_cards(
 
         # Check if in collection. New collection binders can point at an exact
         # CollectionItem so variants/conditions are represented correctly.
-        col_item = None
+        exact_col_item = None
         if bc.collection_item_id:
-            col_item = bc.collection_item if bc.collection_item and bc.collection_item.user_id == current_user.id else None
-        if not col_item:
+            exact_col_item = bc.collection_item if bc.collection_item and bc.collection_item.user_id == current_user.id else None
+        col_item = exact_col_item
+        if not col_item and binder_type != "wishlist":
             col_item = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).filter(
                 CollectionItem.card_id == bc.card_id,
                 CollectionItem.user_id == current_user.id,
                 visible_card_filter(db, current_user.id, "all"),
             ).first()
-        in_collection = col_item is not None
+        in_collection = (
+            int(collection_quantities.get(bc.card_id, 0) or 0) > 0
+            if binder_type == "wishlist"
+            else col_item is not None
+        )
 
         # For collection binder, skip cards not in collection
         if binder_type == "collection" and not in_collection:
             continue
 
-        required_quantity = 1 if binder_type == "collection" and bc.collection_item_id else _safe_required_quantity(bc.required_quantity)
-        owned_quantity = 1 if binder_type == "collection" and bc.collection_item_id and col_item else int(collection_quantities.get(bc.card_id, 0) or 0)
+        required_quantity = _safe_required_quantity(bc.required_quantity)
+        collection_quantity = (
+            int(collection_quantities.get(bc.card_id, 0) or 0)
+            if binder_type == "wishlist"
+            else int(col_item.quantity or 0) if col_item else 0
+        )
+        if binder_type == "collection" and col_item:
+            owned_quantity = required_quantity
+        elif binder_type == "wishlist":
+            available_quantity = int(remaining_available_by_card.get(bc.card_id, 0) or 0)
+            owned_quantity = min(required_quantity, available_quantity)
+            remaining_available_by_card[bc.card_id] = max(available_quantity - owned_quantity, 0)
+        else:
+            owned_quantity = int(available_collection_quantities.get(bc.card_id, 0) or 0)
         fulfilled_quantity = min(owned_quantity, required_quantity)
         missing_quantity = max(required_quantity - owned_quantity, 0)
         price = effective_market_price(bc.card, col_item.variant if col_item else None, price_field) or 0
@@ -655,8 +929,8 @@ def get_binder_cards(
         total_required_count += required_quantity
         owned_count += fulfilled_quantity
         missing_count += missing_quantity
-        binder_value += price * (owned_quantity if binder_type == "collection" else required_quantity)
-        current_value += price * (owned_quantity if binder_type == "collection" else fulfilled_quantity)
+        binder_value += price * required_quantity
+        current_value += price * fulfilled_quantity
         if binder_type == "wishlist":
             cost_to_complete += price * missing_quantity
 
@@ -670,22 +944,25 @@ def get_binder_cards(
             "images_large": bc.card.images_large,
             "price_market": price,
             "in_collection": in_collection,
-            "owned": in_collection,
+            "owned": owned_quantity > 0,
             "quantity": owned_quantity,
             "owned_quantity": owned_quantity,
+            "collection_quantity": collection_quantity,
             "required_quantity": required_quantity,
             "missing_quantity": missing_quantity,
             "variant": col_item.variant if col_item else None,
             "condition": col_item.condition if col_item else None,
             "lang": col_item.lang if col_item else (bc.card.lang or "en"),
-            "collection_item_id": col_item.id if col_item else None,
+            "collection_item_id": exact_col_item.id if exact_col_item else None,
             "binder_card_id": bc.id,
         }
+        if binder_type == "collection" and exact_col_item:
+            allocated_elsewhere = max(int(usage_counts.get(exact_col_item.id, 0) or 0) - required_quantity, 0)
+            card_dict["available_quantity"] = max(collection_quantity - int(usage_counts.get(exact_col_item.id, 0) or 0), 0)
+            card_dict["max_assignable_quantity"] = min(99, max(collection_quantity - allocated_elsewhere, 0))
         if bc.card.set_ref:
             card_dict["set_name"] = bc.card.set_ref.name
         cards.append(card_dict)
-
-    total_cards = len(binder_cards)
 
     return {
         "binder": {
@@ -699,13 +976,15 @@ def get_binder_cards(
         },
         "cards": cards,
         "owned_count": owned_count,
-        "total_count": len(cards) if binder_type == "collection" else total_cards,
+        "total_count": total_required_count,
         "total_required_count": total_required_count,
         "missing_count": missing_count,
+        "unique_count": len({card["id"] for card in cards}),
         "binder_value": round(binder_value, 2),
         "current_value": round(current_value, 2),
         "cost_to_complete": round(cost_to_complete, 2),
         "unavailable_collection_item_ids": unavailable_collection_item_ids,
+        "available_collection_item_quantities": available_collection_item_quantities,
     }
 
 
@@ -738,18 +1017,21 @@ def apply_binder_print_optimization(
     binder = db.query(Binder).filter(
         Binder.id == binder_id,
         Binder.user_id == current_user.id,
-    ).first()
+    ).with_for_update(of=Binder).first()
     if not binder:
         raise HTTPException(status_code=404, detail="Binder not found")
 
+    binder_type = binder.binder_type or "collection"
     preview = _build_print_optimization_preview(db, binder, current_user, price_field)
+    binder = _relock_binder_for_write(
+        db, binder_id, current_user.id, binder_type
+    )
     selected_ids = None
     if update and update.selected_binder_card_ids is not None:
         selected_ids = set(update.selected_binder_card_ids)
     applied = 0
     skipped = 0
     applied_total_savings = 0.0
-    binder_type = binder.binder_type or "collection"
     for recommendation in preview["recommendations"]:
         binder_card_id = recommendation["binder_card_id"]
         if selected_ids is not None and binder_card_id not in selected_ids:
@@ -768,11 +1050,18 @@ def apply_binder_print_optimization(
             if not bc or bc.collection_item_id == target_collection_item_id:
                 skipped += 1
                 continue
-            target_item = db.query(CollectionItem).filter(
-                CollectionItem.id == target_collection_item_id,
+            source_item_id = bc.collection_item_id
+            locked_items = db.query(CollectionItem).filter(
+                CollectionItem.id.in_([source_item_id, target_collection_item_id]),
                 CollectionItem.user_id == current_user.id,
-            ).first()
-            if not target_item:
+            ).order_by(CollectionItem.id.asc()).with_for_update(of=CollectionItem).all()
+            locked_by_id = {item.id: item for item in locked_items}
+            target_item = locked_by_id.get(target_collection_item_id)
+            if not target_item or source_item_id not in locked_by_id:
+                skipped += 1
+                continue
+            db.refresh(bc)
+            if bc.collection_item_id != source_item_id:
                 skipped += 1
                 continue
             existing = db.query(BinderCard).filter(
@@ -781,15 +1070,25 @@ def apply_binder_print_optimization(
                 BinderCard.id != bc.id,
             ).first()
             if existing:
-                skipped += 1
+                assigned_quantity = stored_binder_quantity(bc.required_quantity)
+                combined_quantity = stored_binder_quantity(existing.required_quantity) + assigned_quantity
+                usage_count = _collection_binder_usage_counts(db, current_user).get(target_item.id, 0)
+                if combined_quantity > 99 or usage_count + assigned_quantity > int(target_item.quantity or 0):
+                    skipped += 1
+                    continue
+                existing.required_quantity = combined_quantity
+                db.delete(bc)
+                applied += 1
+                applied_total_savings += recommendation["total_savings"]
                 continue
+            assigned_quantity = stored_binder_quantity(bc.required_quantity)
             usage_count = _collection_binder_usage_counts(db, current_user).get(target_item.id, 0)
-            if int(target_item.quantity or 0) < 1 or usage_count >= int(target_item.quantity or 0):
+            if usage_count + assigned_quantity > int(target_item.quantity or 0):
                 skipped += 1
                 continue
             bc.card_id = target_item.card_id
             bc.collection_item_id = target_item.id
-            bc.required_quantity = 1
+            bc.required_quantity = assigned_quantity
             applied += 1
             applied_total_savings += recommendation["total_savings"]
             continue
@@ -846,13 +1145,17 @@ def add_card_to_binder(
     binder = db.query(Binder).filter(
         Binder.id == binder_id,
         Binder.user_id == current_user.id,
-    ).first()
+    ).with_for_update(of=Binder).first()
     if not binder:
         raise HTTPException(status_code=404, detail="Binder not found")
     if (binder.binder_type or "collection") == "collection":
         raise HTTPException(status_code=400, detail="Collection binders require an exact owned collection item")
 
+    binder_type = binder.binder_type or "collection"
     ensure_card_exists(db, card_id)
+    binder = _relock_binder_for_write(
+        db, binder_id, current_user.id, binder_type
+    )
     required_quantity = _safe_required_quantity(required_quantity)
 
     existing = db.query(BinderCard).filter(
@@ -881,6 +1184,7 @@ def add_card_to_binder(
 def add_collection_item_to_binder(
     binder_id: int,
     collection_item_id: int,
+    quantity: int = 1,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -888,7 +1192,7 @@ def add_collection_item_to_binder(
     binder = db.query(Binder).filter(
         Binder.id == binder_id,
         Binder.user_id == current_user.id,
-    ).first()
+    ).with_for_update(of=Binder).first()
     if not binder:
         raise HTTPException(status_code=404, detail="Binder not found")
     if (binder.binder_type or "collection") != "collection":
@@ -908,27 +1212,42 @@ def add_collection_item_to_binder(
     if not item:
         raise HTTPException(status_code=404, detail="Collection item not found")
 
+    quantity = _safe_required_quantity(quantity)
     existing = db.query(BinderCard).filter(
         BinderCard.binder_id == binder_id,
         BinderCard.collection_item_id == collection_item_id,
     ).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Collection item already in binder")
-
     usage_count = _collection_binder_usage_counts(db, current_user).get(collection_item_id, 0)
-    if usage_count >= (item.quantity or 1):
-        raise HTTPException(status_code=400, detail="All owned copies of this card are already used in collection binders")
+    if usage_count + quantity > int(item.quantity or 0):
+        available = max(int(item.quantity or 0) - usage_count, 0)
+        raise HTTPException(status_code=409, detail=f"Only {available} unallocated copie(s) remain for this collection item")
+
+    if existing:
+        next_quantity = stored_binder_quantity(existing.required_quantity) + quantity
+        if next_quantity > 99:
+            raise HTTPException(status_code=422, detail="Required quantity must be between 1 and 99")
+        existing.required_quantity = next_quantity
+        db.commit()
+        return {
+            "message": "Collection binder quantity updated",
+            "required_quantity": next_quantity,
+            "available_quantity": int(item.quantity or 0) - usage_count - quantity,
+        }
 
     bc = BinderCard(
         binder_id=binder_id,
         card_id=item.card_id,
         collection_item_id=collection_item_id,
-        required_quantity=1,
+        required_quantity=quantity,
         added_at=datetime.datetime.utcnow(),
     )
     db.add(bc)
     db.commit()
-    return {"message": "Collection item added to binder"}
+    return {
+        "message": "Collection item added to binder",
+        "required_quantity": quantity,
+        "available_quantity": int(item.quantity or 0) - usage_count - quantity,
+    }
 
 
 def _resolve_owned_set(db: Session, current_user: User, set_id: str) -> Set:
@@ -984,14 +1303,15 @@ def _add_owned_set_entries(
         if item.id in existing_item_ids:
             skipped_present += 1
             continue
-        if usage_counts.get(item.id, 0) >= item.quantity:
+        available_quantity = max(int(item.quantity or 0) - int(usage_counts.get(item.id, 0) or 0), 0)
+        if available_quantity < 1:
             skipped_no_capacity += 1
             continue
         db.add(BinderCard(
             binder_id=binder.id,
             card_id=item.card_id,
             collection_item_id=item.id,
-            required_quantity=1,
+            required_quantity=min(available_quantity, 99),
             added_at=datetime.datetime.utcnow(),
         ))
         added += 1
@@ -1055,7 +1375,7 @@ def add_owned_set_to_binder(
     binder = db.query(Binder).filter(
         Binder.id == binder_id,
         Binder.user_id == current_user.id,
-    ).first()
+    ).with_for_update(of=Binder).first()
     if not binder:
         raise HTTPException(status_code=404, detail="Binder not found")
     if (binder.binder_type or "collection") != "collection":
@@ -1079,7 +1399,7 @@ def update_binder_entry(
     binder = db.query(Binder).filter(
         Binder.id == binder_id,
         Binder.user_id == current_user.id,
-    ).first()
+    ).with_for_update(of=Binder).first()
     if not binder:
         raise HTTPException(status_code=404, detail="Binder not found")
 
@@ -1090,10 +1410,25 @@ def update_binder_entry(
     ).first()
     if not bc:
         raise HTTPException(status_code=404, detail="Binder entry not found")
+    next_quantity = _safe_required_quantity(update.required_quantity)
     if (binder.binder_type or "collection") == "collection":
-        raise HTTPException(status_code=400, detail="Collection binder quantities come from owned collection items")
+        if not bc.collection_item_id:
+            raise HTTPException(status_code=409, detail="This legacy binder entry is not linked to an exact collection item")
+        item = db.query(CollectionItem).filter(
+            CollectionItem.id == bc.collection_item_id,
+            CollectionItem.user_id == current_user.id,
+        ).with_for_update(of=CollectionItem).first()
+        if not item:
+            raise HTTPException(status_code=404, detail="Collection item not found")
+        db.refresh(bc)
+        if bc.collection_item_id != item.id:
+            raise HTTPException(status_code=409, detail="Binder entry changed while it was being updated; please try again")
+        allocated_elsewhere = _collection_binder_usage_counts(db, current_user).get(item.id, 0) - stored_binder_quantity(bc.required_quantity)
+        if allocated_elsewhere + next_quantity > int(item.quantity or 0):
+            maximum = max(int(item.quantity or 0) - allocated_elsewhere, 0)
+            raise HTTPException(status_code=409, detail=f"At most {maximum} copie(s) can be assigned to this binder")
 
-    bc.required_quantity = _safe_required_quantity(update.required_quantity)
+    bc.required_quantity = next_quantity
     db.commit()
     return {"message": "Binder entry updated"}
 
@@ -1176,6 +1511,13 @@ def get_binder_entry_equivalent_prints(
     if binder_type != "wishlist":
         raise HTTPException(status_code=400, detail="Equivalent prints are available for collection and wishlist binders")
 
+    collection_quantities = _available_collection_card_quantities(
+        db,
+        current_user,
+        list(collection_quantities),
+        owned_quantities=collection_quantities,
+    )
+
     _cache_same_name_cards_for_equivalents(db, source_card)
     source_card = db.query(Card).filter(Card.id == source_card.id).first()
     if not source_card or not source_card.playable_fingerprint:
@@ -1220,7 +1562,7 @@ def switch_binder_entry_card(
     binder = db.query(Binder).filter(
         Binder.id == binder_id,
         Binder.user_id == current_user.id,
-    ).first()
+    ).with_for_update(of=Binder).first()
     if not binder:
         raise HTTPException(status_code=404, detail="Binder not found")
     binder_type = binder.binder_type or "collection"
@@ -1254,25 +1596,63 @@ def switch_binder_entry_card(
             raise HTTPException(status_code=400, detail="Playable card data is not available for this switch")
         if source_card.playable_fingerprint != target_card.playable_fingerprint:
             raise HTTPException(status_code=400, detail="Selected card is not a playable-equivalent print")
+
+        binder = _relock_binder_for_write(
+            db, binder_id, current_user.id, binder_type
+        )
+        bc = db.query(BinderCard).filter(
+            BinderCard.id == binder_card_id,
+            BinderCard.binder_id == binder_id,
+            BinderCard.collection_item_id.isnot(None),
+        ).populate_existing().first()
+        target_item = db.query(CollectionItem).filter(
+            CollectionItem.id == update.collection_item_id,
+            CollectionItem.user_id == current_user.id,
+        ).populate_existing().first()
+        if not bc or not target_item:
+            raise HTTPException(status_code=409, detail="Binder entry changed while switching prints; please try again")
         if target_item.id == bc.collection_item_id:
             return {"message": "Binder entry already uses this print", "binder_card_id": bc.id, "merged": False}
 
+        source_item_id = bc.collection_item_id
+        locked_items = db.query(CollectionItem).filter(
+            CollectionItem.id.in_([source_item_id, target_item.id]),
+            CollectionItem.user_id == current_user.id,
+        ).order_by(CollectionItem.id.asc()).with_for_update(of=CollectionItem).all()
+        locked_by_id = {item.id: item for item in locked_items}
+        target_item = locked_by_id.get(target_item.id)
+        if not target_item or source_item_id not in locked_by_id:
+            raise HTTPException(status_code=409, detail="Collection item changed while switching prints")
+        db.refresh(bc)
+        if bc.collection_item_id != source_item_id:
+            raise HTTPException(status_code=409, detail="Binder entry changed while switching prints; please try again")
+
+        assigned_quantity = stored_binder_quantity(bc.required_quantity)
         existing = db.query(BinderCard).filter(
             BinderCard.binder_id == binder_id,
             BinderCard.collection_item_id == target_item.id,
             BinderCard.id != bc.id,
         ).first()
         if existing:
-            raise HTTPException(status_code=400, detail="Selected collection item is already in this binder")
+            combined_quantity = stored_binder_quantity(existing.required_quantity) + assigned_quantity
+            if combined_quantity > 99:
+                raise HTTPException(status_code=422, detail="Required quantity must be between 1 and 99")
+            usage_count = _collection_binder_usage_counts(db, current_user).get(target_item.id, 0)
+            if usage_count + assigned_quantity > int(target_item.quantity or 0):
+                raise HTTPException(status_code=409, detail="Not enough unallocated copies of this print are available")
+            existing.required_quantity = combined_quantity
+            db.delete(bc)
+            db.commit()
+            return {"message": "Binder entries merged", "binder_card_id": existing.id, "merged": True}
 
         owned_quantity = int(target_item.quantity or 0)
         usage_count = _collection_binder_usage_counts(db, current_user).get(target_item.id, 0)
-        if owned_quantity < 1 or usage_count >= owned_quantity:
-            raise HTTPException(status_code=400, detail="All owned copies of this print are already used in collection binders")
+        if usage_count + assigned_quantity > owned_quantity:
+            raise HTTPException(status_code=409, detail="Not enough unallocated copies of this print are available")
 
         bc.card_id = target_item.card_id
         bc.collection_item_id = target_item.id
-        bc.required_quantity = 1
+        bc.required_quantity = assigned_quantity
         db.commit()
         return {"message": "Binder entry switched", "binder_card_id": bc.id, "merged": False}
 
@@ -1293,6 +1673,17 @@ def switch_binder_entry_card(
         raise HTTPException(status_code=400, detail="Playable card data is not available for this switch")
     if source_card.playable_fingerprint != target_card.playable_fingerprint:
         raise HTTPException(status_code=400, detail="Selected card is not a playable-equivalent print")
+
+    binder = _relock_binder_for_write(
+        db, binder_id, current_user.id, binder_type
+    )
+    bc = db.query(BinderCard).filter(
+        BinderCard.id == binder_card_id,
+        BinderCard.binder_id == binder_id,
+        BinderCard.collection_item_id.is_(None),
+    ).populate_existing().first()
+    if not bc:
+        raise HTTPException(status_code=409, detail="Binder entry changed while switching prints; please try again")
     if target_card.id == bc.card_id:
         return {"message": "Binder entry already uses this print", "binder_card_id": bc.id, "merged": False}
 
@@ -1343,7 +1734,7 @@ def add_binder_entry_to_wishlist(
     plan = None
     if (binder.binder_type or "collection") == "wishlist":
         required_quantity = _safe_required_quantity(bc.required_quantity)
-        owned_quantities = _user_collection_quantities(db, current_user, [bc.card_id])
+        owned_quantities = _available_collection_card_quantities(db, current_user, [bc.card_id])
         wishlist_quantities = _user_wishlist_quantities(db, current_user, [bc.card_id])
         plan = plan_missing_wishlist_additions(
             [(bc.card_id, required_quantity)],
@@ -1473,7 +1864,7 @@ def add_binder_cards_to_wishlist(
     if not card_ids:
         return {"added": 0, "added_copies": 0, "skipped": 0, "skipped_complete": 0, "skipped_existing": 0, "missing_copies": 0, "wishlist_copies": 0, "checked": 0}
 
-    owned_quantities = _user_collection_quantities(db, current_user, card_ids)
+    owned_quantities = _available_collection_card_quantities(db, current_user, card_ids)
     wishlist_quantities = _user_wishlist_quantities(db, current_user, card_ids)
     plan = plan_missing_wishlist_additions(entries, owned_quantities, wishlist_quantities)
 
@@ -1513,7 +1904,8 @@ def export_binder_csv(
         raise HTTPException(status_code=404, detail="Binder not found")
 
     rows = db.query(BinderCard).join(Card, Card.id == BinderCard.card_id).options(
-        joinedload(BinderCard.card).joinedload(Card.set_ref)
+        joinedload(BinderCard.card).joinedload(Card.set_ref),
+        joinedload(BinderCard.collection_item),
     ).filter(
         BinderCard.binder_id == binder_id,
         visible_card_filter(db, current_user.id, "all"),
@@ -1546,6 +1938,9 @@ def export_binder_csv(
             "number": card.number,
             "required_quantity": _safe_required_quantity(entry.required_quantity),
             "lang": card.lang or "en",
+            "variant": entry.collection_item.variant if entry.collection_item else "",
+            "condition": entry.collection_item.condition if entry.collection_item else "",
+            "collection_item_id": entry.collection_item_id or "",
         })
 
     filename = f"binder-{binder_id}.csv"
@@ -1563,13 +1958,21 @@ async def import_binder_csv(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Import binder entries from CSV: set_code,number,required_quantity,lang."""
+    """Import binder entries from CSV, including exact physical metadata when available."""
     binder = db.query(Binder).filter(
         Binder.id == binder_id,
         Binder.user_id == current_user.id,
     ).first()
     if not binder:
         raise HTTPException(status_code=404, detail="Binder not found")
+    binder_type = binder.binder_type or "collection"
+    if binder_type == "collection":
+        # Keep the same User -> Binder -> CollectionItem lock order used by
+        # multi-item collection writes elsewhere.
+        db.query(User.id).filter(User.id == current_user.id).with_for_update().one()
+    binder = _relock_binder_for_write(
+        db, binder_id, current_user.id, binder_type
+    )
     if not file.filename or not file.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=422, detail="Please upload a .csv file")
 
@@ -1582,8 +1985,16 @@ async def import_binder_csv(
         raise HTTPException(status_code=422, detail="CSV file must be UTF-8 encoded") from exc
 
     reader = csv.DictReader(io.StringIO(text), delimiter=",")
-    if reader.fieldnames != BINDER_CSV_COLUMNS:
-        raise HTTPException(status_code=422, detail=f"CSV header must exactly be: {','.join(BINDER_CSV_COLUMNS)}")
+    if reader.fieldnames not in (BINDER_CSV_COLUMNS, BINDER_CSV_PHYSICAL_COLUMNS, BINDER_CSV_LEGACY_COLUMNS):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "CSV header must be one of: "
+                f"{','.join(BINDER_CSV_COLUMNS)}; "
+                f"{','.join(BINDER_CSV_PHYSICAL_COLUMNS)}; or "
+                f"{','.join(BINDER_CSV_LEGACY_COLUMNS)}"
+            ),
+        )
 
     added = 0
     updated = 0
@@ -1591,19 +2002,10 @@ async def import_binder_csv(
     failed = 0
     errors: List[str] = []
     row_count = 0
-    binder_type = binder.binder_type or "collection"
     validated_rows = []
     planned_card_rows: dict[str, dict] = {}
+    planned_collection_rows: dict[int, dict] = {}
     collection_item_usage_counts = _collection_binder_usage_counts(db, current_user)
-    current_binder_collection_item_ids = {
-        item_id for (item_id,) in db.query(BinderCard.collection_item_id)
-        .filter(
-            BinderCard.binder_id == binder_id,
-            BinderCard.collection_item_id.isnot(None),
-        )
-        .all()
-    }
-
     for row_number, row in enumerate(reader, start=2):
         if None in row:
             failed += 1
@@ -1641,27 +2043,82 @@ async def import_binder_csv(
                 continue
 
             if binder_type == "collection":
-                owned_items = db.query(CollectionItem).filter(
+                owned_query = db.query(CollectionItem).filter(
                     CollectionItem.card_id == card.id,
                     CollectionItem.user_id == current_user.id,
-                ).order_by(CollectionItem.id.asc()).all()
+                )
+                requested_variant = (row.get("variant") or "").strip()
+                requested_condition = (row.get("condition") or "").strip()
+                requested_item_id = (row.get("collection_item_id") or "").strip()
+                if requested_item_id:
+                    try:
+                        requested_item_id = int(requested_item_id)
+                    except ValueError:
+                        failed += 1
+                        errors.append(f"row {row_number}: collection_item_id must be a positive integer")
+                        continue
+                    if requested_item_id < 1:
+                        failed += 1
+                        errors.append(f"row {row_number}: collection_item_id must be a positive integer")
+                        continue
+                    owned_query = owned_query.filter(CollectionItem.id == requested_item_id)
+                if requested_variant:
+                    owned_query = owned_query.filter(
+                        CollectionItem.variant == normalize_collection_variant(requested_variant)
+                    )
+                if requested_condition:
+                    owned_query = owned_query.filter(CollectionItem.condition == requested_condition)
+                owned_items = owned_query.order_by(CollectionItem.id.asc()).all()
                 if not owned_items:
                     skipped += 1
                     continue
-                item_to_add = next(
-                    (
-                        item for item in owned_items
-                        if item.id not in current_binder_collection_item_ids
-                        and collection_item_usage_counts.get(item.id, 0) < (item.quantity or 1)
-                    ),
-                    None,
+                locked_usage = collection_binder_allocation_counts(
+                    db,
+                    current_user.id,
+                    [item.id for item in owned_items],
                 )
+                collection_item_usage_counts.update(locked_usage)
+                item_to_add = None
+                for item in owned_items:
+                    planned = planned_collection_rows.get(item.id)
+                    planned_increment = int(planned.get("increment", 0)) if planned else 0
+                    remaining = int(item.quantity or 0) - int(collection_item_usage_counts.get(item.id, 0) or 0) - planned_increment
+                    if remaining >= required_quantity:
+                        item_to_add = item
+                        break
                 if not item_to_add:
                     skipped += 1
                     continue
-                current_binder_collection_item_ids.add(item_to_add.id)
-                collection_item_usage_counts[item_to_add.id] = collection_item_usage_counts.get(item_to_add.id, 0) + 1
-                validated_rows.append({"action": "add_collection_item", "item": item_to_add})
+                planned = planned_collection_rows.get(item_to_add.id)
+                if planned:
+                    next_increment = planned["increment"] + required_quantity
+                    next_quantity = planned["required_quantity"] + required_quantity
+                    if next_quantity > 99:
+                        failed += 1
+                        errors.append(f"row {row_number}: {BINDER_CSV_DUPLICATE_QUANTITY_ERROR}")
+                    else:
+                        planned["increment"] = next_increment
+                        planned["required_quantity"] = next_quantity
+                    continue
+                existing_entry = db.query(BinderCard).filter(
+                    BinderCard.binder_id == binder_id,
+                    BinderCard.collection_item_id == item_to_add.id,
+                ).first()
+                base_quantity = stored_binder_quantity(existing_entry.required_quantity) if existing_entry else 0
+                next_quantity = base_quantity + required_quantity
+                if next_quantity > 99:
+                    failed += 1
+                    errors.append(f"row {row_number}: {BINDER_CSV_DUPLICATE_QUANTITY_ERROR}")
+                    continue
+                planned = {
+                    "action": "update_collection_item" if existing_entry else "add_collection_item",
+                    "item": item_to_add,
+                    "entry": existing_entry,
+                    "increment": required_quantity,
+                    "required_quantity": next_quantity,
+                }
+                planned_collection_rows[item_to_add.id] = planned
+                validated_rows.append(planned)
                 continue
 
             planned_row = planned_card_rows.get(card.id)
@@ -1671,6 +2128,7 @@ async def import_binder_csv(
                         planned_row["required_quantity"],
                         required_quantity,
                     )
+                    planned_row["increment"] += required_quantity
                 except ValueError:
                     failed += 1
                     errors.append(f"row {row_number}: {BINDER_CSV_DUPLICATE_QUANTITY_ERROR}")
@@ -1691,9 +2149,19 @@ async def import_binder_csv(
                     failed += 1
                     errors.append(f"row {row_number}: {BINDER_CSV_DUPLICATE_QUANTITY_ERROR}")
                     continue
-                planned_row = {"action": "update", "entry": existing, "required_quantity": required_quantity}
+                planned_row = {
+                    "action": "update",
+                    "entry": existing,
+                    "increment": required_quantity - _safe_required_quantity(existing.required_quantity),
+                    "required_quantity": required_quantity,
+                }
             else:
-                planned_row = {"action": "add_card", "card": card, "required_quantity": required_quantity}
+                planned_row = {
+                    "action": "add_card",
+                    "card": card,
+                    "increment": required_quantity,
+                    "required_quantity": required_quantity,
+                }
             planned_card_rows[card.id] = planned_row
             validated_rows.append(planned_row)
         except Exception:
@@ -1703,7 +2171,83 @@ async def import_binder_csv(
             errors.append(f"row {row_number}: unexpected import error")
 
     if failed:
+        db.rollback()
         return {"added": 0, "updated": 0, "skipped": skipped, "failed": failed, "errors": errors}
+
+    # Cache helpers used while parsing may commit. Start a clean final
+    # transaction, then lock and revalidate every write in one stable order.
+    db.rollback()
+    if binder_type == "collection":
+        db.query(User.id).filter(User.id == current_user.id).with_for_update().one()
+    binder = _relock_binder_for_write(
+        db, binder_id, current_user.id, binder_type
+    )
+
+    validated_rows = []
+    if binder_type == "collection":
+        item_ids = sorted(planned_collection_rows)
+        locked_items = db.query(CollectionItem).filter(
+            CollectionItem.id.in_(item_ids),
+            CollectionItem.user_id == current_user.id,
+        ).order_by(CollectionItem.id.asc()).with_for_update(of=CollectionItem).all() if item_ids else []
+        locked_by_id = {item.id: item for item in locked_items}
+        locked_usage = collection_binder_allocation_counts(
+            db, current_user.id, item_ids
+        )
+        for item_id in item_ids:
+            item = locked_by_id.get(item_id)
+            planned = planned_collection_rows[item_id]
+            increment = int(planned["increment"])
+            existing = db.query(BinderCard).filter(
+                BinderCard.binder_id == binder_id,
+                BinderCard.collection_item_id == item_id,
+            ).first()
+            base_quantity = stored_binder_quantity(existing.required_quantity) if existing else 0
+            next_quantity = base_quantity + increment
+            available_quantity = int(item.quantity or 0) - int(locked_usage.get(item_id, 0) or 0) if item else 0
+            if not item or increment > available_quantity or next_quantity > 99:
+                db.rollback()
+                return {
+                    "added": 0,
+                    "updated": 0,
+                    "skipped": skipped,
+                    "failed": 1,
+                    "errors": ["collection availability changed during import; please try again"],
+                }
+            planned.update({
+                "action": "update_collection_item" if existing else "add_collection_item",
+                "item": item,
+                "entry": existing,
+                "required_quantity": next_quantity,
+            })
+            validated_rows.append(planned)
+    else:
+        for card_id, planned in planned_card_rows.items():
+            increment = int(planned["increment"])
+            existing = db.query(BinderCard).filter(
+                BinderCard.binder_id == binder_id,
+                BinderCard.card_id == card_id,
+                BinderCard.collection_item_id.is_(None),
+            ).first()
+            base_quantity = _safe_required_quantity(existing.required_quantity) if existing else 0
+            try:
+                next_quantity = combine_binder_required_quantity(base_quantity, increment)
+            except ValueError:
+                db.rollback()
+                return {
+                    "added": 0,
+                    "updated": 0,
+                    "skipped": skipped,
+                    "failed": 1,
+                    "errors": [BINDER_CSV_DUPLICATE_QUANTITY_ERROR],
+                }
+            planned.update({
+                "action": "update" if existing else "add_card",
+                "entry": existing,
+                "card": db.query(Card).filter(Card.id == card_id).one(),
+                "required_quantity": next_quantity,
+            })
+            validated_rows.append(planned)
 
     try:
         for item in validated_rows:
@@ -1714,10 +2258,13 @@ async def import_binder_csv(
                     binder_id=binder_id,
                     card_id=collection_item.card_id,
                     collection_item_id=collection_item.id,
-                    required_quantity=1,
+                    required_quantity=item["required_quantity"],
                     added_at=datetime.datetime.utcnow(),
                 ))
                 added += 1
+            elif action == "update_collection_item":
+                item["entry"].required_quantity = item["required_quantity"]
+                updated += 1
             elif action == "update":
                 item["entry"].required_quantity = item["required_quantity"]
                 updated += 1
@@ -1750,7 +2297,7 @@ def remove_binder_entry(
     binder = db.query(Binder).filter(
         Binder.id == binder_id,
         Binder.user_id == current_user.id,
-    ).first()
+    ).with_for_update(of=Binder).first()
     if not binder:
         raise HTTPException(status_code=404, detail="Binder not found")
 
@@ -1777,7 +2324,7 @@ def remove_card_from_binder(
     binder = db.query(Binder).filter(
         Binder.id == binder_id,
         Binder.user_id == current_user.id,
-    ).first()
+    ).with_for_update(of=Binder).first()
     if not binder:
         raise HTTPException(status_code=404, detail="Binder not found")
 

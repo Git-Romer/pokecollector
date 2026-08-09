@@ -33,6 +33,9 @@ const UserCollection = lazy(() => import('./pages/UserCollection'))
 const PublicProfile = lazy(() => import('./pages/PublicProfile'))
 const PublicBinderView = lazy(() => import('./pages/PublicBinderView'))
 const PublicDirectory = lazy(() => import('./pages/PublicDirectory'))
+const CardSystemGallery = import.meta.env.DEV
+  ? lazy(() => import('./components/card-system/CardSystemGallery'))
+  : null
 
 function RouteLoader() {
   return (
@@ -184,6 +187,7 @@ export default function App() {
       <SettingsProvider>
         <BrowserRouter>
           <Routes>
+            {import.meta.env.DEV && <Route path="/__card-system" element={lazyRoute(<CardSystemGallery />)} />}
             <Route path="/login" element={lazyRoute(<Login />)} />
             <Route path="/u" element={<PublicRoutes />}>
               <Route index element={lazyRoute(<PublicDirectory />)} />
