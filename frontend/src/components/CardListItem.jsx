@@ -3,11 +3,15 @@ import { CompactCardArtwork, handleKeyboardActivation } from './UnifiedCard'
 
 export function CompactCardIdentity({
   image,
+  imageOverlay,
   card = {},
   name,
   subtext,
   setNumber,
   languageLabel,
+  // At this thumbnail size an overlay badge would sit on top of the whole
+  // image, so the own-photo marker rides next to the set number instead.
+  ownPhoto = false,
   variantEffectSource = null,
   details,
   onClick,
@@ -29,16 +33,18 @@ export function CompactCardIdentity({
       <CompactCardArtwork
         card={card}
         image={image}
+        overlay={imageOverlay}
         alt={name}
         variantEffectSource={variantEffectSource}
         loading={loading}
       />
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         {name && <p className="truncate text-sm font-semibold leading-tight text-text-primary">{name}</p>}
-        {(setNumber || languageLabel) && (
+        {(setNumber || languageLabel || ownPhoto) && (
           <p className="flex min-w-0 items-center gap-1.5 text-xs leading-tight">
             {setNumber && <span className="truncate font-mono font-bold text-brand-red">{setNumber}</span>}
             {languageLabel && <span className="truncate text-text-muted">{languageLabel}</span>}
+            {ownPhoto && <span className="flex-shrink-0" aria-hidden>📷</span>}
           </p>
         )}
         {subtext && <p className="truncate text-xs leading-tight text-text-muted">{subtext}</p>}
@@ -68,6 +74,7 @@ export function CompactCardIdentity({
  */
 export default function CardListItem({
   image,
+  imageOverlay,
   card = {},
   name,
   subtext,
@@ -105,6 +112,7 @@ export default function CardListItem({
         className="flex-1"
         card={card}
         image={image}
+        imageOverlay={imageOverlay}
         name={name}
         subtext={subtext}
         setNumber={setNumber}

@@ -280,6 +280,12 @@ const de = {
   collection: {
     title: 'Kollektion',
     userCollection: 'Sammlung',
+    ownPhoto: 'Eigenes Foto – für diese Karte gibt es keinen Katalog-Scan',
+    ownPhotoLabel: 'Eigenes Foto',
+    ownPhotoDesc: 'Ein Foto der echten Karte verwenden. Wird nur angezeigt, solange kein Katalog-Scan existiert. Standort- und Kamera-Metadaten werden vor dem Speichern entfernt.',
+    ownPhotoSaved: 'Foto gespeichert',
+    removeOwnPhoto: 'Eigenes Foto entfernen',
+    ownPhotoRemoved: 'Foto entfernt',
     empty: 'Keine Karten in der Sammlung',
     emptyHint: 'Suche nach Karten und füge sie hinzu',
     addCustomCard: 'Karte manuell hinzufügen',

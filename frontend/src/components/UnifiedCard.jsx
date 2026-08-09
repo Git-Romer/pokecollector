@@ -221,6 +221,7 @@ export function CompactCardArtwork({
 export function UnifiedCardDialog({
   card,
   image,
+  imageOverlay,
   variantEffectSource = card,
   price,
   tabs = [],
@@ -320,6 +321,7 @@ export function UnifiedCardDialog({
                 <CardArtworkFrame
                   card={card}
                   image={image}
+                  overlay={imageOverlay}
                   alt={card.name}
                   variantEffectSource={variantEffectSource}
                   showStateIndicators={false}

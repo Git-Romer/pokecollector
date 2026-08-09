@@ -281,6 +281,12 @@ const en = {
   collection: {
     title: 'Collection',
     userCollection: 'Collection',
+    ownPhoto: 'Your own photo — no catalogue scan exists for this card',
+    ownPhotoLabel: 'Your own photo',
+    ownPhotoDesc: 'Use a photo of the actual card. Shown only while no catalogue scan exists. Location and camera metadata are removed before it is stored.',
+    ownPhotoSaved: 'Photo saved',
+    removeOwnPhoto: 'Remove your photo',
+    ownPhotoRemoved: 'Photo removed',
     empty: 'No cards in this collection',
     emptyHint: 'Search for cards and add them to start',
     addCustomCard: 'Add card manually',
