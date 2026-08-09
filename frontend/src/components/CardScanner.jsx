@@ -1,159 +1,26 @@
 import { useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { Camera, Upload, X, Check, Loader2, RefreshCw, Plus } from 'lucide-react'
-import { recognizeCard, addToCollection } from '../api/client'
-import { useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
+import { Camera, Upload, ImagePlus, X, Loader2, RefreshCw } from 'lucide-react'
+import { recognizeCard, enqueueScanJob } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
-import { CARD_VARIANTS, getDefaultVariant } from '../utils/cardVariants'
-import TcgdexLanguageSelect from './TcgdexLanguageSelect'
-import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
-import MoneyInput from './MoneyInput'
-import { parseMoneyInputValue } from '../utils/moneyInput'
-import { CardDisplay } from './card-system'
-import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
+import { ScanAddModal, MatchesGrid, CardZoomModal } from './ScanReview'
 import { isSupportedScannerImage, SCANNER_IMAGE_ACCEPT } from '../utils/scannerImages'
 
-// ─── Add-to-Collection Modal für Scan-Ergebnis ──────────────────────────────
-function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
-  const { t, exchangeRate, exchangeRateReady } = useSettings()
-  const [quantity, setQuantity] = useState(1)
-  const [condition, setCondition] = useState('NM')
-  const [variant, setVariant] = useState(() => getDefaultVariant(match))
-  const [lang, setLang] = useState(match.lang || defaultLang || 'en')
-  const [purchasePrice, setPurchasePrice] = useState('')
-  const [adding, setAdding] = useState(false)
-  const queryClient = useQueryClient()
-
-  const handleAdd = async () => {
-    if (!exchangeRateReady) return
-    setAdding(true)
-    try {
-      await addToCollection({
-        card_id: match.id,
-        quantity,
-        condition,
-        variant,
-        lang,
-        purchase_price: parseMoneyInputValue(purchasePrice, exchangeRate),
-      })
-      invalidateCardState(queryClient)
-      invalidateTcgdexFilterLanguages(queryClient)
-      toast.success(`${match.name} ${t('scanner.addedToCollection')}!`)
-      onAdded && onAdded()
-      onClose()
-    } catch (err) {
-      const msg = err?.response?.data?.detail || t('card.addFailed')
-      toast.error(msg)
-    } finally {
-      setAdding(false)
-    }
-  }
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[300] flex items-end justify-center bg-black/80 p-2 backdrop-blur-sm sm:items-center sm:p-3"
-      onClick={onClose}
-    >
-      <div
-        className="relative max-h-[calc(100dvh-1rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-border bg-bg-surface shadow-2xl sm:max-h-[calc(100dvh-1.5rem)]"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-white/20 sm:hidden" aria-hidden />
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute right-3 top-3 z-50 grid h-9 w-9 place-items-center rounded-full border border-white/15 bg-black/70 text-white shadow-lg hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red"
-          aria-label={t('common.close')}
-        >
-          <X size={18} />
-        </button>
-        <div className="p-5">
-          {/* Card Info */}
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-16 flex-shrink-0">
-              <CardDisplay variant="artwork" card={match} image={match.image} alt={match.name} showStateIndicators={false} loading="eager" />
-            </div>
-            <div className="flex-1 min-w-0 pr-9">
-              <p className="font-bold text-white text-base truncate">{match.name}</p>
-              <p className="text-xs font-mono text-brand-red/80 font-semibold">{`${(match.set_abbreviation || '').toUpperCase()} ${match.number || ''}`.trim()}</p>
-              {match.rarity && <p className="text-[11px] text-text-muted">{match.rarity}</p>}
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            {/* Language */}
-            <div>
-              <label className="text-xs text-text-muted mb-1.5 block font-medium">🌐 {t('lang.filter')}</label>
-              <TcgdexLanguageSelect value={lang} onChange={setLang} className="select w-full" />
-            </div>
-
-            {/* Quantity + Condition */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-text-muted mb-1 block">{t('common.quantity')}</label>
-                <input
-                  type="number" min="1" value={quantity}
-                  onChange={e => setQuantity(parseInt(e.target.value) || 1)}
-                  className="input"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-text-muted mb-1 block">{t('card.condition')}</label>
-                <select value={condition} onChange={e => setCondition(e.target.value)} className="select">
-                  {['Mint', 'NM', 'LP', 'MP', 'HP'].map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-            </div>
-
-            {/* Variant */}
-            <div>
-              <label className="text-xs text-text-muted mb-1 block">✨ {t('card.variant')}</label>
-              <select value={variant} onChange={e => setVariant(e.target.value)} className="select">
-                {CARD_VARIANTS.map(v => <option key={v} value={v}>{v}</option>)}
-              </select>
-            </div>
-
-
-            {/* Purchase price */}
-            <div>
-              <label className="text-xs text-text-muted mb-1 block">{t('scanner.purchasePriceLabel')}</label>
-              <MoneyInput
-                placeholder={t('analytics.amountPlaceholder')}
-                value={purchasePrice}
-                onChange={e => setPurchasePrice(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="flex gap-2 mt-5">
-            <button
-              onClick={handleAdd}
-              disabled={adding || !exchangeRateReady}
-              className="flex-1 py-3 rounded-xl font-black text-white flex items-center justify-center gap-2 transition-all"
-              style={{ background: adding ? '#555' : '#e3000b', boxShadow: adding ? 'none' : '0 0 16px rgba(227,0,11,0.3)' }}
-            >
-              {adding ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
-              {adding ? t('scanner.adding') : t('scanner.addToCollection')}
-            </button>
-            <button onClick={onClose} className="btn-ghost px-3">
-              <X size={16} />
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>,
-    document.body
-  )
-}
-
 export default function CardScanner({ isOpen, onClose, onCardSelected }) {
-  const [phase, setPhase] = useState('capture') // 'capture' | 'loading' | 'results'
+  // capture -> loading -> results (single photo, answered inline)
+  // capture -> staging -> queued (multiple photos; reviewed on /scans, not here)
+  const [phase, setPhase] = useState('capture')
+  const [preview, setPreview] = useState(null)
   const [results, setResults] = useState(null)
-  const [selectedMatch, setSelectedMatch] = useState(null)
-  const [addModal, setAddModal] = useState(null) // match to show modal for
+  const [stagedFiles, setStagedFiles] = useState([]) // [{ id, file, previewUrl, individual }]
+  const [addModal, setAddModal] = useState(null) // match to add
+  const [zoomCard, setZoomCard] = useState(null)
   const fileRef = useRef()
+  const multiFileRef = useRef()
   const { t } = useSettings()
+  const navigate = useNavigate()
 
   if (!isOpen) return null
 
@@ -176,14 +43,60 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
     }
   }
 
+  const handleMultiFiles = (fileList) => {
+    const files = Array.from(fileList || [])
+    if (!files.length) return
+    setStagedFiles(files.map((file, i) => ({
+      id: `${Date.now()}-${i}`,
+      file,
+      previewUrl: URL.createObjectURL(file),
+      individual: false,
+    })))
+    setPhase('staging')
+  }
+
+  const toggleIndividual = (id) => {
+    setStagedFiles(prev => prev.map(f => f.id === id ? { ...f, individual: !f.individual } : f))
+  }
+
+  const removeStagedFile = (id) => {
+    setStagedFiles(prev => {
+      const target = prev.find(f => f.id === id)
+      if (target) URL.revokeObjectURL(target.previewUrl)
+      return prev.filter(f => f.id !== id)
+    })
+  }
+
+  // Queue the batch, then hand off to the queue page — recognition runs in the
+  // background, so there is nothing to wait for here.
+  const submitBatch = async () => {
+    if (!stagedFiles.length) return
+    try {
+      const created = await enqueueScanJob({
+        batched: stagedFiles.filter(f => !f.individual).map(f => f.file),
+        singles: stagedFiles.filter(f => f.individual).map(f => f.file),
+      })
+      stagedFiles.forEach(f => URL.revokeObjectURL(f.previewUrl))
+      setStagedFiles([])
+      setPhase('capture')
+      onClose && onClose()
+      navigate(`/scans/${created.id}`)
+    } catch (e) {
+      const msg = e?.response?.data?.detail || t('scanner.recognitionFailed')
+      toast.error(msg)
+    }
+  }
+
   const reset = () => {
+    stagedFiles.forEach(f => URL.revokeObjectURL(f.previewUrl))
     setPhase('capture')
     setResults(null)
-    setSelectedMatch(null)
+    setStagedFiles([])
+    setZoomCard(null)
     setAddModal(null)
   }
 
-  const detectedLang = results?.recognized?.language || 'en'
+  const detectedLang = results?.recognized?.language || addModal?.lang || 'en'
 
   return createPortal(
     <div className="fixed inset-0 z-[200] flex flex-col"
@@ -219,6 +132,8 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
 
             <input ref={fileRef} type="file" accept={SCANNER_IMAGE_ACCEPT} capture="environment"
               className="hidden" onChange={e => handleFile(e.target.files?.[0])} />
+            <input ref={multiFileRef} type="file" accept="image/*" multiple
+              className="hidden" onChange={e => { handleMultiFiles(e.target.files); e.target.value = '' }} />
 
             <button onClick={() => fileRef.current?.click()}
               className="w-full max-w-xs py-4 rounded-2xl font-black text-white text-base flex items-center justify-center gap-3"
@@ -237,13 +152,68 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
               <Upload size={14} /> {t('scanner.uploadImage')}
             </button>
 
+            <button
+              onClick={() => multiFileRef.current?.click()}
+              className="text-sm text-text-muted hover:text-text-secondary flex items-center gap-2 transition-colors">
+              <ImagePlus size={14} /> {t('scanner.uploadMultiple')}
+            </button>
+
             <p className="text-[11px] text-text-muted text-center max-w-xs">
               {t('scanner.aiHint')}
             </p>
+
           </div>
         )}
 
-        {/* LOADING */}
+        {/* STAGING — review/toggle photos before a batch scan */}
+        {phase === 'staging' && (
+          <div className="space-y-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
+              {t('scanner.stagingTitle')} ({stagedFiles.length})
+            </p>
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+              {stagedFiles.map(f => (
+                <div key={f.id} className="flex flex-col gap-1.5">
+                  <div className="relative w-full aspect-[2.5/3.5] rounded-xl overflow-hidden ring-1 ring-white/10">
+                    <img src={f.previewUrl} className="w-full h-full object-cover" />
+                    <button onClick={() => removeStagedFile(f.id)}
+                      className="absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center bg-black/70">
+                      <X size={12} className="text-white" />
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => toggleIndividual(f.id)}
+                    title={t('scanner.processIndividuallyHint')}
+                    className={`text-[9px] font-semibold py-1 rounded-lg border transition-colors ${
+                      f.individual
+                        ? 'bg-brand-red/20 border-brand-red/50 text-brand-red'
+                        : 'bg-white/5 border-white/10 text-text-muted'
+                    }`}>
+                    {f.individual ? `✓ ${t('scanner.processIndividually')}` : t('scanner.processIndividually')}
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {stagedFiles.length === 0 ? (
+              <p className="text-center text-sm text-text-muted py-4">{t('scanner.noPhotosStaged')}</p>
+            ) : (
+              <button onClick={submitBatch}
+                className="w-full py-4 rounded-2xl font-black text-white text-base flex items-center justify-center gap-3"
+                style={{ background: '#e3000b', boxShadow: '0 0 24px rgba(227,0,11,0.35)' }}>
+                <Camera size={20} /> {t('scanner.scanCount')} ({stagedFiles.length})
+              </button>
+            )}
+
+            <button onClick={reset}
+              className="w-full py-3 rounded-xl flex items-center justify-center gap-2 text-sm font-semibold text-text-muted hover:text-white transition-colors"
+              style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
+              {t('common.cancel')}
+            </button>
+          </div>
+        )}
+
+        {/* LOADING (single) */}
         {phase === 'loading' && (
           <div className="flex flex-col items-center gap-6 pt-8">
             <div className="flex flex-col items-center gap-3">
@@ -254,95 +224,52 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
           </div>
         )}
 
-        {/* RESULTS */}
+        {/* RESULTS (single) */}
         {phase === 'results' && results && (
-          <div className="mx-auto max-w-6xl space-y-4 pb-24 sm:pb-4">
-            <div className="grid gap-4 lg:grid-cols-[minmax(220px,0.8fr)_minmax(0,1.2fr)]">
-              <div className="hidden rounded-2xl border border-white/10 bg-white/[0.04] p-4 sm:block">
-                <p className="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
-                  {t('scanner.yourScan')}
+          <div className="space-y-4">
+            <div className="rounded-2xl p-4"
+              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted mb-2">{t('scanner.detected')}</p>
+              <p className="font-bold text-white text-lg">{results.recognized?.name || '—'}</p>
+              {results.recognized?.number_local && (
+                <p className="text-sm text-text-muted">
+                  Nr. {results.recognized.number_local}{results.recognized.number_total ? `/${results.recognized.number_total}` : ''}
                 </p>
-                <div className="grid aspect-[2.5/3.5] place-items-center rounded-xl border border-dashed border-white/10 bg-bg-primary/50 text-center">
-                  <div className="space-y-2 text-text-muted">
-                    <Camera size={36} className="mx-auto opacity-50" aria-hidden />
-                    <p className="text-xs">{t('scanner.yourScan')}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                  <p className="mb-2 text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">{t('scanner.detected')}</p>
-                  <p className="text-lg font-bold text-white">{results.recognized?.name || '—'}</p>
-                  {results.recognized?.number && <p className="text-sm text-text-muted">Nr. {results.recognized.number}</p>}
-                  {results.recognized?.language && (
-                    <p className="mt-0.5 text-xs uppercase tracking-wider text-text-muted">
-                      {t('scanner.detectedLanguage')} {results.recognized.language}
-                    </p>
-                  )}
-                </div>
-
-                {results.matches?.length > 0 ? (
-                  <div>
-                    <p className="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
-                      {t('scanner.bestMatches')} ({results.matches.length})
-                    </p>
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                      {results.matches.map(match => {
-                        const matchLang = match.lang || match._lang || 'en'
-                        const selected = selectedMatch?.id === match.id
-                          && (selectedMatch?.lang || selectedMatch?._lang || 'en') === matchLang
-                        return (
-                          <CardDisplay
-                            key={`${match.id}-${matchLang}`}
-                            variant="selectable"
-                            card={match}
-                            image={match.image}
-                            languageLabel={tcgdexLanguageLabel(matchLang)}
-                            selected={selected}
-                            onClick={() => setSelectedMatch(match)}
-                            onSelect={() => setSelectedMatch(match)}
-                          />
-                        )
-                      })}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-2 py-6 text-center">
-                    <p className="text-sm text-text-muted">{t('scanner.noMatches')}</p>
-                    <p className="text-xs text-text-muted">{t('scanner.noMatchTip')}</p>
-                  </div>
-                )}
-              </div>
+              )}
+              {results.recognized?.language && (
+                <p className="text-xs text-text-muted mt-0.5 uppercase tracking-wider">
+                  {t('scanner.detectedLanguage')} {results.recognized.language}
+                </p>
+              )}
             </div>
+
+            {results.matches?.length > 0 ? (
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted mb-3">
+                  {t('scanner.matches')} ({results.matches.length})
+                </p>
+                <MatchesGrid matches={results.matches} onSelect={setAddModal} onZoom={setZoomCard} t={t} />
+              </div>
+            ) : (
+              <MatchesGrid matches={[]} onSelect={setAddModal} t={t} />
+            )}
 
             <button onClick={reset}
               className="w-full py-3 rounded-xl flex items-center justify-center gap-2 text-sm font-semibold text-text-muted hover:text-white transition-colors"
               style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
               <RefreshCw size={15} /> {t('scanner.scanAgain')}
             </button>
-
-            {selectedMatch && (
-              <div className="fixed bottom-3 left-3 right-3 z-20 rounded-2xl border border-white/15 bg-bg-surface/95 p-3 shadow-2xl backdrop-blur sm:sticky sm:bottom-3 sm:mx-auto sm:flex sm:max-w-xl sm:items-center sm:gap-3">
-                <div className="mb-2 min-w-0 flex-1 sm:mb-0">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-text-muted">{t('scanner.selectedMatch')}</p>
-                  <p className="truncate text-sm font-bold text-text-primary">{selectedMatch.name}</p>
-                </div>
-                <button
-                  type="button"
-                  className="btn-primary w-full justify-center sm:w-auto"
-                  onClick={() => setAddModal(selectedMatch)}
-                >
-                  <Check size={16} />
-                  {t('scanner.useSelectedMatch')}
-                </button>
-              </div>
-            )}
           </div>
         )}
+
       </div>
 
-      {/* Add-to-collection modal */}
+      {/* Add-to-collection modal (single-photo scans only — queued batches are
+          reviewed on /scans). */}
+      {zoomCard && (
+        <CardZoomModal card={zoomCard} photoUrl={preview} onClose={() => setZoomCard(null)} t={t} />
+      )}
+
       {addModal && (
         <ScanAddModal
           match={addModal}

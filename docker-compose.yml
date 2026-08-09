@@ -52,12 +52,17 @@ services:
       PRE_UPGRADE_BACKUP_REQUIRED: ${PRE_UPGRADE_BACKUP_REQUIRED:-true}
       PRE_UPGRADE_BACKUP_KEEP: ${PRE_UPGRADE_BACKUP_KEEP:-10}
       POKEDEX_IMAGE_CACHE_DIR: /app/data/pokedex-images
+      # Set to a path to record structured scan traces for offline analysis
+      # (see backend/services/scan_trace.py). Empty = disabled, which is the
+      # default: production installs should not accumulate scan data.
+      SCAN_TRACE_DIR: ${SCAN_TRACE_DIR:-}
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
       - ./backups:/app/backups
       - ./data/pokedex-images:/app/data/pokedex-images
+      - ./data/scan-traces:/app/data/scan-traces
     ports:
       - "8000:8000"
 

@@ -486,3 +486,56 @@ class ImageCache(Base):
     data = Column(LargeBinary, nullable=False)
     content_type = Column(String, default="image/webp")
     cached_at = Column(DateTime, default=func.now())
+
+
+class ScanJob(Base):
+    """One multi-photo scanner upload, recognized in the background.
+
+    Recognition is queued rather than done in the request so a large upload is
+    not bounded by an HTTP timeout and can be paced against Gemini's rate limit.
+    The user comes back and reviews the finished items.
+    """
+    __tablename__ = "scan_jobs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    status = Column(String, default="pending", index=True)  # pending/running/done/failed
+    created_at = Column(DateTime, default=func.now())
+    started_at = Column(DateTime)
+    finished_at = Column(DateTime)
+    error_message = Column(Text)
+
+    items = relationship(
+        "ScanJobItem", back_populates="job", cascade="all, delete-orphan", order_by="ScanJobItem.position"
+    )
+
+
+class ScanJobItem(Base):
+    """One uploaded photo inside a ScanJob, and its recognition result.
+
+    `image_data` holds the original upload so the queue survives a backend
+    restart and the review UI can show the photo. It is cleared once the item
+    is resolved (see services/scan_queue.resolve_item) so this table does not
+    accumulate image bytes the way image_cache does.
+    """
+    __tablename__ = "scan_job_items"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    job_id = Column(Integer, ForeignKey("scan_jobs.id", ondelete="CASCADE"), nullable=False, index=True)
+    position = Column(Integer, nullable=False)  # upload order, also the review order
+    filename = Column(String)
+    content_type = Column(String, default="image/jpeg")
+    image_data = Column(LargeBinary)  # cleared on resolve
+    # False when the user ticked "process individually" — that photo bypasses
+    # compositing and gets its own Gemini call.
+    batch_mode = Column(Boolean, default=True)
+
+    status = Column(String, default="pending", index=True)  # pending/done/failed
+    resolved = Column(Boolean, default=False, index=True)  # user has reviewed/actioned it
+    attempts = Column(Integer, default=0)
+    recognized = Column(JSON)
+    matches = Column(JSON)
+    error = Column(Text)
+    updated_at = Column(DateTime, default=func.now())
+
+    job = relationship("ScanJob", back_populates="items")

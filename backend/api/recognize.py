@@ -1,16 +1,22 @@
 import base64
 import asyncio
+import io
 import httpx
 import os
 import json
 import re
+from typing import List, Optional
 from services.tcgdex_languages import is_supported_tcgdex_language, normalize_tcgdex_language
+from services.card_composite import build_composite, chunk_for_composite, GRID_SIZE as BATCH_GRID_SIZE
+from services.gemini_rate_limit import get_limiter
+from services.scan_trace import ScanTrace, record_ground_truth
 import logging
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, BackgroundTasks, Response
 from sqlalchemy.orm import Session
 from api.auth import get_current_user
 from database import get_db
-from models import Setting, UserSetting, User, Set
+from models import Setting, UserSetting, User, Set, Card, ScanJob, ScanJobItem
+from services.scan_queue import drain_scan_queue, enqueue_scan_job, job_progress, resolve_item
 
 logger = logging.getLogger(__name__)
 
@@ -19,36 +25,6 @@ router = APIRouter()
 GEMINI_TRANSIENT_STATUS_CODES = {502, 503, 504}
 DEFAULT_GEMINI_MODEL = "gemini-flash-latest"
 GEMINI_MODELS_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
-
-
-def normalize_scanner_card_number(value) -> str | None:
-    """Return the leading collector number without zeros, if one is present."""
-    if value is None:
-        return None
-    match = re.match(r"(\d+)", str(value).strip())
-    return str(int(match.group(1))) if match else None
-
-
-def prioritize_cards_by_number(
-    cards: list[dict],
-    recognized_number,
-    *,
-    number_field: str = "number",
-) -> tuple[list[dict], int]:
-    """Stable-partition cards so recognized collector-number matches come first."""
-    target_number = normalize_scanner_card_number(recognized_number)
-    if not target_number:
-        return cards, 0
-
-    matches = []
-    rest = []
-    for card in cards:
-        candidate_number = normalize_scanner_card_number(card.get(number_field))
-        (matches if candidate_number == target_number else rest).append(card)
-
-    if not matches:
-        return cards, 0
-    return matches + rest, len(matches)
 
 
 def get_gemini_model() -> str:
@@ -67,6 +43,35 @@ def build_gemini_generate_url(model: str | None = None) -> str:
     if gemini_model.startswith("models/"):
         gemini_model = gemini_model.removeprefix("models/")
     return f"{GEMINI_MODELS_BASE_URL}/{gemini_model}:generateContent"
+
+
+# A 429 says which quota was hit. "PerDay" means waiting seconds is pointless —
+# the allowance is gone until it resets (midnight Pacific on the free tier), and
+# retrying just burns failing calls. Verified against a real exhausted key:
+# quotaId "GenerateRequestsPerDayPerProjectPerModel-FreeTier", quotaValue 20.
+# The accompanying retryDelay is NOT a reset countdown — it was observed
+# reporting 13s/56s/29s while the daily quota stayed exhausted — so it is
+# deliberately ignored here.
+DAILY_QUOTA_MARKER = "Tageslimit"
+DAILY_QUOTA_BACKOFF_SECONDS = 3600
+
+
+def gemini_quota_scope(resp: httpx.Response) -> str:
+    """Return 'daily', 'minute' or 'unknown' for a 429 response."""
+    try:
+        details = (resp.json().get("error") or {}).get("details") or []
+    except ValueError:
+        return "unknown"
+    for detail in details:
+        if "QuotaFailure" not in str(detail.get("@type", "")):
+            continue
+        for violation in detail.get("violations") or []:
+            quota_id = str(violation.get("quotaId") or "")
+            if "PerDay" in quota_id:
+                return "daily"
+            if "PerMinute" in quota_id:
+                return "minute"
+    return "unknown"
 
 
 def gemini_error_message(resp: httpx.Response) -> str:
@@ -100,11 +105,19 @@ async def post_gemini_generate(
     *,
     max_attempts: int = 3,
 ) -> httpx.Response:
-    """Call Gemini with small retries for transient capacity errors."""
+    """Call Gemini with small retries for transient capacity errors.
+
+    Every call first takes budget from the process-wide rate limiter so queued
+    batch work and interactive scans share one quota. A 429 still means the
+    bucket guessed wrong, so it penalizes the limiter and retries rather than
+    failing outright.
+    """
     last_error = None
+    limiter = get_limiter()
 
     for attempt in range(max_attempts):
         try:
+            await limiter.acquire()
             resp = await client.post(
                 gemini_url,
                 headers={"x-goog-api-key": api_key},
@@ -112,6 +125,20 @@ async def post_gemini_generate(
             )
 
             if resp.status_code == 429:
+                if gemini_quota_scope(resp) == "daily":
+                    # No amount of waiting inside this request will help.
+                    limiter.penalize(DAILY_QUOTA_BACKOFF_SECONDS)
+                    raise HTTPException(
+                        status_code=429,
+                        detail=(
+                            f"Gemini {DAILY_QUOTA_MARKER} erreicht – das Kontingent wird "
+                            "zurückgesetzt (Mitternacht US-Pazifik). Der Scan wird danach "
+                            "automatisch fortgesetzt."
+                        ),
+                    )
+                limiter.penalize()
+                if attempt < max_attempts - 1:
+                    continue
                 raise HTTPException(
                     status_code=429,
                     detail="Gemini Rate Limit erreicht – bitte kurz warten und nochmal versuchen.",
@@ -157,92 +184,364 @@ async def post_gemini_generate(
     raise HTTPException(status_code=500, detail=f"Gemini Anfrage fehlgeschlagen: {last_error}")
 
 
-@router.post("/recognize")
-async def recognize_card(
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """
-    Accepts a card image, uses Gemini Vision to extract card details
-    including the card's language, then searches TCGdex in that language.
-    Supports configured TCGdex card languages automatically.
-    """
-    api_key = get_gemini_key(db, user_id=current_user.id)
-    if not api_key:
-        raise HTTPException(
-            status_code=400,
-            detail="Kein Gemini API Key konfiguriert. Bitte in den Einstellungen eintragen."
-        )
+# ─── Prompts ─────────────────────────────────────────────────────────────────
+# Both extract the same core identity fields, but set_code carries an explicit
+# anti-hallucination rule: real-card testing found Gemini would sometimes report
+# a set_code it recognized from training data (e.g. "BRS" for a Brilliant Stars
+# card) even when no code is actually printed on the card. The rule below was
+# confirmed to eliminate that at single-card and 4-card-grid scale.
 
-    # Read image
-    image_bytes = await file.read()
-    image_b64 = base64.b64encode(image_bytes).decode()
-    mime_type = file.content_type or "image/jpeg"
+RECOGNIZE_PROMPT = """Look at this Pokemon Trading Card Game card image. Extract the following.
 
-    # Call Gemini Vision — ask for language detection too
-    gemini_url = build_gemini_generate_url()
+IMPORTANT ACCURACY RULES:
+- Only report what is ACTUALLY VISIBLE as printed text/symbols in THIS image.
+- For number_local, number_total, set_code, and regulation_mark specifically: these are
+  small printed characters near the bottom of the card. Read them character by character.
+  If you are not fully confident in every character, return null for that field rather
+  than guessing — a null is far better than a wrong value.
+- For set_code in particular: only report a value if you can see actual printed
+  alphanumeric characters near the card number that form a code. Do NOT fill this in
+  because you recognize the Pokemon, the artwork, or the set by name — recognizing the
+  card is not the same as reading a printed code, and guessing from memory is not allowed
+  here even if you are confident which set it is.
+- set_name is different: you MAY infer this from visual style, symbol, or copyright era
+  even with no explicit set code printed, since that is a legitimate visual inference —
+  just don't invent a set_code to go with it if none is printed.
 
-    prompt = """Look at this Pokemon Trading Card Game card image. Extract the following:
-1. Card name (exactly as printed on the card, in the card's language)
-2. Card name in English (if the card is not English, give the English name; if already English, same as above)
-3. Card number (e.g. "136/182" — printed at the bottom)
-4. Set name or abbreviation if visible
-5. Card type (Pokemon, Trainer, or Energy)
-6. HP value if it's a Pokemon card
-7. Language of the card (2-letter ISO code: "en" for English, "de" for German, "fr" for French, "es" for Spanish, "it" for Italian, "pt" for Portuguese, "ja" for Japanese, etc.)
+Extract:
+1. Card name, exactly as printed, in the card's own language
+2. Card name in English (same as above if already English)
+3. Local card number as printed at the bottom, or null
+4. Total/denominator as printed at the bottom, or null
+5. Set code/abbreviation, per the accuracy rules above, or null
+6. Set name if you can infer it (from a symbol, copyright era, or other visual cue), or null
+7. Regulation mark: the single boxed letter near the number on Sword/Shield-era-onward cards, or null
+8. Card type: "Pokemon", "Trainer", or "Energy"
+9. HP value if it's a Pokemon card, or null
+10. Language as a 2-letter ISO code
+11. Artist name as printed, or null
+12. Rarity symbol shape: "circle", "diamond", "star", "other", or null
+13. Is this card a promo card? true/false
+14. Does the card art window show holographic foil? true/false
+15. Does the card background/border show a reverse-holo foil pattern? true/false
+16. Is there a "1st Edition" stamp visible? true/false
 
 Respond ONLY with this exact JSON (no markdown, no explanation):
 {
-  "name": "card name in card's language",
-  "name_en": "card name in English (same as name if card is English)",
-  "number": "card number or null",
-  "set_hint": "set name or abbreviation or null",
+  "name": "...",
+  "name_en": "...",
+  "number_local": "... or null",
+  "number_total": "... or null",
+  "set_code": "... or null",
+  "set_name": "... or null",
+  "regulation_mark": "... or null",
   "card_type": "Pokemon/Trainer/Energy",
-  "hp": "HP value or null",
-  "language": "en"
+  "hp": "... or null",
+  "language": "en",
+  "artist": "... or null",
+  "rarity_symbol": "circle/diamond/star/other/null",
+  "is_promo": false,
+  "holo_foil_visible": false,
+  "reverse_holo_pattern_visible": false,
+  "first_edition_stamp_visible": false
 }"""
 
+BATCH_PROMPT_TEMPLATE = """This image is a grid of {n} separate Pokemon Trading Card Game cards, laid
+out left-to-right then top-to-bottom (reading order), each with a small white index number
+burned into its top-left corner ("1" through "{n}"). Identify EVERY card in the grid.
+
+For each card, report which index number is printed in its corner (read the burned-in
+digit, do not assume order), plus the fields below.
+
+IMPORTANT ACCURACY RULES:
+- number_local, number_total, set_code, regulation_mark and artist are small printed
+  characters near the bottom of each card. In a grid this dense, they are easy to misread.
+  Read each one character by character. If you are not fully confident in every character,
+  return null for that field rather than guessing — a null is far better than a wrong value.
+- For set_code specifically: only report it if you can see actual printed alphanumeric
+  characters forming a code near that card's number. Do NOT fill it in because you
+  recognize the Pokemon or the set by name — recognizing a card is not the same as
+  reading a printed code on it, and guessing from memory is not allowed even if you are
+  confident which set it is. Return null instead.
+
+For each card:
+1. index (the burned-in corner number you actually read, as an integer)
+2. name (card's own language)
+3. name_en
+4. number_local (or null)
+5. number_total (or null)
+6. set_code (or null, per the accuracy rules above)
+7. regulation_mark (or null)
+8. card_type
+9. language (2-letter ISO code)
+10. hp — the HP value if it is a Pokemon card, or null
+11. artist — the illustrator credit as printed (usually "Illus. <name>"), or null
+
+Respond ONLY with this exact JSON (no markdown, no explanation) — an array with one object
+per card you found, in any order, each carrying its own "index":
+[
+  {{"index": 1, "name": "...", "name_en": "...", "number_local": "... or null", "number_total": "... or null", "set_code": "... or null", "regulation_mark": "... or null", "card_type": "...", "language": "en", "hp": "... or null", "artist": "... or null"}},
+  ...
+]"""
+
+
+# ─── Small pure helpers (unit tested directly, no network/DB needed) ────────
+
+def _normalize_number(value) -> Optional[str]:
+    """Strip a printed number down to a bare int string for comparison.
+
+    '063' / '63' / 63 / '63/88' (takes the first run of digits) all -> '63'.
+    Returns None when no digits are present.
+    """
+    if value is None:
+        return None
+    match = re.search(r"\d+", str(value))
+    if not match:
+        return None
+    return str(int(match.group()))
+
+
+def _numbers_match(a, b) -> bool:
+    na, nb = _normalize_number(a), _normalize_number(b)
+    return na is not None and na == nb
+
+
+def _printed_total_mismatch(recognized_total, candidate_printed_total) -> bool:
+    """True only when both sides are known and disagree — never flags on missing data."""
+    normalized = _normalize_number(recognized_total)
+    if normalized is None or not candidate_printed_total:
+        return False
+    return normalized != str(int(candidate_printed_total))
+
+
+# The prefix token must end at a separator, so a name that merely begins with
+# the same letters ("Illustration Studio") is left alone.
+_ARTIST_PREFIX = re.compile(
+    r"^\s*(?:illus|illustrator|art|artwork)(?:\s*[.:]\s*|\s+by\s+|\s+)",
+    re.IGNORECASE,
+)
+
+
+# rank_key tuple positions, so index-based reads survive adding a signal.
+(
+    _RANK_NUMBER,
+    _RANK_TOTAL,
+    _RANK_SET,
+    _RANK_REG,
+    _RANK_ARTIST,
+    _RANK_HP,
+) = range(6)
+
+# Thresholds from benchmarking real photos against TCGdex scans: correct matches
+# scored 4-18, while a wrong same-artwork reprint scored 4 against a correct 8.
+# So distance alone is not enough — the gap to the runner-up is what separates a
+# confident pick from a coin flip, and an ambiguous result defers to Gemini.
+#
+# Tolerance measured by transforming the same photos (rotation, shear, border):
+# top-1 degrades steadily past ~5 degrees of rotation, but the margin guard
+# refuses to act rather than answering wrongly — at 10 and 90 degrees it accepted
+# nothing at all. Across realistic transforms (baseline, <=5 deg, shear, padding)
+# it made 15 accepts and 0 mistakes. The one failure mode is aggressive INWARD
+# cropping: at 12% it wrongly accepted twice, because cropping away the border
+# removes the frame that distinguishes layouts. Guidance: never pre-crop tight
+# to the card art.
+PHASH_MAX_DISTANCE = 20
+PHASH_MIN_MARGIN = 5
+
+
+async def _phash_best_match(candidates: list[dict], photo_bytes: Optional[bytes], trace=None) -> Optional[dict]:
+    """Pick the candidate whose artwork matches the photo, or None if unsure.
+
+    Returns None whenever the answer is not clear-cut — too few images, no close
+    match, or two candidates within PHASH_MIN_MARGIN of each other — leaving the
+    caller to fall back to the (paid) Gemini comparison.
+    """
+    if not photo_bytes:
+        return None
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await post_gemini_generate(client, gemini_url, api_key, {
-                "contents": [{
-                    "parts": [
-                        {"text": prompt},
-                        {"inline_data": {"mime_type": mime_type, "data": image_b64}}
-                    ]
-                }]
-            })
+        import imagehash
+        from PIL import Image
+    except ImportError:
+        return None
 
-        result = resp.json()
-        text = result["candidates"][0]["content"]["parts"][0]["text"].strip()
+    with_images = [c for c in candidates if c.get("image")]
+    if len(with_images) < 2:
+        return None
 
-        # Parse JSON from Gemini response (handles markdown code blocks too)
-        json_match = re.search(r'\{.*\}', text, re.DOTALL)
-        if not json_match:
-            raise ValueError("No JSON found in Gemini response")
-        card_info = json.loads(json_match.group())
+    try:
+        photo_hash = imagehash.phash(Image.open(io.BytesIO(photo_bytes)).convert("RGB"))
+    except Exception:
+        return None
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erkennung fehlgeschlagen: {str(e)}")
+    async def hashed(card):
+        try:
+            async with httpx.AsyncClient(timeout=8) as client:
+                resp = await client.get(card["image"])
+            if resp.status_code != 200:
+                return None
+            img = Image.open(io.BytesIO(resp.content)).convert("RGB")
+            return (photo_hash - imagehash.phash(img), card)
+        except Exception:
+            return None
 
-    card_name = card_info.get("name", "").strip()
-    card_name_en = card_info.get("name_en", card_name).strip() or card_name
-    if not card_name:
-        raise HTTPException(status_code=422, detail="Kartenname konnte nicht erkannt werden.")
+    scored = [r for r in await asyncio.gather(*(hashed(c) for c in with_images)) if r]
+    if len(scored) < 2:
+        return None
 
+    scored.sort(key=lambda pair: pair[0])
+    best_distance, best_card = scored[0]
+    runner_up = scored[1][0]
+    too_far = best_distance > PHASH_MAX_DISTANCE
+    too_close = (runner_up - best_distance) < PHASH_MIN_MARGIN
+    accepted = None if (too_far or too_close) else best_card
+    if trace:
+        trace.record_phash(
+            [(d, c.get("tcg_card_id")) for d, c in scored],
+            accepted=accepted.get("tcg_card_id") if accepted else None,
+            reason="too_far" if too_far else ("ambiguous_margin" if too_close else "accepted"),
+        )
+    return accepted
+
+
+def _card_image_url(base: Optional[str], *, quality: str = "low", ext: str = "webp") -> Optional[str]:
+    """Build a TCGdex asset URL. Assets are served as {base}/{quality}.{ext}."""
+    if not base:
+        return None
+    return f"{base}/{quality}.{ext}"
+
+
+def _normalize_artist(value) -> Optional[str]:
+    """Fold an illustrator credit for comparison ('Illus. Kagemaru  Himeno' -> 'kagemaru himeno').
+
+    The credit is printed on the card as "Illus. <name>" but TCGdex stores just
+    the name, and Gemini includes or omits the prefix depending on how the field
+    was described. Strip it here so matching does not depend on prompt wording.
+    """
+    if not value:
+        return None
+    stripped = _ARTIST_PREFIX.sub("", str(value))
+    collapsed = " ".join(stripped.split()).strip().casefold()
+    return collapsed or None
+
+
+def _artists_match(a, b) -> bool:
+    na, nb = _normalize_artist(a), _normalize_artist(b)
+    return na is not None and na == nb
+
+
+async def _fill_candidate_details(
+    db: Session, candidates: list[dict], *, recognized_total=None, limit: int = 8
+) -> None:
+    """Populate artist/hp on candidates so ranking can use them as tie-breaks.
+
+    Needed because TCGdex's name search returns only brief records (id, name,
+    image), while artist and HP are the only usable signals for cards that print
+    no number or set code — vintage and Japanese cards especially, which is also
+    the population TCGdex often has no image for, so visual verification cannot
+    help there either.
+
+    Local DB first (free), then a bounded concurrent TCGdex detail fetch for
+    whatever is still missing (e.g. languages this install does not sync).
+    """
+    targets = candidates[:limit]
+    if not targets:
+        return
+
+    ids = [c["id"] for c in targets if c.get("id")]
+    if ids:
+        rows = db.query(Card.id, Card.artist, Card.hp, Card.regulation_mark).filter(Card.id.in_(ids)).all()
+        local = {row.id: row for row in rows}
+        for card in targets:
+            row = local.get(card.get("id"))
+            if row:
+                card.setdefault("artist", row.artist)
+                card.setdefault("hp", row.hp)
+                card.setdefault("regulation_mark", row.regulation_mark)
+
+    missing = [c for c in targets if not c.get("artist") and not c.get("hp")]
+    if not missing:
+        return
+
+    async def fetch(card):
+        tcg_id, lang = card.get("tcg_card_id"), card.get("_lang", "en")
+        if not tcg_id:
+            return
+        try:
+            async with httpx.AsyncClient(timeout=8) as client:
+                resp = await client.get(f"https://api.tcgdex.net/v2/{lang}/cards/{tcg_id}")
+            if resp.status_code == 200:
+                detail = resp.json()
+                card["artist"] = detail.get("illustrator")
+                card["hp"] = detail.get("hp")
+                card["regulation_mark"] = detail.get("regulationMark")
+                # Sets this install does not sync are absent from the local DB, so
+                # the printed-total check would otherwise be unavailable for them.
+                if card.get("printed_total_mismatch") is None and recognized_total is not None:
+                    official = ((detail.get("set") or {}).get("cardCount") or {}).get("official")
+                    if official:
+                        card["printed_total_mismatch"] = _printed_total_mismatch(recognized_total, official)
+        except Exception:
+            pass  # Tie-break only — a failed lookup just means no extra signal.
+
+    await asyncio.gather(*(fetch(c) for c in missing))
+
+
+def _extract_json(text: str, *, array: bool = False):
+    """Parse the JSON object/array Gemini returned, tolerating stray markdown fences."""
+    pattern = r"\[.*\]" if array else r"\{.*\}"
+    match = re.search(pattern, text, re.DOTALL)
+    if not match:
+        raise ValueError("No JSON found in Gemini response")
+    return json.loads(match.group())
+
+
+_SUFFIXES = re.compile(
+    r"[\s-]+(?:EX|ex|GX|gx|V|VMAX|VSTAR|VStar|TAG\s*TEAM|BREAK|LV\.?\s*X)\s*$",
+    re.IGNORECASE,
+)
+
+
+def _simplify_name(name: str) -> str:
     # Strip card suffixes for broader TCGdex search — exact variants differ between
     # printed text ("EX") and TCGdex naming ("ex", "-ex"). The number ranking and
     # visual verification will find the exact match from the broader result set.
-    _SUFFIXES = re.compile(
-        r"[\s-]+(?:EX|ex|GX|gx|V|VMAX|VSTAR|VStar|TAG\s*TEAM|BREAK|LV\.?\s*X)\s*$",
-        re.IGNORECASE,
-    )
+    return _SUFFIXES.sub("", name).strip()
 
-    def _simplify_name(name: str) -> str:
-        return _SUFFIXES.sub("", name).strip()
+
+async def _recognize_single_image(client, gemini_url, api_key, image_b64, mime_type, trace=None) -> dict:
+    """One Gemini call, one photo, the full RECOGNIZE_PROMPT field set."""
+    resp = await post_gemini_generate(client, gemini_url, api_key, {
+        "contents": [{
+            "parts": [
+                {"text": RECOGNIZE_PROMPT},
+                {"inline_data": {"mime_type": mime_type, "data": image_b64}},
+            ]
+        }]
+    })
+    result = resp.json()
+    text = result["candidates"][0]["content"]["parts"][0]["text"].strip()
+    parsed = _extract_json(text)
+    if trace:
+        trace.record_extraction(
+            prompt=RECOGNIZE_PROMPT, raw_response=text, parsed=parsed,
+            usage=result.get("usageMetadata"),
+        )
+    return parsed
+
+
+async def _match_card_info(
+    db: Session, api_key: str, gemini_url: str, card_info: dict, image_b64: str, mime_type: str,
+    trace=None,
+) -> dict:
+    """Search TCGdex/local DB for candidates matching an already-extracted card_info,
+    rank them, and optionally run visual verification. Shared by the single-photo and
+    batched (composite) recognize paths — the only difference between them is how
+    card_info was produced (one Gemini call per photo, vs one call per composite grid).
+    """
+    card_name = (card_info.get("name") or "").strip()
+    card_name_en = (card_info.get("name_en") or card_name).strip() or card_name
+    if not card_name:
+        raise HTTPException(status_code=422, detail="Kartenname konnte nicht erkannt werden.")
 
     card_name_simple = _simplify_name(card_name)
     card_name_en_simple = _simplify_name(card_name_en)
@@ -265,7 +564,25 @@ Respond ONLY with this exact JSON (no markdown, no explanation):
     # head slice keeps only the lowest-numbered printings and discards the
     # target card for anything numbered above them. Float printings that match
     # the recognized number to the front so they survive the per-search cap.
-    recognized_number = card_info.get("number")
+    #
+    # Reads number_local (the split field) rather than the old combined `number`
+    # this fix was originally written against — the merge is otherwise a no-op,
+    # since card_info no longer carries a `number` key at all.
+    prefilter_number = _normalize_number(card_info.get("number_local"))
+
+    def _prioritize_by_number(cards: list) -> list:
+        if not prefilter_number:
+            return cards
+        matches = [c for c in cards if _normalize_number(c.get("localId")) == prefilter_number]
+        if not matches:
+            return cards
+        rest = [c for c in cards if _normalize_number(c.get("localId")) != prefilter_number]
+        logger.info(
+            f"Number pre-filter: {len(matches)} of {len(cards)} results match #{prefilter_number}"
+        )
+        if trace:
+            trace.record_prefilter(prefilter_number, len(matches), len(cards))
+        return matches + rest
 
     # Collect all raw results first, setting _lang on each card
     all_results = []
@@ -278,23 +595,17 @@ Respond ONLY with this exact JSON (no markdown, no explanation):
                     f"https://api.tcgdex.net/v2/{lang}/cards",
                     params={"name": search_name}
                 )
+            if trace:
+                try:
+                    trace.record_tcgdex(str(search_resp.request.url), search_resp.status_code,
+                                        len(search_resp.json()) if search_resp.status_code == 200 else None)
+                except Exception:
+                    pass
             if search_resp.status_code == 200:
                 tcgdex_cards = search_resp.json()
                 if isinstance(tcgdex_cards, list):
                     logger.info(f"TCGdex {lang} search for '{search_name}': {len(tcgdex_cards)} results")
-                    prioritized_cards, match_count = prioritize_cards_by_number(
-                        tcgdex_cards,
-                        recognized_number,
-                        number_field="localId",
-                    )
-                    if match_count:
-                        logger.info(
-                            "Number pre-filter: %s of %s results match #%s",
-                            match_count,
-                            len(tcgdex_cards),
-                            normalize_scanner_card_number(recognized_number),
-                        )
-                    for c in prioritized_cards[:8]:
+                    for c in _prioritize_by_number(tcgdex_cards)[:8]:
                         card_id = c.get("id")
                         if not card_id:
                             continue
@@ -305,7 +616,11 @@ Respond ONLY with this exact JSON (no markdown, no explanation):
                             "name": c.get("name"),
                             "set": c.get("set", {}).get("name") if isinstance(c.get("set"), dict) else None,
                             "number": c.get("localId"),
-                            "image": f"{c.get('image')}/low.webp" if c.get("image") else None,
+                            "image": _card_image_url(c.get("image")),
+                            # Full-size variant for the review zoom. Enlarging the
+                            # low.webp thumbnail would defeat the purpose — reading a
+                            # set symbol or card number needs the real resolution.
+                            "image_hd": _card_image_url(c.get("image"), quality="high"),
                             "rarity": c.get("rarity"),
                             "lang": lang,
                             "_lang": lang,  # internal dedup key field
@@ -313,7 +628,10 @@ Respond ONLY with this exact JSON (no markdown, no explanation):
         except Exception:
             continue
 
-    # Enrich results with set name from local DB
+    # Enrich results with set name/abbreviation/printed_total from local DB, and flag
+    # candidates whose printed_total disagrees with the recognized number_total — a
+    # near-unique identifier per real-card testing, and a strong "wrong match" signal.
+    recognized_number_total = card_info.get("number_total")
     for card in all_results:
         tcg_card_id = card.get("tcg_card_id", "")
         card_lang = card.get("_lang", "en")
@@ -330,6 +648,15 @@ Respond ONLY with this exact JSON (no markdown, no explanation):
                 card["set"] = local_set.name
                 if local_set.abbreviation:
                     card["set_abbreviation"] = local_set.abbreviation
+                # Only record this when the photo actually gave us a total.
+                # _printed_total_mismatch returns False for "no data" as well as
+                # "they agree", and ranking treats False as a confirmed match —
+                # so setting it unconditionally would promote every candidate
+                # whose set happens to be synced locally.
+                if local_set.printed_total and _normalize_number(recognized_number_total) is not None:
+                    card["printed_total_mismatch"] = _printed_total_mismatch(
+                        recognized_number_total, local_set.printed_total
+                    )
 
     # Dedup by (card_id, _lang) composite key — same card in different languages counts once per lang
     seen = set()
@@ -344,23 +671,104 @@ Respond ONLY with this exact JSON (no markdown, no explanation):
         f"Recognize dedup: {len(all_results)} before -> {len(deduped)} after dedup by (card_id, _lang)"
     )
 
-    # Rank results: cards with matching number first
-    deduped, number_match_count = prioritize_cards_by_number(
-        deduped,
-        recognized_number,
-    )
-    number_match_clear = number_match_count == 1
-    if number_match_count:
-        logger.info(
-            "Ranked results by number match (target: %s)",
-            normalize_scanner_card_number(recognized_number),
-        )
+    # Rank results. Each signal contributes 0 (matches) or 1 (differs/unknown), so a
+    # signal we have no reading for is neutral and cannot reorder anything harmfully.
+    # Ordered by trust: printed number, then set code, then artist and HP.
+    #
+    # Artist/HP matter most for cards that print no number or set code (vintage and
+    # Japanese). Those are also the ones TCGdex frequently has no image for, so visual
+    # verification below cannot rank them either — metadata is the only route.
+    recognized_number_local = card_info.get("number_local")
+    recognized_set_code = (card_info.get("set_code") or "").strip().upper() or None
+    recognized_artist = card_info.get("artist")
+    recognized_hp = card_info.get("hp")
+    recognized_reg = (card_info.get("regulation_mark") or "").strip().upper() or None
+    target_num = _normalize_number(recognized_number_local)
+    number_match_clear = False
+
+    def rank_key(card):
+        number_ok = 1
+        if target_num is not None:
+            number_ok = 0 if _numbers_match(card.get("number"), target_num) else 1
+        # The printed total identifies the set almost uniquely, and it is the one
+        # signal that separates same-artwork reprints — which no image comparison
+        # can do. 0 agrees, 1 unknown, 2 known mismatch, so a confirmed match
+        # outranks an unknown and a contradiction sinks.
+        mismatch = card.get("printed_total_mismatch")
+        total_ok = 1 if mismatch is None else (2 if mismatch else 0)
+        set_ok = 1
+        if recognized_set_code:
+            card_abbr = (card.get("set_abbreviation") or "").upper()
+            set_ok = 0 if card_abbr == recognized_set_code else 1
+        reg_ok = 1
+        if recognized_reg and card.get("regulation_mark"):
+            reg_ok = 0 if str(card["regulation_mark"]).strip().upper() == recognized_reg else 1
+        artist_ok = 0 if _artists_match(recognized_artist, card.get("artist")) else 1
+        hp_ok = 0 if (recognized_hp and _numbers_match(recognized_hp, card.get("hp"))) else 1
+        return (number_ok, total_ok, set_ok, reg_ok, artist_ok, hp_ok)
+
+    if target_num is not None:
+        deduped.sort(key=rank_key)
+        number_matches = [card for card in deduped if rank_key(card)[0] == 0]
+        if len(number_matches) == 1:
+            number_match_clear = True
+        elif len(number_matches) > 1 and recognized_set_code:
+            set_matches = [card for card in number_matches if rank_key(card)[1] == 0]
+            number_match_clear = len(set_matches) == 1
+        logger.info(f"Ranked results by number match (target: {target_num})")
+        if number_match_clear and trace:
+            trace.record_decision("number_unique", deduped[0].get("tcg_card_id") if deduped else None)
+
+    # When the number did not settle it, artist/HP are worth fetching — they are
+    # absent from TCGdex's brief search records, so this is the only place they
+    # become available. Bounded, and skipped entirely when ranking is already clear.
+    if not number_match_clear and (recognized_artist or recognized_hp):
+        await _fill_candidate_details(db, deduped, recognized_total=recognized_number_total)
+        deduped.sort(key=rank_key)
+        exact = [
+            c for c in deduped
+            if rank_key(c)[_RANK_ARTIST] == 0 and rank_key(c)[_RANK_HP] == 0
+        ]
+        if len(exact) == 1:
+            # Promote explicitly rather than trusting the sort: artist/HP sit
+            # below number and printed-total in rank_key, so a card they pinned
+            # can still be outranked by candidates that merely score better on a
+            # higher signal.
+            winner = exact[0]
+            deduped.remove(winner)
+            deduped.insert(0, winner)
+            number_match_clear = True  # pinned exactly one; skip the extra call
+            logger.info(
+                "Artist/HP tie-break resolved to %s (%s)", winner.get("tcg_card_id"), winner.get("name")
+            )
+            if trace:
+                trace.record_decision("artist_hp", winner.get("tcg_card_id"))
+
+    # Perceptual-hash re-rank, before spending a second Gemini call.
+    # Benchmarked on real handheld photos against TCGdex scans: pHash put the
+    # correct card first in 8 of 9 cases across unfiltered candidate pools of up
+    # to 62. Its one failure mode is same-artwork reprints, which is exactly what
+    # the printed-total signal above resolves — so this only ever re-ranks, and
+    # only when the result is unambiguous by both distance and margin.
+    if not number_match_clear:
+        winner = await _phash_best_match(deduped[:8], base64.b64decode(image_b64), trace=trace)
+        if winner is not None:
+            deduped.remove(winner)
+            deduped.insert(0, winner)
+            number_match_clear = True
+            logger.info(
+                "pHash re-rank picked %s (%s)", winner.get("tcg_card_id"), winner.get("name")
+            )
+            if trace:
+                trace.record_decision("phash", winner.get("tcg_card_id"))
 
     # Visual verification: ask Gemini to pick the best match from candidate images.
-    # Skip this second Gemini call when number ranking is decisive or there
-    # are not enough candidate images to compare visually.
-    top_candidates = [card for card in deduped[:5] if card.get("image")]  # max 5 to keep costs low
-    if len(top_candidates) >= 2 and not number_match_clear:
+    # Skip this second Gemini call when ranking is decisive or there are not enough
+    # candidates to compare. Candidates without an image are still included — TCGdex
+    # has no scan for many vintage cards, and dropping them here used to hide the
+    # correct answer from Gemini entirely, which then (correctly) reported no match.
+    top_candidates = deduped[:5]  # max 5 to keep costs low
+    if sum(1 for c in top_candidates if c.get("image")) >= 2 and not number_match_clear:
         try:
             # Download candidate images
             candidate_parts = [
@@ -431,12 +839,285 @@ Respond ONLY with this exact JSON (no markdown, no explanation):
                             f"Visual verification picked candidate {pick}: "
                             f"{winner.get('name')} #{winner.get('number')}"
                         )
+                        if trace:
+                            trace.record_decision("gemini_visual", winner.get("tcg_card_id"))
                     elif pick == 0:
                         logger.info("Visual verification: no match found among candidates")
         except Exception as e:
             logger.warning(f"Visual verification failed (non-blocking): {e}")
 
+    if trace:
+        trace.record_candidates(deduped[:8], rank_key=rank_key)
+        if not (trace.data.get("decision") or {}).get("mechanism"):
+            # Nothing decisive fired — the order is whatever ranking produced.
+            trace.record_decision("rank_order", deduped[0].get("tcg_card_id") if deduped else None)
+
     return {
         "recognized": card_info,
         "matches": deduped[:8],
     }
+
+
+@router.post("/recognize")
+async def recognize_card(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Accepts a card image, uses Gemini Vision to extract card details
+    including the card's language, then searches TCGdex in that language.
+    Supports configured TCGdex card languages automatically.
+    """
+    api_key = get_gemini_key(db, user_id=current_user.id)
+    if not api_key:
+        raise HTTPException(
+            status_code=400,
+            detail="Kein Gemini API Key konfiguriert. Bitte in den Einstellungen eintragen."
+        )
+
+    image_bytes = await file.read()
+    image_b64 = base64.b64encode(image_bytes).decode()
+    mime_type = file.content_type or "image/jpeg"
+    gemini_url = build_gemini_generate_url()
+
+    trace = ScanTrace(mode="single", filename=file.filename, model=get_gemini_model())
+    trace.set_image(image_bytes)
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            card_info = await _recognize_single_image(
+                client, gemini_url, api_key, image_b64, mime_type, trace=trace
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        trace.record_error(str(e))
+        trace.save()
+        raise HTTPException(status_code=500, detail=f"Erkennung fehlgeschlagen: {str(e)}")
+
+    try:
+        return await _match_card_info(db, api_key, gemini_url, card_info, image_b64, mime_type, trace=trace)
+    finally:
+        trace.save()
+
+
+async def _recognize_composite_chunk(db: Session, api_key: str, gemini_url: str, chunk: list[dict], traces=None) -> list[dict]:
+    """chunk: list of {filename, bytes, mime_type}, at most BATCH_GRID_SIZE items.
+    Returns one result dict per input item, in the same order, each either
+    {"filename", "recognized", "matches"} or {"filename", "error"}.
+    """
+    try:
+        composite_bytes = build_composite([item["bytes"] for item in chunk])
+        composite_b64 = base64.b64encode(composite_bytes).decode()
+        prompt = BATCH_PROMPT_TEMPLATE.format(n=len(chunk))
+
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await post_gemini_generate(client, gemini_url, api_key, {
+                "contents": [{
+                    "parts": [
+                        {"text": prompt},
+                        {"inline_data": {"mime_type": "image/jpeg", "data": composite_b64}},
+                    ]
+                }]
+            })
+        result = resp.json()
+        text = result["candidates"][0]["content"]["parts"][0]["text"].strip()
+        parsed = _extract_json(text, array=True)
+        for tr in (traces or []):
+            tr.record_extraction(prompt=prompt, raw_response=text, usage=result.get("usageMetadata"))
+    except HTTPException as e:
+        for tr in (traces or []):
+            tr.record_error(str(e.detail))
+        return [{"filename": item["filename"], "error": e.detail} for item in chunk]
+    except Exception as e:
+        for tr in (traces or []):
+            tr.record_error(str(e))
+        return [{"filename": item["filename"], "error": f"Stapel-Erkennung fehlgeschlagen: {e}"} for item in chunk]
+
+    by_index = {entry.get("index"): entry for entry in parsed if isinstance(entry, dict)}
+
+    out = []
+    for i, item in enumerate(chunk, start=1):
+        tr = (traces or [None] * len(chunk))[i - 1]
+        card_info = by_index.get(i)
+        if not card_info:
+            if tr:
+                tr.record_error("Karte im Stapel nicht erkannt (Index fehlt).")
+            out.append({"filename": item["filename"], "error": "Karte im Stapel nicht erkannt (Index fehlt)."})
+            continue
+        if tr:
+            tr.record_extraction(parsed=card_info)
+        image_b64 = base64.b64encode(item["bytes"]).decode()
+        try:
+            match_result = await _match_card_info(
+                db, api_key, gemini_url, card_info, image_b64, item["mime_type"], trace=tr
+            )
+            out.append({"filename": item["filename"], **match_result})
+        except HTTPException as e:
+            out.append({"filename": item["filename"], "error": e.detail})
+        except Exception as e:
+            out.append({"filename": item["filename"], "error": f"Erkennung fehlgeschlagen: {e}"})
+
+    return out
+
+
+def _item_payload(item: ScanJobItem) -> dict:
+    return {
+        "id": item.id,
+        "position": item.position,
+        "filename": item.filename,
+        "batch_mode": item.batch_mode,
+        "status": item.status,
+        "resolved": item.resolved,
+        "recognized": item.recognized,
+        "matches": item.matches,
+        "error": item.error,
+        "has_image": item.image_data is not None,
+    }
+
+
+@router.post("/recognize/batch")
+async def enqueue_recognize_batch(
+    background_tasks: BackgroundTasks,
+    files: List[UploadFile] = File(default=[]),
+    singles: List[UploadFile] = File(default=[]),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Queue many single-card photos for background recognition.
+
+    Returns immediately with a job id — recognition happens in the background,
+    paced against the Gemini rate limit, so a large upload is not bounded by an
+    HTTP timeout and survives the user closing the tab.
+
+    `files` get grouped into composite grids of up to BATCH_GRID_SIZE cards per
+    Gemini call (~4x fewer image tokens and API calls per card at this grid
+    size, at a small accuracy cost on hard cards). `singles` bypass batching and
+    get one call each — the override for cards (vintage, non-Latin script) where
+    batching measured worse.
+    """
+    if not files and not singles:
+        raise HTTPException(status_code=400, detail="Keine Bilder hochgeladen.")
+
+    api_key = get_gemini_key(db, user_id=current_user.id)
+    if not api_key:
+        raise HTTPException(
+            status_code=400,
+            detail="Kein Gemini API Key konfiguriert. Bitte in den Einstellungen eintragen."
+        )
+
+    uploads = []
+    for f in files:
+        uploads.append({
+            "filename": f.filename,
+            "bytes": await f.read(),
+            "content_type": f.content_type or "image/jpeg",
+            "batch_mode": True,
+        })
+    for f in singles:
+        uploads.append({
+            "filename": f.filename,
+            "bytes": await f.read(),
+            "content_type": f.content_type or "image/jpeg",
+            "batch_mode": False,
+        })
+
+    job = enqueue_scan_job(db, current_user.id, uploads)
+    background_tasks.add_task(drain_scan_queue)
+    return job_progress(db, job)
+
+
+@router.get("/recognize/jobs")
+def list_scan_jobs(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Jobs for the current user, newest first — the review inbox index."""
+    jobs = (
+        db.query(ScanJob)
+        .filter(ScanJob.user_id == current_user.id)
+        .order_by(ScanJob.created_at.desc())
+        .limit(20)
+        .all()
+    )
+    return {"jobs": [job_progress(db, job) for job in jobs]}
+
+
+def _get_own_job(db: Session, job_id: int, current_user: User) -> ScanJob:
+    job = db.query(ScanJob).filter(ScanJob.id == job_id).first()
+    if not job or job.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Scan-Auftrag nicht gefunden.")
+    return job
+
+
+@router.get("/recognize/jobs/{job_id}")
+def get_scan_job(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Poll progress and read finished items for review."""
+    job = _get_own_job(db, job_id, current_user)
+    items = (
+        db.query(ScanJobItem)
+        .filter(ScanJobItem.job_id == job.id)
+        .order_by(ScanJobItem.position.asc())
+        .all()
+    )
+    return {**job_progress(db, job), "items": [_item_payload(item) for item in items]}
+
+
+@router.get("/recognize/jobs/{job_id}/items/{item_id}/image")
+def get_scan_job_item_image(
+    job_id: int,
+    item_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """The original uploaded photo, so the review UI can show it after a reload."""
+    _get_own_job(db, job_id, current_user)
+    item = db.query(ScanJobItem).filter(
+        ScanJobItem.id == item_id, ScanJobItem.job_id == job_id
+    ).first()
+    if not item or not item.image_data:
+        raise HTTPException(status_code=404, detail="Bild nicht gefunden.")
+    return Response(content=item.image_data, media_type=item.content_type or "image/jpeg")
+
+
+@router.post("/recognize/jobs/{job_id}/items/{item_id}/resolve")
+def resolve_scan_job_item(
+    job_id: int,
+    item_id: int,
+    selected_card_id: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Mark a reviewed item handled. Drops its stored photo.
+
+    `selected_card_id` is the card the user actually confirmed. Review is a human
+    verifying an identity, so every confirmation is a free labelled example —
+    recording it turns the trace log into a measurable accuracy dataset instead
+    of a pile of unlabelled attempts.
+    """
+    _get_own_job(db, job_id, current_user)
+    item = db.query(ScanJobItem).filter(
+        ScanJobItem.id == item_id, ScanJobItem.job_id == job_id
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Eintrag nicht gefunden.")
+    if selected_card_id:
+        record_ground_truth(job_id, item_id, selected_card_id)
+    return _item_payload(resolve_item(db, item))
+
+
+@router.delete("/recognize/jobs/{job_id}")
+def delete_scan_job(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Discard a job and every stored photo in it."""
+    job = _get_own_job(db, job_id, current_user)
+    db.delete(job)
+    db.commit()
+    return {"deleted": job_id}

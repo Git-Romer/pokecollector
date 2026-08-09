@@ -107,6 +107,37 @@ export const recognizeCard = (imageFile) => {
   }).then(r => r.data)
 }
 
+// Queue a batch for background recognition. Returns a job immediately —
+// recognition is paced against the Gemini rate limit server-side, so results
+// arrive via polling rather than in this response. `batched` photos are
+// composited into grids (cheaper); `singles` bypass batching entirely — the
+// override for hard cards.
+export const enqueueScanJob = ({ batched = [], singles = [] }) => {
+  const formData = new FormData()
+  batched.forEach(file => formData.append('files', file))
+  singles.forEach(file => formData.append('singles', file))
+  return api.post('/cards/recognize/batch', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }).then(r => r.data)
+}
+
+export const getScanJobs = () => api.get('/cards/recognize/jobs').then(r => r.data)
+export const getScanJob = (jobId) => api.get(`/cards/recognize/jobs/${jobId}`).then(r => r.data)
+// selectedCardId records which candidate the user confirmed — ground truth for
+// the scan traces, so recognition accuracy can be measured over time.
+export const resolveScanJobItem = (jobId, itemId, selectedCardId) =>
+  api.post(`/cards/recognize/jobs/${jobId}/items/${itemId}/resolve`, null, {
+    params: selectedCardId ? { selected_card_id: selectedCardId } : undefined,
+  }).then(r => r.data)
+export const deleteScanJob = (jobId) => api.delete(`/cards/recognize/jobs/${jobId}`).then(r => r.data)
+
+// Fetched as a blob rather than used as an <img src> directly: the endpoint is
+// authenticated with a bearer token, which an <img> tag cannot send.
+// Caller owns the returned object URL and must revokeObjectURL it.
+export const fetchScanJobItemImage = (jobId, itemId) =>
+  api.get(`/cards/recognize/jobs/${jobId}/items/${itemId}/image`, { responseType: 'blob' })
+    .then(r => URL.createObjectURL(r.data))
+
 // Custom card migration
 export const getCustomMatches = () => api.get('/cards/custom/matches')
 export const migrateCustomCard = (matchId) => api.post(`/cards/custom/migrate/${matchId}`)
