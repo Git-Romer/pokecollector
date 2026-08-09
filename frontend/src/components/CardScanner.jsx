@@ -30,11 +30,11 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
       toast.error(t('scanner.recognitionFailed'))
       return
     }
+    setPreview(URL.createObjectURL(file))
     setPhase('loading')
     try {
       const data = await recognizeCard(file)
       setResults(data)
-      setSelectedMatch(data.matches?.[0] || null)
       setPhase('results')
     } catch (e) {
       const msg = e?.response?.data?.detail || t('scanner.recognitionFailed')
@@ -89,7 +89,9 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
 
   const reset = () => {
     stagedFiles.forEach(f => URL.revokeObjectURL(f.previewUrl))
+    if (preview) URL.revokeObjectURL(preview)
     setPhase('capture')
+    setPreview(null)
     setResults(null)
     setStagedFiles([])
     setZoomCard(null)
