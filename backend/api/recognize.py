@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from api.auth import get_current_user
 from database import get_db
 from models import Setting, UserSetting, User, Set
+from services.card_numbers import card_number_variants
 
 logger = logging.getLogger(__name__)
 
@@ -29,22 +30,39 @@ def normalize_scanner_card_number(value) -> str | None:
     return str(int(match.group(1))) if match else None
 
 
+def _number_match_keys(value) -> set:
+    """Comparable forms of a printed number, casefolded.
+
+    Both sides of a comparison go through this, so "63/100" and "063" meet on
+    "63" while the set total is ignored.
+    """
+    return {variant.casefold() for variant in card_number_variants(value)}
+
+
 def prioritize_cards_by_number(
     cards: list[dict],
     recognized_number,
     *,
     number_field: str = "number",
 ) -> tuple[list[dict], int]:
-    """Stable-partition cards so recognized collector-number matches come first."""
-    target_number = normalize_scanner_card_number(recognized_number)
-    if not target_number:
+    """Stable-partition cards so recognized collector-number matches come first.
+
+    Matching is on shared number variants rather than the leading digits, for
+    two reasons. Trainer gallery and promo numbers such as "TG01" have no
+    leading digits at all, so a digits-only rule cannot prioritise them and the
+    card stays buried below the candidate cap - the exact truncation this
+    function exists to prevent. And "74a" reduced to "74" names a different,
+    real card, so a suffixed number must not match the plain one.
+    """
+    wanted = _number_match_keys(recognized_number)
+    if not wanted:
         return cards, 0
 
     matches = []
     rest = []
     for card in cards:
-        candidate_number = normalize_scanner_card_number(card.get(number_field))
-        (matches if candidate_number == target_number else rest).append(card)
+        candidate = _number_match_keys(card.get(number_field))
+        (matches if candidate & wanted else rest).append(card)
 
     if not matches:
         return cards, 0
