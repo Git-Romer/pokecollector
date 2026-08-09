@@ -21,6 +21,36 @@ DEFAULT_GEMINI_MODEL = "gemini-flash-latest"
 GEMINI_MODELS_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
 
+def normalize_scanner_card_number(value) -> str | None:
+    """Return the leading collector number without zeros, if one is present."""
+    if value is None:
+        return None
+    match = re.match(r"(\d+)", str(value).strip())
+    return str(int(match.group(1))) if match else None
+
+
+def prioritize_cards_by_number(
+    cards: list[dict],
+    recognized_number,
+    *,
+    number_field: str = "number",
+) -> tuple[list[dict], int]:
+    """Stable-partition cards so recognized collector-number matches come first."""
+    target_number = normalize_scanner_card_number(recognized_number)
+    if not target_number:
+        return cards, 0
+
+    matches = []
+    rest = []
+    for card in cards:
+        candidate_number = normalize_scanner_card_number(card.get(number_field))
+        (matches if candidate_number == target_number else rest).append(card)
+
+    if not matches:
+        return cards, 0
+    return matches + rest, len(matches)
+
+
 def get_gemini_model() -> str:
     """Return the configured Gemini model name without the optional models/ prefix."""
     model = os.environ.get("GEMINI_MODEL", DEFAULT_GEMINI_MODEL).strip()
@@ -231,6 +261,12 @@ Respond ONLY with this exact JSON (no markdown, no explanation):
         if card_name_en_simple != card_name_en:
             search_pairs.append(("en", card_name_en))
 
+    # TCGdex returns search results sorted ascending by card number, so a plain
+    # head slice keeps only the lowest-numbered printings and discards the
+    # target card for anything numbered above them. Float printings that match
+    # the recognized number to the front so they survive the per-search cap.
+    recognized_number = card_info.get("number")
+
     # Collect all raw results first, setting _lang on each card
     all_results = []
     for lang, search_name in search_pairs:
@@ -246,7 +282,19 @@ Respond ONLY with this exact JSON (no markdown, no explanation):
                 tcgdex_cards = search_resp.json()
                 if isinstance(tcgdex_cards, list):
                     logger.info(f"TCGdex {lang} search for '{search_name}': {len(tcgdex_cards)} results")
-                    for c in tcgdex_cards[:8]:
+                    prioritized_cards, match_count = prioritize_cards_by_number(
+                        tcgdex_cards,
+                        recognized_number,
+                        number_field="localId",
+                    )
+                    if match_count:
+                        logger.info(
+                            "Number pre-filter: %s of %s results match #%s",
+                            match_count,
+                            len(tcgdex_cards),
+                            normalize_scanner_card_number(recognized_number),
+                        )
+                    for c in prioritized_cards[:8]:
                         card_id = c.get("id")
                         if not card_id:
                             continue
@@ -297,29 +345,16 @@ Respond ONLY with this exact JSON (no markdown, no explanation):
     )
 
     # Rank results: cards with matching number first
-    recognized_number = card_info.get("number")
-    number_match_count = 0
-    number_match_clear = False
-    if recognized_number:
-        # Normalize: "136/182" -> "136", "001" -> "1"
-        num_match = re.match(r"(\d+)", str(recognized_number).strip())
-        if num_match:
-            target_num = str(int(num_match.group(1)))  # strip leading zeros
-
-            def number_sort_key(card):
-                card_num = card.get("number", "")
-                if card_num:
-                    cn_match = re.match(r"(\d+)", str(card_num).strip())
-                    if cn_match and str(int(cn_match.group(1))) == target_num:
-                        return 0  # exact match first
-                return 1  # non-matches after
-
-            deduped.sort(key=number_sort_key)
-            number_match_count = sum(1 for card in deduped if number_sort_key(card) == 0)
-            number_match_clear = (
-                len(deduped) > 0 and number_sort_key(deduped[0]) == 0 and number_match_count == 1
-            )
-            logger.info(f"Ranked results by number match (target: {target_num})")
+    deduped, number_match_count = prioritize_cards_by_number(
+        deduped,
+        recognized_number,
+    )
+    number_match_clear = number_match_count == 1
+    if number_match_count:
+        logger.info(
+            "Ranked results by number match (target: %s)",
+            normalize_scanner_card_number(recognized_number),
+        )
 
     # Visual verification: ask Gemini to pick the best match from candidate images.
     # Skip this second Gemini call when number ranking is decisive or there
