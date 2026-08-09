@@ -21,16 +21,20 @@ function query(match) {
 }
 
 // Cardmarket's own search, matching the parameters the collection view already
-// uses for its "Buy on Cardmarket" links (see utils/cardmarket.js). Kept separate
-// because a scan candidate is a much thinner object than a synced card — no
-// set_ref, no product ids — so there is nothing to reuse but the URL shape.
+// uses for its "Buy on Cardmarket" links (see cardmarketSearchUrl in
+// utils/cardmarket.js). Kept separate rather than calling that function because
+// a scan candidate is a much thinner object than a synced card — no set_ref, no
+// product ids — so there is nothing to reuse but the URL shape and query
+// parameters. The set code still needs to go in the search string, though: a
+// common name+number pair like "Pikachu 25" is ambiguous across sets without it.
 function cardmarketUrl(match) {
+  const setCode = (match?.set_abbreviation || '').toUpperCase()
   const params = new URLSearchParams({
     searchMode: 'v2',
     idCategory: '51',
     idExpansion: '0',
     idRarity: '0',
-    searchString: [match?.name, match?.number].filter(Boolean).join(' '),
+    searchString: [match?.name, setCode, match?.number].filter(Boolean).join(' '),
   })
   return `https://www.cardmarket.com/en/Pokemon/Products/Singles?${params.toString()}`
 }
