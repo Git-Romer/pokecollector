@@ -133,13 +133,20 @@ async def _process_item_group(db: Session, api_key: str, gemini_url: str, items:
         item = items[0]
         image_b64 = base64.b64encode(item.image_data).decode()
         try:
+            read_meta: dict = {}
             async with httpx.AsyncClient(timeout=30) as client:
                 card_info = await _recognize_single_image(
-                    client, gemini_url, api_key, image_b64, item.content_type, trace=traces[0]
+                    client, gemini_url, api_key, image_b64, item.content_type,
+                    trace=traces[0], meta=read_meta,
                 )
             result = await _match_card_info(
                 db, api_key, gemini_url, card_info, image_b64, item.content_type, trace=traces[0]
             )
+            # Prefer the angle a rotated retry proved, since that is direct
+            # evidence rather than an inference, and it is the only signal
+            # available for cards TCGdex has no scan of.
+            result.setdefault("rotation", None)
+            result["rotation"] = read_meta.get("rotation") or result.get("rotation")
             outcome = _apply_result(item, result)
         except HTTPException as exc:
             traces[0].record_error(str(exc.detail))
@@ -199,8 +206,35 @@ def _apply_result(item: ScanJobItem, result: dict) -> int:
         item.matches = result.get("matches")
         item.error = None
         item.status = "done"
+        _straighten(item, result.get("rotation"))
     item.updated_at = datetime.datetime.utcnow()
     return NONE
+
+
+def _straighten(item: ScanJobItem, rotation) -> None:
+    """Store the photo the right way up once its orientation is known.
+
+    Recognition tolerates rotation, so a card photographed on its side still reads
+    correctly and nothing upstream notices — but the review UI would then show a
+    sideways photo beside upright candidates. Rewriting the stored bytes fixes the
+    preview and the zoom modal together, with no work in the frontend.
+
+    Only ever applied when matching was confident enough to report an angle; a
+    wrongly-rotated preview is worse than the photo as the user took it.
+    """
+    if not rotation or not item.image_data:
+        return
+    try:
+        import io
+        from PIL import Image
+        img = Image.open(io.BytesIO(item.image_data)).convert("RGB").rotate(rotation, expand=True)
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=95)
+        item.image_data = buf.getvalue()
+        item.content_type = "image/jpeg"
+        logger.info("Straightened photo for item %s by %s degrees", item.id, rotation)
+    except Exception:
+        logger.warning("Could not straighten item %s; keeping the original", item.id, exc_info=True)
 
 
 async def _process_job(db: Session, job: ScanJob) -> int:

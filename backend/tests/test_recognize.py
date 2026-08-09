@@ -11,6 +11,8 @@ try:
     from api.recognize import (
         DEFAULT_GEMINI_MODEL,
         build_gemini_generate_url,
+        card_set_id,
+        prioritize_candidates,
         get_gemini_model,
         gemini_error_message,
         post_gemini_generate,
@@ -335,7 +337,8 @@ class PromptConsistencyTests(unittest.TestCase):
     depending on whether a card was composited or sent alone.
     """
 
-    RANKING_FIELDS = ("number_local", "number_total", "set_code", "artist", "hp")
+    RANKING_FIELDS = ("number_local", "number_total", "set_code", "artist", "hp",
+                      "energy_type")
 
     def test_batch_prompt_requests_every_field_ranking_uses(self):
         batch = recognize_module.BATCH_PROMPT_TEMPLATE
@@ -352,6 +355,59 @@ class PromptConsistencyTests(unittest.TestCase):
         # cards that print none; this wording is what stopped it.
         for prompt in (recognize_module.RECOGNIZE_PROMPT, recognize_module.BATCH_PROMPT_TEMPLATE):
             self.assertIn("guessing from memory is not allowed", prompt)
+
+
+@unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")
+class CandidatePrioritisationTests(unittest.TestCase):
+    """Only the first few results of each TCGdex search survive the per-search cap,
+    so anything the photo identified has to be floated above it first.
+    """
+
+    CARDS = [
+        {"id": "tk-bw-e-2", "localId": "2"},
+        {"id": "tk-xy-latio-3", "localId": "3"},
+        {"id": "mee-006", "localId": "006"},
+        {"id": "sve-006", "localId": "006"},
+    ]
+
+    def ids(self, cards):
+        return [c["id"] for c in cards]
+
+    def test_number_alone_floats_every_printing_with_that_number(self):
+        out = self.ids(prioritize_candidates(self.CARDS, "6", set()))
+        self.assertEqual(out[:2], ["mee-006", "sve-006"])
+
+    def test_set_alone_floats_the_right_printing(self):
+        # The real failure: "MEE" was read, the number was not, and mee-006 was
+        # cut from a 51-result search in favour of unrelated trainer kits.
+        out = self.ids(prioritize_candidates(self.CARDS, None, {"mee"}))
+        self.assertEqual(out[0], "mee-006")
+
+    def test_both_signals_beat_either_alone(self):
+        out = self.ids(prioritize_candidates(self.CARDS, "6", {"mee"}))
+        self.assertEqual(out[0], "mee-006")
+        self.assertEqual(out[1], "sve-006")
+
+    def test_no_signal_leaves_the_order_untouched(self):
+        self.assertEqual(self.ids(prioritize_candidates(self.CARDS, None, set())),
+                         self.ids(self.CARDS))
+
+    def test_a_signal_that_matches_nothing_leaves_the_order_untouched(self):
+        # Ranking downstream still gets to see every candidate; a misread code
+        # must not silently reshuffle them.
+        self.assertEqual(self.ids(prioritize_candidates(self.CARDS, "999", {"xyz"})),
+                         self.ids(self.CARDS))
+
+    def test_padding_differences_still_count_as_a_number_match(self):
+        self.assertEqual(
+            self.ids(prioritize_candidates(self.CARDS, "006", set()))[:2],
+            ["mee-006", "sve-006"],
+        )
+
+    def test_set_id_survives_a_dotted_set(self):
+        self.assertEqual(card_set_id({"id": "me02.5-022"}), "me02.5")
+        self.assertEqual(card_set_id({"id": "sv06.5-098"}), "sv06.5")
+        self.assertEqual(card_set_id({}), "")
 
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")
@@ -430,8 +486,75 @@ class RecognizeSingleImageTests(NoWaitLimiterMixin, unittest.IsolatedAsyncioTest
             async def post(self, *args, **kwargs):
                 return _fake_gemini_text_response(json.dumps(card_info))
 
-        result = await _recognize_single_image(FakeClient(), "https://example.test", "key", "b64", "image/jpeg")
+        # Real base64: recognition now decodes the image so it can retry at
+        # other orientations when a read yields no name.
+        import base64 as _b64
+        image_b64 = _b64.b64encode(_fake_jpeg_bytes()).decode()
+        result = await _recognize_single_image(
+            FakeClient(), "https://example.test", "key", image_b64, "image/jpeg"
+        )
         self.assertEqual(result, card_info)
+
+
+@unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")
+class RotationFallbackTests(NoWaitLimiterMixin, unittest.IsolatedAsyncioTestCase):
+    """A card photographed upside down read as an empty name and the scan failed
+    outright — the name is the only thing the search has to go on. Observed on a
+    real card in a 72-card set.
+    """
+
+    def setUp(self):
+        super().setUp()
+        import base64
+        self.image_b64 = base64.b64encode(_fake_jpeg_bytes()).decode()
+
+    async def test_retries_other_orientations_when_no_name_is_read(self):
+        attempts = []
+
+        async def fake_extract(client, url, key, image_bytes, mime):
+            attempts.append(len(image_bytes))
+            # Fail until the third orientation has been tried.
+            if len(attempts) < 3:
+                return {"name": ""}, "{}", None
+            return {"name": "Energy"}, '{"name":"Energy"}', None
+
+        with patch.object(recognize_module, "_extract_fields", side_effect=fake_extract):
+            result = await _recognize_single_image(
+                None, "https://example.test", "key", self.image_b64, "image/jpeg"
+            )
+
+        self.assertEqual(result["name"], "Energy")
+        self.assertEqual(len(attempts), 3, "should have rotated until a name appeared")
+
+    async def test_upright_cards_are_not_rotated_at_all(self):
+        calls = []
+
+        async def fake_extract(client, url, key, image_bytes, mime):
+            calls.append(1)
+            return {"name": "Gengar"}, '{"name":"Gengar"}', None
+
+        with patch.object(recognize_module, "_extract_fields", side_effect=fake_extract):
+            await _recognize_single_image(
+                None, "https://example.test", "key", self.image_b64, "image/jpeg"
+            )
+
+        self.assertEqual(len(calls), 1, "a successful read must cost exactly one call")
+
+    async def test_gives_up_after_every_orientation(self):
+        calls = []
+
+        async def fake_extract(client, url, key, image_bytes, mime):
+            calls.append(1)
+            return {"name": None}, "{}", None
+
+        with patch.object(recognize_module, "_extract_fields", side_effect=fake_extract):
+            result = await _recognize_single_image(
+                None, "https://example.test", "key", self.image_b64, "image/jpeg"
+            )
+
+        # One upright attempt plus each fallback, then stop — never unbounded.
+        self.assertEqual(len(calls), 1 + len(recognize_module.ROTATION_FALLBACKS))
+        self.assertIsNone(result.get("name"))
 
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")
