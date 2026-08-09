@@ -97,6 +97,15 @@ def get_dashboard(
             "price_source_lang": card.price_source_lang,
             "image_source_lang": card.image_source_lang,
             "has_scan_photo": item.has_scan_photo,
+            # Nested alongside the existing flattened fields (additive, not a
+            # replacement) for consistency with the other endpoints that
+            # annotate an owned collection item's photo the same way.
+            "card": {
+                "id": card.id,
+                "name": card.name,
+                "images_small": card.images_small,
+                "images_large": card.images_large,
+            },
         })
 
     # Portfolio value history (last 90 days)

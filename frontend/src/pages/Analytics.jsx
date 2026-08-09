@@ -12,7 +12,8 @@ import {
   getInvestmentTracker, getTradeStats, getAnalyticsNewSets, getProducts, createProduct
 } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
-import { CardIdentity, CardRow } from '../components/card-system'
+import { CardRow } from '../components/card-system'
+import { CollectionCardIdentity, CollectionCardRow } from '../components/CollectionCardImage'
 import { CardModal } from '../components/CardItem'
 import { format, parseISO } from 'date-fns'
 import clsx from 'clsx'
@@ -283,9 +284,8 @@ export default function Analytics() {
                     {duplicates.map((item) => (
                       <tr key={item.id} className="border-b border-border/50 hover:bg-bg-elevated/50">
                         <td className="px-4 py-3">
-                          <CardIdentity
-                            card={item}
-                            image={resolveCardImageUrl(item)}
+                          <CollectionCardIdentity
+                            item={item}
                             name={item.name}
                             onClick={() => setSelectedCard({ ...item, id: item.card_id || item.id })}
                           />
@@ -302,10 +302,9 @@ export default function Analytics() {
               </div>
               <div className="md:hidden space-y-2 p-2">
                 {duplicates.map((item) => (
-                  <CardRow
+                  <CollectionCardRow
                     key={item.id}
-                    card={item}
-                    image={resolveCardImageUrl(item)}
+                    item={item}
                     name={item.name}
                     subtext={item.set_name || '-'}
                     badges={[

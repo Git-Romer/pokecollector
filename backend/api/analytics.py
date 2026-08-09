@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from api.auth import get_current_user
+from api.collection import _annotate_scan_photos
 from database import get_db
 from services.card_values import effective_market_price, normalize_price_field
 from services.card_visibility import visible_card_filter, visible_set_filter
@@ -50,6 +51,10 @@ def get_duplicates(
     ).all()
 
     price_field = normalize_price_field(price_field)
+    # Each row is exactly one owned CollectionItem (not an aggregate), so the
+    # owner's own photo can win over the catalogue scan here the same as on
+    # the collection page — needs the same has_scan_photo + nested card shape.
+    _annotate_scan_photos(db, current_user, items)
 
     result = []
     for item in items:
@@ -65,6 +70,13 @@ def get_duplicates(
                 "price_market": round(price, 2),
                 "total_value": round(price * item.quantity, 2),
                 "rarity": item.card.rarity,
+                "has_scan_photo": item.has_scan_photo,
+                "card": {
+                    "id": item.card.id,
+                    "name": item.card.name,
+                    "images_small": item.card.images_small,
+                    "images_large": item.card.images_large,
+                },
             })
 
     result.sort(key=lambda x: x["total_value"], reverse=True)

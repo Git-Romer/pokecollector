@@ -906,8 +906,9 @@ export default function BinderDetail() {
                     const unavailable = unavailableCollectionItemIds.has(item.id)
                     const selected = selectedPickerIds.includes(item.id)
                     return (
-                      <CardDisplay
+                      <CollectionCardDisplay
                         key={`${card.id}-${item.id}`}
+                        item={item}
                         card={card}
                         image={resolveCardImageUrl(card)}
                         compact
@@ -1161,7 +1162,7 @@ export default function BinderDetail() {
                             <div className="min-w-0 flex-1">
                               <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_32px_minmax(0,1fr)_auto] md:items-center">
                                 <div className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-bg-elevated/50 p-2">
-                                  <CardDisplay variant="compact-artwork" card={item.current} image={resolveCardImageUrl(item.current)} alt={item.current.name} variantEffectSource={item.current.variant} />
+                                  <CollectionCardDisplay variant="compact-artwork" item={{ id: item.current.collection_item_id, has_scan_photo: item.current.has_scan_photo, card: item.current.card }} card={item.current} image={resolveCardImageUrl(item.current)} alt={item.current.name} variantEffectSource={item.current.variant} />
                                   <div className="min-w-0">
                                     <p className="text-[9px] font-bold uppercase tracking-wide text-text-muted">{t('binderTypes.currentPrint')}</p>
                                     <p className="truncate text-xs font-semibold text-text-primary">{item.current.set_name || item.current.set_id} #{item.current.number}</p>
@@ -1174,7 +1175,7 @@ export default function BinderDetail() {
                                   <span className="hidden md:inline">→</span>
                                 </span>
                                 <div className="flex min-w-0 items-center gap-2 rounded-lg border border-green/30 bg-green/5 p-2">
-                                  <CardDisplay variant="compact-artwork" card={item.suggested} image={resolveCardImageUrl(item.suggested)} alt={item.suggested.name} variantEffectSource={item.suggested.variant} />
+                                  <CollectionCardDisplay variant="compact-artwork" item={{ id: item.suggested.collection_item_id, has_scan_photo: item.suggested.has_scan_photo, card: item.suggested.card }} card={item.suggested} image={resolveCardImageUrl(item.suggested)} alt={item.suggested.name} variantEffectSource={item.suggested.variant} />
                                   <div className="min-w-0">
                                     <p className="text-[9px] font-bold uppercase tracking-wide text-green">{t('binderTypes.suggestedPrint')}</p>
                                     <p className="truncate text-xs font-semibold text-text-primary">{item.suggested.set_name || item.suggested.set_id} #{item.suggested.number}</p>
@@ -1328,8 +1329,9 @@ export default function BinderDetail() {
                         const imageUrl = resolveCardImageUrl(print)
                         return (
                           <div key={print.collection_item_id || print.id} className={`flex items-center gap-3 rounded-lg border p-2 ${print.is_current ? 'border-yellow/40 bg-yellow/5' : 'border-border bg-bg/40'}`}>
-                            <CardDisplay
+                            <CollectionCardDisplay
                               variant="compact-artwork"
+                              item={{ id: print.collection_item_id, has_scan_photo: print.has_scan_photo, card: print.card }}
                               card={print}
                               image={imageUrl}
                               alt={print.name}

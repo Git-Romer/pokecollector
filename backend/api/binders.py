@@ -304,6 +304,18 @@ def _binder_card_summary(
         "owned": bool(owned_quantity),
         "is_current": is_current,
     }
+    # card is present whether or not collection_item is — a wishlist-scope
+    # summary has neither an owner nor a photo, but still needs somewhere for
+    # the frontend to resolve the catalogue image from. Callers with a real
+    # collection_item are expected to have run it through _annotate_scan_photos
+    # first; getattr covers a caller that forgot, rather than crashing here.
+    summary["card"] = {
+        "id": card.id,
+        "name": card.name,
+        "images_small": card.images_small,
+        "images_large": card.images_large,
+    }
+    summary["has_scan_photo"] = bool(getattr(collection_item, "has_scan_photo", False))
     if collection_item:
         summary.update({
             "collection_item_id": collection_item.id,
@@ -457,6 +469,9 @@ def _build_print_optimization_preview(db: Session, binder: Binder, current_user:
                 reserved_suggested_quantities.get(target_item.id, 0) + required_quantity
             )
             savings_per_copy = current_price - suggested_price
+            # _binder_card_summary reads has_scan_photo straight off these
+            # objects, so it must already be set before either call below.
+            _annotate_scan_photos(db, current_user, [source_item, target_item])
             recommendations.append({
                 "binder_card_id": bc.id,
                 "required_quantity": required_quantity,
@@ -960,6 +975,15 @@ def get_binder_cards(
             "lang": col_item.lang if col_item else (bc.card.lang or "en"),
             "collection_item_id": exact_col_item.id if exact_col_item else None,
             "has_scan_photo": bool(exact_col_item.has_scan_photo) if exact_col_item else False,
+            # Nested alongside the existing flattened fields (additive, not a
+            # replacement) for consistency with the other endpoints that
+            # annotate an owned collection item's photo the same way.
+            "card": {
+                "id": bc.card.id,
+                "name": bc.card.name,
+                "images_small": bc.card.images_small,
+                "images_large": bc.card.images_large,
+            },
             "binder_card_id": bc.id,
         }
         if binder_type == "collection" and exact_col_item:
@@ -1487,6 +1511,7 @@ def get_binder_entry_equivalent_prints(
             Card.is_custom.is_(False),
             visible_card_filter(db, current_user.id, "all"),
         ).all()
+        _annotate_scan_photos(db, current_user, collection_items)
 
         summaries = []
         for item in collection_items:
