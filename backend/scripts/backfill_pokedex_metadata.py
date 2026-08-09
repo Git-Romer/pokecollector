@@ -32,7 +32,14 @@ def main() -> int:
         # Force the selected rows through enrichment; the generic selector is
         # intentionally bypassed because Cardmarket IDs may be absent even on
         # otherwise complete card rows.
-        result = enrich_cards_metadata(db, cards, limit=len(cards), commit_every=25, force=True)
+        result = enrich_cards_metadata(
+            db,
+            cards,
+            limit=len(cards),
+            commit_every=25,
+            force=True,
+            ignore_cooldown=args.refresh,
+        )
         print(json.dumps(result, indent=2))
         return 1 if result["failed"] else 0
     finally:

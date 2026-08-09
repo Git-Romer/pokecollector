@@ -451,6 +451,9 @@ def _run_migrations(conn):
         "ALTER TABLE users ALTER COLUMN is_profile_public SET NOT NULL",
         "ALTER TABLE users ALTER COLUMN public_show_values SET NOT NULL",
         "ALTER TABLE binders ALTER COLUMN is_public SET NOT NULL",
+        # v57: Track metadata enrichment attempts independently from general card updates.
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS last_metadata_enrichment_attempt_at TIMESTAMP",
+        "CREATE INDEX IF NOT EXISTS ix_cards_last_metadata_enrichment_attempt_at ON cards(last_metadata_enrichment_attempt_at)",
     ]
     for stmt in migrations:
         try:

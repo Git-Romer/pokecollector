@@ -882,11 +882,12 @@ def _perform_full_sync_locked(db: Session) -> dict:
         metadata_result = enrich_missing_card_metadata(db, limit=metadata_limit)
         if metadata_result["attempted"]:
             logger.info(
-                "Full sync metadata enrichment: attempted=%s updated=%s missing=%s failed=%s limit=%s",
+                "Full sync metadata enrichment: attempted=%s updated=%s missing=%s failed=%s deferred=%s limit=%s",
                 metadata_result["attempted"],
                 metadata_result["updated"],
                 metadata_result["missing"],
                 metadata_result["failed"],
+                metadata_result.get("deferred", 0),
                 metadata_limit,
             )
             cards_updated += metadata_result["updated"]

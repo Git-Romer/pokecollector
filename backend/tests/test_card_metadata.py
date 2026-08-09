@@ -1,9 +1,19 @@
 import datetime
 import unittest
+from unittest.mock import patch
 
 try:
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from database import Base
     from models import Card
-    from services.card_metadata import METADATA_ENRICHMENT_COOLDOWN, card_needs_metadata_enrichment
+    from services.card_metadata import (
+        METADATA_ENRICHMENT_COOLDOWN,
+        card_needs_metadata_enrichment,
+        enrich_cards_metadata,
+        enrich_missing_card_metadata,
+    )
     API_TEST_DEPS_AVAILABLE = True
 except ModuleNotFoundError:
     API_TEST_DEPS_AVAILABLE = False
@@ -122,7 +132,7 @@ class CardMetadataEnrichmentTests(unittest.TestCase):
             name="Promo Pikachu",
             lang="en",
             is_custom=False,
-            updated_at=now - datetime.timedelta(hours=1),
+            last_metadata_enrichment_attempt_at=now - datetime.timedelta(hours=1),
         )
 
         self.assertFalse(card_needs_metadata_enrichment(card, now=now))
@@ -135,7 +145,9 @@ class CardMetadataEnrichmentTests(unittest.TestCase):
             name="Promo Pikachu",
             lang="en",
             is_custom=False,
-            updated_at=now - METADATA_ENRICHMENT_COOLDOWN - datetime.timedelta(seconds=1),
+            last_metadata_enrichment_attempt_at=(
+                now - METADATA_ENRICHMENT_COOLDOWN - datetime.timedelta(seconds=1)
+            ),
         )
 
         self.assertTrue(card_needs_metadata_enrichment(card, now=now))
@@ -149,6 +161,161 @@ class CardMetadataEnrichmentTests(unittest.TestCase):
         )
 
         self.assertFalse(card_needs_metadata_enrichment(card))
+
+
+@unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "SQLAlchemy is not installed in this lightweight test environment")
+class CardMetadataAttemptPersistenceTests(unittest.TestCase):
+    def setUp(self):
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        self.Session = sessionmaker(bind=engine)
+        self.db = self.Session()
+
+    def tearDown(self):
+        self.db.close()
+
+    def _add_brief_card(self, card_id: str = "smp-SM170_en") -> Card:
+        card = Card(
+            id=card_id,
+            tcg_card_id=card_id.removesuffix("_en"),
+            name="Promo Pikachu",
+            lang="en",
+            is_custom=False,
+            updated_at=datetime.datetime(2020, 1, 1),
+        )
+        self.db.add(card)
+        self.db.commit()
+        return card
+
+    def test_missing_metadata_records_dedicated_attempt_without_touching_updated_at(self):
+        card = self._add_brief_card()
+
+        with patch("services.card_metadata.pokemon_api.get_card", return_value=None) as get_card:
+            first = enrich_cards_metadata(self.db, [card], limit=1)
+            self.db.refresh(card)
+            second = enrich_cards_metadata(self.db, [card], limit=1)
+
+        self.assertEqual(first["attempted"], 1)
+        self.assertEqual(first["missing"], 1)
+        self.assertIsNotNone(card.last_metadata_enrichment_attempt_at)
+        self.assertEqual(card.updated_at, datetime.datetime(2020, 1, 1))
+        self.assertEqual(second["attempted"], 0)
+        get_card.assert_called_once_with("smp-SM170", lang="en")
+
+    def test_failed_metadata_fetch_still_records_attempt(self):
+        card = self._add_brief_card("smp-SM171_en")
+
+        with patch(
+            "services.card_metadata.pokemon_api.get_card",
+            side_effect=RuntimeError("upstream unavailable"),
+        ):
+            result = enrich_cards_metadata(self.db, [card], limit=1)
+
+        self.db.refresh(card)
+        self.assertEqual(result["attempted"], 1)
+        self.assertEqual(result["failed"], 1)
+        self.assertIsNotNone(card.last_metadata_enrichment_attempt_at)
+
+    def test_successful_metadata_fetch_preserves_attempt_timestamp(self):
+        card = self._add_brief_card("base1-1_en")
+        parsed = {
+            "id": card.id,
+            "tcg_card_id": card.tcg_card_id,
+            "name": card.name,
+            "rarity": "Rare",
+            "types": ["Psychic"],
+            "supertype": "Pokemon",
+            "subtypes": ["Stage 2"],
+            "dex_ids": [65],
+            "cardmarket_products": [],
+            "lang": "en",
+            "is_custom": False,
+        }
+
+        with patch("services.card_metadata.pokemon_api.get_card", return_value={"id": "base1-1"}), \
+             patch("services.card_metadata.pokemon_api.parse_card_for_db", return_value=parsed), \
+             patch(
+                 "services.card_metadata.apply_cross_language_fallbacks",
+                 side_effect=lambda _db, value: value,
+             ):
+            result = enrich_cards_metadata(self.db, [card], limit=1)
+
+        self.db.refresh(card)
+        self.assertEqual(result["attempted"], 1)
+        self.assertEqual(result["updated"], 1)
+        self.assertIsNotNone(card.last_metadata_enrichment_attempt_at)
+        self.assertEqual(card.rarity, "Rare")
+
+    def test_atomic_claim_prevents_stale_session_from_fetching_same_card_twice(self):
+        card = self._add_brief_card()
+        second_db = self.Session()
+        stale_card = second_db.query(Card).filter(Card.id == card.id).first()
+        try:
+            with patch("services.card_metadata.pokemon_api.get_card", return_value=None) as get_card:
+                first = enrich_cards_metadata(self.db, [card], limit=1)
+                second = enrich_cards_metadata(second_db, [stale_card], limit=1)
+        finally:
+            second_db.close()
+
+        self.assertEqual(first["attempted"], 1)
+        self.assertEqual(second["attempted"], 0)
+        self.assertEqual(second["deferred"], 1)
+        get_card.assert_called_once_with("smp-SM170", lang="en")
+
+    def test_forced_refresh_rejects_stale_concurrent_claim(self):
+        card = self._add_brief_card()
+        second_db = self.Session()
+        stale_card = second_db.query(Card).filter(Card.id == card.id).first()
+        try:
+            with patch("services.card_metadata.pokemon_api.get_card", return_value=None) as get_card:
+                first = enrich_cards_metadata(
+                    self.db,
+                    [card],
+                    limit=1,
+                    force=True,
+                    ignore_cooldown=True,
+                )
+                second = enrich_cards_metadata(
+                    second_db,
+                    [stale_card],
+                    limit=1,
+                    force=True,
+                    ignore_cooldown=True,
+                )
+        finally:
+            second_db.close()
+
+        self.assertEqual(first["attempted"], 1)
+        self.assertEqual(second["attempted"], 0)
+        self.assertEqual(second["deferred"], 1)
+        get_card.assert_called_once_with("smp-SM170", lang="en")
+
+    def test_full_sync_candidates_prioritize_never_attempted_then_oldest_due(self):
+        now = datetime.datetime.utcnow()
+        never = self._add_brief_card("never-1_en")
+        oldest = self._add_brief_card("oldest-1_en")
+        newer = self._add_brief_card("newer-1_en")
+        recent = self._add_brief_card("recent-1_en")
+        oldest_attempt = now - datetime.timedelta(days=10)
+        newer_attempt = now - datetime.timedelta(days=8)
+        recent_attempt = now - datetime.timedelta(days=1)
+        oldest.last_metadata_enrichment_attempt_at = oldest_attempt
+        newer.last_metadata_enrichment_attempt_at = newer_attempt
+        recent.last_metadata_enrichment_attempt_at = recent_attempt
+        self.db.commit()
+
+        with patch("services.card_metadata.pokemon_api.get_card", return_value=None) as get_card:
+            result = enrich_missing_card_metadata(self.db, limit=2)
+
+        self.assertEqual(result["attempted"], 2)
+        self.assertEqual(
+            [call.args[0] for call in get_card.call_args_list],
+            [never.tcg_card_id, oldest.tcg_card_id],
+        )
+        self.db.refresh(newer)
+        self.db.refresh(recent)
+        self.assertEqual(newer.last_metadata_enrichment_attempt_at, newer_attempt)
+        self.assertEqual(recent.last_metadata_enrichment_attempt_at, recent_attempt)
 
 
 if __name__ == "__main__":
