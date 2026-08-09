@@ -363,7 +363,6 @@ async def default_composite_processor(
         CompositeRecognitionError,
         get_gemini_key,
         match_composite_card_info,
-        normalize_scanner_card_number,
         recognize_composite_card_info,
     )
     from services.card_composite import build_composite
@@ -388,15 +387,16 @@ async def default_composite_processor(
         results: list[dict | None] = []
         for position in range(len(images)):
             card_info = recognized_by_position.get(position)
-            result = (
-                await match_composite_card_info(db, card_info)
-                if card_info
-                else {"recognized": None, "matches": []}
-            )
             has_name = bool(str((card_info or {}).get("name") or "").strip())
-            has_number = bool(normalize_scanner_card_number((card_info or {}).get("number")))
-            number_matched = int(result.get("_number_match_count") or 0) > 0
-            results.append(result if has_name and has_number and number_matched else None)
+            if not has_name:
+                results.append(None)
+                continue
+            result = await match_composite_card_info(db, card_info)
+            results.append(
+                result
+                if bool(result.get("_identity_confident"))
+                else None
+            )
         return results
 
 

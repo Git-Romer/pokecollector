@@ -408,7 +408,7 @@ class ScanQueueDrainTests(unittest.IsolatedAsyncioTestCase):
 
 @unittest.skipUnless(DEPS_AVAILABLE, "SQLAlchemy is not installed")
 class CompositeProcessorTests(unittest.IsolatedAsyncioTestCase):
-    async def test_only_explicit_number_matches_are_accepted_from_composite(self):
+    async def test_only_confident_metadata_matches_are_accepted_from_composite(self):
         from PIL import Image
         import io
 
@@ -420,31 +420,36 @@ class CompositeProcessorTests(unittest.IsolatedAsyncioTestCase):
         db = MagicMock()
         db.get.return_value = User(id=1, username="composite-owner", hashed_password="x", is_active=True)
         composite_info = {
-            0: {"name": "Pikachu", "number": "25", "language": "en"},
-            2: {"name": "Eevee", "number": "133", "language": "en"},
-            3: {"name": "Mew", "number": None, "language": "en"},
+            0: {"name": "Pikachu", "number_local": "25", "language": "en"},
+            1: {"name": None, "number_local": "4", "language": "en"},
+            2: {"name": "Eevee", "number_local": "133", "language": "en"},
+            3: {"name": "Jigglypuff", "artist": "Kagemaru Himeno", "hp": "60", "language": "ja"},
         }
         matched = [
             {
                 "recognized": composite_info[0],
                 "matches": [{"id": "card-25"}],
                 "_number_match_count": 1,
+                "_identity_confident": True,
             },
             {
                 "recognized": composite_info[2],
                 "matches": [{"id": "wrong-number"}],
                 "_number_match_count": 0,
+                "_identity_confident": False,
             },
             {
                 "recognized": composite_info[3],
-                "matches": [{"id": "card-mew"}],
-                "_number_match_count": 1,
+                "matches": [{"id": "card-jigglypuff"}],
+                "_number_match_count": 0,
+                "_identity_confident": True,
             },
         ]
 
+        matcher = AsyncMock(side_effect=matched)
         with patch("api.recognize.get_gemini_key", return_value="secret-key"), \
                 patch("api.recognize.recognize_composite_card_info", new=AsyncMock(return_value=composite_info)), \
-                patch("api.recognize.match_composite_card_info", new=AsyncMock(side_effect=matched)):
+                patch("api.recognize.match_composite_card_info", new=matcher):
             results = await scan_queue.default_composite_processor(
                 db,
                 1,
@@ -453,7 +458,9 @@ class CompositeProcessorTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(results[0]["matches"][0]["id"], "card-25")
-        self.assertEqual(results[1:], [None, None, None])
+        self.assertEqual(results[1:3], [None, None])
+        self.assertEqual(results[3]["matches"][0]["id"], "card-jigglypuff")
+        self.assertEqual(matcher.await_count, 3)
 
 
 if __name__ == "__main__":

@@ -20,7 +20,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from sqlalchemy.orm import Session
 from api.auth import get_current_user
 from database import get_db
-from models import Setting, UserSetting, User, Set
+from models import Card, Setting, UserSetting, User, Set
 
 logger = logging.getLogger(__name__)
 
@@ -45,12 +45,22 @@ class GeminiRateLimitHTTPException(HTTPException):
         )
 
 
-def normalize_scanner_card_number(value) -> str | None:
-    """Return the leading collector number without zeros, if one is present."""
+def _normalize_collector_number(value) -> str | None:
+    """Normalize a complete numeric or prefixed collector number."""
     if value is None:
         return None
-    match = re.match(r"(\d+)", str(value).strip())
-    return str(int(match.group(1))) if match else None
+    local = str(value).split("/", 1)[0].strip()
+    compact = re.sub(r"[\s_-]+", "", local)
+    match = re.fullmatch(r"([A-Za-z]*)(\d+)([A-Za-z]*)", compact)
+    if not match:
+        return None
+    prefix, digits, suffix = match.groups()
+    return f"{prefix.casefold()}{int(digits)}{suffix.casefold()}"
+
+
+def normalize_scanner_card_number(value) -> str | None:
+    """Normalize a collector number while preserving identity prefixes."""
+    return _normalize_collector_number(value)
 
 
 def prioritize_cards_by_number(
@@ -73,6 +83,116 @@ def prioritize_cards_by_number(
     if not matches:
         return cards, 0
     return matches + rest, len(matches)
+
+
+def select_search_candidates(
+    cards: list[dict],
+    recognized_number,
+    *,
+    number_field: str = "number",
+    baseline_limit: int = 8,
+    matching_extra_limit: int = 4,
+) -> list[dict]:
+    """Keep baseline search results and append bounded number matches."""
+    selected = list(cards[:baseline_limit])
+    for card in selected:
+        card["_number_extra"] = False
+    target = normalize_scanner_card_number(recognized_number)
+    if not target:
+        return selected
+    extras = 0
+    selected_ids = {id(card) for card in selected}
+    for card in cards[baseline_limit:]:
+        if extras >= matching_extra_limit:
+            break
+        if normalize_scanner_card_number(card.get(number_field)) != target:
+            continue
+        if id(card) not in selected_ids:
+            card["_number_extra"] = True
+            selected.append(card)
+            selected_ids.add(id(card))
+            extras += 1
+    return selected
+
+
+def retain_ranked_candidates(
+    candidates: list[dict],
+    *,
+    baseline_limit: int = 8,
+    matching_extra_limit: int = 4,
+) -> list[dict]:
+    """Retain ranked baseline results plus bounded late number matches."""
+    baseline = [card for card in candidates if not card.get("_number_extra")][
+        :baseline_limit
+    ]
+    extras = [card for card in candidates if card.get("_number_extra")][
+        :matching_extra_limit
+    ]
+    retained_ids = {id(card) for card in baseline + extras}
+    return [card for card in candidates if id(card) in retained_ids]
+
+
+def split_recognized_card_number(value) -> tuple[str | None, str | None]:
+    """Split a legacy combined collector number without losing new split fields."""
+    if value is None:
+        return None, None
+    parts = [part.strip() for part in str(value).split("/", 1)]
+    local = parts[0] or None
+    total = (parts[1] or None) if len(parts) > 1 else None
+    return local, total
+
+
+def normalize_recognized_card_info(card_info: dict | None) -> dict:
+    """Keep one canonical split identity while preserving the UI's combined number."""
+    normalized = dict(card_info or {})
+    legacy_local, legacy_total = split_recognized_card_number(normalized.get("number"))
+    local = normalized.get("number_local") or legacy_local
+    total = normalized.get("number_total") or legacy_total
+    normalized["number_local"] = local
+    normalized["number_total"] = total
+    normalized["number"] = (
+        f"{local}/{total}" if local and total else (str(local) if local else None)
+    )
+    return normalized
+
+
+def _normalize_number(value) -> str | None:
+    return _normalize_collector_number(value)
+
+
+def _numbers_match(left, right) -> bool:
+    normalized_left = _normalize_number(left)
+    normalized_right = _normalize_number(right)
+    return normalized_left is not None and normalized_left == normalized_right
+
+
+def _printed_total_signal(recognized_total, candidate_total) -> int:
+    """Return 0 for agreement, 1 for unknown, and 2 for contradiction."""
+    normalized = _normalize_number(recognized_total)
+    candidate_normalized = _normalize_number(candidate_total)
+    if normalized is None or candidate_normalized is None:
+        return 1
+    return 0 if normalized == candidate_normalized else 2
+
+
+_ARTIST_PREFIX = re.compile(
+    r"^\s*(?:illus|illustrator|art|artwork)(?:\s*[.:]\s*|\s+by\s+|\s+)",
+    re.IGNORECASE,
+)
+
+
+def _normalize_artist(value) -> str | None:
+    if not value:
+        return None
+    stripped = _ARTIST_PREFIX.sub("", str(value))
+    collapsed = " ".join(stripped.split()).strip().casefold()
+    return collapsed or None
+
+
+def _artists_match(left, right) -> bool:
+    normalized_left = _normalize_artist(left)
+    normalized_right = _normalize_artist(right)
+    return normalized_left is not None and normalized_left == normalized_right
 
 
 def get_gemini_model() -> str:
@@ -284,296 +404,430 @@ async def post_gemini_generate(
     raise HTTPException(status_code=500, detail=f"Gemini Anfrage fehlgeschlagen: {last_error}")
 
 
+RECOGNIZE_PROMPT = """Look at this Pokemon Trading Card Game card image.
+
+IMPORTANT ACCURACY RULES:
+- Only report text or symbols that are actually visible in this image.
+- number_local, number_total, set_code, regulation_mark, and artist are small printed
+  details. If any character is unclear, return null instead of guessing.
+- Only return set_code when printed alphanumeric characters are visible near the card
+  number. Do not infer a code from the artwork or from recognizing the set.
+
+Extract:
+1. Card name exactly as printed, in the card's language
+2. English card name (same value when already English)
+3. Local collector number, or null
+4. Printed set total/denominator, or null
+5. Printed set code/abbreviation, or null
+6. Regulation mark, or null
+7. Card type: Pokemon, Trainer, or Energy
+8. HP value, or null
+9. Two-letter ISO language code
+10. Artist/illustrator credit, or null
+
+Respond ONLY with this exact JSON:
+{
+  "name": "...",
+  "name_en": "...",
+  "number_local": null,
+  "number_total": null,
+  "set_code": null,
+  "regulation_mark": null,
+  "card_type": "Pokemon/Trainer/Energy",
+  "hp": null,
+  "language": "en",
+  "artist": null
+}
+Replace a null only when that exact value is clearly visible."""
+
+
+_SUFFIXES = re.compile(
+    r"[\s-]+(?:EX|ex|GX|gx|V|VMAX|VSTAR|VStar|TAG\s*TEAM|BREAK|LV\.?\s*X)\s*$",
+    re.IGNORECASE,
+)
+
+
+def _simplify_name(name: str) -> str:
+    return _SUFFIXES.sub("", name).strip()
+
+
+def _identity_signal(target, candidate, matcher) -> int:
+    """Return 0 for agreement, 1 for unknown, and 2 for contradiction."""
+    if target in (None, "") or candidate in (None, ""):
+        return 1
+    return 0 if matcher(target, candidate) else 2
+
+
+def _candidate_rank_key(card_info: dict, candidate: dict) -> tuple[int, ...]:
+    return (
+        _identity_signal(card_info.get("number_local"), candidate.get("number"), _numbers_match),
+        _identity_signal(
+            normalize_tcgdex_language(card_info.get("language"))
+            if card_info.get("language") else None,
+            normalize_tcgdex_language(candidate.get("_lang"))
+            if candidate.get("_lang") else None,
+            lambda left, right: left == right,
+        ),
+        _printed_total_signal(
+            card_info.get("number_total"), candidate.get("printed_total")
+        ),
+        _identity_signal(
+            str(card_info.get("set_code") or "").strip().casefold() or None,
+            str(candidate.get("set_abbreviation") or "").strip().casefold() or None,
+            lambda left, right: left == right,
+        ),
+        _identity_signal(
+            str(card_info.get("regulation_mark") or "").strip().casefold() or None,
+            str(candidate.get("regulation_mark") or "").strip().casefold() or None,
+            lambda left, right: left == right,
+        ),
+        _identity_signal(card_info.get("artist"), candidate.get("artist"), _artists_match),
+        _identity_signal(card_info.get("hp"), candidate.get("hp"), _numbers_match),
+    )
+
+
+def _confirmed_identity_signals(card_info: dict, candidate: dict) -> set[str]:
+    names = ("number", "language", "total", "set", "regulation", "artist", "hp")
+    return {
+        name
+        for name, score in zip(names, _candidate_rank_key(card_info, candidate))
+        if score == 0
+    }
+
+
+def _metadata_decision(card_info: dict, candidates: list[dict]) -> tuple[bool, str | None]:
+    """Decide only when reliable metadata isolates one candidate."""
+    if not candidates:
+        return False, None
+    ranked = sorted(candidates, key=lambda card: _candidate_rank_key(card_info, card))
+    top = ranked[0]
+    top_key = _candidate_rank_key(card_info, top)
+    if sum(1 for card in ranked if _candidate_rank_key(card_info, card) == top_key) != 1:
+        return False, None
+
+    # Contradictory known metadata cannot identify one clear printing. An
+    # individual scan may still use visual verification; a composite safely
+    # falls back to recognizing only that source photo again.
+    if 2 in top_key:
+        return False, None
+
+    signals = _confirmed_identity_signals(card_info, top)
+    number_matches = sum(
+        1
+        for card in ranked
+        if _identity_signal(card_info.get("number_local"), card.get("number"), _numbers_match) == 0
+    )
+    if "number" in signals and number_matches == 1:
+        return True, "number_unique"
+    if "number" in signals and signals.intersection(
+        {"language", "total", "set", "regulation"}
+    ):
+        return True, "number_metadata"
+    if not card_info.get("number_local") and {"artist", "hp"}.issubset(signals):
+        return True, "artist_hp"
+    return False, None
+
+
+async def _fill_candidate_details(
+    db: Session,
+    candidates: list[dict],
+    card_info: dict,
+    *,
+    limit: int = 8,
+) -> None:
+    """Fill only metadata needed by the deterministic ranker, local DB first."""
+    targets = candidates[:limit]
+    required_fields = {
+        candidate_field
+        for recognized_field, candidate_field in (
+            ("artist", "artist"),
+            ("hp", "hp"),
+            ("regulation_mark", "regulation_mark"),
+            ("number_total", "printed_total"),
+        )
+        if card_info.get(recognized_field) not in (None, "")
+    }
+    if not targets or not required_fields:
+        return
+
+    ids = [card["id"] for card in targets if card.get("id")]
+    if ids and required_fields.intersection({"artist", "hp", "regulation_mark"}):
+        rows = db.query(Card.id, Card.artist, Card.hp, Card.regulation_mark).filter(
+            Card.id.in_(ids)
+        ).all()
+        local = {row.id: row for row in rows}
+        for card in targets:
+            row = local.get(card.get("id"))
+            if row:
+                card["artist"] = card.get("artist") or row.artist
+                card["hp"] = card.get("hp") or row.hp
+                card["regulation_mark"] = card.get("regulation_mark") or row.regulation_mark
+
+    missing = [
+        card
+        for card in targets
+        if any(not card.get(field) for field in required_fields)
+    ]
+    if not missing:
+        return
+
+    async with httpx.AsyncClient(timeout=8) as client:
+        async def fetch(card):
+            tcg_id = card.get("tcg_card_id")
+            language = card.get("_lang", "en")
+            if not tcg_id:
+                return
+            try:
+                response = await client.get(
+                    f"https://api.tcgdex.net/v2/{language}/cards/{tcg_id}"
+                )
+                if response.status_code != 200:
+                    return
+                detail = response.json()
+                card["artist"] = card.get("artist") or detail.get("illustrator")
+                card["hp"] = card.get("hp") or detail.get("hp")
+                card["regulation_mark"] = (
+                    card.get("regulation_mark") or detail.get("regulationMark")
+                )
+                official_total = ((detail.get("set") or {}).get("cardCount") or {}).get("official")
+                card["printed_total"] = card.get("printed_total") or official_total
+            except Exception:
+                return
+
+        await asyncio.gather(*(fetch(card) for card in missing))
+
+
+async def _search_and_rank_candidates(db: Session, card_info: dict) -> tuple[list[dict], int]:
+    card_name = str(card_info.get("name") or "").strip()
+    card_name_en = str(card_info.get("name_en") or card_name).strip() or card_name
+    if not card_name:
+        raise HTTPException(status_code=422, detail="Kartenname konnte nicht erkannt werden.")
+
+    simple_name = _simplify_name(card_name)
+    simple_name_en = _simplify_name(card_name_en)
+    language = normalize_tcgdex_language(card_info.get("language", "en"))
+    if not is_supported_tcgdex_language(language):
+        language = "en"
+    search_pairs = [(language, simple_name)]
+    if simple_name != card_name:
+        search_pairs.append((language, card_name))
+    if language != "en":
+        search_pairs.append(("en", simple_name_en))
+        if simple_name_en != card_name_en:
+            search_pairs.append(("en", card_name_en))
+
+    candidates = []
+    for search_language, search_name in search_pairs:
+        if len(candidates) >= 15:
+            break
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                response = await client.get(
+                    f"https://api.tcgdex.net/v2/{search_language}/cards",
+                    params={"name": search_name},
+                )
+            cards = response.json() if response.status_code == 200 else []
+            if not isinstance(cards, list):
+                continue
+            selected_cards = select_search_candidates(
+                cards,
+                card_info.get("number_local"),
+                number_field="localId",
+            )
+            for card in selected_cards:
+                card_id = card.get("id")
+                if not card_id:
+                    continue
+                candidates.append({
+                    "id": f"{card_id}_{search_language}",
+                    "tcg_card_id": card_id,
+                    "name": card.get("name"),
+                    "set": card.get("set", {}).get("name")
+                    if isinstance(card.get("set"), dict) else None,
+                    "number": card.get("localId"),
+                    "image": f"{card.get('image')}/low.webp" if card.get("image") else None,
+                    "rarity": card.get("rarity"),
+                    "lang": search_language,
+                    "_lang": search_language,
+                    "_number_extra": bool(card.get("_number_extra")),
+                })
+        except Exception:
+            continue
+
+    candidate_set_ids = {
+        tcg_card_id.rsplit("-", 1)[0]
+        for candidate in candidates
+        if "-" in (tcg_card_id := candidate.get("tcg_card_id", ""))
+    }
+    local_sets = {}
+    if candidate_set_ids:
+        rows = db.query(Set).filter(Set.tcg_set_id.in_(candidate_set_ids)).all()
+        local_sets = {(row.tcg_set_id, row.lang): row for row in rows}
+    for candidate in candidates:
+        tcg_card_id = candidate.get("tcg_card_id", "")
+        if "-" not in tcg_card_id:
+            continue
+        set_id = tcg_card_id.rsplit("-", 1)[0]
+        language = candidate.get("_lang", "en")
+        local_set = local_sets.get((set_id, language))
+        if local_set:
+            candidate["set"] = local_set.name
+            candidate["set_abbreviation"] = local_set.abbreviation
+            candidate["printed_total"] = local_set.printed_total or None
+
+    seen = set()
+    deduped = []
+    for candidate in candidates:
+        key = (candidate.get("id"), candidate.get("_lang", "en"))
+        if key not in seen:
+            seen.add(key)
+            deduped.append(candidate)
+
+    await _fill_candidate_details(db, deduped, card_info)
+    deduped.sort(key=lambda card: _candidate_rank_key(card_info, card))
+    number_match_count = sum(
+        1
+        for card in deduped
+        if _identity_signal(card_info.get("number_local"), card.get("number"), _numbers_match) == 0
+    )
+    return deduped, number_match_count
+
+
+async def match_card_info(
+    db: Session,
+    card_info: dict,
+    *,
+    api_key: str | None = None,
+    image_b64: str | None = None,
+    mime_type: str | None = None,
+    allow_visual_verification: bool = False,
+) -> dict:
+    """Shared deterministic matcher for both individual and composite scans."""
+    card_info = normalize_recognized_card_info(card_info)
+    candidates, number_match_count = await _search_and_rank_candidates(db, card_info)
+    confident, decision = _metadata_decision(card_info, candidates)
+
+    top_candidates = retain_ranked_candidates(candidates)
+    can_compare = sum(1 for card in top_candidates if card.get("image")) >= 2
+    if (
+        allow_visual_verification
+        and not confident
+        and can_compare
+        and api_key
+        and image_b64
+        and mime_type
+    ):
+        try:
+            parts = [
+                {"text": "Here is the original card photo:"},
+                {"inline_data": {"mime_type": mime_type, "data": image_b64}},
+                {"text": (
+                    "Choose the matching candidate using artwork and printed identity details. "
+                    "Respond with only its number, or 0 if none match.\n"
+                )},
+            ]
+            async with httpx.AsyncClient(timeout=20) as client:
+                for index, candidate in enumerate(top_candidates, start=1):
+                    parts.append({"text": (
+                        f"\nCandidate {index}: {candidate.get('name', '?')} "
+                        f"#{candidate.get('number', '?')}"
+                    )})
+                    if not candidate.get("image"):
+                        parts.append({"text": " (image unavailable)"})
+                        continue
+                    try:
+                        response = await client.get(candidate["image"], timeout=5)
+                        if response.status_code == 200:
+                            parts.append({"inline_data": {
+                                "mime_type": "image/webp",
+                                "data": base64.b64encode(response.content).decode(),
+                            }})
+                    except Exception:
+                        continue
+                response = await post_gemini_generate(
+                    client,
+                    build_gemini_generate_url(),
+                    api_key,
+                    {"contents": [{"parts": parts}]},
+                    max_attempts=2,
+                )
+            response_text = response.json()["candidates"][0]["content"]["parts"][0]["text"]
+            pick_match = re.search(r"(\d+)", response_text)
+            if pick_match:
+                pick = int(pick_match.group(1))
+                if 1 <= pick <= len(top_candidates):
+                    winner = top_candidates[pick - 1]
+                    candidates.remove(winner)
+                    candidates.insert(0, winner)
+                    confident = True
+                    decision = "gemini_visual"
+        except Exception as exc:
+            logger.warning("Visual verification failed (non-blocking): %s", exc)
+
+    public_matches = [
+        {key: value for key, value in card.items() if key != "_number_extra"}
+        for card in retain_ranked_candidates(candidates)
+    ]
+    return {
+        "recognized": card_info,
+        "matches": public_matches,
+        "_number_match_count": number_match_count,
+        "_identity_confident": confident,
+        "_identity_decision": decision,
+    }
+
+
 @router.post("/recognize")
 async def recognize_card(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Accepts a card image, uses Gemini Vision to extract card details
-    including the card's language, then searches TCGdex in that language.
-    Supports configured TCGdex card languages automatically.
-    """
     api_key = get_gemini_key(db, user_id=current_user.id)
     if not api_key:
         raise HTTPException(
             status_code=400,
-            detail="Kein Gemini API Key konfiguriert. Bitte in den Einstellungen eintragen."
+            detail="Kein Gemini API Key konfiguriert. Bitte in den Einstellungen eintragen.",
         )
-
-    # Decode and normalize every scanner upload before sending it upstream.
-    # This applies the same format, size, pixel, orientation, and metadata rules
-    # as the persistent background queue.
     try:
         raw_image = await read_limited_upload(file, remaining_job_bytes=MAX_FILE_BYTES)
-        sanitized_image = sanitize_image_bytes(raw_image)
+        sanitized = sanitize_image_bytes(raw_image)
     except ScanUploadError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    image_bytes = sanitized_image.data
-    image_b64 = base64.b64encode(image_bytes).decode()
-    mime_type = sanitized_image.content_type
 
-    # Call Gemini Vision — ask for language detection too
-    gemini_url = build_gemini_generate_url()
-
-    prompt = """Look at this Pokemon Trading Card Game card image. Extract the following:
-1. Card name (exactly as printed on the card, in the card's language)
-2. Card name in English (if the card is not English, give the English name; if already English, same as above)
-3. Card number (e.g. "136/182" — printed at the bottom)
-4. Set name or abbreviation if visible
-5. Card type (Pokemon, Trainer, or Energy)
-6. HP value if it's a Pokemon card
-7. Language of the card (2-letter ISO code: "en" for English, "de" for German, "fr" for French, "es" for Spanish, "it" for Italian, "pt" for Portuguese, "ja" for Japanese, etc.)
-
-Respond ONLY with this exact JSON (no markdown, no explanation):
-{
-  "name": "card name in card's language",
-  "name_en": "card name in English (same as name if card is English)",
-  "number": "card number or null",
-  "set_hint": "set name or abbreviation or null",
-  "card_type": "Pokemon/Trainer/Energy",
-  "hp": "HP value or null",
-  "language": "en"
-}"""
-
+    image_b64 = base64.b64encode(sanitized.data).decode()
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await post_gemini_generate(client, gemini_url, api_key, {
-                "contents": [{
-                    "parts": [
-                        {"text": prompt},
-                        {"inline_data": {"mime_type": mime_type, "data": image_b64}}
-                    ]
-                }]
-            })
-
-        result = resp.json()
-        text = result["candidates"][0]["content"]["parts"][0]["text"].strip()
-
-        # Parse JSON from Gemini response (handles markdown code blocks too)
-        json_match = re.search(r'\{.*\}', text, re.DOTALL)
+            response = await post_gemini_generate(
+                client,
+                build_gemini_generate_url(),
+                api_key,
+                {"contents": [{"parts": [
+                    {"text": RECOGNIZE_PROMPT},
+                    {"inline_data": {
+                        "mime_type": sanitized.content_type,
+                        "data": image_b64,
+                    }},
+                ]}]},
+            )
+        response_text = response.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+        json_match = re.search(r"\{.*\}", response_text, re.DOTALL)
         if not json_match:
             raise ValueError("No JSON found in Gemini response")
-        card_info = json.loads(json_match.group())
-
+        card_info = normalize_recognized_card_info(json.loads(json_match.group()))
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erkennung fehlgeschlagen: {str(e)}")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Erkennung fehlgeschlagen: {exc}")
 
-    card_name = card_info.get("name", "").strip()
-    card_name_en = card_info.get("name_en", card_name).strip() or card_name
-    if not card_name:
-        raise HTTPException(status_code=422, detail="Kartenname konnte nicht erkannt werden.")
-
-    # Strip card suffixes for broader TCGdex search — exact variants differ between
-    # printed text ("EX") and TCGdex naming ("ex", "-ex"). The number ranking and
-    # visual verification will find the exact match from the broader result set.
-    _SUFFIXES = re.compile(
-        r"[\s-]+(?:EX|ex|GX|gx|V|VMAX|VSTAR|VStar|TAG\s*TEAM|BREAK|LV\.?\s*X)\s*$",
-        re.IGNORECASE,
+    return await match_card_info(
+        db,
+        card_info,
+        api_key=api_key,
+        image_b64=image_b64,
+        mime_type=sanitized.content_type,
+        allow_visual_verification=True,
     )
-
-    def _simplify_name(name: str) -> str:
-        return _SUFFIXES.sub("", name).strip()
-
-    card_name_simple = _simplify_name(card_name)
-    card_name_en_simple = _simplify_name(card_name_en)
-
-    # Use detected language for TCGdex search.
-    detected_lang = normalize_tcgdex_language(card_info.get("language", "en"))
-    if not is_supported_tcgdex_language(detected_lang):
-        detected_lang = "en"
-
-    # Build (lang, search_name) pairs — try simplified name first (broader), then original as fallback
-    search_pairs = [(detected_lang, card_name_simple)]
-    if card_name_simple != card_name:
-        search_pairs.append((detected_lang, card_name))
-    if detected_lang != "en":
-        search_pairs.append(("en", card_name_en_simple))
-        if card_name_en_simple != card_name_en:
-            search_pairs.append(("en", card_name_en))
-
-    # TCGdex returns search results sorted ascending by card number, so a plain
-    # head slice keeps only the lowest-numbered printings and discards the
-    # target card for anything numbered above them. Float printings that match
-    # the recognized number to the front so they survive the per-search cap.
-    recognized_number = card_info.get("number")
-
-    # Collect all raw results first, setting _lang on each card
-    all_results = []
-    for lang, search_name in search_pairs:
-        if len(all_results) >= 15:
-            break
-        try:
-            async with httpx.AsyncClient(timeout=15) as client:
-                search_resp = await client.get(
-                    f"https://api.tcgdex.net/v2/{lang}/cards",
-                    params={"name": search_name}
-                )
-            if search_resp.status_code == 200:
-                tcgdex_cards = search_resp.json()
-                if isinstance(tcgdex_cards, list):
-                    logger.info(f"TCGdex {lang} search for '{search_name}': {len(tcgdex_cards)} results")
-                    prioritized_cards, match_count = prioritize_cards_by_number(
-                        tcgdex_cards,
-                        recognized_number,
-                        number_field="localId",
-                    )
-                    if match_count:
-                        logger.info(
-                            "Number pre-filter: %s of %s results match #%s",
-                            match_count,
-                            len(tcgdex_cards),
-                            normalize_scanner_card_number(recognized_number),
-                        )
-                    for c in prioritized_cards[:8]:
-                        card_id = c.get("id")
-                        if not card_id:
-                            continue
-                        composite_id = f"{card_id}_{lang}"
-                        all_results.append({
-                            "id": composite_id,
-                            "tcg_card_id": card_id,
-                            "name": c.get("name"),
-                            "set": c.get("set", {}).get("name") if isinstance(c.get("set"), dict) else None,
-                            "number": c.get("localId"),
-                            "image": f"{c.get('image')}/low.webp" if c.get("image") else None,
-                            "rarity": c.get("rarity"),
-                            "lang": lang,
-                            "_lang": lang,  # internal dedup key field
-                        })
-        except Exception:
-            continue
-
-    # Enrich results with set name from local DB
-    for card in all_results:
-        tcg_card_id = card.get("tcg_card_id", "")
-        card_lang = card.get("_lang", "en")
-        # Extract set_id from card_id: "me02.5-022" -> "me02.5"
-        if "-" in tcg_card_id:
-            set_id = tcg_card_id.rsplit("-", 1)[0]
-            local_set = db.query(Set).filter(
-                Set.tcg_set_id == set_id, Set.lang == card_lang
-            ).first()
-            if not local_set:
-                # Fallback: try without language filter
-                local_set = db.query(Set).filter(Set.tcg_set_id == set_id).first()
-            if local_set:
-                card["set"] = local_set.name
-                if local_set.abbreviation:
-                    card["set_abbreviation"] = local_set.abbreviation
-
-    # Dedup by (card_id, _lang) composite key — same card in different languages counts once per lang
-    seen = set()
-    deduped = []
-    for card in all_results:
-        key = (card.get('id'), card.get('_lang', 'en'))
-        if key not in seen:
-            seen.add(key)
-            deduped.append(card)
-
-    logger.info(
-        f"Recognize dedup: {len(all_results)} before -> {len(deduped)} after dedup by (card_id, _lang)"
-    )
-
-    # Rank results: cards with matching number first
-    deduped, number_match_count = prioritize_cards_by_number(
-        deduped,
-        recognized_number,
-    )
-    number_match_clear = number_match_count == 1
-    if number_match_count:
-        logger.info(
-            "Ranked results by number match (target: %s)",
-            normalize_scanner_card_number(recognized_number),
-        )
-
-    # Visual verification: ask Gemini to pick the best match from candidate images.
-    # Skip this second Gemini call when number ranking is decisive or there
-    # are not enough candidate images to compare visually.
-    top_candidates = [card for card in deduped[:5] if card.get("image")]  # max 5 to keep costs low
-    if len(top_candidates) >= 2 and not number_match_clear:
-        try:
-            # Download candidate images
-            candidate_parts = [
-                {"text": "Here is the original card photo the user took:"},
-                {"inline_data": {"mime_type": mime_type, "data": image_b64}},
-                {
-                    "text": (
-                        "Below are candidate cards from our database. Which one matches the photo "
-                        "above? Look at the artwork, card name, and card number. Respond with ONLY "
-                        "the number (1, 2, 3...) of the best match, or 0 if none match.\n"
-                    )
-                },
-            ]
-
-            async with httpx.AsyncClient(timeout=20) as client:
-                for i, candidate in enumerate(top_candidates):
-                    img_url = candidate.get("image")
-                    if not img_url:
-                        candidate_parts.append({
-                            "text": f"\nCandidate {i + 1}: {candidate.get('name', '?')} (no image available)"
-                        })
-                        continue
-                    try:
-                        img_resp = await client.get(img_url, timeout=5)
-                        if img_resp.status_code == 200:
-                            img_b64 = base64.b64encode(img_resp.content).decode()
-                            candidate_parts.append({
-                                "text": (
-                                    f"\nCandidate {i + 1}: {candidate.get('name', '?')} "
-                                    f"#{candidate.get('number', '?')}"
-                                )
-                            })
-                            candidate_parts.append({
-                                "inline_data": {"mime_type": "image/webp", "data": img_b64}
-                            })
-                        else:
-                            candidate_parts.append({
-                                "text": (
-                                    f"\nCandidate {i + 1}: {candidate.get('name', '?')} "
-                                    "(image unavailable)"
-                                )
-                            })
-                    except Exception:
-                        candidate_parts.append({
-                            "text": (
-                                f"\nCandidate {i + 1}: {candidate.get('name', '?')} "
-                                "(image fetch failed)"
-                            )
-                        })
-
-                verify_resp = await post_gemini_generate(client, gemini_url, api_key, {
-                    "contents": [{"parts": candidate_parts}]
-                }, max_attempts=2)
-
-            if verify_resp.status_code == 200:
-                verify_result = verify_resp.json()
-                verify_text = verify_result["candidates"][0]["content"]["parts"][0]["text"].strip()
-                # Extract the number from response
-                pick_match = re.search(r"(\d+)", verify_text)
-                if pick_match:
-                    pick = int(pick_match.group(1))
-                    if 1 <= pick <= len(top_candidates):
-                        # Move the picked candidate to the front
-                        winner = top_candidates[pick - 1]
-                        deduped.remove(winner)
-                        deduped.insert(0, winner)
-                        logger.info(
-                            f"Visual verification picked candidate {pick}: "
-                            f"{winner.get('name')} #{winner.get('number')}"
-                        )
-                    elif pick == 0:
-                        logger.info("Visual verification: no match found among candidates")
-        except Exception as e:
-            logger.warning(f"Visual verification failed (non-blocking): {e}")
-
-    return {
-        "recognized": card_info,
-        "matches": deduped[:8],
-    }
 
 
 COMPOSITE_PROMPT = """This image contains {count} separate Pokemon Trading Card Game cards.
@@ -585,14 +839,19 @@ For each card return the same information as an individual scan:
 - index: the printed corner number
 - name: exact card name in the card's language
 - name_en: English card name
-- number: printed collector number, including the total when visible
-- set_hint: visible set name or abbreviation, or null
+- number_local: printed local collector number, or null
+- number_total: printed set total/denominator, or null
+- set_code: printed alphanumeric set code near the number, or null
+- regulation_mark: boxed regulation letter, or null
 - card_type: Pokemon, Trainer, or Energy
 - hp: HP value or null
 - language: two-letter ISO language code
+- artist: printed illustrator credit, or null
 
-If a small printed detail is unclear, use null rather than guessing. Respond ONLY with a
-JSON array containing one object per card, without markdown or explanation.
+Only report small identity text when every character is visible. Never infer set_code from
+the artwork or from recognizing the set. If a detail is unclear, use null rather than
+guessing. Respond ONLY with a JSON array containing one object per card, without markdown
+or explanation.
 """
 
 
@@ -651,95 +910,5 @@ async def recognize_composite_card_info(
 
 
 async def match_composite_card_info(db: Session, card_info: dict) -> dict:
-    """Find the normal ordered candidate list for one composite-recognized card.
-
-    This deliberately uses only the currently approved name, language, and collector
-    number ranking. Expanded prompt fields and ranking remain outside this checkpoint.
-    """
-    card_name = str(card_info.get("name") or "").strip()
-    card_name_en = str(card_info.get("name_en") or card_name).strip() or card_name
-    if not card_name:
-        return {"recognized": card_info, "matches": []}
-
-    suffixes = re.compile(
-        r"[\s-]+(?:EX|ex|GX|gx|V|VMAX|VSTAR|VStar|TAG\s*TEAM|BREAK|LV\.?\s*X)\s*$",
-        re.IGNORECASE,
-    )
-    simple_name = suffixes.sub("", card_name).strip()
-    simple_name_en = suffixes.sub("", card_name_en).strip()
-    detected_language = normalize_tcgdex_language(card_info.get("language", "en"))
-    if not is_supported_tcgdex_language(detected_language):
-        detected_language = "en"
-
-    search_pairs = [(detected_language, simple_name)]
-    if simple_name != card_name:
-        search_pairs.append((detected_language, card_name))
-    if detected_language != "en":
-        search_pairs.append(("en", simple_name_en))
-        if simple_name_en != card_name_en:
-            search_pairs.append(("en", card_name_en))
-
-    recognized_number = card_info.get("number")
-    candidates: list[dict] = []
-    for language, search_name in search_pairs:
-        if len(candidates) >= 15:
-            break
-        try:
-            async with httpx.AsyncClient(timeout=15) as client:
-                response = await client.get(
-                    f"https://api.tcgdex.net/v2/{language}/cards",
-                    params={"name": search_name},
-                )
-            if response.status_code != 200 or not isinstance(response.json(), list):
-                continue
-            cards, _match_count = prioritize_cards_by_number(
-                response.json(),
-                recognized_number,
-                number_field="localId",
-            )
-            for card in cards[:8]:
-                card_id = card.get("id")
-                if not card_id:
-                    continue
-                candidates.append({
-                    "id": f"{card_id}_{language}",
-                    "tcg_card_id": card_id,
-                    "name": card.get("name"),
-                    "set": card.get("set", {}).get("name")
-                    if isinstance(card.get("set"), dict) else None,
-                    "number": card.get("localId"),
-                    "image": f"{card.get('image')}/low.webp" if card.get("image") else None,
-                    "rarity": card.get("rarity"),
-                    "lang": language,
-                    "_lang": language,
-                })
-        except Exception:
-            continue
-
-    for candidate in candidates:
-        tcg_card_id = candidate.get("tcg_card_id", "")
-        if "-" not in tcg_card_id:
-            continue
-        set_id = tcg_card_id.rsplit("-", 1)[0]
-        local_set = db.query(Set).filter(
-            Set.tcg_set_id == set_id,
-            Set.lang == candidate.get("_lang", "en"),
-        ).first() or db.query(Set).filter(Set.tcg_set_id == set_id).first()
-        if local_set:
-            candidate["set"] = local_set.name
-            if local_set.abbreviation:
-                candidate["set_abbreviation"] = local_set.abbreviation
-
-    seen = set()
-    deduped = []
-    for candidate in candidates:
-        key = (candidate.get("id"), candidate.get("_lang", "en"))
-        if key not in seen:
-            seen.add(key)
-            deduped.append(candidate)
-    deduped, number_match_count = prioritize_cards_by_number(deduped, recognized_number)
-    return {
-        "recognized": card_info,
-        "matches": deduped[:8],
-        "_number_match_count": number_match_count,
-    }
+    """Use the shared deterministic matcher without spending a visual-verify call."""
+    return await match_card_info(db, card_info, allow_visual_verification=False)

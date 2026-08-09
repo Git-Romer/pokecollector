@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 try:
     import httpx
@@ -7,15 +7,24 @@ try:
 
     from api.recognize import (
         DEFAULT_GEMINI_MODEL,
+        COMPOSITE_PROMPT,
         MAX_GEMINI_RETRY_SECONDS,
+        RECOGNIZE_PROMPT,
+        _candidate_rank_key,
+        _metadata_decision,
+        _normalize_artist,
         build_gemini_generate_url,
         get_gemini_model,
         gemini_error_message,
         gemini_rate_limit_reason,
         gemini_retry_after_seconds,
+        match_card_info,
+        normalize_recognized_card_info,
         normalize_scanner_card_number,
         post_gemini_generate,
         prioritize_cards_by_number,
+        retain_ranked_candidates,
+        select_search_candidates,
     )
     API_TEST_DEPS_AVAILABLE = True
 except ModuleNotFoundError:
@@ -46,7 +55,15 @@ class RecognizeCardNumberTests(unittest.TestCase):
         self.assertIsNone(normalize_scanner_card_number(None))
         self.assertIsNone(normalize_scanner_card_number(""))
         self.assertIsNone(normalize_scanner_card_number("No. 039"))
-        self.assertIsNone(normalize_scanner_card_number("TG01"))
+
+    def test_preserves_alphanumeric_collector_number_prefixes(self):
+        self.assertEqual(normalize_scanner_card_number("TG01"), "tg1")
+        self.assertEqual(normalize_scanner_card_number("GG01"), "gg1")
+        self.assertEqual(normalize_scanner_card_number("SVP 001"), "svp1")
+        self.assertNotEqual(
+            normalize_scanner_card_number("TG01"),
+            normalize_scanner_card_number("GG01"),
+        )
 
     def test_high_numbered_match_survives_candidate_cap(self):
         cards = [
@@ -63,6 +80,50 @@ class RecognizeCardNumberTests(unittest.TestCase):
         self.assertEqual(match_count, 1)
         self.assertEqual(prioritized[0]["id"], "card-63")
         self.assertIn("card-63", [card["id"] for card in prioritized[:8]])
+
+    def test_number_match_augments_instead_of_replacing_baseline_results(self):
+        cards = [
+            {"id": f"baseline-{number}", "localId": str(number)}
+            for number in range(1, 9)
+        ] + [{"id": "late-match", "localId": "63"}]
+
+        selected = select_search_candidates(
+            cards,
+            "63",
+            number_field="localId",
+        )
+
+        self.assertEqual(
+            [card["id"] for card in selected[:8]],
+            [f"baseline-{number}" for number in range(1, 9)],
+        )
+        self.assertEqual(selected[8]["id"], "late-match")
+
+    def test_final_ranking_retains_eight_baseline_results_and_late_match(self):
+        cards = [
+            {"id": f"baseline-{number}", "localId": str(number)}
+            for number in range(1, 9)
+        ] + [{"id": "late-match", "localId": "63"}]
+        selected = select_search_candidates(cards, "63", number_field="localId")
+        candidates = [
+            {
+                "id": card["id"],
+                "number": card["localId"],
+                "_number_extra": card["_number_extra"],
+            }
+            for card in selected
+        ]
+        recognized = normalize_recognized_card_info({"number_local": "63"})
+        candidates.sort(key=lambda card: _candidate_rank_key(recognized, card))
+
+        retained = retain_ranked_candidates(candidates)
+
+        self.assertEqual(len(retained), 9)
+        self.assertEqual(retained[0]["id"], "late-match")
+        self.assertEqual(
+            {card["id"] for card in retained if not card["_number_extra"]},
+            {f"baseline-{number}" for number in range(1, 9)},
+        )
 
     def test_leading_zero_matches_and_preserves_stable_order(self):
         cards = [
@@ -95,6 +156,182 @@ class RecognizeCardNumberTests(unittest.TestCase):
                 )
                 self.assertIs(prioritized, cards)
                 self.assertEqual(match_count, 0)
+
+    def test_normalizes_legacy_and_split_recognized_numbers(self):
+        legacy = normalize_recognized_card_info({"number": "136/182"})
+        split = normalize_recognized_card_info({
+            "number_local": "063",
+            "number_total": "100",
+        })
+        self.assertEqual((legacy["number_local"], legacy["number_total"]), ("136", "182"))
+        self.assertEqual(split["number"], "063/100")
+
+
+@unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed")
+class DeterministicMatchingTests(unittest.IsolatedAsyncioTestCase):
+    def test_prompts_request_only_fields_used_for_matching(self):
+        for prompt in (RECOGNIZE_PROMPT, COMPOSITE_PROMPT):
+            for field in (
+                "number_local",
+                "number_total",
+                "set_code",
+                "regulation_mark",
+                "artist",
+                "hp",
+            ):
+                self.assertIn(field, prompt)
+            for unused in ("rarity_symbol", "holo_foil_visible", "is_promo", "first_edition"):
+                self.assertNotIn(unused, prompt)
+
+    def test_unknown_is_neutral_and_contradiction_is_demoted(self):
+        recognized = normalize_recognized_card_info({
+            "number_local": "25",
+            "number_total": "100",
+            "set_code": "ABC",
+        })
+        matching = {
+            "number": "025",
+            "printed_total": 100,
+            "set_abbreviation": "abc",
+        }
+        unknown = {"number": None, "printed_total": None, "set_abbreviation": None}
+        contradiction = {
+            "number": "26",
+            "printed_total": 99,
+            "set_abbreviation": "XYZ",
+        }
+        self.assertTrue(
+            _candidate_rank_key(recognized, matching)
+            < _candidate_rank_key(recognized, unknown)
+            < _candidate_rank_key(recognized, contradiction)
+        )
+
+    def test_malformed_printed_total_is_neutral_not_a_match(self):
+        recognized = normalize_recognized_card_info({"number_total": "100"})
+        matching = {"printed_total": 100}
+        malformed = {"printed_total": "unknown"}
+        contradiction = {"printed_total": 99}
+
+        self.assertEqual(_candidate_rank_key(recognized, matching)[2], 0)
+        self.assertEqual(_candidate_rank_key(recognized, malformed)[2], 1)
+        self.assertEqual(_candidate_rank_key(recognized, contradiction)[2], 2)
+
+    def test_artist_prefix_and_hp_can_resolve_numberless_card(self):
+        recognized = normalize_recognized_card_info({
+            "artist": "Illus. Kagemaru  Himeno",
+            "hp": "60",
+        })
+        candidates = [
+            {"id": "wrong", "artist": "Mitsuhiro Arita", "hp": "60"},
+            {"id": "right", "artist": "Kagemaru Himeno", "hp": "060"},
+        ]
+        candidates.sort(key=lambda card: _candidate_rank_key(recognized, card))
+        confident, decision = _metadata_decision(recognized, candidates)
+        self.assertEqual(_normalize_artist("Illus. Kagemaru Himeno"), "kagemaru himeno")
+        self.assertEqual(candidates[0]["id"], "right")
+        self.assertTrue(confident)
+        self.assertEqual(decision, "artist_hp")
+
+    def test_number_and_set_metadata_resolve_ambiguous_reprints(self):
+        recognized = normalize_recognized_card_info({
+            "number_local": "52",
+            "number_total": "130",
+        })
+        candidates = [
+            {"id": "reprint", "number": "52", "printed_total": 64},
+            {"id": "right", "number": "052", "printed_total": 130},
+        ]
+        candidates.sort(key=lambda card: _candidate_rank_key(recognized, card))
+        confident, decision = _metadata_decision(recognized, candidates)
+        self.assertEqual(candidates[0]["id"], "right")
+        self.assertTrue(confident)
+        self.assertEqual(decision, "number_metadata")
+
+    def test_detected_language_resolves_same_printing_across_languages(self):
+        recognized = normalize_recognized_card_info({
+            "number_local": "029",
+            "language": "de",
+        })
+        candidates = [
+            {"id": "english", "number": "29", "_lang": "en"},
+            {"id": "german", "number": "029", "_lang": "de"},
+        ]
+        candidates.sort(key=lambda card: _candidate_rank_key(recognized, card))
+        confident, decision = _metadata_decision(recognized, candidates)
+        self.assertEqual(candidates[0]["id"], "german")
+        self.assertTrue(confident)
+        self.assertEqual(decision, "number_metadata")
+
+    def test_contradictory_known_metadata_prevents_confidence(self):
+        recognized = normalize_recognized_card_info({
+            "number_local": "25",
+            "number_total": "100",
+            "language": "de",
+        })
+        candidates = [{
+            "id": "contradiction",
+            "number": "25",
+            "printed_total": 99,
+            "_lang": "en",
+        }]
+
+        confident, decision = _metadata_decision(recognized, candidates)
+
+        self.assertFalse(confident)
+        self.assertIsNone(decision)
+
+    def test_artist_hp_does_not_override_a_contradictory_number(self):
+        recognized = normalize_recognized_card_info({
+            "number_local": "TG01",
+            "artist": "Kagemaru Himeno",
+            "hp": "60",
+        })
+        candidates = [{
+            "id": "wrong-number",
+            "number": "GG01",
+            "artist": "Kagemaru Himeno",
+            "hp": "60",
+        }]
+
+        confident, decision = _metadata_decision(recognized, candidates)
+
+        self.assertFalse(confident)
+        self.assertIsNone(decision)
+
+    async def test_shared_matcher_is_used_without_visual_call_for_composites(self):
+        recognized = {"name": "Pikachu", "number_local": "25"}
+        candidates = [{"id": "right", "number": "25"}, {"id": "wrong", "number": "26"}]
+        with patch(
+            "api.recognize._search_and_rank_candidates",
+            new=AsyncMock(return_value=(candidates, 1)),
+        ):
+            result = await match_card_info(object(), recognized)
+        self.assertTrue(result["_identity_confident"])
+        self.assertEqual(result["_identity_decision"], "number_unique")
+        self.assertEqual(result["matches"][0]["id"], "right")
+
+    async def test_shared_matcher_returns_late_match_without_losing_baseline(self):
+        recognized = {"name": "Pikachu", "number_local": "63"}
+        candidates = [
+            {"id": "late-match", "number": "63", "_number_extra": True},
+            *[
+                {
+                    "id": f"baseline-{number}",
+                    "number": str(number),
+                    "_number_extra": False,
+                }
+                for number in range(1, 9)
+            ],
+        ]
+        with patch(
+            "api.recognize._search_and_rank_candidates",
+            new=AsyncMock(return_value=(candidates, 1)),
+        ):
+            result = await match_card_info(object(), recognized)
+
+        self.assertEqual(len(result["matches"]), 9)
+        self.assertEqual(result["matches"][0]["id"], "late-match")
+        self.assertIn("baseline-8", [card["id"] for card in result["matches"]])
 
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")
