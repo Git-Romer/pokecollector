@@ -52,12 +52,14 @@ services:
       PRE_UPGRADE_BACKUP_REQUIRED: ${PRE_UPGRADE_BACKUP_REQUIRED:-true}
       PRE_UPGRADE_BACKUP_KEEP: ${PRE_UPGRADE_BACKUP_KEEP:-10}
       POKEDEX_IMAGE_CACHE_DIR: /app/data/pokedex-images
+      SCAN_UPLOAD_DIR: /app/data/scan-uploads
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
       - ./backups:/app/backups
       - ./data/pokedex-images:/app/data/pokedex-images
+      - ./data/scan-uploads:/app/data/scan-uploads
     ports:
       - "8000:8000"
 

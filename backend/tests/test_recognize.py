@@ -10,6 +10,7 @@ try:
         build_gemini_generate_url,
         get_gemini_model,
         gemini_error_message,
+        gemini_retry_after_seconds,
         normalize_scanner_card_number,
         post_gemini_generate,
         prioritize_cards_by_number,
@@ -101,6 +102,13 @@ class RecognizeErrorTests(unittest.TestCase):
 
         self.assertEqual(gemini_error_message(response), "model retired")
 
+    def test_extracts_retry_delay_from_gemini_retry_info(self):
+        response = httpx.Response(
+            429,
+            json={"error": {"details": [{"retryDelay": "42.5s"}]}},
+        )
+        self.assertEqual(gemini_retry_after_seconds(response), 42.5)
+
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")
 class RecognizeApiTests(unittest.IsolatedAsyncioTestCase):
@@ -112,12 +120,27 @@ class RecognizeApiTests(unittest.IsolatedAsyncioTestCase):
                     json={"error": {"message": "This model is no longer available to new users."}},
                 )
 
-        with self.assertRaises(HTTPException) as ctx:
-            await post_gemini_generate(FakeClient(), "https://example.test", "key", {})
+        with patch("api.recognize.acquire_gemini_slot") as acquire:
+            acquire.return_value = None
+            with self.assertRaises(HTTPException) as ctx:
+                await post_gemini_generate(FakeClient(), "https://example.test", "key", {})
 
         self.assertEqual(ctx.exception.status_code, 502)
         self.assertIn("GEMINI_MODEL", ctx.exception.detail)
         self.assertIn("no longer available", ctx.exception.detail)
+
+    async def test_gemini_429_persists_provider_retry_delay(self):
+        class FakeClient:
+            async def post(self, *args, **kwargs):
+                return httpx.Response(429, headers={"retry-after": "37"})
+
+        with patch("api.recognize.acquire_gemini_slot") as acquire, \
+                patch("api.recognize.penalize_gemini_key") as penalize:
+            acquire.return_value = None
+            with self.assertRaises(HTTPException):
+                await post_gemini_generate(FakeClient(), "https://example.test", "key", {})
+
+        penalize.assert_called_once_with("key", seconds=37.0)
 
 
 if __name__ == "__main__":

@@ -486,3 +486,105 @@ class ImageCache(Base):
     data = Column(LargeBinary, nullable=False)
     content_type = Column(String, default="image/webp")
     cached_at = Column(DateTime, default=func.now())
+
+
+class ScanJob(Base):
+    """A persistent background-recognition job owned by one user."""
+
+    __tablename__ = "scan_jobs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    status = Column(String, default="pending", nullable=False, index=True)
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+    updated_at = Column(DateTime, default=func.now(), nullable=False)
+    started_at = Column(DateTime)
+    finished_at = Column(DateTime)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    error_message = Column(Text)
+
+    items = relationship(
+        "ScanJobItem",
+        back_populates="job",
+        cascade="all, delete-orphan",
+        order_by="ScanJobItem.position",
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'running', 'done', 'failed')",
+            name="ck_scan_jobs_status",
+        ),
+        Index("ix_scan_jobs_user_status_created", "user_id", "status", "created_at"),
+    )
+
+
+class ScanJobItem(Base):
+    """One sanitized photo and its eventual recognition result."""
+
+    __tablename__ = "scan_job_items"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    job_id = Column(Integer, ForeignKey("scan_jobs.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    position = Column(Integer, nullable=False)
+    image_path = Column(String, nullable=True)
+    content_type = Column(String, default="image/jpeg", nullable=False)
+    byte_size = Column(Integer, nullable=False)
+    status = Column(String, default="pending", nullable=False, index=True)
+    resolved = Column(Boolean, default=False, nullable=False, index=True)
+    attempts = Column(Integer, default=0, nullable=False)
+    transient_failures = Column(Integer, default=0, nullable=False)
+    next_attempt_at = Column(DateTime, nullable=True, index=True)
+    lease_token = Column(String, nullable=True, index=True)
+    lease_expires_at = Column(DateTime, nullable=True, index=True)
+    recognized = Column(JSON)
+    matches = Column(JSON)
+    error = Column(Text)
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+    updated_at = Column(DateTime, default=func.now(), nullable=False)
+
+    job = relationship("ScanJob", back_populates="items")
+
+    __table_args__ = (
+        UniqueConstraint("job_id", "position", name="uq_scan_job_item_position"),
+        CheckConstraint(
+            "status IN ('pending', 'processing', 'retrying', 'done', 'failed')",
+            name="ck_scan_job_items_status",
+        ),
+        CheckConstraint("attempts >= 0", name="ck_scan_job_items_attempts_non_negative"),
+        CheckConstraint(
+            "transient_failures >= 0",
+            name="ck_scan_job_items_transient_failures_non_negative",
+        ),
+        Index(
+            "ix_scan_job_items_dispatch",
+            "status",
+            "next_attempt_at",
+            "lease_expires_at",
+            "user_id",
+        ),
+    )
+
+
+class ScanQueueUserState(Base):
+    """Persistent round-robin cursor used to share queue work fairly."""
+
+    __tablename__ = "scan_queue_user_state"
+
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    last_dispatched_at = Column(DateTime, nullable=True, index=True)
+
+
+class GeminiQuotaState(Base):
+    """Cross-worker pacing state keyed by a non-reversible API-key fingerprint."""
+
+    __tablename__ = "gemini_quota_state"
+
+    key_fingerprint = Column(String, primary_key=True)
+    tokens = Column(Float, nullable=True)
+    last_refill_at = Column(DateTime, nullable=True)
+    next_request_at = Column(DateTime, nullable=True, index=True)
+    blocked_until = Column(DateTime, nullable=True)
+    interactive_pending_until = Column(DateTime, nullable=True)
+    updated_at = Column(DateTime, default=func.now(), nullable=False)

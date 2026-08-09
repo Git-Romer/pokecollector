@@ -5,6 +5,8 @@ import os
 import json
 import re
 from services.tcgdex_languages import is_supported_tcgdex_language, normalize_tcgdex_language
+from services.gemini_rate_limit import acquire_gemini_slot, penalize_gemini_key
+from services.scan_storage import MAX_FILE_BYTES, ScanUploadError, read_limited_upload, sanitize_image_bytes
 import logging
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from sqlalchemy.orm import Session
@@ -80,6 +82,31 @@ def gemini_error_message(resp: httpx.Response) -> str:
     return str(message or "").strip()
 
 
+def gemini_retry_after_seconds(resp: httpx.Response) -> float | None:
+    """Read Gemini's retry hint from a header or google.rpc.RetryInfo body."""
+    header = str(resp.headers.get("retry-after", "")).strip()
+    if header:
+        try:
+            value = float(header)
+            if value > 0:
+                return value
+        except ValueError:
+            pass
+    try:
+        payload = resp.json()
+    except ValueError:
+        return None
+    details = payload.get("error", {}).get("details", []) if isinstance(payload, dict) else []
+    for detail in details if isinstance(details, list) else []:
+        if not isinstance(detail, dict):
+            continue
+        delay = str(detail.get("retryDelay", "")).strip()
+        match = re.fullmatch(r"([0-9]+(?:\.[0-9]+)?)s", delay)
+        if match:
+            return float(match.group(1))
+    return None
+
+
 def get_gemini_key(db: Session, user_id: int = None) -> str:
     """Read Gemini API key from user settings only. No cross-user fallback."""
     if user_id is not None:
@@ -105,6 +132,7 @@ async def post_gemini_generate(
 
     for attempt in range(max_attempts):
         try:
+            await acquire_gemini_slot(api_key)
             resp = await client.post(
                 gemini_url,
                 headers={"x-goog-api-key": api_key},
@@ -112,6 +140,10 @@ async def post_gemini_generate(
             )
 
             if resp.status_code == 429:
+                penalize_gemini_key(
+                    api_key,
+                    seconds=gemini_retry_after_seconds(resp),
+                )
                 raise HTTPException(
                     status_code=429,
                     detail="Gemini Rate Limit erreicht – bitte kurz warten und nochmal versuchen.",
@@ -175,10 +207,17 @@ async def recognize_card(
             detail="Kein Gemini API Key konfiguriert. Bitte in den Einstellungen eintragen."
         )
 
-    # Read image
-    image_bytes = await file.read()
+    # Decode and normalize every scanner upload before sending it upstream.
+    # This applies the same format, size, pixel, orientation, and metadata rules
+    # as the persistent background queue.
+    try:
+        raw_image = await read_limited_upload(file, remaining_job_bytes=MAX_FILE_BYTES)
+        sanitized_image = sanitize_image_bytes(raw_image)
+    except ScanUploadError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    image_bytes = sanitized_image.data
     image_b64 = base64.b64encode(image_bytes).decode()
-    mime_type = file.content_type or "image/jpeg"
+    mime_type = sanitized_image.content_type
 
     # Call Gemini Vision — ask for language detection too
     gemini_url = build_gemini_generate_url()
