@@ -8,7 +8,7 @@ from api.auth import get_current_user
 from database import get_db
 from models import Binder, BinderCard, Card, CollectionItem, Set, User, WishlistItem
 from schemas import BinderCreate, BinderUpdate, BinderResponse, BinderCardUpdate, BinderCardSwitch, BinderPrintOptimizationApply
-from api.collection import ensure_card_exists, _find_card_by_code
+from api.collection import ensure_card_exists, _find_card_by_code, _annotate_scan_photos
 from services import pokemon_api
 from services.card_fallbacks import apply_cross_language_fallbacks
 from services.card_upsert import upsert_card
@@ -827,6 +827,11 @@ def get_binder_cards(
         BinderCard.binder_id == binder_id,
         visible_card_filter(db, current_user.id, "all"),
     ).order_by(BinderCard.added_at.desc()).all()
+    _annotate_scan_photos(
+        db,
+        current_user,
+        [bc.collection_item for bc in binder_cards if bc.collection_item and bc.collection_item.user_id == current_user.id],
+    )
 
     collection_quantities = dict(
         db.query(CollectionItem.card_id, func.coalesce(func.sum(CollectionItem.quantity), 0))
@@ -954,6 +959,7 @@ def get_binder_cards(
             "condition": col_item.condition if col_item else None,
             "lang": col_item.lang if col_item else (bc.card.lang or "en"),
             "collection_item_id": exact_col_item.id if exact_col_item else None,
+            "has_scan_photo": bool(exact_col_item.has_scan_photo) if exact_col_item else False,
             "binder_card_id": bc.id,
         }
         if binder_type == "collection" and exact_col_item:

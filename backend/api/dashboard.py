@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session, joinedload
 from api.auth import get_current_user
+from api.collection import _annotate_scan_photos
 from database import get_db
 from models import CollectionItem, Card, Set, PortfolioSnapshot, SyncLog, User
 from services.card_values import effective_market_price, normalize_price_field
@@ -31,6 +32,7 @@ def get_dashboard(
         CollectionItem.user_id == current_user.id,
         visible_card_filter(db, current_user.id, "all"),
     ).all()
+    _annotate_scan_photos(db, current_user, items)
 
     total_cards = sum(item.quantity for item in items)
     unique_cards = len(items)
@@ -94,6 +96,7 @@ def get_dashboard(
             "data_source_lang": card.data_source_lang,
             "price_source_lang": card.price_source_lang,
             "image_source_lang": card.image_source_lang,
+            "has_scan_photo": item.has_scan_photo,
         })
 
     # Portfolio value history (last 90 days)
@@ -113,6 +116,7 @@ def get_dashboard(
         CollectionItem.user_id == current_user.id,
         visible_card_filter(db, current_user.id, "all"),
     ).order_by(CollectionItem.added_at.desc()).limit(12).all()
+    _annotate_scan_photos(db, current_user, recent)
 
     recent_data = []
     for item in recent:
@@ -133,6 +137,7 @@ def get_dashboard(
                 "data_source_lang": item.card.data_source_lang,
                 "price_source_lang": item.card.price_source_lang,
                 "image_source_lang": item.card.image_source_lang,
+                "has_scan_photo": item.has_scan_photo,
             })
 
     # Last sync
