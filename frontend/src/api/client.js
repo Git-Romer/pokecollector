@@ -107,6 +107,10 @@ export const recognizeCard = (imageFile) => {
   }).then(r => r.data)
 }
 
+// Recent, non-expired recognition scans for the current user
+export const getScanHistory = (params = {}) =>
+  api.get('/cards/scan-history', { params }).then(r => r.data)
+
 // Custom card migration
 export const getCustomMatches = () => api.get('/cards/custom/matches')
 export const migrateCustomCard = (matchId) => api.post(`/cards/custom/migrate/${matchId}`)

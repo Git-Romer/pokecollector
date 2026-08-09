@@ -486,3 +486,20 @@ class ImageCache(Base):
     data = Column(LargeBinary, nullable=False)
     content_type = Column(String, default="image/webp")
     cached_at = Column(DateTime, default=func.now())
+
+
+class ScanHistory(Base):
+    __tablename__ = "scan_history"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    source = Column(String, default="recognizer", nullable=False)
+    source_reference = Column(String)
+    recognized_name = Column(String)
+    recognized_number = Column(String)
+    recognized_language = Column(String)
+    match_count = Column(Integer, default=0, nullable=False)
+    top_match_card_id = Column(String)
+    top_match_name = Column(String)
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+    expires_at = Column(DateTime, nullable=False)

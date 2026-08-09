@@ -280,6 +280,11 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
                       {t('scanner.detectedLanguage')} {results.recognized.language}
                     </p>
                   )}
+                  {results.scan_history?.expires_at && (
+                    <p className="mt-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] font-semibold text-text-muted">
+                      Scan history kept for {results.scan_history.retention_days ?? 14} days. This scan expires {new Date(results.scan_history.expires_at).toLocaleDateString()}.
+                    </p>
+                  )}
                 </div>
 
                 {results.matches?.length > 0 ? (
