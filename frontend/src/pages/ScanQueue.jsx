@@ -62,7 +62,7 @@ function JobRow({ job, onOpen, retryNow, t }) {
         </div>
         {waitingOnly ? (
           <span className="flex flex-shrink-0 items-center gap-1.5 text-xs text-text-muted">
-            <Clock3 size={13} /> {formatRetryCountdown(job.next_retry_at, t, retryNow)}
+            <Clock3 size={13} /> {formatRetryCountdown(job.next_retry_at, t, retryNow, job.retry_reason)}
           </span>
         ) : isScanJobActive(job) ? (
           <span className="flex flex-shrink-0 items-center gap-1.5 text-xs text-text-muted">
@@ -172,7 +172,7 @@ function JobDetail({ jobId, onObscuredChange }) {
           </div>
           {Number(job.retrying || 0) > 0 && Number(job.active || 0) === Number(job.retrying || 0) ? (
             <span className="flex items-center gap-1.5 text-xs text-text-muted">
-              <Clock3 size={13} /> {formatRetryCountdown(job.next_retry_at, t, retryNow)}
+              <Clock3 size={13} /> {formatRetryCountdown(job.next_retry_at, t, retryNow, job.retry_reason)}
             </span>
           ) : isScanJobActive(job) && (
             <span className="flex items-center gap-1.5 text-xs text-text-muted">

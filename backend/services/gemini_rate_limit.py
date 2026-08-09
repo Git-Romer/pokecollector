@@ -19,8 +19,19 @@ from models import GeminiQuotaState
 DEFAULT_RATE_PER_MINUTE = 6.0
 DEFAULT_BURST = 3.0
 DEFAULT_PENALTY_SECONDS = 30.0
+DAILY_QUOTA_FIRST_PENALTY_SECONDS = 60 * 60.0
+DAILY_QUOTA_REPEAT_PENALTY_SECONDS = 6 * 60 * 60.0
 INTERACTIVE_RESERVATION_GRACE_SECONDS = 5.0
 _priority = contextvars.ContextVar("gemini_request_priority", default="interactive")
+
+
+class GeminiKeyBlockedError(RuntimeError):
+    """A persisted upstream limit still blocks this API key."""
+
+    def __init__(self, retry_after_seconds: float, reason: str | None = None):
+        super().__init__("Gemini API key is temporarily rate limited.")
+        self.retry_after_seconds = max(0.0, float(retry_after_seconds))
+        self.reason = reason or "rate_limit"
 
 
 def _positive_float(name: str, default: float) -> float:
@@ -112,13 +123,18 @@ async def acquire_gemini_slot(api_key: str, *, priority: str | None = None) -> N
                 state.tokens = min(capacity, state.tokens + elapsed * rate_per_second)
                 state.last_refill_at = now
 
-            blocked_until = state.blocked_until if state.blocked_until and state.blocked_until > now else now
+            if state.blocked_until and state.blocked_until > now:
+                retry_after = (state.blocked_until - now).total_seconds()
+                reason = state.blocked_reason
+                db.rollback()
+                raise GeminiKeyBlockedError(retry_after, reason)
+
             token_ready_at = now
             if state.tokens < 1:
                 token_ready_at = now + datetime.timedelta(
                     seconds=(1 - state.tokens) / rate_per_second
                 )
-            ready_at = max(blocked_until, token_ready_at)
+            ready_at = token_ready_at
             interactive_waiting = bool(
                 state.interactive_pending_until and state.interactive_pending_until > now
             )
@@ -159,25 +175,84 @@ async def acquire_gemini_slot(api_key: str, *, priority: str | None = None) -> N
         await asyncio.sleep(min(wait_seconds, 30.0))
 
 
-def penalize_gemini_key(api_key: str, *, seconds: float | None = None) -> None:
-    """Persist an upstream 429 backoff so every worker respects it."""
+def penalize_gemini_key(
+    api_key: str,
+    *,
+    seconds: float | None = None,
+    reason: str = "rate_limit",
+) -> float:
+    """Persist an upstream 429 backoff and return the effective delay."""
     fingerprint = key_fingerprint(api_key)
     _ensure_state(fingerprint)
-    penalty = seconds if seconds and seconds > 0 else DEFAULT_PENALTY_SECONDS
     db = SessionLocal()
     try:
         state = _locked_state(db, fingerprint)
         if state is None:
-            return
+            return DEFAULT_PENALTY_SECONDS
         now = datetime.datetime.utcnow()
-        blocked_until = now + datetime.timedelta(seconds=penalty)
-        if not state.blocked_until or state.blocked_until < blocked_until:
-            state.blocked_until = blocked_until
+        provider_penalty = seconds if seconds and seconds > 0 else 0.0
+        from_provider = bool(provider_penalty)
+        active_block = bool(state.blocked_until and state.blocked_until > now)
+        if active_block:
+            # A daily block dominates a racing short-term response. Within the
+            # same class, provider metadata may replace a fallback, while a
+            # missing-delay response never replaces an existing block.
+            if state.blocked_reason == "daily_quota" and reason != "daily_quota":
+                return (state.blocked_until - now).total_seconds()
+            if state.blocked_reason == reason and not from_provider:
+                return (state.blocked_until - now).total_seconds()
+        if reason == "daily_quota":
+            if provider_penalty:
+                # Gemini's structured RetryInfo is authoritative, including
+                # the daily reset boundary observed in the live API response.
+                state.consecutive_daily_failures = 0
+                penalty = provider_penalty
+            else:
+                state.consecutive_daily_failures = int(state.consecutive_daily_failures or 0) + 1
+                penalty = (
+                    DAILY_QUOTA_FIRST_PENALTY_SECONDS
+                    if int(state.consecutive_daily_failures or 0) <= 1
+                    else DAILY_QUOTA_REPEAT_PENALTY_SECONDS
+                )
+        else:
+            state.consecutive_daily_failures = 0
+            penalty = provider_penalty or DEFAULT_PENALTY_SECONDS
+        effective_blocked_until = now + datetime.timedelta(seconds=penalty)
+        state.blocked_until = effective_blocked_until
+        state.blocked_reason = reason
         # Resume with exactly one immediate call, then return to normal pacing;
         # otherwise the blocked period would silently refill a full burst.
         state.tokens = 1.0
-        state.last_refill_at = blocked_until
-        state.next_request_at = blocked_until
+        state.last_refill_at = effective_blocked_until
+        state.next_request_at = effective_blocked_until
+        state.updated_at = now
+        db.commit()
+        return max(0.0, (effective_blocked_until - now).total_seconds())
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def record_gemini_success(api_key: str) -> None:
+    """Clear quota classification after a successful provider response."""
+    fingerprint = key_fingerprint(api_key)
+    db = SessionLocal()
+    try:
+        state = _locked_state(db, fingerprint)
+        if state is None:
+            db.rollback()
+            return
+        now = datetime.datetime.utcnow()
+        # A successful request that was already in flight must not erase a
+        # newer penalty recorded by another concurrent request.
+        if state.blocked_until and state.blocked_until > now:
+            db.rollback()
+            return
+        state.blocked_until = None
+        state.blocked_reason = None
+        state.consecutive_daily_failures = 0
         state.updated_at = now
         db.commit()
     except Exception:

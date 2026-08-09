@@ -24,16 +24,22 @@ export function retryCountdownParts(nextAttemptAt, nowMs = Date.now()) {
   }
 }
 
-export function formatRetryCountdown(nextAttemptAt, t, nowMs = Date.now()) {
+export function formatRetryCountdown(nextAttemptAt, t, nowMs = Date.now(), retryReason = null) {
   const parts = retryCountdownParts(nextAttemptAt, nowMs)
-  if (!parts) return t('scanner.itemRetrying')
+  if (!parts) return retryReason === 'daily_quota'
+    ? t('scanner.dailyQuotaWaiting')
+    : t('scanner.itemRetrying')
+  let countdown
   if (parts.unit === 'seconds') {
-    return t('scanner.retryingInSeconds').replace('{seconds}', parts.seconds)
+    countdown = t('scanner.retryingInSeconds').replace('{seconds}', parts.seconds)
+  } else if (parts.unit === 'minutes') {
+    countdown = t('scanner.retryingInMinutes').replace('{minutes}', parts.minutes)
+  } else {
+    countdown = t('scanner.retryingInHours')
+      .replace('{hours}', parts.hours)
+      .replace('{minutes}', parts.minutes)
   }
-  if (parts.unit === 'minutes') {
-    return t('scanner.retryingInMinutes').replace('{minutes}', parts.minutes)
-  }
-  return t('scanner.retryingInHours')
-    .replace('{hours}', parts.hours)
-    .replace('{minutes}', parts.minutes)
+  return retryReason === 'daily_quota'
+    ? t('scanner.dailyQuotaRetry').replace('{countdown}', countdown)
+    : countdown
 }

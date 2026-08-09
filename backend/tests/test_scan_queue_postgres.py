@@ -10,7 +10,8 @@ try:
     from sqlalchemy import inspect, text
 
     from database import SessionLocal, init_db
-    from models import ScanJob, ScanJobItem, ScanQueueUserState, User
+    from models import GeminiQuotaState, ScanJob, ScanJobItem, ScanQueueUserState, User
+    from services import gemini_rate_limit
     from services.scan_queue import claim_next_scan_item
 
     DEPS_AVAILABLE = True
@@ -118,6 +119,102 @@ class ScanQueuePostgresTests(unittest.TestCase):
         self.assertTrue(all(claim.composite for claim in claims))
         self.assertTrue(all(len(claim.all_item_ids) == 4 for claim in claims))
         self.assertTrue(set(claims[0].all_item_ids).isdisjoint(claims[1].all_item_ids))
+
+
+@unittest.skipUnless(POSTGRES_TEST_ENABLED, "requires the isolated PostgreSQL queue test database")
+class GeminiQuotaPostgresConcurrencyTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        init_db()
+
+    def setUp(self):
+        self.api_key = f"quota-pg-{uuid.uuid4().hex}"
+        self.fingerprint = gemini_rate_limit.key_fingerprint(self.api_key)
+
+    def tearDown(self):
+        db = SessionLocal()
+        try:
+            db.query(GeminiQuotaState).filter(
+                GeminiQuotaState.key_fingerprint == self.fingerprint
+            ).delete(synchronize_session=False)
+            db.commit()
+        finally:
+            db.close()
+
+    def _state(self):
+        db = SessionLocal()
+        try:
+            state = db.get(GeminiQuotaState, self.fingerprint)
+            self.assertIsNotNone(state)
+            db.expunge(state)
+            return state
+        finally:
+            db.close()
+
+    def test_provider_delay_wins_concurrent_missing_daily_fallback(self):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [
+                executor.submit(
+                    gemini_rate_limit.penalize_gemini_key,
+                    self.api_key,
+                    reason="daily_quota",
+                ),
+                executor.submit(
+                    gemini_rate_limit.penalize_gemini_key,
+                    self.api_key,
+                    seconds=41,
+                    reason="daily_quota",
+                ),
+            ]
+            [future.result() for future in futures]
+
+        state = self._state()
+        remaining = (state.blocked_until - datetime.datetime.utcnow()).total_seconds()
+        self.assertEqual(state.blocked_reason, "daily_quota")
+        self.assertEqual(state.consecutive_daily_failures, 0)
+        self.assertGreater(remaining, 35)
+        self.assertLessEqual(remaining, 41)
+
+    def test_daily_quota_wins_concurrent_short_term_limit(self):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [
+                executor.submit(
+                    gemini_rate_limit.penalize_gemini_key,
+                    self.api_key,
+                    reason="daily_quota",
+                ),
+                executor.submit(
+                    gemini_rate_limit.penalize_gemini_key,
+                    self.api_key,
+                    seconds=10,
+                    reason="rate_limit",
+                ),
+            ]
+            [future.result() for future in futures]
+
+        state = self._state()
+        remaining = (state.blocked_until - datetime.datetime.utcnow()).total_seconds()
+        self.assertEqual(state.blocked_reason, "daily_quota")
+        self.assertEqual(state.consecutive_daily_failures, 1)
+        self.assertGreater(remaining, 60 * 60 - 5)
+
+    def test_concurrent_missing_daily_responses_escalate_once(self):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [
+                executor.submit(
+                    gemini_rate_limit.penalize_gemini_key,
+                    self.api_key,
+                    reason="daily_quota",
+                )
+                for _index in range(2)
+            ]
+            [future.result() for future in futures]
+
+        state = self._state()
+        remaining = (state.blocked_until - datetime.datetime.utcnow()).total_seconds()
+        self.assertEqual(state.consecutive_daily_failures, 1)
+        self.assertGreater(remaining, 60 * 60 - 5)
+        self.assertLessEqual(remaining, 60 * 60)
 
 
 if __name__ == "__main__":

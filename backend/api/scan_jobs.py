@@ -72,6 +72,7 @@ def _item_payload(item: ScanJobItem) -> dict:
         "next_attempt_at": (
             item.next_attempt_at.isoformat() if item.next_attempt_at else None
         ),
+        "retry_reason": item.retry_reason,
         "created_at": item.created_at.isoformat() if item.created_at else None,
         "updated_at": item.updated_at.isoformat() if item.updated_at else None,
     }

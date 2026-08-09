@@ -7,9 +7,11 @@ try:
 
     from api.recognize import (
         DEFAULT_GEMINI_MODEL,
+        MAX_GEMINI_RETRY_SECONDS,
         build_gemini_generate_url,
         get_gemini_model,
         gemini_error_message,
+        gemini_rate_limit_reason,
         gemini_retry_after_seconds,
         normalize_scanner_card_number,
         post_gemini_generate,
@@ -109,6 +111,55 @@ class RecognizeErrorTests(unittest.TestCase):
         )
         self.assertEqual(gemini_retry_after_seconds(response), 42.5)
 
+    def test_extracts_http_date_retry_after_and_prefers_header(self):
+        response = httpx.Response(
+            429,
+            headers={
+                "date": "Sun, 09 Aug 2026 18:00:00 GMT",
+                "retry-after": "Sun, 09 Aug 2026 18:00:42 GMT",
+            },
+            json={"error": {"details": [{"retryDelay": "90s"}]}},
+        )
+        self.assertEqual(gemini_retry_after_seconds(response), 42)
+
+    def test_rejects_non_finite_and_excessive_retry_delays(self):
+        excessive = MAX_GEMINI_RETRY_SECONDS + 1
+        for header, body_delay in (("inf", "inf"), (str(excessive), f"{excessive}s")):
+            with self.subTest(header=header):
+                response = httpx.Response(
+                    429,
+                    headers={"retry-after": header},
+                    json={"error": {"details": [{"retryDelay": body_delay}]}},
+                )
+                self.assertIsNone(gemini_retry_after_seconds(response))
+
+    def test_classifies_structured_requests_per_day_quota(self):
+        response = httpx.Response(
+            429,
+            json={"error": {"details": [{
+                "@type": "type.googleapis.com/google.rpc.QuotaFailure",
+                "violations": [{
+                    "quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+                    "quotaMetric": "generativelanguage.googleapis.com/generate_content_free_tier_requests",
+                }],
+            }]}},
+        )
+        self.assertEqual(gemini_rate_limit_reason(response), "daily_quota")
+
+    def test_unknown_quota_defaults_to_short_term_rate_limit(self):
+        response = httpx.Response(429, json={"error": {"message": "Resource exhausted"}})
+        self.assertEqual(gemini_rate_limit_reason(response), "rate_limit")
+
+    def test_unstructured_daily_words_do_not_trigger_daily_classification(self):
+        response = httpx.Response(
+            429,
+            json={"error": {
+                "message": "Requests per day quota exceeded",
+                "details": [{"description": "daily quota"}],
+            }},
+        )
+        self.assertEqual(gemini_rate_limit_reason(response), "rate_limit")
+
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")
 class RecognizeApiTests(unittest.IsolatedAsyncioTestCase):
@@ -137,10 +188,40 @@ class RecognizeApiTests(unittest.IsolatedAsyncioTestCase):
         with patch("api.recognize.acquire_gemini_slot") as acquire, \
                 patch("api.recognize.penalize_gemini_key") as penalize:
             acquire.return_value = None
-            with self.assertRaises(HTTPException):
+            penalize.return_value = 37.0
+            with self.assertRaises(HTTPException) as ctx:
                 await post_gemini_generate(FakeClient(), "https://example.test", "key", {})
 
-        penalize.assert_called_once_with("key", seconds=37.0)
+        penalize.assert_called_once_with("key", seconds=37.0, reason="rate_limit")
+        self.assertEqual(ctx.exception.retry_after_seconds, 37.0)
+        self.assertEqual(ctx.exception.retry_reason, "rate_limit")
+        self.assertNotIn("automatisch", ctx.exception.detail)
+
+    async def test_gemini_daily_429_uses_structured_provider_delay(self):
+        class FakeClient:
+            async def post(self, *args, **kwargs):
+                return httpx.Response(429, json={"error": {"details": [
+                    {
+                        "@type": "type.googleapis.com/google.rpc.QuotaFailure",
+                        "violations": [{
+                            "quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+                        }],
+                    },
+                    {
+                        "@type": "type.googleapis.com/google.rpc.RetryInfo",
+                        "retryDelay": "21s",
+                    },
+                ]}})
+
+        with patch("api.recognize.acquire_gemini_slot") as acquire, \
+                patch("api.recognize.penalize_gemini_key", return_value=21) as penalize:
+            acquire.return_value = None
+            with self.assertRaises(HTTPException) as ctx:
+                await post_gemini_generate(FakeClient(), "https://example.test", "key", {})
+
+        penalize.assert_called_once_with("key", seconds=21.0, reason="daily_quota")
+        self.assertEqual(ctx.exception.retry_after_seconds, 21)
+        self.assertEqual(ctx.exception.retry_reason, "daily_quota")
 
 
 if __name__ == "__main__":

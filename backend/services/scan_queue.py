@@ -45,7 +45,16 @@ class ClaimedScanItem:
 
 
 class TransientScanError(RuntimeError):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        retry_after_seconds: float | None = None,
+        retry_reason: str | None = None,
+    ):
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
+        self.retry_reason = retry_reason
 
 
 class RecognitionScanError(RuntimeError):
@@ -79,6 +88,7 @@ def recover_expired_leases(db: Session, *, now: datetime.datetime | None = None)
     for item in items:
         item.status = "retrying"
         item.next_attempt_at = now
+        item.retry_reason = None
         item.lease_token = None
         item.lease_expires_at = None
         item.error = "Processing was interrupted and will resume automatically."
@@ -147,6 +157,7 @@ def claim_next_scan_item(
     lease_expires_at = now + datetime.timedelta(seconds=lease_seconds)
     for claimed_item in items:
         claimed_item.status = "processing"
+        claimed_item.retry_reason = None
         claimed_item.lease_token = lease_token
         claimed_item.lease_expires_at = lease_expires_at
         claimed_item.updated_at = now
@@ -226,6 +237,7 @@ def complete_claim(db: Session, claim: ClaimedScanItem, result: dict) -> bool:
     item.lease_token = None
     item.lease_expires_at = None
     item.next_attempt_at = None
+    item.retry_reason = None
     item.updated_at = now
     _refresh_job_status(db, item.job, now)
     db.commit()
@@ -250,11 +262,13 @@ def complete_claim_group(
             item.recognized = None
             item.matches = None
             item.next_attempt_at = now
+            item.retry_reason = None
         else:
             item.status = "done"
             item.recognized = result.get("recognized")
             item.matches = result.get("matches")
             item.next_attempt_at = None
+            item.retry_reason = None
         item.error = None
         item.lease_token = None
         item.lease_expires_at = None
@@ -271,6 +285,8 @@ def fail_claim(
     *,
     transient: bool = False,
     permanent: bool = False,
+    retry_after_seconds: float | None = None,
+    retry_reason: str | None = None,
 ) -> bool:
     now = datetime.datetime.utcnow()
     items = _leased_items(db, claim)
@@ -285,14 +301,22 @@ def fail_claim(
         if permanent:
             item.status = "failed"
             item.next_attempt_at = None
+            item.retry_reason = None
         elif transient:
             item.transient_failures += 1
             item.status = "retrying"
-            item.next_attempt_at = now + datetime.timedelta(
-                seconds=_backoff(TRANSIENT_BACKOFF_SECONDS, item.transient_failures)
+            delay = (
+                max(0.0, float(retry_after_seconds))
+                if retry_after_seconds is not None
+                else _backoff(TRANSIENT_BACKOFF_SECONDS, item.transient_failures)
             )
+            item.next_attempt_at = now + datetime.timedelta(
+                seconds=delay
+            )
+            item.retry_reason = retry_reason
         else:
             item.attempts += 1
+            item.retry_reason = None
             if item.attempts >= MAX_RECOGNITION_ATTEMPTS:
                 item.status = "failed"
                 item.next_attempt_at = None
@@ -376,12 +400,16 @@ async def default_composite_processor(
         return results
 
 
-def _classify_http_error(error: HTTPException) -> type[RuntimeError]:
+def _scan_error_from_http(error: HTTPException) -> RuntimeError:
     if error.status_code in {429, 502, 503, 504}:
-        return TransientScanError
+        return TransientScanError(
+            str(error.detail),
+            retry_after_seconds=getattr(error, "retry_after_seconds", None),
+            retry_reason=getattr(error, "retry_reason", None),
+        )
     if error.status_code in {400, 401, 403}:
-        return PermanentScanError
-    return RecognitionScanError
+        return PermanentScanError(str(error.detail))
+    return RecognitionScanError(str(error.detail))
 
 
 async def process_claimed_scan_item(
@@ -409,8 +437,7 @@ async def process_claimed_scan_item(
                 results = [await processor(db, user_id, image_bytes[0], content_types[0])]
         except HTTPException as exc:
             db.rollback()
-            error_type = _classify_http_error(exc)
-            error = error_type(str(exc.detail))
+            error = _scan_error_from_http(exc)
         except (FileNotFoundError, OSError, ScanUploadError) as exc:
             db.rollback()
             error = PermanentScanError(f"Stored scan photo is unavailable: {exc}")
@@ -434,6 +461,8 @@ async def process_claimed_scan_item(
             str(error),
             transient=isinstance(error, TransientScanError),
             permanent=isinstance(error, PermanentScanError),
+            retry_after_seconds=getattr(error, "retry_after_seconds", None),
+            retry_reason=getattr(error, "retry_reason", None),
         )
     finally:
         db.close()
@@ -494,6 +523,7 @@ def retry_scan_item(db: Session, item: ScanJobItem) -> ScanJobItem:
     item.attempts = 0
     item.transient_failures = 0
     item.next_attempt_at = now
+    item.retry_reason = None
     item.lease_token = None
     item.lease_expires_at = None
     item.recognized = None
@@ -539,12 +569,13 @@ def job_progress(db: Session, job: ScanJob) -> dict:
         for item in items
         if not item.resolved and item.status in {"done", "failed"}
     )
-    next_retry_at = min(
+    next_retry_item = min(
         (
-            item.next_attempt_at
+            item
             for item in items
             if item.status == "retrying" and item.next_attempt_at is not None
         ),
+        key=lambda item: item.next_attempt_at,
         default=None,
     )
     return {
@@ -556,7 +587,10 @@ def job_progress(db: Session, job: ScanJob) -> dict:
         "active": active,
         "attention": attention,
         "failed_attention": failed_attention,
-        "next_retry_at": next_retry_at.isoformat() if next_retry_at else None,
+        "next_retry_at": (
+            next_retry_item.next_attempt_at.isoformat() if next_retry_item else None
+        ),
+        "retry_reason": next_retry_item.retry_reason if next_retry_item else None,
         # Kept as a stable alias for badge clients built against Lamiskin's
         # original queue payload.
         "unresolved": attention,

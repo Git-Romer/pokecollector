@@ -1,11 +1,19 @@
 import base64
 import asyncio
+import datetime
 import httpx
+import math
 import os
 import json
 import re
+from email.utils import parsedate_to_datetime
 from services.tcgdex_languages import is_supported_tcgdex_language, normalize_tcgdex_language
-from services.gemini_rate_limit import acquire_gemini_slot, penalize_gemini_key
+from services.gemini_rate_limit import (
+    GeminiKeyBlockedError,
+    acquire_gemini_slot,
+    penalize_gemini_key,
+    record_gemini_success,
+)
 from services.scan_storage import MAX_FILE_BYTES, ScanUploadError, read_limited_upload, sanitize_image_bytes
 import logging
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
@@ -21,6 +29,20 @@ router = APIRouter()
 GEMINI_TRANSIENT_STATUS_CODES = {502, 503, 504}
 DEFAULT_GEMINI_MODEL = "gemini-flash-latest"
 GEMINI_MODELS_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
+MAX_GEMINI_RETRY_SECONDS = 14 * 24 * 60 * 60
+
+
+class GeminiRateLimitHTTPException(HTTPException):
+    """A 429 carrying machine-readable retry metadata for the scan queue."""
+
+    def __init__(self, *, retry_after_seconds: float, retry_reason: str):
+        self.retry_after_seconds = max(0.0, float(retry_after_seconds))
+        self.retry_reason = retry_reason
+        super().__init__(
+            status_code=429,
+            detail="Gemini Rate Limit erreicht – bitte nach der angegebenen Wartezeit erneut versuchen.",
+            headers={"Retry-After": str(max(1, int(self.retry_after_seconds + 0.999)))},
+        )
 
 
 def normalize_scanner_card_number(value) -> str | None:
@@ -84,14 +106,37 @@ def gemini_error_message(resp: httpx.Response) -> str:
 
 def gemini_retry_after_seconds(resp: httpx.Response) -> float | None:
     """Read Gemini's retry hint from a header or google.rpc.RetryInfo body."""
+    def valid_delay(value: float) -> float | None:
+        return (
+            value
+            if math.isfinite(value) and 0 < value <= MAX_GEMINI_RETRY_SECONDS
+            else None
+        )
+
     header = str(resp.headers.get("retry-after", "")).strip()
     if header:
         try:
-            value = float(header)
-            if value > 0:
+            value = valid_delay(float(header))
+            if value is not None:
                 return value
         except ValueError:
-            pass
+            try:
+                retry_at = parsedate_to_datetime(header)
+                if retry_at.tzinfo is None:
+                    retry_at = retry_at.replace(tzinfo=datetime.timezone.utc)
+                response_date = str(resp.headers.get("date", "")).strip()
+                baseline = (
+                    parsedate_to_datetime(response_date)
+                    if response_date
+                    else datetime.datetime.now(datetime.timezone.utc)
+                )
+                if baseline.tzinfo is None:
+                    baseline = baseline.replace(tzinfo=datetime.timezone.utc)
+                value = valid_delay((retry_at - baseline).total_seconds())
+                if value is not None:
+                    return value
+            except (TypeError, ValueError, OverflowError):
+                pass
     try:
         payload = resp.json()
     except ValueError:
@@ -103,8 +148,47 @@ def gemini_retry_after_seconds(resp: httpx.Response) -> float | None:
         delay = str(detail.get("retryDelay", "")).strip()
         match = re.fullmatch(r"([0-9]+(?:\.[0-9]+)?)s", delay)
         if match:
-            return float(match.group(1))
+            value = valid_delay(float(match.group(1)))
+            if value is not None:
+                return value
     return None
+
+
+def gemini_rate_limit_reason(resp: httpx.Response) -> str:
+    """Classify reliable requests-per-day quota signals; default to short-term."""
+    try:
+        payload = resp.json()
+    except ValueError:
+        payload = {}
+    error = payload.get("error", {}) if isinstance(payload, dict) else {}
+    details = error.get("details", []) if isinstance(error, dict) else []
+    signals = []
+    for detail in details if isinstance(details, list) else []:
+        if not isinstance(detail, dict):
+            continue
+        detail_type = str(detail.get("@type") or "")
+        if not detail_type.endswith("google.rpc.QuotaFailure"):
+            continue
+        violations = detail.get("violations", [])
+        for violation in violations if isinstance(violations, list) else []:
+            if not isinstance(violation, dict):
+                continue
+            signals.extend(
+                str(violation.get(key) or "")
+                for key in ("quotaId", "quotaMetric", "subject")
+            )
+
+    normalized = " ".join(signals).lower()
+    compact = re.sub(r"[^a-z0-9]+", "", normalized)
+    daily_markers = (
+        "requestsperday",
+        "requestperday",
+        "generatedrequestsperday",
+        "perdayperproject",
+        "perdayperuser",
+        "dailyquota",
+    )
+    return "daily_quota" if any(marker in compact for marker in daily_markers) else "rate_limit"
 
 
 def get_gemini_key(db: Session, user_id: int = None) -> str:
@@ -140,13 +224,15 @@ async def post_gemini_generate(
             )
 
             if resp.status_code == 429:
-                penalize_gemini_key(
+                retry_reason = gemini_rate_limit_reason(resp)
+                retry_after = penalize_gemini_key(
                     api_key,
                     seconds=gemini_retry_after_seconds(resp),
+                    reason=retry_reason,
                 )
-                raise HTTPException(
-                    status_code=429,
-                    detail="Gemini Rate Limit erreicht – bitte kurz warten und nochmal versuchen.",
+                raise GeminiRateLimitHTTPException(
+                    retry_after_seconds=retry_after,
+                    retry_reason=retry_reason,
                 )
             if resp.status_code in {400, 401, 403}:
                 raise HTTPException(
@@ -173,7 +259,16 @@ async def post_gemini_generate(
                 if upstream_message:
                     detail = f"{detail} Google meldet: {upstream_message}"
                 raise HTTPException(status_code=502, detail=detail)
+            try:
+                record_gemini_success(api_key)
+            except Exception:
+                logger.exception("Could not reset Gemini quota state after a successful response")
             return resp
+        except GeminiKeyBlockedError as error:
+            raise GeminiRateLimitHTTPException(
+                retry_after_seconds=error.retry_after_seconds,
+                retry_reason=error.reason,
+            )
         except HTTPException:
             raise
         except httpx.RequestError as e:

@@ -158,7 +158,7 @@ export function ScanItemPanel({ jobId, item, onAdd, onRetry, onDismiss, onModalC
             <p className="mt-3 flex items-center gap-2 text-sm text-text-muted">
               <Loader2 size={14} className="animate-spin" />
               {item.status === 'retrying'
-                ? formatRetryCountdown(item.next_attempt_at, t, retryNow)
+                ? formatRetryCountdown(item.next_attempt_at, t, retryNow, item.retry_reason)
                 : t('scanner.itemProcessing')}
             </p>
           )}

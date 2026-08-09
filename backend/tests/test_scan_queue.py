@@ -190,6 +190,49 @@ class ScanQueueTests(unittest.TestCase):
         self.assertEqual(item.attempts, 0)
         self.assertEqual(item.transient_failures, 1)
 
+    def test_provider_retry_delay_and_reason_are_persisted(self):
+        self._job(self.users[0])
+        claim = claim_next_scan_item(self.db)
+        before = datetime.datetime.utcnow()
+
+        fail_claim(
+            self.db,
+            claim,
+            "daily quota",
+            transient=True,
+            retry_after_seconds=3600,
+            retry_reason="daily_quota",
+        )
+
+        item = self.db.get(ScanJobItem, claim.item_id)
+        self.assertEqual(item.retry_reason, "daily_quota")
+        self.assertGreaterEqual(
+            item.next_attempt_at,
+            before + datetime.timedelta(seconds=3599),
+        )
+
+    def test_provider_retry_delay_overrides_generic_backoff_exactly(self):
+        self._job(self.users[0])
+        item = self.db.query(ScanJobItem).one()
+        item.transient_failures = 4
+        self.db.commit()
+        claim = claim_next_scan_item(self.db)
+        before = datetime.datetime.utcnow()
+
+        fail_claim(
+            self.db,
+            claim,
+            "daily quota",
+            transient=True,
+            retry_after_seconds=21,
+            retry_reason="daily_quota",
+        )
+
+        self.db.refresh(item)
+        scheduled_delay = (item.next_attempt_at - before).total_seconds()
+        self.assertGreaterEqual(scheduled_delay, 20.9)
+        self.assertLess(scheduled_delay, 22)
+
     def test_recognition_failure_stops_after_three_attempts(self):
         job = self._job(self.users[0])
         item = self.db.query(ScanJobItem).one()
@@ -245,6 +288,7 @@ class ScanQueueTests(unittest.TestCase):
         items[2].status = "retrying"
         retry_at = datetime.datetime.utcnow() + datetime.timedelta(minutes=30)
         items[2].next_attempt_at = retry_at
+        items[2].retry_reason = "daily_quota"
         items[3].status = "done"
         items[3].resolved = True
         self.db.commit()
@@ -257,6 +301,7 @@ class ScanQueueTests(unittest.TestCase):
         self.assertEqual(progress["failed_attention"], 1)
         self.assertEqual(progress["unresolved"], 2)
         self.assertEqual(progress["next_retry_at"], retry_at.isoformat())
+        self.assertEqual(progress["retry_reason"], "daily_quota")
 
     def test_resolve_removes_the_review_photo_immediately(self):
         job = self._job(self.users[0])

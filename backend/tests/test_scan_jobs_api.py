@@ -106,6 +106,7 @@ class ScanJobsApiTests(unittest.TestCase):
         item = self.db.query(ScanJobItem).filter(ScanJobItem.job_id == created["id"]).one()
         item.status = "retrying"
         item.next_attempt_at = retry_at
+        item.retry_reason = "daily_quota"
         self.db.commit()
 
         listed_job = self.client.get("/api/cards/recognize/jobs").json()["jobs"][0]
@@ -114,7 +115,9 @@ class ScanJobsApiTests(unittest.TestCase):
         ).json()["items"][0]
 
         self.assertEqual(listed_job["next_retry_at"], retry_at.isoformat())
+        self.assertEqual(listed_job["retry_reason"], "daily_quota")
         self.assertEqual(detail_item["next_attempt_at"], retry_at.isoformat())
+        self.assertEqual(detail_item["retry_reason"], "daily_quota")
 
     def test_other_user_cannot_access_job_or_photo(self):
         created = self._enqueue()

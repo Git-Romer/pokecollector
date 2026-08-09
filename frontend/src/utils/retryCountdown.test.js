@@ -7,6 +7,8 @@ const t = key => ({
   'scanner.retryingInSeconds': 'Retrying in {seconds}s',
   'scanner.retryingInMinutes': 'Retrying in {minutes}m',
   'scanner.retryingInHours': 'Retrying in {hours}h {minutes}m',
+  'scanner.dailyQuotaRetry': 'Daily quota reached · {countdown}',
+  'scanner.dailyQuotaWaiting': 'Daily quota reached · Waiting to retry…',
 }[key])
 
 describe('retry countdown', () => {
@@ -24,5 +26,14 @@ describe('retry countdown', () => {
 
   it('falls back to the generic retry status without a timestamp', () => {
     expect(formatRetryCountdown(null, t, now)).toBe('Waiting to retry…')
+  })
+
+  it('explains daily quota waits while retaining the live countdown', () => {
+    expect(formatRetryCountdown(
+      '2026-08-09T17:00:00Z',
+      t,
+      now,
+      'daily_quota',
+    )).toBe('Daily quota reached · Retrying in 1h 0m')
   })
 })

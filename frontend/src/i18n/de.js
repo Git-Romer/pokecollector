@@ -1149,6 +1149,8 @@ const de = {
     retryingInSeconds: 'Neuer Versuch in {seconds}s',
     retryingInMinutes: 'Neuer Versuch in {minutes} Min.',
     retryingInHours: 'Neuer Versuch in {hours} Std. {minutes} Min.',
+    dailyQuotaRetry: 'Tageslimit erreicht · {countdown}',
+    dailyQuotaWaiting: 'Tageslimit erreicht · Wartet auf erneuten Versuch…',
     retryIndividually: 'Einzeln erneut versuchen',
     scanIndividually: 'Einzeln scannen',
     scanAllIndividually: 'Alle einzeln scannen',
