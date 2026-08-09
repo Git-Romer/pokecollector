@@ -10,6 +10,7 @@ import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { getEffectiveCardPrice } from '../utils/prices'
 import { getNextDetailNavigationState, useDetailBackNavigation, useScrollToTopOnPush } from '../hooks/useListScrollRestoration'
+import { CardLegend } from '../components/card-system'
 
 function SpeciesArtwork({ species, name }) {
   const handleError = (event) => {
@@ -201,12 +202,13 @@ export default function PokedexSpecies() {
             </div>
           </div>
         </div>
+        {cards.length > 0 && <CardLegend />}
         {cardsQuery.isLoading && <div className="flex justify-center py-16"><PokeBallLoader size={44} /></div>}
         {!cardsQuery.isLoading && cards.length === 0 && (
           <p className="rounded-2xl border border-border bg-bg-card p-6 text-center text-text-muted">{t('pokedex.noCards')}</p>
         )}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-          {cards.map((card) => <CardItem key={card.id} card={card} />)}
+          {cards.map((card) => <CardItem key={card.id} card={card} dimWhenUnowned />)}
         </div>
       </section>
     </div>

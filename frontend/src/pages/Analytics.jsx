@@ -6,13 +6,14 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   AreaChart, Area
 } from 'recharts'
-import { TrendingUp, TrendingDown, Copy, BarChart3, Activity, Plus, X, ShoppingCart } from 'lucide-react'
+import { TrendingUp, TrendingDown, Copy, BarChart3, Activity, Plus, X, ShoppingCart, Info } from 'lucide-react'
 import {
   getDuplicates, getTopMovers, getRarityStats,
   getInvestmentTracker, getTradeStats, getAnalyticsNewSets, getProducts, createProduct
 } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
-import CardListItem from '../components/CardListItem'
+import { CardIdentity, CardRow } from '../components/card-system'
+import { CardModal } from '../components/CardItem'
 import { format, parseISO } from 'date-fns'
 import clsx from 'clsx'
 import PeriodSelector, { CARD_PERIODS, PERIOD_DAYS } from '../components/PeriodSelector'
@@ -39,6 +40,9 @@ function CustomTooltip({ active, payload, label, formatPrice }) {
             {entry.name}: {typeof entry.value === 'number' ? formatPrice(entry.value) : entry.value}
           </p>
         ))}
+        {payload[0]?.payload?.legacy && (
+          <p className="mt-1 text-[10px] text-text-muted">{payload[0].payload.legacyLabel}</p>
+        )}
       </div>
     )
   }
@@ -157,6 +161,7 @@ export default function Analytics() {
   const [moversSort, setMoversSort] = useState('percentage')
   const [activeTab, setActiveTab] = useState('duplicates')
   const [showExpenseModal, setShowExpenseModal] = useState(false)
+  const [selectedCard, setSelectedCard] = useState(null)
   const queryClient = useQueryClient()
   const { data: duplicates = [], isLoading: dupLoading } = useQuery({
     queryKey: ['duplicates', pricePrimaryField],
@@ -206,18 +211,17 @@ export default function Analytics() {
     value: s.value,
     cost: s.cost,
     pnl: s.pnl,
+    legacy: Boolean(s.legacy),
+    legacyLabel: t('home.legacySnapshot'),
   }))
 
   // Investment summary
   const latestSnapshot = investmentData.length > 0 ? investmentData[investmentData.length - 1] : null
-  const soldProducts = products.filter(p => p.sold_price != null)
-  const unsoldProducts = products.filter(p => p.sold_price == null)
-  const totalProductsCost = unsoldProducts.reduce((sum, p) => sum + (p.purchase_price || 0), 0)
-  const totalSoldRevenue = soldProducts.reduce((sum, p) => sum + (p.sold_price || 0), 0)
-  const totalSoldCost = soldProducts.reduce((sum, p) => sum + (p.purchase_price || 0), 0)
-  const productCardRealizedGains = products.reduce((sum, p) => sum + (p.realized_gains || 0), 0)
-  const realizedPnl = totalSoldRevenue - totalSoldCost + productCardRealizedGains
-  const unrealizedPnl = (latestSnapshot?.value ?? 0) - (latestSnapshot?.cost ?? 0)
+  const totalProductsCost = products.reduce((sum, p) => sum + (p.purchase_price || 0), 0)
+  const productsNeedingReviewCount = products.filter(p => p.lifecycle_status === 'review').length
+  const performanceCostBasis = latestSnapshot?.performance_cost_basis ?? latestSnapshot?.cost ?? 0
+  const realizedValue = latestSnapshot?.realized_value ?? 0
+  const totalPnl = latestSnapshot?.pnl ?? 0
   const hasTradeStats = tradeStats && tradeStats.trade_count > 0
 
   return (
@@ -279,12 +283,12 @@ export default function Analytics() {
                     {duplicates.map((item) => (
                       <tr key={item.id} className="border-b border-border/50 hover:bg-bg-elevated/50">
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-3">
-                            {resolveCardImageUrl(item) && (
-                              <img src={resolveCardImageUrl(item)} alt={item.name} className="w-8 h-10 object-cover rounded flex-shrink-0" loading="lazy" />
-                            )}
-                            <span className="text-sm font-medium text-text-primary">{item.name}</span>
-                          </div>
+                          <CardIdentity
+                            card={item}
+                            image={resolveCardImageUrl(item)}
+                            name={item.name}
+                            onClick={() => setSelectedCard({ ...item, id: item.card_id || item.id })}
+                          />
                         </td>
                         <td className="px-4 py-3 text-text-secondary text-xs">{item.set_name || '-'}</td>
                         <td className="px-4 py-3 text-text-secondary text-xs">{item.rarity || '-'}</td>
@@ -298,8 +302,9 @@ export default function Analytics() {
               </div>
               <div className="md:hidden space-y-2 p-2">
                 {duplicates.map((item) => (
-                  <CardListItem
+                  <CardRow
                     key={item.id}
+                    card={item}
                     image={resolveCardImageUrl(item)}
                     name={item.name}
                     subtext={item.set_name || '-'}
@@ -309,6 +314,7 @@ export default function Analytics() {
                     ]}
                     value={formatPrice(item.total_value)}
                     valueSecondary={formatPrice(item.price_market)}
+                    onClick={() => setSelectedCard({ ...item, id: item.card_id || item.id })}
                   />
                 ))}
               </div>
@@ -355,28 +361,29 @@ export default function Analytics() {
           ) : (
             <div className="space-y-2">
               {topMovers.map((card) => (
-                <div key={card.card_id} className="card flex items-center gap-4">
-                  {resolveCardImageUrl(card) && (
-                    <img src={resolveCardImageUrl(card)} alt={card.name} className="w-10 h-14 object-cover rounded flex-shrink-0" loading="lazy" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-text-primary truncate">{card.name}</p>
-                    <p className="text-xs text-text-muted">{card.rarity}</p>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <p className="text-sm text-text-secondary">{formatPrice(card.old_price)} → {formatPrice(card.current_price)}</p>
-                    <div className={clsx(
-                      'flex items-center justify-end gap-1 font-bold',
-                      card.change_pct >= 0 ? 'text-green' : 'text-brand-red'
-                    )}>
-                      {card.change_pct >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-                      {card.change_pct >= 0 ? '+' : ''}{card.change_pct}%
-                      <span className="text-xs font-normal ml-1">
-                        ({card.change_abs >= 0 ? '+' : ''}{formatPrice(card.change_abs)})
-                      </span>
+                <CardRow
+                  key={card.card_id}
+                  card={card}
+                  image={resolveCardImageUrl(card)}
+                  name={card.name}
+                  subtext={card.rarity}
+                  onClick={() => setSelectedCard({ ...card, id: card.card_id })}
+                  rightAction={(
+                    <div className="flex-shrink-0 text-right">
+                      <p className="text-sm text-text-secondary">{formatPrice(card.old_price)} → {formatPrice(card.current_price)}</p>
+                      <div className={clsx(
+                        'flex items-center justify-end gap-1 font-bold',
+                        card.change_pct >= 0 ? 'text-green' : 'text-brand-red'
+                      )}>
+                        {card.change_pct >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                        {card.change_pct >= 0 ? '+' : ''}{card.change_pct}%
+                        <span className="ml-1 text-xs font-normal">
+                          ({card.change_abs >= 0 ? '+' : ''}{formatPrice(card.change_abs)})
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                </div>
+                  )}
+                />
               ))}
             </div>
           )}
@@ -480,8 +487,8 @@ export default function Analytics() {
                 <p className="text-xs text-text-muted mt-0.5">
                   {t('analytics.current')}: <span className="text-green font-bold">{formatPrice(latestSnapshot.value)}</span>
                   {' · '}{t('dashboard.invested')}: <span className="text-text-primary font-medium">{formatPrice(latestSnapshot.cost)}</span>
-                  {totalProductsCost > 0 && (
-                    <> · {t('analytics.products')}: <span className="text-yellow font-medium">{formatPrice(totalProductsCost)}</span></>
+                  {Number(latestSnapshot.products_value ?? 0) > 0 && (
+                    <> · {t('analytics.products')}: <span className="text-yellow font-medium">{formatPrice(latestSnapshot.products_value)}</span></>
                   )}
                 </p>
               )}
@@ -494,14 +501,14 @@ export default function Analytics() {
             </button>
           </div>
 
-          {/* Summary stats — Gesamt-Investiert, Verkaufserlöse, Realisierter G&V, Unrealisierter G&V */}
+          {/* Summary stats use the same versioned portfolio calculation as the dashboard. */}
           {(products.length > 0 || latestSnapshot) && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {[
-                { label: t('analytics.totalInvested'), value: formatPrice((latestSnapshot?.cost ?? 0) + totalSoldCost), color: '#90a4ae' },
-                { label: t('analytics.totalSoldRevenue'), value: formatPrice(totalSoldRevenue), color: '#66bb6a' },
-                { label: t('analytics.realizedPnl'), value: formatPrice(realizedPnl), color: realizedPnl >= 0 ? '#66bb6a' : '#e3000b' },
-                { label: t('analytics.unrealizedPnl'), value: formatPrice(unrealizedPnl), color: unrealizedPnl >= 0 ? '#66bb6a' : '#e3000b' },
+                { label: t('analytics.trackedCost'), value: formatPrice(performanceCostBasis), color: '#90a4ae' },
+                { label: t('home.portfolioValue'), value: formatPrice(latestSnapshot?.value ?? 0), color: '#f5c842' },
+                { label: t('analytics.trackedProceeds'), value: formatPrice(realizedValue), color: '#66bb6a' },
+                { label: t('analytics.totalPnl'), value: formatPrice(totalPnl), color: totalPnl >= 0 ? '#66bb6a' : '#e3000b' },
               ].map(stat => (
                 <div key={stat.label} className="rounded-xl p-3 text-center"
                   style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
@@ -510,6 +517,26 @@ export default function Analytics() {
                 </div>
               ))}
             </div>
+          )}
+
+          {latestSnapshot?.product_value_fallback_count > 0 && (
+            <p className="flex items-start gap-2 rounded-lg border border-yellow/20 bg-yellow/5 px-3 py-2 text-xs text-text-muted">
+              <Info size={14} className="mt-0.5 shrink-0 text-yellow" aria-hidden="true" />
+              <span>{latestSnapshot.product_value_fallback_count} {t('home.productValueFallback')}</span>
+            </p>
+          )}
+
+          {productsNeedingReviewCount > 0 && (
+            <p className="flex items-start gap-2 rounded-lg border border-yellow/20 bg-yellow/5 px-3 py-2 text-xs text-text-muted">
+              <Info size={14} className="mt-0.5 shrink-0 text-yellow" aria-hidden="true" />
+              <span>{productsNeedingReviewCount} {t('home.productsNeedReview')}</span>
+            </p>
+          )}
+
+          {chartData.some(point => point.legacy) && (
+            <p className="rounded-lg border border-border bg-bg-elevated/40 px-3 py-2 text-xs text-text-muted">
+              {t('analytics.legacySnapshotNotice')}
+            </p>
           )}
 
           {hasTradeStats && (
@@ -649,14 +676,17 @@ export default function Analytics() {
                       const pnlPositive = pnl >= 0
 
                       return (
-                        <div key={p.id} className="flex items-center justify-between py-2 border-b border-border/30 last:border-0">
+                        <div key={p.id} className="flex flex-col gap-2 border-b border-border/30 py-2 last:border-0 sm:flex-row sm:items-center sm:justify-between">
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-text-primary truncate">{p.product_name}</p>
                             <p className="text-xs text-text-muted">
                               {p.product_type} · {p.purchase_date}
                             </p>
+                            {p.value_source === 'purchase_cost_fallback' && (
+                              <p className="text-[10px] text-text-muted">{t('products.costFallback')}</p>
+                            )}
                           </div>
-                          <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                          <div className="flex flex-wrap items-center gap-2 sm:ml-2 sm:flex-shrink-0">
                             {isSold ? (
                               <span className="text-xs bg-green/20 text-green px-1.5 py-0.5 rounded">{t('analytics.statusSold')}</span>
                             ) : (
@@ -682,7 +712,7 @@ export default function Analytics() {
                   </div>
                   <div className="border-t border-border pt-2 mt-2 flex justify-between text-sm">
                     <span className="text-text-muted">{t('analytics.totalInvestedProducts')}</span>
-                    <span className="font-bold text-brand-red">{formatPrice(totalProductsCost + totalSoldCost)}</span>
+                    <span className="font-bold text-brand-red">{formatPrice(totalProductsCost)}</span>
                   </div>
                 </div>
               )}
@@ -695,6 +725,13 @@ export default function Analytics() {
         <AddExpenseModal
           onClose={() => setShowExpenseModal(false)}
           onSuccess={() => queryClient.invalidateQueries({ queryKey: ['investment-tracker'] })}
+        />
+      )}
+      {selectedCard && (
+        <CardModal
+          card={selectedCard}
+          onClose={() => setSelectedCard(null)}
+          initialTab="overview"
         />
       )}
     </div>

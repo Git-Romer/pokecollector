@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { getPublicProfile } from '../api/publicClient'
 import { formatEur } from '../utils/formatEur'
+import { formatBinderCountSummary } from '../utils/binderCounts'
 import { useSettings } from '../contexts/SettingsContext'
 
 export default function PublicProfile() {
@@ -48,7 +49,7 @@ export default function PublicProfile() {
                   style={{ borderLeftColor: binder.color, borderLeftWidth: 4 }}>
               <div className="font-semibold">{binder.name}</div>
               <div className="mt-1 text-sm text-text-secondary">
-                {binder.unique_card_count} {binder.unique_card_count === 1 ? t('binders.card') : t('binders.cards')}
+                {formatBinderCountSummary(binder.card_count, binder.unique_card_count, t)}
                 {binder.total_value != null ? ` · ${formatEur(binder.total_value)}` : ''}
               </div>
             </Link>

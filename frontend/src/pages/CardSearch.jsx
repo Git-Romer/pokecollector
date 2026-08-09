@@ -1,23 +1,21 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
-import { Search, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, SortAsc, Hash, PenLine, SlidersHorizontal, Camera, CheckSquare, Plus, Check } from 'lucide-react'
+import { Search, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, SortAsc, Hash, PenLine, SlidersHorizontal, Camera, CheckSquare, Plus } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { searchCards, getSets, getCustomCards, bulkAddToCollection } from '../api/client'
 import { CardItem, CustomCardModal, CardModal } from '../components/CardItem'
-import CardStateIndicators from '../components/CardStateIndicators'
 import { useSettings } from '../contexts/SettingsContext'
 import Sheet from '../components/ui/Sheet'
 import CardScanner from '../components/CardScanner'
 import { getDefaultVariantOrNull } from '../utils/cardVariants'
 import { cardNumberMatches } from '../utils/cardNumbers'
 import { normalizeSearchText, textIncludes } from '../utils/textSearch'
-import { useTilt } from '../hooks/useTilt'
 import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
-import { normalizeTcgdexLanguage, tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
+import { normalizeTcgdexLanguage, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
-import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
+import { CardDisplay, CardLegend } from '../components/card-system'
 import {
   getLastCardSearchPage,
   isValidCardSearchPage,
@@ -25,22 +23,6 @@ import {
   resetCardSearchFilters,
   updateCardSearchParams,
 } from '../utils/cardSearchUrlState'
-
-function TiltCardWrapper({ children, className, onClick }) {
-  const { ref, onMouseMove, onMouseEnter, onMouseLeave } = useTilt(12)
-  return (
-    <div
-      ref={ref}
-      className={className}
-      onClick={onClick}
-      onMouseMove={onMouseMove}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
-    >
-      {children}
-    </div>
-  )
-}
 
 const CODE_NUMBER_RE = /^([A-Za-z]+\d*)\s+(\d+)$/
 
@@ -144,7 +126,7 @@ function FilterForm({ filters, setFilter, allSeries, setsForSeries, toggleSortOr
 }
 
 export default function CardSearch() {
-  const { t, settings } = useSettings()
+  const { t, settings, formatPrice } = useSettings()
   const visibleLanguages = useVisibleTcgdexLanguages()
   const queryClient = useQueryClient()
   const location = useLocation()
@@ -155,6 +137,7 @@ export default function CardSearch() {
   const [showCustomModal, setShowCustomModal] = useState(false)
   const [showScanner, setShowScanner] = useState(false)
   const [selectedCard, setSelectedCard] = useState(null)
+  const [selectedCardTab, setSelectedCardTab] = useState('overview')
   const [selectMode, setSelectMode] = useState(false)
   const [selectedItems, setSelectedItems] = useState(new Map()) // card.id -> { card_id, lang }
   const pageSize = 20
@@ -222,15 +205,6 @@ export default function CardSearch() {
     if (!filters.series) return allSets
     return allSets.filter(s => s.series === filters.series)
   }, [allSets, filters.series])
-
-  const setMap = useMemo(() => {
-    const map = {}
-    allSets.forEach(s => {
-      if (s.tcg_set_id) map[s.tcg_set_id] = s
-      if (s.id) map[s.id] = s
-    })
-    return map
-  }, [allSets])
 
   const updateSearchParams = useCallback((updates, { replace = false, resetPage = true } = {}) => {
     const next = updateCardSearchParams(location.search, updates, { resetPage })
@@ -607,6 +581,12 @@ export default function CardSearch() {
         </div>
       </Sheet>
 
+      {(matchedCustomCards.length > 0 || (data?.data || []).length > 0) && (
+        <CardLegend
+          legendProps={{ showSelection: true }}
+        />
+      )}
+
       {/* ─── Empty / loading / error states ──────────────────────── */}
       {!hasQuery && (
         <div className="text-center py-20">
@@ -652,7 +632,7 @@ export default function CardSearch() {
       {data && !isLoading && hasQuery && (
         <>
           {selectMode && (
-            <div className="card flex flex-wrap items-center gap-2 sticky top-2 z-20 bg-bg-elevated/95 backdrop-blur">
+            <div className="card sticky top-2 z-20 hidden flex-wrap items-center gap-2 bg-bg-elevated/95 backdrop-blur sm:flex">
               <span className="text-sm font-semibold text-brand-red">
                 {selectedItems.size} {t('cardSearch.selected')}
               </span>
@@ -690,6 +670,31 @@ export default function CardSearch() {
               </button>
             </div>
           )}
+          {selectMode && (
+            <div className="fixed bottom-20 left-3 right-3 z-40 flex items-center gap-2 rounded-2xl border border-white/15 bg-bg-surface/95 p-3 shadow-2xl backdrop-blur sm:hidden">
+              <span className="min-w-0 flex-1 text-sm font-semibold text-brand-red">
+                {selectedItems.size} {t('cardSearch.selected')}
+              </span>
+              <button
+                type="button"
+                onClick={clearSelection}
+                disabled={selectedItems.size === 0}
+                className="btn-ghost px-3 disabled:opacity-50"
+                aria-label={t('cardSearch.clearSelection')}
+              >
+                <X size={15} />
+              </button>
+              <button
+                type="button"
+                onClick={() => bulkAddMutation.mutate()}
+                disabled={selectedItems.size === 0 || bulkAddMutation.isPending}
+                className="btn-primary justify-center px-3 text-sm disabled:opacity-50"
+              >
+                <Plus size={14} />
+                {bulkAddMutation.isPending ? t('card.adding') : t('cardSearch.addSelected')}
+              </button>
+            </div>
+          )}
 
           <div className="flex items-center justify-between flex-wrap gap-2">
             <p className="text-sm text-text-secondary">
@@ -720,52 +725,29 @@ export default function CardSearch() {
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {data.data?.map((card) => {
                 const imgSrc = card.images?.small || card.images_small || (card.image ? `${card.image}/low.webp` : null)
-                const setObj = setMap[card.set_id] || null
-                const cardSetName = card.set?.name || setObj?.abbreviation || setObj?.name || card.set_id || ''
-                const cardDisplay = cardSetName + (card.number ? ` · #${card.number}` : '')
                 const isSelected = selectedItems.has(card.id)
+                const cardPrice = card.price_market ?? card.price_trend ?? null
                 return (
-                  <TiltCardWrapper
+                  <CardDisplay
                     key={card.id}
-                    className={`card-3d group relative ${selectMode && isSelected ? 'ring-2 ring-brand-red rounded-xl' : ''}`}
-                    onClick={() => (selectMode ? toggleSelected(card) : setSelectedCard(card))}
-                  >
-                    <div className={`relative aspect-[2.5/3.5] rounded-xl overflow-hidden bg-bg-elevated ring-1 ring-white/5 group-hover:ring-brand-red/40 ${getCardVariantEffectClass(card)}`}>
-                      {imgSrc
-                        ? <img src={imgSrc} alt={card.name} className="w-full h-full object-cover" loading="lazy" />
-                        : <div className="w-full h-full flex flex-col items-center justify-center gap-1 p-2">
-                            <span className="text-[10px] text-text-muted text-center leading-tight">{card.name}</span>
-                          </div>
+                    card={card}
+                    image={imgSrc}
+                    price={cardPrice > 0 ? formatPrice(cardPrice) : null}
+                    languageLabel={card._lang && langFilter === 'all' ? tcgdexLanguageLabel(card._lang) : null}
+                    selected={selectMode && isSelected}
+                    onSelect={selectMode ? () => toggleSelected(card) : undefined}
+                    onClick={() => {
+                      if (selectMode) toggleSelected(card)
+                      else {
+                        setSelectedCardTab('overview')
+                        setSelectedCard(card)
                       }
-                      {selectMode && (
-                        <div
-                          className={`absolute bottom-1.5 left-1.5 z-10 w-6 h-6 rounded-md flex items-center justify-center border-2 transition-colors pointer-events-none ${
-                            isSelected
-                              ? 'bg-brand-red border-brand-red text-white'
-                              : 'bg-bg-elevated/80 border-white/40 backdrop-blur'
-                          }`}
-                        >
-                          {isSelected && <Check size={14} strokeWidth={3} />}
-                        </div>
-                      )}
-                    </div>
-                    <CardStateIndicators
-                      card={card}
-                      compact
-                      className="absolute left-1.5 right-1.5 top-1.5 z-10"
-                    />
-                    <div className="mt-1.5 px-0.5">
-                      <div className="flex items-center gap-1">
-                        <p className="text-[11px] font-semibold text-text-primary truncate leading-tight flex-1">{card.name}</p>
-                        {card._lang && langFilter === 'all' && (
-                          <span className={`flex-shrink-0 text-[9px] font-black px-1 py-0.5 rounded leading-none ${tcgdexLanguageBadgeClass(card._lang)}`}>
-                            {tcgdexLanguageLabel(card._lang)}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[10px] text-text-muted truncate">{cardDisplay}</p>
-                    </div>
-                  </TiltCardWrapper>
+                    }}
+                    onAdd={!selectMode ? () => {
+                      setSelectedCardTab('add')
+                      setSelectedCard(card)
+                    } : undefined}
+                  />
                 )
               })}
             </div>
@@ -788,6 +770,7 @@ export default function CardSearch() {
           onClose={() => setSelectedCard(null)}
           defaultLang={selectedCard._lang || (langFilter === 'all' ? 'en' : langFilter)}
           ownedItems={selectedCard.owned_items || []}
+          initialTab={selectedCardTab}
         />
       )}
 

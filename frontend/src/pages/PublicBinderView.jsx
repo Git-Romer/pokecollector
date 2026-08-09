@@ -5,9 +5,9 @@ import clsx from 'clsx'
 import { getPublicBinder } from '../api/publicClient'
 import { formatEur } from '../utils/formatEur'
 import { groupCardsByPrint } from '../utils/groupCardsByPrint'
+import { formatBinderCountSummary } from '../utils/binderCounts'
 import { useSettings } from '../contexts/SettingsContext'
-import CardStateIndicators, { CardStateLegend } from '../components/CardStateIndicators'
-import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
+import { CardLegend, CardStack } from '../components/card-system'
 
 export default function PublicBinderView() {
   const { handle, binderId } = useParams()
@@ -42,7 +42,7 @@ export default function PublicBinderView() {
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-text-muted">{t('publicProfiles.sharedBinder')}</p>
             <h1 className="text-2xl font-bold">{binder.name}</h1>
             <p className="mt-1 text-sm text-text-secondary">
-              {binder.unique_card_count} {binder.unique_card_count === 1 ? t('binders.uniqueCard') : t('binders.uniqueCards')}
+              {formatBinderCountSummary(binder.card_count, binder.unique_card_count, t)}
             </p>
           </div>
           {binder.total_value != null && (
@@ -70,7 +70,7 @@ export default function PublicBinderView() {
             <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
               {t('setDetail.badgeLegend')}
             </p>
-            <CardStateLegend showOwnershipFallback={false} showWishlist={false} />
+            <CardLegend collapsible={false} showWishlist={false} />
           </div>
         )}
 
@@ -81,41 +81,19 @@ export default function PublicBinderView() {
           const layerOffset = 8
           return (
             <article key={tile.id} className="rounded-xl border border-border bg-bg-secondary p-2 shadow-sm">
-              <div className="relative" style={{ marginRight: backLayers * layerOffset, marginBottom: backLayers * layerOffset }}>
-                {Array.from({ length: backLayers }).map((_, idx) => {
-                  const depth = idx + 1
-                  return (
-                    <div
-                      key={idx}
-                      aria-hidden
-                      className="absolute inset-0 overflow-hidden rounded border border-border bg-bg-secondary shadow-sm"
-                      style={{
-                        transform: `translate(${depth * layerOffset}px, ${depth * layerOffset}px) rotate(${depth * 2}deg)`,
-                        zIndex: backLayers - idx,
-                      }}
-                    >
-                      {tile.image && (
-                        <img src={tile.image} alt="" className="h-full w-full object-cover" loading="lazy" />
-                      )}
-                    </div>
-                  )
-                })}
-                <div className={clsx(
-                  'relative z-10 aspect-[5/7] overflow-hidden rounded bg-bg-secondary',
-                  getCardVariantEffectClass(tile.prints)
-                )}>
-                  {tile.image
-                    ? <img src={tile.image} alt={tile.name} className="w-full h-full object-cover" loading="lazy" />
-                    : <div className="w-full h-full" />}
-                  <CardStateIndicators
-                    card={{ owned_variants: tile.prints }}
-                    compact
-                    showWishlist={false}
-                    alwaysShowQuantity
-                    className="absolute left-1 right-1 top-1 z-20"
-                  />
-                </div>
-              </div>
+              <CardStack
+                card={tile}
+                image={tile.image}
+                alt={tile.name}
+                layers={backLayers}
+                layerOffset={layerOffset}
+                variantEffectSource={tile.prints}
+                stateIndicatorProps={{
+                  card: { owned_variants: tile.prints },
+                  showWishlist: false,
+                  alwaysShowQuantity: true,
+                }}
+              />
               <div className="mt-1 text-sm font-medium truncate">{tile.name}</div>
               <div className="text-xs text-text-secondary">{tile.set_name} · #{tile.number}</div>
               {tile.total_value != null && (

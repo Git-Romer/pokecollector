@@ -32,7 +32,7 @@ PER_USER_KEYS = {
     "set_overview_filters", "hidden_set_ids",
     "telegram_bot_token", "telegram_chat_id", "telegram_enabled",
     "price_alerts_enabled", "price_alert_threshold",
-    "gemini_api_key", "trainer_name",
+    "gemini_api_key", "trainer_name", "portfolio_display_mode",
 }
 
 ADMIN_ONLY_KEYS = {
@@ -54,6 +54,7 @@ DEFAULT_SETTINGS = {
     "language": "en",
     "currency": "EUR",
     "price_primary": "trend",
+    "portfolio_display_mode": "portfolio_value",
     "price_display": '["trend", "avg", "avg1", "avg7", "avg30", "low"]',
     "set_overview_filters": "{}",
     "hidden_set_ids": "[]",
@@ -82,6 +83,11 @@ def _coerce_setting_value(key: str, value) -> str:
         PUBLIC_PROFILES_SETTING_KEY,
     }:
         return "true" if str(value).lower() in {"true", "1", "yes", "on"} else "false"
+    if key == "portfolio_display_mode":
+        normalized = str(value).strip().lower()
+        if normalized not in {"portfolio_value", "capital_invested"}:
+            raise HTTPException(status_code=422, detail="portfolio_display_mode is invalid")
+        return normalized
     return str(value)
 
 

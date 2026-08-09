@@ -34,6 +34,7 @@ DEFAULT_SETTINGS = {
     "language": "en",
     "price_display": '["trend", "avg", "avg1", "avg7", "avg30", "low"]',
     "price_primary": "trend",
+    "portfolio_display_mode": "portfolio_value",
     "multi_user_mode": "false",
     "tcgdex_sync_languages": "en,de",
     "tcgdex_digital_sets_enabled": "true",
@@ -242,12 +243,20 @@ def _run_migrations(conn):
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS playable_fingerprint VARCHAR",
         "CREATE INDEX IF NOT EXISTS idx_cards_playable_fingerprint ON cards(playable_fingerprint)",
         "UPDATE binder_cards SET required_quantity = 1 WHERE required_quantity IS NULL",
-        """UPDATE binder_cards
-           SET required_quantity = 1
-           FROM binders
-           WHERE binder_cards.binder_id = binders.id
-             AND binder_cards.collection_item_id IS NOT NULL
-             AND (binders.binder_type = 'collection' OR binders.binder_type IS NULL)""",
+        "UPDATE binder_cards SET required_quantity = 1 WHERE required_quantity < 1",
+        "UPDATE binder_cards SET required_quantity = 99 WHERE required_quantity > 99",
+        "ALTER TABLE binder_cards ALTER COLUMN required_quantity SET DEFAULT 1",
+        "ALTER TABLE binder_cards ALTER COLUMN required_quantity SET NOT NULL",
+        """DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'ck_binder_card_quantity_range'
+            ) THEN
+                ALTER TABLE binder_cards ADD CONSTRAINT ck_binder_card_quantity_range
+                    CHECK (required_quantity >= 1 AND required_quantity <= 99);
+            END IF;
+        END$$""",
         "ALTER TABLE binder_cards DROP CONSTRAINT IF EXISTS uq_binder_card",
         """DO $$
         BEGIN
@@ -362,6 +371,59 @@ def _run_migrations(conn):
         "ALTER TABLE trade_items DROP CONSTRAINT IF EXISTS trade_items_card_id_fkey",
         "ALTER TABLE trade_items ALTER COLUMN card_id DROP NOT NULL",
         "ALTER TABLE trade_items ADD CONSTRAINT trade_items_card_id_fkey FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE SET NULL",
+        # v52: Exact inventory and product-ledger provenance for atomic trade edits.
+        "ALTER TABLE trade_items ADD COLUMN IF NOT EXISTS purchase_price FLOAT",
+        "ALTER TABLE trade_items ADD COLUMN IF NOT EXISTS snapshot_version INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE trade_items DROP CONSTRAINT IF EXISTS ck_trade_items_purchase_price_non_negative",
+        "ALTER TABLE trade_items ADD CONSTRAINT ck_trade_items_purchase_price_non_negative CHECK (purchase_price IS NULL OR purchase_price >= 0)",
+        "ALTER TABLE trade_items DROP CONSTRAINT IF EXISTS ck_trade_items_snapshot_version_non_negative",
+        "ALTER TABLE trade_items ADD CONSTRAINT ck_trade_items_snapshot_version_non_negative CHECK (snapshot_version >= 0)",
+        "ALTER TABLE product_ledger_entries ADD COLUMN IF NOT EXISTS trade_item_id INTEGER",
+        "ALTER TABLE product_ledger_entries DROP CONSTRAINT IF EXISTS product_ledger_entries_trade_item_id_fkey",
+        "ALTER TABLE product_ledger_entries ADD CONSTRAINT product_ledger_entries_trade_item_id_fkey FOREIGN KEY (trade_item_id) REFERENCES trade_items(id) ON DELETE SET NULL",
+        "CREATE INDEX IF NOT EXISTS idx_product_ledger_trade_item ON product_ledger_entries(trade_item_id)",
+        # v53: Versioned combined card and sealed-product portfolio snapshots.
+        # Existing rows remain calculation_version=1 and retain their historical values.
+        "ALTER TABLE portfolio_snapshots ADD COLUMN IF NOT EXISTS calculation_version INTEGER NOT NULL DEFAULT 1",
+        "ALTER TABLE portfolio_snapshots ADD COLUMN IF NOT EXISTS cards_value FLOAT",
+        "ALTER TABLE portfolio_snapshots ADD COLUMN IF NOT EXISTS products_value FLOAT",
+        "ALTER TABLE portfolio_snapshots ADD COLUMN IF NOT EXISTS cards_cost FLOAT",
+        "ALTER TABLE portfolio_snapshots ADD COLUMN IF NOT EXISTS products_cost FLOAT",
+        "ALTER TABLE portfolio_snapshots ADD COLUMN IF NOT EXISTS performance_cost_basis FLOAT",
+        "ALTER TABLE portfolio_snapshots ADD COLUMN IF NOT EXISTS realized_value FLOAT",
+        "ALTER TABLE portfolio_snapshots ADD COLUMN IF NOT EXISTS unrealized_pnl FLOAT",
+        "ALTER TABLE portfolio_snapshots ADD COLUMN IF NOT EXISTS realized_pnl FLOAT",
+        "ALTER TABLE portfolio_snapshots ADD COLUMN IF NOT EXISTS total_pnl FLOAT",
+        "ALTER TABLE portfolio_snapshots ADD COLUMN IF NOT EXISTS product_value_fallback_count INTEGER",
+        "CREATE INDEX IF NOT EXISTS ix_product_purchases_user_id ON product_purchases(user_id)",
+        "CREATE INDEX IF NOT EXISTS ix_portfolio_snapshots_user_date ON portfolio_snapshots(user_id, date)",
+        # v54: Explicit product lifecycle. Legacy products without enough
+        # provenance are held for review instead of being assumed sealed.
+        "ALTER TABLE product_purchases ADD COLUMN IF NOT EXISTS lifecycle_status VARCHAR",
+        """UPDATE product_purchases
+           SET lifecycle_status = CASE
+               WHEN EXISTS (
+                   SELECT 1 FROM product_cards
+                   WHERE product_cards.product_id = product_purchases.id
+               ) OR EXISTS (
+                   SELECT 1 FROM product_ledger_entries
+                   WHERE product_ledger_entries.product_id = product_purchases.id
+               ) THEN 'opened'
+               WHEN sold_price IS NOT NULL THEN 'sold'
+               ELSE 'review'
+           END
+           WHERE lifecycle_status IS NULL""",
+        "ALTER TABLE product_purchases ALTER COLUMN lifecycle_status SET DEFAULT 'sealed'",
+        "ALTER TABLE product_purchases ALTER COLUMN lifecycle_status SET NOT NULL",
+        "ALTER TABLE product_purchases DROP CONSTRAINT IF EXISTS ck_product_purchases_lifecycle_status",
+        "ALTER TABLE product_purchases ADD CONSTRAINT ck_product_purchases_lifecycle_status CHECK (lifecycle_status IN ('sealed', 'opened', 'sold', 'review'))",
+        # v55: Batch-created products remain independent while retaining their
+        # shared creation group for convenient presentation.
+        "ALTER TABLE product_purchases ADD COLUMN IF NOT EXISTS batch_id VARCHAR",
+        "CREATE INDEX IF NOT EXISTS ix_product_purchases_user_batch ON product_purchases(user_id, batch_id)",
+        # v56: Optional manual imagery and Cardmarket references for sealed products.
+        "ALTER TABLE product_purchases ADD COLUMN IF NOT EXISTS image_url VARCHAR",
+        "ALTER TABLE product_purchases ADD COLUMN IF NOT EXISTS cardmarket_url VARCHAR",
         """UPDATE sets
            SET is_digital = TRUE
            WHERE COALESCE(is_digital, FALSE) = FALSE
@@ -446,6 +508,54 @@ def migrate_collection_variants():
     except Exception as e:
         db.rollback()
         logger.warning("migrate_collection_variants: migration aborted: %s", e)
+    finally:
+        db.close()
+
+
+def migrate_legacy_collection_binder_entries():
+    """Link legacy card-level collection binder rows to an owned exact item."""
+    from models import Binder, BinderCard, CollectionItem
+    from services.binder_allocations import collection_binder_allocation_counts, stored_binder_quantity
+
+    db = SessionLocal()
+    try:
+        entries = db.query(BinderCard, Binder.user_id).join(
+            Binder, Binder.id == BinderCard.binder_id
+        ).filter(
+            (Binder.binder_type == "collection") | Binder.binder_type.is_(None),
+            BinderCard.collection_item_id.is_(None),
+        ).order_by(BinderCard.id.asc()).all()
+        if not entries:
+            return
+
+        migrated = 0
+        for entry, user_id in entries:
+            requested = min(stored_binder_quantity(entry.required_quantity), 99)
+            candidates = db.query(CollectionItem).filter(
+                CollectionItem.user_id == user_id,
+                CollectionItem.card_id == entry.card_id,
+                CollectionItem.quantity > 0,
+            ).order_by(CollectionItem.id.asc()).all()
+            usage = collection_binder_allocation_counts(db, user_id, [item.id for item in candidates])
+            target = next(
+                (
+                    item for item in candidates
+                    if int(item.quantity or 0) - int(usage.get(item.id, 0) or 0) >= requested
+                ),
+                None,
+            )
+            if not target:
+                continue
+            entry.collection_item_id = target.id
+            entry.required_quantity = requested
+            migrated += 1
+
+        db.commit()
+        if migrated:
+            logger.info("migrate_legacy_collection_binder_entries: migrated %s row(s)", migrated)
+    except Exception as e:
+        db.rollback()
+        logger.warning("migrate_legacy_collection_binder_entries: migration aborted: %s", e)
     finally:
         db.close()
 
@@ -560,6 +670,12 @@ def init_db():
     except Exception:
         pass  # Non-blocking
 
+    # Link old card-level collection binder rows to exact owned rows.
+    try:
+        migrate_legacy_collection_binder_entries()
+    except Exception:
+        pass  # Non-blocking
+
     # Initialize default settings (INSERT IF NOT EXISTS)
     db = SessionLocal()
     try:
@@ -599,7 +715,7 @@ def init_db():
                 "language", "currency", "price_primary", "price_display",
                 "telegram_bot_token", "telegram_chat_id", "telegram_enabled",
                 "price_alerts_enabled", "price_alert_threshold",
-                "gemini_api_key", "trainer_name",
+                "gemini_api_key", "trainer_name", "portfolio_display_mode",
             }
             for key in per_user_keys:
                 existing_user_setting = db.query(UserSetting).filter(

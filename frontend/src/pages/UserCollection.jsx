@@ -7,12 +7,10 @@ import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
 import { useSettings } from '../contexts/SettingsContext'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 import { CardModal } from '../components/CardItem'
-import CardImage from '../components/CardImage'
-import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
-import FallbackBadges from '../components/FallbackBadges'
 import { getEffectiveCardPrice } from '../utils/prices'
-import { TCGDEX_LANGUAGES } from '../utils/tcgdexLanguages'
+import { TCGDEX_LANGUAGES, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { textIncludes } from '../utils/textSearch'
+import { CardDisplay, CardLegend, withCollectionItemState } from '../components/card-system'
 
 export default function UserCollection() {
   const { userId } = useParams()
@@ -44,6 +42,7 @@ export default function UserCollection() {
   }, [items])
 
   const visibleLanguageCodes = useMemo(() => visibleLanguages.map(language => language.code), [visibleLanguages])
+  const hasMixedLanguages = visibleLanguageCodes.length > 1
 
   useEffect(() => {
     if (filterLang && !visibleLanguageCodes.includes(filterLang)) {
@@ -189,6 +188,14 @@ export default function UserCollection() {
         )}
       </div>
 
+      {items.length > 0 && (
+        <CardLegend
+          legendProps={{
+            showWishlist: false,
+          }}
+        />
+      )}
+
       {isLoading ? (
         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
           {[...Array(12)].map((_, i) => <div key={i} className="skeleton aspect-[2.5/3.5] rounded-xl" />)}
@@ -203,25 +210,22 @@ export default function UserCollection() {
             const imgSrc = resolveCardImageUrl(card)
             const price = getEffectiveCardPrice(card, item.variant, pricePrimaryField)
             return (
-              <div
+              <CardDisplay
                 key={item.id}
-                className="cursor-pointer group"
+                card={card}
+                image={imgSrc}
+                price={price > 0 ? formatPrice(price) : null}
+                languageLabel={hasMixedLanguages && (item.lang || card.lang)
+                  ? tcgdexLanguageLabel(item.lang || card.lang)
+                  : null}
+                variantEffectSource={item.variant}
+                stateIndicatorProps={{
+                  card: withCollectionItemState(card, item),
+                  alwaysShowQuantity: true,
+                  showWishlist: false,
+                }}
                 onClick={() => setSelectedCard(card)}
-              >
-                <div className={`aspect-[2.5/3.5] rounded-xl overflow-hidden ring-1 ring-white/5 group-hover:ring-brand-red/30 transition-all ${getCardVariantEffectClass(item.variant)}`}>
-                  <CardImage src={imgSrc} alt={card.name} className="w-full h-full object-cover" />
-                </div>
-                <div className="mt-1 px-0.5">
-                  <p className="text-[10px] font-semibold text-text-primary truncate">{card.name}</p>
-                  <FallbackBadges card={card} compact />
-                  <div className="flex items-center justify-between">
-                    <span className="text-[9px] text-text-muted">{item.quantity}x · {item.variant || 'Normal'}</span>
-                    {price > 0 && (
-                      <span className="text-[9px] font-bold text-green">{formatPrice(price)}</span>
-                    )}
-                  </div>
-                </div>
-              </div>
+              />
             )
           })}
         </div>

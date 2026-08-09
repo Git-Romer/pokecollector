@@ -9,15 +9,13 @@ import toast from 'react-hot-toast'
 import clsx from 'clsx'
 import { resolveCardImageUrl, resolveSetImageUrl } from '../utils/imageUrl'
 import { CARD_VARIANTS, getAvailableVariants, getDefaultVariantOrNull } from '../utils/cardVariants'
-import FallbackBadges from '../components/FallbackBadges'
-import CardStateIndicators, { CardStateLegend } from '../components/CardStateIndicators'
 import { HOLO_FIELD_MAP } from '../utils/prices'
 import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import MoneyInput from '../components/MoneyInput'
 import { parseMoneyInputValue } from '../utils/moneyInput'
-import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
 import { useDetailBackNavigation, useScrollToTopOnPush } from '../hooks/useListScrollRestoration'
+import { CardDialog, CardDisplay, CardLegend } from '../components/card-system'
 
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
 
@@ -132,13 +130,14 @@ function OwnedVersionRow({ item, onQuantityChange, onRemove, isUpdating, isRemov
   )
 }
 
-function SetCardActionModal({ card, setLang, onClose, onAdd, onAddWishlist, onQuantityChange, onRemove, isAdding, isAddingWishlist, isUpdatingQuantity, isRemoving, t }) {
-  const { exchangeRate, exchangeRateReady } = useSettings()
+function SetCardActionModal({ card, setLang, initialTab = 'overview', onClose, onAdd, onAddWishlist, onQuantityChange, onRemove, isAdding, isAddingWishlist, isUpdatingQuantity, isRemoving, t }) {
+  const { exchangeRate, exchangeRateReady, formatPrice, pricePrimaryField } = useSettings()
   const [addQuantity, setAddQuantity] = useState(1)
   const [addCondition, setAddCondition] = useState('NM')
   const [addVariant, setAddVariant] = useState('Normal')
   const [addLang, setAddLang] = useState(setLang)
   const [addPrice, setAddPrice] = useState('')
+  const [activeTab, setActiveTab] = useState(initialTab)
 
   useEffect(() => {
     if (!card) return
@@ -147,12 +146,21 @@ function SetCardActionModal({ card, setLang, onClose, onAdd, onAddWishlist, onQu
     setAddVariant(getDefaultVariantOrNull(card))
     setAddLang(setLang)
     setAddPrice('')
-  }, [card, setLang])
+    setActiveTab(initialTab)
+  }, [card, initialTab, setLang])
 
   if (!card) return null
   const availableVariants = getAvailableVariants(card)
   const variants = availableVariants.length > 0 ? availableVariants : CARD_VARIANTS
   const ownedItems = card.owned_items || []
+  const marketPrice = setSortPrice(card, pricePrimaryField)
+  const tabs = [
+    { id: 'overview', label: t('cardTabs.overview') },
+    { id: 'prices', label: t('cardTabs.prices') },
+    ...(ownedItems.length > 0 ? [{ id: 'owned', label: t('cardTabs.owned') }] : []),
+    { id: 'add', label: t('cardTabs.add') },
+    { id: 'wishlist', label: t('cardTabs.wishlist') },
+  ]
 
   const submitAddVersion = (event) => {
     event.preventDefault()
@@ -167,32 +175,42 @@ function SetCardActionModal({ card, setLang, onClose, onAdd, onAddWishlist, onQu
     })
   }
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm md:flex md:items-center md:justify-center md:bg-black/80" onClick={onClose}>
-      <div
-        className={[
-          'fixed bottom-0 left-0 right-0 rounded-t-2xl max-h-[90dvh] overflow-y-auto',
-          'bg-bg-surface border-t border-border more-sheet-enter',
-          'md:static md:w-full md:max-w-md md:rounded-2xl md:border md:max-h-[85vh] md:animate-none',
-        ].join(' ')}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex justify-center pt-3 pb-1 md:hidden">
-          <div className="w-10 h-1 bg-border rounded-full" />
-        </div>
-
-        <div className="p-5">
-          <div className="flex items-start justify-between gap-3 mb-4">
-            <div className="min-w-0">
-              <h2 className="text-lg font-bold text-text-primary">{card.name}</h2>
-              <p className="text-xs text-text-muted">#{card.number} · {setLang.toUpperCase()}</p>
-              <FallbackBadges card={card} className="mt-1" />
+  return (
+    <CardDialog
+      card={card}
+      image={resolveCardImageUrl(card)}
+      price={marketPrice > 0 ? formatPrice(marketPrice) : null}
+      tabs={tabs}
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+      onClose={onClose}
+    >
+      {activeTab === 'overview' && (
+        <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+          {[
+            [t('card.rarity'), card.rarity],
+            [t('card.type'), card.supertype],
+            [t('card.hp'), card.hp],
+            [t('card.artist'), card.artist],
+            [t('lang.selectLabel'), setLang.toUpperCase()],
+          ].filter(([, value]) => value).map(([label, value]) => (
+            <div key={label} className="rounded-xl border border-border bg-bg-card p-3">
+              <p className="text-xs text-text-muted">{label}</p>
+              <p className="mt-1 text-sm font-bold text-text-primary">{value}</p>
             </div>
-            <button onClick={onClose} className="text-text-muted hover:text-text-primary"><X size={18} /></button>
-          </div>
+          ))}
+        </div>
+      )}
 
-          <div className="space-y-4">
-            <form onSubmit={submitAddVersion} className="space-y-3 rounded-xl border border-brand-red/30 bg-bg-card p-3">
+      {activeTab === 'prices' && (
+        <div className="rounded-xl border border-border bg-bg-card p-4">
+          <p className="text-xs font-bold uppercase tracking-wide text-text-muted">{t('collection.marketPrice')}</p>
+          <p className="mt-2 text-2xl font-black text-green">{marketPrice > 0 ? formatPrice(marketPrice) : '—'}</p>
+        </div>
+      )}
+
+      {activeTab === 'add' && (
+        <form onSubmit={submitAddVersion} className="space-y-3 rounded-xl border border-brand-red/30 bg-bg-card p-3">
               <p className="text-xs font-semibold text-text-muted mb-2 uppercase tracking-wide">{t('setDetail.addVersion')}</p>
               <p className="text-xs text-text-secondary -mt-1">{t('collection.addAnotherVersionHelp')}</p>
 
@@ -236,47 +254,60 @@ function SetCardActionModal({ card, setLang, onClose, onAdd, onAddWishlist, onQu
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div>
                 <button type="submit" disabled={isAdding || !exchangeRateReady} className="btn-primary justify-center">
                   <Plus size={14} /> {isAdding ? t('card.adding') : t('collection.addVersionToCollection')}
                 </button>
-                <button
-                  type="button"
-                  disabled={isAddingWishlist}
-                  className="btn-ghost justify-center"
-                  onClick={() => onAddWishlist({
-                    card,
-                    quantity: Math.max(1, Math.min(99, parseInt(addQuantity, 10) || 1)),
-                  })}
-                >
-                  <Heart size={14} /> {t('binderTypes.addToWishlist')}
-                </button>
               </div>
-            </form>
+        </form>
+      )}
 
-            {ownedItems.length > 0 && (
-              <div>
-                <p className="text-xs font-semibold text-text-muted mb-2 uppercase tracking-wide">{t('setDetail.ownedVersions')}</p>
-                <div className="space-y-2">
-                  {ownedItems.map(item => (
-                    <OwnedVersionRow
-                      key={item.id}
-                      item={item}
-                      onQuantityChange={onQuantityChange}
-                      onRemove={onRemove}
-                      isUpdating={isUpdatingQuantity}
-                      isRemoving={isRemoving}
-                      t={t}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
+      {activeTab === 'wishlist' && (
+        <div className="space-y-3 rounded-xl border border-border bg-bg-card p-4">
+          <label className="block">
+            <span className="mb-1 block text-xs text-text-muted">{t('card.quantity')}</span>
+            <input
+              type="number"
+              min="1"
+              max="99"
+              value={addQuantity}
+              onChange={(event) => setAddQuantity(event.target.value)}
+              className="input"
+            />
+          </label>
+          <button
+            type="button"
+            disabled={isAddingWishlist}
+            className="btn-primary w-full justify-center"
+            onClick={() => onAddWishlist({
+              card,
+              quantity: Math.max(1, Math.min(99, parseInt(addQuantity, 10) || 1)),
+            })}
+          >
+            <Heart size={14} /> {t('binderTypes.addToWishlist')}
+          </button>
+        </div>
+      )}
+
+      {activeTab === 'owned' && ownedItems.length > 0 && (
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">{t('setDetail.ownedVersions')}</p>
+          <div className="space-y-2">
+            {ownedItems.map(item => (
+              <OwnedVersionRow
+                key={item.id}
+                item={item}
+                onQuantityChange={onQuantityChange}
+                onRemove={onRemove}
+                isUpdating={isUpdatingQuantity}
+                isRemoving={isRemoving}
+                t={t}
+              />
+            ))}
           </div>
         </div>
-      </div>
-    </div>,
-    document.body
+      )}
+    </CardDialog>
   )
 }
 
@@ -284,12 +315,13 @@ export default function SetDetail() {
   const { setId } = useParams()
   const goBack = useDetailBackNavigation('sets', '/sets')
   useScrollToTopOnPush()
-  const { t, pricePrimaryField } = useSettings()
+  const { t, pricePrimaryField, formatPrice } = useSettings()
   const queryClient = useQueryClient()
   const [filter, setFilter] = useState('all')
   const [sortBy, setSortBy] = useState('number')
   const [rarityFilter, setRarityFilter] = useState('all')
   const [selectedCard, setSelectedCard] = useState(null)
+  const [selectedCardTab, setSelectedCardTab] = useState('overview')
   const [binderPickerOpen, setBinderPickerOpen] = useState(false)
   const [badgeLegendOpen, setBadgeLegendOpen] = useState(false)
 
@@ -531,7 +563,7 @@ export default function SetDetail() {
           <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-text-muted">
             {t('setDetail.badgeLegend')}
           </p>
-          <CardStateLegend />
+          <CardLegend collapsible={false} />
         </div>
       )}
 
@@ -566,52 +598,28 @@ export default function SetDetail() {
       {/* Card Grid */}
       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
         {filteredCards.map((card) => (
-          <div key={card.id}
-            onClick={() => setSelectedCard(card)}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedCard(card) }}
-            role="button"
-            tabIndex={0}
-            className={clsx(
-              'relative group rounded-lg overflow-hidden transition-all duration-200',
-              getCardVariantEffectClass(card),
-              card.owned
-                ? 'ring-2 ring-green/50 hover:ring-green cursor-pointer'
-                : 'opacity-60 hover:opacity-90 ring-1 ring-brand-red/30 hover:ring-brand-red/60 cursor-pointer'
-            )}>
-            {resolveCardImageUrl(card) ? (
-              <img src={resolveCardImageUrl(card)} alt={card.name} className="w-full aspect-[2.5/3.5] object-cover" loading="lazy" />
-            ) : (
-              <div className="w-full aspect-[2.5/3.5] bg-bg-card flex items-center justify-center text-xs text-text-muted p-1 text-center">
-                {card.name}
-              </div>
-            )}
-
-            <CardStateIndicators card={card} compact className="absolute left-1 right-1 top-1 z-10" />
-            <div className="absolute left-1 right-1 bottom-6 z-10 flex flex-col items-center gap-1 pointer-events-none">
-              <FallbackBadges card={card} className="justify-center" compact variant="overlay" />
-            </div>
-
-            {/* Above the pills (z-10) so hovering dims them along with the art, rather
-                than leaving them lit on top of the overlay. */}
-            <div className="absolute inset-0 z-20 bg-black/0 group-hover:bg-black/40 transition-all flex flex-col items-center justify-center gap-1 opacity-0 group-hover:opacity-100">
-              <p className="text-white text-xs font-medium text-center px-1 line-clamp-2">{card.name}</p>
-              <button onClick={(e) => { e.stopPropagation(); setSelectedCard(card) }}
-                className="bg-brand-red text-white rounded-full p-1">
-                <Plus size={12} />
-              </button>
-            </div>
-
-
-            <div className="absolute bottom-0 left-0 right-0 z-10 bg-black/60 text-center text-xs text-text-secondary py-0.5">
-              #{card.number}
-            </div>
-          </div>
+          <CardDisplay
+            key={card.id}
+            card={card}
+            image={resolveCardImageUrl(card)}
+            price={setSortPrice(card, pricePrimaryField) > 0 ? formatPrice(setSortPrice(card, pricePrimaryField)) : null}
+            dimWhenUnowned
+            onClick={() => {
+              setSelectedCardTab('overview')
+              setSelectedCard(card)
+            }}
+            onAdd={() => {
+              setSelectedCardTab('add')
+              setSelectedCard(card)
+            }}
+          />
         ))}
       </div>
 
       <SetCardActionModal
         card={selectedCard}
         setLang={setLang}
+        initialTab={selectedCardTab}
         onClose={() => setSelectedCard(null)}
         onAdd={(payload) => addMutation.mutate(payload)}
         onAddWishlist={(payload) => wishlistMutation.mutate(payload)}

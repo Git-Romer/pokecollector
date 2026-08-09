@@ -74,7 +74,7 @@ export default function PeriodSelector({ value, onChange, periods = CARD_PERIODS
               key={p.key}
               onClick={() => onChange(p.key)}
               className={clsx(
-                'rounded-md font-semibold transition-all duration-150 min-h-[36px] touch-manipulation',
+                'min-h-[36px] whitespace-nowrap rounded-md font-semibold transition-all duration-150 touch-manipulation',
                 size === 'sm' ? 'px-2.5 py-1 text-xs' : 'px-4 py-1.5 text-sm',
                 isActive
                   ? 'bg-brand-red text-white shadow-sm'

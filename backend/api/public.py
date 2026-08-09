@@ -27,6 +27,10 @@ class PublicCard(BaseModel):
     rarity: Optional[str] = None
     lang: Optional[str] = None
     variant: Optional[str] = None
+    data_source_lang: Optional[str] = None
+    price_source_lang: Optional[str] = None
+    image_source_lang: Optional[str] = None
+    has_custom_image_fallback: bool = False
     quantity: int
     market_value: Optional[float] = None
 

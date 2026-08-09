@@ -8,6 +8,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from database import Base
 
 POKEDEX_JSON = JSON(none_as_null=True).with_variant(JSONB(none_as_null=True), "postgresql")
+PORTFOLIO_CALCULATION_VERSION = 2
 
 
 class Set(Base):
@@ -228,14 +229,17 @@ class BinderCard(Base):
     binder_id = Column(Integer, ForeignKey("binders.id"), nullable=False)
     card_id = Column(String, ForeignKey("cards.id"), nullable=False)
     collection_item_id = Column(Integer, ForeignKey("collection.id"), nullable=True)
-    required_quantity = Column(Integer, default=1)
+    required_quantity = Column(Integer, default=1, nullable=False)
     added_at = Column(DateTime, default=func.now())
 
     binder = relationship("Binder", back_populates="binder_cards")
     card = relationship("Card", back_populates="binder_cards")
     collection_item = relationship("CollectionItem")
 
-    __table_args__ = (UniqueConstraint("binder_id", "collection_item_id", name="uq_binder_collection_item"),)
+    __table_args__ = (
+        CheckConstraint("required_quantity >= 1 AND required_quantity <= 99", name="ck_binder_card_quantity_range"),
+        UniqueConstraint("binder_id", "collection_item_id", name="uq_binder_collection_item"),
+    )
 
 
 class ProductPurchase(Base):
@@ -250,8 +254,21 @@ class ProductPurchase(Base):
     sold_price = Column(Float)
     purchase_date = Column(Date, nullable=False)
     sold_date = Column(Date)
+    lifecycle_status = Column(String, nullable=False, default="sealed", server_default="sealed")
+    batch_id = Column(String)
+    image_url = Column(String)
+    cardmarket_url = Column(String)
     notes = Column(Text)
     created_at = Column(DateTime, default=func.now())
+
+    __table_args__ = (
+        Index("ix_product_purchases_user_id", "user_id"),
+        Index("ix_product_purchases_user_batch", "user_id", "batch_id"),
+        CheckConstraint(
+            "lifecycle_status IN ('sealed', 'opened', 'sold', 'review')",
+            name="ck_product_purchases_lifecycle_status",
+        ),
+    )
 
 
 class ProductCard(Base):
@@ -299,6 +316,7 @@ class ProductLedgerEntry(Base):
     entry_type = Column(String, nullable=False, default="card_sale")  # card_sale / flat_gain / adjustment
     card_id = Column(String, ForeignKey("cards.id", ondelete="SET NULL"), nullable=True)
     original_collection_item_id = Column(Integer, nullable=True)
+    trade_item_id = Column(Integer, ForeignKey("trade_items.id", ondelete="SET NULL"), nullable=True)
     quantity = Column(Integer, default=1, nullable=False)
     amount = Column(Float, nullable=False)  # Flat total for this ledger event
     event_date = Column(Date, nullable=False)
@@ -360,6 +378,10 @@ class TradeItem(Base):
     original_collection_item_id = Column(Integer, nullable=True)
     created_collection_item_id = Column(Integer, nullable=True)
     product_card_id = Column(Integer, nullable=True)
+    # Inventory provenance added for editable trades. Legacy rows keep
+    # snapshot_version=0 so unsafe reversals can be rejected explicitly.
+    purchase_price = Column(Float, nullable=True)
+    snapshot_version = Column(Integer, default=1, nullable=False)
     quantity = Column(Integer, default=1, nullable=False)
     value_per_card = Column(Float, default=0, nullable=False)
     value_total = Column(Float, default=0, nullable=False)
@@ -380,6 +402,8 @@ class TradeItem(Base):
         CheckConstraint("quantity >= 1", name="ck_trade_items_quantity_positive"),
         CheckConstraint("value_per_card >= 0", name="ck_trade_items_value_per_card_non_negative"),
         CheckConstraint("value_total >= 0", name="ck_trade_items_value_total_non_negative"),
+        CheckConstraint("purchase_price IS NULL OR purchase_price >= 0", name="ck_trade_items_purchase_price_non_negative"),
+        CheckConstraint("snapshot_version >= 0", name="ck_trade_items_snapshot_version_non_negative"),
     )
 
 
@@ -405,6 +429,21 @@ class PortfolioSnapshot(Base):
     total_value = Column(Float, default=0)
     total_cards = Column(Integer, default=0)
     total_cost = Column(Float, default=0)
+    calculation_version = Column(Integer, default=PORTFOLIO_CALCULATION_VERSION, nullable=False)
+    cards_value = Column(Float, nullable=True)
+    products_value = Column(Float, nullable=True)
+    cards_cost = Column(Float, nullable=True)
+    products_cost = Column(Float, nullable=True)
+    performance_cost_basis = Column(Float, nullable=True)
+    realized_value = Column(Float, nullable=True)
+    unrealized_pnl = Column(Float, nullable=True)
+    realized_pnl = Column(Float, nullable=True)
+    total_pnl = Column(Float, nullable=True)
+    product_value_fallback_count = Column(Integer, nullable=True)
+
+    __table_args__ = (
+        Index("ix_portfolio_snapshots_user_date", "user_id", "date"),
+    )
 
 
 class Setting(Base):

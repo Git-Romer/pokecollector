@@ -12,13 +12,13 @@ import { useAuth } from '../contexts/AuthContext'
 import { format, parseISO } from 'date-fns'
 import TrainerCard from '../components/TrainerCard'
 import PokeBallLoader from '../components/PokeBallLoader'
-import CardImage from '../components/CardImage'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 import { collectionItemTargetUrl } from '../utils/navigation'
 import AnalyticsSectionNav from '../components/AnalyticsSectionNav'
+import { CardDisplay, CardLegend, withCollectionItemState } from '../components/card-system'
 
 const CustomTooltip = ({ active, payload, label }) => {
-  const { formatPrice } = useSettings()
+  const { formatPrice, t } = useSettings()
   if (active && payload && payload.length) {
     return (
       <div className="bg-bg-surface border border-border rounded-lg p-3 text-sm shadow-xl">
@@ -28,6 +28,9 @@ const CustomTooltip = ({ active, payload, label }) => {
             {entry.name}: {formatPrice(entry.value)}
           </p>
         ))}
+        {payload[0]?.payload?.legacy && (
+          <p className="mt-1 text-[10px] text-text-muted">{t('home.legacySnapshot')}</p>
+        )}
       </div>
     )
   }
@@ -95,10 +98,12 @@ export default function Dashboard() {
     date: format(parseISO(item.date), 'MMM d'),
     value: item.value,
     cost: item.cost,
+    legacy: Boolean(item.legacy),
   }))
 
   const pnl = data?.pnl || 0
-  const pnlPct = data?.total_cost > 0 ? (pnl / data.total_cost * 100) : 0
+  const performanceCostBasis = Number(data?.performance_cost_basis ?? data?.total_cost ?? 0)
+  const pnlPct = performanceCostBasis > 0 ? (pnl / performanceCostBasis * 100) : 0
   const totalValue = data?.total_value || 0
   const totalCards = data?.total_cards || 0
   const uniqueCards = data?.unique_cards || 0
@@ -128,6 +133,14 @@ export default function Dashboard() {
         />
       )}
 
+      {(data?.recent_additions?.length > 0 || data?.top_cards?.length > 0) && (
+        <CardLegend
+          legendProps={{
+            showWishlist: false,
+          }}
+        />
+      )}
+
       {/* ─── 2. RECENTLY ADDED CAROUSEL ────────────────────────────── */}
       {data?.recent_additions?.length > 0 && (
         <section>
@@ -145,9 +158,14 @@ export default function Dashboard() {
           <div className="flex gap-2.5 overflow-x-auto pb-2 no-scrollbar -mx-4 px-4">
             {data.recent_additions.slice(0, 12).map(card => (
               <div key={card.id} className="flex-shrink-0 w-20 group cursor-pointer" onClick={() => openCollectionItem(card)}>
-                <div className="aspect-[2.5/3.5] rounded-lg overflow-hidden shadow-lg ring-1 ring-white/5 group-hover:ring-brand-red/50 group-hover:scale-[1.03] transition-all duration-150 transform-gpu origin-center">
-                  <CardImage src={resolveCardImageUrl(card)} alt={card.name} className="w-full h-full object-cover" />
-                </div>
+                <CardDisplay
+                  variant="artwork"
+                  card={card}
+                  image={resolveCardImageUrl(card)}
+                  alt={card.name}
+                  variantEffectSource={card.variant}
+                  stateIndicatorProps={{ card: withCollectionItemState(card, card), alwaysShowQuantity: true }}
+                />
                 {card.price_market > 0 && (
                   <p className="text-[10px] font-bold text-gold mt-1 truncate">
                     {formatPrice(card.price_market)}
@@ -164,11 +182,11 @@ export default function Dashboard() {
         <div className="grid grid-cols-3 gap-2">
           {[
             { label: t('dashboard.totalCards'), value: totalCards.toLocaleString() },
-            { label: t('dashboard.collectionValue'), value: formatPrice(Number(totalValue)), gold: true },
+            { label: t('home.portfolioValue'), value: formatPrice(Number(totalValue)), gold: true },
             { label: t('dashboard.sets'), value: `${ownedSets}/${totalSets}` },
           ].map(stat => (
             <div key={stat.label} className="bg-bg-card border border-border rounded-xl p-3 text-center">
-              <p className={`text-xl font-black leading-none ${stat.gold ? 'text-gold' : 'text-white'}`}>
+              <p className={`whitespace-nowrap text-base font-black leading-none tracking-tight sm:text-xl ${stat.gold ? 'text-gold' : 'text-white'}`}>
                 {stat.value}
               </p>
               <p className="text-[10px] text-text-muted uppercase tracking-wider mt-1">{stat.label}</p>
@@ -190,10 +208,15 @@ export default function Dashboard() {
             {data.top_cards.slice(0, 10).map((card, i) => (
               <div key={card.collection_item_id || card.id} className="flex-shrink-0 w-24 group cursor-pointer" onClick={() => openCollectionItem(card)}>
                 <div className="relative">
-                  <div className="aspect-[2.5/3.5] rounded-lg overflow-hidden shadow-lg ring-1 ring-white/5 group-hover:scale-[1.03] transition-all duration-150 group-hover:ring-gold/40 transform-gpu origin-center">
-                    <CardImage src={resolveCardImageUrl(card)} alt={card.name} className="w-full h-full object-cover" />
-                  </div>
-                  <span className="absolute top-1 left-1 bg-black/80 text-gold text-[9px] font-black rounded px-1 leading-4">
+                  <CardDisplay
+                    variant="artwork"
+                    card={card}
+                    image={resolveCardImageUrl(card)}
+                    alt={card.name}
+                    variantEffectSource={card.variant}
+                    stateIndicatorProps={{ card: withCollectionItemState(card, card), alwaysShowQuantity: true }}
+                  />
+                  <span className="absolute bottom-1 left-1 z-20 bg-black/80 text-gold text-[9px] font-black rounded px-1 leading-4">
                     #{i + 1}
                   </span>
                 </div>
@@ -218,7 +241,7 @@ export default function Dashboard() {
               <p className="text-lg font-black text-white">{formatPrice(data.total_cost || 0)}</p>
             </div>
             <div>
-              <p className="text-[10px] text-text-muted uppercase tracking-wider mb-1">{t('dashboard.collectionValue')}</p>
+              <p className="text-[10px] text-text-muted uppercase tracking-wider mb-1">{t('home.portfolioValue')}</p>
               <p className="text-lg font-black text-gold">{formatPrice(Number(totalValue))}</p>
             </div>
             <div>

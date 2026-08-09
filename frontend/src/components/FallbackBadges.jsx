@@ -10,8 +10,7 @@ export default function FallbackBadges({ card, className = '', compact = false, 
   const dataLang = card.data_source_lang
   const priceLang = card.price_source_lang
   const imageLang = card.image_source_lang
-  const hasCustomImage = Boolean(card.custom_image_url) && !(card.images_small || card.images_large || card.images?.small || card.images?.large || card.image)
-  if (!dataLang && !priceLang && !imageLang && !hasCustomImage) return null
+  if (!dataLang && !priceLang && !imageLang) return null
 
   const overlay = variant === 'overlay'
   const baseClass = compact
@@ -30,9 +29,12 @@ export default function FallbackBadges({ card, className = '', compact = false, 
     tone === 'image' && (overlay
       ? 'bg-sky-950/95 text-sky-50 border border-sky-200/80'
       : 'bg-sky-500/15 text-sky-300 border border-sky-500/30'),
-    tone === 'customImage' && (overlay
-      ? 'bg-violet-950/95 text-violet-50 border border-violet-200/80'
-      : 'bg-violet-500/15 text-violet-300 border border-violet-500/30'),
+  )
+  const dotClass = (tone) => clsx(
+    'mr-1 inline-block h-1.5 w-1.5 shrink-0 rounded-full',
+    tone === 'data' && 'bg-purple-300',
+    tone === 'price' && 'bg-amber-300',
+    tone === 'image' && 'bg-sky-300',
   )
 
   return (
@@ -42,6 +44,7 @@ export default function FallbackBadges({ card, className = '', compact = false, 
           className={badgeClass('data')}
           title={t('fallback.dataFrom').replace('{lang}', sourceLabel(dataLang))}
         >
+          <span className={dotClass('data')} aria-hidden />
           {t('fallback.data')} {sourceLabel(dataLang)}
         </span>
       )}
@@ -50,6 +53,7 @@ export default function FallbackBadges({ card, className = '', compact = false, 
           className={badgeClass('price')}
           title={t('fallback.priceFrom').replace('{lang}', sourceLabel(priceLang))}
         >
+          <span className={dotClass('price')} aria-hidden />
           {t('fallback.price')} {sourceLabel(priceLang)}
         </span>
       )}
@@ -58,15 +62,8 @@ export default function FallbackBadges({ card, className = '', compact = false, 
           className={badgeClass('image')}
           title={t('fallback.imageFrom').replace('{lang}', sourceLabel(imageLang))}
         >
+          <span className={dotClass('image')} aria-hidden />
           {t('fallback.image')} {sourceLabel(imageLang)}
-        </span>
-      )}
-      {hasCustomImage && (
-        <span
-          className={badgeClass('customImage')}
-          title={t('fallback.customImageDesc')}
-        >
-          🖼 {t('fallback.customImage')}
         </span>
       )}
     </div>

@@ -7,6 +7,8 @@ import { useSettings } from '../contexts/SettingsContext'
 import { useAuth } from '../contexts/AuthContext'
 import TabNav from '../components/TabNav'
 import { resolveCardImageUrl } from '../utils/imageUrl'
+import { CardIdentity } from '../components/card-system'
+import { CardModal } from '../components/CardItem'
 
 const SORT_OPTIONS = ['total_value', 'total_cards', 'unique_cards', 'sets_completed', 'pnl']
 
@@ -36,6 +38,7 @@ export default function Leaderboard() {
   const { t, formatPrice, pricePrimaryField } = useSettings()
   const { multiUser, user: currentUser } = useAuth()
   const [sortBy, setSortBy] = useState('total_value')
+  const [selectedCard, setSelectedCard] = useState(null)
   const SOCIAL_TABS = [
     { to: '/leaderboard', label: t('nav.leaderboard'), icon: Trophy },
     { to: '/achievements', label: t('nav.achievements'), icon: Award },
@@ -154,15 +157,14 @@ export default function Leaderboard() {
                     <div className="col-span-2 md:col-span-1">
                       <p className="text-[11px] uppercase tracking-[0.2em] text-text-muted">{t('leaderboard.bestCard')}</p>
                       {bestCard ? (
-                        <div className="mt-1 flex items-center gap-2">
-                          <div className="h-10 w-8 overflow-hidden rounded-lg border border-border bg-bg-primary">
-                            <img src={resolveCardImageUrl(bestCard)} alt={bestCard.name} className="h-full w-full object-cover" loading="lazy" />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium text-text-primary">{bestCard.name}</p>
-                            <p className="text-xs text-text-muted">{formatPrice(bestCard.price_market)}</p>
-                          </div>
-                        </div>
+                        <CardIdentity
+                          className="mt-1"
+                          card={bestCard}
+                          image={resolveCardImageUrl(bestCard)}
+                          name={bestCard.name}
+                          subtext={formatPrice(bestCard.price_market)}
+                          onClick={(event) => { event.stopPropagation(); setSelectedCard(bestCard) }}
+                        />
                       ) : (
                         <p className="mt-1 text-sm text-text-muted">-</p>
                       )}
@@ -179,6 +181,12 @@ export default function Leaderboard() {
             )
           })}
         </div>
+      )}
+      {selectedCard && (
+        <CardModal
+          card={{ ...selectedCard, id: selectedCard.card_id || selectedCard.id }}
+          onClose={() => setSelectedCard(null)}
+        />
       )}
     </div>
   )
