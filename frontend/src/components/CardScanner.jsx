@@ -153,12 +153,14 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
   const [results, setResults] = useState(null)
   const [selectedMatch, setSelectedMatch] = useState(null)
   const [addModal, setAddModal] = useState(null) // match to show modal for
+  const [scanPreviewUrl, setScanPreviewUrl] = useState(null)
   const [stagedFiles, setStagedFiles] = useState([])
   const [submittingBatch, setSubmittingBatch] = useState(false)
   const cameraRef = useRef()
   const uploadRef = useRef()
   const batchCameraRef = useRef()
   const batchGalleryRef = useRef()
+  const scanPreviewRef = useRef(null)
   const stagedFilesRef = useRef([])
   const { t } = useSettings()
   const navigate = useNavigate()
@@ -168,6 +170,7 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
   }, [stagedFiles])
   useEffect(() => () => {
     stagedFilesRef.current.forEach(item => URL.revokeObjectURL(item.previewUrl))
+    if (scanPreviewRef.current) URL.revokeObjectURL(scanPreviewRef.current)
   }, [])
 
   if (!isOpen) return null
@@ -178,6 +181,9 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
       toast.error(t('scanner.recognitionFailed'))
       return
     }
+    if (scanPreviewRef.current) URL.revokeObjectURL(scanPreviewRef.current)
+    scanPreviewRef.current = URL.createObjectURL(file)
+    setScanPreviewUrl(scanPreviewRef.current)
     setPhase('loading')
     try {
       const data = await recognizeCard(file)
@@ -192,6 +198,9 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
   }
 
   const reset = () => {
+    if (scanPreviewRef.current) URL.revokeObjectURL(scanPreviewRef.current)
+    scanPreviewRef.current = null
+    setScanPreviewUrl(null)
     setPhase('capture')
     setResults(null)
     setSelectedMatch(null)
@@ -410,12 +419,20 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
                 <p className="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
                   {t('scanner.yourScan')}
                 </p>
-                <div className="grid aspect-[2.5/3.5] place-items-center rounded-xl border border-dashed border-white/10 bg-bg-primary/50 text-center">
-                  <div className="space-y-2 text-text-muted">
-                    <Camera size={36} className="mx-auto opacity-50" aria-hidden />
-                    <p className="text-xs">{t('scanner.yourScan')}</p>
+                {scanPreviewUrl ? (
+                  <img
+                    src={scanPreviewUrl}
+                    alt={t('scanner.yourScan')}
+                    className="aspect-[2.5/3.5] w-full rounded-xl border border-white/10 bg-bg-primary/50 object-contain"
+                  />
+                ) : (
+                  <div className="grid aspect-[2.5/3.5] place-items-center rounded-xl border border-dashed border-white/10 bg-bg-primary/50 text-center">
+                    <div className="space-y-2 text-text-muted">
+                      <Camera size={36} className="mx-auto opacity-50" aria-hidden />
+                      <p className="text-xs">{t('scanner.yourScan')}</p>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               <div className="space-y-4">
