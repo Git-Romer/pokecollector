@@ -1106,6 +1106,8 @@ const en = {
     photos: 'photos',
     chooseFromGallery: 'Choose from gallery',
     clearBatch: 'Clear batch',
+    clearBatchConfirm: 'Permanently remove all photos currently staged for scanning?',
+    discardAndClose: 'Discard and close',
     noPhotosStaged: 'Take photos or choose them from your gallery.',
     startScanning: 'Start scanning',
     submittingBatch: 'Uploading photos…',
@@ -1154,7 +1156,13 @@ const en = {
     dismissScanConfirm: 'Dismiss this scan and permanently delete its stored photo?',
     itemProcessing: 'Waiting for recognition…',
     itemRetrying: 'Waiting to retry…',
+    retryingInSeconds: 'Retrying in {seconds}s',
+    retryingInMinutes: 'Retrying in {minutes}m',
+    retryingInHours: 'Retrying in {hours}h {minutes}m',
     retryIndividually: 'Retry individually',
+    scanIndividually: 'Scan individually',
+    scanAllIndividually: 'Scan all individually',
+    useAutomaticGrouping: 'Use automatic grouping',
   },
 
   // Language filter / card language

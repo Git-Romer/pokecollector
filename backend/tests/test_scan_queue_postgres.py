@@ -59,23 +59,23 @@ class ScanQueuePostgresTests(unittest.TestCase):
                     ),
                     {"user_id": user.id},
                 )
-                db.add(
-                    ScanJobItem(
+                for position in range(4):
+                    db.add(ScanJobItem(
                         job_id=job.id,
                         user_id=user.id,
-                        position=0,
-                        image_path=f"{job.id}/scan.jpg",
+                        position=position,
+                        image_path=f"{job.id}/{position}.jpg",
                         content_type="image/jpeg",
                         byte_size=4,
                         status="pending",
+                        batch_mode=True,
                         resolved=False,
                         attempts=0,
                         transient_failures=0,
                         next_attempt_at=now,
                         created_at=now,
                         updated_at=now,
-                    )
-                )
+                    ))
             db.commit()
             self.user_ids = [user.id for user in self.users]
         finally:
@@ -102,7 +102,7 @@ class ScanQueuePostgresTests(unittest.TestCase):
             }.issubset(table_names)
         )
 
-    def test_two_workers_claim_distinct_items_atomically(self):
+    def test_two_workers_claim_distinct_composite_groups_atomically(self):
         def claim():
             db = SessionLocal()
             try:
@@ -115,6 +115,9 @@ class ScanQueuePostgresTests(unittest.TestCase):
 
         self.assertTrue(all(claims))
         self.assertEqual(len({claim.item_id for claim in claims}), 2)
+        self.assertTrue(all(claim.composite for claim in claims))
+        self.assertTrue(all(len(claim.all_item_ids) == 4 for claim in claims))
+        self.assertTrue(set(claims[0].all_item_ids).isdisjoint(claims[1].all_item_ids))
 
 
 if __name__ == "__main__":

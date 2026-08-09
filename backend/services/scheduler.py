@@ -42,7 +42,6 @@ def _get_price_sync_interval_minutes() -> int:
 def run_full_sync():
     """Full sync job — syncs sets + cards + prices."""
     from database import SessionLocal
-    from services.gemini_rate_limit import purge_stale_quota_states
     from services.sync_service import perform_full_sync
 
     db = SessionLocal()
@@ -77,6 +76,7 @@ def run_scan_queue_maintenance():
     import asyncio
 
     from database import SessionLocal
+    from services.gemini_rate_limit import purge_stale_quota_states
     from services.scan_queue import (
         drain_scan_queue,
         purge_expired_scan_jobs,

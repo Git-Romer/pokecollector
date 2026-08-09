@@ -1,4 +1,5 @@
 import io
+import datetime
 import os
 import tempfile
 import unittest
@@ -99,6 +100,22 @@ class ScanJobsApiTests(unittest.TestCase):
         self.assertEqual(image.status_code, 200)
         self.assertEqual(image.content[:2], b"\xff\xd8")
 
+    def test_retry_schedule_is_exposed_in_list_and_detail_payloads(self):
+        created = self._enqueue()
+        retry_at = datetime.datetime.utcnow() + datetime.timedelta(minutes=30)
+        item = self.db.query(ScanJobItem).filter(ScanJobItem.job_id == created["id"]).one()
+        item.status = "retrying"
+        item.next_attempt_at = retry_at
+        self.db.commit()
+
+        listed_job = self.client.get("/api/cards/recognize/jobs").json()["jobs"][0]
+        detail_item = self.client.get(
+            f"/api/cards/recognize/jobs/{created['id']}"
+        ).json()["items"][0]
+
+        self.assertEqual(listed_job["next_retry_at"], retry_at.isoformat())
+        self.assertEqual(detail_item["next_attempt_at"], retry_at.isoformat())
+
     def test_other_user_cannot_access_job_or_photo(self):
         created = self._enqueue()
         item = self.db.query(ScanJobItem).filter(ScanJobItem.job_id == created["id"]).one()
@@ -114,6 +131,29 @@ class ScanJobsApiTests(unittest.TestCase):
             ).status_code,
             404,
         )
+
+    def test_enqueue_preserves_order_and_individual_choices(self):
+        with patch("api.recognize.get_gemini_key", return_value="secret-key"), \
+                patch("api.scan_jobs.drain_scan_queue", new=AsyncMock(return_value=0)):
+            response = self.client.post(
+                "/api/cards/recognize/jobs",
+                data={"individual_positions": "[1]"},
+                files=[
+                    ("files", ("first.jpg", _jpeg_bytes(), "image/jpeg")),
+                    ("files", ("second.jpg", _jpeg_bytes(), "image/jpeg")),
+                    ("files", ("third.jpg", _jpeg_bytes(), "image/jpeg")),
+                ],
+            )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        items = self.db.query(ScanJobItem).order_by(ScanJobItem.position).all()
+        self.assertEqual([item.position for item in items], [0, 1, 2])
+        self.assertEqual([item.batch_mode for item in items], [True, False, True])
+
+    def test_single_photo_is_always_individual(self):
+        created = self._enqueue()
+        item = self.db.query(ScanJobItem).filter(ScanJobItem.job_id == created["id"]).one()
+        self.assertFalse(item.batch_mode)
 
     def test_resolve_deletes_photo_and_removes_fully_handled_job_from_inbox(self):
         created = self._enqueue()

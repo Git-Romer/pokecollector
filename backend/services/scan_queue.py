@@ -36,6 +36,12 @@ TERMINAL_ITEM_STATUSES = {"done", "failed"}
 class ClaimedScanItem:
     item_id: int
     lease_token: str
+    item_ids: tuple[int, ...] = ()
+    composite: bool = False
+
+    @property
+    def all_item_ids(self) -> tuple[int, ...]:
+        return self.item_ids or (self.item_id,)
 
 
 class TransientScanError(RuntimeError):
@@ -88,7 +94,7 @@ def claim_next_scan_item(
     now: datetime.datetime | None = None,
     lease_seconds: int = LEASE_SECONDS,
 ) -> ClaimedScanItem | None:
-    """Atomically claim one due item using persistent per-user round robin."""
+    """Atomically claim one individual photo or a two-to-four-photo group."""
     now = now or datetime.datetime.utcnow()
 
     state = (
@@ -119,11 +125,31 @@ def claim_next_scan_item(
         db.rollback()
         return None
 
+    items = [item]
+    if item.batch_mode:
+        siblings = (
+            db.query(ScanJobItem)
+            .join(ScanJob, ScanJob.id == ScanJobItem.job_id)
+            .filter(
+                ScanJobItem.job_id == item.job_id,
+                ScanJobItem.position > item.position,
+                ScanJobItem.batch_mode.is_(True),
+                _eligible_items(now),
+            )
+            .order_by(ScanJobItem.position.asc())
+            .limit(3)
+            .with_for_update(skip_locked=True)
+            .all()
+        )
+        items.extend(siblings)
+
     lease_token = uuid.uuid4().hex
-    item.status = "processing"
-    item.lease_token = lease_token
-    item.lease_expires_at = now + datetime.timedelta(seconds=lease_seconds)
-    item.updated_at = now
+    lease_expires_at = now + datetime.timedelta(seconds=lease_seconds)
+    for claimed_item in items:
+        claimed_item.status = "processing"
+        claimed_item.lease_token = lease_token
+        claimed_item.lease_expires_at = lease_expires_at
+        claimed_item.updated_at = now
     state.last_dispatched_at = now
     job = item.job
     job.status = "running"
@@ -131,7 +157,12 @@ def claim_next_scan_item(
         job.started_at = now
     job.updated_at = now
     db.commit()
-    return ClaimedScanItem(item_id=item.id, lease_token=lease_token)
+    return ClaimedScanItem(
+        item_id=item.id,
+        item_ids=tuple(claimed_item.id for claimed_item in items),
+        lease_token=lease_token,
+        composite=len(items) > 1,
+    )
 
 
 def _backoff(values: tuple[int, ...], failure_count: int) -> int:
@@ -149,6 +180,20 @@ def _leased_item(db: Session, claim: ClaimedScanItem) -> ScanJobItem | None:
         )
         .with_for_update()
         .first()
+    )
+
+
+def _leased_items(db: Session, claim: ClaimedScanItem) -> list[ScanJobItem]:
+    return (
+        db.query(ScanJobItem)
+        .filter(
+            ScanJobItem.id.in_(claim.all_item_ids),
+            ScanJobItem.status == "processing",
+            ScanJobItem.lease_token == claim.lease_token,
+        )
+        .order_by(ScanJobItem.position.asc())
+        .with_for_update()
+        .all()
     )
 
 
@@ -187,6 +232,38 @@ def complete_claim(db: Session, claim: ClaimedScanItem, result: dict) -> bool:
     return True
 
 
+def complete_claim_group(
+    db: Session,
+    claim: ClaimedScanItem,
+    results: list[dict | None],
+) -> bool:
+    """Persist confident positions and queue unclear ones as individual scans."""
+    now = datetime.datetime.utcnow()
+    items = _leased_items(db, claim)
+    if len(items) != len(claim.all_item_ids) or len(results) != len(items):
+        db.rollback()
+        return False
+    for item, result in zip(items, results):
+        if result is None:
+            item.status = "pending"
+            item.batch_mode = False
+            item.recognized = None
+            item.matches = None
+            item.next_attempt_at = now
+        else:
+            item.status = "done"
+            item.recognized = result.get("recognized")
+            item.matches = result.get("matches")
+            item.next_attempt_at = None
+        item.error = None
+        item.lease_token = None
+        item.lease_expires_at = None
+        item.updated_at = now
+    _refresh_job_status(db, items[0].job, now)
+    db.commit()
+    return True
+
+
 def fail_claim(
     db: Session,
     claim: ClaimedScanItem,
@@ -196,35 +273,36 @@ def fail_claim(
     permanent: bool = False,
 ) -> bool:
     now = datetime.datetime.utcnow()
-    item = _leased_item(db, claim)
-    if item is None:
+    items = _leased_items(db, claim)
+    if len(items) != len(claim.all_item_ids):
         db.rollback()
         return False
 
-    item.error = str(error)
-    item.lease_token = None
-    item.lease_expires_at = None
-    if permanent:
-        item.status = "failed"
-        item.next_attempt_at = None
-    elif transient:
-        item.transient_failures += 1
-        item.status = "retrying"
-        item.next_attempt_at = now + datetime.timedelta(
-            seconds=_backoff(TRANSIENT_BACKOFF_SECONDS, item.transient_failures)
-        )
-    else:
-        item.attempts += 1
-        if item.attempts >= MAX_RECOGNITION_ATTEMPTS:
+    for item in items:
+        item.error = str(error)
+        item.lease_token = None
+        item.lease_expires_at = None
+        if permanent:
             item.status = "failed"
             item.next_attempt_at = None
-        else:
+        elif transient:
+            item.transient_failures += 1
             item.status = "retrying"
             item.next_attempt_at = now + datetime.timedelta(
-                seconds=_backoff(RECOGNITION_BACKOFF_SECONDS, item.attempts)
+                seconds=_backoff(TRANSIENT_BACKOFF_SECONDS, item.transient_failures)
             )
-    item.updated_at = now
-    _refresh_job_status(db, item.job, now)
+        else:
+            item.attempts += 1
+            if item.attempts >= MAX_RECOGNITION_ATTEMPTS:
+                item.status = "failed"
+                item.next_attempt_at = None
+            else:
+                item.status = "retrying"
+                item.next_attempt_at = now + datetime.timedelta(
+                    seconds=_backoff(RECOGNITION_BACKOFF_SECONDS, item.attempts)
+                )
+        item.updated_at = now
+    _refresh_job_status(db, items[0].job, now)
     db.commit()
     return True
 
@@ -250,6 +328,54 @@ async def default_scan_processor(
         return await recognize_card(file=upload, db=db, current_user=user)
 
 
+async def default_composite_processor(
+    db: Session,
+    user_id: int,
+    images: list[bytes],
+    content_types: list[str],
+) -> list[dict | None]:
+    """Recognize a small grid and flag unclear positions for individual work."""
+    from api.recognize import (
+        CompositeRecognitionError,
+        get_gemini_key,
+        match_composite_card_info,
+        normalize_scanner_card_number,
+        recognize_composite_card_info,
+    )
+    from services.card_composite import build_composite
+
+    user = db.get(User, user_id)
+    if user is None or not user.is_active:
+        raise PermanentScanError("The scan owner is no longer an active user.")
+    api_key = get_gemini_key(db, user_id=user_id)
+    if not api_key:
+        raise PermanentScanError("No Gemini API key is configured for the scan owner.")
+
+    with gemini_priority_scope("background"):
+        try:
+            recognized_by_position = await recognize_composite_card_info(
+                api_key,
+                build_composite(images),
+                len(images),
+            )
+        except CompositeRecognitionError:
+            recognized_by_position = {}
+
+        results: list[dict | None] = []
+        for position in range(len(images)):
+            card_info = recognized_by_position.get(position)
+            result = (
+                await match_composite_card_info(db, card_info)
+                if card_info
+                else {"recognized": None, "matches": []}
+            )
+            has_name = bool(str((card_info or {}).get("name") or "").strip())
+            has_number = bool(normalize_scanner_card_number((card_info or {}).get("number")))
+            number_matched = int(result.get("_number_match_count") or 0) > 0
+            results.append(result if has_name and has_number and number_matched else None)
+        return results
+
+
 def _classify_http_error(error: HTTPException) -> type[RuntimeError]:
     if error.status_code in {429, 502, 503, 504}:
         return TransientScanError
@@ -262,22 +388,25 @@ async def process_claimed_scan_item(
     claim: ClaimedScanItem,
     *,
     processor=default_scan_processor,
+    composite_processor=default_composite_processor,
 ) -> None:
     from database import SessionLocal
 
     db = SessionLocal()
     try:
         try:
-            item = _leased_item(db, claim)
-            if item is None:
+            items = _leased_items(db, claim)
+            if len(items) != len(claim.all_item_ids):
                 db.rollback()
                 return
-            path = resolve_scan_path(item.image_path)
-            image_bytes = path.read_bytes()
-            user_id = item.user_id
-            content_type = item.content_type
+            image_bytes = [resolve_scan_path(item.image_path).read_bytes() for item in items]
+            user_id = items[0].user_id
+            content_types = [item.content_type for item in items]
             db.rollback()  # Release the row lock during upstream network work.
-            result = await processor(db, user_id, image_bytes, content_type)
+            if claim.composite:
+                results = await composite_processor(db, user_id, image_bytes, content_types)
+            else:
+                results = [await processor(db, user_id, image_bytes[0], content_types[0])]
         except HTTPException as exc:
             db.rollback()
             error_type = _classify_http_error(exc)
@@ -293,7 +422,10 @@ async def process_claimed_scan_item(
             logger.exception("Unexpected scan processing error for item %s", claim.item_id)
             error = TransientScanError(str(exc))
         else:
-            complete_claim(db, claim, result)
+            if claim.composite:
+                complete_claim_group(db, claim, results)
+            else:
+                complete_claim(db, claim, results[0])
             return
 
         fail_claim(
@@ -307,7 +439,12 @@ async def process_claimed_scan_item(
         db.close()
 
 
-async def drain_scan_queue(*, max_items: int = 50, processor=default_scan_processor) -> int:
+async def drain_scan_queue(
+    *,
+    max_items: int = 50,
+    processor=default_scan_processor,
+    composite_processor=default_composite_processor,
+) -> int:
     """Process a bounded fair pass; concurrent workers safely skip claimed rows."""
     from database import SessionLocal
 
@@ -321,8 +458,12 @@ async def drain_scan_queue(*, max_items: int = 50, processor=default_scan_proces
             db.close()
         if claim is None:
             break
-        await process_claimed_scan_item(claim, processor=processor)
-        processed += 1
+        await process_claimed_scan_item(
+            claim,
+            processor=processor,
+            composite_processor=composite_processor,
+        )
+        processed += len(claim.all_item_ids)
         await asyncio.sleep(0)
     return processed
 
@@ -358,6 +499,7 @@ def retry_scan_item(db: Session, item: ScanJobItem) -> ScanJobItem:
     item.recognized = None
     item.matches = None
     item.error = None
+    item.batch_mode = False
     item.updated_at = now
     item.job.status = "pending"
     item.job.finished_at = None
@@ -397,6 +539,14 @@ def job_progress(db: Session, job: ScanJob) -> dict:
         for item in items
         if not item.resolved and item.status in {"done", "failed"}
     )
+    next_retry_at = min(
+        (
+            item.next_attempt_at
+            for item in items
+            if item.status == "retrying" and item.next_attempt_at is not None
+        ),
+        default=None,
+    )
     return {
         "id": job.id,
         "status": job.status,
@@ -406,6 +556,7 @@ def job_progress(db: Session, job: ScanJob) -> dict:
         "active": active,
         "attention": attention,
         "failed_attention": failed_attention,
+        "next_retry_at": next_retry_at.isoformat() if next_retry_at else None,
         # Kept as a stable alias for badge clients built against Lamiskin's
         # original queue payload.
         "unresolved": attention,

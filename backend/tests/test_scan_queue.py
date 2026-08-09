@@ -2,7 +2,7 @@ import datetime
 import os
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 try:
     from sqlalchemy import create_engine
@@ -22,6 +22,7 @@ try:
         resolve_scan_item,
         retry_scan_item,
         job_progress,
+        complete_claim_group,
     )
 
     DEPS_AVAILABLE = True
@@ -103,6 +104,57 @@ class ScanQueueTests(unittest.TestCase):
         second_item = self.db.get(ScanJobItem, second.item_id)
         self.assertEqual(second_item.user_id, self.users[1].id)
 
+    def test_batch_claim_groups_four_photos_and_keeps_forced_single_out(self):
+        job = self._job(self.users[0], positions=(0, 1, 2, 3, 4))
+        items = self.db.query(ScanJobItem).order_by(ScanJobItem.position).all()
+        for item in items:
+            item.batch_mode = True
+        items[1].batch_mode = False
+        self.db.commit()
+
+        claim = claim_next_scan_item(self.db)
+
+        self.assertTrue(claim.composite)
+        self.assertEqual(claim.all_item_ids, (items[0].id, items[2].id, items[3].id, items[4].id))
+        self.assertEqual(items[1].status, "pending")
+        self.assertTrue(complete_claim_group(
+            self.db,
+            claim,
+            [{"recognized": {"name": str(index)}, "matches": []} for index in range(4)],
+        ))
+        self.assertEqual(items[1].status, "pending")
+
+    def test_unclear_composite_position_retries_without_confident_siblings(self):
+        self._job(self.users[0], positions=(0, 1, 2, 3))
+        items = self.db.query(ScanJobItem).order_by(ScanJobItem.position).all()
+        for item in items:
+            item.batch_mode = True
+        self.db.commit()
+
+        composite_claim = claim_next_scan_item(self.db)
+        def confident(name):
+            return {
+                "recognized": {"name": name, "number": "25"},
+                "matches": [{"id": f"card-{name}"}],
+            }
+        self.assertTrue(complete_claim_group(
+            self.db,
+            composite_claim,
+            [confident("A"), None, confident("C"), confident("D")],
+        ))
+        self.db.expire_all()
+        items = self.db.query(ScanJobItem).order_by(ScanJobItem.position).all()
+        self.assertEqual([item.status for item in items], ["done", "pending", "done", "done"])
+        self.assertFalse(items[1].batch_mode)
+
+        fallback_claim = claim_next_scan_item(self.db)
+        self.assertEqual(fallback_claim.all_item_ids, (items[1].id,))
+        fail_claim(self.db, fallback_claim, "429", transient=True)
+        self.db.expire_all()
+        items = self.db.query(ScanJobItem).order_by(ScanJobItem.position).all()
+        self.assertEqual([item.status for item in items], ["done", "retrying", "done", "done"])
+        self.assertEqual([item.transient_failures for item in items], [0, 1, 0, 0])
+
     def test_stale_lease_cannot_complete_an_item(self):
         self._job(self.users[0])
         claim = claim_next_scan_item(self.db)
@@ -181,6 +233,7 @@ class ScanQueueTests(unittest.TestCase):
         self.assertIsNone(item.error)
         self.assertIsNone(item.recognized)
         self.assertIsNone(item.matches)
+        self.assertFalse(item.batch_mode)
         self.assertEqual(job.status, "pending")
         self.assertIsNone(job.finished_at)
 
@@ -190,6 +243,8 @@ class ScanQueueTests(unittest.TestCase):
         items[0].status = "done"
         items[1].status = "failed"
         items[2].status = "retrying"
+        retry_at = datetime.datetime.utcnow() + datetime.timedelta(minutes=30)
+        items[2].next_attempt_at = retry_at
         items[3].status = "done"
         items[3].resolved = True
         self.db.commit()
@@ -201,6 +256,7 @@ class ScanQueueTests(unittest.TestCase):
         self.assertEqual(progress["attention"], 2)
         self.assertEqual(progress["failed_attention"], 1)
         self.assertEqual(progress["unresolved"], 2)
+        self.assertEqual(progress["next_retry_at"], retry_at.isoformat())
 
     def test_resolve_removes_the_review_photo_immediately(self):
         job = self._job(self.users[0])
@@ -303,6 +359,56 @@ class ScanQueueDrainTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(item.recognized["name"], "Snorlax")
         finally:
             db.close()
+
+
+@unittest.skipUnless(DEPS_AVAILABLE, "SQLAlchemy is not installed")
+class CompositeProcessorTests(unittest.IsolatedAsyncioTestCase):
+    async def test_only_explicit_number_matches_are_accepted_from_composite(self):
+        from PIL import Image
+        import io
+
+        def image_bytes(color):
+            output = io.BytesIO()
+            Image.new("RGB", (100, 140), color).save(output, format="JPEG")
+            return output.getvalue()
+
+        db = MagicMock()
+        db.get.return_value = User(id=1, username="composite-owner", hashed_password="x", is_active=True)
+        composite_info = {
+            0: {"name": "Pikachu", "number": "25", "language": "en"},
+            2: {"name": "Eevee", "number": "133", "language": "en"},
+            3: {"name": "Mew", "number": None, "language": "en"},
+        }
+        matched = [
+            {
+                "recognized": composite_info[0],
+                "matches": [{"id": "card-25"}],
+                "_number_match_count": 1,
+            },
+            {
+                "recognized": composite_info[2],
+                "matches": [{"id": "wrong-number"}],
+                "_number_match_count": 0,
+            },
+            {
+                "recognized": composite_info[3],
+                "matches": [{"id": "card-mew"}],
+                "_number_match_count": 1,
+            },
+        ]
+
+        with patch("api.recognize.get_gemini_key", return_value="secret-key"), \
+                patch("api.recognize.recognize_composite_card_info", new=AsyncMock(return_value=composite_info)), \
+                patch("api.recognize.match_composite_card_info", new=AsyncMock(side_effect=matched)):
+            results = await scan_queue.default_composite_processor(
+                db,
+                1,
+                [image_bytes("red"), image_bytes("blue"), image_bytes("green"), image_bytes("yellow")],
+                ["image/jpeg"] * 4,
+            )
+
+        self.assertEqual(results[0]["matches"][0]["id"], "card-25")
+        self.assertEqual(results[1:], [None, None, None])
 
 
 if __name__ == "__main__":

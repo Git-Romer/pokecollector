@@ -108,9 +108,10 @@ export const recognizeCard = (imageFile) => {
 }
 
 // Persistent background card-scan queue.
-export const enqueueScanJob = (files = []) => {
+export const enqueueScanJob = (files = [], individualPositions = []) => {
   const formData = new FormData()
   files.forEach(file => formData.append('files', file))
+  formData.append('individual_positions', JSON.stringify(individualPositions))
   return api.post('/cards/recognize/jobs', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   }).then(r => r.data)

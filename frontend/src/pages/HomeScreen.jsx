@@ -4,7 +4,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   RefreshCw, TrendingUp, TrendingDown, Layers, Star, Wallet, LogOut,
   Search, Library, Grid2X2, BarChart3, Settings, Trophy, ArrowRightLeft, ListOrdered, Info,
-  ScanLine,
 } from 'lucide-react'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -252,13 +251,19 @@ export default function HomeScreen() {
   // Portal navigation items — defined inside component so t() works
   const PORTAL_ITEMS = [
     { to: '/collection', icon: Library,    label: t('nav.collection'),  color: '#4fc3f7' },
-    { to: '/search',     icon: Search,     label: t('nav.cardSearch'),  color: '#ce93d8' },
+    {
+      to: '/search',
+      icon: Search,
+      label: t('nav.cardSearch'),
+      color: '#ce93d8',
+      badge: scanAttention,
+      active: scansActive,
+    },
     { to: '/sets',       icon: Grid2X2,    label: t('nav.sets'),        color: '#81c784' },
     { to: '/pokedex',    icon: ListOrdered, label: t('nav.pokedex'),    color: '#ffb74d' },
     { to: '/analytics',  icon: BarChart3,  label: t('nav.analytics'),   color: '#f5c842' },
     { to: '/trades',     icon: ArrowRightLeft, label: t('nav.trades'),   color: '#ff8a65' },
     ...(multiUser ? [{ to: '/leaderboard', icon: Trophy, label: t('nav.leaderboard'), color: '#ffd54f' }] : []),
-    { to: '/scans', icon: ScanLine, label: t('scanner.queueTitle'), color: '#e3000b', badge: scanAttention, active: scansActive },
     { to: '/settings',   icon: Settings,   label: t('nav.settings'),    color: '#b0bec5' },
   ]
 

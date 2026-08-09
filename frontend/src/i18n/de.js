@@ -1096,6 +1096,8 @@ const de = {
     photos: 'Fotos',
     chooseFromGallery: 'Aus Galerie wählen',
     clearBatch: 'Stapel leeren',
+    clearBatchConfirm: 'Alle derzeit für den Scan vorbereiteten Fotos endgültig entfernen?',
+    discardAndClose: 'Verwerfen und schließen',
     noPhotosStaged: 'Fotos aufnehmen oder aus der Galerie auswählen.',
     startScanning: 'Scan starten',
     submittingBatch: 'Fotos werden hochgeladen…',
@@ -1144,7 +1146,13 @@ const de = {
     dismissScanConfirm: 'Diesen Scan verwerfen und das gespeicherte Foto endgültig löschen?',
     itemProcessing: 'Wartet auf Erkennung…',
     itemRetrying: 'Wartet auf erneuten Versuch…',
+    retryingInSeconds: 'Neuer Versuch in {seconds}s',
+    retryingInMinutes: 'Neuer Versuch in {minutes} Min.',
+    retryingInHours: 'Neuer Versuch in {hours} Std. {minutes} Min.',
     retryIndividually: 'Einzeln erneut versuchen',
+    scanIndividually: 'Einzeln scannen',
+    scanAllIndividually: 'Alle einzeln scannen',
+    useAutomaticGrouping: 'Automatische Gruppierung verwenden',
   },
 
   // Language filter / card language

@@ -531,6 +531,7 @@ class ScanJobItem(Base):
     image_path = Column(String, nullable=True)
     content_type = Column(String, default="image/jpeg", nullable=False)
     byte_size = Column(Integer, nullable=False)
+    batch_mode = Column(Boolean, default=False, nullable=False)
     status = Column(String, default="pending", nullable=False, index=True)
     resolved = Column(Boolean, default=False, nullable=False, index=True)
     attempts = Column(Integer, default=0, nullable=False)

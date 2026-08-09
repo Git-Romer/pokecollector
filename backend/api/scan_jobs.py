@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from typing import List
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -59,6 +60,7 @@ def _item_payload(item: ScanJobItem) -> dict:
     return {
         "id": item.id,
         "position": item.position,
+        "batch_mode": item.batch_mode,
         "status": item.status,
         "resolved": item.resolved,
         "attempts": item.attempts,
@@ -67,6 +69,9 @@ def _item_payload(item: ScanJobItem) -> dict:
         "matches": item.matches,
         "error": item.error,
         "has_image": bool(item.image_path),
+        "next_attempt_at": (
+            item.next_attempt_at.isoformat() if item.next_attempt_at else None
+        ),
         "created_at": item.created_at.isoformat() if item.created_at else None,
         "updated_at": item.updated_at.isoformat() if item.updated_at else None,
     }
@@ -76,6 +81,7 @@ def _item_payload(item: ScanJobItem) -> dict:
 async def enqueue_scan_job(
     background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
+    individual_positions: str | None = Form(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -88,7 +94,29 @@ async def enqueue_scan_job(
             detail="No Gemini API key configured. Add one in Settings first.",
         )
     try:
-        job = await create_scan_job(db, current_user.id, files)
+        requested_individual = json.loads(individual_positions or "[]")
+        if (
+            not isinstance(requested_individual, list)
+            or any(type(position) is not int for position in requested_individual)
+            or len(set(requested_individual)) != len(requested_individual)
+            or any(position < 0 or position >= len(files) for position in requested_individual)
+        ):
+            raise ValueError
+    except (TypeError, ValueError, json.JSONDecodeError):
+        raise HTTPException(status_code=400, detail="Invalid individual scan selection.")
+
+    individual_set = set(requested_individual)
+    batch_modes = [
+        len(files) > 1 and position not in individual_set
+        for position in range(len(files))
+    ]
+    try:
+        job = await create_scan_job(
+            db,
+            current_user.id,
+            files,
+            batch_modes=batch_modes,
+        )
     except ScanUploadError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 

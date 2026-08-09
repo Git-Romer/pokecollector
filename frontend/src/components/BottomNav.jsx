@@ -4,17 +4,12 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   LayoutDashboard, Search, Library, Grid2X2, MoreHorizontal,
-  Heart, BookOpen, BarChart3, ShoppingBag, ArrowRightLeft, Settings, X, Zap, LogOut, ListOrdered, ScanLine
+  Heart, BookOpen, BarChart3, ShoppingBag, ArrowRightLeft, Settings, X, Zap, LogOut, ListOrdered
 } from 'lucide-react'
-import { getCustomMatches, getScanJobs } from '../api/client'
+import { getCustomMatches } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { useSettings } from '../contexts/SettingsContext'
 import clsx from 'clsx'
-import {
-  SCAN_JOBS_QUERY_KEY,
-  hasActiveScanJobs,
-  scanAttentionCount,
-} from '../utils/scanJobs'
 
 export default function BottomNav() {
   const { t } = useSettings()
@@ -28,15 +23,6 @@ export default function BottomNav() {
     refetchInterval: 60000,
   })
   const pendingCount = matches.length
-  const { data: scanData } = useQuery({
-    queryKey: SCAN_JOBS_QUERY_KEY,
-    queryFn: getScanJobs,
-    refetchInterval: query => hasActiveScanJobs(query.state.data?.jobs || []) ? 3000 : false,
-  })
-  const scanJobs = scanData?.jobs || []
-  const scanAttention = scanAttentionCount(scanJobs)
-  const scansActive = hasActiveScanJobs(scanJobs)
-
   const mainNav = [
     { to: '/dashboard',  icon: LayoutDashboard, label: t('nav.dashboard') },
     { to: '/search',     icon: Search,           label: t('nav.cardSearch') },
@@ -51,13 +37,12 @@ export default function BottomNav() {
     { to: '/analytics',  icon: BarChart3,  label: t('nav.analytics') },
     { to: '/products',   icon: ShoppingBag, label: t('nav.products') },
     { to: '/trades',     icon: ArrowRightLeft, label: t('nav.trades') },
-    { to: '/scans',      icon: ScanLine, label: t('scanner.queueTitle'), badge: scanAttention, active: scansActive },
     { to: '/settings',   icon: Settings,   label: t('nav.settings') },
     ...(pendingCount > 0
       ? [{ to: '/migration', icon: Zap, label: t('migration.title'), badge: pendingCount }]
       : []),
   ]
-  const moreBadge = pendingCount + scanAttention
+  const moreBadge = pendingCount
 
   const handleMoreNav = (to) => {
     setShowMore(false)
@@ -101,9 +86,6 @@ export default function BottomNav() {
               <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-yellow px-1 text-[9px] font-bold leading-none text-black">
                 {moreBadge > 99 ? '99+' : moreBadge}
               </span>
-            )}
-            {moreBadge === 0 && scansActive && (
-              <span className="absolute -right-1 -top-1 h-2.5 w-2.5 animate-pulse rounded-full bg-brand-red" />
             )}
           </div>
           <span>{t('nav.more')}</span>

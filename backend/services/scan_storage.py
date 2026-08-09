@@ -200,12 +200,22 @@ def purge_orphaned_scan_directories(
     return removed
 
 
-async def create_scan_job(db: Session, user_id: int, uploads: list) -> ScanJob:
+async def create_scan_job(
+    db: Session,
+    user_id: int,
+    uploads: list,
+    *,
+    batch_modes: list[bool] | None = None,
+) -> ScanJob:
     """Validate and persist a job without retaining any original upload bytes."""
     if not uploads:
         raise ScanUploadError("At least one scan photo is required.")
     if len(uploads) > MAX_FILES_PER_JOB:
         raise ScanUploadError("A scan job can contain at most 50 photos.")
+    if batch_modes is None:
+        batch_modes = [len(uploads) > 1] * len(uploads)
+    if len(batch_modes) != len(uploads):
+        raise ScanUploadError("Scan processing choices do not match the uploaded photos.")
 
     now = datetime.datetime.utcnow()
     job = ScanJob(
@@ -246,6 +256,7 @@ async def create_scan_job(db: Session, user_id: int, uploads: list) -> ScanJob:
                     image_path=relative_path,
                     content_type=sanitized.content_type,
                     byte_size=byte_size,
+                    batch_mode=bool(batch_modes[position]) and len(uploads) > 1,
                     status="pending",
                     resolved=False,
                     attempts=0,

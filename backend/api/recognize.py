@@ -479,3 +479,172 @@ Respond ONLY with this exact JSON (no markdown, no explanation):
         "recognized": card_info,
         "matches": deduped[:8],
     }
+
+
+COMPOSITE_PROMPT = """This image contains {count} separate Pokemon Trading Card Game cards.
+They are arranged left-to-right, then top-to-bottom, and each card has a white index number
+on a black square directly above it. Identify every card. Read that index label instead of
+relying on response order.
+
+For each card return the same information as an individual scan:
+- index: the printed corner number
+- name: exact card name in the card's language
+- name_en: English card name
+- number: printed collector number, including the total when visible
+- set_hint: visible set name or abbreviation, or null
+- card_type: Pokemon, Trainer, or Energy
+- hp: HP value or null
+- language: two-letter ISO language code
+
+If a small printed detail is unclear, use null rather than guessing. Respond ONLY with a
+JSON array containing one object per card, without markdown or explanation.
+"""
+
+
+class CompositeRecognitionError(ValueError):
+    """The composite response could not be mapped safely to its source photos."""
+
+
+async def recognize_composite_card_info(
+    api_key: str,
+    image_bytes: bytes,
+    count: int,
+) -> dict[int, dict]:
+    """Return Gemini card information keyed by zero-based composite position."""
+    image_b64 = base64.b64encode(image_bytes).decode()
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await post_gemini_generate(
+                client,
+                build_gemini_generate_url(),
+                api_key,
+                {
+                    "contents": [{
+                        "parts": [
+                            {"text": COMPOSITE_PROMPT.format(count=count)},
+                            {"inline_data": {"mime_type": "image/jpeg", "data": image_b64}},
+                        ]
+                    }]
+                },
+            )
+        payload = response.json()
+        response_text = payload["candidates"][0]["content"]["parts"][0]["text"].strip()
+        array_match = re.search(r"\[.*\]", response_text, re.DOTALL)
+        if not array_match:
+            raise CompositeRecognitionError("Gemini returned no card list for the composite.")
+        rows = json.loads(array_match.group())
+        if not isinstance(rows, list):
+            raise CompositeRecognitionError("Gemini returned an invalid composite card list.")
+    except HTTPException:
+        raise
+    except CompositeRecognitionError:
+        raise
+    except Exception as exc:
+        raise CompositeRecognitionError(f"Could not parse the composite result: {exc}") from exc
+
+    mapped: dict[int, dict] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        try:
+            position = int(row.get("index")) - 1
+        except (TypeError, ValueError):
+            continue
+        if 0 <= position < count and position not in mapped:
+            mapped[position] = row
+    return mapped
+
+
+async def match_composite_card_info(db: Session, card_info: dict) -> dict:
+    """Find the normal ordered candidate list for one composite-recognized card.
+
+    This deliberately uses only the currently approved name, language, and collector
+    number ranking. Expanded prompt fields and ranking remain outside this checkpoint.
+    """
+    card_name = str(card_info.get("name") or "").strip()
+    card_name_en = str(card_info.get("name_en") or card_name).strip() or card_name
+    if not card_name:
+        return {"recognized": card_info, "matches": []}
+
+    suffixes = re.compile(
+        r"[\s-]+(?:EX|ex|GX|gx|V|VMAX|VSTAR|VStar|TAG\s*TEAM|BREAK|LV\.?\s*X)\s*$",
+        re.IGNORECASE,
+    )
+    simple_name = suffixes.sub("", card_name).strip()
+    simple_name_en = suffixes.sub("", card_name_en).strip()
+    detected_language = normalize_tcgdex_language(card_info.get("language", "en"))
+    if not is_supported_tcgdex_language(detected_language):
+        detected_language = "en"
+
+    search_pairs = [(detected_language, simple_name)]
+    if simple_name != card_name:
+        search_pairs.append((detected_language, card_name))
+    if detected_language != "en":
+        search_pairs.append(("en", simple_name_en))
+        if simple_name_en != card_name_en:
+            search_pairs.append(("en", card_name_en))
+
+    recognized_number = card_info.get("number")
+    candidates: list[dict] = []
+    for language, search_name in search_pairs:
+        if len(candidates) >= 15:
+            break
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                response = await client.get(
+                    f"https://api.tcgdex.net/v2/{language}/cards",
+                    params={"name": search_name},
+                )
+            if response.status_code != 200 or not isinstance(response.json(), list):
+                continue
+            cards, _match_count = prioritize_cards_by_number(
+                response.json(),
+                recognized_number,
+                number_field="localId",
+            )
+            for card in cards[:8]:
+                card_id = card.get("id")
+                if not card_id:
+                    continue
+                candidates.append({
+                    "id": f"{card_id}_{language}",
+                    "tcg_card_id": card_id,
+                    "name": card.get("name"),
+                    "set": card.get("set", {}).get("name")
+                    if isinstance(card.get("set"), dict) else None,
+                    "number": card.get("localId"),
+                    "image": f"{card.get('image')}/low.webp" if card.get("image") else None,
+                    "rarity": card.get("rarity"),
+                    "lang": language,
+                    "_lang": language,
+                })
+        except Exception:
+            continue
+
+    for candidate in candidates:
+        tcg_card_id = candidate.get("tcg_card_id", "")
+        if "-" not in tcg_card_id:
+            continue
+        set_id = tcg_card_id.rsplit("-", 1)[0]
+        local_set = db.query(Set).filter(
+            Set.tcg_set_id == set_id,
+            Set.lang == candidate.get("_lang", "en"),
+        ).first() or db.query(Set).filter(Set.tcg_set_id == set_id).first()
+        if local_set:
+            candidate["set"] = local_set.name
+            if local_set.abbreviation:
+                candidate["set_abbreviation"] = local_set.abbreviation
+
+    seen = set()
+    deduped = []
+    for candidate in candidates:
+        key = (candidate.get("id"), candidate.get("_lang", "en"))
+        if key not in seen:
+            seen.add(key)
+            deduped.append(candidate)
+    deduped, number_match_count = prioritize_cards_by_number(deduped, recognized_number)
+    return {
+        "recognized": card_info,
+        "matches": deduped[:8],
+        "_number_match_count": number_match_count,
+    }
