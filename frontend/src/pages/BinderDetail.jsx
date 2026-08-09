@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Plus, Trash2, Package, Star, Download, Upload, X, Heart, Minus, HelpCircle, Check } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Package, Star, Download, Upload, X, Heart, Minus, HelpCircle, Check, Camera } from 'lucide-react'
 import { getBinderCards, removeCardFromBinder, removeBinderEntry, addCardToBinder, addCollectionItemToBinder, searchCards, getCollection, updateBinderEntry, getBinderEntryEquivalentPrints, getBinderPrintOptimization, applyBinderPrintOptimization, switchBinderEntryCard, addBinderEntryToWishlist, addBinderCardsToWishlist, convertWishlistBinderToCollection, convertCollectionBinderToWishlist, importBinderCsv, exportBinderCsv, getApiErrorMessage } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
@@ -15,6 +15,7 @@ import { partitionSettledResults } from '../utils/settledResults'
 import { formatBinderCountSummary } from '../utils/binderCounts'
 import { binderPickerItemsWithQuantities, binderPickerQuantitiesAreValid, binderPickerQuantityMaximum, canConvertWishlistBinder, clampBinderPickerQuantity } from '../utils/binderQuantity'
 import { CardDialog, CardDisplay, CardLegend, withCollectionItemState } from '../components/card-system'
+import { CollectionCardDisplay, showsOwnPhoto, useCollectionPhotoUrl } from '../components/CollectionCardImage'
 import Modal from '../components/ui/Modal'
 
 const SPRITE_BASE_URL = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated'
@@ -232,6 +233,13 @@ export default function BinderDetail() {
   const [badgeLegendOpen, setBadgeLegendOpen] = useState(false)
   const [selectedCard, setSelectedCard] = useState(null)
   const [selectedCardTab, setSelectedCardTab] = useState('binder')
+  // selectedCard is a flattened binder-card dict, not a collection item — nest it
+  // under `card` so showsOwnPhoto's hasCatalogueImage(item.card) checks the right shape.
+  const selectedCardPhotoItem = selectedCard
+    ? { id: selectedCard.collection_item_id, has_scan_photo: selectedCard.has_scan_photo, card: selectedCard }
+    : null
+  const selectedCardOwnPhoto = showsOwnPhoto(selectedCardPhotoItem)
+  const selectedCardPhotoUrl = useCollectionPhotoUrl(selectedCardPhotoItem)
   const [showCsvImportModal, setShowCsvImportModal] = useState(false)
   const [showPrintOptimizer, setShowPrintOptimizer] = useState(false)
   const [selectedPrintOptimizationIds, setSelectedPrintOptimizationIds] = useState([])
@@ -898,8 +906,9 @@ export default function BinderDetail() {
                     const unavailable = unavailableCollectionItemIds.has(item.id)
                     const selected = selectedPickerIds.includes(item.id)
                     return (
-                      <CardDisplay
+                      <CollectionCardDisplay
                         key={`${card.id}-${item.id}`}
+                        item={item}
                         card={card}
                         image={resolveCardImageUrl(card)}
                         compact
@@ -1050,10 +1059,10 @@ export default function BinderDetail() {
             const progressLabel = `${t('binderTypes.progress')}: ${ownedQuantity}/${requiredQuantity}`
 
             return (
-              <CardDisplay
+              <CollectionCardDisplay
                 key={card.binder_card_id || card.id}
+                item={{ id: card.collection_item_id, has_scan_photo: card.has_scan_photo, card }}
                 card={card}
-                image={resolveCardImageUrl(card)}
                 price={card.price_market > 0 ? formatPrice(card.price_market) : null}
                 variantEffectSource={card.variant}
                 showStateIndicators={!isWishlist}
@@ -1153,7 +1162,7 @@ export default function BinderDetail() {
                             <div className="min-w-0 flex-1">
                               <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_32px_minmax(0,1fr)_auto] md:items-center">
                                 <div className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-bg-elevated/50 p-2">
-                                  <CardDisplay variant="compact-artwork" card={item.current} image={resolveCardImageUrl(item.current)} alt={item.current.name} variantEffectSource={item.current.variant} />
+                                  <CollectionCardDisplay variant="compact-artwork" item={{ id: item.current.collection_item_id, has_scan_photo: item.current.has_scan_photo, card: item.current.card }} card={item.current} image={resolveCardImageUrl(item.current)} alt={item.current.name} variantEffectSource={item.current.variant} />
                                   <div className="min-w-0">
                                     <p className="text-[9px] font-bold uppercase tracking-wide text-text-muted">{t('binderTypes.currentPrint')}</p>
                                     <p className="truncate text-xs font-semibold text-text-primary">{item.current.set_name || item.current.set_id} #{item.current.number}</p>
@@ -1166,7 +1175,7 @@ export default function BinderDetail() {
                                   <span className="hidden md:inline">→</span>
                                 </span>
                                 <div className="flex min-w-0 items-center gap-2 rounded-lg border border-green/30 bg-green/5 p-2">
-                                  <CardDisplay variant="compact-artwork" card={item.suggested} image={resolveCardImageUrl(item.suggested)} alt={item.suggested.name} variantEffectSource={item.suggested.variant} />
+                                  <CollectionCardDisplay variant="compact-artwork" item={{ id: item.suggested.collection_item_id, has_scan_photo: item.suggested.has_scan_photo, card: item.suggested.card }} card={item.suggested} image={resolveCardImageUrl(item.suggested)} alt={item.suggested.name} variantEffectSource={item.suggested.variant} />
                                   <div className="min-w-0">
                                     <p className="text-[9px] font-bold uppercase tracking-wide text-green">{t('binderTypes.suggestedPrint')}</p>
                                     <p className="truncate text-xs font-semibold text-text-primary">{item.suggested.set_name || item.suggested.set_id} #{item.suggested.number}</p>
@@ -1234,7 +1243,15 @@ export default function BinderDetail() {
       {selectedCard && (
         <CardDialog
           card={selectedCard}
-          image={resolveCardImageUrl(selectedCard)}
+          image={selectedCardOwnPhoto && selectedCardPhotoUrl ? selectedCardPhotoUrl : resolveCardImageUrl(selectedCard)}
+          imageOverlay={selectedCardOwnPhoto && selectedCardPhotoUrl && (
+            <span
+              className="absolute bottom-1 right-1 z-10 inline-flex items-center justify-center rounded-md bg-black/70 text-white/90 border border-white/20 p-1.5 pointer-events-none"
+              title={t('collection.ownPhoto')}
+            >
+              <Camera size={14} />
+            </span>
+          )}
           variantEffectSource={selectedCard.variant}
           price={selectedCard.price_market > 0 ? formatPrice(selectedCard.price_market) : null}
           tabs={[
@@ -1312,8 +1329,9 @@ export default function BinderDetail() {
                         const imageUrl = resolveCardImageUrl(print)
                         return (
                           <div key={print.collection_item_id || print.id} className={`flex items-center gap-3 rounded-lg border p-2 ${print.is_current ? 'border-yellow/40 bg-yellow/5' : 'border-border bg-bg/40'}`}>
-                            <CardDisplay
+                            <CollectionCardDisplay
                               variant="compact-artwork"
+                              item={{ id: print.collection_item_id, has_scan_photo: print.has_scan_photo, card: print.card }}
                               card={print}
                               image={imageUrl}
                               alt={print.name}

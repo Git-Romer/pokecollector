@@ -174,6 +174,10 @@ class CollectionItemResponse(BaseModel):
     lang: str = "en"
     added_at: Optional[datetime] = None
     standard_legal: bool = False
+    # True when the owner has their own photo of this card, for the cards TCGdex
+    # has no scan of. A flag rather than the image: the bytes are served from a
+    # separate authenticated endpoint so a collection listing stays small.
+    has_scan_photo: bool = False
     product_sources: List[CollectionProductSourceResponse] = Field(default_factory=list)
     card: Optional[CardWithSet] = None
 

@@ -12,10 +12,10 @@ import { useAuth } from '../contexts/AuthContext'
 import { format, parseISO } from 'date-fns'
 import TrainerCard from '../components/TrainerCard'
 import PokeBallLoader from '../components/PokeBallLoader'
-import { resolveCardImageUrl } from '../utils/imageUrl'
 import { collectionItemTargetUrl } from '../utils/navigation'
 import AnalyticsSectionNav from '../components/AnalyticsSectionNav'
-import { CardDisplay, CardLegend, withCollectionItemState } from '../components/card-system'
+import { CardLegend, withCollectionItemState } from '../components/card-system'
+import { CollectionCardDisplay } from '../components/CollectionCardImage'
 
 const CustomTooltip = ({ active, payload, label }) => {
   const { formatPrice, t } = useSettings()
@@ -158,10 +158,10 @@ export default function Dashboard() {
           <div className="flex gap-2.5 overflow-x-auto pb-2 no-scrollbar -mx-4 px-4">
             {data.recent_additions.slice(0, 12).map(card => (
               <div key={card.id} className="flex-shrink-0 w-20 group cursor-pointer" onClick={() => openCollectionItem(card)}>
-                <CardDisplay
+                <CollectionCardDisplay
                   variant="artwork"
+                  item={{ id: card.collection_item_id, has_scan_photo: card.has_scan_photo }}
                   card={card}
-                  image={resolveCardImageUrl(card)}
                   alt={card.name}
                   variantEffectSource={card.variant}
                   stateIndicatorProps={{ card: withCollectionItemState(card, card), alwaysShowQuantity: true }}
@@ -208,10 +208,10 @@ export default function Dashboard() {
             {data.top_cards.slice(0, 10).map((card, i) => (
               <div key={card.collection_item_id || card.id} className="flex-shrink-0 w-24 group cursor-pointer" onClick={() => openCollectionItem(card)}>
                 <div className="relative">
-                  <CardDisplay
+                  <CollectionCardDisplay
                     variant="artwork"
+                    item={{ id: card.collection_item_id, has_scan_photo: card.has_scan_photo }}
                     card={card}
-                    image={resolveCardImageUrl(card)}
                     alt={card.name}
                     variantEffectSource={card.variant}
                     stateIndicatorProps={{ card: withCollectionItemState(card, card), alwaysShowQuantity: true }}

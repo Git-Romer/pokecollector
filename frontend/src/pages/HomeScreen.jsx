@@ -13,9 +13,9 @@ import { useSettings } from '../contexts/SettingsContext'
 import { useAuth } from '../contexts/AuthContext'
 import toast from 'react-hot-toast'
 import { format, parseISO } from 'date-fns'
-import { resolveCardImageUrl } from '../utils/imageUrl'
 import { collectionItemTargetUrl } from '../utils/navigation'
-import { CardDisplay, CardLegend, withCollectionItemState } from '../components/card-system'
+import { CardLegend, withCollectionItemState } from '../components/card-system'
+import { CollectionCardDisplay } from '../components/CollectionCardImage'
 import {
   SCAN_JOBS_QUERY_KEY,
   hasActiveScanJobs,
@@ -59,13 +59,12 @@ function ChartTooltip({ active, payload, label, formatPrice }) {
 
 // ── Card thumbnail ────────────────────────────────────────────────────────────
 function CardThumb({ card, onClick }) {
-  const img = resolveCardImageUrl(card)
   return (
     <div className="w-[110px] flex-shrink-0">
-      <CardDisplay
+      <CollectionCardDisplay
         variant="artwork"
+        item={{ id: card.collection_item_id, has_scan_photo: card.has_scan_photo }}
         card={card}
-        image={img}
         alt={card.name}
         variantEffectSource={card.variant}
         interactive
@@ -623,10 +622,10 @@ export default function HomeScreen() {
                 <div key={card.collection_item_id || card.id} className="flex-shrink-0 w-[110px] cursor-pointer group"
                   onClick={() => openCollectionItem(card)}>
                   <div className="relative">
-                    <CardDisplay
+                    <CollectionCardDisplay
                       variant="artwork"
+                      item={{ id: card.collection_item_id, has_scan_photo: card.has_scan_photo }}
                       card={card}
-                      image={resolveCardImageUrl(card)}
                       alt={card.name}
                       variantEffectSource={card.variant}
                       stateIndicatorProps={{ card: withCollectionItemState(card, card), alwaysShowQuantity: true }}

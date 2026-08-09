@@ -2,17 +2,18 @@ import { useState, useMemo, useId, useRef, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Trash2, Check, X, Filter, SortAsc, Download, Upload, ChevronUp, ChevronDown, Search, PenLine, Grid2X2, List, Library, BookOpen, Heart, Copy, ArrowLeft, Package } from 'lucide-react'
-import { getCollection, updateCollectionItem, updateCardCustomImage, removeFromCollection, importCollectionCsv, exportCSV, exportPDF, getSets, addToCollection, getBinders, addCollectionItemToBinder, getWishlist, getApiErrorMessage } from '../api/client'
+import { Trash2, Check, X, Filter, SortAsc, Download, Upload, ChevronUp, ChevronDown, Search, PenLine, Grid2X2, List, Library, BookOpen, Heart, Copy, ArrowLeft, Package, Camera } from 'lucide-react'
+import { getCollection, updateCollectionItem, updateCardCustomImage, removeFromCollection, importCollectionCsv, exportCSV, exportPDF, getSets, addToCollection, getBinders, addCollectionItemToBinder, getWishlist, getApiErrorMessage, uploadCollectionItemPhoto, deleteCollectionItemPhoto } from '../api/client'
 import { CustomCardModal } from '../components/CardItem'
 import { useSettings } from '../contexts/SettingsContext'
 import CardImage from '../components/CardImage'
-import { CardDialog, CardDisplay, CardIdentity, CardLegend, CardRow, withCollectionItemState } from '../components/card-system'
+import { CardDialog, CardLegend, withCollectionItemState } from '../components/card-system'
+import { CollectionCardDisplay, CollectionCardIdentity, CollectionCardRow, useCollectionPhotoUrl } from '../components/CollectionCardImage'
 import MoneyInput from '../components/MoneyInput'
 import TabNav from '../components/TabNav'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
-import { cardImageUrl, resolveCardImageUrl } from '../utils/imageUrl'
+import { cardImageUrl, hasCatalogueImage, resolveCardImageUrl } from '../utils/imageUrl'
 import { cardNumberMatches } from '../utils/cardNumbers'
 import { normalizeSearchText, textIncludes } from '../utils/textSearch'
 import { getEffectiveCardPrice } from '../utils/prices'
@@ -21,7 +22,6 @@ import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import { formatMoneyInputValue, parseMoneyInputValue } from '../utils/moneyInput'
-import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
 
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
 const CONDITION_COLORS = {
@@ -279,6 +279,7 @@ function CollectionEditModal({ item, onClose }) {
   const [customImageVersion, setCustomImageVersion] = useState(0)
   const [activeTab, setActiveTab] = useState('manage')
   const customImageInputId = useId()
+  const ownPhotoInputId = useId()
 
   const prevItemRef = useRef({
     id: item.id,
@@ -343,12 +344,15 @@ function CollectionEditModal({ item, onClose }) {
   })
   const collectionBinders = binders.filter(binder => (binder.binder_type || 'collection') === 'collection')
 
-  const hasApiImage = Boolean(card?.images?.large || card?.images_large || card?.images?.small || card?.images_small || card?.image)
+  const hasApiImage = hasCatalogueImage(card)
   const canEditCustomImage = card && !card.is_custom && !hasApiImage && typeof item.card_id === 'string'
   const customImageProxyUrl = canEditCustomImage && savedCustomImageUrl
     ? `${cardImageUrl(item.card_id, 'large')}?v=${customImageVersion}`
     : null
-  const cardImage = customImageProxyUrl || resolveCardImageUrl(card, 'large')
+  // A custom image URL the owner went and found still wins over their snapshot:
+  // supplying one is a deliberate act, and it is normally a proper scan.
+  const ownPhotoUrl = useCollectionPhotoUrl(item)
+  const cardImage = customImageProxyUrl || ownPhotoUrl || resolveCardImageUrl(card, 'large')
 
   const updateMutation = useMutation({
     mutationFn: () => updateCollectionItem(item.id, {
@@ -423,6 +427,35 @@ function CollectionEditModal({ item, onClose }) {
     },
   })
 
+  // Invalidating the photo query is what makes the new picture appear: the blob
+  // is cached with staleTime Infinity, so nothing refetches on its own.
+  const refreshOwnPhoto = () => {
+    queryClient.invalidateQueries({ queryKey: ['collection-photo', item.id] })
+    invalidateCardState(queryClient)
+  }
+
+  const ownPhotoMutation = useMutation({
+    mutationFn: (file) => uploadCollectionItemPhoto(item.id, file),
+    onSuccess: () => {
+      toast.success(t('collection.ownPhotoSaved'))
+      refreshOwnPhoto()
+    },
+    // getApiErrorMessage rather than the raw detail: a 422 answers with an
+    // array of objects, and handing that to toast.error renders an object as a
+    // React child, which throws and unmounts the whole app — the entire page
+    // goes dark behind the modal backdrop rather than showing an error.
+    onError: (err) => toast.error(getApiErrorMessage(err, t('common.error'))),
+  })
+
+  const removeOwnPhotoMutation = useMutation({
+    mutationFn: () => deleteCollectionItemPhoto(item.id),
+    onSuccess: () => {
+      toast.success(t('collection.ownPhotoRemoved'))
+      refreshOwnPhoto()
+    },
+    onError: (err) => toast.error(getApiErrorMessage(err, t('common.error'))),
+  })
+
   const handleDelete = () => {
     if (confirm(`${card?.name || 'Karte'} ${t('collection.removeConfirm')}`)) {
       deleteMutation.mutate()
@@ -471,6 +504,16 @@ function CollectionEditModal({ item, onClose }) {
     <CardDialog
       card={card}
       image={cardImage}
+      // Only when the photo is what is actually on screen — a custom image
+      // URL takes precedence over it above.
+      imageOverlay={cardImage === ownPhotoUrl && (
+        <span
+          className="absolute bottom-1 right-1 z-10 inline-flex items-center justify-center rounded-md bg-black/70 text-white/90 border border-white/20 p-1 pointer-events-none"
+          title={t('collection.ownPhoto')}
+        >
+          <Camera size={12} />
+        </span>
+      )}
       variantEffectSource={variant}
       price={marketPrice > 0 ? formatPrice(marketPrice) : null}
       tabs={dialogTabs}
@@ -678,6 +721,39 @@ function CollectionEditModal({ item, onClose }) {
                         className="btn-ghost text-sm"
                       >
                         {t('card.clearCustomImage')}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Same panel as the custom URL, because both answer "this
+                      card has no picture" — but this one needs no source on the
+                      internet to exist, which for a Japanese printing or a
+                      trainer kit is often the situation. */}
+                  <div className="pt-3 mt-1 border-t border-border space-y-2">
+                    <label htmlFor={ownPhotoInputId} className="text-xs text-text-muted font-medium uppercase tracking-wide block">
+                      {t('collection.ownPhotoLabel')}
+                    </label>
+                    <p className="text-xs text-text-secondary">{t('collection.ownPhotoDesc')}</p>
+                    <input
+                      id={ownPhotoInputId}
+                      type="file"
+                      accept="image/*"
+                      className="text-xs text-text-secondary file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-bg-elevated file:text-text-primary"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        if (file) ownPhotoMutation.mutate(file)
+                        e.target.value = ''
+                      }}
+                      disabled={ownPhotoMutation.isPending}
+                    />
+                    {ownPhotoUrl && (
+                      <button
+                        type="button"
+                        onClick={() => removeOwnPhotoMutation.mutate()}
+                        disabled={removeOwnPhotoMutation.isPending}
+                        className="btn-ghost text-sm block"
+                      >
+                        {t('collection.removeOwnPhoto')}
                       </button>
                     )}
                   </div>
@@ -1293,10 +1369,9 @@ export default function Collection() {
                     ].filter(Boolean).some(id => wishlistedCardIds.has(String(id))),
                   }
                   return (
-                    <CardDisplay
+                    <CollectionCardDisplay
                       key={item.id}
-                      card={card}
-                      image={resolveCardImageUrl(card)}
+                      item={item}
                       price={marketPrice > 0 ? formatPrice(marketPrice) : null}
                       languageLabel={hasMixedCollectionLanguages && item.lang ? tcgdexLanguageLabel(item.lang) : null}
                       variantEffectSource={item.variant}
@@ -1361,9 +1436,8 @@ export default function Collection() {
                           onClick={() => setEditingCollectionItem(item)}
                         >
                           <td className="px-4 py-3">
-                            <CardIdentity
-                              card={card}
-                              image={resolveCardImageUrl(card)}
+                            <CollectionCardIdentity
+                              item={item}
                               name={card?.name}
                               setNumber={[card?.set_ref?.abbreviation || card?.set_id, card?.number].filter(Boolean).join(' ').toUpperCase()}
                               languageLabel={item.lang ? tcgdexLanguageLabel(item.lang) : null}
@@ -1452,10 +1526,9 @@ export default function Collection() {
                   if (card?.is_custom) badges.push({ label: '✏️', variant: 'yellow' })
 
                   return (
-                    <CardRow
+                    <CollectionCardRow
                       key={item.id}
-                      card={card}
-                      image={resolveCardImageUrl(card)}
+                      item={item}
                       name={card?.name}
                       setNumber={[card?.set_ref?.abbreviation || card?.set_id, card?.number].filter(Boolean).join(' ').toUpperCase()}
                       languageLabel={item.lang ? tcgdexLanguageLabel(item.lang) : null}
