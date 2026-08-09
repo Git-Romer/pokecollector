@@ -185,7 +185,6 @@ function useCandidateFullImage(jobId, itemId, index, fallbackUrl) {
 
   useEffect(() => {
     setUrl(null)
-    if (jobId == null || itemId == null || index == null) return undefined
     let revoked = false
     let objectUrl = null
 
@@ -201,17 +200,26 @@ function useCandidateFullImage(jobId, itemId, index, fallbackUrl) {
       probe.src = candidate
     })
 
+    // Falling back to the CDN keeps a cache miss or a cold start working, just
+    // without the speed-up — also the only option when there's no scan job to
+    // fetch a cached candidate from at all (the single-photo capture flow has
+    // no jobId/itemId, since nothing is queued for that path).
+    const useFallback = () => fallbackUrl && announceWhenDecoded(fallbackUrl)
+      .then(ready => { if (!revoked) setUrl(ready) })
+      .catch(() => {})
+
+    if (jobId == null || itemId == null || index == null) {
+      useFallback()
+      return () => { revoked = true }
+    }
+
     fetchScanCandidateImage(jobId, itemId, index)
       .then(next => {
         if (revoked) return URL.revokeObjectURL(next)
         objectUrl = next
         setUrl(next)
       })
-      // Falling back to the CDN keeps a cache miss or a cold start working,
-      // just without the speed-up.
-      .catch(() => fallbackUrl && announceWhenDecoded(fallbackUrl)
-        .then(ready => { if (!revoked) setUrl(ready) })
-        .catch(() => {}))
+      .catch(useFallback)
     return () => {
       revoked = true
       if (objectUrl) URL.revokeObjectURL(objectUrl)
