@@ -20,6 +20,8 @@ try:
         purge_expired_scan_jobs,
         recover_expired_leases,
         resolve_scan_item,
+        retry_scan_item,
+        job_progress,
     )
 
     DEPS_AVAILABLE = True
@@ -137,8 +139,12 @@ class ScanQueueTests(unittest.TestCase):
         self.assertEqual(item.transient_failures, 1)
 
     def test_recognition_failure_stops_after_three_attempts(self):
-        self._job(self.users[0])
+        job = self._job(self.users[0])
         item = self.db.query(ScanJobItem).one()
+        job_dir = scan_storage.scan_upload_root() / str(job.id)
+        job_dir.mkdir()
+        image = job_dir / "0.jpg"
+        image.write_bytes(b"jpeg")
         for expected in (1, 2, 3):
             item.status = "pending"
             item.next_attempt_at = datetime.datetime.utcnow()
@@ -148,6 +154,53 @@ class ScanQueueTests(unittest.TestCase):
             item = self.db.get(ScanJobItem, item.id)
             self.assertEqual(item.attempts, expected)
         self.assertEqual(item.status, "failed")
+        self.assertTrue(image.exists())
+        self.assertEqual(item.image_path, f"{job.id}/0.jpg")
+
+    def test_failed_item_can_be_retried_as_a_fresh_recognition_cycle(self):
+        job = self._job(self.users[0])
+        item = self.db.query(ScanJobItem).one()
+        job_dir = scan_storage.scan_upload_root() / str(job.id)
+        job_dir.mkdir()
+        (job_dir / "0.jpg").write_bytes(b"jpeg")
+        item.status = "failed"
+        item.attempts = 3
+        item.transient_failures = 2
+        item.error = "unreadable"
+        item.recognized = {"name": "Wrong"}
+        item.matches = []
+        job.status = "failed"
+        job.finished_at = datetime.datetime.utcnow()
+        self.db.commit()
+
+        retry_scan_item(self.db, item)
+
+        self.assertEqual(item.status, "pending")
+        self.assertEqual(item.attempts, 0)
+        self.assertEqual(item.transient_failures, 0)
+        self.assertIsNone(item.error)
+        self.assertIsNone(item.recognized)
+        self.assertIsNone(item.matches)
+        self.assertEqual(job.status, "pending")
+        self.assertIsNone(job.finished_at)
+
+    def test_progress_counts_only_reviewable_items_as_attention(self):
+        job = self._job(self.users[0], positions=(0, 1, 2, 3))
+        items = self.db.query(ScanJobItem).order_by(ScanJobItem.position).all()
+        items[0].status = "done"
+        items[1].status = "failed"
+        items[2].status = "retrying"
+        items[3].status = "done"
+        items[3].resolved = True
+        self.db.commit()
+
+        progress = job_progress(self.db, job)
+
+        self.assertEqual(progress["processed"], 3)
+        self.assertEqual(progress["active"], 1)
+        self.assertEqual(progress["attention"], 2)
+        self.assertEqual(progress["failed_attention"], 1)
+        self.assertEqual(progress["unresolved"], 2)
 
     def test_resolve_removes_the_review_photo_immediately(self):
         job = self._job(self.users[0])

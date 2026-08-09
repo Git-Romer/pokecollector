@@ -303,12 +303,6 @@ async def process_claimed_scan_item(
             transient=isinstance(error, TransientScanError),
             permanent=isinstance(error, PermanentScanError),
         )
-        item = db.get(ScanJobItem, claim.item_id)
-        if item and item.status == "failed":
-            relative_path = item.image_path
-            item.image_path = None
-            db.commit()
-            delete_scan_image(relative_path)
     finally:
         db.close()
 
@@ -345,6 +339,35 @@ def resolve_scan_item(db: Session, item: ScanJobItem) -> ScanJobItem:
     return item
 
 
+def retry_scan_item(db: Session, item: ScanJobItem) -> ScanJobItem:
+    """Start a fresh individual recognition cycle for a reviewable item."""
+    if item.resolved:
+        raise ValueError("This scan has already been handled.")
+    if item.status not in {"done", "failed"}:
+        raise ValueError("This scan is still being processed.")
+    if not item.image_path or not resolve_scan_path(item.image_path).is_file():
+        raise ValueError("The stored scan photo is no longer available.")
+
+    now = datetime.datetime.utcnow()
+    item.status = "pending"
+    item.attempts = 0
+    item.transient_failures = 0
+    item.next_attempt_at = now
+    item.lease_token = None
+    item.lease_expires_at = None
+    item.recognized = None
+    item.matches = None
+    item.error = None
+    item.updated_at = now
+    item.job.status = "pending"
+    item.job.finished_at = None
+    item.job.error_message = None
+    item.job.updated_at = now
+    db.commit()
+    db.refresh(item)
+    return item
+
+
 def purge_expired_scan_jobs(db: Session, *, now: datetime.datetime | None = None) -> int:
     """Delete every job and review photo at its fixed 14-day expiry."""
     now = now or datetime.datetime.utcnow()
@@ -363,12 +386,29 @@ def job_progress(db: Session, job: ScanJob) -> dict:
     counts = {status: sum(1 for item in items if item.status == status) for status in {
         "pending", "processing", "retrying", "done", "failed"
     }}
+    active = counts["pending"] + counts["processing"] + counts["retrying"]
+    failed_attention = sum(
+        1
+        for item in items
+        if not item.resolved and item.status == "failed"
+    )
+    attention = sum(
+        1
+        for item in items
+        if not item.resolved and item.status in {"done", "failed"}
+    )
     return {
         "id": job.id,
         "status": job.status,
         "total": len(items),
         **counts,
-        "unresolved": sum(1 for item in items if not item.resolved and item.status == "done"),
+        "processed": counts["done"] + counts["failed"],
+        "active": active,
+        "attention": attention,
+        "failed_attention": failed_attention,
+        # Kept as a stable alias for badge clients built against Lamiskin's
+        # original queue payload.
+        "unresolved": attention,
         "created_at": job.created_at.isoformat() if job.created_at else None,
         "finished_at": job.finished_at.isoformat() if job.finished_at else None,
         "expires_at": job.expires_at.isoformat() if job.expires_at else None,

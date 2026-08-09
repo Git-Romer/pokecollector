@@ -4,12 +4,17 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   LayoutDashboard, Search, Library, Grid2X2, MoreHorizontal,
-  Heart, BookOpen, BarChart3, ShoppingBag, ArrowRightLeft, Settings, X, Zap, LogOut, ListOrdered
+  Heart, BookOpen, BarChart3, ShoppingBag, ArrowRightLeft, Settings, X, Zap, LogOut, ListOrdered, ScanLine
 } from 'lucide-react'
-import { getCustomMatches } from '../api/client'
+import { getCustomMatches, getScanJobs } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { useSettings } from '../contexts/SettingsContext'
 import clsx from 'clsx'
+import {
+  SCAN_JOBS_QUERY_KEY,
+  hasActiveScanJobs,
+  scanAttentionCount,
+} from '../utils/scanJobs'
 
 export default function BottomNav() {
   const { t } = useSettings()
@@ -23,6 +28,14 @@ export default function BottomNav() {
     refetchInterval: 60000,
   })
   const pendingCount = matches.length
+  const { data: scanData } = useQuery({
+    queryKey: SCAN_JOBS_QUERY_KEY,
+    queryFn: getScanJobs,
+    refetchInterval: query => hasActiveScanJobs(query.state.data?.jobs || []) ? 3000 : false,
+  })
+  const scanJobs = scanData?.jobs || []
+  const scanAttention = scanAttentionCount(scanJobs)
+  const scansActive = hasActiveScanJobs(scanJobs)
 
   const mainNav = [
     { to: '/dashboard',  icon: LayoutDashboard, label: t('nav.dashboard') },
@@ -38,11 +51,13 @@ export default function BottomNav() {
     { to: '/analytics',  icon: BarChart3,  label: t('nav.analytics') },
     { to: '/products',   icon: ShoppingBag, label: t('nav.products') },
     { to: '/trades',     icon: ArrowRightLeft, label: t('nav.trades') },
+    { to: '/scans',      icon: ScanLine, label: t('scanner.queueTitle'), badge: scanAttention, active: scansActive },
     { to: '/settings',   icon: Settings,   label: t('nav.settings') },
     ...(pendingCount > 0
       ? [{ to: '/migration', icon: Zap, label: t('migration.title'), badge: pendingCount }]
       : []),
   ]
+  const moreBadge = pendingCount + scanAttention
 
   const handleMoreNav = (to) => {
     setShowMore(false)
@@ -82,10 +97,13 @@ export default function BottomNav() {
         >
           <div className="relative">
             <MoreHorizontal size={22} />
-            {pendingCount > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 bg-yellow text-black text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center leading-none">
-                {pendingCount}
+            {moreBadge > 0 && (
+              <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-yellow px-1 text-[9px] font-bold leading-none text-black">
+                {moreBadge > 99 ? '99+' : moreBadge}
               </span>
+            )}
+            {moreBadge === 0 && scansActive && (
+              <span className="absolute -right-1 -top-1 h-2.5 w-2.5 animate-pulse rounded-full bg-brand-red" />
             )}
           </div>
           <span>{t('nav.more')}</span>
@@ -121,7 +139,7 @@ export default function BottomNav() {
 
             {/* Grid of nav items */}
             <div className="grid grid-cols-3 gap-2 p-4">
-              {moreNav.map(({ to, icon: Icon, label, badge }) => (
+              {moreNav.map(({ to, icon: Icon, label, badge, active }) => (
                 <button
                   key={to}
                   onClick={() => handleMoreNav(to)}
@@ -130,9 +148,12 @@ export default function BottomNav() {
                   <div className="relative">
                     <Icon size={22} className="text-text-secondary" />
                     {badge && (
-                      <span className="absolute -top-1 -right-1 bg-yellow text-black text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center leading-none">
-                        {badge}
+                      <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-yellow px-1 text-[9px] font-bold leading-none text-black">
+                        {badge > 99 ? '99+' : badge}
                       </span>
+                    )}
+                    {!badge && active && (
+                      <span className="absolute -right-1 -top-1 h-2.5 w-2.5 animate-pulse rounded-full bg-brand-red" />
                     )}
                   </div>
                   <span className="text-xs text-text-muted text-center leading-tight">{label}</span>

@@ -4,11 +4,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   RefreshCw, TrendingUp, TrendingDown, Layers, Star, Wallet, LogOut,
   Search, Library, Grid2X2, BarChart3, Settings, Trophy, ArrowRightLeft, ListOrdered, Info,
+  ScanLine,
 } from 'lucide-react'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts'
-import { getDashboard, triggerPriceSync, getSyncStatus, getInvestmentTracker } from '../api/client'
+import { getDashboard, triggerPriceSync, getSyncStatus, getInvestmentTracker, getScanJobs } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import { useAuth } from '../contexts/AuthContext'
 import toast from 'react-hot-toast'
@@ -16,6 +17,11 @@ import { format, parseISO } from 'date-fns'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 import { collectionItemTargetUrl } from '../utils/navigation'
 import { CardDisplay, CardLegend, withCollectionItemState } from '../components/card-system'
+import {
+  SCAN_JOBS_QUERY_KEY,
+  hasActiveScanJobs,
+  scanAttentionCount,
+} from '../utils/scanJobs'
 
 // Compact number formatter for mobile (1.2k, 3.4M, etc.)
 function compactNum(n) {
@@ -148,6 +154,15 @@ export default function HomeScreen() {
     refetchInterval: 15000,
   })
 
+  const { data: scanData } = useQuery({
+    queryKey: SCAN_JOBS_QUERY_KEY,
+    queryFn: getScanJobs,
+    refetchInterval: query => hasActiveScanJobs(query.state.data?.jobs || []) ? 3000 : false,
+  })
+  const scanJobs = scanData?.jobs || []
+  const scanAttention = scanAttentionCount(scanJobs)
+  const scansActive = hasActiveScanJobs(scanJobs)
+
   // Portfolio history for chart — uses analytics/investment-tracker
   const activePeriod = PERIODS.find(p => p.key === chartPeriod)
   const { data: investmentData = [] } = useQuery({
@@ -243,6 +258,7 @@ export default function HomeScreen() {
     { to: '/analytics',  icon: BarChart3,  label: t('nav.analytics'),   color: '#f5c842' },
     { to: '/trades',     icon: ArrowRightLeft, label: t('nav.trades'),   color: '#ff8a65' },
     ...(multiUser ? [{ to: '/leaderboard', icon: Trophy, label: t('nav.leaderboard'), color: '#ffd54f' }] : []),
+    { to: '/scans', icon: ScanLine, label: t('scanner.queueTitle'), color: '#e3000b', badge: scanAttention, active: scansActive },
     { to: '/settings',   icon: Settings,   label: t('nav.settings'),    color: '#b0bec5' },
   ]
 
@@ -527,7 +543,7 @@ export default function HomeScreen() {
         <div>
           <p className="text-xs font-bold text-white uppercase tracking-wider mb-3">{t('home.navigation')}</p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-            {PORTAL_ITEMS.map(({ to, icon: Icon, label, color }) => (
+            {PORTAL_ITEMS.map(({ to, icon: Icon, label, color, badge, active }) => (
               <button
                 key={to}
                 onClick={() => navigate(to)}
@@ -538,13 +554,21 @@ export default function HomeScreen() {
                   border: '1px solid rgba(255,255,255,0.07)',
                 }}
               >
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center transition-all
+                <div className="relative w-10 h-10 rounded-xl flex items-center justify-center transition-all
                   group-hover:scale-110"
                   style={{
                     background: `${color}18`,
                     border: `1px solid ${color}30`,
                   }}>
                   <Icon size={18} style={{ color }} />
+                  {badge > 0 && (
+                    <span className="absolute -right-2 -top-2 min-w-5 rounded-full bg-yellow px-1 text-center text-[9px] font-black leading-5 text-black">
+                      {badge > 99 ? '99+' : badge}
+                    </span>
+                  )}
+                  {!badge && active && (
+                    <span className="absolute -right-1 -top-1 h-2.5 w-2.5 animate-pulse rounded-full bg-brand-red" />
+                  )}
                 </div>
                 <span className="text-[10px] font-semibold text-center leading-tight"
                   style={{ color: 'rgba(255,255,255,0.65)' }}>
