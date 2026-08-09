@@ -1,5 +1,6 @@
 import json
 import unittest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 try:
@@ -853,6 +854,75 @@ class ScanJobEndpointTests(unittest.TestCase):
         self.current_user = self.other
         resp = self.client.get("/api/cards/recognize/jobs")
         self.assertEqual(resp.json()["jobs"], [])
+
+
+@unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")
+class RotateScanPhotoTests(unittest.TestCase):
+    """Manual quarter-turn for photos automatic straightening cannot help.
+
+    Recognition compares a photo against the matched card's catalogue scan, which
+    only works when such a scan exists — roughly 7% of matches have none. Two
+    automatic fallbacks were measured at 62% and 58% against a 25% baseline, both
+    far too weak to apply unasked, so the reviewer turns those by hand.
+    """
+
+    def setUp(self):
+        app = FastAPI()
+        app.include_router(recognize_router, prefix="/api/cards")
+
+        self.item = SimpleNamespace(
+            id=7, job_id=1, position=0, filename="a.jpg", batch_mode=False,
+            status="done", resolved=False, recognized=None, matches=None,
+            error=None, image_data=_fake_jpeg_bytes(), content_type="image/jpeg",
+            updated_at=None, selected_card_id=None,
+        )
+        job = SimpleNamespace(id=1, user_id=1)
+        item = self.item
+
+        class FakeQuery:
+            def __init__(self, result): self.result = result
+            def filter(self, *a, **k): return self
+            def first(self): return self.result
+
+        class FakeDB:
+            def query(self, model):
+                return FakeQuery(job if model is recognize_module.ScanJob else item)
+            def commit(self): pass
+            def refresh(self, *a): pass
+
+        app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=1)
+        app.dependency_overrides[get_db] = lambda: FakeDB()
+        self.client = TestClient(app)
+
+    def _size(self):
+        import io as _io
+        from PIL import Image
+        return Image.open(_io.BytesIO(self.item.image_data)).size
+
+    def test_a_quarter_turn_rewrites_the_stored_photo(self):
+        before = self._size()
+        resp = self.client.post("/api/cards/recognize/jobs/1/items/7/rotate?degrees=90")
+        self.assertEqual(resp.status_code, 200, resp.text)
+        self.assertEqual(self._size(), (before[1], before[0]), "90 degrees must swap the axes")
+
+    def test_updated_at_moves_so_the_review_refetches(self):
+        # The frontend keys its photo fetch on updated_at. Without this bump the
+        # rotation would land in the database and never reach the screen.
+        self.assertIsNone(self.item.updated_at)
+        self.client.post("/api/cards/recognize/jobs/1/items/7/rotate?degrees=180")
+        self.assertIsNotNone(self.item.updated_at)
+
+    def test_free_angles_are_refused(self):
+        # The control fixes photos taken sideways, it does not nudge a skew — an
+        # arbitrary angle would leave the card tilted inside its own frame.
+        resp = self.client.post("/api/cards/recognize/jobs/1/items/7/rotate?degrees=45")
+        self.assertEqual(resp.status_code, 400)
+
+    def test_a_full_turn_is_a_no_op_not_an_error(self):
+        before = self._size()
+        resp = self.client.post("/api/cards/recognize/jobs/1/items/7/rotate?degrees=360")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(self._size(), before)
 
 
 if __name__ == "__main__":

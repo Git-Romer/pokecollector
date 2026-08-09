@@ -1,5 +1,7 @@
 import base64
 import asyncio
+import datetime
+import hashlib
 import io
 import httpx
 import os
@@ -17,7 +19,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Backgro
 from sqlalchemy.orm import Session
 from api.auth import get_current_user
 from database import get_db
-from models import Setting, UserSetting, User, Set, Card, ScanJob, ScanJobItem
+from models import Setting, UserSetting, User, Set, Card, ImageCache, ScanJob, ScanJobItem
 from services.scan_queue import drain_scan_queue, enqueue_scan_job, job_progress, resolve_item
 
 logger = logging.getLogger(__name__)
@@ -372,6 +374,56 @@ PHASH_MIN_MARGIN = 5
 # card rather than a network problem. This runs in a background queue, so waiting
 # a little longer costs nothing a user sees.
 CANDIDATE_IMAGE_TIMEOUT = 20
+
+
+# How many candidates get their full-resolution scan cached during recognition.
+# The review opens on the top candidate and the arrow keys usually settle within
+# a card or two of it, so warming those covers the common path; the rest are
+# fetched when actually asked for. Each is ~70 KB, so two per photo is cheap
+# next to the photo itself.
+PREWARM_CANDIDATES = 2
+
+
+def cache_key_for(url: str) -> str:
+    return f"scan-candidate:{hashlib.sha1(url.encode('utf-8')).hexdigest()}"
+
+
+async def prewarm_candidate_images(db: Session, candidates: list[dict]) -> int:
+    """Pull the top candidates' full-resolution scans into the image cache.
+
+    Reviewing means comparing the photo against a candidate at full size, and the
+    TCGdex asset CDN is slow enough that doing it on click leaves the reviewer
+    watching a blank frame. Recognition already waits on the model for seconds, so
+    fetching here costs nothing anyone notices and makes the review immediate.
+
+    Cached rows are shared across jobs and users — the same printing is a popular
+    match — and are keyed by URL, so a re-scan reuses them.
+    """
+    warmed = 0
+    for candidate in candidates[:PREWARM_CANDIDATES]:
+        url = candidate.get("image_hd")
+        if not url:
+            continue
+        key = cache_key_for(url)
+        if db.query(ImageCache.id).filter(ImageCache.image_key == key).first():
+            continue
+        try:
+            async with httpx.AsyncClient(timeout=CANDIDATE_IMAGE_TIMEOUT) as client:
+                resp = await client.get(url)
+            if resp.status_code != 200:
+                continue
+            db.add(ImageCache(
+                image_key=key, data=resp.content,
+                content_type=resp.headers.get("content-type", "image/webp"),
+            ))
+            db.commit()
+            warmed += 1
+        except Exception:
+            # Best effort by design: a cold cache only means the review falls back
+            # to fetching on demand, which is what it did before.
+            db.rollback()
+            logger.warning("Could not pre-cache %s", url, exc_info=True)
+    return warmed
 
 
 async def _fetch_candidate_images(candidates: list[dict]) -> dict[str, bytes]:
@@ -1079,12 +1131,26 @@ async def _match_card_info(
                     rotation, top.get("tcg_card_id"),
                 )
 
+    # No usable reference — TCGdex has no scan for this printing, which is the
+    # case for roughly one match in fourteen and disproportionately for energy
+    # cards. A card lying on its side is still obvious from the photo being
+    # landscape, and choosing between the two ways up is a far easier question
+    # than the four-way one. Cannot speak to an upside-down portrait photo, and
+    # does not try.
+    if rotation is None:
+        rotation = card_image_match.detect_sideways_rotation(photo_bytes)
+        if rotation:
+            logger.info("Photo is lying on its side; rotating %s degrees", rotation)
+
     if trace:
         trace.data["detected_rotation"] = rotation
         trace.record_candidates(deduped[:8], rank_key=rank_key)
         if not (trace.data.get("decision") or {}).get("mechanism"):
             # Nothing decisive fired — the order is whatever ranking produced.
             trace.record_decision("rank_order", deduped[0].get("tcg_card_id") if deduped else None)
+
+    # Warm the review's first clicks while the user is still waiting on the queue.
+    await prewarm_candidate_images(db, deduped)
 
     return {
         "recognized": card_info,
@@ -1204,10 +1270,15 @@ def _item_payload(item: ScanJobItem) -> dict:
         "batch_mode": item.batch_mode,
         "status": item.status,
         "resolved": item.resolved,
+        "selected_card_id": item.selected_card_id,
         "recognized": item.recognized,
         "matches": item.matches,
         "error": item.error,
         "has_image": item.image_data is not None,
+        # Changes whenever the stored photo is rewritten — recognition
+        # straightens it once it knows which way up the card is. The review
+        # refetches on this, so a corrected photo actually reaches the screen.
+        "updated_at": item.updated_at.isoformat() if item.updated_at else None,
     }
 
 
@@ -1319,6 +1390,108 @@ def get_scan_job_item_image(
     return Response(content=item.image_data, media_type=item.content_type or "image/jpeg")
 
 
+@router.get("/recognize/jobs/{job_id}/items/{item_id}/candidates/{index}/image")
+async def get_scan_candidate_image(
+    job_id: int,
+    item_id: int,
+    index: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """A candidate's full-resolution scan, served from our own cache.
+
+    The review compares the photo against a candidate at full size, and going
+    straight to the TCGdex asset CDN for that made expanding a card feel broken —
+    it is slow enough to have timed out fetches elsewhere in this module. The top
+    candidates are pre-cached during recognition, so this is usually a local read.
+
+    The URL is looked up from the stored match rather than accepted from the
+    caller: proxying a client-supplied address would be an open redirect, and
+    there is no reason to allow one here.
+    """
+    _get_own_job(db, job_id, current_user)
+    item = db.query(ScanJobItem).filter(
+        ScanJobItem.id == item_id, ScanJobItem.job_id == job_id
+    ).first()
+    matches = (item.matches if item else None) or []
+    if not 0 <= index < len(matches):
+        raise HTTPException(status_code=404, detail="Bild nicht gefunden.")
+
+    url = matches[index].get("image_hd") or matches[index].get("image")
+    if not url:
+        raise HTTPException(status_code=404, detail="Bild nicht gefunden.")
+
+    key = cache_key_for(url)
+    cached = db.query(ImageCache).filter(ImageCache.image_key == key).first()
+    if cached:
+        return Response(content=cached.data, media_type=cached.content_type or "image/webp",
+                        headers={"Cache-Control": "private, max-age=86400"})
+
+    # Cold: fetch once and keep it, so the next reviewer of the same printing —
+    # or this one pressing the arrow keys back — does not wait again.
+    try:
+        async with httpx.AsyncClient(timeout=CANDIDATE_IMAGE_TIMEOUT) as client:
+            resp = await client.get(url)
+        resp.raise_for_status()
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Kartenbild konnte nicht geladen werden.") from exc
+
+    content_type = resp.headers.get("content-type", "image/webp")
+    db.add(ImageCache(image_key=key, data=resp.content, content_type=content_type))
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()  # another request cached it first; serving is what matters
+    return Response(content=resp.content, media_type=content_type,
+                    headers={"Cache-Control": "private, max-age=86400"})
+
+
+@router.post("/recognize/jobs/{job_id}/items/{item_id}/rotate")
+def rotate_scan_job_item_image(
+    job_id: int,
+    item_id: int,
+    degrees: int = 90,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Turn a stored photo by a quarter turn, because sometimes we cannot.
+
+    Recognition straightens photos automatically by comparing them against the
+    matched card's catalogue scan, which is upright by definition. That works
+    whenever such a scan exists — but roughly 7% of matches have no image, and
+    energy cards are over-represented there. For those there is no reference, and
+    a card that reads correctly while sideways never trips the rotation retry
+    either, so nothing detects it.
+
+    Two automatic fallbacks were measured and rejected: comparing against
+    unrelated catalogue scans managed 62%, and a text-density asymmetry heuristic
+    58%, against a 25% baseline. Both are far worse than useless here — a wrong
+    answer turns a correct photo upside down — so this is a manual control rather
+    than a guess.
+
+    Bumping updated_at is load-bearing: the review refetches the photo on it, so
+    the rotation appears without a reload.
+    """
+    _get_own_job(db, job_id, current_user)
+    item = db.query(ScanJobItem).filter(
+        ScanJobItem.id == item_id, ScanJobItem.job_id == job_id
+    ).first()
+    if not item or not item.image_data:
+        raise HTTPException(status_code=404, detail="Bild nicht gefunden.")
+    if degrees % 90 != 0:
+        raise HTTPException(status_code=400, detail="Nur Vielfache von 90 Grad.")
+
+    try:
+        item.image_data = _rotate_image(item.image_data, degrees % 360)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Bild konnte nicht gedreht werden.") from exc
+    item.content_type = "image/jpeg"
+    item.updated_at = datetime.datetime.utcnow()
+    db.commit()
+    db.refresh(item)
+    return _item_payload(item)
+
+
 @router.post("/recognize/jobs/{job_id}/items/{item_id}/resolve")
 def resolve_scan_job_item(
     job_id: int,
@@ -1342,6 +1515,9 @@ def resolve_scan_job_item(
         raise HTTPException(status_code=404, detail="Eintrag nicht gefunden.")
     if selected_card_id:
         record_ground_truth(job_id, item_id, selected_card_id)
+        # Also kept on the item: resolving drops the photo, so this is the only
+        # thing left that says which card the reviewer actually confirmed.
+        item.selected_card_id = selected_card_id
     return _item_payload(resolve_item(db, item))
 
 

@@ -532,6 +532,10 @@ class ScanJobItem(Base):
 
     status = Column(String, default="pending", index=True)  # pending/done/failed
     resolved = Column(Boolean, default=False, index=True)  # user has reviewed/actioned it
+    # Which candidate the user confirmed. Kept because the photo is dropped on
+    # resolve, so without it a reviewed item has nothing left to identify itself
+    # with beyond whatever the model happened to read.
+    selected_card_id = Column(String)
     attempts = Column(Integer, default=0)
     recognized = Column(JSON)
     matches = Column(JSON)

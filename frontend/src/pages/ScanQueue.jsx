@@ -5,7 +5,7 @@ import { ArrowLeft, Loader2, ScanLine, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
 import { getScanJob, getScanJobs, resolveScanJobItem, deleteScanJob } from '../api/client'
-import { ScanAddModal, ScanItemPanel } from '../components/ScanReview'
+import { CardZoomModal, ScanAddModal, ScanItemPanel, useScanItemPhoto } from '../components/ScanReview'
 import { useSettings } from '../contexts/SettingsContext'
 import {
   SCAN_JOBS_QUERY_KEY,
@@ -51,6 +51,10 @@ function JobDetail({ jobId, onBack }) {
   const { t } = useSettings()
   const queryClient = useQueryClient()
   const [addModal, setAddModal] = useState(null) // { item, match }
+  // The full-screen review session: which photo is open and which of its
+  // candidates. Owned here rather than by a panel because accepting a card walks
+  // on to the *next* photo, which no single panel can see.
+  const [review, setReview] = useState(null) // { itemId, matchIndex }
 
   const { data: job, isLoading } = useQuery({
     queryKey: ['scan-job', jobId],
@@ -79,6 +83,24 @@ function JobDetail({ jobId, onBack }) {
     },
     onError: e => toast.error(e?.response?.data?.detail || t('scanner.recognitionFailed')),
   })
+
+  const items = job?.items || []
+  const reviewItem = review ? items.find(i => i.id === review.itemId) : null
+  const reviewMatches = reviewItem?.matches || []
+  const reviewMatch = reviewMatches[review?.matchIndex] || null
+  // Called unconditionally and above the early returns: hooks cannot sit behind a
+  // loading branch. It no-ops until a review is actually open.
+  const reviewPhoto = useScanItemPhoto(jobId, reviewItem)
+
+  // Walk to the next photo still worth looking at, so a batch can be cleared
+  // without going back to the list between cards. Anything already resolved,
+  // failed, or without candidates is skipped — there is nothing to decide there.
+  const openNextReview = fromItemId => {
+    const start = items.findIndex(i => i.id === fromItemId)
+    const next = items.find((i, idx) =>
+      idx > start && !i.resolved && i.status === 'done' && (i.matches || []).length)
+    setReview(next ? { itemId: next.id, matchIndex: 0 } : null)
+  }
 
   if (isLoading) {
     return (
@@ -129,21 +151,44 @@ function JobDetail({ jobId, onBack }) {
             item={item}
             onSelectMatch={(scanItem, match) => setAddModal({ item: scanItem, match })}
             onResolve={item => resolveMutation.mutate({ item })}
+            onReview={(scanItem, matchIndex) => setReview({ itemId: scanItem.id, matchIndex })}
+            onRotated={invalidate}
             t={t}
           />
         ))}
       </div>
 
+      {reviewItem && reviewMatch && !addModal && (
+        <CardZoomModal
+          card={reviewMatch}
+          photoUrl={reviewPhoto}
+          jobId={jobId}
+          itemId={reviewItem.id}
+          matches={reviewMatches}
+          index={review.matchIndex}
+          onIndex={matchIndex => setReview(r => ({ ...r, matchIndex }))}
+          onAccept={card => setAddModal({ item: reviewItem, match: card, fromReview: true })}
+          onClose={() => setReview(null)}
+          t={t}
+        />
+      )}
+
       {addModal && (
         <ScanAddModal
           match={addModal.match}
           defaultLang={addModal.item?.recognized?.language || addModal.match?.lang || 'en'}
+          // Cancelling returns to the comparison for the same photo rather than
+          // skipping it: backing out of the add form is not a decision about the
+          // card, and silently advancing would strand the user.
           onClose={() => setAddModal(null)}
           onAdded={() => {
             // Adding the card is the review: it both clears the item and
             // records the confirmed identity as ground truth for the traces.
             resolveMutation.mutate({ item: addModal.item, cardId: addModal.match?.tcg_card_id })
+            const cameFromReview = addModal.fromReview
+            const finishedItemId = addModal.item?.id
             setAddModal(null)
+            if (cameFromReview) openNextReview(finishedItemId)
           }}
         />
       )}

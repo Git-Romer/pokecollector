@@ -131,11 +131,25 @@ export const resolveScanJobItem = (jobId, itemId, selectedCardId) =>
   }).then(r => r.data)
 export const deleteScanJob = (jobId) => api.delete(`/cards/recognize/jobs/${jobId}`).then(r => r.data)
 
+// Turn a stored photo a quarter turn. Recognition straightens photos on its own
+// where the matched card has a catalogue scan to compare against; this is the
+// manual route for the rest, where no reliable automatic signal exists.
+export const rotateScanJobItemImage = (jobId, itemId, degrees = 90) =>
+  api.post(`/cards/recognize/jobs/${jobId}/items/${itemId}/rotate`, null, { params: { degrees } })
+    .then(r => r.data)
+
 // Fetched as a blob rather than used as an <img src> directly: the endpoint is
 // authenticated with a bearer token, which an <img> tag cannot send.
 // Caller owns the returned object URL and must revokeObjectURL it.
 export const fetchScanJobItemImage = (jobId, itemId) =>
   api.get(`/cards/recognize/jobs/${jobId}/items/${itemId}/image`, { responseType: 'blob' })
+    .then(r => URL.createObjectURL(r.data))
+
+// Full-resolution candidate scan, served from our own image cache rather than
+// the TCGdex CDN — the top candidates are pre-cached during recognition, so the
+// review opens immediately instead of waiting on a slow upstream.
+export const fetchScanCandidateImage = (jobId, itemId, index) =>
+  api.get(`/cards/recognize/jobs/${jobId}/items/${itemId}/candidates/${index}/image`, { responseType: 'blob' })
     .then(r => URL.createObjectURL(r.data))
 
 // Custom card migration

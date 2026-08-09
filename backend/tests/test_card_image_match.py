@@ -139,6 +139,52 @@ class RotationDetectionTests(unittest.TestCase):
 
 
 @unittest.skipUnless(DEPS_AVAILABLE, "Pillow/imagehash not installed in this lightweight test environment")
+class SidewaysDetectionTests(unittest.TestCase):
+    """The fallback for cards TCGdex has no scan of.
+
+    A photo cropped to a card is portrait, so a landscape one is lying on its
+    side without needing any reference to say so. Only the direction is open, and
+    that two-way choice scored 98% on 80 synthetic rotations where the same idea
+    applied to all four angles managed 58%.
+    """
+
+    @staticmethod
+    def _card_like(top_detail=True):
+        """A card-shaped image with a busy strip at one end, like a name bar."""
+        import random
+        rng = random.Random(4)
+        img = Image.new("RGB", (200, 280), (40, 60, 90))
+        band = range(0, 40) if top_detail else range(240, 280)
+        for y in band:
+            for x in range(200):
+                img.putpixel((x, y), (rng.randrange(256),) * 3)
+        return img
+
+    def test_a_portrait_photo_is_left_alone(self):
+        # An upside-down card is exactly as portrait as an upright one, so this
+        # must not pretend to have an opinion about it.
+        self.assertIsNone(cim.detect_sideways_rotation(encoded(self._card_like())))
+
+    def test_recovers_both_directions(self):
+        upright = self._card_like()
+        for applied in (90, 270):
+            sideways = upright.rotate(-applied, expand=True)
+            self.assertEqual(
+                cim.detect_sideways_rotation(encoded(sideways)), applied,
+                f"failed to recover a {applied} degree rotation",
+            )
+
+    def test_declines_when_neither_end_is_busier(self):
+        # A card with no structural asymmetry gives no signal, and guessing
+        # would turn half of them upside down.
+        flat = Image.new("RGB", (280, 200), (70, 70, 70))
+        self.assertIsNone(cim.detect_sideways_rotation(encoded(flat)))
+
+    def test_unreadable_bytes_are_not_fatal(self):
+        self.assertIsNone(cim.detect_sideways_rotation(b"not-an-image"))
+
+
+@unittest.skipUnless(DEPS_AVAILABLE, "Pillow/imagehash not installed in this lightweight test environment")
 class CalibrationTests(unittest.TestCase):
     """Pin the thresholds to what was measured.
 
