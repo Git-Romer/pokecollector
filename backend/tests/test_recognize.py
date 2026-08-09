@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 try:
     import httpx
@@ -9,10 +9,14 @@ try:
         DEFAULT_GEMINI_MODEL,
         COMPOSITE_PROMPT,
         MAX_GEMINI_RETRY_SECONDS,
+        PHASH_CANDIDATE_LIMIT,
         RECOGNIZE_PROMPT,
         _candidate_rank_key,
+        _download_candidate_images,
         _metadata_decision,
         _normalize_artist,
+        _perceptual_hash,
+        _phash_best_match,
         build_gemini_generate_url,
         get_gemini_model,
         gemini_error_message,
@@ -165,6 +169,223 @@ class RecognizeCardNumberTests(unittest.TestCase):
         })
         self.assertEqual((legacy["number_local"], legacy["number_total"]), ("136", "182"))
         self.assertEqual(split["number"], "063/100")
+
+
+@unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed")
+class PhashMatchingTests(unittest.IsolatedAsyncioTestCase):
+    class StreamResponse:
+        def __init__(self, chunks, *, status_code=200, headers=None):
+            self._chunks = chunks
+            self.status_code = status_code
+            self.headers = headers or {}
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+        async def aiter_bytes(self):
+            for chunk in self._chunks:
+                yield chunk
+
+    @staticmethod
+    def _image(seed: int) -> bytes:
+        import io
+        import random
+        from PIL import Image
+
+        rng = random.Random(seed)
+        image = Image.new("RGB", (64, 64))
+        image.putdata([
+            (rng.randrange(256), rng.randrange(256), rng.randrange(256))
+            for _ in range(64 * 64)
+        ])
+        output = io.BytesIO()
+        image.save(output, format="PNG")
+        return output.getvalue()
+
+    def test_picks_a_clear_visual_match(self):
+        photo = self._image(7)
+        candidates = [{"id": "far"}, {"id": "near"}]
+        winner = _phash_best_match(
+            candidates,
+            photo,
+            {"far": self._image(99), "near": photo},
+        )
+        self.assertIsNotNone(winner)
+        self.assertEqual(winner["id"], "near")
+
+    def test_matches_the_imagehash_reference_algorithm(self):
+        bits = _perceptual_hash(self._image(7))
+        self.assertIsNotNone(bits)
+        as_hex = f"{int(''.join('1' if bit else '0' for bit in bits), 2):016x}"
+        self.assertEqual(as_hex, "e0693e83b2db14cb")
+
+    def test_abstains_when_candidates_have_the_same_artwork(self):
+        photo = self._image(7)
+        candidates = [{"id": "reprint-a"}, {"id": "reprint-b"}]
+        self.assertIsNone(_phash_best_match(
+            candidates,
+            photo,
+            {"reprint-a": photo, "reprint-b": photo},
+        ))
+
+    def test_abstains_without_two_downloaded_candidate_images(self):
+        photo = self._image(7)
+        candidates = [{"id": "one"}, {"id": "missing"}]
+        self.assertIsNone(_phash_best_match(candidates, photo, {"one": photo}))
+
+    async def test_candidate_downloads_reuse_existing_bytes(self):
+        client = Mock()
+        client.stream.return_value = self.StreamResponse([b"second-image"])
+        candidates = [
+            {"id": "first", "image": "https://assets.tcgdex.net/first.webp"},
+            {"id": "second", "image": "https://assets.tcgdex.net/second.webp"},
+        ]
+
+        downloaded = await _download_candidate_images(
+            client,
+            candidates,
+            {"first": b"first-image"},
+        )
+
+        self.assertEqual(downloaded["first"], b"first-image")
+        self.assertEqual(downloaded["second"], b"second-image")
+        client.stream.assert_called_once_with(
+            "GET",
+            "https://assets.tcgdex.net/second.webp",
+            timeout=5,
+        )
+
+    async def test_candidate_download_stream_stops_at_hard_byte_limit(self):
+        client = Mock()
+        client.stream.return_value = self.StreamResponse(
+            [b"1234", b"56"],
+            headers={"content-length": "4"},
+        )
+        with patch("api.recognize.MAX_REFERENCE_IMAGE_BYTES", 5):
+            downloaded = await _download_candidate_images(
+                client,
+                [{"id": "large", "image": "https://assets.tcgdex.net/large.webp"}],
+            )
+        self.assertEqual(downloaded, {})
+
+    async def test_candidate_download_rejects_untrusted_image_host(self):
+        client = Mock()
+        downloaded = await _download_candidate_images(
+            client,
+            [{"id": "private", "image": "https://127.0.0.1/private.webp"}],
+        )
+        self.assertEqual(downloaded, {})
+        client.stream.assert_not_called()
+
+    def test_rejects_excessive_decoded_dimensions(self):
+        with patch("api.recognize.MAX_REFERENCE_IMAGE_PIXELS", 100):
+            self.assertIsNone(_perceptual_hash(self._image(7)))
+
+    async def test_clear_phash_finishes_an_uncertain_match(self):
+        photo = self._image(7)
+        candidates = [
+            {"id": "far", "number": None, "image": "far.webp"},
+            {"id": "near", "number": None, "image": "near.webp"},
+        ]
+        with patch(
+            "api.recognize._search_and_rank_candidates",
+            new=AsyncMock(return_value=(candidates, 0)),
+        ), patch(
+            "api.recognize._download_candidate_images",
+            new=AsyncMock(return_value={"far": self._image(99), "near": photo}),
+        ):
+            result = await match_card_info(
+                object(),
+                {"name": "Pikachu"},
+                photo_bytes=photo,
+            )
+
+        self.assertTrue(result["_identity_confident"])
+        self.assertEqual(result["_identity_decision"], "phash")
+        self.assertEqual(result["matches"][0]["id"], "near")
+
+    async def test_phash_does_not_override_known_metadata_contradiction(self):
+        photo = self._image(7)
+        candidates = [
+            {"id": "far", "number": "3", "image": "far.webp"},
+            {"id": "near", "number": "2", "image": "near.webp"},
+        ]
+        with patch(
+            "api.recognize._search_and_rank_candidates",
+            new=AsyncMock(return_value=(candidates, 0)),
+        ), patch(
+            "api.recognize._download_candidate_images",
+            new=AsyncMock(return_value={"far": self._image(99), "near": photo}),
+        ):
+            result = await match_card_info(
+                object(),
+                {"name": "Pikachu", "number_local": "1"},
+                photo_bytes=photo,
+            )
+
+        self.assertFalse(result["_identity_confident"])
+        self.assertIsNone(result["_identity_decision"])
+        self.assertEqual(result["matches"][0]["id"], "far")
+
+    async def test_metadata_confidence_skips_phash_downloads(self):
+        candidates = [
+            {"id": "right", "number": "25", "image": "right.webp"},
+            {"id": "wrong", "number": "26", "image": "wrong.webp"},
+        ]
+        downloader = AsyncMock()
+        with patch(
+            "api.recognize._search_and_rank_candidates",
+            new=AsyncMock(return_value=(candidates, 1)),
+        ), patch("api.recognize._download_candidate_images", new=downloader):
+            result = await match_card_info(
+                object(),
+                {"name": "Pikachu", "number_local": "25"},
+                photo_bytes=self._image(7),
+            )
+
+        self.assertTrue(result["_identity_confident"])
+        self.assertEqual(result["_identity_decision"], "number_unique")
+        downloader.assert_not_awaited()
+        self.assertEqual(PHASH_CANDIDATE_LIMIT, 8)
+
+    async def test_phash_failure_preserves_existing_gemini_visual_fallback(self):
+        photo = self._image(7)
+        candidates = [
+            {"id": "first", "number": None, "image": "first.webp"},
+            {"id": "second", "number": None, "image": "second.webp"},
+        ]
+        gemini_response = Mock()
+        gemini_response.json.return_value = {
+            "candidates": [{"content": {"parts": [{"text": "2"}]}}]
+        }
+        visual_call = AsyncMock(return_value=gemini_response)
+        with patch(
+            "api.recognize._search_and_rank_candidates",
+            new=AsyncMock(return_value=(candidates, 0)),
+        ), patch(
+            "api.recognize._download_candidate_images",
+            new=AsyncMock(return_value={}),
+        ), patch(
+            "api.recognize._phash_best_match",
+            side_effect=RuntimeError("unexpected pHash failure"),
+        ), patch("api.recognize.post_gemini_generate", new=visual_call):
+            result = await match_card_info(
+                object(),
+                {"name": "Pikachu"},
+                api_key="key",
+                image_b64="cGhvdG8=",
+                mime_type="image/jpeg",
+                allow_visual_verification=True,
+                photo_bytes=photo,
+            )
+
+        visual_call.assert_awaited_once()
+        self.assertTrue(result["_identity_confident"])
+        self.assertEqual(result["_identity_decision"], "gemini_visual")
+        self.assertEqual(result["matches"][0]["id"], "second")
 
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed")

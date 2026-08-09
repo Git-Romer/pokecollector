@@ -447,13 +447,19 @@ class CompositeProcessorTests(unittest.IsolatedAsyncioTestCase):
         ]
 
         matcher = AsyncMock(side_effect=matched)
+        source_images = [
+            image_bytes("red"),
+            image_bytes("blue"),
+            image_bytes("green"),
+            image_bytes("yellow"),
+        ]
         with patch("api.recognize.get_gemini_key", return_value="secret-key"), \
                 patch("api.recognize.recognize_composite_card_info", new=AsyncMock(return_value=composite_info)), \
                 patch("api.recognize.match_composite_card_info", new=matcher):
             results = await scan_queue.default_composite_processor(
                 db,
                 1,
-                [image_bytes("red"), image_bytes("blue"), image_bytes("green"), image_bytes("yellow")],
+                source_images,
                 ["image/jpeg"] * 4,
             )
 
@@ -461,6 +467,10 @@ class CompositeProcessorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(results[1:3], [None, None])
         self.assertEqual(results[3]["matches"][0]["id"], "card-jigglypuff")
         self.assertEqual(matcher.await_count, 3)
+        self.assertEqual(
+            [call.kwargs["photo_bytes"] for call in matcher.await_args_list],
+            [source_images[0], source_images[2], source_images[3]],
+        )
 
 
 if __name__ == "__main__":

@@ -2,11 +2,15 @@ import base64
 import asyncio
 import datetime
 import httpx
+import io
 import math
 import os
 import json
 import re
+import warnings
 from email.utils import parsedate_to_datetime
+from functools import lru_cache
+from urllib.parse import urlparse
 from services.tcgdex_languages import is_supported_tcgdex_language, normalize_tcgdex_language
 from services.gemini_rate_limit import (
     GeminiKeyBlockedError,
@@ -30,6 +34,12 @@ GEMINI_TRANSIENT_STATUS_CODES = {502, 503, 504}
 DEFAULT_GEMINI_MODEL = "gemini-flash-latest"
 GEMINI_MODELS_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 MAX_GEMINI_RETRY_SECONDS = 14 * 24 * 60 * 60
+PHASH_MAX_DISTANCE = 20
+PHASH_MIN_MARGIN = 5
+PHASH_CANDIDATE_LIMIT = 8
+MAX_REFERENCE_IMAGE_BYTES = 5 * 1024 * 1024
+MAX_REFERENCE_IMAGE_PIXELS = 50_000_000
+TRUSTED_REFERENCE_IMAGE_HOSTS = {"assets.tcgdex.net"}
 
 
 class GeminiRateLimitHTTPException(HTTPException):
@@ -528,6 +538,133 @@ def _metadata_decision(card_info: dict, candidates: list[dict]) -> tuple[bool, s
     return False, None
 
 
+async def _download_candidate_images(
+    client: httpx.AsyncClient,
+    candidates: list[dict],
+    existing: dict[str, bytes] | None = None,
+) -> dict[str, bytes]:
+    """Download each candidate image at most once for pHash/Gemini reuse."""
+    downloaded = dict(existing or {})
+
+    async def fetch(candidate: dict) -> tuple[str, bytes] | None:
+        candidate_id = str(candidate.get("id") or "")
+        image_url = candidate.get("image")
+        if not candidate_id or not image_url or candidate_id in downloaded:
+            return None
+        parsed_url = urlparse(str(image_url))
+        if (
+            parsed_url.scheme != "https"
+            or parsed_url.hostname not in TRUSTED_REFERENCE_IMAGE_HOSTS
+        ):
+            return None
+        try:
+            async with client.stream("GET", image_url, timeout=5) as response:
+                if response.status_code != 200:
+                    return None
+                content_length = response.headers.get("content-length")
+                if content_length:
+                    try:
+                        if int(content_length) > MAX_REFERENCE_IMAGE_BYTES:
+                            return None
+                    except ValueError:
+                        return None
+
+                content = bytearray()
+                async for chunk in response.aiter_bytes():
+                    if len(content) + len(chunk) > MAX_REFERENCE_IMAGE_BYTES:
+                        return None
+                    content.extend(chunk)
+                if content:
+                    return candidate_id, bytes(content)
+        except Exception:
+            return None
+        return None
+
+    results = await asyncio.gather(*(fetch(candidate) for candidate in candidates))
+    downloaded.update(result for result in results if result is not None)
+    return downloaded
+
+
+@lru_cache(maxsize=1)
+def _phash_dct_matrix():
+    """Build the unnormalised DCT-II matrix used by imagehash.phash."""
+    import numpy as np
+
+    size = 32
+    positions = np.arange(size)
+    frequencies = np.arange(size)[:, None]
+    return 2 * np.cos(
+        np.pi * frequencies * (2 * positions + 1) / (2 * size)
+    )
+
+
+def _perceptual_hash(image_bytes: bytes | None) -> tuple[bool, ...] | None:
+    """Return the same 64-bit pHash as imagehash without its SciPy dependency."""
+    if not image_bytes:
+        return None
+    try:
+        import numpy as np
+        from PIL import Image
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(io.BytesIO(image_bytes)) as image:
+                width, height = image.size
+                if (
+                    width <= 0
+                    or height <= 0
+                    or width * height > MAX_REFERENCE_IMAGE_PIXELS
+                ):
+                    return None
+                pixels = np.asarray(
+                    image.convert("L").resize(
+                        (32, 32),
+                        Image.Resampling.LANCZOS,
+                    ),
+                    dtype=float,
+                )
+        transform = _phash_dct_matrix()
+        low_frequencies = (transform @ pixels @ transform.T)[:8, :8]
+        median = np.median(low_frequencies)
+        return tuple(bool(value) for value in (low_frequencies > median).flat)
+    except Exception:
+        return None
+
+
+def _phash_best_match(
+    candidates: list[dict],
+    photo_bytes: bytes | None,
+    candidate_images: dict[str, bytes],
+) -> dict | None:
+    """Return a clearly separated perceptual match, otherwise abstain."""
+    photo_hash = _perceptual_hash(photo_bytes)
+    if photo_hash is None:
+        return None
+
+    scored: list[tuple[int, dict]] = []
+    for candidate in candidates[:PHASH_CANDIDATE_LIMIT]:
+        image_bytes = candidate_images.get(str(candidate.get("id") or ""))
+        if not image_bytes:
+            continue
+        candidate_hash = _perceptual_hash(image_bytes)
+        if candidate_hash is None:
+            continue
+        distance = sum(left != right for left, right in zip(photo_hash, candidate_hash))
+        scored.append((distance, candidate))
+
+    if len(scored) < 2:
+        return None
+    scored.sort(key=lambda pair: pair[0])
+    best_distance, best_candidate = scored[0]
+    runner_up_distance = scored[1][0]
+    if (
+        best_distance > PHASH_MAX_DISTANCE
+        or runner_up_distance - best_distance < PHASH_MIN_MARGIN
+    ):
+        return None
+    return best_candidate
+
+
 async def _fill_candidate_details(
     db: Session,
     candidates: list[dict],
@@ -701,6 +838,7 @@ async def match_card_info(
     image_b64: str | None = None,
     mime_type: str | None = None,
     allow_visual_verification: bool = False,
+    photo_bytes: bytes | None = None,
 ) -> dict:
     """Shared deterministic matcher for both individual and composite scans."""
     card_info = normalize_recognized_card_info(card_info)
@@ -709,60 +847,98 @@ async def match_card_info(
 
     top_candidates = retain_ranked_candidates(candidates)
     can_compare = sum(1 for card in top_candidates if card.get("image")) >= 2
-    if (
+    if photo_bytes is None and image_b64:
+        try:
+            photo_bytes = base64.b64decode(image_b64, validate=True)
+        except (ValueError, TypeError):
+            photo_bytes = None
+
+    should_try_phash = not confident and can_compare and bool(photo_bytes)
+    should_try_visual = (
         allow_visual_verification
         and not confident
         and can_compare
-        and api_key
-        and image_b64
-        and mime_type
-    ):
+        and bool(api_key)
+        and bool(image_b64)
+        and bool(mime_type)
+    )
+    if should_try_phash or should_try_visual:
         try:
-            parts = [
-                {"text": "Here is the original card photo:"},
-                {"inline_data": {"mime_type": mime_type, "data": image_b64}},
-                {"text": (
-                    "Choose the matching candidate using artwork and printed identity details. "
-                    "Respond with only its number, or 0 if none match.\n"
-                )},
-            ]
             async with httpx.AsyncClient(timeout=20) as client:
-                for index, candidate in enumerate(top_candidates, start=1):
-                    parts.append({"text": (
-                        f"\nCandidate {index}: {candidate.get('name', '?')} "
-                        f"#{candidate.get('number', '?')}"
-                    )})
-                    if not candidate.get("image"):
-                        parts.append({"text": " (image unavailable)"})
-                        continue
+                candidate_images = await _download_candidate_images(
+                    client,
+                    top_candidates[:PHASH_CANDIDATE_LIMIT],
+                )
+                if should_try_phash:
                     try:
-                        response = await client.get(candidate["image"], timeout=5)
-                        if response.status_code == 200:
+                        winner = _phash_best_match(
+                            top_candidates,
+                            photo_bytes,
+                            candidate_images,
+                        )
+                        if (
+                            winner is not None
+                            and 2 not in _candidate_rank_key(card_info, winner)
+                        ):
+                            candidates.remove(winner)
+                            candidates.insert(0, winner)
+                            confident = True
+                            decision = "phash"
+                    except Exception as exc:
+                        logger.warning("pHash matching failed (non-blocking): %s", exc)
+
+                if not confident and should_try_visual:
+                    candidate_images = await _download_candidate_images(
+                        client,
+                        top_candidates,
+                        candidate_images,
+                    )
+                    parts = [
+                        {"text": "Here is the original card photo:"},
+                        {"inline_data": {"mime_type": mime_type, "data": image_b64}},
+                        {"text": (
+                            "Choose the matching candidate using artwork and printed "
+                            "identity details. Respond with only its number, or 0 if "
+                            "none match.\n"
+                        )},
+                    ]
+                    for index, candidate in enumerate(top_candidates, start=1):
+                        parts.append({"text": (
+                            f"\nCandidate {index}: {candidate.get('name', '?')} "
+                            f"#{candidate.get('number', '?')}"
+                        )})
+                        candidate_bytes = candidate_images.get(
+                            str(candidate.get("id") or "")
+                        )
+                        if candidate_bytes:
                             parts.append({"inline_data": {
                                 "mime_type": "image/webp",
-                                "data": base64.b64encode(response.content).decode(),
+                                "data": base64.b64encode(candidate_bytes).decode(),
                             }})
-                    except Exception:
-                        continue
-                response = await post_gemini_generate(
-                    client,
-                    build_gemini_generate_url(),
-                    api_key,
-                    {"contents": [{"parts": parts}]},
-                    max_attempts=2,
-                )
-            response_text = response.json()["candidates"][0]["content"]["parts"][0]["text"]
-            pick_match = re.search(r"(\d+)", response_text)
-            if pick_match:
-                pick = int(pick_match.group(1))
-                if 1 <= pick <= len(top_candidates):
-                    winner = top_candidates[pick - 1]
-                    candidates.remove(winner)
-                    candidates.insert(0, winner)
-                    confident = True
-                    decision = "gemini_visual"
+                        else:
+                            parts.append({"text": " (image unavailable)"})
+
+                    response = await post_gemini_generate(
+                        client,
+                        build_gemini_generate_url(),
+                        api_key,
+                        {"contents": [{"parts": parts}]},
+                        max_attempts=2,
+                    )
+                    response_text = response.json()["candidates"][0]["content"][
+                        "parts"
+                    ][0]["text"]
+                    pick_match = re.search(r"(\d+)", response_text)
+                    if pick_match:
+                        pick = int(pick_match.group(1))
+                        if 1 <= pick <= len(top_candidates):
+                            winner = top_candidates[pick - 1]
+                            candidates.remove(winner)
+                            candidates.insert(0, winner)
+                            confident = True
+                            decision = "gemini_visual"
         except Exception as exc:
-            logger.warning("Visual verification failed (non-blocking): %s", exc)
+            logger.warning("Visual matching failed (non-blocking): %s", exc)
 
     public_matches = [
         {key: value for key, value in card.items() if key != "_number_extra"}
@@ -827,6 +1003,7 @@ async def recognize_card(
         image_b64=image_b64,
         mime_type=sanitized.content_type,
         allow_visual_verification=True,
+        photo_bytes=sanitized.data,
     )
 
 
@@ -909,6 +1086,16 @@ async def recognize_composite_card_info(
     return mapped
 
 
-async def match_composite_card_info(db: Session, card_info: dict) -> dict:
-    """Use the shared deterministic matcher without spending a visual-verify call."""
-    return await match_card_info(db, card_info, allow_visual_verification=False)
+async def match_composite_card_info(
+    db: Session,
+    card_info: dict,
+    *,
+    photo_bytes: bytes | None = None,
+) -> dict:
+    """Use local pHash before an uncertain composite falls back individually."""
+    return await match_card_info(
+        db,
+        card_info,
+        allow_visual_verification=False,
+        photo_bytes=photo_bytes,
+    )

@@ -391,7 +391,11 @@ async def default_composite_processor(
             if not has_name:
                 results.append(None)
                 continue
-            result = await match_composite_card_info(db, card_info)
+            result = await match_composite_card_info(
+                db,
+                card_info,
+                photo_bytes=images[position],
+            )
             results.append(
                 result
                 if bool(result.get("_identity_confident"))
