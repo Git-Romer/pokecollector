@@ -107,6 +107,29 @@ export const recognizeCard = (imageFile) => {
   }).then(r => r.data)
 }
 
+// Persistent background card-scan queue.
+export const enqueueScanJob = (files = [], individualPositions = []) => {
+  const formData = new FormData()
+  files.forEach(file => formData.append('files', file))
+  formData.append('individual_positions', JSON.stringify(individualPositions))
+  return api.post('/cards/recognize/jobs', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }).then(r => r.data)
+}
+export const getScanJobs = () => api.get('/cards/recognize/jobs').then(r => r.data)
+export const getScanJob = jobId => api.get(`/cards/recognize/jobs/${jobId}`).then(r => r.data)
+export const resolveScanJobItem = (jobId, itemId, cardId = null) =>
+  api.post(`/cards/recognize/jobs/${jobId}/items/${itemId}/resolve`, {
+    card_id: cardId,
+  }).then(r => r.data)
+export const retryScanJobItem = (jobId, itemId) =>
+  api.post(`/cards/recognize/jobs/${jobId}/items/${itemId}/retry`).then(r => r.data)
+export const deleteScanJob = jobId =>
+  api.delete(`/cards/recognize/jobs/${jobId}`).then(r => r.data)
+export const fetchScanJobItemImage = (jobId, itemId) =>
+  api.get(`/cards/recognize/jobs/${jobId}/items/${itemId}/image`, { responseType: 'blob' })
+    .then(r => URL.createObjectURL(r.data))
+
 // Custom card migration
 export const getCustomMatches = () => api.get('/cards/custom/matches')
 export const migrateCustomCard = (matchId) => api.post(`/cards/custom/migrate/${matchId}`)
@@ -303,6 +326,7 @@ export const saveSettings = (data) => api.put('/settings/', data)
 export const getSetting = (key) => api.get(`/settings/${key}`).then(r => r.data)
 export const setSetting = (key, value) => api.post(`/settings/${key}`, { value }).then(r => r.data)
 export const getTelegramStatus = () => api.get('/settings/telegram_status').then(r => r.data)
+export const deleteScanDiagnostics = () => api.delete('/settings/scan-diagnostics').then(r => r.data)
 
 export const downloadDebugLog = () => {
   const token = localStorage.getItem('token')

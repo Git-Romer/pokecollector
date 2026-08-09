@@ -454,6 +454,86 @@ def _run_migrations(conn):
         # v57: Track metadata enrichment attempts independently from general card updates.
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS last_metadata_enrichment_attempt_at TIMESTAMP",
         "CREATE INDEX IF NOT EXISTS ix_cards_last_metadata_enrichment_attempt_at ON cards(last_metadata_enrichment_attempt_at)",
+        # v58: Persistent, filesystem-backed scanner queue with fair dispatch,
+        # expiring processing leases, and cross-worker Gemini pacing.
+        """CREATE TABLE IF NOT EXISTS scan_jobs (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            status VARCHAR NOT NULL DEFAULT 'pending',
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            started_at TIMESTAMP,
+            finished_at TIMESTAMP,
+            expires_at TIMESTAMP NOT NULL,
+            error_message TEXT,
+            CONSTRAINT ck_scan_jobs_status
+                CHECK (status IN ('pending', 'running', 'done', 'failed'))
+        )""",
+        """CREATE TABLE IF NOT EXISTS scan_job_items (
+            id SERIAL PRIMARY KEY,
+            job_id INTEGER NOT NULL REFERENCES scan_jobs(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            position INTEGER NOT NULL,
+            image_path VARCHAR,
+            content_type VARCHAR NOT NULL DEFAULT 'image/jpeg',
+            byte_size INTEGER NOT NULL,
+            batch_mode BOOLEAN NOT NULL DEFAULT FALSE,
+            status VARCHAR NOT NULL DEFAULT 'pending',
+            resolved BOOLEAN NOT NULL DEFAULT FALSE,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            transient_failures INTEGER NOT NULL DEFAULT 0,
+            next_attempt_at TIMESTAMP,
+            retry_reason VARCHAR,
+            lease_token VARCHAR,
+            lease_expires_at TIMESTAMP,
+            recognized JSON,
+            matches JSON,
+            error TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            CONSTRAINT uq_scan_job_item_position UNIQUE (job_id, position),
+            CONSTRAINT ck_scan_job_items_status
+                CHECK (status IN ('pending', 'processing', 'retrying', 'done', 'failed')),
+            CONSTRAINT ck_scan_job_items_attempts_non_negative CHECK (attempts >= 0),
+            CONSTRAINT ck_scan_job_items_transient_failures_non_negative
+                CHECK (transient_failures >= 0)
+        )""",
+        """CREATE TABLE IF NOT EXISTS scan_queue_user_state (
+            user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+            last_dispatched_at TIMESTAMP
+        )""",
+        """CREATE TABLE IF NOT EXISTS gemini_quota_state (
+            key_fingerprint VARCHAR PRIMARY KEY,
+            tokens DOUBLE PRECISION,
+            last_refill_at TIMESTAMP,
+            next_request_at TIMESTAMP,
+            blocked_until TIMESTAMP,
+            blocked_reason VARCHAR,
+            consecutive_daily_failures INTEGER NOT NULL DEFAULT 0,
+            interactive_pending_until TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )""",
+        "ALTER TABLE gemini_quota_state ADD COLUMN IF NOT EXISTS tokens DOUBLE PRECISION",
+        "ALTER TABLE gemini_quota_state ADD COLUMN IF NOT EXISTS last_refill_at TIMESTAMP",
+        "ALTER TABLE gemini_quota_state ADD COLUMN IF NOT EXISTS blocked_reason VARCHAR",
+        "ALTER TABLE gemini_quota_state ADD COLUMN IF NOT EXISTS consecutive_daily_failures INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE scan_job_items ADD COLUMN IF NOT EXISTS batch_mode BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE scan_job_items ADD COLUMN IF NOT EXISTS retry_reason VARCHAR",
+        "CREATE INDEX IF NOT EXISTS ix_scan_jobs_user_id ON scan_jobs(user_id)",
+        "CREATE INDEX IF NOT EXISTS ix_scan_jobs_status ON scan_jobs(status)",
+        "CREATE INDEX IF NOT EXISTS ix_scan_jobs_expires_at ON scan_jobs(expires_at)",
+        "CREATE INDEX IF NOT EXISTS ix_scan_jobs_user_status_created ON scan_jobs(user_id, status, created_at)",
+        "CREATE INDEX IF NOT EXISTS ix_scan_job_items_job_id ON scan_job_items(job_id)",
+        "CREATE INDEX IF NOT EXISTS ix_scan_job_items_user_id ON scan_job_items(user_id)",
+        "CREATE INDEX IF NOT EXISTS ix_scan_job_items_status ON scan_job_items(status)",
+        "CREATE INDEX IF NOT EXISTS ix_scan_job_items_resolved ON scan_job_items(resolved)",
+        "CREATE INDEX IF NOT EXISTS ix_scan_job_items_next_attempt_at ON scan_job_items(next_attempt_at)",
+        "CREATE INDEX IF NOT EXISTS ix_scan_job_items_lease_token ON scan_job_items(lease_token)",
+        "CREATE INDEX IF NOT EXISTS ix_scan_job_items_lease_expires_at ON scan_job_items(lease_expires_at)",
+        """CREATE INDEX IF NOT EXISTS ix_scan_job_items_dispatch
+           ON scan_job_items(status, next_attempt_at, lease_expires_at, user_id)""",
+        "CREATE INDEX IF NOT EXISTS ix_scan_queue_user_state_last_dispatched_at ON scan_queue_user_state(last_dispatched_at)",
+        "CREATE INDEX IF NOT EXISTS ix_gemini_quota_state_next_request_at ON gemini_quota_state(next_request_at)",
     ]
     for stmt in migrations:
         try:

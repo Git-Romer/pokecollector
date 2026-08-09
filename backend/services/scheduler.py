@@ -71,6 +71,47 @@ def run_price_sync():
         db.close()
 
 
+def run_scan_queue_maintenance():
+    """Recover, process, and expire persistent background scans."""
+    import asyncio
+
+    from database import SessionLocal
+    from services.gemini_rate_limit import purge_stale_quota_states
+    from services.scan_queue import (
+        drain_scan_queue,
+        purge_expired_scan_jobs,
+        recover_expired_leases,
+    )
+    from services.scan_storage import purge_orphaned_scan_directories
+
+    db = SessionLocal()
+    try:
+        recovered = recover_expired_leases(db)
+        removed = purge_expired_scan_jobs(db)
+        orphans = purge_orphaned_scan_directories(db)
+        stale_quotas = purge_stale_quota_states()
+        if recovered or removed or orphans or stale_quotas:
+            logger.info(
+                "Scan queue maintenance recovered %s lease(s), expired %s job(s), "
+                "removed %s orphaned upload directory/directories, and purged %s "
+                "inactive Gemini quota state(s)",
+                recovered,
+                removed,
+                orphans,
+                stale_quotas,
+            )
+    except Exception:
+        db.rollback()
+        logger.exception("Scan queue recovery/expiry failed")
+    finally:
+        db.close()
+
+    try:
+        asyncio.run(drain_scan_queue(max_items=50))
+    except Exception:
+        logger.exception("Scan queue processing failed")
+
+
 def run_pokedex_metadata_backfill():
     """One-time startup backfill for Pokédex mappings added to existing card rows."""
     from database import SessionLocal
@@ -161,6 +202,15 @@ def start_scheduler():
             name="Pokemon TCG Price Sync",
             replace_existing=True,
             next_run_time=now_utc + datetime.timedelta(minutes=price_interval_minutes),
+        )
+
+        scheduler.add_job(
+            run_scan_queue_maintenance,
+            trigger=IntervalTrigger(minutes=1),
+            id="scan_queue_maintenance_job",
+            name="Persistent Scan Queue",
+            replace_existing=True,
+            next_run_time=now_utc + datetime.timedelta(seconds=45),
         )
 
         if needs_pokedex_backfill:

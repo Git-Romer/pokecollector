@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -11,6 +13,7 @@ from models import User
 from services.auth import create_access_token, decode_token, hash_password, verify_password
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
@@ -276,8 +279,33 @@ def delete_user(
     db.query(ProductPurchase).filter(ProductPurchase.user_id == user_id).delete()
     db.query(PortfolioSnapshot).filter(PortfolioSnapshot.user_id == user_id).delete()
     db.query(UserSetting).filter(UserSetting.user_id == user_id).delete()
+    traces_revoked = False
+    try:
+        from services.scan_trace import revoke_user_traces
+
+        revoke_user_traces(user_id)
+        traces_revoked = True
+    except OSError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="User scanner diagnostics could not be deleted.",
+        ) from exc
     db.delete(user)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        if traces_revoked:
+            try:
+                from services.scan_trace import clear_user_trace_revocation
+
+                clear_user_trace_revocation(user_id)
+            except OSError:
+                logger.exception(
+                    "Failed to clear scanner diagnostics revocation after user deletion rollback"
+                )
+        raise
     return {"message": "User deleted"}
 
 

@@ -1,13 +1,13 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
-import { Search, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, SortAsc, Hash, PenLine, SlidersHorizontal, Camera, CheckSquare, Plus } from 'lucide-react'
+import { Search, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, SortAsc, Hash, PenLine, SlidersHorizontal, Camera, CheckSquare, Plus, ScanLine } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { searchCards, getSets, getCustomCards, bulkAddToCollection } from '../api/client'
+import { searchCards, getSets, getCustomCards, bulkAddToCollection, getScanJobs } from '../api/client'
 import { CardItem, CustomCardModal, CardModal } from '../components/CardItem'
 import { useSettings } from '../contexts/SettingsContext'
 import Sheet from '../components/ui/Sheet'
-import CardScanner from '../components/CardScanner'
+import CardScanner from '../components/UnifiedCardScanner'
 import { getDefaultVariantOrNull } from '../utils/cardVariants'
 import { cardNumberMatches } from '../utils/cardNumbers'
 import { normalizeSearchText, textIncludes } from '../utils/textSearch'
@@ -23,6 +23,11 @@ import {
   resetCardSearchFilters,
   updateCardSearchParams,
 } from '../utils/cardSearchUrlState'
+import {
+  SCAN_JOBS_QUERY_KEY,
+  hasActiveScanJobs,
+  scanAttentionCount,
+} from '../utils/scanJobs'
 
 const CODE_NUMBER_RE = /^([A-Za-z]+\d*)\s+(\d+)$/
 
@@ -146,6 +151,15 @@ export default function CardSearch() {
     queryKey: ['custom-cards'],
     queryFn: () => getCustomCards().then(r => r.data),
   })
+
+  const { data: scanData } = useQuery({
+    queryKey: SCAN_JOBS_QUERY_KEY,
+    queryFn: getScanJobs,
+    refetchInterval: query => hasActiveScanJobs(query.state.data?.jobs || []) ? 3000 : false,
+  })
+  const scanJobs = scanData?.jobs || []
+  const scanAttention = scanAttentionCount(scanJobs)
+  const scansActive = hasActiveScanJobs(scanJobs)
 
   const { data: allSets = [] } = useQuery({
     queryKey: ['sets', settings.language || 'en'],
@@ -470,6 +484,26 @@ export default function CardSearch() {
             title={t('scanner.title')}
           >
             <Camera size={18} className="text-text-muted" />
+          </button>
+          <button
+            onClick={() => navigate('/scans')}
+            className="relative flex h-10 items-center gap-2 rounded-xl px-3 text-sm text-text-muted transition-colors hover:text-text-primary"
+            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}
+            title={t('scanner.queueTitle')}
+            aria-label={t('scanner.queueTitle')}
+          >
+            <span className="relative">
+              <ScanLine size={18} />
+              {scanAttention > 0 && (
+                <span className="absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-yellow px-1 text-[9px] font-bold leading-none text-black">
+                  {scanAttention > 99 ? '99+' : scanAttention}
+                </span>
+              )}
+              {scanAttention === 0 && scansActive && (
+                <span className="absolute -right-1.5 -top-1.5 h-2.5 w-2.5 animate-pulse rounded-full bg-brand-red" />
+              )}
+            </span>
+            <span className="hidden sm:inline">{t('scanner.queueTitle')}</span>
           </button>
           <button
             onClick={() => setShowCustomModal(true)}

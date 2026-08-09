@@ -23,6 +23,12 @@ from services.tcgdex_languages import (
     supported_tcgdex_language_payload,
     validate_tcgdex_sync_languages,
 )
+from services.scan_trace import (
+    SCAN_DIAGNOSTICS_SETTING_KEY,
+    delete_user_traces,
+    trace_available,
+    trace_deletion_available,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -33,6 +39,7 @@ PER_USER_KEYS = {
     "telegram_bot_token", "telegram_chat_id", "telegram_enabled",
     "price_alerts_enabled", "price_alert_threshold",
     "gemini_api_key", "trainer_name", "portfolio_display_mode",
+    SCAN_DIAGNOSTICS_SETTING_KEY,
 }
 
 ADMIN_ONLY_KEYS = {
@@ -64,6 +71,7 @@ DEFAULT_SETTINGS = {
     "cross_language_image_fallback": "true",
     "debug_mode": "false",
     PUBLIC_PROFILES_SETTING_KEY: "false",
+    SCAN_DIAGNOSTICS_SETTING_KEY: "false",
 }
 
 
@@ -80,7 +88,7 @@ def _coerce_setting_value(key: str, value) -> str:
     if key in {
         "debug_mode", "cross_language_price_fallback",
         "cross_language_image_fallback", DIGITAL_SETS_SETTING_KEY,
-        PUBLIC_PROFILES_SETTING_KEY,
+        PUBLIC_PROFILES_SETTING_KEY, SCAN_DIAGNOSTICS_SETTING_KEY,
     }:
         return "true" if str(value).lower() in {"true", "1", "yes", "on"} else "false"
     if key == "portfolio_display_mode":
@@ -141,6 +149,10 @@ def _get_user_settings(db: Session, user_id: int) -> dict:
 
     for key, value in DEFAULT_SETTINGS.items():
         result.setdefault(key, value)
+    result["scan_diagnostics_available"] = "true" if trace_available() else "false"
+    result["scan_diagnostics_deletion_available"] = (
+        "true" if trace_deletion_available() else "false"
+    )
 
     return result
 
@@ -215,6 +227,20 @@ def download_debug_log(current_user: User = Depends(get_current_user)):
             "Expires": "0",
         },
     )
+
+
+@router.delete("/scan-diagnostics")
+def delete_scan_diagnostics(
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        deleted = delete_user_traces(current_user.id)
+    except OSError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Stored scanner diagnostics could not be deleted.",
+        ) from exc
+    return {"deleted": deleted}
 
 
 @router.get("/telegram_status")
