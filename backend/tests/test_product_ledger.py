@@ -1,6 +1,7 @@
 import datetime
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from services.product_ledger import product_effective_value
 
@@ -14,16 +15,19 @@ try:
         bulk_update_product_lifecycle,
         create_product,
         create_product_batch,
+        delete_product,
         get_products_summary,
         link_collection_item_to_product,
         link_collection_items_to_product,
         sell_product_card,
         update_product,
     )
+    from api.images import get_product_image
     from api.cards import delete_custom_card
     from api.collection import get_collection, update_collection_item
     from database import Base
-    from models import Binder, BinderCard, Card, CollectionItem, ProductCard, ProductLedgerEntry, ProductPurchase, User
+    from models import Binder, BinderCard, Card, CollectionItem, ImageCache, ProductCard, ProductLedgerEntry, ProductPurchase, User
+    from services.product_images import product_image_cache_key, product_image_token
     from schemas import (
         CollectionItemUpdate,
         ProductCardLinkCreate,
@@ -379,6 +383,174 @@ class ProductLedgerApiTests(unittest.TestCase):
             ProductPurchase.batch_id == responses[0].batch_id,
         ).order_by(ProductPurchase.id).all()
         self.assertEqual([product.lifecycle_status for product in siblings], ["opened", "sealed", "sealed"])
+
+    @patch("api.products.validate_public_https_image_url", return_value="https://images.example.test/box.webp")
+    def test_batch_create_preserves_manual_image_and_cardmarket_reference(self, _validate_image):
+        responses = create_product_batch(
+            ProductPurchaseBatchCreate(
+                product_name="Booster Box",
+                product_type="Booster Box",
+                purchase_price=100,
+                purchase_date=datetime.date(2026, 8, 9),
+                quantity=2,
+                image_url=" https://images.example.test/box.webp ",
+                cardmarket_url=" https://www.cardmarket.com/en/Pokemon/Products/Booster-Boxes/Test-Box ",
+            ),
+            current_user=self.user,
+            db=self.db,
+        )
+
+        self.assertEqual({response.image_url for response in responses}, {"https://images.example.test/box.webp"})
+        self.assertEqual(
+            {response.cardmarket_url for response in responses},
+            {"https://www.cardmarket.com/en/Pokemon/Products/Booster-Boxes/Test-Box"},
+        )
+        _validate_image.assert_called_once_with("https://images.example.test/box.webp")
+
+    def test_product_rejects_private_image_and_non_product_cardmarket_urls(self):
+        base = dict(
+            product_name="Booster Box",
+            product_type="Booster Box",
+            purchase_price=100,
+            purchase_date=datetime.date(2026, 8, 9),
+        )
+
+        with self.assertRaises(HTTPException) as image_ctx:
+            create_product(
+                ProductPurchaseCreate(**base, image_url="https://127.0.0.1/box.webp"),
+                current_user=self.user,
+                db=self.db,
+            )
+        self.assertEqual(image_ctx.exception.status_code, 422)
+
+        for invalid_url in (
+            "https://example.com/en/Pokemon/Products/Booster-Boxes/Test-Box",
+            "https://www.cardmarket.com/en/Pokemon/Products",
+            "javascript:alert(1)",
+        ):
+            with self.subTest(url=invalid_url), self.assertRaises(HTTPException) as cardmarket_ctx:
+                create_product(
+                    ProductPurchaseCreate(**base, cardmarket_url=invalid_url),
+                    current_user=self.user,
+                    db=self.db,
+                )
+            self.assertEqual(cardmarket_ctx.exception.status_code, 422)
+
+    @patch("api.products.validate_public_https_image_url", side_effect=lambda value: value.strip())
+    def test_editing_product_image_versions_proxy_and_detaches_batch(self, _validate_image):
+        responses = create_product_batch(
+            ProductPurchaseBatchCreate(
+                product_name="Booster Pack",
+                product_type="Booster Pack",
+                purchase_price=5,
+                purchase_date=datetime.date(2026, 8, 9),
+                quantity=2,
+                image_url="https://images.example.test/old.webp",
+            ),
+            current_user=self.user,
+            db=self.db,
+        )
+        old_proxy_url = responses[0].image_proxy_url
+        old_cache_key = product_image_cache_key("https://images.example.test/old.webp")
+        self.db.add(ImageCache(image_key=old_cache_key, data=b"old", content_type="image/webp"))
+        self.db.commit()
+
+        updated = update_product(
+            responses[0].id,
+            ProductPurchaseUpdate(image_url="https://images.example.test/new.webp"),
+            current_user=self.user,
+            db=self.db,
+        )
+
+        self.assertEqual(updated.image_url, "https://images.example.test/new.webp")
+        self.assertIsNone(updated.batch_id)
+        self.assertNotEqual(updated.image_proxy_url, old_proxy_url)
+        self.assertIsNotNone(self.db.query(ImageCache).filter(ImageCache.image_key == old_cache_key).first())
+
+        update_product(
+            responses[1].id,
+            ProductPurchaseUpdate(image_url="https://images.example.test/new.webp"),
+            current_user=self.user,
+            db=self.db,
+        )
+        self.assertIsNone(self.db.query(ImageCache).filter(ImageCache.image_key == old_cache_key).first())
+        self.assertNotEqual(
+            product_image_cache_key("https://images.example.test/old.webp"),
+            product_image_cache_key("https://images.example.test/new.webp"),
+        )
+
+    @patch("api.images._get_or_fetch_custom_image", return_value=(b"product-image", "image/webp"))
+    def test_product_image_proxy_uses_stored_url(self, fetch_image):
+        product = self.add_product()
+        product.image_url = "https://images.example.test/product.webp"
+        self.db.commit()
+        token = product_image_token(product.id, product.user_id, product.image_url)
+
+        response = get_product_image(product.id, token=token, db=self.db)
+
+        self.assertEqual(response.body, b"product-image")
+        self.assertEqual(response.media_type, "image/webp")
+        self.assertEqual(response.headers["cache-control"], "private, no-cache")
+        self.assertEqual(response.headers["x-content-type-options"], "nosniff")
+        fetch_image.assert_called_once()
+        call = fetch_image.call_args
+        self.assertEqual(call.args[:3], (
+            self.db,
+            product_image_cache_key(product.image_url),
+            "https://images.example.test/product.webp",
+        ))
+        self.assertTrue(call.kwargs["before_cache"]())
+
+    @patch("api.images._get_or_fetch_custom_image", return_value=(b"product-image", "image/webp"))
+    def test_product_image_proxy_rejects_missing_and_cross_user_tokens(self, fetch_image):
+        product = self.add_product()
+        product.image_url = "https://images.example.test/private-product.webp"
+        self.db.commit()
+
+        missing = get_product_image(product.id, token="", db=self.db)
+        wrong_user_token = product_image_token(product.id, self.other_user.id, product.image_url)
+        cross_user = get_product_image(product.id, token=wrong_user_token, db=self.db)
+
+        self.assertEqual(missing.status_code, 307)
+        self.assertEqual(cross_user.status_code, 307)
+        fetch_image.assert_not_called()
+
+    @patch("api.images._get_or_fetch_custom_image", return_value=(b"product-image", "image/webp"))
+    def test_products_with_same_image_share_the_cache_key(self, fetch_image):
+        first = self.add_product()
+        second = self.add_product()
+        shared_url = "https://images.example.test/shared.webp"
+        first.image_url = shared_url
+        second.image_url = shared_url
+        self.db.commit()
+
+        get_product_image(
+            first.id,
+            token=product_image_token(first.id, first.user_id, shared_url),
+            db=self.db,
+        )
+        get_product_image(
+            second.id,
+            token=product_image_token(second.id, second.user_id, shared_url),
+            db=self.db,
+        )
+
+        expected_key = product_image_cache_key(shared_url)
+        self.assertEqual(
+            [call.args[1] for call in fetch_image.call_args_list],
+            [expected_key, expected_key],
+        )
+
+    def test_deleting_last_product_reference_removes_shared_image_cache(self):
+        product = self.add_product()
+        product.image_url = "https://images.example.test/deleted.webp"
+        cache_key = product_image_cache_key(product.image_url)
+        self.db.add(ImageCache(image_key=cache_key, data=b"image", content_type="image/webp"))
+        self.db.commit()
+
+        delete_product(product.id, current_user=self.user, db=self.db)
+
+        self.assertIsNone(self.db.query(ImageCache).filter(ImageCache.image_key == cache_key).first())
 
     def test_single_batch_create_does_not_create_a_group(self):
         responses = create_product_batch(

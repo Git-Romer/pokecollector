@@ -280,6 +280,8 @@ class ProductPurchaseCreate(BaseModel):
     purchase_date: date
     sold_date: Optional[date] = None
     lifecycle_status: Literal["sealed", "opened"] = "sealed"
+    image_url: Optional[str] = Field(default=None, max_length=2048)
+    cardmarket_url: Optional[str] = Field(default=None, max_length=2048)
     notes: Optional[str] = None
 
 
@@ -296,6 +298,8 @@ class ProductPurchaseUpdate(BaseModel):
     purchase_date: Optional[date] = None
     sold_date: Optional[date] = None
     lifecycle_status: Optional[Literal["sealed", "opened"]] = None
+    image_url: Optional[str] = Field(default=None, max_length=2048)
+    cardmarket_url: Optional[str] = Field(default=None, max_length=2048)
     notes: Optional[str] = None
 
 
@@ -386,6 +390,9 @@ class ProductPurchaseResponse(BaseModel):
     sold_date: Optional[date] = None
     lifecycle_status: Literal["sealed", "opened", "sold", "review"]
     batch_id: Optional[str] = None
+    image_url: Optional[str] = None
+    image_proxy_url: Optional[str] = None
+    cardmarket_url: Optional[str] = None
     notes: Optional[str] = None
     created_at: Optional[datetime] = None
     pnl: Optional[float] = None

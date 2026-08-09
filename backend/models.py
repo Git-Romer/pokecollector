@@ -256,6 +256,8 @@ class ProductPurchase(Base):
     sold_date = Column(Date)
     lifecycle_status = Column(String, nullable=False, default="sealed", server_default="sealed")
     batch_id = Column(String)
+    image_url = Column(String)
+    cardmarket_url = Column(String)
     notes = Column(Text)
     created_at = Column(DateTime, default=func.now())
 
