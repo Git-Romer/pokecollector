@@ -695,7 +695,7 @@ const fr = {
         manualContributor: 'Contributeur',
         supporters: 'Soutiens',
         sponsors: 'Soutenir',
-        sponsorMessage: 'Vous aimez PokéCollector ? Tous les revenus sont reversés à des associations de protection des animaux. 🐾',
+        sponsorMessage: 'Vous aimez John John’s PC ? Tous les revenus sont reversés à des associations de protection des animaux. 🐾',
         rescueDonationTotal: 'Donné à la protection animale jusqu\'à présent',
         rescueDonationBatchHint: 'Les pourboires des soutiens sont envoyés aux associations par lots',
         kofiHint: 'Mentionnez votre nom ou profil GitHub dans le message, ex. "Pourboire de MaxMustermann - github.com/max"',

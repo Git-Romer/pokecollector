@@ -421,8 +421,13 @@ def search_cards(
     - "MEP 022" or "sv08 032" → set abbreviation/id + card number search
     - lang: supported TCGdex language code or "all" for all languages
     """
-    requested_lang = normalize_tcgdex_language(lang or "all")
+    # FastAPI injects real values at runtime, but unit tests call this route
+    # function directly. Query(...) defaults are truthy objects, so normalize
+    # them before applying filters such as Owned Only.
+    requested_lang_value = lang if isinstance(lang, str) else "all"
+    requested_lang = normalize_tcgdex_language(requested_lang_value or "all")
     search_lang = requested_lang if is_supported_tcgdex_language(requested_lang) else "all"
+    owned_only_filter = owned_only is True
 
     try:
         # ── Code + number pattern: "MEP 022", "SSP 136", "sv08 032" ──────────
@@ -436,7 +441,7 @@ def search_cards(
         # ── Pure DB search ────────────────────────────────────────────────────
         query = db.query(Card).filter(Card.is_custom == False, visible_card_filter(db, current_user.id, search_lang))
 
-        if owned_only:
+        if owned_only_filter:
             owned_card_ids = db.query(CollectionItem.card_id).filter(
                 CollectionItem.user_id == current_user.id,
                 CollectionItem.status == "owned",

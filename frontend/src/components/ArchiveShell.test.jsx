@@ -18,9 +18,6 @@ vi.mock('./JohnJohnSignal', () => ({default: () => <span aria-hidden="true">∞<
 vi.mock('./reactbits/ShinyText', () => ({default: ({text}) => <span>{text}</span>}))
 
 test('keeps the five primary destinations', () => {
-    // Sets → All Cards and Analytics → Trends & Insights were renamed for
-    // clarity; the routes /sets and /analytics still redirect to the new
-    // paths, so old links keep working. The count of five is the contract.
     expect(PRIMARY_ARCHIVE_DESTINATIONS.map(({label, to}) => [label, to])).toEqual([
         ['Collection', '/collection'],
         ['Card Search', '/search'],

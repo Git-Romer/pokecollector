@@ -92,15 +92,7 @@ export const updateCustomCard = (cardId, data) => api.put(`/cards/custom/${cardI
 export const updateCardCustomImage = (cardId, data) => api.put(`/cards/${cardId}/custom-image`, data).then(r => r.data)
 export const deleteCustomCard = (cardId) => api.delete(`/cards/custom/${cardId}`)
 export const getCustomCards = () => api.get('/cards/custom')
-
-// Card recognition via Gemini Vision
-export const recognizeCard = (imageFile) => {
-    const formData = new FormData()
-    formData.append('file', imageFile)
-    return api.post('/cards/recognize', formData, {
-        headers: {'Content-Type': 'multipart/form-data'},
-    }).then(r => r.data)
-}
+export const getScanHistory = (params = {}) => api.get('/cards/scan-history', {params}).then(r => r.data)
 
 // Custom card migration
 export const getCustomMatches = () => api.get('/cards/custom/matches')
@@ -201,6 +193,11 @@ export const exportBinderCsv = (binderId) => {
         }, 0)
     })
 }
+
+// John John notes
+export const getAgentNotes = () => api.get('/agent/notes').then(r => r.data)
+export const dismissAgentNote = (noteId) => api.post(`/agent/notes/${noteId}/dismiss`).then(r => r.data)
+export const undoAgentAction = (auditId) => api.post(`/agent/undo/${auditId}`).then(r => r.data)
 
 // Dashboard
 export const getDashboard = (params) => api.get('/dashboard/', {params})

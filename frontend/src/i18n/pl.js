@@ -697,7 +697,7 @@ const pl = {
         manualContributor: 'Współtwórca',
         supporters: 'Wspierający',
         sponsors: 'Wsparcie',
-        sponsorMessage: 'Podoba Ci się PokéCollector? Cały dochód jest przekazywany organizacjom ratującym zwierzęta. 🐾',
+        sponsorMessage: 'Podoba Ci się John John’s PC? Cały dochód jest przekazywany organizacjom ratującym zwierzęta. 🐾',
         rescueDonationTotal: 'Dotychczas przekazano na ratowanie zwierząt',
         rescueDonationBatchHint: 'Napiwki od wspierających są wysyłane organizacjom ratunkowym później w partiach',
         kofiHint: 'Podaj swoje imię lub profil GitHub w wiadomości, np. "Napiwek od MaxMustermann - github.com/max"',

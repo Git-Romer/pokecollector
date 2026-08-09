@@ -77,17 +77,6 @@ describe('Collection Overview copy', () => {
         expect(screen.queryByText(/portfolio|P&L|market/i)).not.toBeInTheDocument()
     })
 
-    it('fully disables overview motion when reduced motion is requested', () => {
-        const here = dirname(fileURLToPath(import.meta.url))
-        const css = readFileSync(resolve(here, '../design/archive.css'), 'utf-8')
-        const reducedMotion = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce)'))
-
-        expect(css).toMatch(/\.archive-card-reveal\s*\{[^}]*animation:/)
-        expect(css).toMatch(/\.archive-loading-orbit\s*\{[^}]*animation:/)
-        expect(reducedMotion).toMatch(/\.archive-shell \*,[\s\S]*?animation: none !important;[\s\S]*?transition: none !important;/)
-        expect(reducedMotion).toMatch(/\.archive-card-reveal,[\s\S]*?\.archive-loading-orbit,[\s\S]*?transform: none !important;/)
-    })
-
     it('does not repeat a heading in an eyebrow above it', () => {
         // The kicker/latestKicker pair held the same words as the heading directly
         // beneath, so each section announced its own name twice.
@@ -125,6 +114,13 @@ describe('Collection Overview copy', () => {
         expect(source).not.toMatch(/Gemini|Obsidian|chatbot/i)
     })
 
+    it('keeps the Featured Card pin local to the browser', () => {
+        const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), './Home.jsx'), 'utf-8')
+        expect(source).toContain('FEATURED_CARD_STORAGE_KEY')
+        expect(source).toContain('Pin Featured Card')
+        expect(source).toContain('window.localStorage.setItem')
+        expect(source).not.toMatch(/api\/.*featured|featured.*api/i)
+    })
 
     it('keeps placeholders intact on the interpolated strings', () => {
         expect(overview.lastFiled).toContain('{name}')

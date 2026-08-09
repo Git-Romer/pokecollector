@@ -9,6 +9,6 @@ test('creates a near-completion note without price analysis', () => {
     expect(notes[0]).toMatchObject({
         kind: 'near-completion',
         body: 'Only 2 cards left in Scarlet & Violet.',
-        href: '/sets/sv1'
+        href: '/all-cards/sv1'
     })
 })

@@ -326,7 +326,7 @@ def export_csv(
     # Header
     writer.writerow([
         "Card ID", "Name", "Set", "Number", "Rarity",
-        "Quantity", "Condition", f"Purchase Price ({currency})",
+        "Quantity", "Condition", f"Cost Basis ({currency})",
         f"Current Price ({currency})", f"Total Value ({currency})",
         "Added At"
     ])
@@ -357,7 +357,7 @@ def export_csv(
         ])
 
     output.seek(0)
-    filename = f"pokemon_collection_{datetime.date.today().isoformat()}.csv"
+    filename = f"john-johns-pc-{datetime.date.today().isoformat()}.csv"
 
     return StreamingResponse(
         io.BytesIO(output.getvalue().encode("utf-8-sig")),
@@ -419,7 +419,7 @@ def export_pdf(
         story.append(Spacer(1, 10*mm))
 
         # Table
-        headers = ["Name", "Set", "No.", "Rarity", "Qty", "Condition", f"Buy {currency}", f"Current {currency}", f"Value {currency}"]
+        headers = ["Name", "Set", "No.", "Rarity", "Qty", "Condition", f"Cost Basis {currency}", f"Current {currency}", f"Value {currency}"]
         data = [headers]
 
         total_value = 0
@@ -467,7 +467,7 @@ def export_pdf(
         doc.build(story)
         buffer.seek(0)
 
-        filename = f"pokemon_collection_{datetime.date.today().isoformat()}.pdf"
+        filename = f"john-johns-pc-{datetime.date.today().isoformat()}.pdf"
         return StreamingResponse(
             buffer,
             media_type="application/pdf",

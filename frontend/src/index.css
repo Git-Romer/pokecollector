@@ -82,6 +82,40 @@ h1, h2, h3, .mag-heading {
     cursor: not-allowed;
 }
 
+/* Select controls use the same local, dark surface as inputs. Without this
+   shared rule, native selects fall back to the browser's white form chrome
+   and become visually disconnected from the archive. */
+.select {
+    appearance: none;
+    min-height: 2.5rem;
+    padding: 0.55rem 2.4rem 0.55rem 0.75rem;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background-color: var(--color-surface);
+    background-image: linear-gradient(45deg, transparent 50%, var(--color-text-muted) 50%), linear-gradient(135deg, var(--color-text-muted) 50%, transparent 50%);
+    background-position: calc(100% - 1rem) 1.05rem, calc(100% - 0.72rem) 1.05rem;
+    background-size: 0.3rem 0.3rem, 0.3rem 0.3rem;
+    background-repeat: no-repeat;
+    color: var(--color-text-primary);
+    font: inherit;
+}
+
+.select:focus-visible {
+    outline: 2px solid var(--archive-signal);
+    outline-offset: 2px;
+    border-color: var(--archive-signal);
+}
+
+.select:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.select option {
+    background: var(--color-surface);
+    color: var(--color-text-primary);
+}
+
 /* Card Updates */
 .mag-card, .card, .polaroid-card {
     background: var(--color-surface) !important;

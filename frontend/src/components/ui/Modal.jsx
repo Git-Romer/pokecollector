@@ -17,6 +17,7 @@ export const DESKTOP_MODAL_QUERY = '(min-width: 1024px)'
  *   title     {string}    — optional header title
  *   children  {node}      — modal content
  *   size      {string}    — 'sm' | 'md' | 'lg' | 'xl' (default: 'md')
+ *   placement {string}    — 'center' | 'right' (default: 'center')
  *   className {string}    — extra classes for the inner panel
  *   mobileSheet {boolean} — if true, renders as Sheet on mobile (default: true)
  */
@@ -26,6 +27,7 @@ export default function Modal({
                                   title,
                                   children,
                                   size = 'md',
+                                  placement = 'center',
                                   className = '',
                                   mobileSheet = true,
                               }) {
@@ -72,6 +74,7 @@ export default function Modal({
             onClose={onClose}
             title={title}
             sizeClass={sizeClass}
+            placement={placement}
             className={className}
             closeLabel={t('common.close')}
         >
@@ -80,7 +83,7 @@ export default function Modal({
     )
 }
 
-function DesktopModal({isOpen, onClose, title, children, sizeClass, className = '', closeLabel = 'Close'}) {
+function DesktopModal({isOpen, onClose, title, children, sizeClass, placement = 'center', className = '', closeLabel = 'Close'}) {
     const panelRef = useDialogFocus(isOpen, onClose)
     const titleId = useId()
 
@@ -90,7 +93,7 @@ function DesktopModal({isOpen, onClose, title, children, sizeClass, className = 
         <>
             {/* Backdrop */}
             <div
-                className="fixed inset-0 z-50 bg-black/60 animate-fade-in flex items-end sm:items-center justify-center p-4"
+                className={`fixed inset-0 z-50 bg-black/60 animate-fade-in flex items-end p-4 ${placement === 'right' ? 'sm:items-stretch sm:justify-end sm:p-0' : 'sm:items-center sm:justify-center'}`}
                 onClick={onClose}
             >
                 {/* Panel — stop propagation so clicks inside don't close */}
@@ -100,6 +103,7 @@ function DesktopModal({isOpen, onClose, title, children, sizeClass, className = 
                         sizeClass,
                         'bg-bg-card border border-border rounded-2xl',
                         'max-h-[85vh] flex flex-col',
+                        placement === 'right' ? 'sm:mx-0 sm:h-full sm:max-h-none sm:rounded-none sm:rounded-l-2xl sm:border-y-0 sm:border-r-0' : '',
                         'animate-slide-up',
                         className,
                     ].join(' ')}

@@ -1,8 +1,17 @@
 import CardImage from './CardImage'
 import clsx from 'clsx'
 
+function activateButtonRole(onClick) {
+    return (event) => {
+        if (event.target !== event.currentTarget) return
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        event.preventDefault()
+        onClick(event)
+    }
+}
+
 /**
- * CardListItem — Reusable card row for Collection, Wishlist, Search results, etc.
+ * CardListItem — Reusable card row for Collection, Chase Cards, Search results, etc.
  *
  * Layout (mobile-first, no overflow):
  *   [Image 48×68] [Content flex-1 min-w-0] [Value flex-shrink-0]
@@ -41,7 +50,7 @@ export default function CardListItem({
             onClick={onClick}
             role={onClick ? 'button' : undefined}
             tabIndex={onClick ? 0 : undefined}
-            onKeyDown={onClick ? (e) => e.key === 'Enter' && onClick(e) : undefined}
+            onKeyDown={onClick ? activateButtonRole(onClick) : undefined}
         >
             {/* Card thumbnail */}
             <div

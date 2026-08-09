@@ -163,8 +163,8 @@ export default function HomeScreen() {
     const PORTAL_ITEMS = [
         {to: '/collection', icon: Library, label: t('nav.collection'), color: '#4fc3f7'},
         {to: '/search', icon: Search, label: t('nav.cardSearch'), color: '#ce93d8'},
-        {to: '/sets', icon: Grid2X2, label: t('nav.sets'), color: '#81c784'},
-        {to: '/analytics', icon: BarChart3, label: t('nav.analytics'), color: '#f5c842'},
+        {to: '/all-cards', icon: Grid2X2, label: t('nav.sets'), color: '#81c784'},
+        {to: '/trends', icon: BarChart3, label: t('nav.analytics'), color: '#f5c842'},
         ...(multiUser ? [{to: '/leaderboard', icon: Trophy, label: t('nav.leaderboard'), color: '#ffd54f'}] : []),
         {to: '/settings', icon: Settings, label: t('nav.settings'), color: '#b0bec5'},
     ]
@@ -468,7 +468,7 @@ export default function HomeScreen() {
                     <div>
                         <div className="flex items-center justify-between mb-3">
                             <p className="text-xs font-bold text-white uppercase tracking-wider">{t('home.topCards')}</p>
-                            <button onClick={() => navigate('/analytics')}
+                            <button onClick={() => navigate('/trends')}
                                     className="text-[11px] font-semibold hover:opacity-80 transition-opacity"
                                     style={{color: '#f5c842'}}>{t('home.details')} →
                             </button>

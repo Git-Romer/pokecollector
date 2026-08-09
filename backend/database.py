@@ -105,6 +105,9 @@ def _run_migrations(conn):
         "UPDATE collection SET variant = 'Reverse Holo' WHERE variant = 'Reverse Holofoil'",
         "ALTER TABLE collection ALTER COLUMN variant SET DEFAULT 'Normal'",
         "ALTER TABLE collection ALTER COLUMN variant SET NOT NULL",
+        # John John's PC simplified raw condition labels.
+        "UPDATE collection SET condition = 'NM' WHERE condition IS NULL OR btrim(condition) = '' OR condition IN ('Mint', 'Unassessed')",
+        "UPDATE collection SET condition = 'DMG' WHERE condition IN ('Damaged', 'Damage')",
         # v32: Add grade column to collection table (PSA/BGS/CGC grade)
         "ALTER TABLE collection ADD COLUMN IF NOT EXISTS grade VARCHAR DEFAULT 'raw'",
         "ALTER TABLE collection ALTER COLUMN grade DROP DEFAULT",
@@ -118,8 +121,30 @@ def _run_migrations(conn):
         "ALTER TABLE product_purchases ADD COLUMN IF NOT EXISTS collection_intent VARCHAR NOT NULL DEFAULT 'main_collection'",
         "ALTER TABLE collection ADD COLUMN IF NOT EXISTS is_grail BOOLEAN NOT NULL DEFAULT FALSE",
         "ALTER TABLE collection ADD COLUMN IF NOT EXISTS card_history TEXT",
+        "ALTER TABLE collection ADD COLUMN IF NOT EXISTS primary_photo_url TEXT",
+        "ALTER TABLE collection ADD COLUMN IF NOT EXISTS instagram_url TEXT",
+        "ALTER TABLE collection ADD COLUMN IF NOT EXISTS pinterest_url TEXT",
+        "ALTER TABLE collection ADD COLUMN IF NOT EXISTS reels_url TEXT",
+        # Local scan history: scans are not ownership. Retain normalized scan metadata for 14 days only.
+        """CREATE TABLE IF NOT EXISTS scan_history (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            source VARCHAR NOT NULL DEFAULT 'external_scanner',
+            source_reference VARCHAR,
+            recognized_name VARCHAR,
+            recognized_number VARCHAR,
+            recognized_language VARCHAR,
+            match_count INTEGER NOT NULL DEFAULT 0,
+            top_match_card_id VARCHAR,
+            top_match_name VARCHAR,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            expires_at TIMESTAMP NOT NULL
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_scan_history_user_created ON scan_history(user_id, created_at DESC)",
+        "DELETE FROM scan_history WHERE expires_at < NOW()",
         "ALTER TABLE product_purchases ADD COLUMN IF NOT EXISTS storage_type VARCHAR",
         "ALTER TABLE product_purchases ADD COLUMN IF NOT EXISTS storage_detail VARCHAR",
+        "ALTER TABLE product_purchases ALTER COLUMN purchase_price DROP NOT NULL",
         # Inventory intake: stable IDs, reusable storage, care state, lifecycle and audit history.
         """CREATE TABLE IF NOT EXISTS storage_locations (
             id SERIAL PRIMARY KEY,
@@ -642,7 +667,7 @@ def init_db():
                 "language", "currency", "price_primary", "price_display",
                 "telegram_bot_token", "telegram_chat_id", "telegram_enabled",
                 "price_alerts_enabled", "price_alert_threshold",
-                "gemini_api_key", "trainer_name",
+                "trainer_name",
             }
             for key in per_user_keys:
                 existing_user_setting = db.query(UserSetting).filter(
@@ -659,10 +684,6 @@ def init_db():
                         db.add(UserSetting(user_id=admin.id, key=key, value=val))
                 elif key == "telegram_chat_id":
                     val = os.environ.get("TELEGRAM_CHAT_ID", "")
-                    if val:
-                        db.add(UserSetting(user_id=admin.id, key=key, value=val))
-                elif key == "gemini_api_key":
-                    val = os.environ.get("GEMINI_API_KEY", "")
                     if val:
                         db.add(UserSetting(user_id=admin.id, key=key, value=val))
             db.commit()

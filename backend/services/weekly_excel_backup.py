@@ -1,4 +1,4 @@
-"""Weekly local Excel backups for John John's PC.
+"""Local Excel backups for John John's PC.
 
 The XLSX workbook is the portable, user-facing backup format. These backups are
 local files in the existing mounted backup directory and intentionally do not
@@ -52,7 +52,7 @@ def _prune_user_backups(directory: Path, user_slug: str, keep: int = EXCEL_BACKU
 
 
 def create_weekly_excel_backups(db: Session, backup_date: datetime.date | None = None) -> list[Path]:
-    """Create one local XLSX backup per active user and retain the newest eight."""
+    """Legacy weekly XLSX backup helper; GFS backups are the official schedule."""
 
     backup_date = backup_date or datetime.date.today()
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)

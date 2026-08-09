@@ -695,7 +695,7 @@ const th = {
         manualContributor: 'ผู้มีส่วนร่วม',
         supporters: 'ผู้สนับสนุน',
         sponsors: 'สนับสนุน',
-        sponsorMessage: 'ชอบ PokéCollector ไหม? รายได้ทั้งหมดจะบริจาคให้องค์กรช่วยเหลือสัตว์ 🐾',
+        sponsorMessage: 'ชอบ John John’s PC ไหม? รายได้ทั้งหมดจะบริจาคให้องค์กรช่วยเหลือสัตว์ 🐾',
         rescueDonationTotal: 'บริจาคให้การช่วยเหลือสัตว์แล้วทั้งหมด',
         rescueDonationBatchHint: 'ทิปจากผู้สนับสนุนจะถูกส่งต่อให้ศูนย์ช่วยเหลือภายหลังเป็นรอบๆ',
         kofiHint: 'ระบุชื่อหรือโปรไฟล์ GitHub ของคุณในข้อความ เช่น "Tip from MaxMustermann - github.com/max"',

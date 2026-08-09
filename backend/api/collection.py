@@ -353,6 +353,10 @@ def _upsert_collection_item(
         collection_intent=item.collection_intent,
         is_grail=item.is_grail,
         card_history=item.card_history,
+        primary_photo_url=item.primary_photo_url,
+        instagram_url=item.instagram_url,
+        pinterest_url=item.pinterest_url,
+        reels_url=item.reels_url,
         status="owned",
         lang=item_lang,
         user_id=current_user.id,
@@ -570,7 +574,7 @@ def _parse_import_row(row: dict, row_number: int) -> CollectionItemCreate:
         except ValueError as exc:
             raise ValueError("purchase_price must be a number") from exc
         if not is_valid_collection_purchase_price(purchase_price):
-            raise ValueError("purchase_price must be a finite, non-negative number")
+            raise ValueError("Cost Basis must be a finite, non-negative number")
 
     return CollectionItemCreate(
         card_id=f"{set_code} {number}",
@@ -666,7 +670,7 @@ def bulk_add_to_collection(
 
     Each item is committed independently so one invalid card does not roll back
     the whole batch. Existing rows are matched by card, normalized variant,
-    language, condition, purchase price, and current user, then quantity is
+    language, condition, cost basis, and current user, then quantity is
     incremented.
     """
     added = 0
@@ -721,7 +725,7 @@ async def import_collection_csv(
     if reader.fieldnames != CSV_IMPORT_COLUMNS:
         raise HTTPException(
             status_code=422,
-            detail=f"CSV header must exactly be: {','.join(CSV_IMPORT_COLUMNS)}",
+            detail=f"CSV header must exactly be: {','.join(CSV_IMPORT_COLUMNS)}. Treat purchase_price as Cost Basis.",
         )
 
     added = 0
@@ -858,7 +862,8 @@ def update_collection_item(
             "quantity", "condition", "variant", "lang", "purchase_price",
             "acquisition_source", "inventory_kind", "protection_type",
             "storage_location_id", "grader", "grade", "certification_number",
-            "notes",
+            "notes", "card_history", "primary_photo_url", "instagram_url",
+            "pinterest_url", "reels_url",
         )
     }
     if "variant" in update_data:
@@ -906,7 +911,7 @@ def update_collection_item(
     if active_linked_quantity > 0 and protected_changes:
         raise HTTPException(
             status_code=409,
-            detail="This exact collection row is linked to a product. Unlink or sell the product-linked copies before changing variant, condition, language, or purchase price.",
+            detail="This exact collection row is linked to a product. Unlink or sell the product-linked copies before changing variant, condition, language, or cost basis.",
         )
 
     # If lang is being changed, also update card_id to the correct language variant

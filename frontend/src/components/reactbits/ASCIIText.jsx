@@ -342,10 +342,9 @@ class CanvAscii {
     }
 
     animate() {
-        // Upstream runs requestAnimationFrame unconditionally, so `enableWaves:
-        // false` still burned a frame forever. When motion is off we draw once and
-        // then only redraw in response to pointer movement, which keeps this off
-        // the "continuous motion without an event" list.
+        // Motion is part of the John John design system. Continuous animation is
+        // used only where the component is intentionally staged; otherwise the
+        // canvas redraws on interaction so the surface still responds to presence.
         if (!this.animateContinuously) {
             this.render()
             return
@@ -426,7 +425,7 @@ export default function ASCIIText({
                                       textFontSize = 200,
                                       textColor = '#fdf9f3',
                                       planeBaseHeight = 8,
-                                      enableWaves = false,
+                                      enableWaves = true,
                                       animateContinuously = false
                                   }) {
     const containerRef = useRef(null);

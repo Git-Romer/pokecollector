@@ -691,7 +691,7 @@ const sv = {
         manualContributor: 'Bidragsgivare',
         supporters: 'Supportrar',
         sponsors: 'Stöd',
-        sponsorMessage: 'Tycker du om PokéCollector? Alla intäkter doneras till djurräddningsorganisationer. 🐾',
+        sponsorMessage: 'Tycker du om John John’s PC? Alla intäkter doneras till djurräddningsorganisationer. 🐾',
         rescueDonationTotal: 'Donerat till djurräddning hittills',
         rescueDonationBatchHint: 'Supportertips skickas senare i samlade donationer',
         kofiHint: 'Nämn ditt namn eller GitHub-profil i meddelandet, t.ex. "Tips från MaxMustermann - github.com/max"',

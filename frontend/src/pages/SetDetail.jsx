@@ -1,5 +1,5 @@
 import SplitText from '../components/reactbits/SplitText'
-import {useEffect, useState} from 'react'
+import {useEffect, useRef, useState} from 'react'
 import {createPortal} from 'react-dom'
 import {useNavigate, useParams} from 'react-router-dom'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
@@ -23,7 +23,7 @@ import {invalidateTcgdexFilterLanguages} from '../utils/queryInvalidation'
 import MoneyInput from '../components/MoneyInput'
 import {parseMoneyInputValue} from '../utils/moneyInput'
 
-const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
+const CONDITIONS = ['NM', 'LP', 'MP', 'HP', 'DMG']
 
 const SET_SORT_OPTIONS = [
     'number',
@@ -151,6 +151,7 @@ function SetCardActionModal({
                                 t
                             }) {
     const {exchangeRate, exchangeRateReady} = useSettings()
+    const dialogRef = useRef(null)
     const [addQuantity, setAddQuantity] = useState(1)
     const [addCondition, setAddCondition] = useState('NM')
     const [addVariant, setAddVariant] = useState('Normal')
@@ -165,6 +166,20 @@ function SetCardActionModal({
         setAddLang(setLang)
         setAddPrice('')
     }, [card, setLang])
+
+    useEffect(() => {
+        if (!card) return undefined
+        const previouslyFocused = document.activeElement
+        dialogRef.current?.focus()
+        const handleKeyDown = (event) => {
+            if (event.key === 'Escape') onClose()
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown)
+            previouslyFocused?.focus?.()
+        }
+    }, [card, onClose])
 
     if (!card) return null
     const availableVariants = getAvailableVariants(card)
@@ -189,6 +204,11 @@ function SetCardActionModal({
             className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm md:flex md:items-center md:justify-center md:bg-black/80"
             onClick={onClose}>
             <div
+                ref={dialogRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="set-card-action-title"
+                tabIndex={-1}
                 className={[
                     'fixed bottom-0 left-0 right-0 rounded-t-2xl max-h-[90dvh] overflow-y-auto',
                     'bg-bg-surface border-t border-border more-sheet-enter',
@@ -203,11 +223,11 @@ function SetCardActionModal({
                 <div className="p-5">
                     <div className="flex items-start justify-between gap-3 mb-4">
                         <div className="min-w-0">
-                            <h2 className="text-lg font-bold text-text-primary">{card.name}</h2>
+                            <h2 id="set-card-action-title" className="text-lg font-bold text-text-primary">{card.name}</h2>
                             <p className="text-xs text-text-muted">#{card.number} · {setLang.toUpperCase()}</p>
                             <FallbackBadges card={card} className="mt-1"/>
                         </div>
-                        <button onClick={onClose} className="text-text-muted hover:text-text-primary"><X size={18}/>
+                        <button type="button" aria-label="Close card details" onClick={onClose} className="text-text-muted hover:text-text-primary"><X size={18}/>
                         </button>
                     </div>
 
@@ -316,6 +336,7 @@ export default function SetDetail() {
     const [sortBy, setSortBy] = useState('number')
     const [rarityFilter, setRarityFilter] = useState('all')
     const [selectedCard, setSelectedCard] = useState(null)
+    const [isAddingMissing, setIsAddingMissing] = useState(false)
 
     const {data, isLoading, error} = useQuery({
         queryKey: ['set-checklist', setId],
@@ -360,6 +381,7 @@ export default function SetDetail() {
         onSuccess: () => {
             toast.success(t('card.addedToWishlist'))
             queryClient.invalidateQueries({queryKey: ['wishlist']})
+            queryClient.invalidateQueries({queryKey: ['set-checklist', setId]})
             invalidateTcgdexFilterLanguages(queryClient)
             setSelectedCard(null)
         },
@@ -417,6 +439,28 @@ export default function SetDetail() {
     }
 
     const {set, cards = [], owned_count, total_count, progress} = data || {}
+    const missingCards = cards.filter(card => !card.owned)
+    const missingCount = missingCards.length
+
+    const addMissingToChaseCards = async () => {
+        if (!missingCards.length || isAddingMissing) return
+        setIsAddingMissing(true)
+        const results = await Promise.allSettled(
+            missingCards.map(card => addToWishlist({card_id: card.id, quantity: 1}))
+        )
+        const added = results.filter(result => result.status === 'fulfilled').length
+        const failed = results.length - added
+        queryClient.invalidateQueries({queryKey: ['wishlist']})
+        queryClient.invalidateQueries({queryKey: ['set-checklist', setId]})
+        invalidateTcgdexFilterLanguages(queryClient)
+        setIsAddingMissing(false)
+        if (added > 0) {
+            toast.success(`${added} missing ${added === 1 ? 'card' : 'cards'} added to Chase Cards`)
+        }
+        if (failed > 0) {
+            toast.error(`${failed} missing ${failed === 1 ? 'card' : 'cards'} could not be added`)
+        }
+    }
 
     const rarityOptions = [...new Set(cards.map(card => card.rarity).filter(Boolean))]
         .sort((a, b) => String(a).localeCompare(String(b), undefined, {sensitivity: 'base'}))
@@ -430,7 +474,7 @@ export default function SetDetail() {
 
     return (
         <div className="space-y-4 pb-2">
-            <button onClick={() => navigate('/sets')} className="btn-ghost text-sm py-1.5">
+            <button onClick={() => navigate('/all-cards')} className="btn-ghost text-sm py-1.5">
                 <ArrowLeft size={14}/> {t('nav.sets')}
             </button>
 
@@ -443,7 +487,7 @@ export default function SetDetail() {
                     )}
                     <div className="flex-1 min-w-0">
                         <h1 className="text-5xl font-bold text-text-primary mag-heading uppercase leading-none mt-2">
-                            <SplitText text="{set?.name}" delay={40}/></h1>
+                            <SplitText text={set?.name || ""} delay={40}/></h1>
                         <p className="text-sm text-text-secondary">{set?.series} · {total_count} {t('setDetail.cards')}</p>
 
                         <div className="mt-3">
@@ -458,13 +502,25 @@ export default function SetDetail() {
                             </div>
                         </div>
 
+                        <div className="mt-4 flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                className="btn-ghost border-brand-red/30 text-brand-red hover:bg-brand-red/10"
+                                disabled={!missingCount || isAddingMissing}
+                                onClick={addMissingToChaseCards}
+                            >
+                                <Heart size={14}/> {isAddingMissing ? 'Adding missing…' : `Add ${missingCount} missing to Chase Cards`}
+                            </button>
+                            <p className="text-xs text-text-muted self-center">Manual action. Owned cards stay owned; missing cards become Chase Cards.</p>
+                        </div>
+
                         <div className="flex gap-4 mt-3 md:hidden">
                             <div>
                                 <p className="text-lg font-bold text-green">{owned_count}</p>
                                 <p className="text-xs text-text-muted">{t('setDetail.owned')}</p>
                             </div>
                             <div>
-                                <p className="text-lg font-bold text-brand-red">{total_count - owned_count}</p>
+                                <p className="text-lg font-bold text-brand-red">{missingCount}</p>
                                 <p className="text-xs text-text-muted">{t('setDetail.missing')}</p>
                             </div>
                         </div>
@@ -477,7 +533,7 @@ export default function SetDetail() {
                                 <p className="text-xs text-text-muted">{t('setDetail.owned')}</p>
                             </div>
                             <div>
-                                <p className="text-2xl font-bold text-brand-red">{total_count - owned_count}</p>
+                                <p className="text-2xl font-bold text-brand-red">{missingCount}</p>
                                 <p className="text-xs text-text-muted">{t('setDetail.missing')}</p>
                             </div>
                         </div>
@@ -490,7 +546,7 @@ export default function SetDetail() {
                 {[
                     {key: 'all', label: `${t('setDetail.all')} (${cards.length})`},
                     {key: 'owned', label: `${t('setDetail.owned')} (${owned_count})`},
-                    {key: 'missing', label: `${t('setDetail.missing')} (${total_count - owned_count})`},
+                    {key: 'missing', label: `${t('setDetail.missing')} (${missingCount})`},
                 ].map(({key, label}) => (
                     <button key={key} onClick={() => setFilter(key)}
                             className={clsx(
@@ -536,15 +592,12 @@ export default function SetDetail() {
             {/* Card Grid */}
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
                 {filteredCards.map((card) => (
-                    <div key={card.id}
+                    <button key={card.id} type="button"
                          onClick={() => setSelectedCard(card)}
-                         onKeyDown={(e) => {
-                             if (e.key === 'Enter' || e.key === ' ') setSelectedCard(card)
-                         }}
-                         role="button"
-                         tabIndex={0}
+                         aria-label={`View ${card.name}, number ${card.number}`}
+                         aria-haspopup="dialog"
                          className={clsx(
-                             'relative group rounded-lg overflow-hidden transition-all duration-200',
+                             'relative group rounded-lg overflow-hidden border-0 bg-transparent p-0 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-light-blue focus-visible:ring-offset-2 focus-visible:ring-offset-bg-base',
                              card.owned
                                  ? 'ring-2 ring-green/50 hover:ring-green cursor-pointer'
                                  : 'opacity-60 hover:opacity-90 ring-1 ring-brand-red/30 hover:ring-brand-red/60 cursor-pointer'
@@ -569,13 +622,9 @@ export default function SetDetail() {
                         <div
                             className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex flex-col items-center justify-center gap-1 opacity-0 group-hover:opacity-100">
                             <p className="text-white text-xs font-medium text-center px-1 line-clamp-2">{card.name}</p>
-                            <button onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedCard(card)
-                            }}
-                                    className="bg-brand-red text-white rounded-full p-1">
+                            <span aria-hidden="true" className="bg-brand-red text-white rounded-full p-1">
                                 <Plus size={12}/>
-                            </button>
+                            </span>
                         </div>
 
                         {card.owned && (
@@ -594,7 +643,7 @@ export default function SetDetail() {
                             className="absolute bottom-0 left-0 right-0 bg-black/60 text-center text-xs text-text-secondary py-0.5">
                             #{card.number}
                         </div>
-                    </div>
+                    </button>
                 ))}
             </div>
 

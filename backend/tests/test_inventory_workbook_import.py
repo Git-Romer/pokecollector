@@ -150,6 +150,28 @@ class InventoryWorkbookImportTests(unittest.TestCase):
         workbook.save(output)
         return output.getvalue()
 
+
+    def test_review_accepts_sealed_product_without_cost_basis(self):
+        data = build_collection_workbook(
+            [self.item],
+            [self.product],
+            [self.location],
+        )
+        workbook = load_workbook(BytesIO(data))
+        workbook["Sealed Products"]["H2"] = None
+        output = BytesIO()
+        workbook.save(output)
+
+        committed = review_inventory_workbook(
+            self.db,
+            self.user.id,
+            output.getvalue(),
+            commit=True,
+        )
+
+        self.assertTrue(committed["committed"])
+        self.assertIsNone(self.db.get(ProductPurchase, self.product.id).purchase_price)
+
     def test_review_rejects_non_physical_variants(self):
         review = review_inventory_workbook(
             self.db,
@@ -175,6 +197,37 @@ class InventoryWorkbookImportTests(unittest.TestCase):
         self.assertFalse(review["committed"])
         self.assertTrue(any("Language must match" in error["error"] for error in review["errors"]))
         self.assertEqual(self.db.get(CollectionItem, self.item.id).lang, "en")
+
+
+    def test_review_accepts_tag_slab_protection_from_workbook(self):
+        data = self._workbook_with_card_edits(N2="tag_slab", Q2="", R2="Pristine 10", S2="TAG-777")
+
+        committed = review_inventory_workbook(
+            self.db,
+            self.user.id,
+            data,
+            commit=True,
+        )
+
+        self.assertTrue(committed["committed"])
+        updated_item = self.db.get(CollectionItem, self.item.id)
+        self.assertEqual(updated_item.protection_type, "tag_slab")
+        self.assertEqual(updated_item.grader, "TAG")
+        self.assertEqual(updated_item.grade, "Pristine 10")
+        self.assertEqual(updated_item.certification_number, "TAG-777")
+
+    def test_review_rejects_legacy_condition_labels(self):
+        review = review_inventory_workbook(
+            self.db,
+            self.user.id,
+            self._workbook_with_card_edits(H2="Mint"),
+            commit=False,
+        )
+
+        self.assertFalse(review["valid"])
+        self.assertFalse(review["committed"])
+        self.assertTrue(any("Condition must be one of: NM, LP, MP, HP, DMG" in error["error"] for error in review["errors"]))
+        self.assertEqual(self.db.get(CollectionItem, self.item.id).condition, "NM")
 
 
 if __name__ == "__main__":

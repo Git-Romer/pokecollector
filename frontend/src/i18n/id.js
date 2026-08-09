@@ -697,7 +697,7 @@ const id = {
         manualContributor: 'Kontributor',
         supporters: 'Pendukung',
         sponsors: 'Dukung',
-        sponsorMessage: 'Menikmati PokéCollector? Semua pendapatan didonasikan ke organisasi penyelamat hewan. 🐾',
+        sponsorMessage: 'Menikmati John John’s PC? Semua pendapatan didonasikan ke organisasi penyelamat hewan. 🐾',
         rescueDonationTotal: 'Didonasikan ke penyelamat hewan sejauh ini',
         rescueDonationBatchHint: 'Tip pendukung dikirim ke penyelamat nanti secara batch',
         kofiHint: 'Sebutkan nama atau profil GitHub Anda di pesan, mis. "Tip dari MaxMustermann - github.com/max"',

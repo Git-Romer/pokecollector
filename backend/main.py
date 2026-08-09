@@ -78,7 +78,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="John John's PC API",
     version=read_app_version(),
-    description="Private, locally hosted Pokemon TCG collection archive.",
+    description="Private, locally hosted Pokémon TCG collection archive.",
     lifespan=lifespan,
 )
 
@@ -153,8 +153,9 @@ async def login_rate_limit(request: Request, call_next):
         ip_attempts.append(now)
         attempts[client_ip] = ip_attempts
     return await call_next(request)
-app.include_router(cards.router, prefix="/api/cards", tags=["cards"])
+# Register concrete scanner routes before the generic /api/cards/{card_id} route.
 app.include_router(recognize_router, prefix="/api/cards", tags=["recognize"])
+app.include_router(cards.router, prefix="/api/cards", tags=["cards"])
 app.include_router(collection.router, prefix="/api/collection", tags=["collection"])
 app.include_router(inventory.router, prefix="/api/inventory", tags=["inventory"])
 app.include_router(sets.router, prefix="/api/sets", tags=["sets"])
@@ -175,4 +176,4 @@ app.include_router(agent.router, prefix="/api", tags=["agent"])
 
 @app.get("/api/health")
 def health_check():
-    return {"status": "ok", "service": "pokemon-tcg-collection"}
+    return {"status": "ok", "service": "john-johns-pc"}

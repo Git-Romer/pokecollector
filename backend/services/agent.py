@@ -1,104 +1,121 @@
-import os
-import json
+"""Local-only John John collection note generation.
+
+This module intentionally does not call external AI services and does not read
+Obsidian or other external knowledge stores. John John's PC keeps collection
+insights derived from the local tracker database unless the user explicitly
+opts into a future integration.
+"""
+
 import datetime
-from sqlalchemy.orm import Session
+
 from sqlalchemy import func
-from models import Card, CollectionItem, Set, JohnJohnNote, JohnJohnAuditLog
-import google.generativeai as genai
+from sqlalchemy.orm import Session
 
-# Setup Gemini (assuming GEMINI_API_KEY is in environment)
-genai.configure(api_key=os.environ.get("GEMINI_API_KEY", ""))
+from models import Card, CollectionItem, JohnJohnNote, Set
 
-# Path to the mounted Obsidian vault (if mapped in docker-compose as O:\ -> /mnt/odrive)
-OBSIDIAN_DIR = "/mnt/odrive/Obsidian/Journal"
 
-def read_recent_obsidian_notes(days=7):
-    """Reads journal entries from the last `days` days."""
-    notes_content = ""
-    if not os.path.exists(OBSIDIAN_DIR):
-        return "No journal found."
-    
-    cutoff_date = datetime.datetime.now() - datetime.timedelta(days=days)
-    
-    # Very basic reading of recent .md files
-    for root, dirs, files in os.walk(OBSIDIAN_DIR):
-        for file in files:
-            if file.endswith(".md"):
-                filepath = os.path.join(root, file)
-                # Check modified time
-                mtime = datetime.datetime.fromtimestamp(os.path.getmtime(filepath))
-                if mtime > cutoff_date:
-                    with open(filepath, 'r', encoding='utf-8') as f:
-                        notes_content += f"\n--- {file} ({mtime.strftime('%Y-%m-%d')}) ---\n"
-                        notes_content += f.read()[:2000] # truncate to avoid massive tokens
-    return notes_content
+def build_context_packet(db: Session) -> dict:
+    """Compile a small local collection state packet for deterministic notes."""
+    total_cards = db.query(func.coalesce(func.sum(CollectionItem.quantity), 0)).scalar() or 0
+    unique_cards = db.query(CollectionItem.card_id).filter(
+        CollectionItem.status == "owned",
+        CollectionItem.inventory_kind == "owned",
+    ).distinct().count()
 
-def build_context_packet(db: Session):
-    """Compiles the compressed state of the archive."""
-    total_cards = db.query(func.sum(CollectionItem.quantity)).scalar() or 0
-    unique_cards = db.query(CollectionItem.card_id).distinct().count()
-    
-    # Recent additions (last 24 hours)
-    yesterday = datetime.datetime.now() - datetime.timedelta(days=1)
-    recent_items = db.query(CollectionItem).filter(CollectionItem.added_at > yesterday).limit(50).all()
-    
-    recent_list = []
+    yesterday = datetime.datetime.utcnow() - datetime.timedelta(days=1)
+    recent_items = db.query(CollectionItem).filter(
+        CollectionItem.status == "owned",
+        CollectionItem.inventory_kind == "owned",
+        CollectionItem.added_at > yesterday,
+    ).order_by(CollectionItem.added_at.desc()).limit(10).all()
+
+    recent_additions = []
     for item in recent_items:
         card = db.query(Card).filter(Card.id == item.card_id).first()
         if card:
-            recent_list.append({"name": card.name, "set": card.set_id, "quantity": item.quantity})
+            recent_additions.append({
+                "name": card.name,
+                "set_id": card.set_id,
+                "quantity": item.quantity,
+            })
 
-    journal_entries = read_recent_obsidian_notes(days=7)
+    near_complete = []
+    sets = db.query(Set).limit(200).all()
+    for set_record in sets:
+        total = getattr(set_record, "total", None) or getattr(set_record, "total_cards", None) or 0
+        if not total:
+            continue
+        owned = db.query(func.coalesce(func.sum(CollectionItem.quantity), 0)).join(
+            Card, Card.id == CollectionItem.card_id
+        ).filter(
+            CollectionItem.status == "owned",
+            CollectionItem.inventory_kind == "owned",
+            Card.set_id == set_record.id,
+        ).scalar() or 0
+        remaining = max(total - owned, 0)
+        if 0 < remaining <= 5:
+            near_complete.append({
+                "name": set_record.name,
+                "remaining": int(remaining),
+                "owned": int(owned),
+                "total": int(total),
+            })
 
     return {
-        "total_cards": total_cards,
+        "total_cards": int(total_cards),
         "unique_cards": unique_cards,
-        "recent_additions": recent_list,
-        "recent_journal": journal_entries
+        "recent_additions": recent_additions,
+        "near_complete_sets": sorted(near_complete, key=lambda item: item["remaining"])[:5],
     }
 
-def run_night_shift(db: Session):
-    """Executes the Night Shift: reads context, generates insights, and logs to DB."""
+
+def _note_exists(db: Session, title: str, body: str) -> bool:
+    return db.query(JohnJohnNote).filter(
+        JohnJohnNote.title == title,
+        JohnJohnNote.body == body,
+        JohnJohnNote.dismissed == False,  # noqa: E712
+    ).first() is not None
+
+
+def run_night_shift(db: Session) -> list[JohnJohnNote]:
+    """Create quiet, deterministic notes from local collection signals only."""
     context = build_context_packet(db)
-    
-    prompt = f"""
-    You are John John, the ambient AI curator of a local Pokémon TCG archive.
-    Your tone is Contemporary, Human, Confident, Warm. 
-    You do NOT use rainbows, emojis, or excessive enthusiasm. You are a quiet, stark professional.
-    
-    Here is the current Context Packet:
-    {json.dumps(context, indent=2)}
-    
-    Write 1 to 3 "Notes" for the user. These notes will appear quietly on their dashboard.
-    Output strictly as JSON:
-    {{
-        "notes": [
-            {{
-                "kind": "curation", // or 'recent', 'milestone', 'action'
-                "title": "Short title",
-                "body": "The text of the note",
-                "href": "/collection" // Optional link to a page
-            }}
-        ]
-    }}
-    """
-    
-    try:
-        model = genai.GenerativeModel('gemini-2.5-pro')
-        response = model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
-        data = json.loads(response.text)
-        
-        # Write notes to DB
-        user_id = 1 # Assuming single-user for now
-        for n in data.get("notes", []):
-            new_note = JohnJohnNote(
-                user_id=user_id,
-                kind=n.get("kind", "curation"),
-                title=n.get("title", "Note"),
-                body=n.get("body", ""),
-                href=n.get("href")
-            )
-            db.add(new_note)
-        db.commit()
-    except Exception as e:
-        print(f"Night Shift Error: {e}")
+    candidates = []
+
+    if context["recent_additions"]:
+        card = context["recent_additions"][0]
+        candidates.append({
+            "kind": "recent",
+            "title": "Filed overnight",
+            "body": f"I filed {card['name']}. Thought you'd want it near the front.",
+            "href": "/collection",
+        })
+
+    if context["near_complete_sets"]:
+        set_record = context["near_complete_sets"][0]
+        plural = "card" if set_record["remaining"] == 1 else "cards"
+        candidates.append({
+            "kind": "milestone",
+            "title": "Close one",
+            "body": f"{set_record['name']} is down to {set_record['remaining']} {plural}.",
+            "href": "/all-cards",
+        })
+
+    if context["total_cards"]:
+        candidates.append({
+            "kind": "curation",
+            "title": "Archive count",
+            "body": f"{context['total_cards']} cards filed. {context['unique_cards']} unique records in the room.",
+            "href": "/collection",
+        })
+
+    created = []
+    user_id = 1
+    for candidate in candidates[:3]:
+        if _note_exists(db, candidate["title"], candidate["body"]):
+            continue
+        note = JohnJohnNote(user_id=user_id, **candidate)
+        db.add(note)
+        created.append(note)
+    db.commit()
+    return created

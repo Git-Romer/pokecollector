@@ -1,3 +1,5 @@
+import daisyui from 'daisyui'
+
 /** @type {import('tailwindcss').Config} */
 export default {
     content: [
@@ -141,5 +143,33 @@ export default {
             },
         },
     },
-    plugins: [],
+    plugins: [daisyui],
+    daisyui: {
+        // Keep DaisyUI additive: the existing archive tokens and FluentProvider
+        // remain authoritative for current screens. New DaisyUI modules use the
+        // explicit `daisy-` prefix to avoid changing legacy class behavior.
+        prefix: 'daisy-',
+        themes: [
+            {
+                midnight: {
+                    primary: '#F58220',
+                    secondary: '#8FC0FF',
+                    accent: '#FFCD00',
+                    neutral: '#101C30',
+                    'base-100': '#000000',
+                    'base-200': '#0A0A0A',
+                    'base-300': '#101C30',
+                    info: '#00A3E0',
+                    success: '#22C55E',
+                    warning: '#FFCD00',
+                    error: '#E03C31',
+                },
+            },
+        ],
+        darkTheme: 'midnight',
+        // Existing CSS owns reset and root surfaces; DaisyUI supplies semantic
+        // classes only until a screen deliberately adopts them.
+        base: false,
+        logs: false,
+    },
 }

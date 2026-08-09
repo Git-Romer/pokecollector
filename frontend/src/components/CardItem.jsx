@@ -1,4 +1,4 @@
-import {memo, useEffect, useId, useState} from 'react'
+import {memo, useEffect, useId, useRef, useState} from 'react'
 import {createPortal} from 'react-dom'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
 import {Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis} from 'recharts'
@@ -374,7 +374,7 @@ export function CustomCardModal({onClose, onCreated, sets: setsProp = [], autoAd
                                 </div>
                             </div>
 
-                            <p className="text-sm text-text-secondary">{t('cardSearch.addToCollectionAfter')}:</p>
+                            <p className="text-sm text-text-secondary">Collection Lot details:</p>
 
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
@@ -474,8 +474,11 @@ export const CardItem = memo(function CardItem({
 
     if (compact) {
         return (
-            <div ref={tiltRef} className="card cursor-pointer group p-2 hover:border-brand-red/20 transition-all"
-                 onClick={() => setShowModal(true)} onMouseMove={tiltMove} onMouseLeave={tiltLeave}>
+            <button type="button" ref={tiltRef}
+                    className="card cursor-pointer group p-2 hover:border-brand-red/20 transition-all text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red"
+                    aria-label={`View details for ${cardName}`}
+                    aria-haspopup="dialog"
+                    onClick={() => setShowModal(true)} onMouseMove={tiltMove} onMouseLeave={tiltLeave}>
                 <div
                     className="aspect-[2.5/3.5] w-full rounded-xl overflow-hidden ring-1 ring-white/5 group-hover:ring-2 group-hover:ring-brand-red/30 transition-all duration-200">
                     {cardImage ? (
@@ -489,14 +492,19 @@ export const CardItem = memo(function CardItem({
                         </div>
                     )}
                 </div>
-            </div>
+            </button>
         )
     }
 
     return (
         <>
-            <div ref={tiltRef} className="card cursor-pointer group hover:border-brand-red/20 transition-all"
-                 onClick={() => setShowModal(true)} onMouseMove={tiltMove} onMouseLeave={tiltLeave}>
+            <div ref={tiltRef} className="card group hover:border-brand-red/20 transition-all"
+                 onMouseMove={tiltMove} onMouseLeave={tiltLeave}>
+                <button type="button"
+                        className="block w-full cursor-pointer text-left rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red"
+                        aria-label={`View details for ${cardName}`}
+                        aria-haspopup="dialog"
+                        onClick={() => setShowModal(true)}>
                 <div
                     className="aspect-[2.5/3.5] w-full mb-3 rounded-xl overflow-hidden ring-1 ring-white/5 group-hover:ring-2 group-hover:ring-brand-red/30 transition-all duration-200">
                     {cardImage ? (
@@ -549,6 +557,7 @@ export const CardItem = memo(function CardItem({
                         )}
                     </div>
                 </div>
+                </button>
 
                 {showActions && (
                     <div className="mt-3 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -620,6 +629,7 @@ export const CardItem = memo(function CardItem({
 export function CardModal({card, onClose, onEdit, defaultLang = 'en', ownedItems = null}) {
     if (!card || !card.id) return null
 
+    const dialogRef = useRef(null)
     const [quantity, setQuantity] = useState(1)
     const [condition, setCondition] = useState('NM')
     const [variant, setVariant] = useState(() => getDefaultVariant(card))
@@ -769,6 +779,20 @@ export function CardModal({card, onClose, onEdit, defaultLang = 'en', ownedItems
     const historyDataKey = historyPriceField
     const historyPriceLabel = pricePrimaryField === historyPriceField ? t(`prices.${pricePrimary}`) : t('prices.avg')
 
+    useEffect(() => {
+        const returnFocusTo = document.activeElement
+        const closeOnEscape = (event) => {
+            if (event.key === 'Escape') onClose()
+        }
+
+        dialogRef.current?.focus()
+        window.addEventListener('keydown', closeOnEscape)
+        return () => {
+            window.removeEventListener('keydown', closeOnEscape)
+            returnFocusTo?.focus?.()
+        }
+    }, [onClose])
+
     return createPortal(
         <div
             className="fixed inset-0 z-50 bg-black/60 md:flex md:items-center md:justify-center md:bg-black/80 md:backdrop-blur-sm"
@@ -777,7 +801,13 @@ export function CardModal({card, onClose, onEdit, defaultLang = 'en', ownedItems
                 'fixed bottom-0 left-0 right-0 rounded-t-2xl max-h-[90dvh] overflow-y-auto',
                 'bg-bg-surface border-t border-border more-sheet-enter',
                 'md:static md:rounded-2xl md:border md:max-w-2xl md:w-full md:max-h-[85vh] md:animate-none',
-            ].join(' ')} onClick={(e) => e.stopPropagation()}>
+            ].join(' ')}
+                 ref={dialogRef}
+                 role="dialog"
+                 aria-modal="true"
+                 aria-label={card.name}
+                 tabIndex={-1}
+                 onClick={(e) => e.stopPropagation()}>
                 <div className="flex justify-center pt-3 pb-1 md:hidden">
                     <div className="w-10 h-1 bg-border rounded-full"/>
                 </div>
@@ -811,6 +841,7 @@ export function CardModal({card, onClose, onEdit, defaultLang = 'en', ownedItems
                                         )}
                                     </div>
                                     <button onClick={onClose}
+                                            aria-label={t('common.close')}
                                             className="text-text-muted hover:text-text-primary transition-colors flex-shrink-0 p-1">
                                         <X size={18}/>
                                     </button>
@@ -829,6 +860,7 @@ export function CardModal({card, onClose, onEdit, defaultLang = 'en', ownedItems
                                 <FallbackBadges card={card} className="mt-1"/>
                             </div>
                             <button onClick={onClose}
+                                    aria-label={t('common.close')}
                                     className="text-text-muted hover:text-text-primary transition-colors flex-shrink-0">
                                 <X size={20}/>
                             </button>
@@ -1062,6 +1094,10 @@ export function CardModal({card, onClose, onEdit, defaultLang = 'en', ownedItems
                             </div>
                         )}
                         <div className="space-y-3">
+                            <div className="rounded-xl border border-white/10 bg-black/10 p-3">
+                                <p className="text-xs uppercase tracking-[0.16em] text-light-blue font-semibold">Collection Lot details</p>
+                                <p className="mt-1 text-xs text-text-secondary">Track quantity, condition, acquisition, protection, and cost basis for this ownership record.</p>
+                            </div>
                             {ownedQuantity > 0 && (
                                 <div className="rounded-xl border border-green/30 bg-green/10 p-3">
                                     <p className="text-sm font-semibold text-green">✓ {t('cardSearch.alreadyOwned')} · {ownedQuantity}x</p>

@@ -15,7 +15,7 @@ import {Link} from 'react-router-dom'
  *   CSS, and a spring library is a poor trade for one button, so the transform
  *   rides on custom properties and the sweep is a scaled pseudo-element.
  * - John John's PC keeps one motion language, so the pull remains active
- *   instead of branching on reduced-motion preferences.
+ *   instead of adding optional motion modes.
  */
 
 // How far outside itself the button starts reacting, and how far it travels.

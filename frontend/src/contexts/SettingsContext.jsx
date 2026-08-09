@@ -1,50 +1,12 @@
 import {createContext, useCallback, useContext, useEffect, useState} from 'react'
-import de from '../i18n/de'
 import en from '../i18n/en'
-import zh from '../i18n/zh'
-import zhCn from '../i18n/zhCn'
-import sv from '../i18n/sv'
-import fr from '../i18n/fr'
-import nl from '../i18n/nl'
-import es from '../i18n/es'
-import esMx from '../i18n/esMx'
-import it from '../i18n/it'
-import pt from '../i18n/pt'
-import ptBr from '../i18n/ptBr'
-import ptPt from '../i18n/ptPt'
-import pl from '../i18n/pl'
-import ru from '../i18n/ru'
-import ja from '../i18n/ja'
-import ko from '../i18n/ko'
-import id from '../i18n/id'
-import th from '../i18n/th'
-import zhTw from '../i18n/zhTw'
 import {priceFieldFromPrimary} from '../utils/prices'
 import {normalizeTcgdexLanguageCsv} from '../utils/tcgdexLanguages'
 import {useAuth} from './AuthContext'
 
-const translations = {
-    de,
-    en,
-    zh,
-    'zh-cn': zhCn,
-    sv,
-    fr,
-    nl,
-    es,
-    'es-mx': esMx,
-    it,
-    pt,
-    'pt-br': ptBr,
-    'pt-pt': ptPt,
-    pl,
-    ru,
-    ja,
-    ko,
-    id,
-    th,
-    'zh-tw': zhTw,
-}
+const translations = {en}
+const APP_UI_LANGUAGE = 'en'
+
 
 const DEFAULT_SETTINGS = {
     // Applies to fresh installs and to the login screen, which renders before
@@ -96,7 +58,9 @@ export function SettingsProvider({children}) {
                 setSettings(prev => ({
                     ...prev,
                     ...data,
-                    language: data.language === 'zh' ? 'zh-cn' : (data.language || prev.language),
+                    // John John's PC first release keeps the product UI in one English design-system voice.
+                    // TCGdex card data languages stay configurable through tcgdex_sync_languages.
+                    language: APP_UI_LANGUAGE,
                     tcgdex_sync_languages: normalizeTcgdexLanguageCsv(data.tcgdex_sync_languages || prev.tcgdex_sync_languages),
                 }))
                 setLoaded(true)
@@ -172,7 +136,7 @@ export function SettingsProvider({children}) {
             setSettings(prev => ({
                 ...prev,
                 ...saved,
-                language: saved.language === 'zh' ? 'zh-cn' : (saved.language || prev.language),
+                language: APP_UI_LANGUAGE,
             }))
         } catch (err) {
             setSettings(settings)
@@ -181,8 +145,8 @@ export function SettingsProvider({children}) {
         }
     }, [settings, multiUser])
 
-    const lang = settings.language || 'en'
-    const msgs = translations[lang] || translations.en
+    const lang = APP_UI_LANGUAGE
+    const msgs = translations.en
 
     /**
      * Translate `path`, optionally filling {placeholders} from `params`.

@@ -108,7 +108,14 @@ export default function Leaderboard() {
                             <div
                                 key={trainer.user_id}
                                 role={trainer.user_id !== currentUser?.id ? "button" : undefined}
+                                tabIndex={trainer.user_id !== currentUser?.id ? 0 : undefined}
                                 onClick={() => trainer.user_id !== currentUser?.id && navigate(`/leaderboard/compare/${trainer.user_id}`)}
+                                onKeyDown={(event) => {
+                                    if (trainer.user_id === currentUser?.id) return
+                                    if (event.key !== 'Enter' && event.key !== ' ') return
+                                    event.preventDefault()
+                                    navigate(`/leaderboard/compare/${trainer.user_id}`)
+                                }}
                                 className={`w-full rounded-2xl border border-border bg-bg-card p-4 text-left transition-all ${trainer.user_id !== currentUser?.id ? 'hover:border-yellow/40 hover:bg-bg-elevated cursor-pointer' : ''}`}
                             >
                                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">

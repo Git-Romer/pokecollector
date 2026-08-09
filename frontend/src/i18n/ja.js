@@ -697,7 +697,7 @@ const ja = {
         manualContributor: 'コントリビューター',
         supporters: 'サポーター',
         sponsors: 'サポート',
-        sponsorMessage: 'PokéCollector を楽しんでいますか? 収益はすべて動物保護団体に寄付されます。🐾',
+        sponsorMessage: 'John John’s PC を楽しんでいますか? 収益はすべて動物保護団体に寄付されます。🐾',
         rescueDonationTotal: 'これまでに動物保護へ寄付済み',
         rescueDonationBatchHint: 'サポーターのチップは後でまとめて保護団体へ送られます',
         kofiHint: 'メッセージに名前または GitHub プロフィールを記載してください。例: "Tip from MaxMustermann - github.com/max"',

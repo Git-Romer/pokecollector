@@ -1,8 +1,7 @@
 import SplitText from '../components/reactbits/SplitText'
 import {useEffect, useRef, useState} from 'react'
-import {useNavigate} from 'react-router-dom'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
-import {Crown, Download, Pencil, Plus, RefreshCw, Trash2, Upload, User, UserCheck, UserX, Zap} from 'lucide-react'
+import {Crown, Download, Pencil, Plus, RefreshCw, Trash2, Upload, User, UserCheck, UserX} from 'lucide-react'
 import api, {
     changeAvatar,
     changePassword,
@@ -14,7 +13,6 @@ import api, {
     exportCSV,
     exportXLSX,
     getContributors,
-    getCustomMatches,
     getRescueDonations,
     getSetting,
     getSupporters,
@@ -351,13 +349,10 @@ export default function Settings() {
     const [editingUsername, setEditingUsername] = useState(false)
     const [usernameInput, setUsernameInput] = useState('')
     const queryClient = useQueryClient()
-    const navigate = useNavigate()
     const {user, updateCurrentUser, multiUser} = useAuth()
     const {settings, updateSettings, t, pricePrimaryField, exchangeRate} = useSettings()
     const [activeTab, setActiveTab] = useState('general')
 
-    const [geminiKey, setGeminiKey] = useState('')
-    const [geminiDirty, setGeminiDirty] = useState(false)
     const [backupOptions, setBackupOptions] = useState(['full'])
     const [debugModeEnabled, setDebugModeEnabled] = useState(false)
 
@@ -390,12 +385,6 @@ export default function Settings() {
         queryFn: () => getSetting('price_alert_threshold').catch(() => ({value: '10'})),
     })
 
-    const {data: geminiKeyData} = useQuery({
-        queryKey: ['setting', 'gemini_api_key'],
-        queryFn: () => getSetting('gemini_api_key').catch(() => ({value: ''})),
-    })
-
-
     const [telegramBotToken, setTelegramBotToken] = useState('')
     const [telegramBotTokenDirty, setTelegramBotTokenDirty] = useState(false)
     const [telegramChatId, setTelegramChatId] = useState('')
@@ -423,12 +412,6 @@ export default function Settings() {
         refetchInterval: 10000,
     })
 
-    const {data: customMatches = []} = useQuery({
-        queryKey: ['custom-matches'],
-        queryFn: () => getCustomMatches().then((r) => r.data),
-        refetchInterval: 60000,
-    })
-
     // Sync fetched data → local state
     useEffect(() => {
         if (fullSyncIntervalData?.value) setFullSyncIntervalDays(fullSyncIntervalData.value)
@@ -445,10 +428,6 @@ export default function Settings() {
     useEffect(() => {
         if (alertThresholdData?.value) setAlertThreshold(alertThresholdData.value)
     }, [alertThresholdData])
-
-    useEffect(() => {
-        if (geminiKeyData?.value !== undefined && !geminiDirty) setGeminiKey(geminiKeyData.value)
-    }, [geminiKeyData])
 
     useEffect(() => {
         setDebugModeEnabled(settings.debug_mode === 'true')
@@ -623,8 +602,7 @@ export default function Settings() {
         }
     }
 
-    const currentLang = settings.language || 'de'
-    const currentAppLang = currentLang === 'zh' ? 'zh-cn' : currentLang
+    const currentAppLang = 'en'
     const currentCurrency = settings.currency || 'EUR'
     const currentPriceType = settings.price_primary || 'trend'
     const exportParams = {price_field: pricePrimaryField, currency: currentCurrency, exchange_rate: exchangeRate}
@@ -651,8 +629,8 @@ export default function Settings() {
         ? formatDistanceToNow(new Date(syncStatus.last_full_sync.finished_at), {addSuffix: true})
         : t('settings.neverSynced')
     const lastFullSyncDescription = syncStatus?.last_full_sync?.status === 'error'
-        ? `${t('settings.lastSyncFailed')} ${lastFullSyncText}${syncStatus.last_full_sync.error_message ? `: ${syncStatus.last_full_sync.error_message}` : ''}`
-        : lastFullSyncText
+        ? `Last sync failed: ${lastFullSyncText}${syncStatus.last_full_sync.error_message ? ` — ${syncStatus.last_full_sync.error_message}` : ''}`
+        : `Last full sync: ${lastFullSyncText}`
 
     return (
         <div className="space-y-6 py-6">
@@ -661,17 +639,18 @@ export default function Settings() {
                     text={t('settings.title')} delay={40}/></h1>
                 <p className="text-sm text-text-muted mt-1">{t('settings.appConfig')}</p>
             </div>
-            <div className="flex border-b border-border overflow-x-auto scrollbar-none -mx-4 px-4"
+            <div className="flex border-b border-border overflow-x-auto scrollbar-none -mx-4 px-4" role="group" aria-label="Settings sections"
                  style={{WebkitOverflowScrolling: "touch"}}>
                 {[
                     {key: 'general', label: t('settings.tabs.general')},
                     ...(user?.role === 'admin' ? [{key: 'sync', label: t('settings.tabs.dataSync')}] : []),
                     {key: 'notifications', label: t('settings.tabs.notifications')},
-                    {key: 'community', label: t('settings.tabs.community')},
                     ...(user?.role === 'admin' && multiUser ? [{key: 'users', label: t('settings.tabs.users')}] : []),
                 ].map((tab) => (
                     <button
                         key={tab.key}
+                        type="button"
+                        aria-pressed={activeTab === tab.key}
                         onClick={() => setActiveTab(tab.key)}
                         className={`px-3 py-2 text-xs sm:text-sm font-semibold whitespace-nowrap transition-colors border-b-2 flex-shrink-0 ${
                             activeTab === tab.key ? 'border-brand-red text-brand-red' : 'border-transparent text-text-muted hover:text-text-primary'
@@ -787,7 +766,7 @@ export default function Settings() {
                     <section className="space-y-1">
                         <SectionHeader title={t('settings.sectionAppearance')}/>
                         <SettingsCard>
-                            <SettingsRow label={t('settings.language')} description={t('settings.languageDesc')}>
+                            <SettingsRow label={t('settings.language')} description="John John's PC uses one English product voice. Card data languages are managed in Synchronization.">
                                 <SelectControl
                                     value={currentAppLang}
                                     options={APP_LANGUAGES}
@@ -821,41 +800,15 @@ export default function Settings() {
                         </SettingsCard>
                     </section>
 
-                    {/* ── 6. KI / KARTEN-SCANNER ── */}
+                    {/* ── 6. SCANNER BOUNDARY ── */}
                     <section className="space-y-1">
                         <SectionHeader title={t('settings.sectionAI')}/>
                         <SettingsCard>
-                            <SettingsRow label={t('settings.geminiApiKey')} description={t('settings.geminiApiKeyDesc')}
+                            <SettingsRow label={t('settings.externalAiDisabled')} description={t('settings.externalAiDisabledDesc')}
                                          last>
-                                <div className="flex items-center gap-2 w-full mt-2">
-                                    <input
-                                        type={geminiDirty ? "text" : "password"}
-                                        value={geminiKey}
-                                        onChange={e => {
-                                            setGeminiKey(e.target.value);
-                                            setGeminiDirty(true)
-                                        }}
-                                        placeholder="AIza..."
-                                        className="input flex-1 text-xs font-mono"
-                                        style={{minWidth: 0}}
-                                    />
-                                    {geminiKey && !geminiDirty && (
-                                        <span className="text-xs text-green flex-shrink-0">✅</span>
-                                    )}
-                                    {geminiDirty && (
-                                        <button
-                                            onClick={async () => {
-                                                await saveSetting('gemini_api_key', geminiKey)
-                                                setGeminiDirty(false)
-                                                queryClient.invalidateQueries({queryKey: ['setting', 'gemini_api_key']})
-                                                toast.success(t('settings.apiKeySaved'))
-                                            }}
-                                            className="btn-primary-sm flex-shrink-0"
-                                        >
-                                            {t('common.save')}
-                                        </button>
-                                    )}
-                                </div>
+                                <span className="rounded-full border border-light-blue/30 bg-light-blue/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-light-blue">
+                                    {t('settings.localFirstBadge')}
+                                </span>
                             </SettingsRow>
                         </SettingsCard>
                     </section>
@@ -883,43 +836,17 @@ export default function Settings() {
                                     TCGdex ↗
                                 </a>
                             </SettingsRow>
-                            <SettingsRow label={t('settings.sourceCode')} description={t('settings.sourceCodeDesc')}>
+                            <SettingsRow label={t('settings.sourceCode')} description={t('settings.sourceCodeDesc')} last>
                                 <a
-                                    href="https://github.com/Git-Romer/pokecollector"
+                                    href="https://github.com/search?q=john-john-ai-platform&type=repositories"
                                     target="_blank"
                                     rel="noreferrer"
                                     className="text-xs font-semibold text-brand-red hover:opacity-80 transition-opacity"
                                 >
-                                    GitHub ↗
-                                </a>
-                            </SettingsRow>
-                            <SettingsRow label={t('settings.creatorWebsite')}
-                                         description={t('settings.creatorWebsiteDesc')}>
-                                <a
-                                    href="https://romerg.de/"
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="text-xs font-semibold text-brand-red hover:opacity-80 transition-opacity"
-                                >
-                                    romerg.de ↗
-                                </a>
-                            </SettingsRow>
-                            <SettingsRow label={t('settings.contact')} description={t('settings.contactDesc')} last>
-                                <a
-                                    href="mailto:info@romerg.de"
-                                    className="text-xs font-semibold text-brand-red hover:opacity-80 transition-opacity"
-                                >
-                                    info@romerg.de
+                                    john-john-ai-platform ↗
                                 </a>
                             </SettingsRow>
                         </SettingsCard>
-                        <div className="text-center mt-4 mb-2">
-                            <p className="text-[11px] text-text-muted">
-                                {t('settings.madeWith')} <a href="https://romerg.de/" target="_blank" rel="noreferrer"
-                                                            className="text-brand-red hover:opacity-80 transition-opacity font-semibold">Gilles
-                                Romer</a>
-                            </p>
-                        </div>
                     </section>
                     <PrivacyDataGrid t={t}/>
                 </>
@@ -983,23 +910,6 @@ export default function Settings() {
                                         />
                                     </SettingsRow>
                                 </>
-                            )}
-                            {customMatches.length > 0 && (
-                                <SettingsRow label={t('migration.title')}
-                                             description={`${customMatches.length} ${t('migration.pendingMatches')}`}>
-                                    <button
-                                        onClick={() => navigate('/migration')}
-                                        className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity"
-                                        style={{
-                                            background: 'rgba(245,200,66,0.15)',
-                                            color: '#f5c842',
-                                            border: '1px solid rgba(245,200,66,0.35)'
-                                        }}
-                                    >
-                                        <Zap size={13}/>
-                                        {t('migration.title')}
-                                    </button>
-                                </SettingsRow>
                             )}
                             {user?.role === 'admin' && (
                                 <SettingsRow label={t('settings.interval')}

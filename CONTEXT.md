@@ -1,37 +1,37 @@
 # John John's PC
 
-This context defines the language for a private, locally hosted Pokemon TCG collection platform. The collection is the central record; John John is its subtle curator.
+Context defines language for private, locally hosted Pokemon TCG collection platform. Collection = central record; John John = subtle curator.
 
 ## Product language
 
 **Release Boundary**:
-The agreed proof for a release: a working local deployment with the five primary pages functional, collection data preserved, and external inventory evidence reconciled only when unambiguous.
+Agreed proof for release: working local deployment, five primary pages functional, collection data preserved, external inventory evidence reconciled only when unambiguous.
 _Avoid_: Done, redesign complete
 
 **Collection**:
-The user's authoritative record of owned Pokemon TCG items and their collection-specific details.
+User's authoritative record of owned Pokemon TCG items + collection-specific details.
 _Avoid_: Portfolio, inventory list
 
 **Collection Lot**:
-The canonical ownership record for one or more copies of the same card that share condition, acquisition, storage or protection, and cost basis. A certified slab is always its own lot when it has a certification number.
+Canonical ownership record for one+ copies of same card sharing condition, acquisition, storage/protection, cost basis. Certified slab always own lot when has certification number.
 _Avoid_: Line item, position, card record
 
 **Collection Intent**:
-The curatorial role of a collection lot: Main Collection, Vault, or PC. Main Collection is the permanent body of cards; Vault holds investment-grade cards; PC holds personal cards.
+Curatorial role of collection lot: Main Collection, Vault, or PC. Main Collection = permanent body of cards; Vault holds investment-grade cards; PC holds personal cards.
 _Avoid_: Category, portfolio bucket
 
 **Collection Theme**:
-An intentionally curated grouping of cards that may overlap with other themes, such as Mega Evolution or Blue cards.
+Intentionally curated grouping of cards, may overlap other themes — e.g. Mega Evolution or Blue cards.
 _Avoid_: Set, folder
 
 **Collecting Goal**:
-An explicit completion target for the private collection, such as completing an expansion or collecting every Latias card.
+Explicit completion target for private collection — e.g. completing expansion or collecting every Latias card.
 _Avoid_: Theme, wishlist
 
 **Card History**:
-The editable record of a collection lot's origin, receipt reference, grading certification, and notes.
+Editable record of collection lot's origin, receipt reference, grading certification, notes.
 _Avoid_: Audit log, timeline
 
 **John John**:
-The quiet curator presence within the product, which surfaces useful collection moments without becoming a chatbot or mascot.
+Quiet curator presence within product; surfaces useful collection moments, never becomes chatbot or mascot.
 _Avoid_: Assistant, bot

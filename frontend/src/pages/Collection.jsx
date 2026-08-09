@@ -24,6 +24,7 @@ import {
     Plus,
     Search,
     SortAsc,
+    Target,
     Trash2,
     X
 } from 'lucide-react'
@@ -35,10 +36,12 @@ import {
     exportExcel,
     getBinders,
     getCollection,
+    getSettings,
     getSets,
     getStorageLocations,
     getWishlist,
     removeFromCollection,
+    saveSettings,
     updateCardCustomImage,
     updateCollectionItem
 } from '../api/client'
@@ -66,12 +69,39 @@ import {
     defaultPurchasePrice,
     PROTECTION_TYPES,
     RAW_CONDITIONS,
-    REMOVAL_REASONS
+    REMOVAL_REASONS,
+    normalizeAcquisitionSourceForUi
 } from '../utils/collectionMetadata'
 import InventoryIntakeModal from '../components/InventoryIntakeModal'
 import ExcelImportModal from '../components/ExcelImportModal'
 import SealedCollectionView from '../components/SealedCollectionView'
 import InventoryHistoryView from '../components/InventoryHistoryView'
+
+const COLLECTION_FRAMEWORK = [
+    ['Private Collection', 'John John’s PC', 'Everything owned and curated in this local archive.'],
+    ['Permanent Collection', 'Main Collection', 'Set runs, favorite Pokémon, binders, and meaningful pulls.'],
+    ['Investment-Grade Cards', 'Vault', 'PSA slabs and selected sealed product held for preservation.'],
+    ['Personal Collection', 'PC', 'TAG slabs and personal-attachment cards kept for taste, memory, and art.'],
+    ['Curated Collection', 'Collection Theme', 'Focused groups like Water-type illustration rares, Mega Evolution, or blue cards.'],
+    ['Collection Focus', 'Collecting Goal', 'The strategy: master sets, character runs, Latias cards, or other chases.'],
+    ['Grail', '★ Grail Card', 'The chase or centerpiece that matters most.'],
+    ['Provenance', 'Card History', 'Pull, purchase, trade origin, receipt, grading certification, and notes.'],
+    ['Accession', 'Add to Collection', 'Create a tracked Collection Lot in John John’s PC.'],
+    ['Deaccession', 'Archive as Sold / Traded / Gifted', 'Preserve the record without treating it as currently owned.'],
+    ['Condition Report', 'Condition & Protection', 'NM/LP/MP/HP/DMG, PSA/TAG grade, sleeves, Card Saver, and storage.'],
+    ['Catalog', 'Collection Catalog', 'Searchable inventory, set completion, notes, photos, and identifiers.'],
+    ['Exhibition', 'Showcase Binder / Display Case', 'Cards selected for presentation, not just storage.'],
+    ['Collection Care', 'Card Care', 'Sleeves, top loaders, slabs, binders, boxes, and storage notes.'],
+]
+
+const parseCollectionGoal = (value) => {
+    try {
+        const goal = JSON.parse(value || '')
+        return goal && typeof goal === 'object' ? goal : null
+    } catch {
+        return null
+    }
+}
 
 function TiltBinderCard({className, onClick, children}) {
     const {ref, onMouseMove, onMouseEnter, onMouseLeave} = useTilt(10)
@@ -91,11 +121,11 @@ function TiltBinderCard({className, onClick, children}) {
 
 const CONDITIONS = RAW_CONDITIONS
 const CONDITION_COLORS = {
-    Mint: 'badge-green',
     NM: 'badge-blue',
     LP: 'badge-yellow',
     MP: 'badge-red',
     HP: 'badge-red',
+    DMG: 'badge-red',
 }
 const CARD_VARIANTS = ['Normal', 'Holo', 'Reverse Holo', 'First Edition']
 const VARIANT_COLORS = {
@@ -104,6 +134,10 @@ const VARIANT_COLORS = {
     'First Edition': 'badge-green',
     'Normal': 'badge-gray',
 }
+
+
+const safeExternalUrl = (url) => /^https?:\/\//i.test(String(url || '').trim()) ? String(url).trim() : ''
+const lotImageUrl = (item) => safeExternalUrl(item?.primary_photo_url) || resolveCardImageUrl(item?.card)
 
 const CARD_CATEGORY_OPTIONS = ['Pokémon', 'Trainer', 'Energy']
 const CARD_SUBTYPE_OPTIONS = ['Item', 'Supporter', 'Stadium', 'Pokémon Tool', 'EX', 'ex', 'GX', 'Stage 1', 'Stage 2', 'Basic']
@@ -308,10 +342,14 @@ function CollectionEditModal({item, onClose}) {
     const [variant, setVariant] = useState(item.variant || 'Normal')
     const [lang, setLang] = useState(item.lang || 'en')
     const [price, setPrice] = useState(itemPriceInput)
-    const [acquisitionSource, setAcquisitionSource] = useState(item.acquisition_source || '');
+    const [acquisitionSource, setAcquisitionSource] = useState(normalizeAcquisitionSourceForUi(item.acquisition_source));
     const [collectionIntent, setCollectionIntent] = useState(item.collection_intent || 'main_collection');
     const [isGrail, setIsGrail] = useState(Boolean(item.is_grail));
     const [cardHistory, setCardHistory] = useState(item.card_history || '')
+    const [primaryPhotoUrl, setPrimaryPhotoUrl] = useState(item.primary_photo_url || '')
+    const [instagramUrl, setInstagramUrl] = useState(item.instagram_url || '')
+    const [pinterestUrl, setPinterestUrl] = useState(item.pinterest_url || '')
+    const [reelsUrl, setReelsUrl] = useState(item.reels_url || '')
     const [protectionType, setProtectionType] = useState(item.protection_type || 'raw')
     const [storageLocationId, setStorageLocationId] = useState(String(item.storage_location_id || ''))
     const [storageType, setStorageType] = useState(item.storage_type || '')
@@ -378,10 +416,14 @@ function CollectionEditModal({item, onClose}) {
         lang: item.lang || 'en',
         price: itemPriceInput,
         customImageUrl: card?.custom_image_url || '',
-        acquisitionSource: item.acquisition_source || '',
+        acquisitionSource: normalizeAcquisitionSourceForUi(item.acquisition_source),
         collectionIntent: item.collection_intent || 'main_collection',
         isGrail: Boolean(item.is_grail),
         cardHistory: item.card_history || '',
+        primaryPhotoUrl: item.primary_photo_url || '',
+        instagramUrl: item.instagram_url || '',
+        pinterestUrl: item.pinterest_url || '',
+        reelsUrl: item.reels_url || '',
         protectionType: item.protection_type || 'raw',
         storageLocationId: String(item.storage_location_id || ''),
         storageType: item.storage_type || '',
@@ -401,10 +443,14 @@ function CollectionEditModal({item, onClose}) {
             lang: item.lang || 'en',
             price: itemPriceInput,
             customImageUrl: card?.custom_image_url || '',
-            acquisitionSource: item.acquisition_source || '',
+            acquisitionSource: normalizeAcquisitionSourceForUi(item.acquisition_source),
             collectionIntent: item.collection_intent || 'main_collection',
             isGrail: Boolean(item.is_grail),
             cardHistory: item.card_history || '',
+            primaryPhotoUrl: item.primary_photo_url || '',
+            instagramUrl: item.instagram_url || '',
+            pinterestUrl: item.pinterest_url || '',
+            reelsUrl: item.reels_url || '',
             protectionType: item.protection_type || 'raw',
             storageLocationId: String(item.storage_location_id || ''),
             storageType: item.storage_type || '',
@@ -430,6 +476,10 @@ function CollectionEditModal({item, onClose}) {
             setCollectionIntent(nextItem.collectionIntent)
             setIsGrail(nextItem.isGrail)
             setCardHistory(nextItem.cardHistory)
+            setPrimaryPhotoUrl(nextItem.primaryPhotoUrl)
+            setInstagramUrl(nextItem.instagramUrl)
+            setPinterestUrl(nextItem.pinterestUrl)
+            setReelsUrl(nextItem.reelsUrl)
             setProtectionType(nextItem.protectionType)
             setStorageLocationId(nextItem.storageLocationId)
             setStorageType(nextItem.storageType)
@@ -510,6 +560,10 @@ function CollectionEditModal({item, onClose}) {
         item.collection_intent,
         item.is_grail,
         item.card_history,
+        item.primary_photo_url,
+        item.instagram_url,
+        item.pinterest_url,
+        item.reels_url,
         item.protection_type,
         item.storage_location_id,
         item.storage_type,
@@ -531,7 +585,7 @@ function CollectionEditModal({item, onClose}) {
     const customImageProxyUrl = canEditCustomImage && savedCustomImageUrl
         ? `${cardImageUrl(item.card_id, 'large')}?v=${customImageVersion}`
         : null
-    const cardImage = customImageProxyUrl || resolveCardImageUrl(card, 'large')
+    const cardImage = safeExternalUrl(item.primary_photo_url) || customImageProxyUrl || resolveCardImageUrl(card, 'large')
 
     const updateMutation = useMutation({
         mutationFn: () => updateCollectionItem(item.id, {
@@ -544,6 +598,10 @@ function CollectionEditModal({item, onClose}) {
             collection_intent: collectionIntent,
             is_grail: isGrail,
             card_history: cardHistory.trim() || null,
+            primary_photo_url: safeExternalUrl(primaryPhotoUrl) || null,
+            instagram_url: safeExternalUrl(instagramUrl) || null,
+            pinterest_url: safeExternalUrl(pinterestUrl) || null,
+            reels_url: safeExternalUrl(reelsUrl) || null,
             protection_type: protectionType,
             storage_location_id: storageLocationId ? Number(storageLocationId) : null,
             storage_type: storageType || null,
@@ -876,6 +934,29 @@ function CollectionEditModal({item, onClose}) {
 
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
+                                    <label className="text-xs text-text-muted mb-1 block">Storage Type</label>
+                                    <input
+                                        type="text"
+                                        value={storageType}
+                                        placeholder="e.g. Binder, slab case"
+                                        onChange={e => setStorageType(e.target.value)}
+                                        className="input w-full"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs text-text-muted mb-1 block">Storage Detail</label>
+                                    <input
+                                        type="text"
+                                        value={storageDetail}
+                                        placeholder="e.g. Binder 2, page 4"
+                                        onChange={e => setStorageDetail(e.target.value)}
+                                        className="input w-full"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
                                     <label className="text-xs text-text-muted mb-1 block">Grade</label>
                                     <input
                                         type="text"
@@ -899,29 +980,6 @@ function CollectionEditModal({item, onClose}) {
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="text-xs text-text-muted mb-1 block">Storage Type</label>
-                                    <input
-                                        type="text"
-                                        value={storageType}
-                                        placeholder="e.g. Binder, slab case"
-                                        onChange={e => setStorageType(e.target.value)}
-                                        className="input w-full"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-xs text-text-muted mb-1 block">Storage Detail</label>
-                                    <input
-                                        type="text"
-                                        value={storageDetail}
-                                        placeholder="e.g. Binder 2, page 4"
-                                        onChange={e => setStorageDetail(e.target.value)}
-                                        className="input w-full"
-                                    />
-                                </div>
-                            </div>
-
                             <div>
                                 <label className="text-xs text-text-muted mb-1 block">Card History</label>
                                 <textarea
@@ -930,6 +988,31 @@ function CollectionEditModal({item, onClose}) {
                                     onChange={e => setCardHistory(e.target.value)}
                                     className="input w-full h-16 resize-none py-1"
                                 />
+                            </div>
+
+                            <div className="rounded-xl border border-border bg-bg-card p-3 space-y-3">
+                                <div>
+                                    <label className="text-xs text-text-muted font-medium uppercase tracking-wide block">Creator photos</label>
+                                    <p className="mt-1 text-xs text-text-secondary">You are always the creator. Add one primary photo plus optional Instagram, Pinterest, and Reels links for this Collection Lot.</p>
+                                </div>
+                                <div>
+                                    <label className="text-xs text-text-muted mb-1 block">Primary photo URL</label>
+                                    <input type="url" value={primaryPhotoUrl} onChange={e => setPrimaryPhotoUrl(e.target.value)} placeholder="https://..." className="input w-full"/>
+                                </div>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <div>
+                                        <label className="text-xs text-text-muted mb-1 block">Instagram</label>
+                                        <input type="url" value={instagramUrl} onChange={e => setInstagramUrl(e.target.value)} placeholder="https://..." className="input w-full"/>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-text-muted mb-1 block">Pinterest</label>
+                                        <input type="url" value={pinterestUrl} onChange={e => setPinterestUrl(e.target.value)} placeholder="https://..." className="input w-full"/>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-text-muted mb-1 block">Reels</label>
+                                        <input type="url" value={reelsUrl} onChange={e => setReelsUrl(e.target.value)} placeholder="https://..." className="input w-full"/>
+                                    </div>
+                                </div>
                             </div>
 
                             <div>
@@ -1274,8 +1357,6 @@ export default function Collection() {
     const [filterSubtypes, setFilterSubtypes] = useState([])
     const [filterLegality, setFilterLegality] = useState('')
     const [filterLang, setFilterLang] = useState('')
-    const [filterMinPrice, setFilterMinPrice] = useState('')
-    const [filterMaxPrice, setFilterMaxPrice] = useState('')
     const [filterDuplicates, setFilterDuplicates] = useState(false)
     const [searchText, setSearchText] = useState('')
     const [showFilters, setShowFilters] = useState(false)
@@ -1283,6 +1364,11 @@ export default function Collection() {
     const [showExcelImport, setShowExcelImport] = useState(false)
     const [intakeKind, setIntakeKind] = useState('owned')
     const [intakeSource, setIntakeSource] = useState(null)
+    const [editingGoal, setEditingGoal] = useState(false)
+    const [goalTitle, setGoalTitle] = useState('')
+    const [goalCurrent, setGoalCurrent] = useState('0')
+    const [goalTarget, setGoalTarget] = useState('1')
+    const [goalDate, setGoalDate] = useState('')
     const queryClient = useQueryClient()
     const [searchParams, setSearchParams] = useSearchParams()
     const requestedView = searchParams.get('view') || 'owned'
@@ -1313,6 +1399,49 @@ export default function Collection() {
         queryFn: () => getWishlist().then(r => r.data),
         staleTime: 60000,
     })
+
+    const {data: collectionGoalSettings = {}} = useQuery({
+        queryKey: ['collection-goal'],
+        queryFn: () => getSettings().then((response) => response.data),
+        staleTime: 60000,
+    })
+    const collectionGoal = useMemo(
+        () => parseCollectionGoal(collectionGoalSettings.collection_goal),
+        [collectionGoalSettings.collection_goal],
+    )
+    const goalProgress = collectionGoal
+        ? Math.min(100, Math.round((Number(collectionGoal.current) / Math.max(1, Number(collectionGoal.target))) * 100))
+        : 0
+    const startEditingGoal = () => {
+        setGoalTitle(collectionGoal?.title || '')
+        setGoalCurrent(String(collectionGoal?.current ?? 0))
+        setGoalTarget(String(collectionGoal?.target ?? 1))
+        setGoalDate(collectionGoal?.targetDate || '')
+        setEditingGoal(true)
+    }
+    const goalMutation = useMutation({
+        mutationFn: (goal) => saveSettings({collection_goal: JSON.stringify(goal)}),
+        onSuccess: () => {
+            queryClient.invalidateQueries({queryKey: ['collection-goal']})
+            setEditingGoal(false)
+            toast.success('Collecting goal updated')
+        },
+        onError: () => toast.error('Could not update the collecting goal'),
+    })
+    const saveCollectionGoal = () => {
+        const title = goalTitle.trim()
+        const target = Math.max(1, Number(goalTarget) || 1)
+        if (!title) {
+            toast.error('Give this collecting goal a name')
+            return
+        }
+        goalMutation.mutate({
+            title,
+            current: Math.max(0, Math.min(target, Number(goalCurrent) || 0)),
+            target,
+            targetDate: goalDate || null,
+        })
+    }
 
     const COLLECTION_TABS = [
         {to: '/collection', label: t('nav.collection'), icon: Library},
@@ -1365,9 +1494,6 @@ export default function Collection() {
         if (targetItemId || targetCardId) clearTargetParams()
     }
 
-    function getEffectivePrice(card, variant, primaryField = pricePrimaryField) {
-        return getEffectiveCardPrice(card, variant, primaryField)
-    }
 
     const rarities = useMemo(() => [...new Set(items.map(i => i.card?.rarity).filter(Boolean))].sort(), [items])
     const sets = useMemo(() => {
@@ -1397,12 +1523,11 @@ export default function Collection() {
         return sortCardFilterLabels(CARD_SUBTYPE_OPTIONS, all)
     }, [items])
 
-    const hasActiveFilters = filterRarity || filterCondition || filterVariant || filterSet || filterType || filterCategories.length > 0 || filterSubtypes.length > 0 || filterLegality || filterLang || filterMinPrice || filterMaxPrice || filterDuplicates || searchText
+    const hasActiveFilters = filterRarity || filterCondition || filterVariant || filterSet || filterType || filterCategories.length > 0 || filterSubtypes.length > 0 || filterLegality || filterLang || filterDuplicates || searchText
 
     const filtered = useMemo(() => {
         let result = items.filter(item => {
             const card = item.card
-            const marketPrice = getEffectivePrice(card, item.variant)
             if (filterRarity && card?.rarity !== filterRarity) return false
             if (filterCondition && item.condition !== filterCondition) return false
             if (filterVariant && item.variant !== filterVariant) return false
@@ -1422,8 +1547,6 @@ export default function Collection() {
             }
             if (filterLegality === 'standard' && !item.standard_legal) return false
             if (filterLang && item.lang !== filterLang) return false
-            if (filterMinPrice && marketPrice < parseFloat(filterMinPrice)) return false
-            if (filterMaxPrice && marketPrice > parseFloat(filterMaxPrice)) return false
             if (filterDuplicates && item.quantity < 2) return false
             if (searchText) {
                 const q = normalizeSearchText(searchText)
@@ -1457,18 +1580,6 @@ export default function Collection() {
                     valA = a.quantity;
                     valB = b.quantity;
                     break
-                case 'purchase_price':
-                    valA = a.purchase_price ?? -1;
-                    valB = b.purchase_price ?? -1;
-                    break
-                case 'market_price':
-                    valA = getEffectivePrice(a.card, a.variant);
-                    valB = getEffectivePrice(b.card, b.variant);
-                    break
-                case 'price_trend':
-                    valA = getEffectivePrice(a.card, a.variant, 'price_trend');
-                    valB = getEffectivePrice(b.card, b.variant, 'price_trend');
-                    break
                 case 'set':
                     valA = a.card?.set_ref?.name || '';
                     valB = b.card?.set_ref?.name || '';
@@ -1490,7 +1601,7 @@ export default function Collection() {
         })
 
         return result
-    }, [items, filterRarity, filterCondition, filterVariant, filterSet, filterType, filterCategories, filterSubtypes, filterLegality, filterLang, filterMinPrice, filterMaxPrice, filterDuplicates, searchText, sortBy, sortOrder, pricePrimaryField])
+    }, [items, filterRarity, filterCondition, filterVariant, filterSet, filterType, filterCategories, filterSubtypes, filterLegality, filterLang, filterDuplicates, searchText, sortBy, sortOrder])
 
     const totalCards = filtered.reduce((sum, item) => sum + item.quantity, 0)
     // Unfiltered total, so the header can say "12 of 78" while a filter is on.
@@ -1507,8 +1618,6 @@ export default function Collection() {
         setFilterSubtypes([]);
         setFilterLegality('');
         setFilterLang('');
-        setFilterMinPrice('')
-        setFilterMaxPrice('');
         setFilterDuplicates(false);
         setSearchText('')
     }
@@ -1525,8 +1634,8 @@ export default function Collection() {
 
     return (
         <>
-            <div className="space-y-4 pb-2">
-                <TabNav tabs={COLLECTION_TABS}/>
+            <div className="collection-page-flow pb-2">
+                <div className="collection-page-tabs"><TabNav tabs={COLLECTION_TABS}/></div>
 
                 {/* ─── Header ───────────────────────────────────────────────── */}
                 <div className="collection-hero">
@@ -1542,8 +1651,13 @@ export default function Collection() {
                                     : hasActiveFilters
                                         ? `${totalCards.toLocaleString()} ${t('collection.ofTotal')} ${allCards.toLocaleString()} ${t('collection.cards')}`
                                         : `${totalCards.toLocaleString()} ${t('collection.cards')}`}
-                            {(activeView === 'owned' || activeView === 'bulk') && <> · {filtered.length.toLocaleString()} {t('collection.unique')}</>}
+                            {(activeView === 'owned' || activeView === 'bulk') && <> · {filtered.length.toLocaleString()} collection lots</>}
                         </p>
+                        {(activeView === 'owned' || activeView === 'bulk') && (
+                            <p className="mt-2 max-w-2xl text-xs text-text-muted">
+                                Collection Lots group matching copies by condition, acquisition, protection, storage, and cost basis; certified slabs stay individually traceable.
+                            </p>
+                        )}
                     </div>
                     <div className="collection-hero-actions">
                         <Link to="/products" className="btn-ghost text-sm py-1.5">
@@ -1552,10 +1666,13 @@ export default function Collection() {
 
                         {/* VIEW TOGGLE */}
                         {(activeView === 'owned' || activeView === 'bulk') &&
-                            <div className="flex items-center gap-0.5 bg-bg-elevated rounded-lg p-1">
+                            <div className="flex items-center gap-0.5 bg-bg-elevated rounded-lg p-1" role="group"
+                                 aria-label="Collection presentation">
                                 <button
                                     onClick={() => setViewMode('grid')}
                                     title={t('collection.binderView')}
+                                    aria-label={t('collection.binderView')}
+                                    aria-pressed={viewMode === 'grid'}
                                     className={`p-1.5 rounded-md transition-colors ${viewMode === 'grid' ? 'bg-brand-red text-white' : 'text-text-muted hover:text-text-primary'}`}
                                 >
                                     <Grid2X2 size={15}/>
@@ -1563,6 +1680,8 @@ export default function Collection() {
                                 <button
                                     onClick={() => setViewMode('list')}
                                     title={t('collection.listView')}
+                                    aria-label={t('collection.listView')}
+                                    aria-pressed={viewMode === 'list'}
                                     className={`p-1.5 rounded-md transition-colors ${viewMode === 'list' ? 'bg-brand-red text-white' : 'text-text-muted hover:text-text-primary'}`}
                                 >
                                     <List size={15}/>
@@ -1609,7 +1728,81 @@ export default function Collection() {
                     </div>
                 </div>
 
-                <div className="collection-ledger-tabs" role="tablist" aria-label="Collection views">
+                {(activeView === 'owned' || activeView === 'bulk') && (
+                    <section className="collecting-goal collection-secondary archive-card-reveal" aria-labelledby="collecting-goal-title">
+                        <div className="collecting-goal-icon"><Target size={18}/></div>
+                        {editingGoal ? (
+                            <div className="min-w-0 flex-1">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                        <span className="archive-eyebrow">Collecting Goal</span>
+                                        <h2 id="collecting-goal-title">Set the next thing you are building.</h2>
+                                    </div>
+                                    <button type="button" className="btn-ghost text-xs" onClick={() => setEditingGoal(false)}>Cancel</button>
+                                </div>
+                                <div className="collecting-goal-form">
+                                    <label><span>Goal</span><input className="input" value={goalTitle} onChange={event => setGoalTitle(event.target.value)} placeholder="Complete a master set, collect every Latias…"/></label>
+                                    <label><span>Current</span><input className="input" type="number" min="0" value={goalCurrent} onChange={event => setGoalCurrent(event.target.value)}/></label>
+                                    <label><span>Target</span><input className="input" type="number" min="1" value={goalTarget} onChange={event => setGoalTarget(event.target.value)}/></label>
+                                    <label><span>Target date <em>optional</em></span><input className="input" type="date" value={goalDate} onChange={event => setGoalDate(event.target.value)}/></label>
+                                </div>
+                                <div className="mt-3 flex justify-end"><button type="button" className="btn-primary text-sm" disabled={goalMutation.isPending} onClick={saveCollectionGoal}>{goalMutation.isPending ? 'Saving…' : 'Save goal'}</button></div>
+                            </div>
+                        ) : collectionGoal ? (
+                            <div className="min-w-0 flex-1 collecting-goal-content">
+                                <div>
+                                    <span className="archive-eyebrow">Collecting Goal</span>
+                                    <h2 id="collecting-goal-title">{collectionGoal.title}</h2>
+                                    <p>{collectionGoal.current} of {collectionGoal.target} milestones complete{collectionGoal.targetDate ? ` · aiming for ${new Date(`${collectionGoal.targetDate}T00:00:00`).toLocaleDateString()}` : ''}</p>
+                                </div>
+                                <div className="collecting-goal-progress" aria-label={`${goalProgress}% complete`}>
+                                    <span><strong>{goalProgress}%</strong> complete</span>
+                                    <div role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={goalProgress}><i style={{width: `${goalProgress}%`}}/></div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="min-w-0 flex-1 collecting-goal-content">
+                                <div>
+                                    <span className="archive-eyebrow">Collecting Goal</span>
+                                    <h2 id="collecting-goal-title">Give the collection a direction.</h2>
+                                    <p>Track the master set, character run, or single card line you are building next.</p>
+                                </div>
+                            </div>
+                        )}
+                        {!editingGoal && <div className="collecting-goal-actions">
+                            {collectionGoal && <Link to="/wishlist" className="btn-ghost text-sm"><Heart size={15}/> Chase Cards {wishlistItems.length ? `(${wishlistItems.length})` : ''}</Link>}
+                            <button type="button" className="btn-primary text-sm" onClick={startEditingGoal}>{collectionGoal ? 'Update goal' : 'Set a goal'}</button>
+                        </div>}
+                    </section>
+                )}
+
+                {(activeView === 'owned' || activeView === 'bulk') && (
+                    <details className="collection-framework collection-secondary archive-card-reveal" aria-label="Collection framework">
+                        <summary className="collection-framework-summary">
+                            <span>
+                                <span className="archive-eyebrow">Collection Framework</span>
+                                <span className="collection-framework-title">Art collection language, mapped to your Pokémon TCG archive</span>
+                            </span>
+                            <span className="collection-framework-hint">14 terms · view reference <ChevronDown size={16}/></span>
+                        </summary>
+                        <div className="collection-framework-content">
+                            <p className="max-w-3xl text-xs text-text-muted">
+                                John John uses museum-grade terms quietly: ownership stays practical, searchable, and local.
+                            </p>
+                            <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                                {COLLECTION_FRAMEWORK.map(([artTerm, tcgTerm, meaning]) => (
+                                    <article key={artTerm} className="collection-framework-card">
+                                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-text-muted">{artTerm}</p>
+                                        <h3 className="mt-1 text-sm font-bold text-text-primary">{tcgTerm}</h3>
+                                        <p className="mt-1 text-xs leading-relaxed text-text-secondary">{meaning}</p>
+                                    </article>
+                                ))}
+                            </div>
+                        </div>
+                    </details>
+                )}
+
+                <div className="collection-ledger-tabs collection-primary-tabs" role="tablist" aria-label="Collection views">
                     {[
                         {value: 'owned', label: 'Owned', icon: Library},
                         {value: 'bulk', label: 'Bulk', icon: Boxes},
@@ -1651,6 +1844,7 @@ export default function Collection() {
                 </div>
 
                 <div
+                    className="collection-primary-panel"
                     id={`collection-panel-${activeView}`}
                     role="tabpanel"
                     aria-labelledby={`collection-tab-${activeView}`}
@@ -1818,22 +2012,6 @@ export default function Collection() {
                                                 className="select py-1.5 text-sm"
                                             />
                                         </div>
-                                        <div>
-                                            <label
-                                                className="text-xs text-text-muted mb-1 block">{t('collection.filterMinPrice')}</label>
-                                            <input type="number" min="0" step="0.01" placeholder="0"
-                                                   value={filterMinPrice}
-                                                   onChange={(e) => setFilterMinPrice(e.target.value)}
-                                                   className="input py-1.5 text-sm"/>
-                                        </div>
-                                        <div>
-                                            <label
-                                                className="text-xs text-text-muted mb-1 block">{t('collection.filterMaxPrice')}</label>
-                                            <input type="number" min="0" step="0.01" placeholder="∞"
-                                                   value={filterMaxPrice}
-                                                   onChange={(e) => setFilterMaxPrice(e.target.value)}
-                                                   className="input py-1.5 text-sm"/>
-                                        </div>
                                         <div className="flex items-center gap-2 col-span-2 sm:col-span-1">
                                             <label className="flex items-center gap-2 cursor-pointer">
                                                 <input type="checkbox" checked={filterDuplicates}
@@ -1887,7 +2065,7 @@ export default function Collection() {
                                                             <div
                                                                 className="aspect-[2.5/3.5] relative rounded-xl overflow-hidden flex-shrink-0"
                                                             >
-                                                                <CardImage src={resolveCardImageUrl(card)}
+                                                                <CardImage src={lotImageUrl(item)}
                                                                            alt={card?.name}
                                                                            className="w-full h-full object-cover"/>
                                                                 <HoloOverlay variant={item.variant}/>
@@ -1999,7 +2177,7 @@ export default function Collection() {
                                                                     <div className="flex items-center gap-3">
                                                                         <div
                                                                             className="w-8 h-10 flex-shrink-0 rounded overflow-hidden">
-                                                                            <CardImage src={resolveCardImageUrl(card)}
+                                                                            <CardImage src={lotImageUrl(item)}
                                                                                        alt={card?.name}
                                                                                        className="w-full h-full object-cover"/>
                                                                         </div>
@@ -2099,7 +2277,7 @@ export default function Collection() {
                                                     })
                                                     if (item.condition) badges.push({
                                                         label: item.condition,
-                                                        variant: item.condition === 'Mint' ? 'green' : item.condition === 'NM' ? 'blue' : 'yellow'
+                                                        variant: item.condition === 'NM' ? 'blue' : item.condition === 'LP' ? 'yellow' : 'red'
                                                     })
                                                     if (item.quantity > 1) badges.push({
                                                         label: `×${item.quantity}`,
@@ -2123,7 +2301,7 @@ export default function Collection() {
                                                     return (
                                                         <CardListItem
                                                             key={item.id}
-                                                            image={resolveCardImageUrl(card)}
+                                                            image={lotImageUrl(item)}
                                                             name={card?.name}
                                                             subtext={[card?.set_ref?.name, card?.number ? `#${card.number}` : null].filter(Boolean).join(' · ') || '-'}
                                                             badges={badges}

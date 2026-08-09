@@ -4,16 +4,23 @@
     <meta charset="UTF-8"/>
     <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
     <title>John John's PC</title>
+    <meta name="description" content="A private, locally hosted Pokémon TCG collection archive for ownership, discovery, and insight."/>
+    <meta name="application-name" content="John John's PC"/>
+    <meta property="og:title" content="John John's PC"/>
+    <meta property="og:description" content="A private, locally hosted Pokémon TCG collection archive."/>
+    <meta property="og:type" content="website"/>
+    <meta name="twitter:card" content="summary"/>
+    <meta name="twitter:title" content="John John's PC"/>
+    <meta name="twitter:description" content="A private, locally hosted Pokémon TCG collection archive."/>
     <!-- Favicons -->
     <link href="/john-john-mark.svg" rel="icon" type="image/svg+xml"/>
     <!-- PWA Manifest -->
     <link href="/manifest.json" rel="manifest"/>
     <meta content="#000000" name="theme-color"/>
 </head>
-<!-- Colour comes from design/archive.css, which is theme-aware. A
-     `text-white` class here outranked that rule and forced white text
-     through the whole tree, including the light theme. `bg-dark-bg`
-     named a token that no longer exists. -->
+<!-- Colour comes from design/archive.css. A `text-white` class here
+     outranked that rule and forced white text through the whole tree;
+     `bg-dark-bg` named a token that no longer exists. -->
 <body class="font-sans">
 <div id="root"></div>
 <script src="/src/main.jsx" type="module"></script>

@@ -14,14 +14,14 @@ export function deriveArchiveInsights({recentAdditions = [], totalCards = 0, set
             kind: 'near-completion',
             title: 'Within reach',
             body: `Only ${pluralize(remaining, 'card')} left in ${set.name}.`,
-            href: `/sets/${set.id}`
+            href: `/all-cards/${set.id}`
         })
         if (remaining === 0 && total > 0) notes.push({
             id: `complete-${set.id}`,
             kind: 'complete',
             title: 'Filed',
             body: `${set.name} is complete. Filed.`,
-            href: `/sets/${set.id}`
+            href: `/all-cards/${set.id}`
         })
     }
     for (const card of recentAdditions) {

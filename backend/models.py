@@ -186,6 +186,10 @@ class CollectionItem(Base):
     collection_intent = Column(String, default="main_collection", nullable=False)
     is_grail = Column(Boolean, default=False, nullable=False)
     card_history = Column(Text)
+    primary_photo_url = Column(Text)
+    instagram_url = Column(Text)
+    pinterest_url = Column(Text)
+    reels_url = Column(Text)
     status = Column(String, default="owned", nullable=False)
     removed_at = Column(DateTime)
     removal_reason = Column(String)
@@ -281,7 +285,7 @@ class ProductPurchase(Base):
     quantity = Column(Integer, default=1, nullable=False)
     sealed_condition = Column(String, default="factory_sealed", nullable=False)
     acquisition_source = Column(String)
-    purchase_price = Column(Float, nullable=False)
+    purchase_price = Column(Float, nullable=True)
     current_value = Column(Float)
     sold_price = Column(Float)
     purchase_date = Column(Date, nullable=False)
@@ -318,6 +322,23 @@ class InventoryEvent(Base):
             name="ck_inventory_event_entity_type",
         ),
     )
+
+
+class ScanHistory(Base):
+    __tablename__ = "scan_history"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    source = Column(String, default="external_scanner", nullable=False)
+    source_reference = Column(String)
+    recognized_name = Column(String)
+    recognized_number = Column(String)
+    recognized_language = Column(String)
+    match_count = Column(Integer, default=0, nullable=False)
+    top_match_card_id = Column(String)
+    top_match_name = Column(String)
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+    expires_at = Column(DateTime, nullable=False)
 
 
 class ProductCard(Base):

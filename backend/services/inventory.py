@@ -12,13 +12,11 @@ from models import InventoryEvent, StorageLocation
 DEFAULT_STORAGE_LOCATION_NAME = "To organize"
 
 RAW_CONDITIONS = (
-    "Mint",
     "NM",
     "LP",
     "MP",
     "HP",
-    "Damaged",
-    "Unassessed",
+    "DMG",
 )
 
 CARD_VARIANTS = (
@@ -45,6 +43,8 @@ PROTECTION_TYPES = (
     "card_saver",
     "top_loader",
     "psa_slab",
+    "tag_slab",
+    "other",
 )
 
 ACQUISITION_SOURCES = (

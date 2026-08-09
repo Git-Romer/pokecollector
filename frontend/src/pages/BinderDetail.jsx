@@ -32,7 +32,7 @@ import {tcgdexLanguageLabel} from '../utils/tcgdexLanguages'
 import {invalidateTcgdexFilterLanguages} from '../utils/queryInvalidation'
 
 const SPRITE_BASE_URL = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated'
-const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
+const CONDITIONS = ['NM', 'LP', 'MP', 'HP', 'DMG']
 const BINDER_CSV_IMPORT_HEADER = 'set_code,number,required_quantity,lang'
 const BINDER_CSV_IMPORT_TEMPLATE = `${BINDER_CSV_IMPORT_HEADER}\nBLK,057,4,de\n`
 
@@ -764,7 +764,7 @@ export default function BinderDetail() {
             {cards.length === 0 ? (
                 <div className="card text-center py-20">
                     <p className="text-text-muted">
-                        {isWishlist ? '⭐ No cards in this wishlist binder yet' : '📦 No cards in this binder yet'}
+                        {isWishlist ? '⭐ No cards in this Chase Binder yet' : '📦 No cards in this binder yet'}
                     </p>
                     <p className="text-xs text-text-muted mt-1">
                         {isWishlist ? t('binderTypes.addAnyCard') : t('binderTypes.addFromCollection')}

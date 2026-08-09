@@ -697,7 +697,7 @@ const esMx = {
         manualContributor: 'Colaborador',
         supporters: 'Patrocinadores',
         sponsors: 'Apoyar',
-        sponsorMessage: '¿Te gusta PokéCollector? Todo lo recaudado se dona a organizaciones de rescate animal. 🐾',
+        sponsorMessage: '¿Te gusta John John’s PC? Todo lo recaudado se dona a organizaciones de rescate animal. 🐾',
         rescueDonationTotal: 'Donado hasta ahora al rescate animal',
         rescueDonationBatchHint: 'Las propinas de patrocinadores se envían a rescates más tarde en lotes',
         kofiHint: 'Menciona tu nombre o perfil de GitHub en el mensaje, p. ej. "Propina de MaxMustermann - github.com/max"',

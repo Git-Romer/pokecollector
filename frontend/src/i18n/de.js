@@ -718,7 +718,7 @@ const de = {
         manualContributor: 'Mitwirkende/r',
         supporters: 'Unterstützer',
         sponsors: 'Unterstützen',
-        sponsorMessage: 'Dir gefällt PokéCollector? Alle Einnahmen werden an Tierschutzorganisationen gespendet. 🐾',
+        sponsorMessage: 'Dir gefällt John John’s PC? Alle Einnahmen werden an Tierschutzorganisationen gespendet. 🐾',
         rescueDonationTotal: 'Bisher an den Tierschutz gespendet',
         rescueDonationBatchHint: 'Unterstützer-Tips werden später gesammelt gespendet',
         kofiHint: 'Erwähne deinen Namen oder GitHub-Profil in der Nachricht, z.B. "Tip von MaxMustermann - github.com/max"',

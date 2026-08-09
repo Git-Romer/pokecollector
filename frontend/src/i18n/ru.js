@@ -697,7 +697,7 @@ const ru = {
         manualContributor: 'Участник',
         supporters: 'Поддержавшие',
         sponsors: 'Поддержать',
-        sponsorMessage: 'Нравится PokéCollector? Все доходы передаются организациям помощи животным. 🐾',
+        sponsorMessage: 'Нравится John John’s PC? Все доходы передаются организациям помощи животным. 🐾',
         rescueDonationTotal: 'Уже пожертвовано на помощь животным',
         rescueDonationBatchHint: 'Чаевые от поддержавших отправляются приютам позже партиями',
         kofiHint: 'Укажите свое имя или профиль GitHub в сообщении, например "Tip from MaxMustermann - github.com/max"',

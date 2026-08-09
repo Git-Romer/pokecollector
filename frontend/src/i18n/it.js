@@ -697,7 +697,7 @@ const it = {
         manualContributor: 'Contributore',
         supporters: 'Sostenitori',
         sponsors: 'Supporto',
-        sponsorMessage: 'Ti piace PokéCollector? Tutti i guadagni vengono donati a organizzazioni di salvataggio animali. 🐾',
+        sponsorMessage: 'Ti piace John John’s PC? Tutti i guadagni vengono donati a organizzazioni di salvataggio animali. 🐾',
         rescueDonationTotal: 'Donato finora al salvataggio animali',
         rescueDonationBatchHint: 'Le mance dei sostenitori vengono inviate ai rifugi più tardi in batch',
         kofiHint: 'Menziona il tuo nome o profilo GitHub nel messaggio, es. "Mancia da MaxMustermann - github.com/max"',

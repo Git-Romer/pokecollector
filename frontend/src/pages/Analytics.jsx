@@ -21,6 +21,7 @@ import {
     Activity,
     BarChart3,
     Copy,
+    Info,
     LayoutDashboard,
     Plus,
     ShoppingBag,
@@ -31,8 +32,7 @@ import {
 } from 'lucide-react'
 import {
     createProduct,
-    getAnalyticsNewSets,
-    getDuplicates,
+    getDashboard,
     getInvestmentTracker,
     getPortfolioSummary,
     getSets,
@@ -209,9 +209,9 @@ export default function Analytics() {
     const [showExpenseModal, setShowExpenseModal] = useState(false)
     const queryClient = useQueryClient()
 
-    const {data: duplicates = [], isLoading: dupLoading} = useQuery({
-        queryKey: ['duplicates', pricePrimaryField],
-        queryFn: () => getDuplicates({price_field: pricePrimaryField}).then(r => r.data),
+    const {data: dashboardData = {}, isLoading: dashboardLoading} = useQuery({
+        queryKey: ['dashboard', pricePrimaryField],
+        queryFn: () => getDashboard({price_field: pricePrimaryField}).then(r => r.data),
     })
 
     const moversDay = PERIOD_DAYS[moversPeriod] || 7
@@ -233,11 +233,6 @@ export default function Analytics() {
     const {data: products = []} = useQuery({
         queryKey: ['products', pricePrimaryField],
         queryFn: () => getProducts({price_field: pricePrimaryField}).then(r => r.data),
-    })
-
-    const {data: newSets = []} = useQuery({
-        queryKey: ['analytics-new-sets'],
-        queryFn: () => getAnalyticsNewSets().then(r => r.data),
     })
 
     const {data: sets = []} = useQuery({
@@ -262,19 +257,29 @@ export default function Analytics() {
         value: s.value,
         cost: s.cost,
         pnl: s.pnl,
+        cards: s.cards,
     }))
+    const growthData = chartData.length > 0
+        ? chartData
+        : (dashboardData.total_cards ? [{date: 'Now', cards: dashboardData.total_cards}] : [])
+    const hasArchiveCountChange = growthData.some((snapshot, index) => (
+        index > 0 && Number(snapshot.cards || 0) < Number(growthData[index - 1].cards || 0)
+    ))
+    const recentAdditions = dashboardData.recent_additions || []
 
     // Investment summary
     const latestSnapshot = investmentData.length > 0 ? investmentData[investmentData.length - 1] : null
     const soldProducts = products.filter(p => p.sold_price != null)
     const unsoldProducts = products.filter(p => p.sold_price == null)
-    const totalProductsCost = unsoldProducts.reduce((sum, p) => sum + (p.purchase_price || 0), 0)
+    const soldProductsWithCostBasis = soldProducts.filter(p => p.purchase_price != null)
+    const unsoldProductsWithCostBasis = unsoldProducts.filter(p => p.purchase_price != null)
+    const totalProductsCost = unsoldProductsWithCostBasis.reduce((sum, p) => sum + p.purchase_price, 0)
     const totalSoldRevenue = soldProducts.reduce((sum, p) => sum + (p.sold_price || 0), 0)
-    const totalSoldCost = soldProducts.reduce((sum, p) => sum + (p.purchase_price || 0), 0)
+    const totalSoldRevenueWithCostBasis = soldProductsWithCostBasis.reduce((sum, p) => sum + (p.sold_price || 0), 0)
+    const totalSoldCost = soldProductsWithCostBasis.reduce((sum, p) => sum + p.purchase_price, 0)
     const productCardRealizedGains = products.reduce((sum, p) => sum + (p.realized_gains || 0), 0)
-    const realizedPnl = totalSoldRevenue - totalSoldCost + productCardRealizedGains
+    const realizedPnl = totalSoldRevenueWithCostBasis - totalSoldCost + productCardRealizedGains
     const unrealizedPnl = (latestSnapshot?.value ?? 0) - (latestSnapshot?.cost ?? 0)
-
     return (
         <div className="space-y-4 pb-2">
             <div>
@@ -283,19 +288,13 @@ export default function Analytics() {
                 <p className="text-sm text-text-secondary mt-1">Visualize, Discover, Master Set, and Portfolio Performance.</p>
             </div>
 
-            {newSets.length > 0 && (
-                <div className="card border-yellow/30 bg-yellow/5">
-                    <p className="text-sm font-medium text-yellow">
-                        🆕 {newSets.length} {newSets.length === 1 ? t('analytics.newSet') : t('analytics.newSets')} {t('analytics.newSetsDetected')}: {newSets.map(s => s.name).join(', ')}
-                    </p>
-                </div>
-            )}
-
             {/* Tabs */}
             <div className="overflow-x-auto border-b border-border pb-1 -mx-1 px-1">
-                <div className="flex gap-2 min-w-max">
+                <div className="flex gap-2 min-w-max" role="tablist" aria-label="Trends and insights sections">
                     {tabs.map(({key, label, icon: Icon}) => (
-                        <button key={key} onClick={() => setActiveTab(key)}
+                        <button key={key} type="button" role="tab" id={`trends-tab-${key}`}
+                                aria-selected={activeTab === key} aria-controls={`trends-panel-${key}`}
+                                onClick={() => setActiveTab(key)}
                                 className={clsx(
                                     'flex items-center gap-2 px-4 py-2 rounded-t-lg text-sm font-medium transition-all',
                                     activeTab === key
@@ -308,76 +307,125 @@ export default function Analytics() {
                 </div>
             </div>
 
-            {/* Duplicates Tab */}
+            {/* Visualize Tab */}
             {activeTab === 'visualize' && (
-                <div className="space-y-4">
-                    <p className="text-sm text-text-secondary">{t('analytics.duplicatesDesc')}</p>
-                    {dupLoading ? (
-                        <div className="skeleton h-64 rounded-xl"/>
-                    ) : duplicates.length === 0 ? (
-                        <div className="card text-center py-12 text-text-muted">{t('analytics.noDuplicates')}</div>
-                    ) : (
-                        <div className="card p-0 overflow-hidden">
-                            <div className="hidden md:block overflow-x-auto">
-                                <table className="w-full text-sm">
-                                    <thead>
-                                    <tr className="border-b border-border bg-bg/50">
-                                        <th className="text-left px-4 py-3 text-text-muted font-medium">{t('analytics.card')}</th>
-                                        <th className="text-left px-4 py-3 text-text-muted font-medium">{t('common.set')}</th>
-                                        <th className="text-left px-4 py-3 text-text-muted font-medium">{t('common.rarity')}</th>
-                                        <th className="text-center px-4 py-3 text-text-muted font-medium">{t('analytics.qty')}</th>
-                                        <th className="text-right px-4 py-3 text-text-muted font-medium">{t('analytics.market')}</th>
-                                        <th className="text-right px-4 py-3 text-text-muted font-medium">{t('analytics.totalValue')}</th>
-                                    </tr>
-                                    </thead>
-                                    <tbody>
-                                    {duplicates.map((item) => (
-                                        <tr key={item.id} className="border-b border-border/50 hover:bg-bg-elevated/50">
-                                            <td className="px-4 py-3">
-                                                <div className="flex items-center gap-3">
-                                                    {resolveCardImageUrl(item) && (
-                                                        <img src={resolveCardImageUrl(item)} alt={item.name}
-                                                             className="w-8 h-10 object-cover rounded flex-shrink-0"
-                                                             loading="lazy"/>
-                                                    )}
-                                                    <span
-                                                        className="text-sm font-medium text-text-primary">{item.name}</span>
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3 text-text-secondary text-xs">{item.set_name || '-'}</td>
-                                            <td className="px-4 py-3 text-text-secondary text-xs">{item.rarity || '-'}</td>
-                                            <td className="px-4 py-3 text-center font-bold text-brand-red">{item.quantity}x</td>
-                                            <td className="px-4 py-3 text-right text-text-primary">{formatPrice(item.price_market)}</td>
-                                            <td className="px-4 py-3 text-right font-bold text-green">{formatPrice(item.total_value)}</td>
-                                        </tr>
-                                    ))}
-                                    </tbody>
-                                </table>
+                <div className="space-y-4" role="tabpanel" id="trends-panel-visualize" aria-labelledby="trends-tab-visualize">
+                    <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                        <div className="card xl:col-span-2">
+                            <div className="flex items-start justify-between gap-4 mb-4">
+                                <div>
+                                    <p className="text-xs uppercase tracking-[0.16em] text-light-blue font-semibold">Visualize</p>
+                                    <h2 className="text-lg font-bold text-text-primary mt-1">Collection size</h2>
+                                </div>
+                                <p className="text-xs text-text-muted">Recorded archive snapshots</p>
                             </div>
-                            <div className="md:hidden space-y-2 p-2">
-                                {duplicates.map((item) => (
+                            {hasArchiveCountChange && (
+                                <div className="mb-4 flex items-start gap-3 rounded-xl border border-light-blue/20 bg-light-blue/[0.06] px-3 py-2.5">
+                                    <Info size={16} className="mt-0.5 flex-shrink-0 text-light-blue" aria-hidden="true"/>
+                                    <p className="text-xs leading-relaxed text-text-secondary">
+                                        A lower count can reflect an archive correction or a removal. This timeline tracks collection records, not portfolio value.
+                                    </p>
+                                </div>
+                            )}
+                            {investLoading || dashboardLoading ? (
+                                <div className="skeleton h-72 rounded-xl"/>
+                            ) : growthData.length < 2 ? (
+                                <div className="flex h-[300px] flex-col items-center justify-center rounded-2xl border border-dashed border-light-blue/20 bg-light-blue/[0.03] px-6 text-center">
+                                    <Activity size={24} className="text-light-blue" aria-hidden="true"/>
+                                    <p className="mt-3 text-sm font-bold text-text-primary">First archive snapshot recorded</p>
+                                    <p className="mt-1 max-w-sm text-xs leading-relaxed text-text-muted">
+                                        John John will draw the growth line after your next collection change.
+                                    </p>
+                                    <p className="mt-3 text-xs font-semibold text-light-blue">
+                                        {Number(dashboardData.total_cards ?? 0).toLocaleString()} cards in the archive now
+                                    </p>
+                                </div>
+                            ) : (
+                                <ResponsiveContainer width="100%" height={300}>
+                                    <AreaChart data={growthData}>
+                                        <defs>
+                                            <linearGradient id="cardsGrowth" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="#00A3E0" stopOpacity={0.42}/>
+                                                <stop offset="95%" stopColor="#582C83" stopOpacity={0.04}/>
+                                            </linearGradient>
+                                        </defs>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" vertical={false}/>
+                                        <XAxis dataKey="date" tick={{fill: '#8b8ba5', fontSize: 11}}/>
+                                        <YAxis tick={{fill: '#8b8ba5', fontSize: 11}} allowDecimals={false}/>
+                                        <Tooltip
+                                            contentStyle={{
+                                                background: '#07070b',
+                                                border: '1px solid rgba(255,255,255,0.12)',
+                                                borderRadius: '14px',
+                                                color: '#fff'
+                                            }}
+                                            labelStyle={{color: '#fff'}}
+                                            formatter={(value) => [value, 'Total cards']}
+                                        />
+                                        <Area
+                                            type="monotone"
+                                            dataKey="cards"
+                                            stroke="#00A3E0"
+                                            strokeWidth={3}
+                                            fill="url(#cardsGrowth)"
+                                            activeDot={{r: 5, fill: '#FFCD00', stroke: '#000', strokeWidth: 2}}
+                                        />
+                                    </AreaChart>
+                                </ResponsiveContainer>
+                            )}
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 xl:grid-cols-1 gap-3">
+                            {[
+                                {label: 'Total cards', value: dashboardData.total_cards ?? 0, tone: 'text-light-blue'},
+                                {label: 'Unique records', value: dashboardData.unique_cards ?? 0, tone: 'text-yellow'},
+                                {label: 'Expansions started', value: dashboardData.owned_sets ?? 0, tone: 'text-purple'},
+                            ].map(stat => (
+                                <div key={stat.label} className="card border-white/10 bg-white/[0.03]">
+                                    <p className="text-xs uppercase tracking-[0.14em] text-text-muted font-semibold">{stat.label}</p>
+                                    <p className={clsx('mt-2 text-3xl font-black', stat.tone)}>{Number(stat.value).toLocaleString()}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="card">
+                        <div className="flex items-start justify-between gap-4 mb-4">
+                            <div>
+                                <p className="text-xs uppercase tracking-[0.16em] text-yellow font-semibold">Recent additions</p>
+                                <h2 className="text-lg font-bold text-text-primary mt-1">New in the archive</h2>
+                            </div>
+                            <p className="text-xs text-text-muted">Latest Collection Lots</p>
+                        </div>
+                        {dashboardLoading ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                                {[...Array(6)].map((_, index) => <div key={index} className="skeleton h-20 rounded-xl"/>)}
+                            </div>
+                        ) : recentAdditions.length === 0 ? (
+                            <div className="rounded-2xl border border-dashed border-white/10 py-12 text-center text-sm text-text-muted">
+                                No recent additions yet. Add a lot from Card Search to start the trail.
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                                {recentAdditions.slice(0, 9).map(card => (
                                     <CardListItem
-                                        key={item.id}
-                                        image={resolveCardImageUrl(item)}
-                                        name={item.name}
-                                        subtext={item.set_name || '-'}
-                                        badges={[
-                                            {label: `${item.quantity}x`, variant: 'red'},
-                                            ...(item.rarity ? [{label: item.rarity, variant: 'gray'}] : []),
-                                        ]}
-                                        value={formatPrice(item.total_value)}
-                                        valueSecondary={formatPrice(item.price_market)}
+                                        key={card.collection_item_id || card.id}
+                                        image={resolveCardImageUrl(card)}
+                                        name={card.name}
+                                        subtext={card.added_at ? `Filed ${format(parseISO(card.added_at), 'MMM d, yyyy')}` : 'Filed recently'}
+                                        badges={[{label: `${card.quantity || 1}x`, variant: 'blue'}]}
+                                        value={card.price_market ? formatPrice(card.price_market) : null}
                                     />
                                 ))}
                             </div>
-                        </div>
-                    )}
+                        )}
+                    </div>
                 </div>
             )}
 
             {/* Top Movers Tab */}
             {activeTab === 'discover' && (
-                <div className="space-y-4">
+                <div className="space-y-4" role="tabpanel" id="trends-panel-discover" aria-labelledby="trends-tab-discover">
                     <div className="flex items-center gap-3 flex-wrap">
                         <p className="text-sm text-text-secondary">{t('analytics.moversDesc')} {moversDay} {t('analytics.days')}</p>
                         <PeriodSelector value={moversPeriod} onChange={setMoversPeriod} periods={CARD_PERIODS}/>
@@ -444,7 +492,7 @@ export default function Analytics() {
 
             {/* Rarity Stats Tab */}
             {activeTab === 'master_set' && (
-                <div className="space-y-4">
+                <div className="space-y-4" role="tabpanel" id="trends-panel-master_set" aria-labelledby="trends-tab-master_set">
                     <div className="card">
                         <div className="flex items-start justify-between gap-4 mb-4">
                             <div><p className="text-xs uppercase tracking-[0.16em] text-text-muted font-semibold">Master Set</p><h2 className="text-lg font-bold text-text-primary mt-1">Closest to completion</h2></div>
@@ -559,7 +607,7 @@ export default function Analytics() {
 
             {/* Portfolio Performance */}
             {activeTab === 'portfolio' && (
-                <div className="space-y-4">
+                <div className="space-y-4" role="tabpanel" id="trends-panel-portfolio" aria-labelledby="trends-tab-portfolio">
                     {portfolioSummary?.segments && (
                         <>
                             <div className="card border-brand-red/20 bg-brand-red/5">
@@ -735,8 +783,9 @@ export default function Analytics() {
                                         {[...products].sort((a, b) => new Date(b.purchase_date) - new Date(a.purchase_date)).map(p => {
                                             const isSold = p.sold_price != null
                                             const currentValue = p.computed_current_value ?? p.current_value ?? 0
-                                            const pnl = isSold ? (p.sold_price - p.purchase_price) : (currentValue - p.purchase_price)
-                                            const pnlPositive = pnl >= 0
+                                            const hasCostBasis = p.purchase_price != null
+                                            const pnl = hasCostBasis ? (isSold ? (p.sold_price - p.purchase_price) : (currentValue - p.purchase_price)) : null
+                                            const pnlPositive = pnl != null && pnl >= 0
 
                                             return (
                                                 <div key={p.id}
@@ -762,7 +811,9 @@ export default function Analytics() {
                                                             <span
                                                                 className="text-sm text-text-secondary">{t('products.currentValueLabel')} {formatPrice(currentValue)}</span>
                                                         )}
-                                                        {pnl != 0 && (
+                                                        {!hasCostBasis ? (
+                                                            <span className="text-xs bg-yellow/20 text-yellow px-1.5 py-0.5 rounded">Cost Basis Needed</span>
+                                                        ) : pnl != 0 && (
                                                             <span className={clsx(
                                                                 'text-xs px-1.5 py-0.5 rounded',
                                                                 pnlPositive ? 'bg-green/20 text-green' : 'bg-brand-red/20 text-brand-red'

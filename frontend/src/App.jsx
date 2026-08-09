@@ -6,13 +6,13 @@ import {SettingsProvider, useSettings} from './contexts/SettingsContext'
 import {AuthProvider, useAuth} from './contexts/AuthContext'
 import {forceChangePassword} from './api/client'
 import ArchiveShell from './components/ArchiveShell'
-import Home from './pages/Home'
-import CardSearch from './pages/CardSearch'
-import Collection from './pages/Collection'
-import Sets from './pages/Sets'
-import Analytics from './pages/Analytics'
-import Settings from './pages/Settings'
 
+const Home = lazy(() => import('./pages/Home'))
+const CardSearch = lazy(() => import('./pages/CardSearch'))
+const Collection = lazy(() => import('./pages/Collection'))
+const Sets = lazy(() => import('./pages/Sets'))
+const Analytics = lazy(() => import('./pages/Analytics'))
+const Settings = lazy(() => import('./pages/Settings'))
 const Discover = lazy(() => import('./pages/Discover'))
 const SetDetail = lazy(() => import('./pages/SetDetail'))
 const Wishlist = lazy(() => import('./pages/Wishlist'))
@@ -147,28 +147,28 @@ function ProtectedRoutes() {
     return (
         <Routes>
             <Route path="/" element={<ArchiveShell/>}>
-                <Route index element={<Home/>}/>
+                <Route index element={lazyRoute(<Home/>)} />
                 <Route path="dashboard" element={<Navigate replace to="/"/>}/>
-                <Route path="search" element={<CardSearch/>}/>
+                <Route path="search" element={lazyRoute(<CardSearch/>)} />
                 <Route path="discover" element={lazyRoute(<Discover/>)}/>
                 <Route path="card-search" element={<SearchRedirect/>}/>
-                <Route path="collection" element={<Collection/>}/>
+                <Route path="collection" element={lazyRoute(<Collection/>)} />
                 <Route path="collection/user/:userId" element={lazyRoute(<UserCollection/>)}/>
-                <Route path="all-cards" element={<Sets/>}/>
+                <Route path="all-cards" element={lazyRoute(<Sets/>)} />
                 <Route path="all-cards/:setId" element={lazyRoute(<SetDetail/>)}/>
                 <Route path="sets" element={<Navigate replace to="/all-cards"/>}/>
                 <Route path="sets/:setId" element={<SetRedirect/>}/>
                 <Route path="wishlist" element={lazyRoute(<Wishlist/>)}/>
                 <Route path="binders" element={lazyRoute(<Binders/>)}/>
                 <Route path="binders/:binderId" element={lazyRoute(<BinderDetail/>)}/>
-                <Route path="trends" element={<Analytics/>}/>
+                <Route path="trends" element={lazyRoute(<Analytics/>)} />
                 <Route path="analytics" element={<Navigate replace to="/trends"/>}/>
                 <Route path="products" element={lazyRoute(<Products/>)}/>
                 <Route path="leaderboard" element={lazyRoute(<Leaderboard/>)}/>
                 <Route path="leaderboard/compare/:userId" element={lazyRoute(<Compare/>)}/>
                 <Route path="achievements" element={lazyRoute(<Achievements/>)}/>
                 <Route path="achievements/:userId" element={lazyRoute(<Achievements/>)}/>
-                <Route path="settings" element={<Settings/>}/>
+                <Route path="settings" element={lazyRoute(<Settings/>)} />
                 <Route path="migration" element={lazyRoute(<CardMigration/>)}/>
             </Route>
         </Routes>

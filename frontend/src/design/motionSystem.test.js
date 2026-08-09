@@ -14,7 +14,7 @@ const findBuiltCss = (directory) => readdirSync(directory, {withFileTypes: true}
     return entry.name.endsWith('.css') ? [path] : []
 })
 
-test('John John motion system preserves collector motion while honoring reduced-motion', () => {
+test('John John motion system preserves collector motion without an alternate reduced-motion mode', () => {
     const runtimeSurfaces = [
         'src/design/archive.css',
         'src/hooks/useTheme.js',
@@ -30,12 +30,12 @@ test('John John motion system preserves collector motion while honoring reduced-
     expect(runtimeSurfaces).toContain('∞')
 
     const archiveStyles = read('src/design/archive.css')
-    expect(archiveStyles).toContain('@media (prefers-reduced-motion: reduce)')
-    expect(archiveStyles).toContain('animation: none !important')
-    expect(archiveStyles).toContain('transition: none !important')
+    expect(archiveStyles).not.toContain('@media (prefers-reduced-motion: reduce)')
+    expect(archiveStyles).not.toContain('animation: none !important')
+    expect(archiveStyles).not.toContain('transition: none !important')
 })
 
-test('production build preserves the reduced-motion media rule', async () => {
+test('production build preserves John John motion without reduced-motion overrides', async () => {
     const outputDir = mkdtempSync(join(tmpdir(), 'john-john-motion-build-'))
     const viteCli = resolve(projectRoot, 'node_modules/vite/bin/vite.js')
 
@@ -45,9 +45,9 @@ test('production build preserves the reduced-motion media rule', async () => {
         })
 
         const builtCss = findBuiltCss(outputDir).map((path) => readFileSync(path, 'utf8')).join('\n')
-        expect(builtCss).toContain('prefers-reduced-motion')
-        expect(builtCss).toContain('animation:none!important')
-        expect(builtCss).toContain('transition:none!important')
+        expect(builtCss).not.toContain('prefers-reduced-motion')
+        expect(builtCss).not.toContain('animation:none!important')
+        expect(builtCss).not.toContain('transition:none!important')
     } finally {
         rmSync(outputDir, {recursive: true, force: true})
     }

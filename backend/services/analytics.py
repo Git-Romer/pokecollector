@@ -16,19 +16,33 @@ def summarize_collection_intents(entries):
     scoped = {'vault': [], 'pc': [], 'main_collection': []}
     for entry in entries:
         intent = entry.get('intent') or 'main_collection'
-        scoped[intent if intent in scoped else 'main_collection'].append(entry)
+        normalized_intent = intent if intent in scoped else 'main_collection'
+        # Portfolio Performance includes sealed product only when explicitly
+        # assigned to Vault or PC. Main Collection sealed product is still
+        # tracked elsewhere, but it should not compete with cards for the
+        # highest-value Main Collection slice.
+        if entry.get('sealed_product') and normalized_intent == 'main_collection':
+            continue
+        scoped[normalized_intent].append(entry)
 
-    main = sorted(scoped['main_collection'], key=lambda entry: entry['market_value'], reverse=True)
+    main = sorted(scoped['main_collection'], key=lambda entry: entry.get('market_value') or 0, reverse=True)
     main_count = max(1, ceil(len(main) * 0.10)) if main else 0
     scope_entries = {'vault': scoped['vault'], 'pc': scoped['pc'], 'main_collection': main[:main_count]}
 
     result = {}
     for scope, lots in scope_entries.items():
-        market_value = round(sum(lot['market_value'] for lot in lots), 2)
-        valued_lots = [lot for lot in lots if lot['unit_cost'] is not None]
-        missing_lots = [lot for lot in lots if lot['unit_cost'] is None]
-        cost_basis = round(sum(lot['unit_cost'] * lot['quantity'] for lot in valued_lots), 2)
-        profit_loss = round(sum(lot['market_value'] - lot['unit_cost'] * lot['quantity'] for lot in valued_lots), 2)
+        market_value = round(sum((lot.get('market_value') or 0) for lot in lots), 2)
+        def lot_cost_basis(lot):
+            if lot.get('cost_basis') is not None:
+                return lot['cost_basis']
+            if lot.get('unit_cost') is not None:
+                return lot['unit_cost'] * lot['quantity']
+            return None
+
+        valued_lots = [lot for lot in lots if lot_cost_basis(lot) is not None]
+        missing_lots = [lot for lot in lots if lot_cost_basis(lot) is None]
+        cost_basis = round(sum(lot_cost_basis(lot) for lot in valued_lots), 2)
+        profit_loss = round(sum((lot.get('market_value') or 0) - lot_cost_basis(lot) for lot in valued_lots), 2)
         result[scope] = {
             'market_value': market_value,
             'cost_basis': cost_basis,
@@ -36,12 +50,12 @@ def summarize_collection_intents(entries):
             'return_percentage': round(profit_loss / cost_basis * 100, 1) if cost_basis else None,
             'lots': len(lots),
             'cards': sum(lot['quantity'] for lot in lots if not lot.get('sealed_product')),
-            'sealed_products': sum(1 for lot in lots if lot.get('sealed_product')),
+            'sealed_products': sum(lot['quantity'] for lot in lots if lot.get('sealed_product')),
             'cost_basis_needed': {
                 'lots': len(missing_lots),
                 'cards': sum(lot['quantity'] for lot in missing_lots if not lot.get('sealed_product')),
-                'sealed_products': sum(1 for lot in missing_lots if lot.get('sealed_product')),
-                'market_value': round(sum(lot['market_value'] for lot in missing_lots), 2),
+                'sealed_products': sum(lot['quantity'] for lot in missing_lots if lot.get('sealed_product')),
+                'market_value': round(sum((lot.get('market_value') or 0) for lot in missing_lots), 2),
             },
         }
     return result

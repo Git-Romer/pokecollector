@@ -143,7 +143,7 @@ Notable current model rules:
 - Collection and sealed-product records use stable IDs, required reusable storage locations, lifecycle status, and
   soft-removal history
 - `InventoryEvent` records local add, update, move, import, and removal activity
-- Wishlist items store requested quantity from `1` to `99`
+- Chase Card records use the legacy `WishlistItem` model and store requested quantity from `1` to `99`
 - `User.must_change_password` drives the forced password change flow
 - `UserSetting` stores per-user preferences and secrets
 
@@ -216,7 +216,7 @@ Transient Gemini `502` / `503` / `504` capacity errors are retried with backoff.
 rate-limit errors, invalid API keys get a dedicated message, and remaining temporary Gemini outages return a clearer
 temporary-unavailable response instead of a generic backend `500`.
 
-The frontend then lets the user choose quantity, condition, variant, language, and purchase price before adding to the
+The frontend then lets the user choose quantity, condition, variant, language, and cost basis before adding to the
 collection. Search results can also be selected in bulk and added with default values in one request.
 
 ## Frontend State

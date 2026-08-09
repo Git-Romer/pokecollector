@@ -1,5 +1,6 @@
 import {useMemo, useState} from 'react'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
+import {useNavigate} from 'react-router-dom'
 import {
     BookOpen,
     Check,
@@ -88,6 +89,7 @@ function WishlistItemEditor({item, onDone}) {
 
 export default function Wishlist() {
     const {t, formatPrice, pricePrimaryField} = useSettings()
+    const navigate = useNavigate()
     const [editingId, setEditingId] = useState(null)
     const [sortBy, setSortBy] = useState('created_at')
     const [sortOrder, setSortOrder] = useState('desc')
@@ -227,6 +229,10 @@ export default function Wishlist() {
                     <Heart size={48} className="mx-auto mb-4 text-text-muted"/>
                     <p className="text-text-muted">{t('wishlist.empty')}</p>
                     <p className="text-xs text-text-muted mt-1">{t('wishlist.emptyHint')}</p>
+                    <button type="button" onClick={() => navigate('/search')}
+                            className="btn-primary mt-5 mx-auto">
+                        Discover cards
+                    </button>
                 </div>
             ) : (
                 <>

@@ -1,7 +1,7 @@
-import {useRef, useState} from 'react'
+import {useState} from 'react'
 import {createPortal} from 'react-dom'
-import {Camera, Loader2, Plus, RefreshCw, Upload, X} from 'lucide-react'
-import {addToCollection, recognizeCard} from '../api/client'
+import {Camera, Loader2, Plus, RefreshCw, X} from 'lucide-react'
+import {addToCollection} from '../api/client'
 import {useQueryClient} from '@tanstack/react-query'
 import {useSettings} from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
@@ -100,7 +100,7 @@ function ScanAddModal({match, defaultLang, onClose, onAdded}) {
                                 <label className="text-xs text-text-muted mb-1 block">{t('card.condition')}</label>
                                 <select value={condition} onChange={e => setCondition(e.target.value)}
                                         className="select">
-                                    {['Mint', 'NM', 'LP', 'MP', 'HP'].map(c => <option key={c} value={c}>{c}</option>)}
+                                    {['NM', 'LP', 'MP', 'HP', 'DMG'].map(c => <option key={c} value={c}>{c}</option>)}
                                 </select>
                             </div>
                         </div>
@@ -155,26 +155,9 @@ export default function CardScanner({isOpen, onClose, onCardSelected}) {
     const [preview, setPreview] = useState(null)
     const [results, setResults] = useState(null)
     const [addModal, setAddModal] = useState(null) // match to show modal for
-    const fileRef = useRef()
     const {t} = useSettings()
 
     if (!isOpen) return null
-
-    const handleFile = async (file) => {
-        if (!file) return
-        setPreview(URL.createObjectURL(file))
-        setPhase('loading')
-        try {
-            const data = await recognizeCard(file)
-            setResults(data)
-            setPhase('results')
-        } catch (e) {
-            const msg = e?.response?.data?.detail || t('scanner.recognitionFailed')
-            toast.error(msg)
-            setPhase('capture')
-            setPreview(null)
-        }
-    }
 
     const reset = () => {
         setPhase('capture')
@@ -222,29 +205,12 @@ export default function CardScanner({isOpen, onClose, onCardSelected}) {
                             <p className="text-xs text-text-muted text-center px-6">{t('scanner.alignCard')}</p>
                         </div>
 
-                        <input ref={fileRef} type="file" accept="image/*" capture="environment"
-                               className="hidden" onChange={e => handleFile(e.target.files?.[0])}/>
-
-                        <button onClick={() => fileRef.current?.click()}
-                                className="w-full max-w-xs py-4 rounded-2xl font-black text-white text-base flex items-center justify-center gap-3"
-                                style={{background: '#e3000b', boxShadow: '0 0 24px rgba(227,0,11,0.35)'}}>
-                            <Camera size={20}/> {t('scanner.takePhoto')}
-                        </button>
-
-                        <button
-                            onClick={() => {
-                                if (fileRef.current) {
-                                    fileRef.current.removeAttribute('capture')
-                                    fileRef.current.click()
-                                }
-                            }}
-                            className="text-sm text-text-muted hover:text-text-secondary flex items-center gap-2 transition-colors">
-                            <Upload size={14}/> {t('scanner.uploadImage')}
-                        </button>
-
-                        <p className="text-[11px] text-text-muted text-center max-w-xs">
-                            {t('scanner.aiHint')}
-                        </p>
+                        <div className="max-w-xs rounded-2xl border border-light-blue/25 bg-light-blue/5 p-3 text-center">
+                            <p className="text-[11px] font-semibold text-light-blue">{t('scanner.localFirstTitle')}</p>
+                            <p className="mt-1 text-[11px] text-text-muted">
+                                {t('scanner.aiHint')}
+                            </p>
+                        </div>
                     </div>
                 )}
 
@@ -276,6 +242,11 @@ export default function CardScanner({isOpen, onClose, onCardSelected}) {
                             {results.recognized?.language && (
                                 <p className="text-xs text-text-muted mt-0.5 uppercase tracking-wider">
                                     {t('scanner.detectedLanguage')} {results.recognized.language}
+                                </p>
+                            )}
+                            {results.scan_history?.expires_at && (
+                                <p className="mt-3 rounded-xl border border-light-blue/25 bg-light-blue/5 px-3 py-2 text-[11px] font-semibold text-light-blue">
+                                    Local scan history retained for 14 days. This scan expires {new Date(results.scan_history.expires_at).toLocaleDateString()}.
                                 </p>
                             )}
                         </div>

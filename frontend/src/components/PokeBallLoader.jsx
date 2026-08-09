@@ -1,12 +1,9 @@
-export default function PokeBallLoader({size = 32, className = ''}) {
+export default function PokeBallLoader({size = 32, className = '', label = "John John is waking the archive…"}) {
+    const style = {'--john-john-loader-size': `${size}px`}
     return (
-        <div className={`flex items-center justify-center ${className}`}>
-            <img
-                src="/pokeball.svg"
-                alt="Loading..."
-                className="pokeball-loader"
-                style={{width: size, height: size, opacity: 0.7}}
-            />
+        <div className={`john-john-loader ${className}`} role="status" aria-live="polite" style={style}>
+            <span className="john-john-loader-mark" aria-hidden="true">∞</span>
+            <span className="john-john-loader-label">{label}</span>
         </div>
     )
 }

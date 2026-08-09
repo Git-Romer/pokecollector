@@ -142,6 +142,10 @@ class CollectionItemCreate(BaseModel):
     notes: Optional[str] = None
     is_grail: bool = False
     card_history: Optional[str] = None
+    primary_photo_url: Optional[str] = None
+    instagram_url: Optional[str] = None
+    pinterest_url: Optional[str] = None
+    reels_url: Optional[str] = None
     lang: str = "en"  # fixed TCGdex language of this card item
 
 
@@ -163,6 +167,10 @@ class CollectionItemUpdate(BaseModel):
     collection_intent: Optional[Literal["main_collection", "vault", "pc"]] = None
     is_grail: Optional[bool] = None
     card_history: Optional[str] = None
+    primary_photo_url: Optional[str] = None
+    instagram_url: Optional[str] = None
+    pinterest_url: Optional[str] = None
+    reels_url: Optional[str] = None
     lang: Optional[str] = None
 
 
@@ -211,6 +219,10 @@ class CollectionItemResponse(BaseModel):
     collection_intent: str = "main_collection"
     is_grail: bool = False
     card_history: Optional[str] = None
+    primary_photo_url: Optional[str] = None
+    instagram_url: Optional[str] = None
+    pinterest_url: Optional[str] = None
+    reels_url: Optional[str] = None
     status: str = "owned"
     removed_at: Optional[datetime] = None
     removal_reason: Optional[str] = None
@@ -370,7 +382,7 @@ class ProductPurchaseCreate(BaseModel):
     sealed_condition: Literal["factory_sealed", "sealed_with_wear", "damaged_seal", "opened"] = "factory_sealed"
     acquisition_source: Optional[Literal["pulled", "bulk_before_tracking", "purchased", "trade", "gift", "unknown", "other"]] = None
     collection_intent: Literal["main_collection", "vault", "pc"] = "main_collection"
-    purchase_price: float
+    purchase_price: Optional[float] = None
     current_value: Optional[float] = None
     sold_price: Optional[float] = None
     purchase_date: date
@@ -475,7 +487,7 @@ class ProductPurchaseResponse(BaseModel):
     sealed_condition: str = "factory_sealed"
     acquisition_source: Optional[str] = None
     collection_intent: str = "main_collection"
-    purchase_price: float
+    purchase_price: Optional[float] = None
     current_value: Optional[float] = None
     sold_price: Optional[float] = None
     purchase_date: date

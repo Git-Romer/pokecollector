@@ -31,7 +31,7 @@ PER_USER_KEYS = {
     "set_overview_filters", "hidden_set_ids",
     "telegram_bot_token", "telegram_chat_id", "telegram_enabled",
     "price_alerts_enabled", "price_alert_threshold",
-    "gemini_api_key", "trainer_name",
+    "trainer_name",
 }
 
 ADMIN_ONLY_KEYS = {
@@ -56,7 +56,6 @@ DEFAULT_SETTINGS = {
     "set_overview_filters": "{}",
     "hidden_set_ids": "[]",
     "telegram_bot_token": "",
-    "gemini_api_key": "",
     "tcgdex_sync_languages": "en,de",
     DIGITAL_SETS_SETTING_KEY: "true",
     "cross_language_price_fallback": "true",
@@ -123,11 +122,6 @@ def _get_user_settings(db: Session, user_id: int) -> dict:
             env_chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
             if env_chat_id:
                 result["telegram_chat_id"] = env_chat_id
-        if "gemini_api_key" not in result:
-            env_gemini = os.environ.get("GEMINI_API_KEY", "")
-            if env_gemini:
-                result["gemini_api_key"] = env_gemini
-
     for key, value in DEFAULT_SETTINGS.items():
         result.setdefault(key, value)
 

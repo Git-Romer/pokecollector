@@ -56,10 +56,9 @@ export default function Login() {
                     className="w-full max-w-md rounded-[2rem] border border-border bg-bg-card p-6 shadow-2xl backdrop-blur-xl sm:p-8"
                 >
                     <div className="mb-8 text-center">
-                        {
                         {/* Decorative rendering of the wordmark. The readable name lives in
                             the sr-only text below, so the canvas stays out of the
-                            accessibility tree entirely. Motion is part of the John John design system. */}}
+                            accessibility tree entirely. Motion is part of the John John design system. */}
                         <div
                             className="archive-ascii-wordmark"
                             aria-hidden="true"
@@ -70,15 +69,11 @@ export default function Login() {
                                 textFontSize={150}
                                 textColor={ASCII_INK}
                                 planeBaseHeight={6}
-                                enableWaves={false}
-                                animateContinuously={false}
+                                enableWaves
+                                animateContinuously
                             />
                         </div>
-                        <p
-                            className={reduceMotion
-                                ? 'text-xs font-semibold uppercase tracking-[0.35em] text-text-muted'
-                                : 'sr-only'}
-                        >
+                        <p className="sr-only">
                             John John&rsquo;s PC
                         </p>
                         <h1 className="text-5xl font-bold text-text-primary mag-heading uppercase leading-none mt-2">

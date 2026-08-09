@@ -53,7 +53,7 @@ the [GitHub Releases page](https://github.com/Git-Romer/pokecollector/releases).
 
 ### 📦 John John's PC Collection Management
 
-- Add cards with quantity, condition, variant, and purchase price
+- Add cards as Collection Lots with quantity, condition, variant, acquisition source, protection, storage, Card History, and cost basis
 - Track acquisition source, protection/storage, location notes, grader, grade, certification number, and collection
   notes
 - Pulled cards default to an editable $4.49 cost basis; pre-tracking bulk has no per-card cost basis
@@ -68,8 +68,8 @@ the [GitHub Releases page](https://github.com/Git-Romer/pokecollector/releases).
 - Search the locally cached card database by name, set, type, rarity, HP, artist, and more
 - Short-code search like `PFL 001`
 - Multi-select search results and bulk-add matching cards to the collection
-- Smart scanner with Gemini-powered recognition
-- Scanner retries transient Gemini capacity errors and shows clearer rate-limit / temporary-unavailable messages
+- Optional external scanner with explicit Gemini opt-in; HoloDex/Collectr/PSA/TAG inputs remain manually reviewed
+- Scanner retries transient Gemini capacity errors and shows clearer rate-limit / temporary-unavailable messages when the optional scanner is used
 - Two-step scanner matching: number ranking first, visual verification second when useful
 - Scanner strips suffixes like `ex` / `GX` / `VSTAR` for broader matching
 - Card modal auto-preselects a likely variant from TCGdex variant flags
@@ -91,7 +91,7 @@ the [GitHub Releases page](https://github.com/Git-Romer/pokecollector/releases).
 
 - Single-user mode: no login required, auto-auth as admin
 - Multi-user mode: JWT login, admin/trainer roles, separate user data
-- Per-user settings for language, currency, Telegram keys, and Gemini key
+- Per-user settings for language, currency, Telegram keys, and optional external scanner key
 - Force password change support on first login
 - Profile avatar and profile name editing
 - Cascade deletion of user-owned data
@@ -107,7 +107,7 @@ the [GitHub Releases page](https://github.com/Git-Romer/pokecollector/releases).
 - Fluent-inspired John John's PC shell with five primary sections: Collection, Card Search, All Cards, Trends &
   Insights, and Settings
 - App UI translations for all supported TCGdex languages, plus Swedish
-- Accessible dark/light archive themes with purposeful motion and reduced-motion support
+- Dark-only John John design system with purposeful motion, ambient presence, and no alternate theme mode
 
 ### ⚙️ Utilities
 
@@ -143,17 +143,17 @@ set_code,number,quantity,condition,variant,lang,purchase_price
 ```
 
 All columns must be present, but only `set_code` and `number` need values in each row. Use the card code shown in
-PokéCollector/card lists, for example `ASC 152`: `ASC` goes into `set_code`, and `152` goes into `number`.
+John John's PC card lists, for example `ASC 152`: `ASC` goes into `set_code`, and `152` goes into `number`.
 
 | Column           | Required value? | Notes                                                                               |
 |------------------|-----------------|-------------------------------------------------------------------------------------|
 | `set_code`       | Yes             | First part of the card code shown in the app, e.g. `ASC` from `ASC 152`.            |
 | `number`         | Yes             | Second part of the card code shown in the app, e.g. `152` from `ASC 152`.           |
 | `quantity`       | No              | Defaults to `1`; must be `1`-`999` when provided.                                   |
-| `condition`      | No              | Defaults to `NM`; allowed: `Mint`, `NM`, `LP`, `MP`, `HP`, `Damaged`, `Unassessed`. |
+| `condition`      | No              | Defaults to `NM`; allowed: `NM`, `LP`, `MP`, `HP`, `DMG`.                         |
 | `variant`        | No              | Leave blank or use `Normal`, `Holo`, `Reverse Holo`, `First Edition`.               |
 | `lang`           | No              | Defaults to `en`; accepts any supported TCGdex language code.                       |
-| `purchase_price` | No              | Optional per-card purchase price.                                                   |
+| `purchase_price` | No              | Optional per-card cost basis.                                                       |
 
 Example:
 
@@ -191,7 +191,6 @@ JWT_SECRET_KEY=some_long_random_string
 # Optional
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=your_admin_password
-GEMINI_API_KEY=your_gemini_key
 TELEGRAM_BOT_TOKEN=your_bot_token
 TELEGRAM_CHAT_ID=your_chat_id
 TCGDEX_SYNC_LANGUAGES=en,de
@@ -243,7 +242,7 @@ From the **Users** tab, admins can:
 - force new users to change their password on first login
 
 The **Users** tab is only visible to admin users and only while multi-user mode is enabled. In single-user mode,
-PokéCollector skips login and uses the bootstrap admin account automatically.
+John John's PC skips login and uses the bootstrap admin account automatically.
 
 ---
 
@@ -267,7 +266,6 @@ PokéCollector skips login and uses the bootstrap admin account automatically.
 |-------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------|
 | `ADMIN_USERNAME`              | Username for the bootstrap admin account                                                                                                                                                                                                                                                                                                                       | `admin`                   |
 | `ADMIN_PASSWORD`              | Password for the bootstrap admin account                                                                                                                                                                                                                                                                                                                       | Random, optionally logged |
-| `GEMINI_API_KEY`              | Initial Gemini key for the admin user; other users configure their own key in Settings                                                                                                                                                                                                                                                                         | *(empty)*                 |
 | `TELEGRAM_BOT_TOKEN`          | Initial Telegram bot token for the admin user                                                                                                                                                                                                                                                                                                                  | *(empty)*                 |
 | `TELEGRAM_CHAT_ID`            | Initial Telegram chat ID for the admin user                                                                                                                                                                                                                                                                                                                    | *(empty)*                 |
 | `TCGDEX_SYNC_LANGUAGES`       | Initial admin default for TCGdex set/card sync languages on first launch only. After bootstrap, the DB setting in Settings is authoritative. Comma-separated TCGdex language codes, or `all` to enable every supported TCGdex language. Empty or invalid values safely fall back to `en,de`. Extra languages increase sync time, API calls, and database size. | `en,de`                   |
@@ -328,7 +326,7 @@ Python service in `backend/`.
 | Backend    | Python 3.11, FastAPI, SQLAlchemy, APScheduler, Pydantic |
 | Database   | PostgreSQL 18                                           |
 | Card Data  | [TCGdex](https://tcgdex.dev/)                           |
-| AI Scanner | Google Gemini 2.5 Flash                                 |
+| Optional External Scanner | Google Gemini 2.5 Flash, only after explicit opt-in |
 | Deploy     | Docker + Docker Compose                                 |
 
 ---
@@ -376,15 +374,15 @@ display-only when USD is selected.
 | Avg 30 Days | `avg30` / `avg30-holo` | Average over the last 30 days; stable, slower to react.                                                                                 |
 | Low         | `low` / `low-holo`     | Lowest Cardmarket price; useful as a conservative value, often below realistic collection value.                                        |
 
-For holo and reverse-holo collection items, PokéCollector uses the matching `*-holo` field when available. If TCGdex
-reports a holo price as `0` or missing, PokéCollector treats it as unavailable and falls back to the selected non-holo
+For holo and reverse-holo collection items, John John's PC uses the matching `*-holo` field when available. If TCGdex
+reports a holo price as `0` or missing, John John's PC treats it as unavailable and falls back to the selected non-holo
 Cardmarket field, then to the Cardmarket average, instead of valuing the card at €0.
 
 ---
 
 ## 🔄 Updating
 
-PokéCollector has a built-in upgrade safety layer for existing installs: before startup migrations run on a new app
+John John's PC has a built-in upgrade safety layer for existing installs: before startup migrations run on a new app
 version, the backend creates an automatic SQL backup in `./backups` by default. Startup stops if that automatic backup
 fails, unless you explicitly disable the requirement with `PRE_UPGRADE_BACKUP_REQUIRED=false`.
 
@@ -393,11 +391,11 @@ database major-version upgrades.
 
 ### PostgreSQL 18 upgrade
 
-PokéCollector now uses PostgreSQL 18 for Docker installs. Existing Docker installs that still have a PostgreSQL 15 data
+John John's PC now uses PostgreSQL 18 for Docker installs. Existing Docker installs that still have a PostgreSQL 15 data
 volume must run the one-time upgrade script before recreating the database container with PostgreSQL 18. PostgreSQL
 cannot upgrade a major-version data directory just by changing the Docker image.
 
-You do not need to install every intermediate PokéCollector app version first. Upgrade from your current PostgreSQL 15
+You do not need to install every intermediate John John's PC app version first. Upgrade from your current PostgreSQL 15
 install directly to this release: the script handles the database engine major-version upgrade, then the backend applies
 the app's cumulative startup migrations. Older installs that predate the recorded app-version setting are still treated
 as existing installs and backed up before those app migrations run.
@@ -436,7 +434,7 @@ PostgreSQL upgrade has completed.
 
 ### App updates
 
-PokéCollector creates an automatic SQL backup before startup migrations when an existing install starts on a new app
+John John's PC creates an automatic SQL backup before startup migrations when an existing install starts on a new app
 version. This safety backup is there in case something goes wrong during an update or a migration breaks after a version
 change.
 
@@ -470,14 +468,14 @@ the app, switch back to the previous app version, and restore the matching SQL b
 
 ## 🌱 Community Projects
 
-PokéCollector is not only about the app itself. It is also about the ways collectors organize and use their collections
+John John's PC is not only about the app itself. It is also about the ways collectors organize and use their collections
 in real life.
 
 Big shoutout to [f0rr3stfunk](https://github.com/f0rr3stfunk) for detailed testing, bug reports, feedback, and for
 sharing a very cool storage box divider project for Pokémon card sets.
 
 The dividers include set logos and space for NFC tags, so tapping a divider with a phone can open the matching set
-overview in PokéCollector.
+overview in John John's PC.
 
 Makerworld project:
 https://makerworld.com/de/models/2816777-high-dividers-with-set-logo-nfc-tag#profileId-3136169

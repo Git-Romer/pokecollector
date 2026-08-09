@@ -51,7 +51,7 @@ def _validate_money(value, field_name: str, *, required: bool = False) -> None:
 def _validate_product_payload(product: ProductPurchaseCreate | ProductPurchaseUpdate) -> None:
     data = product.model_dump(exclude_unset=True)
     if "purchase_price" in data:
-        _validate_money(data.get("purchase_price"), "purchase_price", required=True)
+        _validate_money(data.get("purchase_price"), "purchase_price")
     if "current_value" in data:
         _validate_money(data.get("current_value"), "current_value")
     if "sold_price" in data:
@@ -144,7 +144,7 @@ def _product_response(
     effective_value, value_source, totals = product_effective_value(product, product_cards, price_field, flat_ledger_entries)
     pnl = None
     pnl_percent = None
-    if effective_value is not None:
+    if effective_value is not None and product.purchase_price is not None:
         pnl = round(effective_value - product.purchase_price, 2)
         pnl_percent = round((pnl / product.purchase_price * 100) if product.purchase_price > 0 else 0, 2)
 
@@ -387,7 +387,7 @@ def get_products_summary(
     db: Session = Depends(get_db),
     price_field: str = Query(default="price_trend", description="Cardmarket price field for linked-card valuation"),
 ):
-    """Get product investment summary (broker-style P&L)."""
+    """Get sealed product performance using cost basis and current value."""
     price_field = normalize_price_field(price_field)
     products = db.query(ProductPurchase).filter(
         ProductPurchase.user_id == current_user.id,
@@ -399,21 +399,28 @@ def get_products_summary(
         for product in products
     ]
 
-    total_invested = sum(p.purchase_price for p in product_responses)
-    total_current_value = sum(
-        p.computed_current_value if p.computed_current_value is not None else p.purchase_price
-        for p in product_responses
-    )
-    total_pnl = total_current_value - total_invested
-    total_pnl_pct = (total_pnl / total_invested * 100) if total_invested > 0 else 0
+    def product_value(product):
+        return product.computed_current_value if product.computed_current_value is not None else (product.purchase_price or 0)
+
+    priced_products = [p for p in product_responses if p.purchase_price is not None]
+    missing_cost_basis_products = [p for p in product_responses if p.purchase_price is None]
+    total_invested = sum(p.purchase_price for p in priced_products)
+    total_current_value = sum(product_value(p) for p in product_responses)
+    total_value_with_cost_basis = sum(product_value(p) for p in priced_products)
+    total_pnl = total_value_with_cost_basis - total_invested
+    total_pnl_pct = (total_pnl / total_invested * 100) if total_invested > 0 else None
 
     by_type = {}
     for p in product_responses:
         product_type = p.product_type or "Other"
         if product_type not in by_type:
-            by_type[product_type] = {"invested": 0, "current": 0, "count": 0}
-        by_type[product_type]["invested"] += p.purchase_price
-        by_type[product_type]["current"] += p.computed_current_value if p.computed_current_value is not None else p.purchase_price
+            by_type[product_type] = {"invested": 0, "current": 0, "pnl_value": 0, "count": 0, "cost_basis_needed": 0}
+        by_type[product_type]["current"] += product_value(p)
+        if p.purchase_price is not None:
+            by_type[product_type]["invested"] += p.purchase_price
+            by_type[product_type]["pnl_value"] += product_value(p)
+        else:
+            by_type[product_type]["cost_basis_needed"] += 1
         by_type[product_type]["count"] += 1
 
     by_type_list = [
@@ -421,9 +428,10 @@ def get_products_summary(
             "type": product_type,
             "invested": round(values["invested"], 2),
             "current": round(values["current"], 2),
-            "pnl": round(values["current"] - values["invested"], 2),
-            "pnl_pct": round(((values["current"] - values["invested"]) / values["invested"] * 100) if values["invested"] > 0 else 0, 2),
+            "pnl": round(values["pnl_value"] - values["invested"], 2),
+            "pnl_pct": round(((values["pnl_value"] - values["invested"]) / values["invested"] * 100), 2) if values["invested"] > 0 else None,
             "count": values["count"],
+            "cost_basis_needed": values["cost_basis_needed"],
         }
         for product_type, values in by_type.items()
     ]
@@ -432,9 +440,13 @@ def get_products_summary(
     for p in product_responses:
         key = p.purchase_date.strftime("%Y-%m") if p.purchase_date else "Unknown"
         if key not in monthly:
-            monthly[key] = {"invested": 0, "current": 0, "count": 0}
-        monthly[key]["invested"] += p.purchase_price
-        monthly[key]["current"] += p.computed_current_value if p.computed_current_value is not None else p.purchase_price
+            monthly[key] = {"invested": 0, "current": 0, "pnl_value": 0, "count": 0, "cost_basis_needed": 0}
+        monthly[key]["current"] += product_value(p)
+        if p.purchase_price is not None:
+            monthly[key]["invested"] += p.purchase_price
+            monthly[key]["pnl_value"] += product_value(p)
+        else:
+            monthly[key]["cost_basis_needed"] += 1
         monthly[key]["count"] += 1
 
     monthly_list = sorted([
@@ -442,8 +454,9 @@ def get_products_summary(
             "month": key,
             "invested": round(values["invested"], 2),
             "current": round(values["current"], 2),
-            "pnl": round(values["current"] - values["invested"], 2),
+            "pnl": round(values["pnl_value"] - values["invested"], 2),
             "count": values["count"],
+            "cost_basis_needed": values["cost_basis_needed"],
         }
         for key, values in monthly.items()
     ], key=lambda item: item["month"])
@@ -452,8 +465,9 @@ def get_products_summary(
         "total_invested": round(total_invested, 2),
         "total_current_value": round(total_current_value, 2),
         "total_pnl": round(total_pnl, 2),
-        "total_pnl_pct": round(total_pnl_pct, 2),
+        "total_pnl_pct": round(total_pnl_pct, 2) if total_pnl_pct is not None else None,
         "total_products": len(product_responses),
+        "cost_basis_needed": len(missing_cost_basis_products),
         "linked_live_value": round(sum(p.linked_live_value for p in product_responses), 2),
         "realized_gains": round(sum(p.realized_gains for p in product_responses), 2),
         "by_type": by_type_list,

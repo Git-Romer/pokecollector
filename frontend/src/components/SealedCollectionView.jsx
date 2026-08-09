@@ -4,17 +4,17 @@ import {ArchiveRestore, Box, CalendarDays, MapPin, Package, ShieldCheck, Trash2}
 import toast from 'react-hot-toast'
 
 import {deleteProduct, getApiErrorMessage, getProducts, getStorageLocations, updateProduct,} from '../api/client'
-import {ACQUISITION_SOURCES, REMOVAL_REASONS, SEALED_CONDITIONS} from '../utils/collectionMetadata'
+import {ACQUISITION_SOURCES, normalizeAcquisitionSourceForUi, REMOVAL_REASONS, SEALED_CONDITIONS} from '../utils/collectionMetadata'
 import Modal from './ui/Modal'
 
 const conditionLabel = value => SEALED_CONDITIONS.find(option => option.value === value)?.label || value
-const sourceLabel = value => ACQUISITION_SOURCES.find(option => option.value === value)?.label || value || 'Unknown'
+const sourceLabel = value => ACQUISITION_SOURCES.find(option => option.value === normalizeAcquisitionSourceForUi(value))?.label || 'Other'
 
 function ProductEditor({product, onClose, onAddPulledCards}) {
     const queryClient = useQueryClient()
     const [quantity, setQuantity] = useState(product.quantity || 1)
     const [sealedCondition, setSealedCondition] = useState(product.sealed_condition || 'factory_sealed')
-    const [acquisitionSource, setAcquisitionSource] = useState(product.acquisition_source || 'unknown')
+    const [acquisitionSource, setAcquisitionSource] = useState(normalizeAcquisitionSourceForUi(product.acquisition_source) || 'other')
     const [collectionIntent, setCollectionIntent] = useState(product.collection_intent || 'main_collection')
     const [locationId, setLocationId] = useState(String(product.storage_location_id || ''))
     const [notes, setNotes] = useState(product.notes || '')

@@ -3,6 +3,7 @@ import {useEffect, useMemo, useRef, useState} from 'react'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
 import {useNavigate} from 'react-router-dom'
 import {Bell, BellOff, ChevronDown, ChevronUp, Eye, EyeOff, Filter, RotateCcw, Search, SortAsc} from 'lucide-react'
+import {ProgressBar} from '@fluentui/react-components'
 import {getSets, markSetsSeen} from '../api/client'
 import {useSettings} from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
@@ -253,9 +254,11 @@ export default function Sets() {
                         <Bell size={18} className="text-brand-red flex-shrink-0"/>
                         <div className="min-w-0">
                             <p className="text-sm font-medium text-text-primary">
-                                {newSets.length} {t('sets.newSets')} {t('sets.newSetsDetected')}
+                                {newSets.length} new {newSets.length === 1 ? 'expansion' : 'expansions'} in the catalog
                             </p>
-                            <p className="text-xs text-text-secondary">{newSets.map(s => s.name).join(', ')}</p>
+                            <p className="text-xs text-text-secondary">
+                                Browse the catalog when you are ready; marking them seen clears this notice without changing your master-set progress.
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -280,10 +283,10 @@ export default function Sets() {
                 <div className="flex flex-wrap gap-3">
                     <div className="relative flex-1 min-w-0" style={{flexBasis: '160px'}}>
                         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted"/>
-                        <input type="text" placeholder={t('sets.filterSets')} value={search}
+                        <input type="text" aria-label={t('sets.filterSets')} placeholder={t('sets.filterSets')} value={search}
                                onChange={(e) => setSearch(e.target.value)} className="input pl-8 text-sm py-2"/>
                     </div>
-                    <select className="select w-full sm:w-48 text-sm py-2" value={series}
+                    <select aria-label={t('common.allSeries')} className="select w-full sm:w-48 text-sm py-2" value={series}
                             onChange={(e) => setSeries(e.target.value)}>
                         <option value="">{t('common.allSeries')}</option>
                         {allSeries.map(s => <option key={s} value={s}>{s}</option>)}
@@ -293,27 +296,27 @@ export default function Sets() {
                 <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
                     <div className="flex items-center gap-2">
                         <SortAsc size={14} className="text-text-muted flex-shrink-0"/>
-                        <select className="select text-sm py-1.5 flex-1 sm:w-40 sm:flex-initial" value={sortBy}
+                        <select aria-label="Sort expansions" className="select text-sm py-1.5 flex-1 sm:w-40 sm:flex-initial" value={sortBy}
                                 onChange={(e) => setSortBy(e.target.value)}>
                             <option value="release_date">{t('sets.sortReleaseDate')}</option>
                             <option value="name">{t('sets.sortName')}</option>
                             <option value="total">{t('sets.sortCardCount')}</option>
                             <option value="progress">{t('sets.sortProgress')}</option>
                         </select>
-                        <button onClick={toggleOrder}
+                        <button type="button" onClick={toggleOrder} aria-label={`Sort ${sortOrder === 'asc' ? 'ascending' : 'descending'}`}
                                 className="btn-ghost py-1.5 px-2 text-sm font-medium flex-shrink-0">
                             {sortOrder === 'asc' ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
                         </button>
                     </div>
 
-                    <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
+                    <div className="flex items-center gap-1 overflow-x-auto pb-0.5" role="group" aria-label="Filter by completion progress">
                         <Filter size={14} className="text-text-muted mr-1 flex-shrink-0"/>
                         {[
                             {value: 'all', label: t('sets.filterAll')},
                             {value: 'started', label: t('sets.filterStarted')},
                             {value: 'complete', label: t('sets.filterComplete')},
                         ].map(opt => (
-                            <button key={opt.value} onClick={() => setProgressFilter(opt.value)}
+                            <button key={opt.value} type="button" aria-pressed={progressFilter === opt.value} onClick={() => setProgressFilter(opt.value)}
                                     className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
                                         progressFilter === opt.value
                                             ? 'bg-brand-red text-white'
@@ -365,8 +368,9 @@ export default function Sets() {
                 const heroTotal = hero.total ?? 0
                 const heroPct = heroTotal > 0 ? Math.round((heroOwned / heroTotal) * 100) : 0
                 return (
-                    <div
-                        className="set-hero cursor-pointer mb-6 group"
+                    <button type="button"
+                        className="set-hero cursor-pointer mb-6 group w-full border-0 bg-transparent p-0 text-left"
+                        aria-label={`View ${hero.name} expansion details`}
                         onClick={() => navigate(`/all-cards/${hero.id}`)}
                     >
                         <div className="set-hero-glow"/>
@@ -381,11 +385,7 @@ export default function Sets() {
                                     <span
                                         className={`text-sm font-bold ${heroPct === 100 ? 'text-green' : 'text-text-primary'}`}>{heroPct}%</span>
                                 </div>
-                                <div className="hp-bar-track w-48 max-w-full">
-                                    <div
-                                        className={`hp-bar-fill ${heroPct >= 66 ? 'healthy' : heroPct >= 33 ? 'medium' : 'low'}`}
-                                        style={{width: `${heroPct}%`}}/>
-                                </div>
+                                <ProgressBar className="w-48 max-w-full" value={Math.min(1, Math.max(0, heroPct / 100))}/>
                             </div>
                             <div className="flex-shrink-0 w-36 h-28 flex items-center justify-center">
                                 {resolveSetImageUrl(hero, 'logo')
@@ -395,7 +395,7 @@ export default function Sets() {
                                 }
                             </div>
                         </div>
-                    </div>
+                    </button>
                 )
             })()}
 
@@ -419,16 +419,24 @@ export default function Sets() {
                         const owned = set.owned_count ?? 0
                         const total = set.total ?? 0
                         const pct = total > 0 ? Math.round((owned / total) * 100) : 0
-                        const hpClass = pct >= 66 ? 'healthy' : pct >= 33 ? 'medium' : 'low'
                         const isHidden = hiddenSetIdSet.has(String(set.id))
 
                         return (
                             <div
                                 key={set.id}
+                                role="link"
+                                tabIndex={0}
+                                aria-label={`View ${set.name} expansion details`}
                                 className={`bg-bg-card border rounded-2xl overflow-hidden cursor-pointer hover:border-brand-red/40 transition-all duration-200 hover:shadow-[0_4px_20px_rgba(0,0,0,0.4)] group relative ${
                                     isHidden ? 'border-border/70 opacity-60' : 'border-border'
                                 }`}
                                 onClick={() => navigate(`/all-cards/${set.id}`)}
+                                onKeyDown={(event) => {
+                                    if (event.key === 'Enter' || event.key === ' ') {
+                                        event.preventDefault()
+                                        navigate(`/all-cards/${set.id}`)
+                                    }
+                                }}
                             >
                                 {set.is_new && (
                                     <span
@@ -534,7 +542,6 @@ export default function Sets() {
                                     })()}
                                     {!set.release_date && <div className="mb-2.5"/>}
 
-                                    {/* HP-style progress bar */}
                                     <div className="flex items-center justify-between text-[10px] mb-1.5">
                                         <span className="text-text-muted">{owned}/{total}</span>
                                         <span
@@ -542,12 +549,7 @@ export default function Sets() {
                       {pct}%
                     </span>
                                     </div>
-                                    <div className="hp-bar-track">
-                                        <div
-                                            className={`hp-bar-fill ${owned > 0 ? hpClass : ''}`}
-                                            style={{width: `${Math.min(100, pct)}%`}}
-                                        />
-                                    </div>
+                                    <ProgressBar value={Math.min(1, Math.max(0, pct / 100))}/>
                                 </div>
                             </div>
                         )

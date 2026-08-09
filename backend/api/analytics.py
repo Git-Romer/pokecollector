@@ -366,8 +366,9 @@ def get_portfolio_summary(
     ).all()
     entries.extend({
         "intent": product.collection_intent or "main_collection",
-        "quantity": 1,
-        "unit_cost": product.purchase_price,
+        "quantity": product.quantity or 1,
+        "unit_cost": None,
+        "cost_basis": product.purchase_price,
         "market_value": product.current_value if product.current_value is not None else product.purchase_price,
         "sealed_product": True,
     } for product in products)

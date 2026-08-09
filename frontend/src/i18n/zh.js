@@ -697,7 +697,7 @@ const zh = {
         manualContributor: '贡献者',
         supporters: '支持者',
         sponsors: '支持',
-        sponsorMessage: '喜欢PokéCollector吗？所有收益都捐赠给动物保护组织。🐾',
+        sponsorMessage: '喜欢John John’s PC吗？所有收益都捐赠给动物保护组织。🐾',
         rescueDonationTotal: '已捐给动物救助组织',
         rescueDonationBatchHint: '支持者小费会稍后批量捐出',
         kofiHint: '在留言中提及你的名字或GitHub资料，例如"来自MaxMustermann的捐赠 - github.com/max"',

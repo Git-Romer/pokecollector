@@ -695,7 +695,7 @@ const nl = {
         manualContributor: 'Bijdrager',
         supporters: 'Supporters',
         sponsors: 'Steun ons',
-        sponsorMessage: 'Geniet je van PokéCollector? Alle inkomsten worden gedoneerd aan dierenhulporganisaties. 🐾',
+        sponsorMessage: 'Geniet je van John John’s PC? Alle inkomsten worden gedoneerd aan dierenhulporganisaties. 🐾',
         rescueDonationTotal: 'Tot nu toe gedoneerd aan dierenhulp',
         rescueDonationBatchHint: 'Tips van supporters worden later gebundeld naar dierenhulporganisaties gestuurd',
         kofiHint: 'Vermeld je naam of GitHub profiel in het bericht, bijv. "Tip van MaxMustermann - github.com/max"',

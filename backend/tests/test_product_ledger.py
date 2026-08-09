@@ -122,6 +122,24 @@ class ProductLedgerApiTests(unittest.TestCase):
         self.assertEqual(summary["total_current_value"], 0)
         self.assertEqual(summary["total_pnl"], -50)
 
+    def test_product_summary_keeps_missing_cost_basis_in_value_not_pnl(self):
+        self.add_product(purchase_price=50, current_value=80)
+        self.add_product(purchase_price=None, current_value=120)
+
+        summary = get_products_summary(current_user=self.user, db=self.db)
+
+        self.assertEqual(summary["total_invested"], 50)
+        self.assertEqual(summary["total_current_value"], 200)
+        self.assertEqual(summary["total_pnl"], 30)
+        self.assertEqual(summary["total_pnl_pct"], 60)
+        self.assertEqual(summary["cost_basis_needed"], 1)
+        self.assertEqual(summary["by_type"][0]["current"], 200)
+        self.assertEqual(summary["by_type"][0]["pnl"], 30)
+        self.assertEqual(summary["by_type"][0]["cost_basis_needed"], 1)
+        self.assertEqual(summary["monthly"][0]["current"], 200)
+        self.assertEqual(summary["monthly"][0]["pnl"], 30)
+        self.assertEqual(summary["monthly"][0]["cost_basis_needed"], 1)
+
     def test_link_rejects_more_than_unlinked_owned_quantity(self):
         product = self.add_product()
         item = self.add_collection_item(quantity=1)

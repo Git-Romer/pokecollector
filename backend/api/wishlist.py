@@ -19,7 +19,7 @@ def _add_wishlist_quantity(current: int | None, increment: int) -> int:
     current_quantity = max(int(current or WISHLIST_MIN_QUANTITY), WISHLIST_MIN_QUANTITY)
     next_quantity = current_quantity + increment
     if next_quantity > WISHLIST_MAX_QUANTITY:
-        raise HTTPException(status_code=400, detail="Wishlist quantity cannot exceed 99")
+        raise HTTPException(status_code=400, detail="Chase Cards quantity cannot exceed 99")
     return next_quantity
 
 
@@ -28,7 +28,7 @@ def get_wishlist(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Get all wishlist items."""
+    """Get all Chase Cards."""
     items = db.query(WishlistItem).join(Card, Card.id == WishlistItem.card_id).options(
         joinedload(WishlistItem.card).joinedload(Card.set_ref)
     ).filter(
@@ -44,7 +44,7 @@ def add_to_wishlist(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Add a card to the wishlist, incrementing quantity when it already exists."""
+    """Add a card to Chase Cards, incrementing quantity when it already exists."""
     ensure_card_exists(db, item.card_id)
 
     existing = db.query(WishlistItem).filter(
@@ -86,13 +86,13 @@ def update_wishlist_item(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Update quantity and price alerts for a wishlist item."""
+    """Update quantity, pursuit status, and price alerts for a Chase Card."""
     item = db.query(WishlistItem).filter(
         WishlistItem.id == item_id,
         WishlistItem.user_id == current_user.id,
     ).first()
     if not item:
-        raise HTTPException(status_code=404, detail="Wishlist item not found")
+        raise HTTPException(status_code=404, detail="Chase Card not found")
 
     update_data = update.model_dump(exclude_unset=True)
     if "quantity" in update_data:
@@ -115,14 +115,14 @@ def remove_from_wishlist(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Remove a card from the wishlist."""
+    """Remove a card from Chase Cards."""
     item = db.query(WishlistItem).filter(
         WishlistItem.id == item_id,
         WishlistItem.user_id == current_user.id,
     ).first()
     if not item:
-        raise HTTPException(status_code=404, detail="Wishlist item not found")
+        raise HTTPException(status_code=404, detail="Chase Card not found")
 
     db.delete(item)
     db.commit()
-    return {"message": "Removed from wishlist"}
+    return {"message": "Removed from Chase Cards"}

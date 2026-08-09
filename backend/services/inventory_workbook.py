@@ -307,8 +307,8 @@ def _plan_cards(db: Session, user_id: int, workbook, result, location_ops):
                 elif cost is None and source == "pulled":
                     cost = 4.49
                 grader = _optional_text(row.get("Grading Company"))
-                if protection == "psa_slab" and not grader:
-                    grader = "PSA"
+                if protection in {"psa_slab", "tag_slab"} and not grader:
+                    grader = "TAG" if protection == "tag_slab" else "PSA"
 
                 record = _find_owned_record(db, CollectionItem, user_id, uid)
                 variant = normalize_card_variant(_text(row.get("Variant"), "Normal"))
@@ -419,8 +419,6 @@ def _plan_products(db: Session, user_id: int, workbook, result, location_ops):
                 "status": status,
                 "removal_reason": removal_reason,
             }
-            if values["purchase_price"] is None:
-                raise WorkbookValueError("Cost Basis is required for sealed products")
             before = _state(record, PRODUCT_FIELDS) if record else None
             comparable = dict(values)
             if location_op and location_op["record"] is None:

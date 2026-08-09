@@ -37,9 +37,9 @@ FastAPI app entry point: `backend/main.py`.
 | GET    | `/api/cards/{card_id}/price-history`   | Price history                               |
 | PUT    | `/api/cards/{card_id}/custom-image`    | Set temporary custom image URL              |
 | GET    | `/api/cards/{card_id}`                 | Card detail                                 |
-| POST   | `/api/cards/recognize`                 | Gemini-powered card recognition             |
+| POST   | `/api/cards/recognize`                 | Local-first card recognition                |
 
-### Collection, Sets, Wishlist, Binders
+### Collection, All Cards, Chase Cards, Binders
 
 | Method | Path                                                                  | Notes                                                                                            |
 |--------|-----------------------------------------------------------------------|--------------------------------------------------------------------------------------------------|
@@ -56,15 +56,15 @@ FastAPI app entry point: `backend/main.py`.
 | PUT    | `/api/inventory/locations/{location_id}`                              | Update/default/deactivate storage location                                                       |
 | GET    | `/api/inventory/history`                                              | Local inventory change history                                                                   |
 | POST   | `/api/inventory/import-xlsx`                                          | Review or confirm a stable-ID Excel workbook import                                              |
-| GET    | `/api/sets/`                                                          | List sets                                                                                        |
-| GET    | `/api/sets/new`                                                       | Newly detected sets                                                                              |
-| POST   | `/api/sets/mark-seen`                                                 | Mark new-set badges seen                                                                         |
-| GET    | `/api/sets/{set_id}`                                                  | Set detail                                                                                       |
-| GET    | `/api/sets/{set_id}/checklist`                                        | Set checklist                                                                                    |
-| GET    | `/api/wishlist/`                                                      | Wishlist                                                                                         |
-| POST   | `/api/wishlist/`                                                      | Add wishlist item                                                                                |
-| PUT    | `/api/wishlist/{item_id}`                                             | Update wishlist quantity and price alerts                                                        |
-| DELETE | `/api/wishlist/{item_id}`                                             | Remove wishlist item                                                                             |
+| GET    | `/api/sets/`                                                          | List expansions for All Cards                                                                    |
+| GET    | `/api/sets/new`                                                       | Newly detected expansions                                                                        |
+| POST   | `/api/sets/mark-seen`                                                 | Mark new-expansion badges seen                                                                   |
+| GET    | `/api/sets/{set_id}`                                                  | Expansion detail                                                                                 |
+| GET    | `/api/sets/{set_id}/checklist`                                        | Expansion checklist                                                                              |
+| GET    | `/api/wishlist/`                                                      | Chase Cards; legacy route name                                                                   |
+| POST   | `/api/wishlist/`                                                      | Add Chase Card; legacy route name                                                                |
+| PUT    | `/api/wishlist/{item_id}`                                             | Update Chase Card quantity and price alerts                                                      |
+| DELETE | `/api/wishlist/{item_id}`                                             | Remove Chase Card                                                                                |
 | GET    | `/api/binders/`                                                       | Binders                                                                                          |
 | POST   | `/api/binders/`                                                       | Create binder                                                                                    |
 | PUT    | `/api/binders/{binder_id}`                                            | Update binder                                                                                    |
@@ -77,22 +77,22 @@ FastAPI app entry point: `backend/main.py`.
 | PUT    | `/api/binders/{binder_id}/entries/{binder_card_id}`                   | Update binder entry quantity                                                                     |
 | GET    | `/api/binders/{binder_id}/entries/{binder_card_id}/equivalent-prints` | List equivalent prints for an entry                                                              |
 | PUT    | `/api/binders/{binder_id}/entries/{binder_card_id}/card`              | Switch an entry to an equivalent print                                                           |
-| POST   | `/api/binders/{binder_id}/entries/{binder_card_id}/wishlist`          | Move binder entry to wishlist                                                                    |
-| POST   | `/api/binders/{binder_id}/wishlist`                                   | Add wishlist card to binder                                                                      |
+| POST   | `/api/binders/{binder_id}/entries/{binder_card_id}/wishlist`          | Move binder entry to Chase Cards; legacy route name                                               |
+| POST   | `/api/binders/{binder_id}/wishlist`                                   | Add Chase Card to binder; legacy route name                                                      |
 | GET    | `/api/binders/{binder_id}/export-csv`                                 | Binder CSV export                                                                                |
 | POST   | `/api/binders/{binder_id}/import-csv`                                 | Binder CSV import                                                                                |
 | DELETE | `/api/binders/{binder_id}/entries/{binder_card_id}`                   | Remove binder entry                                                                              |
 | DELETE | `/api/binders/{binder_id}/cards/{card_id}`                            | Remove card from binder                                                                          |
 
-### Dashboard, Analytics, Social, Community
+### Collection Summary and Trends & Insights
 
 | Method | Path                                 | Notes                                             |
 |--------|--------------------------------------|---------------------------------------------------|
-| GET    | `/api/dashboard/`                    | Dashboard summary                                 |
+| GET    | `/api/dashboard/`                    | Collection summary; legacy route name             |
 | GET    | `/api/analytics/duplicates`          | Duplicate cards                                   |
 | GET    | `/api/analytics/top-movers`          | Price movers                                      |
 | GET    | `/api/analytics/rarity-stats`        | Rarity distribution                               |
-| GET    | `/api/analytics/investment-tracker`  | Portfolio history                                 |
+| GET    | `/api/analytics/investment-tracker`  | Collection portfolio history                      |
 | GET    | `/api/analytics/new-sets`            | Analytics new sets                                |
 | GET    | `/api/social/leaderboard`            | Multi-user leaderboard                            |
 | GET    | `/api/social/compare/{user_id}`      | Multi-user comparison                             |

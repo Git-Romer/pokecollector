@@ -8,17 +8,17 @@ const appSource = readFileSync(resolve(here, './App.jsx'), 'utf-8')
 
 describe('route contracts', () => {
     it('mounts Collection Overview at root and redirects the legacy dashboard there', () => {
-        expect(appSource).toContain('<Route index element={<Home/>}/>')
+        expect(appSource).toContain('<Route index element={lazyRoute(<Home/>)} />')
         expect(appSource).toContain('<Route path="dashboard" element={<Navigate replace to="/"/>}/>')
-        expect(appSource).toContain('<Route path="collection" element={<Collection/>}/>')
+        expect(appSource).toContain('<Route path="collection" element={lazyRoute(<Collection/>)} />')
     })
 
     it('keeps old Sets and Analytics paths as aliases for the current primary nav', () => {
-        expect(appSource).toContain('<Route path="all-cards" element={<Sets/>}/>')
+        expect(appSource).toContain('<Route path="all-cards" element={lazyRoute(<Sets/>)} />')
         expect(appSource).toContain('<Route path="sets" element={<Navigate replace to="/all-cards"/>}/>')
         expect(appSource).toContain('<Route path="sets/:setId" element={<SetRedirect/>}/>')
         expect(appSource).toContain('return <Navigate replace to={`/all-cards/${setId}`}/>')
-        expect(appSource).toContain('<Route path="trends" element={<Analytics/>}/>')
+        expect(appSource).toContain('<Route path="trends" element={lazyRoute(<Analytics/>)} />')
         expect(appSource).toContain('<Route path="analytics" element={<Navigate replace to="/trends"/>}/>')
     })
 

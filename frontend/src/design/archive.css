@@ -441,6 +441,58 @@ body {
     transition: 180ms ease;
 }
 
+.john-john-loader {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .8rem;
+    color: var(--archive-text);
+    font-size: .85rem;
+    font-weight: 700;
+    letter-spacing: .01em;
+}
+
+.john-john-loader-mark {
+    position: relative;
+    display: inline-grid;
+    place-items: center;
+    width: var(--john-john-loader-size, 2rem);
+    height: var(--john-john-loader-size, 2rem);
+    border-radius: 999px;
+    background: conic-gradient(from 0deg, var(--jj-red), var(--jj-orange), var(--jj-yellow), var(--jj-green), var(--jj-lightblue), var(--jj-darkblue), var(--jj-purple), var(--jj-red));
+    color: #000;
+    font-size: calc(var(--john-john-loader-size, 2rem) * .52);
+    font-weight: 900;
+    box-shadow: 0 0 28px color-mix(in srgb, var(--archive-signal) 28%, transparent);
+    animation: john-john-loader-pulse 1.8s ease-in-out infinite;
+}
+
+.john-john-loader-mark::after {
+    content: '';
+    position: absolute;
+    inset: -5px;
+    border: 1px solid color-mix(in srgb, var(--archive-signal) 45%, transparent);
+    border-radius: inherit;
+    border-top-color: var(--jj-yellow);
+    border-right-color: var(--jj-lightblue);
+    animation: archive-orbit 1.1s linear infinite;
+}
+
+.john-john-loader-label {
+    color: var(--archive-muted);
+}
+
+@keyframes john-john-loader-pulse {
+    0%, 100% {
+        transform: scale(1);
+        filter: saturate(1);
+    }
+    50% {
+        transform: scale(1.04);
+        filter: saturate(1.25);
+    }
+}
+
 .archive-loading {
     display: inline-flex;
     align-items: center;
@@ -490,6 +542,134 @@ body {
     gap: .5rem;
 }
 
+.collection-page-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.collection-page-tabs { order: 0; }
+.collection-hero { order: 1; }
+.collection-primary-tabs { order: 2; }
+.collection-primary-panel { order: 3; }
+.collection-secondary { order: 4; }
+
+.collection-framework {
+    border: 1px solid var(--archive-border);
+    border-radius: var(--r-panel);
+    background: color-mix(in srgb, var(--archive-surface) 78%, transparent);
+}
+
+.collecting-goal {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    border: 1px solid color-mix(in srgb, var(--archive-signal) 40%, var(--archive-border));
+    border-radius: var(--r-panel);
+    padding: 1rem 1.15rem;
+    background: linear-gradient(105deg, color-mix(in srgb, var(--jj-purple) 22%, transparent), transparent 45%), color-mix(in srgb, var(--archive-surface) 84%, transparent);
+}
+
+.collecting-goal-icon {
+    display: grid;
+    width: 2.5rem;
+    height: 2.5rem;
+    flex: none;
+    place-items: center;
+    border-radius: var(--r-control);
+    color: #000;
+    background: linear-gradient(135deg, var(--jj-yellow), var(--jj-orange), var(--jj-purple));
+}
+
+.collecting-goal-content { display: flex; flex: 1; align-items: center; justify-content: space-between; gap: 1rem; }
+.collecting-goal h2 { margin: .2rem 0 0; color: var(--archive-text); font-size: 1rem; font-weight: 850; }
+.collecting-goal p { margin: .3rem 0 0; color: var(--archive-muted); font-size: .78rem; }
+.collecting-goal-progress { min-width: 10rem; }
+.collecting-goal-progress span { display: block; margin-bottom: .35rem; color: var(--archive-muted); font-size: .68rem; }
+.collecting-goal-progress strong { color: var(--archive-text); }
+.collecting-goal-progress div { height: .45rem; overflow: hidden; border-radius: 999px; background: color-mix(in srgb, var(--archive-muted) 22%, transparent); }
+.collecting-goal-progress i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--jj-lightblue), var(--jj-purple), var(--jj-orange)); transition: width 360ms cubic-bezier(.16, 1, .3, 1); }
+.collecting-goal-actions { display: flex; flex: none; align-items: center; gap: .5rem; }
+.collecting-goal-form { display: grid; grid-template-columns: minmax(12rem, 2fr) repeat(2, minmax(5rem, .55fr)) minmax(9rem, 1fr); gap: .65rem; margin-top: .8rem; }
+.collecting-goal-form label { min-width: 0; color: var(--archive-muted); font-size: .68rem; font-weight: 800; }
+.collecting-goal-form label span { display: block; margin-bottom: .3rem; text-transform: uppercase; letter-spacing: .08em; }
+.collecting-goal-form em { font-style: normal; font-weight: 600; text-transform: none; letter-spacing: 0; }
+
+.collection-framework-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    min-height: 4.5rem;
+    padding: 1rem 1.15rem;
+    cursor: pointer;
+    list-style: none;
+}
+
+.collection-framework-summary::-webkit-details-marker {
+    display: none;
+}
+
+.collection-framework-title {
+    display: block;
+    margin-top: .25rem;
+    color: var(--archive-text);
+    font-size: .95rem;
+    font-weight: 800;
+}
+
+.collection-framework-hint {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: .4rem;
+    color: var(--archive-muted);
+    font-size: .72rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.collection-framework-hint svg {
+    transition: transform 180ms cubic-bezier(.16, 1, .3, 1);
+}
+
+.collection-framework[open] .collection-framework-hint svg {
+    transform: rotate(180deg);
+}
+
+.collection-framework-content {
+    padding: 0 1.15rem 1.15rem;
+    animation: archive-reveal 240ms cubic-bezier(.16, 1, .3, 1);
+}
+
+.collection-framework-card {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--archive-border) 85%, transparent);
+    border-radius: var(--r-surface);
+    padding: .75rem;
+    background: color-mix(in srgb, #000 30%, var(--archive-surface));
+    transition: border-color 180ms ease, transform 180ms cubic-bezier(.16, 1, .3, 1), background-color 180ms ease;
+}
+
+.collection-framework-card::before {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 3px;
+    background: var(--archive-signal);
+    content: '';
+}
+
+.collection-framework-card:nth-child(3n + 2)::before { background: var(--jj-lightblue); }
+.collection-framework-card:nth-child(3n + 3)::before { background: var(--jj-purple); }
+.collection-framework-card:nth-child(5n)::before { background: var(--jj-green); }
+.collection-framework-card:nth-child(7n)::before { background: var(--jj-yellow); }
+
+.collection-framework-card:hover {
+    border-color: color-mix(in srgb, var(--archive-signal) 48%, var(--archive-border));
+    transform: translateY(-2px);
+}
+
 .collection-ledger-tabs {
     display: inline-flex;
     width: fit-content;
@@ -533,6 +713,113 @@ body {
 
 .inventory-intake-modal {
     box-shadow: 0 28px 80px rgba(0, 0, 0, .45);
+}
+
+.intake-stepper {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: .4rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.intake-step {
+    display: flex;
+    align-items: center;
+    gap: .45rem;
+    min-width: 0;
+    color: var(--archive-muted);
+    font-size: .72rem;
+    font-weight: 800;
+}
+
+.intake-step-index {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 1.45rem;
+    height: 1.45rem;
+    border: 1px solid var(--archive-border);
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--archive-surface-raised) 74%, transparent);
+}
+
+.intake-step-current,
+.intake-step-complete {
+    color: var(--archive-text);
+}
+
+.intake-step-current .intake-step-index {
+    border-color: color-mix(in srgb, var(--archive-signal) 70%, var(--archive-border));
+    background: var(--archive-signal);
+    color: #000;
+}
+
+.intake-step-complete .intake-step-index {
+    border-color: color-mix(in srgb, var(--jj-green) 60%, var(--archive-border));
+    color: var(--jj-green);
+}
+
+.intake-review {
+    border: 1px solid var(--archive-border);
+    border-radius: var(--r-surface);
+    padding: 1rem;
+    background: linear-gradient(125deg, color-mix(in srgb, var(--archive-signal) 12%, transparent), transparent 46%), var(--archive-surface);
+}
+
+.intake-review h3 {
+    margin: .25rem 0 0;
+    color: var(--archive-text);
+    font-size: 1.15rem;
+}
+
+.intake-review > div > p {
+    margin: .35rem 0 0;
+    color: var(--archive-muted);
+    font-size: .78rem;
+}
+
+.intake-review-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .5rem;
+    margin-top: 1rem;
+}
+
+.intake-review-row {
+    display: flex;
+    flex-direction: column;
+    gap: .18rem;
+    min-width: 0;
+    border: 1px solid color-mix(in srgb, var(--archive-border) 82%, transparent);
+    border-radius: var(--r-control);
+    padding: .65rem .7rem;
+    background: color-mix(in srgb, #000 22%, var(--archive-surface-raised));
+}
+
+.intake-review-row span {
+    color: var(--archive-muted);
+    font-size: .65rem;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.intake-review-row strong {
+    overflow: hidden;
+    color: var(--archive-text);
+    font-size: .78rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.intake-review-note {
+    margin: .85rem 0 0;
+    color: var(--archive-muted);
+    font-size: .78rem;
+    font-style: italic;
 }
 
 .inventory-kind-grid {
@@ -1105,8 +1392,8 @@ body {
 
 /* Magnetic link - adapted from Originkit's Magnetic Hover Button.
    The sweep uses --archive-signal rather than the fixed #0000FF the original
-   shipped with, so it follows the light and dark themes. Once the sweep is
-   under the label the label sits on the fill, which is the same situation as
+   shipped with, so it follows the John John spectrum. Once the sweep is under
+   the label the label sits on the fill, which is the same situation as
    .john-john-mark, so it takes the same dark glyph colour rather than the
    --archive-text it rests in. */
 .magnetic-link {
@@ -1308,28 +1595,5 @@ body {
         max-width: 26rem;
         color: var(--archive-muted);
         font-size: .9rem;
-    }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    html {
-        scroll-behavior: auto;
-    }
-
-    .archive-shell *,
-    .archive-shell *::before,
-    .archive-shell *::after {
-        animation: none !important;
-        scroll-behavior: auto !important;
-        transition: none !important;
-    }
-
-    .archive-card-reveal,
-    .archive-route-frame,
-    .archive-loading-orbit,
-    .archive-shell .polaroid-card,
-    .archive-shell .polaroid-card:hover,
-    .archive-shell .polaroid-card:focus-visible {
-        transform: none !important;
     }
 }

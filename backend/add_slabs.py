@@ -64,7 +64,7 @@ for line in lines:
             user_id=1,
             quantity=qty,
             variant="Holo" if "Holo" in variant_str else "Normal",
-            condition="Mint",
+            condition="NM",
             grader=grader,
             grade=grade,
             storage_type="Slab"

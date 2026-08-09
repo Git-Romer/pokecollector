@@ -4,6 +4,7 @@ import {dirname, resolve} from 'node:path'
 import {describe, expect, it} from 'vitest'
 import en from './en'
 import de from './de'
+import {APP_LANGUAGES} from '../utils/appLanguages'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const context = readFileSync(resolve(here, '../contexts/SettingsContext.jsx'), 'utf-8')
@@ -54,6 +55,14 @@ describe('translation resolver', () => {
         expect(context).toMatch(/language: 'en'/)
         expect(context).not.toMatch(/language: 'de'/)
         expect(context).not.toMatch(/translations\.de/)
+    })
+
+
+
+    it('keeps the first-release product UI English-only', () => {
+        expect(APP_LANGUAGES).toEqual([{value: 'en', label: "John John's PC · English"}])
+        expect(context).toContain("const APP_UI_LANGUAGE = 'en'")
+        expect(context).toContain('language: APP_UI_LANGUAGE')
     })
 
     it('keeps destructive confirmations specific about the object', () => {

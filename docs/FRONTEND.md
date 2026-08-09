@@ -115,10 +115,8 @@ Provides:
 
 Notes:
 
-- Translation bundles are loaded from `frontend/src/i18n/` and wired in `SettingsContext`
-- UI languages include all supported TCGdex language codes, plus Swedish. Regional variants such as `es-mx`, `pt-br`,
-  `pt-pt`, `zh-tw`, and `zh-cn` are selectable from a compact dropdown in Settings.
-- Legacy stored `zh` settings are normalized in the frontend to `zh-cn` for display
+- John John's PC uses one English product voice in the first release.
+- TCGdex card-data languages remain configurable in Synchronization settings.
 - USD display uses exchange rates from the backend Frankfurter endpoint
 
 ### `useTheme`
@@ -145,8 +143,8 @@ Defined in `frontend/src/components/TabNav.jsx`.
 
 - Reusable horizontal tab bar
 - Marks a tab active if the current pathname equals or starts with the tab path
-- Used by pages such as `Dashboard`, `Collection`, `Wishlist`, `Binders`, `Analytics`, `Products`, `Leaderboard`, and
-  `Achievements`
+- Used by pages such as `Collection`, `Chase Cards`, `Binders`, `Trends & Insights`, `Products`, `Leaderboard`, and
+  `Achievements`. Some legacy route/module filenames remain for compatibility.
 
 ### `Layout` and `AppNav`
 
@@ -195,6 +193,9 @@ Defined in `frontend/src/components/TabNav.jsx`.
 
 ## Card UI
 
+Collection Lots can store one primary creator photo URL plus optional Instagram, Pinterest, and Reels links. These are per-owned-lot records, separate from catalog artwork and custom API-image fallbacks.
+
+
 ### `CardItem` / `CardModal`
 
 Defined in `frontend/src/components/CardItem.jsx`.
@@ -220,7 +221,7 @@ Current behavior:
 - Supports select mode for search results
 - Can select the current page or all matching search results
 - Bulk-add sends selected cards to `/api/collection/bulk-add` with default quantity `1`, condition `NM`, no variant, no
-  purchase price, and the card language
+  cost basis, and the card language
 - Bulk-add success toast reports added, updated, and failed counts
 
 ### `CardScanner`
@@ -230,6 +231,7 @@ Defined in `frontend/src/components/CardScanner.jsx`.
 - Upload/camera capture flow
 - Calls `/api/cards/recognize`
 - Displays recognized matches, including rarity
+- Stores normalized local scan history for 14 days via `/api/cards/scan-history`; scans do not imply ownership
 - Shows clearer scanner errors returned by the backend for Gemini rate limits, invalid keys, and temporary capacity
   outages
 - Lets the user add a matched card to the collection

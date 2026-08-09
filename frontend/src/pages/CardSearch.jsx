@@ -33,19 +33,23 @@ import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
 import {tcgdexLanguageBadgeClass, tcgdexLanguageLabel} from '../utils/tcgdexLanguages'
 import {invalidateTcgdexFilterLanguages} from '../utils/queryInvalidation'
 
-function TiltCardWrapper({children, className, onClick}) {
+function TiltCardWrapper({children, className, onClick, ariaLabel, pressed, hasPopup}) {
     const {ref, onMouseMove, onMouseEnter, onMouseLeave} = useTilt(12)
     return (
-        <div
+        <button
+            type="button"
             ref={ref}
-            className={className}
+            className={`${className} w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red focus-visible:ring-offset-2 focus-visible:ring-offset-bg-primary`}
+            aria-label={ariaLabel}
+            aria-pressed={pressed}
+            aria-haspopup={hasPopup ? 'dialog' : undefined}
             onClick={onClick}
             onMouseMove={onMouseMove}
             onMouseEnter={onMouseEnter}
             onMouseLeave={onMouseLeave}
         >
             {children}
-        </div>
+        </button>
     )
 }
 
@@ -57,9 +61,9 @@ const SUBTYPES = ['Basic', 'Stage1', 'Stage2', 'Supporter', 'Item', 'Stadium', '
 const RARITIES = ['Common', 'Uncommon', 'Rare', 'Rare Holo', 'Rare Ultra', 'Rare Secret', 'Illustration Rare', 'Special Illustration Rare', 'Hyper Rare', 'Double Rare', 'ACE SPEC Rare', 'Promo', 'Amazing Rare']
 
 const DISCOVERY_MODULES = [
-    {label: 'New Set Drops', copy: 'Explore sets and identify cards worth adding.'},
-    {label: 'Meta & Deckbuilding', copy: 'Browse inspiration signals for your next lot.'},
-    {label: 'Trending Cards', copy: 'Spot activity while adding lots to your collection.'},
+    {label: 'New Set Drops', copy: 'Identifying cards and exploring sets from live PokéBeach signals.'},
+    {label: 'Meta & Deckbuilding', copy: 'Browsing inspiration signals before you decide what to track or chase.'},
+    {label: 'Trending Cards', copy: 'Adding lots with current collector context close at hand.'},
 ]
 
 function encodeDiscoveryTopic(value) {
@@ -211,7 +215,7 @@ export default function CardSearch() {
         queryFn: () => getCustomCards().then(r => r.data),
     })
 
-    const {data: pokebeachNews} = useQuery({
+    const {data: pokebeachNews, isFetching: pokebeachFetching, isError: pokebeachError} = useQuery({
         queryKey: ['pokebeach-news'],
         queryFn: () => getPokeBeachNews().then(response => response.data),
         staleTime: 6 * 60 * 60 * 1000,
@@ -261,6 +265,13 @@ export default function CardSearch() {
 
     const hasQuery = filters.name || filters.category || filters.type || filters.subtype || filters.rarity || filters.set_id || filters.artist || filters.hp_min || filters.hp_max || filters.series
     const discoveryTopic = getDiscoveryTopic(filters, searchInput)
+    const discoveryFeedLabel = pokebeachFetching
+        ? 'Checking PokéBeach…'
+        : pokebeachError
+            ? 'PokéBeach signal unavailable. Collection search still works.'
+            : pokebeachNews?.cached
+                ? (pokebeachNews?.items?.length ? 'Showing cached PokéBeach signal.' : 'PokéBeach signal unavailable right now.')
+                : 'Live PokéBeach signal.'
     const encodedDiscoveryTopic = encodeDiscoveryTopic(discoveryTopic || 'Pokemon')
     const bulbapediaAnimationUrl = discoveryTopic
         ? `https://bulbapedia.bulbagarden.net/wiki/Special:Search?search=${encodedDiscoveryTopic}+anime`
@@ -476,10 +487,10 @@ export default function CardSearch() {
     })
 
     return (
-        <div className="space-y-4 pb-2">
+        <div className="flex flex-col gap-4 pb-2">
 
             {/* ─── Header ───────────────────────────────────────────────── */}
-            <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
                 <div className="min-w-0">
                     <h1 className="text-5xl font-bold text-text-primary mag-heading uppercase leading-none mt-2">
                         <SplitText text={t('cardSearch.title')} delay={40}/></h1>
@@ -546,7 +557,7 @@ export default function CardSearch() {
                             placeholder={t('cardSearch.searchPlaceholder')}
                             value={searchInput}
                             onChange={(e) => setSearchInput(e.target.value)}
-                            className="input pl-9 pr-4"
+                            className="input w-full pl-9 pr-4"
                         />
                         {isCodeNumberSearch && (
                             <div
@@ -593,7 +604,7 @@ export default function CardSearch() {
             </div>
 
             <section
-                className="card border-light-blue/20 bg-gradient-to-br from-light-blue/5 via-transparent to-purple/5"
+                className="order-10 card border-light-blue/20 bg-gradient-to-br from-light-blue/5 via-transparent to-purple/5"
                 aria-labelledby="card-search-discovery-heading"
             >
                 <div className="flex items-start justify-between gap-3 mb-4">
@@ -605,10 +616,13 @@ export default function CardSearch() {
                             Find your next cards
                         </h2>
                         <p className="text-xs text-text-secondary mt-1">
-                            Identify cards, add lots, explore sets, and browse inspiration signals from PokéBeach, Bulbapedia, and JustWatch.
+                            Identifying cards, adding lots, exploring sets, and browsing inspiration signals.
                         </p>
                         <p className="mt-2 text-[11px] text-text-muted">
-                            Catalog data comes from your local TCGdex sync. External sources are discovery references only; John John's PC remains the collection source of truth.
+                            Live discovery modules are sourced from PokéBeach. Bulbapedia and JustWatch are outbound references only; John John's PC remains the collection source of truth.
+                        </p>
+                        <p className="mt-2 inline-flex rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[11px] font-semibold text-light-blue">
+                            {discoveryFeedLabel}
                         </p>
                     </div>
                     <a
@@ -678,10 +692,10 @@ export default function CardSearch() {
                     >
                         <p className="text-xs uppercase tracking-[0.12em] font-bold text-light-blue">Streaming reference</p>
                         <h3 className="mt-2 text-sm font-bold text-text-primary">
-                            Currently available on JustWatch
+                            View current streaming availability on JustWatch
                         </h3>
                         <p className="mt-2 text-xs text-text-secondary">
-                            Check current U.S. streaming services for the related show or movie before adding media notes.
+                            Open JustWatch for the current U.S. service count and the related show or movie page before adding media notes.
                         </p>
                         <p className="mt-3 text-[11px] font-semibold text-light-blue">JustWatch ↗</p>
                     </a>
@@ -713,14 +727,7 @@ export default function CardSearch() {
                 </div>
             </Sheet>
 
-            {/* ─── Empty / loading / error states ──────────────────────── */}
-            {!hasQuery && !data?.items?.length && (
-                <div className="text-center py-20">
-                    <div className="w-24 h-24 pokeball-bg mx-auto mb-4 opacity-20"/>
-                    <p className="text-text-muted">{t('cardSearch.trySearch')}</p>
-                    <p className="text-xs text-text-muted mt-1">{t('cardSearch.trySearchHint')}</p>
-                </div>
-            )}
+            {/* ─── Loading / error states ─────────────────────────────── */}
 
             {isLoading && (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
@@ -840,6 +847,11 @@ export default function CardSearch() {
                                         key={card.id}
                                         className={`card-3d group relative ${selectMode && isSelected ? 'ring-2 ring-brand-red rounded-xl' : ''}`}
                                         onClick={() => (selectMode ? toggleSelected(card) : setSelectedCard(card))}
+                                        ariaLabel={selectMode
+                                            ? `${isSelected ? 'Deselect' : 'Select'} ${card.name}`
+                                            : `View details for ${card.name}`}
+                                        pressed={selectMode ? isSelected : undefined}
+                                        hasPopup={!selectMode}
                                     >
                                         <div
                                             className="aspect-[2.5/3.5] rounded-xl overflow-hidden bg-bg-elevated ring-1 ring-white/5 group-hover:ring-brand-red/40">

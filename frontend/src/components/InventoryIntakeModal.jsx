@@ -1,6 +1,6 @@
 import {useEffect, useMemo, useState} from 'react'
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
-import {Archive, Box, MapPin, PackageOpen, Plus, Search, Sparkles} from 'lucide-react'
+import {Archive, Box, Check, ChevronLeft, ChevronRight, MapPin, PackageOpen, Plus, Search, Sparkles} from 'lucide-react'
 import toast from 'react-hot-toast'
 
 import {
@@ -62,6 +62,35 @@ function IntakeTypeButton({active, icon: Icon, label, description, onClick}) {
         <small>{description}</small>
       </span>
         </button>
+    )
+}
+
+const INTAKE_STEPS = ['Identify', 'Document', 'Review']
+
+function IntakeStepper({step}) {
+    return (
+        <ol className="intake-stepper" aria-label="Collection lot steps">
+            {INTAKE_STEPS.map((label, index) => {
+                const stepNumber = index + 1
+                const isCurrent = stepNumber === step
+                const isComplete = stepNumber < step
+                return (
+                    <li key={label} className={`intake-step ${isCurrent ? 'intake-step-current' : ''} ${isComplete ? 'intake-step-complete' : ''}`} aria-current={isCurrent ? 'step' : undefined}>
+                        <span className="intake-step-index">{isComplete ? <Check size={13}/> : stepNumber}</span>
+                        <span>{label}</span>
+                    </li>
+                )
+            })}
+        </ol>
+    )
+}
+
+function ReviewRow({label, value, muted = false}) {
+    return (
+        <div className="intake-review-row">
+            <span>{label}</span>
+            <strong className={muted ? 'text-brand-red' : ''}>{value || 'Cost Basis Needed'}</strong>
+        </div>
     )
 }
 
@@ -252,13 +281,14 @@ export default function InventoryIntakeModal({
                                                  onSaved,
                                              }) {
     const queryClient = useQueryClient()
+    const [step, setStep] = useState(1)
     const [kind, setKind] = useState(initialKind)
     const [selectedCard, setSelectedCard] = useState(null)
     const [quantity, setQuantity] = useState(1)
     const [condition, setCondition] = useState('NM')
     const [variant, setVariant] = useState('Normal')
     const [source, setSource] = useState(
-        initialKind === 'bulk' ? 'bulk_before_tracking' : initialSource || (initialKind === 'sealed' ? 'purchased' : 'unknown'),
+        initialKind === 'bulk' ? 'bulk_before_tracking' : initialSource || (initialKind === 'sealed' ? 'purchased' : 'other'),
     )
     const [collectionIntent, setCollectionIntent] = useState('main_collection')
     const [protection, setProtection] = useState('raw')
@@ -277,24 +307,31 @@ export default function InventoryIntakeModal({
         if (!isOpen) return
         const nextSource = initialKind === 'bulk'
             ? 'bulk_before_tracking'
-            : initialSource || (initialKind === 'sealed' ? 'purchased' : 'unknown')
+            : initialSource || (initialKind === 'sealed' ? 'purchased' : 'other')
         setKind(initialKind)
         setSource(nextSource)
         setCostBasis(defaultPurchasePrice(nextSource) === null ? '' : String(defaultPurchasePrice(nextSource)))
+        setStep(1)
     }, [initialKind, initialSource, isOpen])
 
     const isSealed = kind === 'sealed'
     const isBulk = kind === 'bulk'
+    const {data: storageLocations = []} = useQuery({
+        queryKey: ['storage-locations'],
+        queryFn: () => getStorageLocations(),
+        enabled: isOpen,
+    })
     const canSubmit = isSealed
-        ? productName.trim() && locationId && purchaseDate && costBasis !== ''
+        ? productName.trim() && locationId && purchaseDate
         : selectedCard && locationId
 
     const reset = () => {
+        setStep(1)
         setSelectedCard(null)
         setQuantity(1)
         setCondition('NM')
         setVariant('Normal')
-        setSource(kind === 'bulk' ? 'bulk_before_tracking' : 'unknown')
+        setSource(kind === 'bulk' ? 'bulk_before_tracking' : 'other')
         setCollectionIntent('main_collection')
         setProtection('raw')
         setLocationId('')
@@ -324,7 +361,7 @@ export default function InventoryIntakeModal({
                     sealed_condition: sealedCondition,
                     acquisition_source: source || null,
                     collection_intent: collectionIntent,
-                    purchase_price: Number(costBasis),
+                    purchase_price: costBasis === '' ? null : Number(costBasis),
                     purchase_date: purchaseDate,
                     storage_location_id: Number(locationId),
                     notes: notes.trim() || null,
@@ -365,8 +402,9 @@ export default function InventoryIntakeModal({
 
     const changeKind = nextKind => {
         setKind(nextKind)
+        setStep(1)
         setSelectedCard(null)
-        setSource(nextKind === 'bulk' ? 'bulk_before_tracking' : nextKind === 'sealed' ? 'purchased' : 'unknown')
+        setSource(nextKind === 'bulk' ? 'bulk_before_tracking' : nextKind === 'sealed' ? 'purchased' : 'other')
         setCollectionIntent('main_collection')
         setCostBasis('')
         setProtection('raw')
@@ -374,7 +412,7 @@ export default function InventoryIntakeModal({
     }
 
     const sourceOptions = useMemo(
-        () => ACQUISITION_SOURCES.filter(option => option.value !== 'bulk_before_tracking'),
+        () => ACQUISITION_SOURCES.filter(option => !['bulk_before_tracking', 'unknown'].includes(option.value)),
         [],
     )
 
@@ -390,8 +428,26 @@ export default function InventoryIntakeModal({
         else if (nextProtection === 'psa_slab') setGrader('PSA')
     }
 
+    const canAdvanceFromIdentify = isSealed ? productName.trim() : Boolean(selectedCard)
+    const costBasisLabel = costBasis === '' ? 'Cost Basis Needed' : `$${Number(costBasis).toFixed(2)}`
+    const selectedItemLabel = isSealed
+        ? productName.trim() || 'Sealed product'
+        : selectedCard?.name || 'Exact card printing'
+    const sourceLabel = isBulk
+        ? 'Bulk / before tracking'
+        : sourceOptions.find(option => option.value === source)?.label || source
+    const protectionLabel = PROTECTION_TYPES.find(option => option.value === protection)?.label || protection
+    const storageLabel = storageLocations.find(location => String(location.id) === String(locationId))?.name
+        || 'Storage location'
+
+    const back = () => setStep(current => Math.max(1, current - 1))
+    const next = () => {
+        if (step === 1 && canAdvanceFromIdentify) setStep(2)
+        if (step === 2 && canSubmit) setStep(3)
+    }
+
     return (
-        <Modal isOpen={isOpen} onClose={close} title="Add to collection" size="xl" className="inventory-intake-modal">
+        <Modal isOpen={isOpen} onClose={close} title="Add collection lot" size="xl" placement="right" className="inventory-intake-modal">
             <form
                 className="space-y-5 p-5 sm:p-6"
                 onSubmit={event => {
@@ -399,6 +455,9 @@ export default function InventoryIntakeModal({
                     if (canSubmit) mutation.mutate()
                 }}
             >
+                <IntakeStepper step={step}/>
+
+                {step === 1 && <>
                 <div className="inventory-kind-grid" role="group" aria-label="Collection item type">
                     <IntakeTypeButton
                         active={kind === 'owned'}
@@ -410,7 +469,7 @@ export default function InventoryIntakeModal({
                     <IntakeTypeButton
                         active={kind === 'bulk'}
                         icon={Box}
-                        label="Bulk / legacy"
+                        label="Bulk / before tracking"
                         description="Tracked without per-card value"
                         onClick={() => changeKind('bulk')}
                     />
@@ -423,12 +482,17 @@ export default function InventoryIntakeModal({
                     />
                 </div>
 
+                <p className="rounded-xl border border-white/10 bg-black/10 p-3 text-xs text-text-secondary">
+                    A Collection Lot is one tracked ownership record: quantity, condition, acquisition source, protection, storage, cost basis, and Card History.
+                </p>
+
                 {!isSealed && <CardPicker selectedCard={selectedCard} onSelect={setSelectedCard}/>}
 
-                {isSealed ? (
+                {isSealed && (
                     <div className="grid gap-4 sm:grid-cols-2 archive-card-reveal">
                         <Field label="Product name" required>
                             <input
+                                autoFocus
                                 className="input w-full"
                                 value={productName}
                                 onChange={event => setProductName(event.target.value)}
@@ -442,6 +506,12 @@ export default function InventoryIntakeModal({
                                 {PRODUCT_TYPES.map(type => <option key={type}>{type}</option>)}
                             </select>
                         </Field>
+                    </div>
+                )}
+                </>}
+
+                {step === 2 && isSealed ? (
+                    <div className="grid gap-4 sm:grid-cols-2 archive-card-reveal">
                         <Field label="Quantity" required>
                             <input className="input w-full" type="number" min="1" max="999" value={quantity}
                                    onChange={event => setQuantity(event.target.value)}/>
@@ -472,12 +542,13 @@ export default function InventoryIntakeModal({
                             <input className="input w-full" type="date" value={purchaseDate}
                                    onChange={event => setPurchaseDate(event.target.value)}/>
                         </Field>
-                        <Field label="Cost basis" required>
+                        <Field label="Cost basis">
                             <input className="input w-full" type="number" min="0" step="0.01" value={costBasis}
-                                   onChange={event => setCostBasis(event.target.value)} placeholder="0.00"/>
+                                   onChange={event => setCostBasis(event.target.value)} placeholder="Cost Basis Needed"/>
+                            <p className="mt-1 text-[11px] text-text-muted">Leave blank until the receipt or allocation is known.</p>
                         </Field>
                     </div>
-                ) : selectedCard ? (
+                ) : step === 2 && selectedCard ? (
                     <div className="grid gap-4 sm:grid-cols-2 archive-card-reveal">
                         <Field label="Quantity" required>
                             <input className="input w-full" type="number" min="1" max="999" value={quantity}
@@ -551,7 +622,7 @@ export default function InventoryIntakeModal({
                     </div>
                 ) : null}
 
-                {(isSealed || selectedCard) && (
+                {step === 2 && (isSealed || selectedCard) && (
                     <div className="grid gap-4 sm:grid-cols-2">
                         <LocationSelect value={locationId} onChange={setLocationId}/>
                         <Field label="Collector note" hint="Optional context that stays with this exact record.">
@@ -562,13 +633,42 @@ export default function InventoryIntakeModal({
                     </div>
                 )}
 
+                {step === 3 && (
+                    <section className="intake-review archive-card-reveal" aria-label="Collection lot review">
+                        <div>
+                            <span className="archive-eyebrow">Ready to file</span>
+                            <h3>{selectedItemLabel}</h3>
+                            <p>Review the ownership record before John John files it locally.</p>
+                        </div>
+                        <div className="intake-review-grid">
+                            <ReviewRow label="Type" value={isSealed ? productType : isBulk ? 'Bulk / before tracking' : 'Individual card'}/>
+                            <ReviewRow label="Quantity" value={quantity}/>
+                            {!isSealed && <ReviewRow label="Condition" value={condition}/>} 
+                            {!isSealed && !isBulk && <ReviewRow label="Protection" value={protectionLabel}/>} 
+                            {!isBulk && <ReviewRow label="Collection" value={collectionIntent === 'main_collection' ? 'Main Collection' : collectionIntent === 'vault' ? 'Vault' : 'PC'}/>} 
+                            <ReviewRow label="Source" value={sourceLabel}/>
+                            <ReviewRow label="Cost basis" value={costBasisLabel} muted={costBasis === ''}/>
+                            <ReviewRow label="Storage" value={storageLabel}/>
+                        </div>
+                        {notes.trim() && <p className="intake-review-note">“{notes.trim()}”</p>}
+                    </section>
+                )}
+
                 <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
                     <button type="button" className="btn-ghost justify-center" onClick={close}>Cancel</button>
-                    <button type="submit" className="btn-primary justify-center"
-                            disabled={!canSubmit || mutation.isPending}>
-                        {mutation.isPending ? <span className="archive-loading-orbit"/> : <Plus size={16}/>}
-                        {mutation.isPending ? 'Filing…' : 'Add to collection'}
-                    </button>
+                    {step > 1 && <button type="button" className="btn-ghost justify-center" onClick={back}><ChevronLeft size={16}/> Back</button>}
+                    {step < 3 ? (
+                        <button type="button" className="btn-primary justify-center"
+                                disabled={step === 1 ? !canAdvanceFromIdentify : !canSubmit}
+                                onClick={next}>
+                            Continue <ChevronRight size={16}/>
+                        </button>
+                    ) : (
+                        <button type="submit" className="btn-primary justify-center" disabled={!canSubmit || mutation.isPending}>
+                            {mutation.isPending ? <span className="archive-loading-orbit"/> : <Plus size={16}/>}
+                            {mutation.isPending ? 'Filing…' : 'Add to collection'}
+                        </button>
+                    )}
                 </div>
             </form>
         </Modal>

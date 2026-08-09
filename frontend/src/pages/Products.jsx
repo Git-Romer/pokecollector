@@ -44,6 +44,7 @@ import TabNav from '../components/TabNav'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
 import {formatMoneyInputValue, isValidMoneyInputValue, parseMoneyInputValue} from '../utils/moneyInput'
+import {ACQUISITION_SOURCES, normalizeAcquisitionSourceForUi} from '../utils/collectionMetadata'
 
 const PRODUCT_TYPES = ['Booster Pack', 'Booster Box', 'Elite Trainer Box', 'Tin', 'Bundle', 'Collection Box', 'Blister', 'Other']
 
@@ -53,6 +54,9 @@ function ProductForm({initial = {}, onSubmit, onCancel, loading}) {
     const [form, setForm] = useState({
         product_name: initial.product_name || '',
         product_type: initial.product_type || 'Booster Pack',
+        quantity: initial.quantity || 1,
+        acquisition_source: normalizeAcquisitionSourceForUi(initial.acquisition_source) || 'purchased',
+        collection_intent: initial.collection_intent || 'main_collection',
         purchase_price: formatMoneyInputValue(initial.purchase_price, exchangeRate),
         current_value: formatMoneyInputValue(initial.current_value, exchangeRate),
         sold_price: formatMoneyInputValue(initial.sold_price, exchangeRate),
@@ -82,9 +86,11 @@ function ProductForm({initial = {}, onSubmit, onCancel, loading}) {
     const purchasePriceValid = isValidMoneyInputValue(form.purchase_price)
     const currentValueValid = form.current_value === '' || isValidMoneyInputValue(form.current_value)
     const soldPriceValid = form.sold_price === '' || isValidMoneyInputValue(form.sold_price)
+    const quantity = Number(form.quantity)
+    const quantityValid = Number.isInteger(quantity) && quantity >= 1 && quantity <= 999
     const canSubmit = form.product_name.trim()
-        && form.purchase_price !== ''
-        && purchasePriceValid
+        && quantityValid
+        && (form.purchase_price === '' || purchasePriceValid)
         && currentValueValid
         && soldPriceValid
         && exchangeRateReady
@@ -105,13 +111,36 @@ function ProductForm({initial = {}, onSubmit, onCancel, loading}) {
                 </select>
             </div>
             <div>
+                <label className="text-xs text-text-muted mb-1 block">{t('common.quantity')}</label>
+                <input type="number" min="1" max="999" step="1" value={form.quantity}
+                       onChange={(e) => set('quantity', e.target.value)} className="input"/>
+            </div>
+            <div>
+                <label className="text-xs text-text-muted mb-1 block">{t('products.acquisitionSource')}</label>
+                <select className="select" value={form.acquisition_source}
+                        onChange={(e) => set('acquisition_source', e.target.value)}>
+                    {ACQUISITION_SOURCES.filter(option => option.value !== 'bulk_before_tracking').map(option => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                </select>
+            </div>
+            <div>
+                <label className="text-xs text-text-muted mb-1 block">{t('products.collectionIntent')}</label>
+                <select className="select" value={form.collection_intent}
+                        onChange={(e) => set('collection_intent', e.target.value)}>
+                    <option value="main_collection">Main Collection</option>
+                    <option value="vault">Vault</option>
+                    <option value="pc">PC</option>
+                </select>
+            </div>
+            <div>
                 <label className="text-xs text-text-muted mb-1 block">{t('products.purchaseDate')}</label>
                 <input type="date" value={form.purchase_date} onChange={(e) => set('purchase_date', e.target.value)}
                        className="input"/>
             </div>
             <div>
                 <label className="text-xs text-text-muted mb-1 block">{t('products.purchasePrice')}</label>
-                <MoneyInput value={form.purchase_price} onChange={(e) => setMoney('purchase_price', e.target.value)}/>
+                <MoneyInput placeholder={t('card.purchasePricePlaceholder')} value={form.purchase_price} onChange={(e) => setMoney('purchase_price', e.target.value)}/>
             </div>
             <div>
                 <label className="text-xs text-text-muted mb-1 block">{t('products.currentValueLabel')}</label>
@@ -147,7 +176,10 @@ function ProductForm({initial = {}, onSubmit, onCancel, loading}) {
             <div className="col-span-2 flex gap-2">
                 <button onClick={() => onSubmit({
                     ...form,
-                    purchase_price: parseMoneyInputValue(form.purchase_price, exchangeRate),
+                    quantity: Number(form.quantity),
+                    acquisition_source: form.acquisition_source || null,
+                    collection_intent: form.collection_intent || 'main_collection',
+                    purchase_price: parseMoneyInputValue(form.purchase_price, exchangeRate, null),
                     current_value: parseMoneyInputValue(form.current_value, exchangeRate, null),
                     sold_price: parseMoneyInputValue(form.sold_price, exchangeRate, null),
                     sold_date: form.sold_date || null,
@@ -437,9 +469,9 @@ export default function Products() {
     const [showFilters, setShowFilters] = useState(false)
     const queryClient = useQueryClient()
     const ANALYTICS_TABS = [
-        {to: '/analytics', label: t('nav.analytics'), icon: BarChart3},
+        {to: '/trends', label: t('nav.analytics'), icon: BarChart3},
         {to: '/products', label: t('nav.products'), icon: ShoppingBag},
-        {to: '/dashboard', label: t('nav.dashboard'), icon: LayoutDashboard},
+        {to: '/collection', label: t('nav.collection'), icon: LayoutDashboard},
     ]
 
     const {data: products = [], isLoading} = useQuery({
@@ -538,11 +570,14 @@ export default function Products() {
             if (cutoff && p.purchase_date < cutoff) return false
             return true
         })
-        const totalInvested = periodProducts.reduce((s, p) => s + (p.purchase_price || 0), 0)
+        const productsWithCostBasis = periodProducts.filter(p => p.purchase_price != null)
+        const totalInvested = productsWithCostBasis.reduce((s, p) => s + p.purchase_price, 0)
         const totalValue = periodProducts.reduce((s, p) => s + getProductValue(p), 0)
-        const totalPnl = totalValue - totalInvested
-        const pnlPct = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0
-        return {totalInvested, totalValue, totalPnl, pnlPct, count: periodProducts.length}
+        const valueWithCostBasis = productsWithCostBasis.reduce((s, p) => s + getProductValue(p), 0)
+        const totalPnl = valueWithCostBasis - totalInvested
+        const pnlPct = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : null
+        const costBasisNeeded = periodProducts.length - productsWithCostBasis.length
+        return {totalInvested, totalValue, totalPnl, pnlPct, costBasisNeeded, count: periodProducts.length}
     }, [products, periodCutoff])
 
     const filteredAndSorted = useMemo(() => {
@@ -621,6 +656,9 @@ export default function Products() {
                         <p className="stat-label uppercase tracking-wide">{t('products.totalInvested')}</p>
                         <p className="stat-value">{formatPrice(periodStats.totalInvested)}</p>
                         <p className="text-xs text-text-muted">{periodStats.count} {t('products.items')}</p>
+                        {periodStats.costBasisNeeded > 0 && (
+                            <p className="text-xs text-yellow mt-1">{periodStats.costBasisNeeded} Cost Basis Needed</p>
+                        )}
                     </div>
                     <div className="stat-card">
                         <p className="stat-label uppercase tracking-wide">{t('products.currentValue')}</p>
@@ -635,9 +673,9 @@ export default function Products() {
                     <div className="stat-card">
                         <p className="stat-label uppercase tracking-wide">{t('products.return')}</p>
                         <div
-                            className={clsx('flex items-center gap-1 text-xl font-bold', periodStats.pnlPct >= 0 ? 'text-green' : 'text-brand-red')}>
-                            {periodStats.pnlPct >= 0 ? <TrendingUp size={20}/> : <TrendingDown size={20}/>}
-                            {periodStats.pnlPct >= 0 ? '+' : ''}{periodStats.pnlPct.toFixed(2)}%
+                            className={clsx('flex items-center gap-1 text-xl font-bold', periodStats.pnlPct == null || periodStats.pnlPct >= 0 ? 'text-green' : 'text-brand-red')}>
+                            {periodStats.pnlPct == null || periodStats.pnlPct >= 0 ? <TrendingUp size={20}/> : <TrendingDown size={20}/>}
+                            {periodStats.pnlPct == null ? '-' : `${periodStats.pnlPct >= 0 ? '+' : ''}${periodStats.pnlPct.toFixed(2)}%`}
                         </div>
                     </div>
                 </div>
@@ -794,7 +832,9 @@ export default function Products() {
                             </tr>
                             </thead>
                             <tbody>
-                            {filteredAndSorted.map((p) => (
+                            {filteredAndSorted.map((p) => {
+                                const hasCostBasis = p.purchase_price != null
+                                return (
                                 <Fragment key={p.id}>
                                     <tr className="border-b border-border/50 hover:bg-bg-elevated/50">
                                         {editingId === p.id ? (
@@ -817,21 +857,25 @@ export default function Products() {
                                                 </td>
                                                 <td className="px-4 py-3 text-text-secondary text-xs">{p.product_type || '-'}</td>
                                                 <td className="px-4 py-3 text-text-secondary text-xs">{p.purchase_date}</td>
-                                                <td className="px-4 py-3 text-right font-medium text-text-primary">{formatPrice(p.purchase_price)}</td>
+                                                <td className="px-4 py-3 text-right font-medium text-text-primary">
+                                                    {hasCostBasis ? formatPrice(p.purchase_price) : (
+                                                        <span className="text-xs bg-yellow/20 text-yellow px-1.5 py-0.5 rounded">Cost Basis Needed</span>
+                                                    )}
+                                                </td>
                                                 <td className="px-4 py-3 text-right text-text-primary">
                                                     {p.computed_current_value != null ? formatPrice(p.computed_current_value) : '-'}
                                                     {p.value_source === 'linked_cards' &&
                                                         <p className="text-[10px] text-text-muted">{t('products.dynamic')}</p>}
                                                 </td>
                                                 <td className="px-4 py-3 text-right font-medium">
-                                                    {p.pnl !== null ? (
+                                                    {hasCostBasis && p.pnl !== null ? (
                                                         <span className={p.pnl >= 0 ? 'text-green' : 'text-brand-red'}>
                               {p.pnl >= 0 ? '+' : ''}{formatPrice(p.pnl)}
                             </span>
                                                     ) : '-'}
                                                 </td>
                                                 <td className="px-4 py-3 text-right">
-                                                    {p.pnl_percent !== null ? (
+                                                    {hasCostBasis && p.pnl_percent !== null ? (
                                                         <span
                                                             className={clsx('font-medium text-xs', p.pnl_percent >= 0 ? 'text-green' : 'text-brand-red')}>
                               {p.pnl_percent >= 0 ? '+' : ''}{p.pnl_percent?.toFixed(1)}%
@@ -892,7 +936,8 @@ export default function Products() {
                                         </tr>
                                     )}
                                 </Fragment>
-                            ))}
+                                )
+                            })}
                             </tbody>
                         </table>
                     </div>
@@ -921,10 +966,10 @@ export default function Products() {
                                 <Fragment key={p.id}>
                                     <CardListItem
                                         name={p.product_name}
-                                        subtext={`${p.purchase_date} · ${formatPrice(p.purchase_price)} · ${t('products.valueLabel')}: ${p.computed_current_value != null ? formatPrice(p.computed_current_value) : '-'}`}
+                                        subtext={`${p.purchase_date} · ${p.purchase_price != null ? formatPrice(p.purchase_price) : 'Cost Basis Needed'} · ${t('products.valueLabel')}: ${p.computed_current_value != null ? formatPrice(p.computed_current_value) : '-'}`}
                                         badges={badges}
-                                        value={p.pnl !== null ? `${p.pnl >= 0 ? '+' : ''}${formatPrice(p.pnl)}` : '-'}
-                                        valueSecondary={p.pnl_percent !== null ? `${p.pnl_percent >= 0 ? '+' : ''}${p.pnl_percent?.toFixed(1)}%` : undefined}
+                                        value={p.purchase_price != null && p.pnl !== null ? `${p.pnl >= 0 ? '+' : ''}${formatPrice(p.pnl)}` : '-'}
+                                        valueSecondary={p.purchase_price != null && p.pnl_percent !== null ? `${p.pnl_percent >= 0 ? '+' : ''}${p.pnl_percent?.toFixed(1)}%` : undefined}
                                         rightAction={
                                             <div className="flex flex-col gap-1">
                                                 <button onClick={(e) => {
@@ -995,8 +1040,11 @@ export default function Products() {
                                 <p className="text-xs text-text-muted mb-1">{type.type}</p>
                                 <p className="text-sm font-medium text-text-primary">{type.count} {t('products.items')}</p>
                                 <p className="text-xs text-text-secondary">{t('products.invested')}: {formatPrice(type.invested)}</p>
+                                {type.cost_basis_needed > 0 && (
+                                    <p className="text-xs text-yellow mt-1">{type.cost_basis_needed} Cost Basis Needed</p>
+                                )}
                                 <p className={clsx('text-sm font-bold mt-1', type.pnl >= 0 ? 'text-green' : 'text-brand-red')}>
-                                    {type.pnl >= 0 ? '+' : ''}{formatPrice(type.pnl)} ({type.pnl_pct >= 0 ? '+' : ''}{type.pnl_pct.toFixed(1)}%)
+                                    {type.pnl >= 0 ? '+' : ''}{formatPrice(type.pnl)} ({type.pnl_pct == null ? '-' : `${type.pnl_pct >= 0 ? '+' : ''}${type.pnl_pct.toFixed(1)}%`})
                                 </p>
                             </div>
                         ))}

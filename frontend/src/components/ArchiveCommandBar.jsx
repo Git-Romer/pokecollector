@@ -31,8 +31,7 @@ export default function ArchiveCommandBar({open, onClose}) {
                                 onChange={(_, data) => setQuery(data.value)}
                                 size="large"
                             />
-                            <p className="text-sm text-text-muted">Find a card, continue a set, or open a saved
-                                wish.</p>
+                            <p className="text-sm text-text-muted">Find a card, continue an expansion, or open Chase Cards.</p>
                         </form>
                     </DialogContent>
                 </DialogBody>

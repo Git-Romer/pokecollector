@@ -697,7 +697,7 @@ const pt = {
         manualContributor: 'Contribuidor',
         supporters: 'Apoiantes',
         sponsors: 'Apoio',
-        sponsorMessage: 'Gosta do PokéCollector? Todos os ganhos são doados a organizações de resgate animal. 🐾',
+        sponsorMessage: 'Gosta do John John’s PC? Todos os ganhos são doados a organizações de resgate animal. 🐾',
         rescueDonationTotal: 'Doado até agora ao resgate animal',
         rescueDonationBatchHint: 'Gorjetas de apoiantes são enviadas a resgates mais tarde em lotes',
         kofiHint: 'Mencione o seu nome ou perfil GitHub na mensagem, ex. "Gorjeta de MaxMustermann - github.com/max"',

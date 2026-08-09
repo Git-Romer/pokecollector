@@ -1,15 +1,24 @@
 .shiny-text {
-    color: #b5b5b5a4;
+    color: #ffffff;
     background: linear-gradient(
             120deg,
-            rgba(255, 255, 255, 0) 40%,
-            rgba(247, 99, 12, 0.8) 50%,
-            rgba(255, 255, 255, 0) 60%
+            rgba(255, 255, 255, 0.88) 35%,
+            rgba(224, 60, 49, 0.95) 43%,
+            rgba(245, 130, 32, 0.95) 47%,
+            rgba(255, 205, 0, 0.95) 51%,
+            rgba(0, 163, 224, 0.95) 55%,
+            rgba(88, 44, 131, 0.95) 59%,
+            rgba(255, 255, 255, 0.88) 67%
     );
-    background-size: 200% 100%;
+    background-size: 220% 100%;
+    background-position: 100%;
     -webkit-background-clip: text;
     background-clip: text;
     display: inline-block;
+}
+
+.archive-wordmark:is(:hover, :focus-visible) .shiny-text,
+.shiny-text.continuous {
     animation: shine 3s linear infinite;
 }
 
@@ -24,4 +33,6 @@
 
 .shiny-text.disabled {
     animation: none;
+    background: none;
+    color: inherit;
 }
