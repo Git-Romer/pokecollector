@@ -1,4 +1,5 @@
 import datetime
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -314,6 +315,126 @@ class PokedexBackfillTests(unittest.TestCase):
         ))
         self.db.commit()
         self.assertEqual(missing_pokedex_metadata_count(self.db), 1)
+
+    def test_real_backfill_refreshes_recent_attempt_and_marks_complete(self):
+        card = Card(
+            id="base-25_en",
+            tcg_card_id="base-25",
+            name="Pikachu",
+            lang="en",
+            is_custom=False,
+            supertype="Pokemon",
+            last_metadata_enrichment_attempt_at=datetime.datetime.utcnow(),
+        )
+        self.db.add(card)
+        self.db.commit()
+        parsed = {
+            "id": card.id,
+            "tcg_card_id": card.tcg_card_id,
+            "name": card.name,
+            "rarity": "Common",
+            "types": ["Lightning"],
+            "supertype": "Pokemon",
+            "subtypes": ["Basic"],
+            "dex_ids": [25],
+            "cardmarket_products": [],
+            "lang": "en",
+            "is_custom": False,
+        }
+
+        with patch("services.card_metadata.pokemon_api.get_card", return_value={"id": "base-25"}), \
+             patch("services.card_metadata.pokemon_api.parse_card_for_db", return_value=parsed), \
+             patch(
+                 "services.card_metadata.apply_cross_language_fallbacks",
+                 side_effect=lambda _db, value: value,
+             ):
+            result = run_pokedex_metadata_backfill(
+                self.db,
+                batch_limit=10,
+                batch_delay_seconds=0,
+            )
+
+        self.assertTrue(result["completed"])
+        self.assertEqual(result["attempted"], 1)
+        self.assertEqual(result["deferred"], 0)
+        self.assertEqual(missing_pokedex_metadata_count(self.db), 0)
+        self.assertTrue(pokedex_metadata_backfill_completed(self.db))
+
+    def test_deferred_backfill_claim_does_not_mark_revision_complete(self):
+        self.db.add(Card(
+            id="base-25_en",
+            tcg_card_id="base-25",
+            name="Pikachu",
+            lang="en",
+            is_custom=False,
+            supertype="Pokemon",
+        ))
+        self.db.commit()
+        deferred = {
+            "attempted": 0,
+            "updated": 0,
+            "missing": 0,
+            "failed": 0,
+            "deferred": 1,
+            "ids": [],
+        }
+
+        with patch("services.pokedex_backfill.enrich_cards_metadata", return_value=deferred):
+            result = run_pokedex_metadata_backfill(
+                self.db,
+                batch_limit=10,
+                batch_delay_seconds=0,
+            )
+
+        self.assertFalse(result["completed"])
+        self.assertEqual(result["deferred"], 1)
+        self.assertFalse(pokedex_metadata_backfill_completed(self.db))
+
+    def test_manual_refresh_bypasses_retry_cooldown(self):
+        from scripts import backfill_pokedex_metadata
+
+        card = Card(
+            id="base-25_en",
+            tcg_card_id="base-25",
+            name="Pikachu",
+            lang="en",
+            is_custom=False,
+            rarity="Common",
+            types=["Lightning"],
+            supertype="Pokemon",
+            subtypes=["Basic"],
+            dex_ids=[25],
+            cardmarket_products=[],
+            last_metadata_enrichment_attempt_at=datetime.datetime.utcnow(),
+        )
+        self.db.add(card)
+        self.db.commit()
+        parsed = {
+            "id": card.id,
+            "tcg_card_id": card.tcg_card_id,
+            "name": card.name,
+            "rarity": card.rarity,
+            "types": card.types,
+            "supertype": card.supertype,
+            "subtypes": card.subtypes,
+            "dex_ids": card.dex_ids,
+            "cardmarket_products": card.cardmarket_products,
+            "lang": card.lang,
+            "is_custom": False,
+        }
+
+        with patch.object(backfill_pokedex_metadata, "SessionLocal", return_value=self.db), \
+             patch.object(sys, "argv", ["backfill_pokedex_metadata.py", "--refresh", "--limit", "1"]), \
+             patch("services.card_metadata.pokemon_api.get_card", return_value={"id": "base-25"}) as get_card, \
+             patch("services.card_metadata.pokemon_api.parse_card_for_db", return_value=parsed), \
+             patch(
+                 "services.card_metadata.apply_cross_language_fallbacks",
+                 side_effect=lambda _db, value: value,
+             ):
+            exit_code = backfill_pokedex_metadata.main()
+
+        self.assertEqual(exit_code, 0)
+        get_card.assert_called_once_with("base-25", lang="en")
 
 
 class PokedexImageCacheTests(unittest.TestCase):

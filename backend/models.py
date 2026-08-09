@@ -110,6 +110,7 @@ class Card(Base):
     price_source_lang = Column(String, nullable=True)  # Set when prices are copied from another TCGdex language
     last_price_sync_attempt_at = Column(DateTime, nullable=True)
     last_price_sync_success_at = Column(DateTime, nullable=True)
+    last_metadata_enrichment_attempt_at = Column(DateTime, nullable=True, index=True)
     # Card variants from TCGdex
     variants_normal = Column(Boolean)
     variants_reverse = Column(Boolean)
