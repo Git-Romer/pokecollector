@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Camera, Check, ImagePlus, Loader2, Trash2, Upload, X } from 'lucide-react'
+import { Camera, Check, HelpCircle, ImagePlus, Loader2, Trash2, Upload, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 import { enqueueScanJob } from '../api/client'
@@ -10,10 +10,37 @@ import ConfirmDialog from './ui/ConfirmDialog'
 import Modal from './ui/Modal'
 
 
+function PhotoPositionGuide({ title, description }) {
+  return (
+    <div className="space-y-3">
+      <div className="mx-auto w-36 rounded-2xl border-2 border-text-muted/50 bg-bg-surface p-3 shadow-inner">
+        <div className="relative mx-auto aspect-[2.5/3.5] w-20 rounded-md border-2 border-brand-yellow bg-bg-elevated">
+          <span className="absolute left-1 top-1 h-3 w-3 rounded-sm border-l-2 border-t-2 border-white" />
+          <span className="absolute right-1 top-1 h-3 w-3 rounded-sm border-r-2 border-t-2 border-white" />
+          <span className="absolute bottom-1 left-1 h-3 w-3 rounded-sm border-b-2 border-l-2 border-white" />
+          <span className="absolute bottom-1 right-1 h-3 w-3 rounded-sm border-b-2 border-r-2 border-white" />
+          <div className="absolute inset-x-2 top-3 h-8 rounded bg-white/10" />
+          <div className="absolute inset-x-2 bottom-3 space-y-1">
+            <div className="h-1 rounded bg-white/20" />
+            <div className="h-1 rounded bg-white/20" />
+          </div>
+        </div>
+      </div>
+      <div>
+        <p className="text-sm font-semibold text-text-primary">{title}</p>
+        <p className="mt-1 text-xs leading-relaxed text-text-secondary">{description}</p>
+      </div>
+    </div>
+  )
+}
+
+
 export default function UnifiedCardScanner({ isOpen, onClose }) {
   const [stagedFiles, setStagedFiles] = useState([])
   const [submitting, setSubmitting] = useState(false)
   const [confirmation, setConfirmation] = useState(null)
+  const [photoGuidePinned, setPhotoGuidePinned] = useState(false)
+  const [photoGuideHovered, setPhotoGuideHovered] = useState(false)
   const cameraRef = useRef()
   const galleryRef = useRef()
   const stagedFilesRef = useRef([])
@@ -27,6 +54,13 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
   useEffect(() => () => {
     stagedFilesRef.current.forEach(item => URL.revokeObjectURL(item.previewUrl))
   }, [])
+
+  useEffect(() => {
+    if (!isOpen) {
+      setPhotoGuidePinned(false)
+      setPhotoGuideHovered(false)
+    }
+  }, [isOpen])
 
   const appendFiles = fileList => {
     const incoming = Array.from(fileList || []).filter(file => {
@@ -63,6 +97,8 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
 
   const finishClose = () => {
     clearFiles()
+    setPhotoGuidePinned(false)
+    setPhotoGuideHovered(false)
     setConfirmation(null)
     onClose?.()
   }
@@ -212,15 +248,56 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
           )}
 
           <div className="grid gap-2 sm:grid-cols-2">
-            <button
-              type="button"
-              onClick={() => cameraRef.current?.click()}
-              disabled={stagedFiles.length >= 50}
-              className="btn-secondary flex items-center justify-center gap-2"
-            >
-              <Camera size={16} />
-              <span>{t('scanner.takePhoto')}</span>
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => cameraRef.current?.click()}
+                disabled={stagedFiles.length >= 50}
+                className="btn-secondary flex flex-1 items-center justify-center gap-2"
+              >
+                <Camera size={16} />
+                <span>{t('scanner.takePhoto')}</span>
+              </button>
+              <div
+                className="group relative z-20"
+                onMouseEnter={() => {
+                  if (window.matchMedia?.('(hover: hover) and (pointer: fine)').matches) {
+                    setPhotoGuideHovered(true)
+                  }
+                }}
+                onMouseLeave={() => setPhotoGuideHovered(false)}
+              >
+                <button
+                  type="button"
+                  onClick={event => {
+                    const helpButton = event.currentTarget
+                    setPhotoGuidePinned(current => {
+                      if (current) requestAnimationFrame(() => helpButton.blur())
+                      return !current
+                    })
+                  }}
+                  className="btn-ghost grid h-full min-h-10 w-10 place-items-center p-0"
+                  aria-label={t('scanner.photoGuide')}
+                  aria-describedby="scanner-photo-guide"
+                >
+                  <HelpCircle size={18} />
+                </button>
+                <div
+                  id="scanner-photo-guide"
+                  role="tooltip"
+                  className={`absolute bottom-12 right-0 w-72 rounded-2xl border border-border bg-bg-card p-4 shadow-xl transition-all group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100 ${
+                    photoGuidePinned || photoGuideHovered
+                      ? 'visible translate-y-0 opacity-100'
+                      : 'invisible translate-y-1 opacity-0'
+                  }`}
+                >
+                  <PhotoPositionGuide
+                    title={t('scanner.photoGuideTitle')}
+                    description={t('scanner.photoGuideDescription')}
+                  />
+                </div>
+              </div>
+            </div>
             <button
               type="button"
               onClick={() => galleryRef.current?.click()}
