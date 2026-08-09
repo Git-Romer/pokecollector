@@ -104,8 +104,8 @@ function JobDetail({ jobId, onObscuredChange }) {
   }
 
   const resolveMutation = useMutation({
-    mutationFn: item => resolveScanJobItem(jobId, item.id),
-    onSuccess: (_data, item) => {
+    mutationFn: ({ item, cardId = null }) => resolveScanJobItem(jobId, item.id, cardId),
+    onSuccess: (_data, { item }) => {
       const remaining = (job?.items || []).filter(candidate => candidate.id !== item.id)
       setConfirmation(null)
       invalidate()
@@ -135,7 +135,7 @@ function JobDetail({ jobId, onObscuredChange }) {
   const discardJob = () => setConfirmation({ type: 'discard' })
 
   const confirmDestructiveAction = () => {
-    if (confirmation?.type === 'dismiss') resolveMutation.mutate(confirmation.item)
+    if (confirmation?.type === 'dismiss') resolveMutation.mutate({ item: confirmation.item })
     else if (confirmation?.type === 'discard') deleteMutation.mutate()
   }
 
@@ -212,7 +212,10 @@ function JobDetail({ jobId, onObscuredChange }) {
           defaultLang={addSelection.item.recognized?.language || addSelection.match.lang || 'en'}
           onClose={() => setAddSelection(null)}
           onAdded={() => {
-            resolveMutation.mutate(addSelection.item)
+            resolveMutation.mutate({
+              item: addSelection.item,
+              cardId: addSelection.match.tcg_card_id,
+            })
             setAddSelection(null)
           }}
         />

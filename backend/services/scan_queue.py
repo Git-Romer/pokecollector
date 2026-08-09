@@ -4,15 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import datetime
-import io
 import logging
 import uuid
 from dataclasses import dataclass
 
-from fastapi import HTTPException, UploadFile
+from fastapi import HTTPException
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
-from starlette.datastructures import Headers
 
 from models import ScanJob, ScanJobItem, ScanQueueUserState, User
 from services.gemini_rate_limit import gemini_priority_scope
@@ -336,20 +334,41 @@ async def default_scan_processor(
     user_id: int,
     image_bytes: bytes,
     content_type: str,
+    *,
+    job_id: int | None = None,
+    item_id: int | None = None,
 ) -> dict:
     """Reuse the proven single-card scanner path with background priority."""
-    from api.recognize import recognize_card
+    from api.recognize import get_gemini_model, recognize_sanitized_card
+    from services.scan_trace import create_scan_trace
 
     user = db.get(User, user_id)
     if user is None or not user.is_active:
         raise PermanentScanError("The scan owner is no longer an active user.")
-    upload = UploadFile(
-        file=io.BytesIO(image_bytes),
+    trace = create_scan_trace(
+        db,
+        user_id,
+        mode="single",
+        job_id=job_id,
+        item_id=item_id,
         filename="sanitized-scan.jpg",
-        headers=Headers({"content-type": content_type}),
+        model=get_gemini_model(),
     )
-    with gemini_priority_scope("background"):
-        return await recognize_card(file=upload, db=db, current_user=user)
+    trace.set_image(image_bytes)
+    try:
+        with gemini_priority_scope("background"):
+            return await recognize_sanitized_card(
+                db,
+                user_id,
+                image_bytes,
+                content_type,
+                trace=trace,
+            )
+    except Exception as exc:
+        trace.record_error(str(getattr(exc, "detail", exc)))
+        raise
+    finally:
+        trace.save()
 
 
 async def default_composite_processor(
@@ -357,15 +376,20 @@ async def default_composite_processor(
     user_id: int,
     images: list[bytes],
     content_types: list[str],
+    *,
+    job_id: int | None = None,
+    item_ids: list[int] | tuple[int, ...] | None = None,
 ) -> list[dict | None]:
     """Recognize a small grid and flag unclear positions for individual work."""
     from api.recognize import (
         CompositeRecognitionError,
+        get_gemini_model,
         get_gemini_key,
         match_composite_card_info,
         recognize_composite_card_info,
     )
     from services.card_composite import build_composite
+    from services.scan_trace import create_scan_trace
 
     user = db.get(User, user_id)
     if user is None or not user.is_active:
@@ -374,34 +398,65 @@ async def default_composite_processor(
     if not api_key:
         raise PermanentScanError("No Gemini API key is configured for the scan owner.")
 
-    with gemini_priority_scope("background"):
-        try:
-            recognized_by_position = await recognize_composite_card_info(
-                api_key,
-                build_composite(images),
-                len(images),
-            )
-        except CompositeRecognitionError:
-            recognized_by_position = {}
+    trace_item_ids = list(item_ids or [])
+    traces = [
+        create_scan_trace(
+            db,
+            user_id,
+            mode="composite",
+            job_id=job_id,
+            item_id=(trace_item_ids[position] if position < len(trace_item_ids) else None),
+            filename=f"sanitized-scan-{position + 1}.jpg",
+            model=get_gemini_model(),
+        )
+        for position in range(len(images))
+    ]
+    for trace, image in zip(traces, images):
+        trace.set_image(image)
 
-        results: list[dict | None] = []
-        for position in range(len(images)):
-            card_info = recognized_by_position.get(position)
-            has_name = bool(str((card_info or {}).get("name") or "").strip())
-            if not has_name:
-                results.append(None)
-                continue
-            result = await match_composite_card_info(
-                db,
-                card_info,
-                photo_bytes=images[position],
-            )
-            results.append(
-                result
-                if bool(result.get("_identity_confident"))
-                else None
-            )
-        return results
+    try:
+        with gemini_priority_scope("background"):
+            try:
+                recognized_by_position = await recognize_composite_card_info(
+                    api_key,
+                    build_composite(images),
+                    len(images),
+                    traces=traces,
+                )
+            except CompositeRecognitionError as exc:
+                for trace in traces:
+                    trace.record_error(str(exc))
+                recognized_by_position = {}
+
+            results: list[dict | None] = []
+            for position in range(len(images)):
+                card_info = recognized_by_position.get(position)
+                has_name = bool(str((card_info or {}).get("name") or "").strip())
+                if not has_name:
+                    traces[position].record_decision("individual_fallback")
+                    results.append(None)
+                    continue
+                result = await match_composite_card_info(
+                    db,
+                    card_info,
+                    photo_bytes=images[position],
+                    trace=traces[position],
+                )
+                if not bool(result.get("_identity_confident")):
+                    traces[position].record_decision("individual_fallback")
+                results.append(
+                    result
+                    if bool(result.get("_identity_confident"))
+                    else None
+                )
+            return results
+    except Exception as exc:
+        for trace in traces:
+            trace.record_error(str(getattr(exc, "detail", exc)))
+        raise
+    finally:
+        for trace in traces:
+            trace.save()
 
 
 def _scan_error_from_http(error: HTTPException) -> RuntimeError:
@@ -434,11 +489,38 @@ async def process_claimed_scan_item(
             image_bytes = [resolve_scan_path(item.image_path).read_bytes() for item in items]
             user_id = items[0].user_id
             content_types = [item.content_type for item in items]
+            job_id = items[0].job_id
+            item_ids = [item.id for item in items]
             db.rollback()  # Release the row lock during upstream network work.
             if claim.composite:
-                results = await composite_processor(db, user_id, image_bytes, content_types)
+                if composite_processor is default_composite_processor:
+                    results = await composite_processor(
+                        db,
+                        user_id,
+                        image_bytes,
+                        content_types,
+                        job_id=job_id,
+                        item_ids=item_ids,
+                    )
+                else:
+                    results = await composite_processor(
+                        db, user_id, image_bytes, content_types
+                    )
             else:
-                results = [await processor(db, user_id, image_bytes[0], content_types[0])]
+                if processor is default_scan_processor:
+                    result = await processor(
+                        db,
+                        user_id,
+                        image_bytes[0],
+                        content_types[0],
+                        job_id=job_id,
+                        item_id=item_ids[0],
+                    )
+                else:
+                    result = await processor(
+                        db, user_id, image_bytes[0], content_types[0]
+                    )
+                results = [result]
         except HTTPException as exc:
             db.rollback()
             error = _scan_error_from_http(exc)

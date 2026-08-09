@@ -8,7 +8,7 @@ import {
   getSetting, setSetting, getTelegramStatus, saveSettings, setAuthMode,
   getUsers, createUser, updateUser, deleteUser, changePassword, changeAvatar, changeUsername,
   getContributors, getSupporters, getRescueDonations, getCustomMatches, downloadDebugLog,
-  getProfile, updateProfile,
+  getProfile, updateProfile, deleteScanDiagnostics,
 } from '../api/client'
 import api from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
@@ -317,6 +317,8 @@ export default function Settings() {
   const [geminiDirty, setGeminiDirty] = useState(false)
   const [backupOptions, setBackupOptions] = useState(['full'])
   const [debugModeEnabled, setDebugModeEnabled] = useState(false)
+  const [scanDiagnosticsSaving, setScanDiagnosticsSaving] = useState(false)
+  const [scanDiagnosticsDeleting, setScanDiagnosticsDeleting] = useState(false)
 
   // Recurring automatic full sync interval (days) and small price sync interval (minutes).
   const [fullSyncIntervalDays, setFullSyncIntervalDays] = useState('5')
@@ -602,6 +604,31 @@ export default function Settings() {
     }
   }
 
+  const handleScanDiagnosticsToggle = async (enabled) => {
+    setScanDiagnosticsSaving(true)
+    try {
+      await updateSettings({ scan_diagnostics_enabled: enabled ? 'true' : 'false' })
+      toast.success(t('settings.saved'))
+    } catch {
+      toast.error(t('settings.saveFailed'))
+    } finally {
+      setScanDiagnosticsSaving(false)
+    }
+  }
+
+  const handleDeleteScanDiagnostics = async () => {
+    if (!window.confirm(t('settings.scanDiagnosticsDeleteConfirm'))) return
+    setScanDiagnosticsDeleting(true)
+    try {
+      await deleteScanDiagnostics()
+      toast.success(t('settings.scanDiagnosticsDeleted'))
+    } catch {
+      toast.error(t('settings.scanDiagnosticsDeleteFailed'))
+    } finally {
+      setScanDiagnosticsDeleting(false)
+    }
+  }
+
   const handleAdminBooleanSettingToggle = async (key, enabled) => {
     try {
       await updateSettings({ [key]: enabled ? 'true' : 'false' })
@@ -652,6 +679,9 @@ export default function Settings() {
   const digitalSetsEnabled = settings.tcgdex_digital_sets_enabled === 'true'
   const crossLanguagePriceFallback = settings.cross_language_price_fallback !== 'false'
   const crossLanguageImageFallback = settings.cross_language_image_fallback !== 'false'
+  const scanDiagnosticsEnabled = settings.scan_diagnostics_enabled === 'true'
+  const scanDiagnosticsAvailable = settings.scan_diagnostics_available === 'true'
+  const scanDiagnosticsDeletionAvailable = settings.scan_diagnostics_deletion_available === 'true'
 
   const usernameMutation = useMutation({
     mutationFn: (username) => changeUsername(username),
@@ -940,7 +970,7 @@ export default function Settings() {
           <section className="space-y-1">
             <SectionHeader title={t('settings.sectionAI')} />
             <SettingsCard>
-              <SettingsRow label={t('settings.geminiApiKey')} description={t('settings.geminiApiKeyDesc')} last>
+              <SettingsRow label={t('settings.geminiApiKey')} description={t('settings.geminiApiKeyDesc')}>
                 <div className="flex items-center gap-2 w-full mt-2">
                   <input
                     type={geminiDirty ? "text" : "password"}
@@ -966,6 +996,33 @@ export default function Settings() {
                       {t('common.save')}
                     </button>
                   )}
+                </div>
+              </SettingsRow>
+              <SettingsRow
+                label={t('settings.scanDiagnostics')}
+                description={scanDiagnosticsAvailable
+                  ? t('settings.scanDiagnosticsDesc')
+                  : t('settings.scanDiagnosticsUnavailable')}
+                last
+              >
+                <div className="flex items-center gap-2">
+                  <Toggle
+                    value={scanDiagnosticsEnabled}
+                    label={t('settings.scanDiagnostics')}
+                    onChange={handleScanDiagnosticsToggle}
+                    disabled={!scanDiagnosticsAvailable || scanDiagnosticsSaving}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleDeleteScanDiagnostics}
+                    disabled={!scanDiagnosticsDeletionAvailable || scanDiagnosticsDeleting}
+                    className="btn-ghost flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-brand-red disabled:opacity-50"
+                  >
+                    <Trash2 size={13} />
+                    {scanDiagnosticsDeleting
+                      ? t('settings.scanDiagnosticsDeleting')
+                      : t('settings.scanDiagnosticsDelete')}
+                  </button>
                 </div>
               </SettingsRow>
             </SettingsCard>

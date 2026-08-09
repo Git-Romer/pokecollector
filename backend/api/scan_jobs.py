@@ -7,6 +7,7 @@ from typing import List
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from api.auth import get_current_user
@@ -26,6 +27,10 @@ from services.scan_storage import (
 )
 
 router = APIRouter()
+
+
+class ResolveScanItemRequest(BaseModel):
+    card_id: str | None = None
 
 
 def _get_own_job(db: Session, job_id: int, current_user: User) -> ScanJob:
@@ -185,12 +190,25 @@ def get_scan_job_item_image(
 def resolve_scan_job_item(
     job_id: int,
     item_id: int,
+    data: ResolveScanItemRequest | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     item = _get_own_item(db, job_id, item_id, current_user)
     if item.status not in {"done", "failed"}:
         raise HTTPException(status_code=409, detail="This scan is still being processed.")
+    card_id = str((data.card_id if data else "") or "").strip() or None
+    if card_id:
+        allowed_ids = {
+            str(match.get("tcg_card_id") or "")
+            for match in (item.matches or [])
+            if isinstance(match, dict)
+        }
+        if card_id not in allowed_ids:
+            raise HTTPException(status_code=422, detail="Confirmed card is not a scan candidate.")
+        from services.scan_trace import record_ground_truth
+
+        record_ground_truth(current_user.id, job_id, item_id, card_id)
     return _item_payload(resolve_scan_item(db, item))
 
 

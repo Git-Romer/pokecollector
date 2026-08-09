@@ -309,6 +309,7 @@ class PhashMatchingTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_phash_does_not_override_known_metadata_contradiction(self):
         photo = self._image(7)
+        trace = Mock()
         candidates = [
             {"id": "far", "number": "3", "image": "far.webp"},
             {"id": "near", "number": "2", "image": "near.webp"},
@@ -324,11 +325,13 @@ class PhashMatchingTests(unittest.IsolatedAsyncioTestCase):
                 object(),
                 {"name": "Pikachu", "number_local": "1"},
                 photo_bytes=photo,
+                trace=trace,
             )
 
         self.assertFalse(result["_identity_confident"])
         self.assertIsNone(result["_identity_decision"])
         self.assertEqual(result["matches"][0]["id"], "far")
+        trace.reject_phash.assert_called_once_with("metadata_contradiction")
 
     async def test_metadata_confidence_skips_phash_downloads(self):
         candidates = [

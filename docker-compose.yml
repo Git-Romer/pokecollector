@@ -53,6 +53,8 @@ services:
       PRE_UPGRADE_BACKUP_KEEP: ${PRE_UPGRADE_BACKUP_KEEP:-10}
       POKEDEX_IMAGE_CACHE_DIR: /app/data/pokedex-images
       SCAN_UPLOAD_DIR: /app/data/scan-uploads
+      SCAN_TRACE_DIR: ${SCAN_TRACE_DIR:-}
+      SCAN_TRACE_STORAGE_DIR: /app/data/scan-traces
     depends_on:
       postgres:
         condition: service_healthy
@@ -60,6 +62,7 @@ services:
       - ./backups:/app/backups
       - ./data/pokedex-images:/app/data/pokedex-images
       - ./data/scan-uploads:/app/data/scan-uploads
+      - ./data/scan-traces:/app/data/scan-traces
     ports:
       - "8000:8000"
 

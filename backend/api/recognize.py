@@ -19,6 +19,7 @@ from services.gemini_rate_limit import (
     record_gemini_success,
 )
 from services.scan_storage import MAX_FILE_BYTES, ScanUploadError, read_limited_upload, sanitize_image_bytes
+from services.scan_trace import ScanTrace, create_scan_trace
 import logging
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from sqlalchemy.orm import Session
@@ -635,6 +636,7 @@ def _phash_best_match(
     candidates: list[dict],
     photo_bytes: bytes | None,
     candidate_images: dict[str, bytes],
+    trace: ScanTrace | None = None,
 ) -> dict | None:
     """Return a clearly separated perceptual match, otherwise abstain."""
     photo_hash = _perceptual_hash(photo_bytes)
@@ -653,16 +655,38 @@ def _phash_best_match(
         scored.append((distance, candidate))
 
     if len(scored) < 2:
+        if trace:
+            trace.record_phash(
+                [
+                    (distance, str(candidate.get("tcg_card_id") or ""))
+                    for distance, candidate in scored
+                ],
+                accepted=None,
+                reason="insufficient_images",
+            )
         return None
     scored.sort(key=lambda pair: pair[0])
     best_distance, best_candidate = scored[0]
     runner_up_distance = scored[1][0]
-    if (
-        best_distance > PHASH_MAX_DISTANCE
-        or runner_up_distance - best_distance < PHASH_MIN_MARGIN
-    ):
+    too_far = best_distance > PHASH_MAX_DISTANCE
+    too_close = runner_up_distance - best_distance < PHASH_MIN_MARGIN
+    accepted = None if too_far or too_close else best_candidate
+    if trace:
+        trace.record_phash(
+            [
+                (distance, str(candidate.get("tcg_card_id") or ""))
+                for distance, candidate in scored
+            ],
+            accepted=(
+                str(accepted.get("tcg_card_id") or "") if accepted else None
+            ),
+            reason=(
+                "too_far" if too_far else "ambiguous_margin" if too_close else "accepted"
+            ),
+        )
+    if accepted is None:
         return None
-    return best_candidate
+    return accepted
 
 
 async def _fill_candidate_details(
@@ -734,7 +758,11 @@ async def _fill_candidate_details(
         await asyncio.gather(*(fetch(card) for card in missing))
 
 
-async def _search_and_rank_candidates(db: Session, card_info: dict) -> tuple[list[dict], int]:
+async def _search_and_rank_candidates(
+    db: Session,
+    card_info: dict,
+    trace: ScanTrace | None = None,
+) -> tuple[list[dict], int]:
     card_name = str(card_info.get("name") or "").strip()
     card_name_en = str(card_info.get("name_en") or card_name).strip() or card_name
     if not card_name:
@@ -764,6 +792,13 @@ async def _search_and_rank_candidates(db: Session, card_info: dict) -> tuple[lis
                     params={"name": search_name},
                 )
             cards = response.json() if response.status_code == 200 else []
+            if trace:
+                trace.record_tcgdex(
+                    language=search_language,
+                    query=search_name,
+                    status=response.status_code,
+                    count=len(cards) if isinstance(cards, list) else None,
+                )
             if not isinstance(cards, list):
                 continue
             selected_cards = select_search_candidates(
@@ -788,7 +823,15 @@ async def _search_and_rank_candidates(db: Session, card_info: dict) -> tuple[lis
                     "_lang": search_language,
                     "_number_extra": bool(card.get("_number_extra")),
                 })
-        except Exception:
+        except Exception as exc:
+            if trace:
+                trace.record_tcgdex(
+                    language=search_language,
+                    query=search_name,
+                    status=None,
+                    count=None,
+                    error=type(exc).__name__,
+                )
             continue
 
     candidate_set_ids = {
@@ -827,6 +870,13 @@ async def _search_and_rank_candidates(db: Session, card_info: dict) -> tuple[lis
         for card in deduped
         if _identity_signal(card_info.get("number_local"), card.get("number"), _numbers_match) == 0
     )
+    if trace:
+        trace.record_prefilter(
+            card_info.get("number_local"),
+            number_match_count,
+            len(deduped),
+        )
+        trace.record_candidates(deduped, lambda card: _candidate_rank_key(card_info, card))
     return deduped, number_match_count
 
 
@@ -839,10 +889,11 @@ async def match_card_info(
     mime_type: str | None = None,
     allow_visual_verification: bool = False,
     photo_bytes: bytes | None = None,
+    trace: ScanTrace | None = None,
 ) -> dict:
     """Shared deterministic matcher for both individual and composite scans."""
     card_info = normalize_recognized_card_info(card_info)
-    candidates, number_match_count = await _search_and_rank_candidates(db, card_info)
+    candidates, number_match_count = await _search_and_rank_candidates(db, card_info, trace)
     confident, decision = _metadata_decision(card_info, candidates)
 
     top_candidates = retain_ranked_candidates(candidates)
@@ -875,6 +926,7 @@ async def match_card_info(
                             top_candidates,
                             photo_bytes,
                             candidate_images,
+                            trace,
                         )
                         if (
                             winner is not None
@@ -884,6 +936,8 @@ async def match_card_info(
                             candidates.insert(0, winner)
                             confident = True
                             decision = "phash"
+                        elif winner is not None and trace:
+                            trace.reject_phash("metadata_contradiction")
                     except Exception as exc:
                         logger.warning("pHash matching failed (non-blocking): %s", exc)
 
@@ -929,8 +983,14 @@ async def match_card_info(
                         "parts"
                     ][0]["text"]
                     pick_match = re.search(r"(\d+)", response_text)
+                    selected_position = int(pick_match.group(1)) if pick_match else None
+                    if trace:
+                        trace.record_visual_verification(
+                            raw_response=response_text,
+                            selected=selected_position,
+                        )
                     if pick_match:
-                        pick = int(pick_match.group(1))
+                        pick = selected_position
                         if 1 <= pick <= len(top_candidates):
                             winner = top_candidates[pick - 1]
                             candidates.remove(winner)
@@ -944,6 +1004,13 @@ async def match_card_info(
         {key: value for key, value in card.items() if key != "_number_extra"}
         for card in retain_ranked_candidates(candidates)
     ]
+    if trace:
+        selected = (
+            str(candidates[0].get("tcg_card_id") or "")
+            if confident and candidates
+            else None
+        )
+        trace.record_decision(decision or "undecided", selected or None)
     return {
         "recognized": card_info,
         "matches": public_matches,
@@ -953,25 +1020,25 @@ async def match_card_info(
     }
 
 
-@router.post("/recognize")
-async def recognize_card(
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    api_key = get_gemini_key(db, user_id=current_user.id)
+async def recognize_sanitized_card(
+    db: Session,
+    user_id: int,
+    image_bytes: bytes,
+    content_type: str,
+    *,
+    trace: ScanTrace | None = None,
+) -> dict:
+    """Recognize one already-sanitized image for direct and queued scans."""
+    api_key = get_gemini_key(db, user_id=user_id)
     if not api_key:
+        if trace:
+            trace.record_error("No Gemini API key is configured.")
         raise HTTPException(
             status_code=400,
             detail="Kein Gemini API Key konfiguriert. Bitte in den Einstellungen eintragen.",
         )
-    try:
-        raw_image = await read_limited_upload(file, remaining_job_bytes=MAX_FILE_BYTES)
-        sanitized = sanitize_image_bytes(raw_image)
-    except ScanUploadError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
 
-    image_b64 = base64.b64encode(sanitized.data).decode()
+    image_b64 = base64.b64encode(image_bytes).decode()
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             response = await post_gemini_generate(
@@ -981,30 +1048,85 @@ async def recognize_card(
                 {"contents": [{"parts": [
                     {"text": RECOGNIZE_PROMPT},
                     {"inline_data": {
-                        "mime_type": sanitized.content_type,
+                        "mime_type": content_type,
                         "data": image_b64,
                     }},
                 ]}]},
             )
-        response_text = response.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+        payload = response.json()
+        response_text = payload["candidates"][0]["content"]["parts"][0]["text"].strip()
+        if trace:
+            trace.record_extraction(
+                prompt=RECOGNIZE_PROMPT,
+                raw_response=response_text,
+                usage=payload.get("usageMetadata"),
+            )
         json_match = re.search(r"\{.*\}", response_text, re.DOTALL)
         if not json_match:
             raise ValueError("No JSON found in Gemini response")
         card_info = normalize_recognized_card_info(json.loads(json_match.group()))
-    except HTTPException:
+        if trace:
+            trace.record_extraction(parsed=card_info)
+    except HTTPException as exc:
+        if trace:
+            trace.record_error(str(exc.detail))
         raise
     except Exception as exc:
+        if trace:
+            trace.record_error(f"Recognition parsing failed: {type(exc).__name__}")
         raise HTTPException(status_code=500, detail=f"Erkennung fehlgeschlagen: {exc}")
 
-    return await match_card_info(
+    try:
+        return await match_card_info(
+            db,
+            card_info,
+            api_key=api_key,
+            image_b64=image_b64,
+            mime_type=content_type,
+            allow_visual_verification=True,
+            photo_bytes=image_bytes,
+            trace=trace,
+        )
+    except HTTPException as exc:
+        if trace:
+            trace.record_error(str(exc.detail))
+        raise
+    except Exception as exc:
+        if trace:
+            trace.record_error(f"Candidate matching failed: {type(exc).__name__}")
+        raise
+
+
+@router.post("/recognize")
+async def recognize_card(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        raw_image = await read_limited_upload(file, remaining_job_bytes=MAX_FILE_BYTES)
+        sanitized = sanitize_image_bytes(raw_image)
+    except ScanUploadError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    trace = create_scan_trace(
         db,
-        card_info,
-        api_key=api_key,
-        image_b64=image_b64,
-        mime_type=sanitized.content_type,
-        allow_visual_verification=True,
-        photo_bytes=sanitized.data,
+        current_user.id,
+        mode="single",
+        filename="sanitized-upload.jpg",
+        model=get_gemini_model(),
     )
+    trace.set_image(sanitized.data)
+    try:
+        return await recognize_sanitized_card(
+            db,
+            current_user.id,
+            sanitized.data,
+            sanitized.content_type,
+            trace=trace,
+        )
+    finally:
+        trace.save()
 
 
 COMPOSITE_PROMPT = """This image contains {count} separate Pokemon Trading Card Game cards.
@@ -1040,6 +1162,8 @@ async def recognize_composite_card_info(
     api_key: str,
     image_bytes: bytes,
     count: int,
+    *,
+    traces: list[ScanTrace] | None = None,
 ) -> dict[int, dict]:
     """Return Gemini card information keyed by zero-based composite position."""
     image_b64 = base64.b64encode(image_bytes).decode()
@@ -1060,6 +1184,12 @@ async def recognize_composite_card_info(
             )
         payload = response.json()
         response_text = payload["candidates"][0]["content"]["parts"][0]["text"].strip()
+        for trace in traces or []:
+            trace.record_extraction(
+                prompt=COMPOSITE_PROMPT.format(count=count),
+                raw_response=response_text,
+                usage=payload.get("usageMetadata"),
+            )
         array_match = re.search(r"\[.*\]", response_text, re.DOTALL)
         if not array_match:
             raise CompositeRecognitionError("Gemini returned no card list for the composite.")
@@ -1082,7 +1212,9 @@ async def recognize_composite_card_info(
         except (TypeError, ValueError):
             continue
         if 0 <= position < count and position not in mapped:
-            mapped[position] = row
+            mapped[position] = normalize_recognized_card_info(row)
+            if traces and position < len(traces):
+                traces[position].record_extraction(parsed=mapped[position])
     return mapped
 
 
@@ -1091,6 +1223,7 @@ async def match_composite_card_info(
     card_info: dict,
     *,
     photo_bytes: bytes | None = None,
+    trace: ScanTrace | None = None,
 ) -> dict:
     """Use local pHash before an uncertain composite falls back individually."""
     return await match_card_info(
@@ -1098,4 +1231,5 @@ async def match_composite_card_info(
         card_info,
         allow_visual_verification=False,
         photo_bytes=photo_bytes,
+        trace=trace,
     )

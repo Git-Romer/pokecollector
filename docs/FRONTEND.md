@@ -12,6 +12,8 @@ Routes are defined in `frontend/src/App.jsx`.
 | `/` | `pages/HomeScreen.jsx` | Portal-style home screen |
 | `/dashboard` | `pages/Dashboard.jsx` | Portfolio summary |
 | `/search` | `pages/CardSearch.jsx` | Card search, scanner entry, and multi-select bulk add |
+| `/scans` | `pages/ScanQueue.jsx` | Persistent scan inbox |
+| `/scans/:jobId` | `pages/ScanQueue.jsx` | Review one queued scan job |
 | `/collection` | `pages/Collection.jsx` | User collection |
 | `/collection/user/:userId` | `pages/UserCollection.jsx` | Read-only view of another user's collection |
 | `/sets` | `pages/Sets.jsx` | Set browser |
@@ -159,6 +161,7 @@ Defined in `frontend/src/components/TabNav.jsx`.
   - app language dropdown and currency controls
   - TCGdex sync-language selection for admins
   - Telegram and Gemini keys
+  - per-user scanner diagnostics consent and explicit stored-data deletion
   - sync controls
   - auth mode toggle
   - backup and restore
@@ -186,16 +189,15 @@ See [`CARD_SYSTEM.md`](CARD_SYSTEM.md) for usage, design tokens, review guidance
 - Bulk-add sends selected cards to `/api/collection/bulk-add` with default quantity `1`, condition `NM`, no variant, no purchase price, and the card language
 - Bulk-add success toast reports added, updated, and failed counts
 
-### `CardScanner`
+### Scanner and review inbox
 
-Defined in `frontend/src/components/CardScanner.jsx`.
+`components/UnifiedCardScanner.jsx` is the capture-only entry point. It supports the native device camera and gallery uploads, stages one or more photos, allows per-photo individual recognition overrides, and includes an optional positioning guide beside **Take photo**. Every submission enqueues a persistent job and routes to the same review inbox, including a one-photo scan.
 
-- Upload/camera capture flow
-- Calls `/api/cards/recognize`
-- Displays recognized matches, including rarity
-- Shows clearer scanner errors returned by the backend for Gemini rate limits, invalid keys, and temporary capacity outages
-- Lets the user add a matched card to the collection
-- Supports language selection in the add modal through the shared TCGdex language selector
+`pages/ScanQueue.jsx` and `components/ScanReview.jsx` show job progress, retry countdowns/reasons, sanitized source photos, ranked candidates, failed items, individual retry, dismissal, and collection-add review. The navigation badge counts outstanding items. A confirmed candidate id is sent when resolving an item so opted-in diagnostics can be labelled with human-reviewed ground truth.
+
+Rate-limit countdowns distinguish daily quota from ordinary throttling. Photos remain available only while their item needs review and are deleted on confirmation/dismissal; jobs expire after 14 days.
+
+The AI/Card Scanner section in `pages/Settings.jsx` shows **Share scanner diagnostics** as an available control only when the server configured writable `SCAN_TRACE_DIR` storage. The toggle is off by default. Turning it off stops future tracing without deleting existing data; the adjacent confirmed delete button removes all stored diagnostics for the current user and remains available through the stable cleanup path when new collection is disabled.
 
 ## API Layer
 

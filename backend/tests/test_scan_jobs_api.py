@@ -175,6 +175,37 @@ class ScanJobsApiTests(unittest.TestCase):
         self.assertFalse(stored.exists())
         self.assertEqual(self.client.get("/api/cards/recognize/jobs").json()["jobs"], [])
 
+    def test_resolve_labels_diagnostics_only_with_a_returned_candidate(self):
+        created = self._enqueue()
+        item = self.db.query(ScanJobItem).filter(ScanJobItem.job_id == created["id"]).one()
+        item.status = "done"
+        item.matches = [{"id": "card-1_en", "tcg_card_id": "card-1"}]
+        self.db.commit()
+
+        with patch("services.scan_trace.record_ground_truth", return_value=1) as label:
+            response = self.client.post(
+                f"/api/cards/recognize/jobs/{created['id']}/items/{item.id}/resolve",
+                json={"card_id": "card-1"},
+            )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        label.assert_called_once_with(self.user.id, created["id"], item.id, "card-1")
+
+    def test_resolve_rejects_ground_truth_outside_the_returned_candidates(self):
+        created = self._enqueue()
+        item = self.db.query(ScanJobItem).filter(ScanJobItem.job_id == created["id"]).one()
+        item.status = "done"
+        item.matches = [{"id": "card-1_en", "tcg_card_id": "card-1"}]
+        self.db.commit()
+
+        response = self.client.post(
+            f"/api/cards/recognize/jobs/{created['id']}/items/{item.id}/resolve",
+            json={"card_id": "different-card"},
+        )
+
+        self.assertEqual(response.status_code, 422)
+        self.assertFalse(self.db.get(ScanJobItem, item.id).resolved)
+
     def test_failed_photo_is_retained_and_retry_resets_it(self):
         created = self._enqueue()
         item = self.db.query(ScanJobItem).filter(ScanJobItem.job_id == created["id"]).one()

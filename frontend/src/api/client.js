@@ -118,8 +118,10 @@ export const enqueueScanJob = (files = [], individualPositions = []) => {
 }
 export const getScanJobs = () => api.get('/cards/recognize/jobs').then(r => r.data)
 export const getScanJob = jobId => api.get(`/cards/recognize/jobs/${jobId}`).then(r => r.data)
-export const resolveScanJobItem = (jobId, itemId) =>
-  api.post(`/cards/recognize/jobs/${jobId}/items/${itemId}/resolve`).then(r => r.data)
+export const resolveScanJobItem = (jobId, itemId, cardId = null) =>
+  api.post(`/cards/recognize/jobs/${jobId}/items/${itemId}/resolve`, {
+    card_id: cardId,
+  }).then(r => r.data)
 export const retryScanJobItem = (jobId, itemId) =>
   api.post(`/cards/recognize/jobs/${jobId}/items/${itemId}/retry`).then(r => r.data)
 export const deleteScanJob = jobId =>
@@ -324,6 +326,7 @@ export const saveSettings = (data) => api.put('/settings/', data)
 export const getSetting = (key) => api.get(`/settings/${key}`).then(r => r.data)
 export const setSetting = (key, value) => api.post(`/settings/${key}`, { value }).then(r => r.data)
 export const getTelegramStatus = () => api.get('/settings/telegram_status').then(r => r.data)
+export const deleteScanDiagnostics = () => api.delete('/settings/scan-diagnostics').then(r => r.data)
 
 export const downloadDebugLog = () => {
   const token = localStorage.getItem('token')

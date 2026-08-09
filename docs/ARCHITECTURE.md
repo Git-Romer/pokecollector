@@ -33,6 +33,7 @@ pokecollector/
 │   │   ├── images.py
 │   │   ├── products.py
 │   │   ├── recognize.py
+│   │   ├── scan_jobs.py
 │   │   ├── settings.py
 │   │   ├── sets.py
 │   │   ├── social.py
@@ -43,6 +44,9 @@ pokecollector/
 │       ├── card_fallbacks.py
 │       ├── pokemon_api.py
 │       ├── pre_upgrade_backup.py
+│       ├── scan_queue.py
+│       ├── scan_storage.py
+│       ├── scan_trace.py
 │       ├── scheduler.py
 │       ├── sync_service.py
 │       ├── tcgdex_languages.py
@@ -108,6 +112,10 @@ Key ORM models in `backend/models.py`:
 - `UserSetting`
 - `CustomCardMatch`
 - `ImageCache`
+- `ScanJob`
+- `ScanJobItem`
+- `ScanQueueUserState`
+- `GeminiQuotaState`
 
 Notable current model rules:
 
@@ -134,6 +142,7 @@ The split is defined in `backend/api/settings.py`:
   - price display preferences
   - Telegram keys and alert preferences
   - Gemini key
+  - scanner diagnostics consent
   - trainer name
 - `ADMIN_ONLY_KEYS`
   - full sync interval
@@ -168,20 +177,21 @@ Current auth model:
 
 ## Scanner Flow
 
-Recognition is implemented in `backend/api/recognize.py` and surfaced in `frontend/src/components/CardScanner.jsx`.
+Recognition is implemented in `backend/api/recognize.py` and surfaced through `frontend/src/components/UnifiedCardScanner.jsx`, `frontend/src/pages/ScanQueue.jsx`, and the shared add/review components.
 
 Current flow:
 
-1. User uploads or captures a card image
-2. Gemini extracts card name, English name, printed number, set hint, type, HP, and language
-3. Search terms are broadened by stripping suffixes such as `EX`, `GX`, `V`, `VMAX`, `VSTAR`, `TAG TEAM`, `BREAK`, and `LV.X`
-4. TCGdex search results are collected in the detected language, with English fallback when needed
-5. Results are ranked by printed card number
-6. If number ranking is not decisive and there are enough candidates, Gemini visually compares the top candidates and picks the best match
+1. The user captures or uploads up to 50 photos. Uploads are size-limited, re-encoded, orientation-normalized, stripped of metadata, and stored as private JPEG files.
+2. Single photos run individually. Batch-eligible photos are grouped into two-to-four-card composites to reduce Gemini calls; uncertain composite positions fall back to their original individual photo.
+3. Gemini extracts name, split collector number, printed total, set code, regulation mark, type, HP, language, and artist. Unclear small text must be returned as `null`.
+4. TCGdex candidates are searched in the detected language with English fallback and ranked deterministically by local number, language, printed total, set code, regulation mark, artist, and HP. Missing fields are neutral; contradictions reduce rank.
+5. When metadata remains inconclusive, conservative pHash compares the original photo with a bounded candidate set. It accepts only a close, clearly separated winner with no metadata contradiction.
+6. Individual scans may use a second Gemini visual comparison if pHash abstains. Composite scans instead return to the individual queue path.
+7. Results are persisted in the `/scans` review inbox. Confirming or dismissing an item deletes its queued photo; unresolved jobs expire after 14 days.
 
-Transient Gemini `502` / `503` / `504` capacity errors are retried with backoff. Gemini `429` responses are surfaced as rate-limit errors, invalid API keys get a dedicated message, and remaining temporary Gemini outages return a clearer temporary-unavailable response instead of a generic backend `500`.
+`backend/services/scan_queue.py` provides fair, restart-safe background dispatch with leases. Recognition attempts are capped separately from transient quota failures. `backend/services/gemini_rate_limit.py` shares quota state by API-key fingerprint so concurrent users of the same key cannot bypass a provider delay; distinct keys remain independent. Structured daily-quota signals are separated from short-term limits, and provider `Retry-After` / `google.rpc.RetryInfo` delays take precedence over fallback backoff.
 
-The frontend then lets the user choose quantity, condition, variant, language, and purchase price before adding to the collection. Search results can also be selected in bulk and added with default values in one request.
+Optional diagnostics live in `backend/services/scan_trace.py`. The server must set `SCAN_TRACE_DIR`, and each user must separately enable **Share scanner diagnostics** (off by default). Only opted-in attempts store a sanitized photo plus structured extraction/search/ranking data. Turning the toggle off stops future traces without deleting old ones; the adjacent delete action removes that user's trace subtree. `SCAN_TRACE_STORAGE_DIR` remains stable when collection is disabled so explicit and account deletion can still find old data. Account deletion writes a revocation marker before cleanup so an in-flight attempt cannot recreate the deleted user's files. No Gemini key or authentication credential is recorded.
 
 ## Frontend State
 
