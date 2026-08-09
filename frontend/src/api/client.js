@@ -107,37 +107,6 @@ export const recognizeCard = (imageFile) => {
   }).then(r => r.data)
 }
 
-// Queue a batch for background recognition. Returns a job immediately —
-// recognition is paced against the Gemini rate limit server-side, so results
-// arrive via polling rather than in this response. `batched` photos are
-// composited into grids (cheaper); `singles` bypass batching entirely — the
-// override for hard cards.
-export const enqueueScanJob = ({ batched = [], singles = [] }) => {
-  const formData = new FormData()
-  batched.forEach(file => formData.append('files', file))
-  singles.forEach(file => formData.append('singles', file))
-  return api.post('/cards/recognize/batch', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  }).then(r => r.data)
-}
-
-export const getScanJobs = () => api.get('/cards/recognize/jobs').then(r => r.data)
-export const getScanJob = (jobId) => api.get(`/cards/recognize/jobs/${jobId}`).then(r => r.data)
-// selectedCardId records which candidate the user confirmed — ground truth for
-// the scan traces, so recognition accuracy can be measured over time.
-export const resolveScanJobItem = (jobId, itemId, selectedCardId) =>
-  api.post(`/cards/recognize/jobs/${jobId}/items/${itemId}/resolve`, null, {
-    params: selectedCardId ? { selected_card_id: selectedCardId } : undefined,
-  }).then(r => r.data)
-export const deleteScanJob = (jobId) => api.delete(`/cards/recognize/jobs/${jobId}`).then(r => r.data)
-
-// Fetched as a blob rather than used as an <img src> directly: the endpoint is
-// authenticated with a bearer token, which an <img> tag cannot send.
-// Caller owns the returned object URL and must revokeObjectURL it.
-export const fetchScanJobItemImage = (jobId, itemId) =>
-  api.get(`/cards/recognize/jobs/${jobId}/items/${itemId}/image`, { responseType: 'blob' })
-    .then(r => URL.createObjectURL(r.data))
-
 // Custom card migration
 export const getCustomMatches = () => api.get('/cards/custom/matches')
 export const migrateCustomCard = (matchId) => api.post(`/cards/custom/migrate/${matchId}`)
@@ -184,7 +153,7 @@ export const updateBinder = (id, data) => api.put(`/binders/${id}`, data)
 export const deleteBinder = (id) => api.delete(`/binders/${id}`)
 export const getBinderCards = (id, params = {}) => api.get(`/binders/${id}/cards`, { params })
 export const addCardToBinder = (binderId, cardId, requiredQuantity = 1) => api.post(`/binders/${binderId}/cards`, null, { params: { card_id: cardId, required_quantity: requiredQuantity } })
-export const addCollectionItemToBinder = (binderId, collectionItemId) => api.post(`/binders/${binderId}/collection-items?collection_item_id=${collectionItemId}`)
+export const addCollectionItemToBinder = (binderId, collectionItemId, quantity = 1) => api.post(`/binders/${binderId}/collection-items`, null, { params: { collection_item_id: collectionItemId, quantity } })
 export const addOwnedSetToBinder = (binderId, setId) => api.post(`/binders/${binderId}/add-owned-set?set_id=${encodeURIComponent(setId)}`).then(r => r.data)
 export const addOwnedSetToAutoBinder = (setId) => api.post(`/binders/add-owned-set?set_id=${encodeURIComponent(setId)}`).then(r => r.data)
 export const updateBinderEntry = (binderId, binderCardId, data) => api.put(`/binders/${binderId}/entries/${binderCardId}`, data)
@@ -194,6 +163,8 @@ export const applyBinderPrintOptimization = (binderId, selectedBinderCardIds = n
 export const switchBinderEntryCard = (binderId, binderCardId, cardId, collectionItemId = null) => api.put(`/binders/${binderId}/entries/${binderCardId}/card`, { card_id: cardId, collection_item_id: collectionItemId }).then(r => r.data)
 export const addBinderEntryToWishlist = (binderId, binderCardId, quantity = null) => api.post(`/binders/${binderId}/entries/${binderCardId}/wishlist`, null, { params: quantity ? { quantity } : {} }).then(r => r.data)
 export const addBinderCardsToWishlist = (binderId) => api.post(`/binders/${binderId}/wishlist`).then(r => r.data)
+export const convertWishlistBinderToCollection = (binderId) => api.post(`/binders/${binderId}/convert-to-collection`).then(r => r.data)
+export const convertCollectionBinderToWishlist = (binderId) => api.post(`/binders/${binderId}/convert-to-wishlist`).then(r => r.data)
 export const removeCardFromBinder = (binderId, cardId) => api.delete(`/binders/${binderId}/cards/${cardId}`)
 export const removeBinderEntry = (binderId, binderCardId) => api.delete(`/binders/${binderId}/entries/${binderCardId}`)
 export const importBinderCsv = (binderId, file) => {
@@ -244,10 +215,13 @@ export const reschedulePriceSync = (intervalMinutes) => api.post('/sync/reschedu
 export const getProducts = (params = {}) => api.get('/products/', { params })
 export const getProductTypes = () => api.get('/products/types')
 export const createProduct = (data) => api.post('/products/', data)
+export const createProductBatch = (data) => api.post('/products/batch', data)
 export const updateProduct = (id, data) => api.put(`/products/${id}`, data)
+export const bulkUpdateProductLifecycle = (data) => api.put('/products/lifecycle/bulk', data)
 export const deleteProduct = (id) => api.delete(`/products/${id}`)
 export const getProductsSummary = (params = {}) => api.get('/products/summary', { params })
 export const linkProductCard = (productId, data) => api.post(`/products/${productId}/cards`, data).then(r => r.data)
+export const linkProductCards = (productId, data) => api.post(`/products/${productId}/cards/bulk`, data).then(r => r.data)
 export const unlinkProductCard = (productId, productCardId) => api.delete(`/products/${productId}/cards/${productCardId}`).then(r => r.data)
 export const sellProductCard = (productId, productCardId, data) => api.post(`/products/${productId}/cards/${productCardId}/sell`, data).then(r => r.data)
 export const addProductLedgerEntry = (productId, data) => api.post(`/products/${productId}/ledger`, data).then(r => r.data)
@@ -255,6 +229,7 @@ export const addProductLedgerEntry = (productId, data) => api.post(`/products/${
 export const getTrades = () => api.get('/trades/').then(r => r.data)
 export const getTrade = (id) => api.get(`/trades/${id}`).then(r => r.data)
 export const createTrade = (data, params = {}) => api.post('/trades/', data, { params }).then(r => r.data)
+export const updateTrade = (id, data, params = {}) => api.put(`/trades/${id}`, data, { params }).then(r => r.data)
 export const valueTrade = (data, params = {}) => api.post('/trades/value', data, { params }).then(r => r.data)
 
 // Export

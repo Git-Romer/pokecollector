@@ -1,15 +1,21 @@
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import FileResponse, RedirectResponse
 import hashlib
 import httpx
 from pathlib import Path
+from typing import Callable
 from urllib.parse import urljoin
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import Card, ImageCache, Set, Setting
+from models import Card, ImageCache, ProductPurchase, Set, Setting
 from services.card_visibility import get_configured_sync_languages, get_pinned_set_language_pairs
 from services.image_url_security import validate_public_https_image_url
+from services.product_images import (
+    prepare_product_image_cache,
+    product_image_cache_key,
+    valid_product_image_token,
+)
 from services.tcgdex_languages import english_fallback_languages, strip_lang_suffix
 
 router = APIRouter()
@@ -19,6 +25,13 @@ _custom_image_client = httpx.Client(timeout=10, follow_redirects=False)
 _SET_FALLBACK_IMAGE = Path(__file__).resolve().parents[1] / "static" / "pokemon-logo.svg"
 _MAX_CUSTOM_IMAGE_BYTES = 8 * 1024 * 1024
 _MAX_CUSTOM_IMAGE_REDIRECTS = 3
+_ALLOWED_CUSTOM_IMAGE_TYPES = {
+    "image/avif",
+    "image/gif",
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+}
 
 
 def _setting_enabled(db: Session, key: str, default: bool = True) -> bool:
@@ -94,7 +107,13 @@ def _get_or_fetch(db: Session, key: str, url: str) -> tuple[bytes, str]:
     return resp.content, content_type
 
 
-def _get_or_fetch_custom_image(db: Session, key: str, url: str) -> tuple[bytes, str]:
+def _get_or_fetch_custom_image(
+    db: Session,
+    key: str,
+    url: str,
+    before_cache: Callable[[], bool] | None = None,
+    allowed_content_types: set[str] | None = None,
+) -> tuple[bytes, str]:
     cached = db.query(ImageCache).filter(ImageCache.image_key == key).first()
     if cached:
         return cached.data, cached.content_type
@@ -114,8 +133,12 @@ def _get_or_fetch_custom_image(db: Session, key: str, url: str) -> tuple[bytes, 
 
                 resp.raise_for_status()
                 content_type = resp.headers.get("content-type", "image/webp").split(";", 1)[0].strip().lower()
-                if not content_type.startswith("image/"):
-                    raise HTTPException(status_code=502, detail="Custom image URL did not return an image")
+                if allowed_content_types is None:
+                    content_type_allowed = content_type.startswith("image/")
+                else:
+                    content_type_allowed = content_type in allowed_content_types
+                if not content_type_allowed:
+                    raise HTTPException(status_code=502, detail="Custom image URL returned an unsupported image type")
 
                 content_length = resp.headers.get("content-length")
                 if content_length and int(content_length) > _MAX_CUSTOM_IMAGE_BYTES:
@@ -132,6 +155,8 @@ def _get_or_fetch_custom_image(db: Session, key: str, url: str) -> tuple[bytes, 
             raise HTTPException(status_code=502, detail="Failed to fetch custom image") from exc
 
         data = b"".join(chunks)
+        if before_cache is not None and not before_cache():
+            return data, content_type
         entry = ImageCache(image_key=key, data=data, content_type=content_type)
         db.add(entry)
         try:
@@ -220,4 +245,39 @@ def get_set_image(set_id: str, image_type: str, db: Session = Depends(get_db)):
         content=data,
         media_type=content_type,
         headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
+@router.get("/product/{product_id}")
+def get_product_image(
+    product_id: int,
+    token: str = Query(default="", max_length=128),
+    db: Session = Depends(get_db),
+):
+    """Proxy a manually supplied product image without exposing its source URL."""
+    product = db.query(ProductPurchase).filter(ProductPurchase.id == product_id).first()
+    if (
+        not product
+        or not product.image_url
+        or not valid_product_image_token(product.id, product.user_id, product.image_url, token)
+    ):
+        return _card_back_response()
+
+    try:
+        data, content_type = _get_or_fetch_custom_image(
+            db,
+            product_image_cache_key(product.image_url),
+            product.image_url,
+            before_cache=lambda: prepare_product_image_cache(db, product.image_url),
+            allowed_content_types=_ALLOWED_CUSTOM_IMAGE_TYPES,
+        )
+    except (HTTPException, ValueError):
+        return _card_back_response()
+    return Response(
+        content=data,
+        media_type=content_type,
+        headers={
+            "Cache-Control": "private, no-cache",
+            "X-Content-Type-Options": "nosniff",
+        },
     )

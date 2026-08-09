@@ -71,35 +71,6 @@ def run_price_sync():
         db.close()
 
 
-def run_scan_queue_maintenance():
-    """Resume any scan jobs left pending by a restart, then purge old ones.
-
-    Recognition runs in-process, so a backend restart mid-job leaves items
-    pending forever without this; the stored photos let the job pick up where
-    it stopped. The purge is what stops scan_job_items accumulating image
-    bytes the way image_cache does.
-    """
-    import asyncio
-
-    from database import SessionLocal
-    from services.scan_queue import drain_scan_queue, purge_old_scan_jobs
-
-    db = SessionLocal()
-    try:
-        removed = purge_old_scan_jobs(db)
-        if removed:
-            logger.info("Purged %s expired scan job(s)", removed)
-    except Exception:
-        logger.exception("Scan job purge failed")
-    finally:
-        db.close()
-
-    try:
-        asyncio.run(drain_scan_queue())
-    except Exception:
-        logger.exception("Scan queue resume failed")
-
-
 def run_pokedex_metadata_backfill():
     """One-time startup backfill for Pokédex mappings added to existing card rows."""
     from database import SessionLocal
@@ -200,17 +171,6 @@ def start_scheduler():
                 name="One-time Pokédex Metadata Backfill",
                 replace_existing=True,
             )
-
-        # Resume interrupted scan jobs and expire old ones. Runs shortly after
-        # startup (to pick up anything a restart interrupted), then hourly.
-        scheduler.add_job(
-            run_scan_queue_maintenance,
-            trigger=IntervalTrigger(hours=1),
-            id="scan_queue_maintenance_job",
-            name="Scan Queue Resume and Purge",
-            replace_existing=True,
-            next_run_time=now_utc + datetime.timedelta(seconds=45),
-        )
 
         scheduler.start()
         logger.info(

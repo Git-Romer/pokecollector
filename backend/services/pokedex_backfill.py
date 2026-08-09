@@ -96,7 +96,15 @@ def run_pokedex_metadata_backfill(
 ) -> dict:
     """Backfill Pokédex metadata once, recording a durable completion marker."""
     if pokedex_metadata_backfill_completed(db):
-        return {"skipped": True, "reason": "already_completed", "attempted": 0, "updated": 0, "missing": 0, "failed": 0}
+        return {
+            "skipped": True,
+            "reason": "already_completed",
+            "attempted": 0,
+            "updated": 0,
+            "missing": 0,
+            "failed": 0,
+            "deferred": 0,
+        }
 
     batch_limit = max(int(batch_limit or DEFAULT_BATCH_LIMIT), 1)
     batch_delay_seconds = max(float(batch_delay_seconds or 0), 0)
@@ -107,6 +115,7 @@ def run_pokedex_metadata_backfill(
         "updated": 0,
         "missing": 0,
         "failed": 0,
+        "deferred": 0,
         "batches": 0,
         "completed": False,
         "selected": len(card_ids),
@@ -127,12 +136,20 @@ def run_pokedex_metadata_backfill(
         cards = db.query(Card).filter(Card.id.in_(batch_ids)).order_by(Card.updated_at.asc(), Card.id.asc()).all()
         if not cards:
             continue
-        batch = enrich_cards_metadata(db, cards, limit=len(cards), commit_every=25, force=True)
+        batch = enrich_cards_metadata(
+            db,
+            cards,
+            limit=len(cards),
+            commit_every=25,
+            force=True,
+            ignore_cooldown=True,
+        )
         result["batches"] += 1
         result["attempted"] += batch["attempted"]
         result["updated"] += batch["updated"]
         result["missing"] += batch["missing"]
         result["failed"] += batch["failed"]
+        result["deferred"] += batch.get("deferred", 0)
 
         _set_setting(
             db,
@@ -147,6 +164,18 @@ def run_pokedex_metadata_backfill(
                 json.dumps({"status": "failed", "failed_at": _now_iso(), "result": result}),
             )
             logger.warning("Pokédex metadata backfill stopped after %s failed rows", batch["failed"])
+            return result
+
+        if batch.get("deferred"):
+            _set_setting(
+                db,
+                STATUS_SETTING_KEY,
+                json.dumps({"status": "pending", "updated_at": _now_iso(), "result": result}),
+            )
+            logger.info(
+                "Pokédex metadata backfill deferred %s concurrently claimed rows",
+                batch["deferred"],
+            )
             return result
 
         if max_batches is not None and result["batches"] >= max_batches:

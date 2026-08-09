@@ -4,6 +4,9 @@ export const cardImageUrl = (cardId, size = 'small') =>
 export const setImageUrl = (setId, imageType) =>
   setId ? `/api/images/set/${encodeURIComponent(setId)}/${imageType}` : null
 
+export const productImageUrl = (product) =>
+  product?.image_url && product?.image_proxy_url ? product.image_proxy_url : '/cardback.jpg'
+
 export const resolveCardImageUrl = (card, size = 'small') => {
   // card_id is the actual card identifier (e.g. "sv1-1_de")
   // id might be a collection item integer ID, so prefer card_id or string id

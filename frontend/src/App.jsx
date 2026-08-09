@@ -25,7 +25,6 @@ const Products = lazy(() => import('./pages/Products'))
 const Trades = lazy(() => import('./pages/Trades'))
 const Settings = lazy(() => import('./pages/Settings'))
 const CardMigration = lazy(() => import('./pages/CardMigration'))
-const ScanQueue = lazy(() => import('./pages/ScanQueue'))
 const Login = lazy(() => import('./pages/Login'))
 const Leaderboard = lazy(() => import('./pages/Leaderboard'))
 const Compare = lazy(() => import('./pages/Compare'))
@@ -34,6 +33,9 @@ const UserCollection = lazy(() => import('./pages/UserCollection'))
 const PublicProfile = lazy(() => import('./pages/PublicProfile'))
 const PublicBinderView = lazy(() => import('./pages/PublicBinderView'))
 const PublicDirectory = lazy(() => import('./pages/PublicDirectory'))
+const CardSystemGallery = import.meta.env.DEV
+  ? lazy(() => import('./components/card-system/CardSystemGallery'))
+  : null
 
 function RouteLoader() {
   return (
@@ -174,8 +176,6 @@ function ProtectedRoutes() {
         <Route path="achievements/:userId" element={lazyRoute(<Achievements />)} />
         <Route path="settings" element={lazyRoute(<Settings />)} />
         <Route path="migration" element={lazyRoute(<CardMigration />)} />
-        <Route path="scans" element={lazyRoute(<ScanQueue />)} />
-        <Route path="scans/:jobId" element={lazyRoute(<ScanQueue />)} />
       </Route>
     </Routes>
   )
@@ -187,6 +187,7 @@ export default function App() {
       <SettingsProvider>
         <BrowserRouter>
           <Routes>
+            {import.meta.env.DEV && <Route path="/__card-system" element={lazyRoute(<CardSystemGallery />)} />}
             <Route path="/login" element={lazyRoute(<Login />)} />
             <Route path="/u" element={<PublicRoutes />}>
               <Route index element={lazyRoute(<PublicDirectory />)} />

@@ -6,7 +6,12 @@ from database import get_db
 from services.card_values import effective_market_price, normalize_price_field
 from services.card_visibility import visible_card_filter, visible_set_filter
 from services.analytics import sort_top_movers
-from models import CollectionItem, Card, PriceHistory, PortfolioSnapshot, Set, ProductPurchase, ProductLedgerEntry, Trade, TradeItem, User
+from services.portfolio_valuation import (
+    calculate_portfolio_valuation,
+    portfolio_snapshot_fields,
+    portfolio_snapshot_payload,
+)
+from models import CollectionItem, Card, PriceHistory, PortfolioSnapshot, Set, ProductLedgerEntry, Trade, TradeItem, User
 from typing import Optional
 import datetime
 
@@ -243,45 +248,15 @@ def get_trades_summary(
     return summary
 
 
-def _calc_products_cost(db: Session, user_id: int):
-    """Calculate cost of unsold products only (sold products no longer tied up)."""
-    all_products = db.query(ProductPurchase).filter(
-        ProductPurchase.user_id == user_id
-    ).all()
-    return sum(
-        p.purchase_price for p in all_products
-        if p.purchase_price is not None and p.sold_price is None
-    )
-
-
 def _take_portfolio_snapshot(db: Session, user_id: int, price_field: str = "price_trend"):
     """Insert a new portfolio snapshot (called on every price sync)."""
     now = datetime.datetime.utcnow()
-
-    collection_items = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).filter(
-        CollectionItem.user_id == user_id,
-        visible_card_filter(db, user_id, "all"),
-    ).all()
-    total_value = sum(
-        _get_item_price(item, price_field) * item.quantity
-        for item in collection_items
-        if item.card
-    )
-    total_cards = sum(item.quantity for item in collection_items)
-    # total_cost = card purchase prices + UNSOLD product purchases
-    cards_cost = sum(
-        (item.purchase_price or 0) * item.quantity
-        for item in collection_items
-    )
-    products_cost = _calc_products_cost(db, user_id)
-    total_cost = cards_cost + products_cost
+    valuation = calculate_portfolio_valuation(db, user_id, price_field)
 
     snapshot = PortfolioSnapshot(
         date=now,
         user_id=user_id,
-        total_value=total_value,
-        total_cards=total_cards,
-        total_cost=total_cost,
+        **portfolio_snapshot_fields(valuation),
     )
     db.add(snapshot)
     db.commit()
@@ -376,16 +351,7 @@ def get_investment_tracker(
 
     snapshots = _downsample(snapshots, period)
 
-    return [
-        {
-            "date": s.date.isoformat(),
-            "value": round(s.total_value, 2),
-            "cost": round(s.total_cost, 2),
-            "pnl": round(s.total_value - s.total_cost, 2),
-            "cards": s.total_cards,
-        }
-        for s in snapshots
-    ]
+    return [portfolio_snapshot_payload(snapshot) for snapshot in snapshots]
 
 
 @router.get("/new-sets")

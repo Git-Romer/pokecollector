@@ -8,6 +8,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from database import Base
 
 POKEDEX_JSON = JSON(none_as_null=True).with_variant(JSONB(none_as_null=True), "postgresql")
+PORTFOLIO_CALCULATION_VERSION = 2
 
 
 class Set(Base):
@@ -109,6 +110,7 @@ class Card(Base):
     price_source_lang = Column(String, nullable=True)  # Set when prices are copied from another TCGdex language
     last_price_sync_attempt_at = Column(DateTime, nullable=True)
     last_price_sync_success_at = Column(DateTime, nullable=True)
+    last_metadata_enrichment_attempt_at = Column(DateTime, nullable=True, index=True)
     # Card variants from TCGdex
     variants_normal = Column(Boolean)
     variants_reverse = Column(Boolean)
@@ -228,14 +230,17 @@ class BinderCard(Base):
     binder_id = Column(Integer, ForeignKey("binders.id"), nullable=False)
     card_id = Column(String, ForeignKey("cards.id"), nullable=False)
     collection_item_id = Column(Integer, ForeignKey("collection.id"), nullable=True)
-    required_quantity = Column(Integer, default=1)
+    required_quantity = Column(Integer, default=1, nullable=False)
     added_at = Column(DateTime, default=func.now())
 
     binder = relationship("Binder", back_populates="binder_cards")
     card = relationship("Card", back_populates="binder_cards")
     collection_item = relationship("CollectionItem")
 
-    __table_args__ = (UniqueConstraint("binder_id", "collection_item_id", name="uq_binder_collection_item"),)
+    __table_args__ = (
+        CheckConstraint("required_quantity >= 1 AND required_quantity <= 99", name="ck_binder_card_quantity_range"),
+        UniqueConstraint("binder_id", "collection_item_id", name="uq_binder_collection_item"),
+    )
 
 
 class ProductPurchase(Base):
@@ -250,8 +255,21 @@ class ProductPurchase(Base):
     sold_price = Column(Float)
     purchase_date = Column(Date, nullable=False)
     sold_date = Column(Date)
+    lifecycle_status = Column(String, nullable=False, default="sealed", server_default="sealed")
+    batch_id = Column(String)
+    image_url = Column(String)
+    cardmarket_url = Column(String)
     notes = Column(Text)
     created_at = Column(DateTime, default=func.now())
+
+    __table_args__ = (
+        Index("ix_product_purchases_user_id", "user_id"),
+        Index("ix_product_purchases_user_batch", "user_id", "batch_id"),
+        CheckConstraint(
+            "lifecycle_status IN ('sealed', 'opened', 'sold', 'review')",
+            name="ck_product_purchases_lifecycle_status",
+        ),
+    )
 
 
 class ProductCard(Base):
@@ -299,6 +317,7 @@ class ProductLedgerEntry(Base):
     entry_type = Column(String, nullable=False, default="card_sale")  # card_sale / flat_gain / adjustment
     card_id = Column(String, ForeignKey("cards.id", ondelete="SET NULL"), nullable=True)
     original_collection_item_id = Column(Integer, nullable=True)
+    trade_item_id = Column(Integer, ForeignKey("trade_items.id", ondelete="SET NULL"), nullable=True)
     quantity = Column(Integer, default=1, nullable=False)
     amount = Column(Float, nullable=False)  # Flat total for this ledger event
     event_date = Column(Date, nullable=False)
@@ -360,6 +379,10 @@ class TradeItem(Base):
     original_collection_item_id = Column(Integer, nullable=True)
     created_collection_item_id = Column(Integer, nullable=True)
     product_card_id = Column(Integer, nullable=True)
+    # Inventory provenance added for editable trades. Legacy rows keep
+    # snapshot_version=0 so unsafe reversals can be rejected explicitly.
+    purchase_price = Column(Float, nullable=True)
+    snapshot_version = Column(Integer, default=1, nullable=False)
     quantity = Column(Integer, default=1, nullable=False)
     value_per_card = Column(Float, default=0, nullable=False)
     value_total = Column(Float, default=0, nullable=False)
@@ -380,6 +403,8 @@ class TradeItem(Base):
         CheckConstraint("quantity >= 1", name="ck_trade_items_quantity_positive"),
         CheckConstraint("value_per_card >= 0", name="ck_trade_items_value_per_card_non_negative"),
         CheckConstraint("value_total >= 0", name="ck_trade_items_value_total_non_negative"),
+        CheckConstraint("purchase_price IS NULL OR purchase_price >= 0", name="ck_trade_items_purchase_price_non_negative"),
+        CheckConstraint("snapshot_version >= 0", name="ck_trade_items_snapshot_version_non_negative"),
     )
 
 
@@ -405,6 +430,21 @@ class PortfolioSnapshot(Base):
     total_value = Column(Float, default=0)
     total_cards = Column(Integer, default=0)
     total_cost = Column(Float, default=0)
+    calculation_version = Column(Integer, default=PORTFOLIO_CALCULATION_VERSION, nullable=False)
+    cards_value = Column(Float, nullable=True)
+    products_value = Column(Float, nullable=True)
+    cards_cost = Column(Float, nullable=True)
+    products_cost = Column(Float, nullable=True)
+    performance_cost_basis = Column(Float, nullable=True)
+    realized_value = Column(Float, nullable=True)
+    unrealized_pnl = Column(Float, nullable=True)
+    realized_pnl = Column(Float, nullable=True)
+    total_pnl = Column(Float, nullable=True)
+    product_value_fallback_count = Column(Integer, nullable=True)
+
+    __table_args__ = (
+        Index("ix_portfolio_snapshots_user_date", "user_id", "date"),
+    )
 
 
 class Setting(Base):
@@ -446,56 +486,3 @@ class ImageCache(Base):
     data = Column(LargeBinary, nullable=False)
     content_type = Column(String, default="image/webp")
     cached_at = Column(DateTime, default=func.now())
-
-
-class ScanJob(Base):
-    """One multi-photo scanner upload, recognized in the background.
-
-    Recognition is queued rather than done in the request so a large upload is
-    not bounded by an HTTP timeout and can be paced against Gemini's rate limit.
-    The user comes back and reviews the finished items.
-    """
-    __tablename__ = "scan_jobs"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
-    status = Column(String, default="pending", index=True)  # pending/running/done/failed
-    created_at = Column(DateTime, default=func.now())
-    started_at = Column(DateTime)
-    finished_at = Column(DateTime)
-    error_message = Column(Text)
-
-    items = relationship(
-        "ScanJobItem", back_populates="job", cascade="all, delete-orphan", order_by="ScanJobItem.position"
-    )
-
-
-class ScanJobItem(Base):
-    """One uploaded photo inside a ScanJob, and its recognition result.
-
-    `image_data` holds the original upload so the queue survives a backend
-    restart and the review UI can show the photo. It is cleared once the item
-    is resolved (see services/scan_queue.resolve_item) so this table does not
-    accumulate image bytes the way image_cache does.
-    """
-    __tablename__ = "scan_job_items"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    job_id = Column(Integer, ForeignKey("scan_jobs.id", ondelete="CASCADE"), nullable=False, index=True)
-    position = Column(Integer, nullable=False)  # upload order, also the review order
-    filename = Column(String)
-    content_type = Column(String, default="image/jpeg")
-    image_data = Column(LargeBinary)  # cleared on resolve
-    # False when the user ticked "process individually" — that photo bypasses
-    # compositing and gets its own Gemini call.
-    batch_mode = Column(Boolean, default=True)
-
-    status = Column(String, default="pending", index=True)  # pending/done/failed
-    resolved = Column(Boolean, default=False, index=True)  # user has reviewed/actioned it
-    attempts = Column(Integer, default=0)
-    recognized = Column(JSON)
-    matches = Column(JSON)
-    error = Column(Text)
-    updated_at = Column(DateTime, default=func.now())
-
-    job = relationship("ScanJob", back_populates="items")

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, cast, Integer, String, or_
 from sqlalchemy.exc import IntegrityError
@@ -15,7 +15,11 @@ from services.card_fallbacks import (
     clone_card_for_missing_language,
     other_supported_lang,
 )
-from services.card_metadata import METADATA_ENRICHMENT_PER_SEARCH_PAGE, enrich_cards_metadata
+from services.card_metadata import (
+    METADATA_ENRICHMENT_PER_SEARCH_PAGE,
+    card_needs_metadata_enrichment,
+    enrich_card_metadata_ids_in_background,
+)
 from services.card_upsert import upsert_card
 from services.card_visibility import get_configured_sync_languages, visible_card_filter, visible_set_filter
 from services.digital_sets import digital_sets_enabled
@@ -141,22 +145,31 @@ def _with_collection_summary(db: Session, current_user: User, card_dicts: List[d
         ]
     return card_dicts
 
-def _enrich_search_page_metadata(db: Session, cards: List[Card]) -> List[Card]:
-    """Opportunistically enrich visible search results that only have brief set-list data."""
-    if not cards:
-        return cards
-    result = enrich_cards_metadata(db, cards, limit=METADATA_ENRICHMENT_PER_SEARCH_PAGE)
-    if not result["updated"]:
-        return cards
-
-    card_ids = [card.id for card in cards]
-    refreshed = db.query(Card).filter(Card.id.in_(card_ids)).all()
-    by_id = {card.id: card for card in refreshed}
-    return [by_id.get(card.id, card) for card in cards]
+def _schedule_search_page_metadata_enrichment(
+    background_tasks: BackgroundTasks | None,
+    cards: List[Card],
+) -> None:
+    """Schedule eligible search results without delaying the search response."""
+    if background_tasks is None or not cards:
+        return
+    card_ids = [
+        card.id
+        for card in cards
+        if card_needs_metadata_enrichment(card)
+    ][:METADATA_ENRICHMENT_PER_SEARCH_PAGE]
+    if card_ids:
+        background_tasks.add_task(enrich_card_metadata_ids_in_background, card_ids)
 
 
 def _search_by_code_number(
-    db: Session, current_user: User, set_code: str, card_number: str, page: int, page_size: int, lang: str = "all"
+    db: Session,
+    current_user: User,
+    set_code: str,
+    card_number: str,
+    page: int,
+    page_size: int,
+    lang: str = "all",
+    background_tasks: BackgroundTasks | None = None,
 ) -> dict:
     """Search for a card by set abbreviation/id + card number (localId).
     Returns cards for ALL languages unless lang is specified.
@@ -270,7 +283,7 @@ def _search_by_code_number(
 
     start = (page - 1) * page_size
     page_cards = cards[start:start + page_size]
-    page_cards = _enrich_search_page_metadata(db, page_cards)
+    _schedule_search_page_metadata_enrichment(background_tasks, page_cards)
     card_dicts = _with_collection_summary(db, current_user, [_card_to_dict(c) for c in page_cards])
     return {
         "data": card_dicts,
@@ -439,6 +452,7 @@ def search_cards(
     lang: Optional[str] = Query(None, description="Language filter: supported TCGdex language code or 'all'"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    background_tasks: BackgroundTasks = None,
 ):
     """Search cards from the local DB.
 
@@ -456,7 +470,16 @@ def search_cards(
             if m:
                 set_code = m.group(1)
                 card_number = m.group(2)
-                return _search_by_code_number(db, current_user, set_code, card_number, page, page_size, lang=search_lang)
+                return _search_by_code_number(
+                    db,
+                    current_user,
+                    set_code,
+                    card_number,
+                    page,
+                    page_size,
+                    lang=search_lang,
+                    background_tasks=background_tasks,
+                )
 
         # ── Pure DB search ────────────────────────────────────────────────────
         query = db.query(Card).filter(Card.is_custom == False, visible_card_filter(db, current_user.id, search_lang))
@@ -527,7 +550,7 @@ def search_cards(
 
         total_count = query.count()
         cards = query.offset((page - 1) * page_size).limit(page_size).all()
-        cards = _enrich_search_page_metadata(db, cards)
+        _schedule_search_page_metadata_enrichment(background_tasks, cards)
         card_dicts = _with_collection_summary(db, current_user, [_card_to_dict(c) for c in cards])
 
         return {
