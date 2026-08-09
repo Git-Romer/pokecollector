@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Check, Loader2, Plus, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, RotateCw } from 'lucide-react'
+import { X, Check, Loader2, Plus, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, RotateCw, Search } from 'lucide-react'
 import { addToCollection, fetchScanCandidateImage, fetchScanJobItemImage, rotateScanJobItemImage } from '../api/client'
 import { useQueryClient } from '@tanstack/react-query'
 import { useSettings } from '../contexts/SettingsContext'
@@ -10,6 +10,8 @@ import TcgdexLanguageSelect from './TcgdexLanguageSelect'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import MoneyInput from './MoneyInput'
 import { parseMoneyInputValue } from '../utils/moneyInput'
+import { cardLookupLinks, searchGoogleByPhoto } from '../utils/cardLookup'
+import { getTcgdexLanguage, normalizeTcgdexLanguage } from '../utils/tcgdexLanguages'
 
 // Shared between the capture modal (CardScanner) and the queue page (ScanQueue):
 // both present the same "which candidate is this card, add it" review step.
@@ -323,7 +325,7 @@ const zoomStyle = ({ scale, x, y }) => scale === 1 ? undefined : {
 }
 
 export function CardZoomModal({ card, photoUrl, onClose, t, matches, index = 0, onIndex, onAccept,
-                               jobId, itemId }) {
+                               jobId, itemId, nameEn }) {
   const canNavigate = Array.isArray(matches) && matches.length > 1 && onIndex
   const step = useCallback(delta => {
     if (!canNavigate) return
@@ -491,6 +493,24 @@ export function CardZoomModal({ card, photoUrl, onClose, t, matches, index = 0, 
                 overflow-hidden also does the job the inner wrapper used to —
                 without it the blurred stand-in spreads past the card edge into
                 the black overlay and fades to nothing. */}
+            {/* Nothing to compare against: TCGdex has no scan of this printing.
+                Say so and offer somewhere to go, rather than showing a broken
+                frame — this is the case the reviewer most needs help with. */}
+            {!card.image && !full ? (
+            <div className={`${CARD_FRAME} rounded-xl flex-col gap-3 text-center px-4`}
+              style={{ background: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(255,255,255,0.14)' }}
+              onClick={e => e.stopPropagation()}>
+              <p className="text-xs text-text-muted">{t('scanner.noCatalogueImage')}</p>
+              <div className="flex flex-col gap-2">
+                {cardLookupLinks(card, nameEn).map(link => (
+                  <a key={link.key} href={link.url} target="_blank" rel="noopener noreferrer"
+                    className="btn-ghost text-xs inline-flex items-center justify-center gap-1.5">
+                    <Search size={13} />{t(`scanner.lookup_${link.key}`)}
+                  </a>
+                ))}
+              </div>
+            </div>
+            ) : (
             <div ref={frameRef} onClick={onCardClick}
               className={`${CARD_FRAME} relative overflow-hidden ${zoomed ? 'cursor-grab' : 'cursor-zoom-in'}`}>
               <img src={full || card.image} alt={card?.name}
@@ -509,6 +529,7 @@ export function CardZoomModal({ card, photoUrl, onClose, t, matches, index = 0, 
                 </span>
               )}
             </div>
+            )}
             <figcaption className="text-center mt-2 space-y-0.5">
               <p className="text-sm font-bold text-white">{card?.name}</p>
               <p className="text-[11px] font-mono text-brand-red/80">
@@ -590,7 +611,7 @@ export function usePrefetchMatchImages(matches) {
   }, [matches])
 }
 
-export function MatchesGrid({ matches, onSelect, onZoom, t }) {
+export function MatchesGrid({ matches, onSelect, onZoom, nameEn, t }) {
   usePrefetchMatchImages(matches)
 
   if (!matches?.length) {
@@ -609,6 +630,16 @@ export function MatchesGrid({ matches, onSelect, onZoom, t }) {
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
       {matches.map((match, matchIndex) => {
         const matchLang = match.lang || match._lang || 'en'
+        // Was a two-way de-or-else test, so every Japanese, French and Korean
+        // candidate claimed to be English — on exactly the printings where
+        // language is the thing telling two candidates apart. An unknown code
+        // shows itself rather than borrowing a flag it has not earned.
+        const known = normalizeTcgdexLanguage(matchLang, '')
+        const lang = known ? getTcgdexLanguage(known) : null
+        // Flag plus code, not the flag alone: at this size 🇬🇧 and 🇯🇵 are two
+        // dark rectangles, and half these tiles are on phones.
+        const langBadge = lang ? `${lang.flag} ${lang.short}` : matchLang.toUpperCase()
+        const langTitle = lang ? lang.name : matchLang.toUpperCase()
         const setCode = (match.set_abbreviation || match.set?.id || (match.id || '').split('-')[0]).toUpperCase()
         const localNum = match.localId || match.number || ''
         const cardIdLabel = `${setCode} ${localNum}`.trim()
@@ -628,16 +659,29 @@ export function MatchesGrid({ matches, onSelect, onZoom, t }) {
               {match.image
                 ? <img src={match.image} alt={match.name}
                     className="w-full h-full object-cover shadow-lg group-hover:scale-[1.02] transition-transform duration-300" />
-                : <div className="w-full h-full bg-bg-surface rounded-xl flex items-center justify-center">
-                    <span className="text-[9px] text-text-muted text-center p-1">{match.name}</span>
+                : <div className="w-full h-full bg-bg-surface rounded-xl flex flex-col items-center justify-center gap-1 p-1">
+                    <span className="text-[9px] text-text-muted text-center leading-tight">{match.name}</span>
+                    {/* stopPropagation: the tile opens the comparison, which for
+                        this card has no image to show either. */}
+                    <a
+                      href={cardLookupLinks(match, nameEn)[0].url}
+                      target="_blank" rel="noopener noreferrer"
+                      onClick={e => e.stopPropagation()}
+                      title={t('scanner.lookup_images')}
+                      className="text-[9px] text-brand-red/90 hover:text-brand-red inline-flex items-center gap-0.5"
+                    >
+                      <Search size={9} />{t('scanner.lookupShort')}
+                    </a>
                   </div>
               }
-              <span className={`absolute top-1 right-1 text-[8px] font-black px-1 py-0.5 rounded leading-none ${
-                matchLang === 'de'
-                  ? 'bg-yellow-500/80 text-yellow-900 border border-yellow-500/50'
-                  : 'bg-blue-500/80 text-white border border-blue-500/50'
-              }`}>
-                {matchLang === 'de' ? '🇩🇪' : '🇬🇧'}
+              {/* Solid dark rather than the per-language badge colours used
+                  elsewhere: this sits on top of card art of every conceivable
+                  hue, and a translucent tint is unreadable over half of it. */}
+              <span
+                className="absolute top-1 right-1 text-[8px] font-black px-1 py-0.5 rounded leading-none bg-black/75 text-white border border-white/20"
+                title={langTitle}
+              >
+                {langBadge}
               </span>
               {match.printed_total_mismatch && (
                 <span className="absolute top-1 left-1 text-[8px] font-black px-1 py-0.5 rounded leading-none bg-amber-500/90 text-black border border-amber-400"
@@ -737,7 +781,7 @@ export function useScanItemPhoto(jobId, item) {
 // actually identifying, and the 4-column match grid leaves the room for it.
 const THUMB_WIDTH = 'w-32 sm:w-44 lg:w-52'
 
-export function ScanItemThumb({ url, onZoom, onRotate, rotating, t }) {
+export function ScanItemThumb({ url, onZoom, onRotate, rotating, onSearchPhoto, t }) {
   if (!url) {
     return <div className={`${THUMB_WIDTH} aspect-[2.5/3.5] rounded-lg flex-shrink-0 self-start bg-white/5`} />
   }
@@ -757,6 +801,21 @@ export function ScanItemThumb({ url, onZoom, onRotate, rotating, t }) {
           — two automatic fallbacks were measured at 62% and 58% against a 25%
           baseline, and a wrong guess turns a correct photo upside down — so the
           reviewer gets a quarter-turn button instead of a coin flip. */}
+      {/* Reverse image search on the photo itself. The most direct way to
+          identify a card no catalogue has a scan of — it is the one image we
+          definitely have. */}
+      {onSearchPhoto && (
+        <button
+          type="button"
+          onClick={onSearchPhoto}
+          title={t?.('scanner.searchByPhoto')}
+          aria-label={t?.('scanner.searchByPhoto')}
+          className="mt-1 w-full py-1 rounded-lg border border-white/10 bg-white/5 text-text-muted
+            hover:text-white hover:border-white/20 transition-colors flex items-center justify-center"
+        >
+          <Search size={13} />
+        </button>
+      )}
       {onRotate && (
         <button
           type="button"
@@ -787,6 +846,11 @@ export function ScanItemPanel({ jobId, item, onSelectMatch, onResolve, onReview,
   const [rotating, setRotating] = useState(false)
   // Only meaningful once resolved; an unreviewed item is always expanded.
   const [expanded, setExpanded] = useState(false)
+
+  const searchByPhoto = () => {
+    searchGoogleByPhoto(photoUrl, item.filename)
+    toast(t('scanner.searchByPhotoSaved'), { duration: 6000 })
+  }
 
   const rotate = async () => {
     setRotating(true)
@@ -848,7 +912,8 @@ export function ScanItemPanel({ jobId, item, onSelectMatch, onResolve, onReview,
         <CardZoomModal card={null} photoUrl={photoUrl} onClose={() => setZoom(false)} t={t} />
       )}
       <ScanItemThumb url={photoUrl} onZoom={() => setZoom(true)}
-        onRotate={item.has_image ? rotate : undefined} rotating={rotating} t={t} />
+        onRotate={item.has_image ? rotate : undefined} rotating={rotating}
+        onSearchPhoto={photoUrl ? searchByPhoto : undefined} t={t} />
       <div className="flex-1 min-w-0">
         {item.status === 'pending' && (
           <p className="text-sm text-text-muted flex items-center gap-2">
@@ -889,6 +954,7 @@ export function ScanItemPanel({ jobId, item, onSelectMatch, onResolve, onReview,
               <div className="mt-2">
                 <MatchesGrid
                   matches={item.matches}
+                  nameEn={item.recognized?.name_en}
                   onSelect={match => onSelectMatch(item, match)}
                   onZoom={(card, matchIndex) => onReview?.(item, matchIndex)}
                   t={t}

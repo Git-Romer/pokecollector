@@ -164,6 +164,7 @@ function JobDetail({ jobId, onBack }) {
           photoUrl={reviewPhoto}
           jobId={jobId}
           itemId={reviewItem.id}
+          nameEn={reviewItem.recognized?.name_en}
           matches={reviewMatches}
           index={review.matchIndex}
           onIndex={matchIndex => setReview(r => ({ ...r, matchIndex }))}
