@@ -92,12 +92,13 @@ async def enqueue_scan_job(
     current_user: User = Depends(get_current_user),
 ):
     """Sanitize a batch, persist it, and return without waiting for Gemini."""
-    from api.recognize import get_gemini_key
+    from services.scan_providers import get_provider
 
-    if not get_gemini_key(db, user_id=current_user.id):
+    provider = get_provider(db, current_user.id)
+    if provider.requires_credential() and not provider.credential(db, current_user.id):
         raise HTTPException(
             status_code=400,
-            detail="No Gemini API key configured. Add one in Settings first.",
+            detail=provider.missing_credential_message(),
         )
     try:
         requested_individual = json.loads(individual_positions or "[]")

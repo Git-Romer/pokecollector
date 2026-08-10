@@ -60,7 +60,7 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - Search the locally cached card database by name, set, type, rarity, HP, artist, and more
 - Short-code search like `PFL 001`
 - Multi-select search results and bulk-add matching cards to the collection
-- Unified persistent scanner with Gemini-powered individual and composite batch recognition
+- Unified persistent scanner with individual and composite batch recognition, via Gemini or any OpenAI-compatible vision endpoint
 - Persistent, restart-safe scan queue with a review inbox, 14-day expiry, and automatic retries that do not consume recognition attempts for rate limits
 - Shared per-key Gemini quota handling distinguishes daily quotas from short-term limits, honors provider retry delays, and blocks concurrent requests using the same key
 - Deterministic matching ranks local number, printed total, set code, regulation mark, artist, and HP before optional visual verification
@@ -86,7 +86,7 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 ### 👤 Single-User & Multi-User
 - Single-user mode: no login required, auto-auth as admin
 - Multi-user mode: JWT login, admin/trainer roles, separate user data
-- Per-user settings for language, currency, Telegram keys, and Gemini key
+- Per-user settings for language, currency, Telegram keys, and scanner provider keys
 - Force password change support on first login
 - Profile avatar and profile name editing
 - Cascade deletion of user-owned data
@@ -285,6 +285,8 @@ If you are already locked out of multi-user mode, set `USER_MODE=single` in the 
 | `ADMIN_PASSWORD` | Password for the bootstrap admin account | Random, optionally logged |
 | `GEMINI_API_KEY` | Initial Gemini key for the admin user; other users configure their own key in Settings | *(empty)* |
 | `GEMINI_MODEL` | Gemini model used by the card scanner. Change this if Google retires the default model for new API keys. | `gemini-flash-latest` |
+| `OPENAI_BASE_URL` | OpenAI-compatible endpoint for the card scanner. Point it at a local server such as Ollama, llama.cpp or LM Studio (for example `http://host.docker.internal:11434/v1` when the model runs on the Docker host, or `http://127.0.0.1:11434/v1` for a non-container install). Deliberately an administrator setting: a user-supplied backend URL would let any account direct the server at an arbitrary host. | `https://api.openai.com/v1` |
+| `OPENAI_MODEL` | Model used when the scanner provider is set to OpenAI, for users who have not named one of their own. Must be vision capable. | `gpt-5.6-luna` |
 | `SCAN_TRACE_DIR` | Enables consent-controlled scanner diagnostics when set to a writable container path. With the standard compose volume, use `/app/data/scan-traces`. Each user must still opt in separately in Settings. | *(empty / disabled)* |
 | `SCAN_TRACE_STORAGE_DIR` | Stable cleanup path for previously stored scanner diagnostics. Standard Docker Compose sets this to `/app/data/scan-traces`; custom deployments should keep it pointed at the storage location even when `SCAN_TRACE_DIR` is unset. | `/app/data/scan-traces` with Docker Compose |
 | `TELEGRAM_BOT_TOKEN` | Initial Telegram bot token for the admin user | *(empty)* |
@@ -310,7 +312,7 @@ Scanner diagnostics require both server and user consent:
 1. The administrator sets `SCAN_TRACE_DIR=/app/data/scan-traces` and restarts the backend.
 2. A user enables **Settings → AI / Card Scanner → Share scanner diagnostics**. The toggle is off by default for every user.
 
-Only that user's subsequent scan attempts are stored. Each trace contains the sanitized card photo, generic Gemini prompt and raw text response, parsed fields and token usage, TCGdex searches, ranked candidates, pHash/visual decisions, and errors. API keys and authentication credentials are never recorded.
+Only that user's subsequent scan attempts are stored. Each trace contains the sanitized card photo, the generic prompt and raw text response from whichever provider ran the scan, parsed fields and token usage, TCGdex searches, ranked candidates, pHash/visual decisions, and errors. API keys and authentication credentials are never recorded.
 
 Turning the toggle off stops future collection but deliberately retains existing diagnostics. There is no automatic expiry: files remain until the user presses the adjacent **Delete data** button or the account is deleted. Both actions remove only that user's stored trace JSON and photos. The stable `SCAN_TRACE_STORAGE_DIR` cleanup path keeps deletion available even while new collection is disabled. Files are created with private `0700` directory and `0600` file permissions and are not part of SQL backups.
 
@@ -382,7 +384,7 @@ The old nested `pokemon-tcg-collection/` layout is no longer used.
 | Backend | Python 3.11, FastAPI, SQLAlchemy, APScheduler, Pydantic |
 | Database | PostgreSQL 18 |
 | Card Data | [TCGdex](https://tcgdex.dev/) |
-| AI Scanner | Google Gemini, configurable via `GEMINI_MODEL` |
+| AI Scanner | Google Gemini (default) or any OpenAI-compatible vision endpoint, including local Ollama, llama.cpp and LM Studio. Each user picks a provider in Settings; the endpoint is configured by the administrator. |
 | Deploy | Docker + Docker Compose |
 
 ---
@@ -396,6 +398,7 @@ PokéCollector is self-hosted, but it can call these external sources depending 
 | TCGdex | `api.tcgdex.net`, `assets.tcgdex.net` | Set/card catalogue data, images, prices, localized card metadata, Pokédex `dexId`, and Cardmarket product metadata | Initial sync, manual/admin sync, search fallbacks, metadata backfills, and card image display |
 | PokeAPI sprites | `raw.githubusercontent.com/PokeAPI/sprites` | Profile/avatar GIFs, achievement badges, binder icons, National Pokédex sprites, and official artwork cache | Browser image display, Pokédex image cache misses, and `scripts.cache_pokedex_images` |
 | Google Gemini | `generativelanguage.googleapis.com` | AI card scanner recognition | Only when scanner recognition is used and `GEMINI_API_KEY` is configured |
+| OpenAI-compatible endpoint | `OPENAI_BASE_URL`, by default `api.openai.com` | AI card scanner recognition | Only when a user selects the OpenAI provider. Card photos are sent to whichever endpoint the administrator configured, which may be a server on your own network. |
 | Telegram Bot API | `api.telegram.org` | Telegram notifications and alerts | Only when Telegram settings are configured and an alert/notification is sent |
 | Frankfurter | `api.frankfurter.dev` | Currency exchange rates | Currency conversion and Telegram price formatting when non-EUR values are needed |
 | GitHub | `api.github.com`, `raw.githubusercontent.com`, `avatars.githubusercontent.com`, `github.com` | Community contributor/supporter data, GitHub avatars, project links, and release/source links | Settings community section and linked project metadata |

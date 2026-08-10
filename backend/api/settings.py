@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -30,6 +31,16 @@ from services.scan_trace import (
     trace_deletion_available,
 )
 
+from services.scan_providers import (
+    PROVIDERS,
+    SCANNER_MODEL_SETTING,
+    ScanProvider,
+    resolve_provider_name,
+    visual_verification_default,
+    SCANNER_PROVIDER_SETTING,
+    VISUAL_VERIFICATION_SETTING,
+)
+
 router = APIRouter()
 logger = logging.getLogger(__name__)
 PHOTO_PREFERENCE_SETTING_KEY = "prefer_own_card_photos"
@@ -40,6 +51,8 @@ PER_USER_KEYS = {
     "telegram_bot_token", "telegram_chat_id", "telegram_enabled",
     "price_alerts_enabled", "price_alert_threshold",
     "gemini_api_key", "trainer_name", "portfolio_display_mode",
+    "openai_api_key",
+    SCANNER_PROVIDER_SETTING, VISUAL_VERIFICATION_SETTING, SCANNER_MODEL_SETTING,
     SCAN_DIAGNOSTICS_SETTING_KEY, PHOTO_PREFERENCE_SETTING_KEY,
 }
 
@@ -74,6 +87,9 @@ DEFAULT_SETTINGS = {
     PUBLIC_PROFILES_SETTING_KEY: "false",
     SCAN_DIAGNOSTICS_SETTING_KEY: "false",
     PHOTO_PREFERENCE_SETTING_KEY: "false",
+    # Existing installations have no stored provider, and this keeps them on
+    # Gemini exactly as before.
+    SCANNER_PROVIDER_SETTING: "gemini",
 }
 
 
@@ -94,6 +110,40 @@ def _coerce_setting_value(key: str, value) -> str:
         PHOTO_PREFERENCE_SETTING_KEY,
     }:
         return "true" if str(value).lower() in {"true", "1", "yes", "on"} else "false"
+    if key == SCANNER_PROVIDER_SETTING:
+        # Rejected at write time rather than falling back silently at scan time,
+        # so a typo surfaces here instead of quietly scanning with the wrong one.
+        provider = str(value).strip().lower()
+        if provider not in PROVIDERS:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Unsupported scanner provider. Choose one of: {', '.join(sorted(PROVIDERS))}.",
+            )
+        return provider
+    if key == SCANNER_MODEL_SETTING:
+        # Free text, because provider model names change constantly. Trimmed so a
+        # value of spaces means "use the installation default" rather than being
+        # sent upstream as a model name, and bounded so it cannot be used to
+        # stuff arbitrary content into the request.
+        if value is None:
+            return ""
+        if not isinstance(value, str):
+            raise HTTPException(status_code=422, detail="Model must be text.")
+        model = value.strip()
+        if not model:
+            return ""
+        if len(model) > 100:
+            raise HTTPException(status_code=422, detail="Model name is too long.")
+        # Restricted to the shape model identifiers actually take, so the value
+        # is safe wherever it lands, including a URL path for Gemini.
+        if not re.fullmatch(r"[A-Za-z0-9._:/-]+", model):
+            raise HTTPException(
+                status_code=422,
+                detail="Model name may only contain letters, numbers and . _ : / -",
+            )
+        return model
+    if key == VISUAL_VERIFICATION_SETTING:
+        return "true" if str(value).strip().lower() in {"true", "1", "yes", "on"} else "false"
     if key == "portfolio_display_mode":
         normalized = str(value).strip().lower()
         if normalized not in {"portfolio_value", "capital_invested"}:
@@ -153,6 +203,15 @@ def _get_user_settings(db: Session, user_id: int) -> dict:
     for key, value in DEFAULT_SETTINGS.items():
         result.setdefault(key, value)
     result["scan_diagnostics_available"] = "true" if trace_available() else "false"
+    # Published so the UI shows the state the scanner will actually use. The
+    # rule depends on OPENAI_BASE_URL, which the browser cannot see.
+    # Published so the field can show what a blank value will actually use.
+    result["scanner_model_default"] = ScanProvider(
+        resolve_provider_name(db, user_id)
+    ).installation_model()
+    result["scanner_visual_verification_default"] = (
+        "true" if visual_verification_default(resolve_provider_name(db, user_id)) else "false"
+    )
     result["scan_diagnostics_deletion_available"] = (
         "true" if trace_deletion_available() else "false"
     )
