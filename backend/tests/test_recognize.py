@@ -129,6 +129,25 @@ class RecognizeCardNumberTests(unittest.TestCase):
             {f"baseline-{number}" for number in range(1, 9)},
         )
 
+    def test_set_code_match_augments_baseline_results_when_number_unknown(self):
+        cards = [
+            {"id": f"other-{number}", "localId": str(number)}
+            for number in range(1, 9)
+        ] + [{"id": "swsh9-018", "localId": "018"}]
+
+        selected = select_search_candidates(
+            cards,
+            None,
+            number_field="localId",
+            set_ids=frozenset({"swsh9"}),
+        )
+
+        self.assertEqual(
+            [card["id"] for card in selected[:8]],
+            [f"other-{number}" for number in range(1, 9)],
+        )
+        self.assertEqual(selected[8]["id"], "swsh9-018")
+
     def test_leading_zero_matches_and_preserves_stable_order(self):
         cards = [
             {"id": "before", "number": "5"},
