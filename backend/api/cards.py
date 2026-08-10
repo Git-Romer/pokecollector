@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from typing import Optional, List
 from api.auth import get_current_user
 from database import get_db
-from models import Card, Set, PriceHistory, CustomCardMatch, CollectionItem, WishlistItem, BinderCard, User, ImageCache, ProductCard, ProductLedgerEntry, TradeItem
+from models import Binder, BinderCard, Card, Set, PriceHistory, CustomCardMatch, CollectionItem, WishlistItem, User, ImageCache, ProductCard, ProductLedgerEntry, TradeItem
 from schemas import CardBase, CardWithSet, PriceHistoryResponse, CardCustomCreate, CustomCardUpdate, CardCustomImageUpdate
 from services import pokemon_api
 from services.card_fallbacks import (
@@ -21,7 +21,13 @@ from services.card_metadata import (
     enrich_card_metadata_ids_in_background,
 )
 from services.card_upsert import upsert_card
-from services.card_visibility import get_configured_sync_languages, visible_card_filter, visible_set_filter
+from services.card_visibility import (
+    get_configured_sync_languages,
+    visible_any_card_filter,
+    visible_card_filter,
+    visible_custom_card_filter,
+    visible_set_filter,
+)
 from services.digital_sets import digital_sets_enabled
 from services.display_language import get_tcgdex_display_language
 from services.image_url_security import validate_public_https_image_url
@@ -39,9 +45,14 @@ router = APIRouter()
 _CODE_NUMBER_RE = re.compile(r'^([A-Za-z]+\d*)\s+(\d+)$')
 
 
-def _card_to_dict(card: Card) -> dict:
+def _card_to_dict(card: Card, current_user_id: int | None = None) -> dict:
     """Convert a Card ORM object to a dict matching the search result format."""
     set_ref = getattr(card, 'set_ref', None)
+    is_custom_owner = bool(
+        card.is_custom
+        and current_user_id is not None
+        and getattr(card, "custom_owner_id", None) == current_user_id
+    )
     set_ref_dict = {
         "id": set_ref.id,
         "tcg_set_id": set_ref.tcg_set_id,
@@ -83,6 +94,13 @@ def _card_to_dict(card: Card) -> dict:
         "data_source_lang": getattr(card, "data_source_lang", None),
         "custom_image_url": getattr(card, "custom_image_url", None),
         "is_custom": card.is_custom or False,
+        "custom_owner_id": getattr(card, "custom_owner_id", None) if is_custom_owner else None,
+        "custom_owner_username": (
+            getattr(getattr(card, "custom_owner", None), "username", None)
+            if is_custom_owner else None
+        ),
+        "is_custom_owner": is_custom_owner,
+        "is_shared_template": bool(getattr(card, "is_shared_template", False)),
         "is_digital": card.is_digital or False,
         "lang": card.lang or "en",
         "price_market": card.price_market,
@@ -284,7 +302,7 @@ def _search_by_code_number(
     start = (page - 1) * page_size
     page_cards = cards[start:start + page_size]
     _schedule_search_page_metadata_enrichment(background_tasks, page_cards)
-    card_dicts = _with_collection_summary(db, current_user, [_card_to_dict(c) for c in page_cards])
+    card_dicts = _with_collection_summary(db, current_user, [_card_to_dict(c, current_user.id) for c in page_cards])
     return {
         "data": card_dicts,
         "total_count": len(cards),
@@ -300,19 +318,14 @@ def create_custom_card(
     current_user: User = Depends(get_current_user),
 ):
     """Create a card manually (not from TCGdex API)."""
-    # Generate card ID
-    if data.set_id and data.number:
-        card_id = f"custom-{data.set_id}-{data.number}"
-    else:
-        card_id = f"custom-{uuid4().hex[:8]}"
-
-    # Check for duplicate ID
-    existing = db.query(Card).filter(Card.id == card_id).first()
-    if existing:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Eine Karte mit der ID '{card_id}' existiert bereits."
-        )
+    # Custom IDs must be collision-safe across every user and template clone.
+    card_id = f"custom-{uuid4().hex}"
+    image_url = (data.image_url or "").strip()
+    if image_url:
+        try:
+            image_url = validate_public_https_image_url(image_url)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     # Derive language from the set if not explicitly provided
     card_lang = data.lang
@@ -342,9 +355,11 @@ def create_custom_card(
         types=data.types or None,
         hp=data.hp or None,
         artist=data.artist or None,
-        images_small=data.image_url or None,
-        images_large=data.image_url or None,
+        images_small=image_url or None,
+        images_large=image_url or None,
         is_custom=True,
+        custom_owner_id=current_user.id,
+        is_shared_template=data.is_shared_template,
         lang=card_lang,
     )
     db.add(card)
@@ -355,7 +370,7 @@ def create_custom_card(
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
-    return _card_to_dict(card)
+    return _card_to_dict(card, current_user.id)
 
 
 @router.put("/custom/{card_id}", response_model=CardBase)
@@ -369,17 +384,32 @@ def update_custom_card(
     card = db.query(Card).filter(Card.id == card_id, Card.is_custom == True).first()
     if not card:
         raise HTTPException(status_code=404, detail="Custom card not found")
+    if card.custom_owner_id != current_user.id:
+        if not card.is_shared_template:
+            raise HTTPException(status_code=404, detail="Custom card not found")
+        raise HTTPException(status_code=403, detail="Only the owner can edit this custom card")
     update_data = update.model_dump(exclude_unset=True)
     # image_url maps to images_small and images_large on the model
     if "image_url" in update_data:
-        img = update_data.pop("image_url")
+        img = (update_data.pop("image_url") or "").strip()
+        if img:
+            try:
+                img = validate_public_https_image_url(img)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if img != (card.images_small or "") or img != (card.images_large or ""):
+            db.query(ImageCache).filter(
+                ImageCache.image_key.like(f"card:{card_id}:%")
+            ).delete(synchronize_session=False)
         card.images_small = img
         card.images_large = img
+    if update_data.get("is_shared_template") is None:
+        update_data.pop("is_shared_template", None)
     for field, value in update_data.items():
         setattr(card, field, value)
     db.commit()
     db.refresh(card)
-    return card
+    return _card_to_dict(card, current_user.id)
 
 
 @router.delete("/custom/{card_id}")
@@ -394,6 +424,52 @@ def delete_custom_card(
         raise HTTPException(status_code=404, detail="Card not found")
     if not card.is_custom:
         raise HTTPException(status_code=400, detail="Card is not custom")
+    if card.custom_owner_id != current_user.id:
+        if not card.is_shared_template:
+            raise HTTPException(status_code=404, detail="Card not found")
+        raise HTTPException(status_code=403, detail="Only the owner can delete this custom card")
+
+    other_user_references = set(
+        user_id for (user_id,) in db.query(CollectionItem.user_id).filter(
+            CollectionItem.card_id == card_id,
+            CollectionItem.user_id != current_user.id,
+        ).distinct().all()
+    )
+    other_user_references.update(
+        user_id for (user_id,) in db.query(WishlistItem.user_id).filter(
+            WishlistItem.card_id == card_id,
+            WishlistItem.user_id != current_user.id,
+        ).distinct().all()
+    )
+    other_user_references.update(
+        user_id for (user_id,) in db.query(Binder.user_id).join(
+            BinderCard, BinderCard.binder_id == Binder.id
+        ).filter(
+            BinderCard.card_id == card_id,
+            Binder.user_id.isnot(None),
+            Binder.user_id != current_user.id,
+        ).distinct().all()
+    )
+    for model in (ProductCard, ProductLedgerEntry, TradeItem):
+        other_user_references.update(
+            user_id for (user_id,) in db.query(model.user_id).filter(
+                model.card_id == card_id,
+                model.user_id != current_user.id,
+            ).distinct().all()
+        )
+    if other_user_references:
+        usernames = [
+            username for (username,) in db.query(User.username).filter(
+                User.id.in_(other_user_references)
+            ).order_by(User.username.asc()).all()
+        ]
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "This custom card is still referenced by other users and cannot be deleted.",
+                "users": usernames,
+            },
+        )
 
     active_product_links = db.query(ProductCard).filter(
         ProductCard.card_id == card_id,
@@ -411,6 +487,9 @@ def delete_custom_card(
         db.query(BinderCard).filter(BinderCard.card_id == card_id).delete(synchronize_session=False)
         db.query(PriceHistory).filter(PriceHistory.card_id == card_id).delete(synchronize_session=False)
         db.query(CustomCardMatch).filter(CustomCardMatch.custom_card_id == card_id).delete(synchronize_session=False)
+        db.query(ImageCache).filter(
+            ImageCache.image_key.like(f"card:{card_id}:%")
+        ).delete(synchronize_session=False)
         db.query(ProductCard).filter(ProductCard.card_id == card_id).update({"card_id": None}, synchronize_session=False)
         db.query(ProductLedgerEntry).filter(ProductLedgerEntry.card_id == card_id).update({"card_id": None}, synchronize_session=False)
         db.query(TradeItem).filter(TradeItem.card_id == card_id).update({"card_id": None}, synchronize_session=False)
@@ -428,9 +507,49 @@ def list_custom_cards(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Return all manually created custom cards."""
-    cards = db.query(Card).filter(Card.is_custom == True).order_by(Card.id.desc()).all()
-    return [_card_to_dict(c) for c in cards]
+    """Return the current user's cards and templates shared by other users."""
+    cards = db.query(Card).filter(
+        visible_custom_card_filter(current_user.id)
+    ).order_by(Card.updated_at.desc(), Card.id.desc()).all()
+    return [_card_to_dict(c, current_user.id) for c in cards]
+
+
+@router.post("/custom/{card_id}/clone", response_model=CardBase)
+def clone_custom_card(
+    card_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Create an independent, private copy of a shared custom-card template."""
+    source = db.query(Card).filter(Card.id == card_id, Card.is_custom == True).first()
+    if not source or not source.is_shared_template:
+        raise HTTPException(status_code=404, detail="Shared custom-card template not found")
+    if source.custom_owner_id == current_user.id:
+        raise HTTPException(status_code=400, detail="You already own this custom card")
+
+    excluded = {
+        "id",
+        "custom_owner_id",
+        "is_shared_template",
+        "custom_source_card_id",
+        "updated_at",
+    }
+    values = {
+        column.name: getattr(source, column.name)
+        for column in Card.__table__.columns
+        if column.name not in excluded
+    }
+    clone = Card(
+        **values,
+        id=f"custom-{uuid4().hex}",
+        custom_owner_id=current_user.id,
+        is_shared_template=False,
+        custom_source_card_id=source.id,
+    )
+    db.add(clone)
+    db.commit()
+    db.refresh(clone)
+    return _card_to_dict(clone, current_user.id)
 
 
 @router.get("/search")
@@ -551,7 +670,11 @@ def search_cards(
         total_count = query.count()
         cards = query.offset((page - 1) * page_size).limit(page_size).all()
         _schedule_search_page_metadata_enrichment(background_tasks, cards)
-        card_dicts = _with_collection_summary(db, current_user, [_card_to_dict(c) for c in cards])
+        card_dicts = _with_collection_summary(
+            db,
+            current_user,
+            [_card_to_dict(c, current_user.id) for c in cards],
+        )
 
         return {
             "data": card_dicts,
@@ -571,7 +694,11 @@ def get_custom_matches(
     """Return all pending custom card matches with details for preview."""
     matches = (
         db.query(CustomCardMatch)
-        .filter(CustomCardMatch.status == "pending")
+        .join(Card, Card.id == CustomCardMatch.custom_card_id)
+        .filter(
+            CustomCardMatch.status == "pending",
+            Card.custom_owner_id == current_user.id,
+        )
         .order_by(CustomCardMatch.matched_at.desc())
         .all()
     )
@@ -598,7 +725,7 @@ def get_custom_matches(
             "match_id": match.id,
             "status": match.status,
             "matched_at": match.matched_at.isoformat() if match.matched_at else None,
-            "custom_card": _card_to_dict(custom_card) if custom_card else None,
+            "custom_card": _card_to_dict(custom_card, current_user.id) if custom_card else None,
             "api_card": api_card_info,
         })
 
@@ -619,7 +746,12 @@ def migrate_custom_card(
     3. Delete the old custom Card.
     4. Set match status to 'migrated'.
     """
-    match = db.query(CustomCardMatch).filter(CustomCardMatch.id == match_id).first()
+    match = db.query(CustomCardMatch).join(
+        Card, Card.id == CustomCardMatch.custom_card_id
+    ).filter(
+        CustomCardMatch.id == match_id,
+        Card.custom_owner_id == current_user.id,
+    ).first()
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
     if match.status != "pending":
@@ -630,6 +762,8 @@ def migrate_custom_card(
 
     # Determine the language of the custom card for language-aware migration
     custom_card_obj = db.query(Card).filter(Card.id == custom_card_id).first()
+    if not custom_card_obj or custom_card_obj.custom_owner_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Match not found")
     custom_lang = normalize_tcgdex_language((custom_card_obj.lang or "en") if custom_card_obj else "en")
     if not is_supported_tcgdex_language(custom_lang):
         custom_lang = "en"
@@ -795,11 +929,19 @@ def dismiss_custom_match(
     current_user: User = Depends(get_current_user),
 ):
     """Dismiss a custom card match (keep the manual card, ignore the API version)."""
-    match = db.query(CustomCardMatch).filter(CustomCardMatch.id == match_id).first()
+    match = db.query(CustomCardMatch).join(
+        Card, Card.id == CustomCardMatch.custom_card_id
+    ).filter(
+        CustomCardMatch.id == match_id,
+        Card.custom_owner_id == current_user.id,
+    ).first()
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
     if match.status != "pending":
         raise HTTPException(status_code=400, detail=f"Match is already {match.status}")
+    custom_card = db.query(Card).filter(Card.id == match.custom_card_id).first()
+    if not custom_card or custom_card.custom_owner_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Match not found")
 
     match.status = "dismissed"
     try:
@@ -828,7 +970,7 @@ def get_card_in_lang(
     """
     source = db.query(Card).filter(
         Card.id == card_id,
-        or_(Card.is_custom == True, visible_card_filter(db, current_user.id, "all")),
+        visible_any_card_filter(db, current_user.id, "all"),
     ).first()
     if not source:
         raise HTTPException(status_code=404, detail="Card not found")
@@ -843,10 +985,10 @@ def get_card_in_lang(
     ).first()
 
     if sibling:
-        return _card_to_dict(sibling)
+        return _card_to_dict(sibling, current_user.id)
 
     # Fallback: return original card
-    return _card_to_dict(source)
+    return _card_to_dict(source, current_user.id)
 
 
 @router.get("/{card_id}/price-history", response_model=List[PriceHistoryResponse])
@@ -858,7 +1000,7 @@ def get_price_history(
     """Get price history for a specific card."""
     card = db.query(Card.id).filter(
         Card.id == card_id,
-        or_(Card.is_custom == True, visible_card_filter(db, current_user.id, "all")),
+        visible_any_card_filter(db, current_user.id, "all"),
     ).first()
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
@@ -931,10 +1073,10 @@ def get_card(
     """
     card = db.query(Card).filter(
         Card.id == card_id,
-        or_(Card.is_custom == True, visible_card_filter(db, current_user.id, "all")),
+        visible_any_card_filter(db, current_user.id, "all"),
     ).first()
     if card:
-        return card
+        return _card_to_dict(card, current_user.id)
 
     # Fetch full card detail from TCGdex (includes pricing)
     # strip_lang_suffix handles both composite IDs (sv1-1_de) and legacy IDs (sv1-1)

@@ -76,6 +76,9 @@ class Card(Base):
     data_source_lang = Column(String, nullable=True)   # Set when metadata is copied from another TCGdex language
     custom_image_url = Column(String, nullable=True)   # Manual temporary fallback while TCGdex has no image
     is_custom = Column(Boolean, default=False)
+    custom_owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    is_shared_template = Column(Boolean, default=False, nullable=False)
+    custom_source_card_id = Column(String, nullable=True, index=True)
     is_digital = Column(Boolean, default=False)
     lang = Column(String, default="en")      # TCGdex language code
     # Cardmarket EUR prices
@@ -131,6 +134,7 @@ class Card(Base):
     wishlist_items = relationship("WishlistItem", back_populates="card", lazy="dynamic")
     price_history = relationship("PriceHistory", back_populates="card", lazy="dynamic")
     binder_cards = relationship("BinderCard", back_populates="card", lazy="dynamic")
+    custom_owner = relationship("User", foreign_keys=[custom_owner_id])
 
 
 class User(Base):

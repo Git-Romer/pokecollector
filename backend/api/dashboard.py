@@ -4,7 +4,7 @@ from api.auth import get_current_user
 from database import get_db
 from models import CollectionItem, Card, Set, PortfolioSnapshot, SyncLog, User
 from services.card_values import effective_market_price, normalize_price_field
-from services.card_visibility import visible_card_filter, visible_set_filter
+from services.card_visibility import visible_any_card_filter, visible_set_filter
 from services.portfolio_valuation import (
     PORTFOLIO_CALCULATION_VERSION,
     calculate_portfolio_valuation,
@@ -29,7 +29,7 @@ def get_dashboard(
         joinedload(CollectionItem.card)
     ).filter(
         CollectionItem.user_id == current_user.id,
-        visible_card_filter(db, current_user.id, "all"),
+        visible_any_card_filter(db, current_user.id, "all"),
     ).all()
 
     total_cards = sum(item.quantity for item in items)
@@ -90,6 +90,7 @@ def get_dashboard(
             "lang": item.lang,
             "total_value": round(display_price * item.quantity, 2),
             "rarity": card.rarity,
+            "is_custom": card.is_custom,
             "custom_image_url": card.custom_image_url,
             "data_source_lang": card.data_source_lang,
             "price_source_lang": card.price_source_lang,
@@ -111,7 +112,7 @@ def get_dashboard(
         joinedload(CollectionItem.card).joinedload(Card.set_ref)
     ).filter(
         CollectionItem.user_id == current_user.id,
-        visible_card_filter(db, current_user.id, "all"),
+        visible_any_card_filter(db, current_user.id, "all"),
     ).order_by(CollectionItem.added_at.desc()).limit(12).all()
 
     recent_data = []
@@ -129,6 +130,7 @@ def get_dashboard(
                 "lang": item.lang,
                 "added_at": item.added_at.isoformat() if item.added_at else None,
                 "price_market": effective_market_price(item.card, item.variant, price_field),
+                "is_custom": item.card.is_custom,
                 "custom_image_url": item.card.custom_image_url,
                 "data_source_lang": item.card.data_source_lang,
                 "price_source_lang": item.card.price_source_lang,

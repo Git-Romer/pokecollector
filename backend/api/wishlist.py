@@ -6,7 +6,7 @@ from database import get_db
 from models import WishlistItem, Card, Set, User
 from schemas import WishlistItemCreate, WishlistItemUpdate, WishlistItemResponse
 from api.collection import ensure_card_exists
-from services.card_visibility import visible_card_filter
+from services.card_visibility import visible_any_card_filter
 import datetime
 
 router = APIRouter()
@@ -33,7 +33,7 @@ def get_wishlist(
         joinedload(WishlistItem.card).joinedload(Card.set_ref)
     ).filter(
         WishlistItem.user_id == current_user.id,
-        visible_card_filter(db, current_user.id, "all"),
+        visible_any_card_filter(db, current_user.id, "all"),
     ).order_by(WishlistItem.created_at.desc()).all()
     return items
 
@@ -45,7 +45,7 @@ def add_to_wishlist(
     db: Session = Depends(get_db),
 ):
     """Add a card to the wishlist, incrementing quantity when it already exists."""
-    ensure_card_exists(db, item.card_id)
+    ensure_card_exists(db, item.card_id, user_id=current_user.id)
 
     existing = db.query(WishlistItem).filter(
         WishlistItem.card_id == item.card_id,

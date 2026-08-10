@@ -239,7 +239,8 @@ def _load_user_stats(db: Session, user_ids: list[int] | None = None, price_field
     ).join(
         Card, CollectionItem.card_id == Card.id
     ).filter(
-        CollectionItem.user_id.in_(active_user_ids)
+        CollectionItem.user_id.in_(active_user_ids),
+        Card.is_custom == False,
     )
     if not digital_sets_enabled(db):
         collection_query = collection_query.filter(Card.is_digital == False)
@@ -252,7 +253,8 @@ def _load_user_stats(db: Session, user_ids: list[int] | None = None, price_field
             Card.lang,
             func.count(Card.id).label("card_count"),
         ).filter(
-            Card.set_id.isnot(None)
+            Card.set_id.isnot(None),
+            Card.is_custom == False,
         ).group_by(
             Card.set_id, Card.lang
         ).all()
@@ -264,7 +266,8 @@ def _load_user_stats(db: Session, user_ids: list[int] | None = None, price_field
     ).join(
         Card, WishlistItem.card_id == Card.id
     ).filter(
-        WishlistItem.user_id.in_(active_user_ids)
+        WishlistItem.user_id.in_(active_user_ids),
+        Card.is_custom == False,
     )
     if not digital_sets_enabled(db):
         wishlist_query = wishlist_query.filter(Card.is_digital == False)
@@ -412,6 +415,7 @@ def compare_users(
             Card, CollectionItem.card_id == Card.id
         ).filter(
             CollectionItem.user_id == current_user.id,
+            Card.is_custom == False,
             visible_card_filter(db, current_user.id, "all"),
         ).all()
     }
@@ -431,6 +435,7 @@ def compare_users(
             Card, CollectionItem.card_id == Card.id
         ).filter(
             CollectionItem.user_id == user_id,
+            Card.is_custom == False,
             visible_card_filter(db, user_id, "all"),
         ).all()
     }
@@ -439,6 +444,7 @@ def compare_users(
         row.card_id
         for row in db.query(WishlistItem.card_id).join(Card, Card.id == WishlistItem.card_id).filter(
             WishlistItem.user_id == current_user.id,
+            Card.is_custom == False,
             visible_card_filter(db, current_user.id, "all"),
         ).all()
     }
@@ -446,6 +452,7 @@ def compare_users(
         row.card_id
         for row in db.query(WishlistItem.card_id).join(Card, Card.id == WishlistItem.card_id).filter(
             WishlistItem.user_id == user_id,
+            Card.is_custom == False,
             visible_card_filter(db, user_id, "all"),
         ).all()
     }

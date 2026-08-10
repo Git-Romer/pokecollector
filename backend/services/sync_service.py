@@ -658,7 +658,10 @@ def check_custom_card_matches(db: Session):
     - If found and not already matched (pending/migrated), creates a CustomCardMatch
       and sends a Telegram notification.
     """
-    custom_cards = db.query(Card).filter(Card.is_custom == True).all()
+    custom_cards = db.query(Card).filter(
+        Card.is_custom == True,
+        Card.custom_owner_id.isnot(None),
+    ).all()
     if not custom_cards:
         return
 
@@ -694,7 +697,8 @@ def check_custom_card_matches(db: Session):
                 telegram.send_message(
                     f"🔄 Karte '<b>{card.name}</b>' ({set_name} #{card.number}) ist jetzt in der API verfügbar! "
                     f"Öffne die App um die Daten zu migrieren.",
-                    db=db
+                    db=db,
+                    user_id=card.custom_owner_id,
                 )
                 logger.info(f"API match found for custom card '{card.id}' → '{api_card_id}'")
         except Exception as e:

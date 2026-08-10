@@ -193,6 +193,36 @@ class CatalogLanguageTests(unittest.TestCase):
         self.assertEqual(states[zero_card.id]["owned_quantity"], 0)
         self.assertTrue(states[zero_card.id]["wishlisted"])
 
+    def test_set_checklist_excludes_manual_cards_from_every_user(self):
+        set_obj = Set(id="base1_en", tcg_set_id="base1", name="Base Set", lang="en", total=1)
+        catalogue_card = Card(
+            id="base1-1_en",
+            tcg_card_id="base1-1",
+            name="Alakazam",
+            set_id="base1",
+            number="1",
+            lang="en",
+            is_custom=False,
+        )
+        other = User(username="misty", hashed_password="x", role="trainer", is_active=True)
+        self.db.add_all([set_obj, catalogue_card, other])
+        self.db.commit()
+        private_card = Card(
+            id="custom-private-card",
+            name="Private Alakazam",
+            set_id="base1",
+            number="999",
+            lang="en",
+            is_custom=True,
+            custom_owner_id=other.id,
+        )
+        self.db.add(private_card)
+        self.db.commit()
+
+        result = get_set_checklist(set_obj.id, db=self.db, current_user=self.user)
+
+        self.assertEqual([card["id"] for card in result["cards"]], [catalogue_card.id])
+
     def test_get_card_without_lang_fetches_user_language(self):
         self.db.add(UserSetting(user_id=self.user.id, key="language", value="en"))
         self.db.commit()

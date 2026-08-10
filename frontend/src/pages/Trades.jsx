@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import clsx from 'clsx'
 import {
   createTrade,
+  cloneCustomCard,
   getApiErrorMessage,
   getCollection,
   getCustomCards,
@@ -343,7 +344,18 @@ export default function Trades() {
     })
   }
 
-  const addIncomingCard = (card) => {
+  const addIncomingCard = async (selectedCard) => {
+    let card = selectedCard
+    if (card.is_custom && card.is_shared_template && !card.is_custom_owner) {
+      try {
+        card = await cloneCustomCard(card.id)
+        queryClient.invalidateQueries({ queryKey: ['custom-cards'] })
+        toast.success(t('cardSearch.templateCopied'))
+      } catch (error) {
+        toast.error(getApiErrorMessage(error, t('common.error')))
+        return
+      }
+    }
     const variant = getDefaultVariantOrNull(card) || 'Normal'
     const condition = 'NM'
     const lang = card.lang || card._lang || 'en'
