@@ -2,13 +2,13 @@ import { useState, useMemo, useId, useRef, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Trash2, Check, X, Filter, SortAsc, Download, Upload, ChevronUp, ChevronDown, Search, PenLine, Grid2X2, List, Library, BookOpen, Heart, Copy, ArrowLeft, Package, Camera } from 'lucide-react'
+import { Trash2, Check, X, Filter, SortAsc, Download, Upload, ChevronUp, ChevronDown, Search, PenLine, Grid2X2, List, Library, BookOpen, Heart, Copy, ArrowLeft, Package } from 'lucide-react'
 import { getCollection, updateCollectionItem, updateCardCustomImage, removeFromCollection, importCollectionCsv, exportCSV, exportPDF, getSets, addToCollection, getBinders, addCollectionItemToBinder, getWishlist, getApiErrorMessage, uploadCollectionItemPhoto, deleteCollectionItemPhoto } from '../api/client'
 import { CustomCardModal } from '../components/CardItem'
 import { useSettings } from '../contexts/SettingsContext'
 import CardImage from '../components/CardImage'
 import { CardDialog, CardLegend, withCollectionItemState } from '../components/card-system'
-import { CollectionCardDisplay, CollectionCardIdentity, CollectionCardRow, useCollectionPhotoUrl } from '../components/CollectionCardImage'
+import { CollectionCardDisplay, CollectionCardIdentity, CollectionCardRow, OwnPhotoOverlayBadge, useCollectionPhotoUrl } from '../components/CollectionCardImage'
 import MoneyInput from '../components/MoneyInput'
 import TabNav from '../components/TabNav'
 import toast from 'react-hot-toast'
@@ -506,14 +506,7 @@ function CollectionEditModal({ item, onClose }) {
       image={cardImage}
       // Only when the photo is what is actually on screen — a custom image
       // URL takes precedence over it above.
-      imageOverlay={cardImage === ownPhotoUrl && (
-        <span
-          className="absolute bottom-1 right-1 z-10 inline-flex items-center justify-center rounded-md bg-black/70 text-white/90 border border-white/20 p-1 pointer-events-none"
-          title={t('collection.ownPhoto')}
-        >
-          <Camera size={12} />
-        </span>
-      )}
+      imageOverlay={cardImage === ownPhotoUrl && <OwnPhotoOverlayBadge t={t} />}
       variantEffectSource={variant}
       price={marketPrice > 0 ? formatPrice(marketPrice) : null}
       tabs={dialogTabs}
