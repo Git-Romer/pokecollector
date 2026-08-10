@@ -2,9 +2,10 @@ from collections import defaultdict
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from api.auth import get_current_user
+from api.cards import _card_to_dict
 from database import get_db
 from models import Card, CollectionItem, ProductPurchase, Set, User, WishlistItem
 from services.card_values import effective_market_price, normalize_price_field
@@ -181,14 +182,21 @@ ACHIEVEMENTS = [
 
 
 def _card_payload(card: Card | None):
+    """Catalogue detail for a card shown on someone else's profile.
+
+    The card modal renders rarity, HP, artist, types and supertype, so a
+    summary of just a name and a thumbnail leaves its overview blank. The raw
+    custom_image_url stays behind: images resolve through the card-id proxy,
+    and it is a user-supplied URL on another user's card.
+    """
     if not card:
         return None
-    return {
-        "name": card.name,
-        "images_small": card.images_small,
-        "price_market": round(card.price_market or 0, 2),
-        "set_id": card.set_id,
-    }
+    payload = _card_to_dict(card)
+    custom_image_url = payload.pop("custom_image_url", None)
+    payload["has_custom_image_fallback"] = bool(
+        custom_image_url and not (card.images_small or card.images_large)
+    )
+    return payload
 
 
 def _load_user_stats(db: Session, user_ids: list[int] | None = None, price_field: str = "price_trend"):
@@ -296,6 +304,8 @@ def _load_user_stats(db: Session, user_ids: list[int] | None = None, price_field
         items_by_user[row.user_id].append(row)
 
     stats = {}
+    most_valuable_rows: dict[int, object] = {}
+
     for user in users:
         rows = items_by_user.get(user.id, [])
         total_cards = sum(row.quantity or 0 for row in rows)
@@ -304,22 +314,7 @@ def _load_user_stats(db: Session, user_ids: list[int] | None = None, price_field
 
         most_valuable = None
         if rows:
-            most_valuable_row = max(rows, key=lambda row: _get_price(row))
-            most_valuable = {
-                "id": most_valuable_row.card_db_id,
-                "card_id": most_valuable_row.card_db_id,
-                "name": most_valuable_row.name,
-                "images_small": most_valuable_row.images_small,
-                "price_market": round(_get_price(most_valuable_row), 2),
-                "set_id": most_valuable_row.set_id,
-                "data_source_lang": most_valuable_row.data_source_lang,
-                "price_source_lang": most_valuable_row.price_source_lang,
-                "image_source_lang": most_valuable_row.image_source_lang,
-                "has_custom_image_fallback": bool(
-                    most_valuable_row.custom_image_url
-                    and not (most_valuable_row.images_small or most_valuable_row.images_large)
-                ),
-            }
+            most_valuable_rows[user.id] = max(rows, key=lambda row: _get_price(row))
 
         owned_by_set = defaultdict(set)
         owned_set_ids = set()
@@ -362,6 +357,31 @@ def _load_user_stats(db: Session, user_ids: list[int] | None = None, price_field
             "illustration_rare_flag": 1 if has_illustration_rare else 0,
             "public_handle": user.public_handle if sharing_enabled and user.is_profile_public else None,
         }
+
+    if most_valuable_rows:
+        card_ids = {row.card_db_id for row in most_valuable_rows.values()}
+        cards = {
+            card.id: card
+            for card in db.query(Card)
+            .options(joinedload(Card.set_ref))
+            .filter(Card.id.in_(card_ids))
+            .all()
+        }
+        for user_id, row in most_valuable_rows.items():
+            payload = _card_payload(cards.get(row.card_db_id))
+            if payload is None:
+                continue
+            # The row carries the variant-aware price and the language the copy
+            # was actually valued in, which the card alone cannot know.
+            payload.update({
+                "id": row.card_db_id,
+                "card_id": row.card_db_id,
+                "price_market": round(_get_price(row), 2),
+                "data_source_lang": row.data_source_lang,
+                "price_source_lang": row.price_source_lang,
+                "image_source_lang": row.image_source_lang,
+            })
+            stats[user_id]["most_valuable_card"] = payload
 
     return stats
 
