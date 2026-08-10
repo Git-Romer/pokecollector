@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeftRight } from 'lucide-react'
+import { ArrowLeft, ArrowLeftRight } from 'lucide-react'
 import { compareUsers } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import { useAuth } from '../contexts/AuthContext'
@@ -11,14 +11,14 @@ import { CardModal } from '../components/CardItem'
 
 function TrainerAvatar({ avatarId, username }) {
   if (!avatarId) {
-    return <img src="/pokeball.svg" alt={username} className="h-16 w-16 rounded-full border border-border bg-bg-card p-3" />
+    return <img src="/pokeball.svg" alt={username} className="h-16 w-16 shrink-0 rounded-full border border-border bg-bg-card p-3" />
   }
 
   return (
     <img
       src={`https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/${avatarId}.gif`}
       alt={username}
-      className="h-16 w-16 rounded-full border border-border bg-bg-card p-1 pixelated"
+      className="h-16 w-16 shrink-0 rounded-full border border-border bg-bg-card p-1 pixelated"
     />
   )
 }
@@ -40,8 +40,8 @@ function TrainerPanel({ trainer, formatPrice, t, onCardClick }) {
     <div className="card space-y-4">
       <div className="flex items-center gap-3">
         <TrainerAvatar avatarId={trainer?.avatar_id} username={trainer?.username} />
-        <div>
-          <h2 className="text-xl font-bold text-text-primary">{trainer?.username}</h2>
+        <div className="min-w-0">
+          <h2 className="truncate text-xl font-bold text-text-primary">{trainer?.username}</h2>
           <p className="text-sm text-text-secondary">{trainer?.role}</p>
         </div>
       </div>
@@ -104,18 +104,17 @@ export default function Compare() {
 
   return (
     <div className="page-container">
+      <button type="button" className="btn-ghost text-sm py-1.5" onClick={() => navigate('/leaderboard')}>
+        <ArrowLeft size={14} /> {t('nav.leaderboard')}
+      </button>
+
       <div className="card">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h1 className="flex items-center gap-2 text-xl font-bold text-text-primary">
-              <ArrowLeftRight size={20} className="text-blue" />
-              {t('compare.title')}
-            </h1>
-            <p className="mt-1 text-sm text-text-secondary">{t('leaderboard.compare')}</p>
-          </div>
-          <button type="button" className="btn-ghost" onClick={() => navigate('/leaderboard')}>
-            {t('nav.leaderboard')}
-          </button>
+        <div>
+          <h1 className="flex items-center gap-2 text-xl font-bold text-text-primary">
+            <ArrowLeftRight size={20} className="text-blue" />
+            {t('compare.title')}
+          </h1>
+          <p className="mt-1 text-sm text-text-secondary">{t('leaderboard.compare')}</p>
         </div>
       </div>
 
