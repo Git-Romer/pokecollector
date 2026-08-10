@@ -959,6 +959,7 @@ class ProductLedgerApiTests(unittest.TestCase):
             number="42",
             lang="en",
             is_custom=True,
+            custom_owner_id=self.user.id,
             price_trend=20,
             price_market=20,
             variants_normal=True,

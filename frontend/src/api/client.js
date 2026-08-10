@@ -97,6 +97,7 @@ export const updateCustomCard = (cardId, data) => api.put(`/cards/custom/${cardI
 export const updateCardCustomImage = (cardId, data) => api.put(`/cards/${cardId}/custom-image`, data).then(r => r.data)
 export const deleteCustomCard = (cardId) => api.delete(`/cards/custom/${cardId}`)
 export const getCustomCards = () => api.get('/cards/custom')
+export const cloneCustomCard = (cardId) => api.post(`/cards/custom/${cardId}/clone`).then(r => r.data)
 
 // Card recognition via Gemini Vision
 export const recognizeCard = (imageFile) => {

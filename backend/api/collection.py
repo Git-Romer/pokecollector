@@ -9,7 +9,7 @@ from schemas import CollectionItemCreate, CollectionItemUpdate, CollectionItemRe
 from services import pokemon_api
 from services.card_fallbacks import apply_cross_language_fallbacks, build_missing_language_card
 from services.card_numbers import card_number_matches
-from services.card_visibility import visible_card_filter
+from services.card_visibility import visible_any_card_filter, visible_card_filter
 from services.binder_allocations import collection_item_allocated_quantity
 from services.digital_sets import digital_sets_enabled
 from services.standard_legality import is_standard_legal_card, is_standard_regulation_mark
@@ -166,11 +166,23 @@ def _normalize_request_lang(lang: Optional[str]) -> str:
     return normalized
 
 
-def ensure_card_exists(db: Session, card_id: str, lang: str = "en") -> Card:
+def ensure_card_exists(
+    db: Session,
+    card_id: str,
+    lang: str = "en",
+    user_id: int | None = None,
+) -> Card:
     """Ensure card exists in DB. If not found locally, try to fetch from TCGdex."""
     tcg_card_id, detected_lang = pokemon_api.strip_lang_suffix(card_id)
     lang = _normalize_request_lang(detected_lang if has_lang_suffix(card_id) else lang)
     card = db.query(Card).filter(Card.id == card_id).first()
+    if card and card.is_custom and user_id is not None and card.custom_owner_id != user_id:
+        if card.is_shared_template:
+            raise HTTPException(
+                status_code=409,
+                detail="Copy this shared template before adding it.",
+            )
+        raise HTTPException(status_code=404, detail=f"Card {card_id} is not available.")
     if card and card.is_digital and not digital_sets_enabled(db):
         raise HTTPException(status_code=404, detail=f"Card {card_id} is not available.")
     if not card:
@@ -220,6 +232,10 @@ def _add_collection_item(db: Session, current_user: User, item: CollectionItemCr
     if item.card_id.startswith("custom-"):
         effective_card_id = item.card_id
         custom_card = db.query(Card).filter(Card.id == item.card_id).first()
+        if not custom_card or custom_card.custom_owner_id != current_user.id:
+            if custom_card and custom_card.is_shared_template:
+                raise HTTPException(status_code=409, detail="Copy this shared template before adding it.")
+            raise HTTPException(status_code=404, detail="Custom card not found")
         if custom_card and custom_card.lang:
             item_lang = custom_card.lang
     else:
@@ -427,6 +443,9 @@ def get_user_collection(
         joinedload(CollectionItem.card).joinedload(Card.set_ref)
     ).filter(
         CollectionItem.user_id == user_id,
+        Card.is_custom == False,
+        # Manual cards remain private outside their owner's explicitly shared
+        # binders and template browser.
         visible_card_filter(db, user_id, "all"),
     )
     return _annotate_standard_legality(query.all(), _collection_standard_legal_fingerprints(db))
@@ -444,7 +463,7 @@ def get_collection(
         joinedload(CollectionItem.card).joinedload(Card.set_ref)
     ).filter(
         CollectionItem.user_id == current_user.id,
-        visible_card_filter(db, current_user.id, "all"),
+        visible_any_card_filter(db, current_user.id, "all"),
     )
 
     sort_col = {
@@ -479,6 +498,10 @@ def add_to_collection(
         effective_card_id = item.card_id
         # Always derive lang from the custom card record itself
         custom_card = db.query(Card).filter(Card.id == item.card_id).first()
+        if not custom_card or custom_card.custom_owner_id != current_user.id:
+            if custom_card and custom_card.is_shared_template:
+                raise HTTPException(status_code=409, detail="Copy this shared template before adding it.")
+            raise HTTPException(status_code=404, detail="Custom card not found")
         if custom_card and custom_card.lang:
             item_lang = custom_card.lang
     else:
@@ -545,6 +568,10 @@ def bulk_add_to_collection(
             if item.card_id.startswith("custom-"):
                 effective_card_id = item.card_id
                 custom_card = db.query(Card).filter(Card.id == item.card_id).first()
+                if not custom_card or custom_card.custom_owner_id != current_user.id:
+                    if custom_card and custom_card.is_shared_template:
+                        raise HTTPException(status_code=409, detail="Copy this shared template before adding it.")
+                    raise HTTPException(status_code=404, detail="Custom card not found")
                 if custom_card and custom_card.lang:
                     item_lang = custom_card.lang
             else:
@@ -803,7 +830,7 @@ def get_collection_stats(
         joinedload(CollectionItem.card)
     ).filter(
         CollectionItem.user_id == current_user.id,
-        visible_card_filter(db, current_user.id, "all"),
+        visible_any_card_filter(db, current_user.id, "all"),
     ).all()
 
     total_cards = sum(item.quantity for item in items)

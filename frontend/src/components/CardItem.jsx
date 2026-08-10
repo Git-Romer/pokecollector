@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { Plus, Heart, X, PenLine, Pencil, Trash2, ExternalLink } from 'lucide-react'
-import { addToCollection, addToWishlist, createCustomCard, updateCustomCard, updateCardCustomImage, deleteCustomCard, getSets, getPriceHistory } from '../api/client'
+import { addToCollection, addToWishlist, cloneCustomCard, createCustomCard, updateCustomCard, updateCardCustomImage, deleteCustomCard, getSets, getPriceHistory } from '../api/client'
+import { useAuth } from '../contexts/AuthContext'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
@@ -61,6 +62,7 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
   const [hp, setHp] = useState(editCard?.hp || '')
   const [artist, setArtist] = useState(editCard?.artist || '')
   const [imageUrl, setImageUrl] = useState(editCard?.images_small || editCard?.image_url || '')
+  const [isSharedTemplate, setIsSharedTemplate] = useState(editCard?.is_shared_template || false)
 
   const [createdCard, setCreatedCard] = useState(null)
   const [quantity, setQuantity] = useState(1)
@@ -165,6 +167,7 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
       artist: artist.trim() || undefined,
       image_url: imageUrl.trim() || undefined,
       lang: selectedSet?.lang || 'en',
+      is_shared_template: isSharedTemplate,
     }
     if (isEditMode) {
       updateMutation.mutate(payload)
@@ -228,6 +231,18 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
                 <input type="text" required placeholder={t('cardSearch.customNamePlaceholder')} value={name}
                   onChange={(e) => setName(e.target.value)} className="input" />
               </div>
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-bg-card p-3">
+                <input
+                  type="checkbox"
+                  checked={isSharedTemplate}
+                  onChange={(event) => setIsSharedTemplate(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 accent-brand-red"
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-text-primary">{t('cardSearch.shareAsTemplate')}</span>
+                  <span className="block text-xs text-text-muted">{t('cardSearch.shareAsTemplateHelp')}</span>
+                </span>
+              </label>
               <div>
                 <label className="text-xs text-text-secondary mb-1 block">{t('common.set')}</label>
                 <select className="select" value={setChoice} onChange={(e) => setSetChoice(e.target.value)}>
@@ -376,9 +391,36 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
 export const CardItem = memo(function CardItem({ card, showActions = true, onAddToBinder = null, compact = false, lang = null, dimWhenUnowned = false }) {
   const [showModal, setShowModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
+  const [clonedCard, setClonedCard] = useState(null)
   const [modalTab, setModalTab] = useState('overview')
   const { t, pricePrimary, pricePrimaryField, formatPrice } = useSettings()
   const queryClient = useQueryClient()
+  const { user } = useAuth()
+  const ownsCustomCard = Boolean(
+    card.is_custom
+    && (card.is_custom_owner || Number(card.custom_owner_id) === Number(user?.id))
+  )
+  const isForeignTemplate = Boolean(card.is_custom && card.is_shared_template && !ownsCustomCard)
+
+  const cloneMutation = useMutation({
+    mutationFn: () => cloneCustomCard(card.id),
+    onSuccess: (clone) => {
+      setClonedCard(clone)
+      queryClient.invalidateQueries({ queryKey: ['custom-cards'] })
+      invalidateCardState(queryClient)
+      if (onAddToBinder) {
+        onAddToBinder(clone.id)
+      } else {
+        setModalTab('add')
+        setShowModal(true)
+      }
+      toast.success(t('cardSearch.templateCopied'))
+    },
+    onError: (err) => {
+      const detail = err?.response?.data?.detail || t('common.error')
+      toast.error(typeof detail === 'string' ? detail : detail?.message)
+    },
+  })
 
   const cardImage = card.images?.small || resolveCardImageUrl(card) || (card.image ? `${card.image}/low.webp` : null)
   const selectedPrice = getEffectiveCardPrice(card, null, pricePrimaryField)
@@ -407,7 +449,8 @@ export const CardItem = memo(function CardItem({ card, showActions = true, onAdd
         onClick={() => openModal('overview')}
         onAdd={showActions
           ? () => {
-              if (onAddToBinder) onAddToBinder(card.id)
+              if (isForeignTemplate) cloneMutation.mutate()
+              else if (onAddToBinder) onAddToBinder(card.id)
               else openModal('add')
             }
           : undefined}
@@ -415,9 +458,12 @@ export const CardItem = memo(function CardItem({ card, showActions = true, onAdd
 
       {showModal && (
         <CardModal
-          card={card}
+          card={clonedCard || card}
           onClose={() => setShowModal(false)}
-          onEdit={card.is_custom ? () => { setShowModal(false); setShowEditModal(true) } : undefined}
+          onEdit={ownsCustomCard ? () => { setShowModal(false); setShowEditModal(true) } : undefined}
+          isForeignTemplate={!clonedCard && isForeignTemplate}
+          onCopyTemplate={() => cloneMutation.mutate()}
+          copyTemplatePending={cloneMutation.isPending}
           initialTab={modalTab}
         />
       )}
@@ -436,7 +482,7 @@ export const CardItem = memo(function CardItem({ card, showActions = true, onAdd
   )
 })
 
-export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItems = null, initialTab = 'overview' }) {
+export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItems = null, initialTab = 'overview', isForeignTemplate = false, onCopyTemplate, copyTemplatePending = false }) {
   if (!card || !card.id) return null
 
   const [activeTab, setActiveTab] = useState(initialTab)
@@ -452,6 +498,10 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
   const { t, formatPrice, formatUsdPrice, pricePrimary, pricePrimaryField, exchangeRate, exchangeRateReady } = useSettings()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+
+  useEffect(() => {
+    setActiveTab(initialTab)
+  }, [card.id, initialTab])
 
   // Price history chart
   const cardIdForHistory = card?.card_id || (typeof card?.id === 'string' ? card.id : null)
@@ -476,7 +526,9 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
   const customImageProxyUrl = canEditCustomImage && savedCustomImageUrl
     ? `${cardImageUrl(customImageCardId, 'large')}?v=${customImageVersion}`
     : null
-  const cardImage = card?.images?.large
+  const manualImageProxyUrl = card.is_custom ? resolveCardImageUrl(card, 'large') : null
+  const cardImage = manualImageProxyUrl
+    || card?.images?.large
     || card?.images_large
     || (card?.image ? `${card.image}/high.webp` : null)
     || card?.images?.small
@@ -593,8 +645,10 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
     { id: 'overview', label: t('cardTabs.overview') },
     { id: 'prices', label: t('cardTabs.prices') },
     ...(ownedQuantity > 0 ? [{ id: 'owned', label: t('cardTabs.owned') }] : []),
-    { id: 'add', label: t('cardTabs.add') },
-    { id: 'wishlist', label: t('cardTabs.wishlist') },
+    ...(!isForeignTemplate ? [
+      { id: 'add', label: t('cardTabs.add') },
+      { id: 'wishlist', label: t('cardTabs.wishlist') },
+    ] : []),
   ]
 
   return (
@@ -609,6 +663,21 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
       onClose={onClose}
     >
       <div className="min-w-0 space-y-4">
+
+            {isForeignTemplate && (
+              <div className="rounded-xl border border-yellow/30 bg-yellow/10 p-4">
+                <p className="text-sm font-semibold text-text-primary">{t('cardSearch.sharedTemplate')}</p>
+                <p className="mt-1 text-xs text-text-secondary">{t('cardSearch.sharedTemplateHelp')}</p>
+                <button
+                  type="button"
+                  onClick={onCopyTemplate}
+                  disabled={copyTemplatePending}
+                  className="btn-primary mt-3"
+                >
+                  <Plus size={16} /> {copyTemplatePending ? t('common.saving') : t('cardSearch.copyToCollection')}
+                </button>
+              </div>
+            )}
 
             {activeTab === 'overview' && <div className="grid grid-cols-2 gap-3 text-sm">
               {card.rarity && (

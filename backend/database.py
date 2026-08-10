@@ -534,6 +534,23 @@ def _run_migrations(conn):
            ON scan_job_items(status, next_attempt_at, lease_expires_at, user_id)""",
         "CREATE INDEX IF NOT EXISTS ix_scan_queue_user_state_last_dispatched_at ON scan_queue_user_state(last_dispatched_at)",
         "CREATE INDEX IF NOT EXISTS ix_gemini_quota_state_next_request_at ON gemini_quota_state(next_request_at)",
+        # v59: User-owned manual cards and copy-only shared templates.
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS custom_owner_id INTEGER",
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS is_shared_template BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS custom_source_card_id VARCHAR",
+        "CREATE INDEX IF NOT EXISTS ix_cards_custom_owner_id ON cards(custom_owner_id)",
+        "CREATE INDEX IF NOT EXISTS ix_cards_custom_source_card_id ON cards(custom_source_card_id)",
+        """DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'cards_custom_owner_id_fkey'
+            ) THEN
+                ALTER TABLE cards
+                    ADD CONSTRAINT cards_custom_owner_id_fkey
+                    FOREIGN KEY (custom_owner_id) REFERENCES users(id) ON DELETE CASCADE;
+            END IF;
+        END$$""",
     ]
     for stmt in migrations:
         try:
@@ -639,6 +656,172 @@ def migrate_legacy_collection_binder_entries():
     except Exception as e:
         db.rollback()
         logger.warning("migrate_legacy_collection_binder_entries: migration aborted: %s", e)
+    finally:
+        db.close()
+
+
+def migrate_custom_card_ownership():
+    """Give legacy manual cards an owner and isolate every user's references.
+
+    The first-created admin keeps the original as a shared template. Every
+    other user who references that card receives one independent private clone,
+    and all of that user's live and historical references move to the clone.
+    """
+    from uuid import uuid4
+
+    from models import (
+        Binder,
+        BinderCard,
+        Card,
+        CollectionItem,
+        CustomCardMatch,
+        PriceHistory,
+        ProductCard,
+        ProductLedgerEntry,
+        TradeItem,
+        User,
+        WishlistItem,
+    )
+
+    db = SessionLocal()
+    try:
+        first_admin = db.query(User).filter(
+            User.role == "admin"
+        ).order_by(User.created_at.asc().nulls_last(), User.id.asc()).first()
+        legacy_cards = db.query(Card).filter(
+            Card.is_custom == True,
+            Card.custom_owner_id.is_(None),
+        ).order_by(Card.id.asc()).with_for_update(of=Card).all()
+        if not legacy_cards:
+            return
+        if not first_admin:
+            logger.warning(
+                "migrate_custom_card_ownership: deferred because no admin account exists"
+            )
+            return
+
+        migrated_cards = 0
+        created_clones = 0
+        for source in legacy_cards:
+            source.custom_owner_id = first_admin.id
+            source.is_shared_template = True
+            db.flush()
+
+            referenced_user_ids = set()
+            for model in (
+                CollectionItem,
+                WishlistItem,
+                ProductCard,
+                ProductLedgerEntry,
+                TradeItem,
+            ):
+                referenced_user_ids.update(
+                    user_id
+                    for (user_id,) in db.query(model.user_id).filter(
+                        model.card_id == source.id,
+                        model.user_id.isnot(None),
+                        model.user_id != first_admin.id,
+                    ).distinct().all()
+                )
+            referenced_user_ids.update(
+                user_id
+                for (user_id,) in db.query(Binder.user_id).join(
+                    BinderCard, BinderCard.binder_id == Binder.id
+                ).filter(
+                    BinderCard.card_id == source.id,
+                    Binder.user_id.isnot(None),
+                    Binder.user_id != first_admin.id,
+                ).distinct().all()
+            )
+
+            source_values = {
+                column.name: getattr(source, column.name)
+                for column in Card.__table__.columns
+                if column.name not in {
+                    "id", "custom_owner_id", "is_shared_template",
+                    "custom_source_card_id", "updated_at"
+                }
+            }
+            for user_id in sorted(referenced_user_ids):
+                clone = db.query(Card).filter(
+                    Card.is_custom == True,
+                    Card.custom_owner_id == user_id,
+                    Card.custom_source_card_id == source.id,
+                ).order_by(Card.id.asc()).first()
+                if not clone:
+                    clone_id = f"custom-{uuid4().hex}"
+                    clone = Card(
+                        **source_values,
+                        id=clone_id,
+                        custom_owner_id=user_id,
+                        is_shared_template=False,
+                        custom_source_card_id=source.id,
+                    )
+                    db.add(clone)
+                    db.flush()
+                    created_clones += 1
+
+                    for history in db.query(PriceHistory).filter(
+                        PriceHistory.card_id == source.id
+                    ).all():
+                        db.add(PriceHistory(
+                            card_id=clone_id,
+                            date=history.date,
+                            price_low=history.price_low,
+                            price_mid=history.price_mid,
+                            price_high=history.price_high,
+                            price_market=history.price_market,
+                            price_trend=history.price_trend,
+                        ))
+                    for match in db.query(CustomCardMatch).filter(
+                        CustomCardMatch.custom_card_id == source.id
+                    ).all():
+                        db.add(CustomCardMatch(
+                            custom_card_id=clone_id,
+                            api_card_id=match.api_card_id,
+                            matched_at=match.matched_at,
+                            status=match.status,
+                        ))
+                else:
+                    clone_id = clone.id
+
+                for model in (
+                    CollectionItem,
+                    WishlistItem,
+                    ProductCard,
+                    ProductLedgerEntry,
+                    TradeItem,
+                ):
+                    db.query(model).filter(
+                        model.card_id == source.id,
+                        model.user_id == user_id,
+                    ).update({"card_id": clone_id}, synchronize_session=False)
+
+                binder_card_ids = [
+                    binder_card_id
+                    for (binder_card_id,) in db.query(BinderCard.id).join(
+                        Binder, Binder.id == BinderCard.binder_id
+                    ).filter(
+                        BinderCard.card_id == source.id,
+                        Binder.user_id == user_id,
+                    ).all()
+                ]
+                if binder_card_ids:
+                    db.query(BinderCard).filter(
+                        BinderCard.id.in_(binder_card_ids)
+                    ).update({"card_id": clone_id}, synchronize_session=False)
+
+            migrated_cards += 1
+
+        db.commit()
+        logger.info(
+            "migrate_custom_card_ownership: migrated %s card(s) and created %s clone(s)",
+            migrated_cards,
+            created_clones,
+        )
+    except Exception as e:
+        db.rollback()
+        logger.warning("migrate_custom_card_ownership: migration aborted: %s", e)
     finally:
         db.close()
 
@@ -756,6 +939,12 @@ def init_db():
     # Link old card-level collection binder rows to exact owned rows.
     try:
         migrate_legacy_collection_binder_entries()
+    except Exception:
+        pass  # Non-blocking
+
+    # Isolate every user's references to legacy global manual cards.
+    try:
+        migrate_custom_card_ownership()
     except Exception:
         pass  # Non-blocking
 

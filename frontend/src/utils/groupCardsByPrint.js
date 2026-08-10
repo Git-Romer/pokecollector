@@ -14,6 +14,7 @@ export function groupCardsByPrint(cards) {
         set_name: c.set_name,
         number: c.number,
         rarity: c.rarity,
+        is_custom: Boolean(c.is_custom),
         lang: c.lang,
         data_source_lang: c.data_source_lang,
         price_source_lang: c.price_source_lang,

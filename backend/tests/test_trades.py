@@ -15,7 +15,7 @@ try:
     from api.cards import delete_custom_card
     from api.analytics import get_trades_summary
     from api.products import unlink_product_card
-    from api.trades import create_trade, get_trades, update_trade
+    from api.trades import create_trade, get_trades, update_trade, value_trade
     from database import Base
     from models import Binder, BinderCard, Card, CollectionItem, ProductCard, ProductLedgerEntry, ProductPurchase, Trade, TradeItem, User
     from schemas import (
@@ -25,6 +25,8 @@ try:
         TradeOutgoingItemCreate,
         TradeOutgoingItemUpdate,
         TradeUpdate,
+        TradeValuationItem,
+        TradeValuationRequest,
     )
     API_TEST_DEPS_AVAILABLE = True
 except ModuleNotFoundError:
@@ -75,6 +77,8 @@ class TradeApiTests(unittest.TestCase):
         self.db.commit()
         self.db.refresh(self.user)
         self.db.refresh(self.other_user)
+        self.custom_card.custom_owner_id = self.user.id
+        self.db.commit()
 
     def tearDown(self):
         self.db.close()
@@ -189,6 +193,31 @@ class TradeApiTests(unittest.TestCase):
         self.assertEqual(item.variant, "Holo")
         self.assertEqual(item.purchase_price, 25)
         self.assertEqual(response.incoming_value, 25)
+
+    def test_trade_valuation_does_not_reveal_foreign_private_manual_card(self):
+        private_card = Card(
+            id="custom-private-value",
+            name="Private priced card",
+            is_custom=True,
+            custom_owner_id=self.other_user.id,
+            price_trend=999,
+            lang="en",
+        )
+        self.db.add(private_card)
+        self.db.commit()
+
+        with self.assertRaises(HTTPException) as context:
+            value_trade(
+                TradeValuationRequest(
+                    incoming=[TradeValuationItem(card_id=private_card.id, quantity=1)]
+                ),
+                current_user=self.user,
+                db=self.db,
+                price_field="price_trend",
+            )
+
+        self.assertEqual(context.exception.status_code, 404)
+        self.assertEqual(context.exception.detail, "Card not found")
 
     def test_create_trade_can_include_cash_on_both_sides(self):
         outgoing = self.add_collection_item(quantity=1)
@@ -344,6 +373,7 @@ class TradeApiTests(unittest.TestCase):
             number="promo",
             lang="en",
             is_custom=True,
+            custom_owner_id=self.user.id,
             price_trend=33,
             variants_normal=True,
         )

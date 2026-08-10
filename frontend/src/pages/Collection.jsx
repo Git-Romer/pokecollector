@@ -1370,9 +1370,6 @@ export default function Collection() {
                               variantEffectSource={item.variant}
                               details={(
                                 <div className="mt-0.5 flex min-w-0 items-center gap-1">
-                                  {card?.is_custom && (
-                                    <span className="rounded bg-yellow/20 px-1 text-xs text-yellow" title={t('migration.custom')}>✏️</span>
-                                  )}
                                   <ProductSourceBadge item={item} t={t} className="max-w-[180px]" />
                                 </div>
                               )}
@@ -1449,8 +1446,6 @@ export default function Collection() {
                   })
                   const sourceSummary = getProductSourceSummary(item)
                   if (sourceSummary) badges.push({ label: `${t('collection.foundIn')}: ${sourceSummary.label}`, variant: 'gold' })
-                  if (card?.is_custom) badges.push({ label: '✏️', variant: 'yellow' })
-
                   return (
                     <CardRow
                       key={item.id}

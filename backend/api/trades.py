@@ -13,6 +13,7 @@ from models import Card, CollectionItem, ProductCard, ProductLedgerEntry, Produc
 from schemas import TradeCreate, TradeResponse, TradeUpdate, TradeValuationRequest
 from services import pokemon_api
 from services.card_values import effective_market_price, normalize_price_field
+from services.card_visibility import visible_any_card_filter
 from services.binder_allocations import (
     collection_binder_allocation_counts,
     collection_item_allocated_quantity,
@@ -68,7 +69,7 @@ def _trade_response(trade: Trade) -> TradeResponse:
     return TradeResponse.model_validate(trade)
 
 
-def _resolve_incoming_card(db: Session, card_id: str, lang: str) -> Card:
+def _resolve_incoming_card(db: Session, card_id: str, lang: str, user_id: int) -> Card:
     if not card_id or not str(card_id).strip():
         raise HTTPException(status_code=422, detail="card_id is required")
 
@@ -77,15 +78,19 @@ def _resolve_incoming_card(db: Session, card_id: str, lang: str) -> Card:
         card = db.query(Card).filter(Card.id == card_id).first()
         if not card:
             raise HTTPException(status_code=404, detail="Incoming custom card not found")
+        if card.custom_owner_id != user_id:
+            if card.is_shared_template:
+                raise HTTPException(status_code=409, detail="Copy this shared template before trading it.")
+            raise HTTPException(status_code=404, detail="Incoming custom card not found")
         return card
 
     tcg_card_id, detected_lang = pokemon_api.strip_lang_suffix(card_id)
     effective_lang = _normalize_lang(detected_lang or lang)
     effective_card_id = f"{tcg_card_id}_{effective_lang}"
-    return ensure_card_exists(db, effective_card_id, lang=effective_lang)
+    return ensure_card_exists(db, effective_card_id, lang=effective_lang, user_id=user_id)
 
 
-def _prepare_incoming_card(db: Session, incoming, price_field: str) -> dict:
+def _prepare_incoming_card(db: Session, incoming, price_field: str, user_id: int) -> dict:
     if not positive_quantity(incoming.quantity, TRADE_QUANTITY_MAX):
         raise HTTPException(status_code=422, detail="quantity must be between 1 and 999")
     condition = incoming.condition or "NM"
@@ -96,7 +101,7 @@ def _prepare_incoming_card(db: Session, incoming, price_field: str) -> dict:
     purchase_price_override = getattr(incoming, "purchase_price", None)
     if purchase_price_override is not None:
         _validate_money(purchase_price_override, "purchase_price")
-    card = _resolve_incoming_card(db, incoming.card_id, lang)
+    card = _resolve_incoming_card(db, incoming.card_id, lang, user_id)
     item_lang = card.lang or lang
     value_override = getattr(incoming, "value_per_card", None)
     value_per_card = _snapshot_price(card, variant, value_override, price_field)
@@ -597,7 +602,13 @@ def value_trade(
         valued = []
         for item in items:
             quantity = int(item.quantity or 1)
-            card = db.query(Card).filter(Card.id == item.card_id).first()
+            card = db.query(Card).filter(
+                Card.id == item.card_id,
+                visible_any_card_filter(db, current_user.id, "all"),
+                or_(Card.is_custom == False, Card.custom_owner_id == current_user.id),
+            ).first()
+            if not card:
+                raise HTTPException(status_code=404, detail="Card not found")
             value_per_card = _snapshot_price(card, item.variant, None, price_field)
             value_total = round(value_per_card * quantity, 2)
             total += value_total
@@ -638,7 +649,7 @@ def create_trade(
     # Cache/resolve remote cards before inventory locks are acquired because
     # ensure_card_exists may commit its standalone card-cache write.
     prepared_incoming = [
-        _prepare_incoming_card(db, incoming, price_field)
+        _prepare_incoming_card(db, incoming, price_field, current_user.id)
         for incoming in trade.incoming
     ]
     db.query(User).filter(User.id == current_user.id).with_for_update(of=User).one()
@@ -857,7 +868,9 @@ def update_trade(
                 raise HTTPException(status_code=422, detail="The same incoming trade item cannot be included twice")
             incoming_existing_ids.add(item.trade_item_id)
         else:
-            prepared_new_incoming[index] = _prepare_incoming_card(db, item, price_field)
+            prepared_new_incoming[index] = _prepare_incoming_card(
+                db, item, price_field, current_user.id
+            )
 
     try:
         # All inventory writers introduced here use this order:

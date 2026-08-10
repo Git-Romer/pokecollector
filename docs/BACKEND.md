@@ -26,10 +26,11 @@ FastAPI app entry point: `backend/main.py`.
 | Method | Path | Notes |
 |--------|------|-------|
 | GET | `/api/cards/search` | Local card search |
-| GET | `/api/cards/custom` | List custom cards |
-| POST | `/api/cards/custom` | Create custom card |
-| PUT | `/api/cards/custom/{card_id}` | Update custom card |
-| DELETE | `/api/cards/custom/{card_id}` | Delete custom card |
+| GET | `/api/cards/custom` | List the current user's custom cards and shared templates |
+| POST | `/api/cards/custom` | Create an owner-scoped custom card |
+| POST | `/api/cards/custom/{card_id}/clone` | Copy a shared template into an independent private card |
+| PUT | `/api/cards/custom/{card_id}` | Owner-only custom-card update |
+| DELETE | `/api/cards/custom/{card_id}` | Owner-only custom-card delete |
 | GET | `/api/cards/custom/matches` | Pending custom-card migration matches |
 | POST | `/api/cards/custom/migrate/{match_id}` | Migrate custom card to API card |
 | POST | `/api/cards/custom/dismiss/{match_id}` | Dismiss match |
@@ -45,6 +46,8 @@ FastAPI app entry point: `backend/main.py`.
 | POST | `/api/cards/recognize/jobs/{job_id}/items/{item_id}/resolve` | Confirm/dismiss an item and delete its queued photo |
 | POST | `/api/cards/recognize/jobs/{job_id}/items/{item_id}/retry` | Retry one reviewable item individually |
 | DELETE | `/api/cards/recognize/jobs/{job_id}` | Delete a job and its queued photos |
+
+Custom cards belong to exactly one user. Owners may publish a card as a shared template, but other users must clone it before using it in collections, wishlists, binders, products, or trades. Clones have independent IDs, metadata, images, and prices. Manual image URLs must use public HTTPS destinations and are fetched through the size-limited image proxy. During upgrade, existing custom cards become shared templates owned by the first-created admin account, while each other referencing user receives one private clone and keeps their existing references.
 
 ### Collection, Sets, Wishlist, Binders
 

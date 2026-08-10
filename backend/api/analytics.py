@@ -4,7 +4,7 @@ from sqlalchemy import func
 from api.auth import get_current_user
 from database import get_db
 from services.card_values import effective_market_price, normalize_price_field
-from services.card_visibility import visible_card_filter, visible_set_filter
+from services.card_visibility import visible_any_card_filter, visible_set_filter
 from services.analytics import sort_top_movers
 from services.portfolio_valuation import (
     calculate_portfolio_valuation,
@@ -46,7 +46,7 @@ def get_duplicates(
     ).filter(
         CollectionItem.user_id == current_user.id,
         CollectionItem.quantity > 1,
-        visible_card_filter(db, current_user.id, "all"),
+        visible_any_card_filter(db, current_user.id, "all"),
     ).all()
 
     price_field = normalize_price_field(price_field)
@@ -65,6 +65,7 @@ def get_duplicates(
                 "price_market": round(price, 2),
                 "total_value": round(price * item.quantity, 2),
                 "rarity": item.card.rarity,
+                "is_custom": bool(item.card.is_custom),
             })
 
     result.sort(key=lambda x: x["total_value"], reverse=True)
@@ -93,7 +94,7 @@ def get_top_movers(
         item.card_id
         for item in db.query(CollectionItem.card_id).join(Card, Card.id == CollectionItem.card_id).filter(
             CollectionItem.user_id == current_user.id,
-            visible_card_filter(db, current_user.id, "all"),
+            visible_any_card_filter(db, current_user.id, "all"),
         ).all()
     ]
     if not col_card_ids:
@@ -128,6 +129,7 @@ def get_top_movers(
             "name": card.name,
             "images_small": card.images_small,
             "rarity": card.rarity,
+            "is_custom": bool(card.is_custom),
             "current_price": round(current_price, 2),
             "old_price": round(old_price, 2),
             "change_abs": round(change_abs, 2),
@@ -148,7 +150,7 @@ def get_rarity_stats(
         joinedload(CollectionItem.card)
     ).filter(
         CollectionItem.user_id == current_user.id,
-        visible_card_filter(db, current_user.id, "all"),
+        visible_any_card_filter(db, current_user.id, "all"),
     ).all()
 
     price_field = normalize_price_field(price_field)
