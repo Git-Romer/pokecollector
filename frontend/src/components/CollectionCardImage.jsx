@@ -1,38 +1,35 @@
 /**
- * CollectionCardImage — a collection item's picture, preferring the owner's own
- * photo when TCGdex has no scan of the card.
+ * CollectionCardImage — a collection item's picture, always preferring the
+ * owner's own photo over the catalogue scan when one has been attached.
  *
- * About one card in fourteen has no catalogue image — trainer kits, Japanese
- * printings, the newest energy subsets — and the collection shows an anonymous
- * card back for every one of them. The scanner already photographed the physical
- * card, so where that photo was kept it is shown here instead.
+ * A catalogue scan is a reference image of the printing; the owner's photo is
+ * evidence of the actual physical card they have — condition, centering,
+ * whatever makes their copy theirs. Once attached, it is what the collection
+ * shows, whether or not TCGdex also has a scan of the card.
  *
  * The photo is always badged. A phone photo and a catalogue scan are not the
- * same kind of thing: one is evidence of what the owner actually has, the other
- * is a reference image, and a collection is much less useful if you cannot tell
+ * same kind of thing, and a collection is much less useful if you cannot tell
  * at a glance which you are looking at.
  */
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import clsx from 'clsx'
 import { Camera } from 'lucide-react'
 import CardImage from './CardImage'
 import { CardDisplay, CardIdentity, CardRow } from './card-system'
 import { fetchCollectionItemPhoto } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
-import { hasCatalogueImage, resolveCardImageUrl } from '../utils/imageUrl'
+import { resolveCardImageUrl } from '../utils/imageUrl'
 
-// Should this item show the owner's photo rather than the catalogue?
-// A catalogue scan wins whenever one exists: it is flat, square, evenly lit and
-// consistent with every other card on the page. The photo is the fallback for
-// cards that would otherwise have no picture at all — which also means a card
-// gaining a TCGdex scan later silently upgrades, with the photo left in place.
+// Should this item show the owner's photo rather than the catalogue? Just
+// "does one exist" — the photo always wins once attached, regardless of
+// whether TCGdex also has a scan.
 export const showsOwnPhoto = (item) =>
-  Boolean(item?.has_scan_photo) && !hasCatalogueImage(item?.card)
+  Boolean(item?.has_scan_photo)
 
 /**
- * Object URL for this item's own photo, or null when it has none (or has a
- * catalogue scan, which is preferred). Safe to call for any item — it fetches
- * nothing when there is no photo to fetch.
+ * Object URL for this item's own photo, or null when it has none. Safe to
+ * call for any item — it fetches nothing when there is no photo to fetch.
  */
 export function useCollectionPhotoUrl(item) {
   const ownPhoto = showsOwnPhoto(item)
@@ -63,12 +60,32 @@ export function useCollectionPhotoUrl(item) {
   return photoUrl
 }
 
+/**
+ * The overlay badge shape used wherever a tile is large enough to carry one —
+ * matches the established corner-badge convention (see ProductSourceBadge in
+ * Collection.jsx, and the variant/condition pill in BinderDetail.jsx): -2
+ * corner spacing, z-20, rounded-full, theme-aware translucent background with
+ * a blur, not flat black.
+ */
+export function OwnPhotoOverlayBadge({ t, className = 'h-6 w-6' }) {
+  return (
+    <span
+      title={t('collection.ownPhoto')}
+      className={clsx(
+        'absolute bottom-2 right-2 z-20 inline-flex items-center justify-center rounded-full border border-white/30 bg-bg/85 text-white shadow-lg backdrop-blur-sm',
+        className,
+      )}
+    >
+      <Camera size={12} />
+    </span>
+  )
+}
+
 export default function CollectionCardImage({
   item,
   alt,
   className,
   size = 'small',
-  badgeSize = 12,
   showName = false,
 }) {
   const { t } = useSettings()
@@ -85,14 +102,7 @@ export default function CollectionCardImage({
   return (
     <div className="relative w-full h-full">
       <CardImage src={photoUrl} alt={alt} className={className} showName={showName} />
-      {photoUrl && (
-        <span
-          className="absolute bottom-1 right-1 z-10 inline-flex items-center justify-center rounded-md bg-black/70 text-white/90 border border-white/20 p-1 pointer-events-none"
-          title={t('collection.ownPhoto')}
-        >
-          <Camera size={badgeSize} />
-        </span>
-      )}
+      {photoUrl && <OwnPhotoOverlayBadge t={t} />}
     </div>
   )
 }
@@ -113,18 +123,6 @@ function useOwnPhotoDisplay(item, card, image, size) {
   return { resolvedImage, isOwnPhoto: ownPhoto && Boolean(photoUrl) }
 }
 
-/** The overlay badge shape used wherever a tile is large enough to carry one. */
-function OwnPhotoOverlayBadge({ size = 12, t }) {
-  return (
-    <span
-      className="absolute bottom-1 right-1 z-10 inline-flex items-center justify-center rounded-md bg-black/70 text-white/90 border border-white/20 p-1 pointer-events-none"
-      title={t('collection.ownPhoto')}
-    >
-      <Camera size={size} />
-    </span>
-  )
-}
-
 /**
  * Same own-photo priority as CollectionCardImage, rendered through the shared
  * card-system (CardDisplay) instead of a bare CardImage — for grid/carousel
@@ -141,7 +139,7 @@ function OwnPhotoOverlayBadge({ size = 12, t }) {
  * (dashboard summaries) flatten the card fields onto the item itself instead
  * of nesting them, so `card` can be passed explicitly to override that.
  */
-export function CollectionCardDisplay({ item, card = item?.card ?? item, badgeSize = 12, image, overlay, size = 'small', ...displayProps }) {
+export function CollectionCardDisplay({ item, card = item?.card ?? item, image, overlay, size = 'small', ...displayProps }) {
   const { t } = useSettings()
   const { resolvedImage, isOwnPhoto } = useOwnPhotoDisplay(item, card, image, size)
 
@@ -153,7 +151,7 @@ export function CollectionCardDisplay({ item, card = item?.card ?? item, badgeSi
       overlay={(
         <>
           {overlay}
-          {isOwnPhoto && <OwnPhotoOverlayBadge size={badgeSize} t={t} />}
+          {isOwnPhoto && <OwnPhotoOverlayBadge t={t} />}
         </>
       )}
     />

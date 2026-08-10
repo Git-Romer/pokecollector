@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { Camera, Upload, ImagePlus, Trash2, X, Check, Loader2, RefreshCw, Plus } from 'lucide-react'
-import { recognizeCard, addToCollection, enqueueScanJob } from '../api/client'
+import { recognizeCard, addToCollection, enqueueScanJob, uploadCollectionItemPhoto } from '../api/client'
 import { useQueryClient } from '@tanstack/react-query'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
@@ -16,7 +16,13 @@ import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { isSupportedScannerImage, SCANNER_IMAGE_ACCEPT } from '../utils/scannerImages'
 
 // ─── Add-to-Collection Modal für Scan-Ergebnis ──────────────────────────────
-export function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
+// `getPhoto`, when given, resolves to the Blob/File the user actually scanned.
+// Callers decide how to source it: CardScanner has the raw File in hand,
+// ScanQueue fetches it from the job's stored bytes. Called only after the
+// collection item exists, and only matters for cards TCGdex has no scan of —
+// but own-photo priority means it always wins once attached, so it is worth
+// keeping either way, and a failure here must never block the add itself.
+export function ScanAddModal({ match, defaultLang, getPhoto, onClose, onAdded }) {
   const { t, exchangeRate, exchangeRateReady } = useSettings()
   const [quantity, setQuantity] = useState(1)
   const [condition, setCondition] = useState('NM')
@@ -30,7 +36,7 @@ export function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
     if (!exchangeRateReady) return
     setAdding(true)
     try {
-      await addToCollection({
+      const { data: created } = await addToCollection({
         card_id: match.id,
         quantity,
         condition,
@@ -38,6 +44,17 @@ export function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
         lang,
         purchase_price: parseMoneyInputValue(purchasePrice, exchangeRate),
       })
+      // Never overwrite a photo the item already has — grouping into an
+      // existing row (same card/variant/condition/lang) is common, and a
+      // second scan of the same card is not necessarily a better photo.
+      if (getPhoto && !created.has_scan_photo) {
+        try {
+          const photo = await getPhoto()
+          if (photo) await uploadCollectionItemPhoto(created.id, photo)
+        } catch {
+          // Best-effort: the card is already added either way.
+        }
+      }
       invalidateCardState(queryClient)
       invalidateTcgdexFilterLanguages(queryClient)
       toast.success(`${match.name} ${t('scanner.addedToCollection')}!`)
@@ -161,6 +178,7 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
   const batchCameraRef = useRef()
   const batchGalleryRef = useRef()
   const scanPreviewRef = useRef(null)
+  const scannedFileRef = useRef(null)
   const stagedFilesRef = useRef([])
   const { t } = useSettings()
   const navigate = useNavigate()
@@ -184,6 +202,7 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
     if (scanPreviewRef.current) URL.revokeObjectURL(scanPreviewRef.current)
     scanPreviewRef.current = URL.createObjectURL(file)
     setScanPreviewUrl(scanPreviewRef.current)
+    scannedFileRef.current = file
     setPhase('loading')
     try {
       const data = await recognizeCard(file)
@@ -200,6 +219,7 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
   const reset = () => {
     if (scanPreviewRef.current) URL.revokeObjectURL(scanPreviewRef.current)
     scanPreviewRef.current = null
+    scannedFileRef.current = null
     setScanPreviewUrl(null)
     setPhase('capture')
     setResults(null)
@@ -512,6 +532,7 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
         <ScanAddModal
           match={addModal}
           defaultLang={detectedLang}
+          getPhoto={() => Promise.resolve(scannedFileRef.current)}
           onClose={() => setAddModal(null)}
           onAdded={() => setAddModal(null)}
         />

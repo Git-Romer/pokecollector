@@ -129,6 +129,11 @@ export const deleteScanJob = jobId =>
 export const fetchScanJobItemImage = (jobId, itemId) =>
   api.get(`/cards/recognize/jobs/${jobId}/items/${itemId}/image`, { responseType: 'blob' })
     .then(r => URL.createObjectURL(r.data))
+// Raw Blob rather than an object URL — for handing the scanned photo off to
+// uploadCollectionItemPhoto when a match is confirmed, not for display.
+export const fetchScanJobItemImageBlob = (jobId, itemId) =>
+  api.get(`/cards/recognize/jobs/${jobId}/items/${itemId}/image`, { responseType: 'blob' })
+    .then(r => r.data)
 
 // Custom card migration
 export const getCustomMatches = () => api.get('/cards/custom/matches')

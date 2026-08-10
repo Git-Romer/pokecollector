@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Plus, Trash2, Package, Star, Download, Upload, X, Heart, Minus, HelpCircle, Check, Camera } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2, Package, Star, Download, Upload, X, Heart, Minus, HelpCircle, Check } from 'lucide-react'
 import { getBinderCards, removeCardFromBinder, removeBinderEntry, addCardToBinder, addCollectionItemToBinder, searchCards, getCollection, updateBinderEntry, getBinderEntryEquivalentPrints, getBinderPrintOptimization, applyBinderPrintOptimization, switchBinderEntryCard, addBinderEntryToWishlist, addBinderCardsToWishlist, convertWishlistBinderToCollection, convertCollectionBinderToWishlist, importBinderCsv, exportBinderCsv, getApiErrorMessage } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
@@ -15,7 +15,7 @@ import { partitionSettledResults } from '../utils/settledResults'
 import { formatBinderCountSummary } from '../utils/binderCounts'
 import { binderPickerItemsWithQuantities, binderPickerQuantitiesAreValid, binderPickerQuantityMaximum, canConvertWishlistBinder, clampBinderPickerQuantity } from '../utils/binderQuantity'
 import { CardDialog, CardDisplay, CardLegend, withCollectionItemState } from '../components/card-system'
-import { CollectionCardDisplay, showsOwnPhoto, useCollectionPhotoUrl } from '../components/CollectionCardImage'
+import { CollectionCardDisplay, OwnPhotoOverlayBadge, showsOwnPhoto, useCollectionPhotoUrl } from '../components/CollectionCardImage'
 import Modal from '../components/ui/Modal'
 
 const SPRITE_BASE_URL = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated'
@@ -233,10 +233,8 @@ export default function BinderDetail() {
   const [badgeLegendOpen, setBadgeLegendOpen] = useState(false)
   const [selectedCard, setSelectedCard] = useState(null)
   const [selectedCardTab, setSelectedCardTab] = useState('binder')
-  // selectedCard is a flattened binder-card dict, not a collection item — nest it
-  // under `card` so showsOwnPhoto's hasCatalogueImage(item.card) checks the right shape.
   const selectedCardPhotoItem = selectedCard
-    ? { id: selectedCard.collection_item_id, has_scan_photo: selectedCard.has_scan_photo, card: selectedCard }
+    ? { id: selectedCard.collection_item_id, has_scan_photo: selectedCard.has_scan_photo }
     : null
   const selectedCardOwnPhoto = showsOwnPhoto(selectedCardPhotoItem)
   const selectedCardPhotoUrl = useCollectionPhotoUrl(selectedCardPhotoItem)
@@ -1245,12 +1243,7 @@ export default function BinderDetail() {
           card={selectedCard}
           image={selectedCardOwnPhoto && selectedCardPhotoUrl ? selectedCardPhotoUrl : resolveCardImageUrl(selectedCard)}
           imageOverlay={selectedCardOwnPhoto && selectedCardPhotoUrl && (
-            <span
-              className="absolute bottom-1 right-1 z-10 inline-flex items-center justify-center rounded-md bg-black/70 text-white/90 border border-white/20 p-1.5 pointer-events-none"
-              title={t('collection.ownPhoto')}
-            >
-              <Camera size={14} />
-            </span>
+            <OwnPhotoOverlayBadge t={t} />
           )}
           variantEffectSource={selectedCard.variant}
           price={selectedCard.price_market > 0 ? formatPrice(selectedCard.price_market) : null}

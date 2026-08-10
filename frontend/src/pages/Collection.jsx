@@ -724,41 +724,41 @@ function CollectionEditModal({ item, onClose }) {
                       </button>
                     )}
                   </div>
-
-                  {/* Same panel as the custom URL, because both answer "this
-                      card has no picture" — but this one needs no source on the
-                      internet to exist, which for a Japanese printing or a
-                      trainer kit is often the situation. */}
-                  <div className="pt-3 mt-1 border-t border-border space-y-2">
-                    <label htmlFor={ownPhotoInputId} className="text-xs text-text-muted font-medium uppercase tracking-wide block">
-                      {t('collection.ownPhotoLabel')}
-                    </label>
-                    <p className="text-xs text-text-secondary">{t('collection.ownPhotoDesc')}</p>
-                    <input
-                      id={ownPhotoInputId}
-                      type="file"
-                      accept="image/*"
-                      className="text-xs text-text-secondary file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-bg-elevated file:text-text-primary"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0]
-                        if (file) ownPhotoMutation.mutate(file)
-                        e.target.value = ''
-                      }}
-                      disabled={ownPhotoMutation.isPending}
-                    />
-                    {ownPhotoUrl && (
-                      <button
-                        type="button"
-                        onClick={() => removeOwnPhotoMutation.mutate()}
-                        disabled={removeOwnPhotoMutation.isPending}
-                        className="btn-ghost text-sm block"
-                      >
-                        {t('collection.removeOwnPhoto')}
-                      </button>
-                    )}
-                  </div>
                 </div>
               )}
+
+              {/* Unconditional — unlike the custom-image-URL panel above, this
+                  is not limited to cards with no catalogue image. The own
+                  photo always wins over the catalogue scan once attached, so
+                  attaching one has to be possible for any card. */}
+              <div className="bg-bg-card rounded-xl p-3 space-y-2 border border-border">
+                <label htmlFor={ownPhotoInputId} className="text-xs text-text-muted font-medium uppercase tracking-wide block">
+                  {t('collection.ownPhotoLabel')}
+                </label>
+                <p className="text-xs text-text-secondary">{t('collection.ownPhotoDesc')}</p>
+                <input
+                  id={ownPhotoInputId}
+                  type="file"
+                  accept="image/*"
+                  className="text-xs text-text-secondary file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-bg-elevated file:text-text-primary"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) ownPhotoMutation.mutate(file)
+                    e.target.value = ''
+                  }}
+                  disabled={ownPhotoMutation.isPending}
+                />
+                {ownPhotoUrl && (
+                  <button
+                    type="button"
+                    onClick={() => removeOwnPhotoMutation.mutate()}
+                    disabled={removeOwnPhotoMutation.isPending}
+                    className="btn-ghost text-sm block"
+                  >
+                    {t('collection.removeOwnPhoto')}
+                  </button>
+                )}
+              </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
                 <button
