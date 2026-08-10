@@ -307,7 +307,7 @@ export default function Settings() {
   const [usernameInput, setUsernameInput] = useState('')
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const { user, updateCurrentUser, multiUser } = useAuth()
+  const { user, updateCurrentUser, multiUser, modeLocked } = useAuth()
   const { settings, updateSettings, t, pricePrimaryField, exchangeRate } = useSettings()
   const publicProfilesEnabled = settings.public_profiles_enabled === 'true'
   const { theme, setTheme, themes } = useTheme()
@@ -327,6 +327,25 @@ export default function Settings() {
   // Notification settings
   const [priceAlertsEnabled, setPriceAlertsEnabled] = useState(false)
   const [alertThreshold, setAlertThreshold] = useState('10')
+
+  // Enabling multi-user mode starts enforcing the login screen immediately, so warn first.
+  const [showMultiUserModal, setShowMultiUserModal] = useState(false)
+  const [multiUserSaving, setMultiUserSaving] = useState(false)
+
+  const applyMultiUserMode = async (val) => {
+    try {
+      await setAuthMode(val)
+      window.location.reload()
+    } catch {
+      toast.error(t('common.error'))
+    }
+  }
+
+  const confirmEnableMultiUser = async () => {
+    setMultiUserSaving(true)
+    await applyMultiUserMode(true)
+    // reload navigates away; nothing else to do
+  }
 
   // Load individual settings from backend
   const { data: fullSyncIntervalData } = useQuery({
@@ -908,23 +927,58 @@ export default function Settings() {
               <SettingsCard>
                 <SettingsRow
                   label={t('settings.multiUserMode')}
-                  description={t('settings.multiUserModeDesc')}
+                  description={modeLocked ? t('settings.multiUserModeLocked') : t('settings.multiUserModeDesc')}
                   last
                 >
                   <Toggle
                     value={multiUser}
+                    disabled={modeLocked}
                     label={t('settings.multiUserMode')}
-                    onChange={async (val) => {
-                      try {
-                        await setAuthMode(val)
-                        window.location.reload()
-                      } catch {
-                        toast.error(t('common.error'))
+                    onChange={(val) => {
+                      if (modeLocked) return
+                      if (val) {
+                        setShowMultiUserModal(true)
+                      } else {
+                        applyMultiUserMode(false)
                       }
                     }}
                   />
                 </SettingsRow>
               </SettingsCard>
+
+              <Modal
+                isOpen={showMultiUserModal}
+                onClose={() => setShowMultiUserModal(false)}
+                title={t('settings.multiUserEnableTitle')}
+                size="sm"
+                mobileSheet={false}
+              >
+                <div className="space-y-4 p-4">
+                  <p className="text-sm text-text-primary">
+                    {t('settings.multiUserEnableWarning').replace('{username}', user?.username ?? 'admin')}
+                  </p>
+                  <p className="text-xs text-text-muted">
+                    {t('settings.multiUserEnableResetHint')}
+                  </p>
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowMultiUserModal(false)}
+                      className="btn-ghost flex-1"
+                    >
+                      {t('common.cancel')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={confirmEnableMultiUser}
+                      disabled={multiUserSaving}
+                      className="btn-primary flex-1"
+                    >
+                      {t('settings.multiUserEnableConfirm')}
+                    </button>
+                  </div>
+                </div>
+              </Modal>
             </section>
           )}
 
