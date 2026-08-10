@@ -19,3 +19,7 @@ frontend/test-results-webkit/
 # Local persistent data / caches
 /data/
 /backups/
+
+# Generated JWT signing key (never commit)
+backend/data/auth/
+data/auth/

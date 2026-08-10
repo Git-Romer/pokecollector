@@ -254,7 +254,7 @@ The **Users** tab is only visible to admin users and only while multi-user mode 
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `JWT_SECRET_KEY` | Secret used to sign JWT tokens; without it, sessions are not stable across restarts | Random per restart |
+| `JWT_SECRET_KEY` | Secret that signs login tokens. Anyone who knows it can forge a session for any account, including admin, so treat it as sensitive. Leave it unset to have a strong key generated and persisted automatically (under `data/auth/`); set it only if you want to control the value or share it across replicas. An empty value is ignored rather than used. | Generated and persisted |
 
 ### Optional
 
