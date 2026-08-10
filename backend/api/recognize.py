@@ -12,6 +12,7 @@ from email.utils import parsedate_to_datetime
 from functools import lru_cache
 from urllib.parse import urlparse
 from services.tcgdex_languages import is_supported_tcgdex_language, normalize_tcgdex_language
+from services import card_image_match
 from services.gemini_rate_limit import (
     GeminiKeyBlockedError,
     acquire_gemini_slot,
@@ -940,6 +941,33 @@ async def match_card_info(
                             trace.reject_phash("metadata_contradiction")
                     except Exception as exc:
                         logger.warning("pHash matching failed (non-blocking): %s", exc)
+
+                # pHash is deliberately strict and declines about 1 scan in 7. On
+                # exactly those declines this second, colour-aware pass resolves
+                # roughly a third — see services/card_image_match.py for the
+                # measurement. Costs nothing but CPU on images already downloaded.
+                if not confident and should_try_phash:
+                    try:
+                        pairs = [
+                            (candidate["tcg_card_id"], candidate_images[str(candidate.get("id") or "")])
+                            for candidate in top_candidates[:PHASH_CANDIDATE_LIMIT]
+                            if str(candidate.get("id") or "") in candidate_images
+                            and candidate.get("tcg_card_id")
+                        ]
+                        ensemble_result = card_image_match.best_match(photo_bytes, pairs)
+                        if ensemble_result:
+                            ensemble_card_id = ensemble_result[0]
+                            winner = next(
+                                (c for c in top_candidates if c.get("tcg_card_id") == ensemble_card_id),
+                                None,
+                            )
+                            if winner is not None and 2 not in _candidate_rank_key(card_info, winner):
+                                candidates.remove(winner)
+                                candidates.insert(0, winner)
+                                confident = True
+                                decision = "artwork_ensemble"
+                    except Exception as exc:
+                        logger.warning("Artwork ensemble matching failed (non-blocking): %s", exc)
 
                 if not confident and should_try_visual:
                     candidate_images = await _download_candidate_images(
