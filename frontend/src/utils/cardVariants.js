@@ -18,16 +18,50 @@ export const VARIANT_PILL_META = Object.fromEntries(
   VARIANT_DEFINITIONS.map(({ name, code, className }) => [name, { code, className }])
 )
 
+const hasPositivePrice = (card, fields) => fields.some(field => {
+  const value = Number(card?.[field])
+  return Number.isFinite(value) && value > 0
+})
+
+// TCGdex occasionally publishes variant flags that contradict its own pricing
+// payload. Price rows are strong evidence that the corresponding physical print
+// exists, so include them without waiting for a later catalogue refresh.
+export const hasVariantPriceEvidence = (card, variant) => {
+  if (variant === 'Normal') {
+    return hasPositivePrice(card, [
+      'price_tcg_normal_low',
+      'price_tcg_normal_mid',
+      'price_tcg_normal_high',
+      'price_tcg_normal_market',
+    ])
+  }
+  if (variant === 'Reverse Holo') {
+    return hasPositivePrice(card, [
+      'price_tcg_reverse_low',
+      'price_tcg_reverse_mid',
+      'price_tcg_reverse_market',
+    ])
+  }
+  if (variant === 'Holo') {
+    return hasPositivePrice(card, [
+      'price_tcg_holo_low',
+      'price_tcg_holo_mid',
+      'price_tcg_holo_market',
+    ])
+  }
+  return false
+}
+
 export const getAvailableVariants = (card) => [
-  card?.variants_normal && 'Normal',
-  card?.variants_reverse && 'Reverse Holo',
-  card?.variants_holo && 'Holo',
+  (card?.variants_normal || hasVariantPriceEvidence(card, 'Normal')) && 'Normal',
+  (card?.variants_reverse || hasVariantPriceEvidence(card, 'Reverse Holo')) && 'Reverse Holo',
+  (card?.variants_holo || hasVariantPriceEvidence(card, 'Holo')) && 'Holo',
   card?.variants_first_edition && 'First Edition',
 ].filter(Boolean)
 
 export const getDefaultVariant = (card) => {
   // Normal availability means the safest default is the plain/non-holo card.
-  if (card?.variants_normal) return 'Normal'
+  if (card?.variants_normal || hasVariantPriceEvidence(card, 'Normal')) return 'Normal'
   const available = getAvailableVariants(card)
   // If there is no Normal print, default to a real advertised variant instead
   // of creating an impossible Normal collection row.

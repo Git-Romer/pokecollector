@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Trash2, Edit2, Check, X, Heart, Filter, SortAsc, ChevronUp, ChevronDown, Library, BookOpen, Minus, Plus } from 'lucide-react'
 import { getWishlist, removeFromWishlist, updateWishlistItem, addToCollection } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
+import { useConfirmDialog } from '../contexts/ConfirmDialogContext'
 import { CardDialog, CardIdentity, CardRow, getCardSetNumber } from '../components/card-system'
 import TabNav from '../components/TabNav'
 import toast from 'react-hot-toast'
@@ -126,6 +127,7 @@ function WishlistCardModal({ item, onClose, onAddToCollection, onRemove }) {
 
 export default function Wishlist() {
   const { t, formatPrice, pricePrimaryField } = useSettings()
+  const confirmDialog = useConfirmDialog()
   const [editingId, setEditingId] = useState(null)
   const [selectedItem, setSelectedItem] = useState(null)
   const [sortBy, setSortBy] = useState('created_at')
@@ -414,8 +416,14 @@ export default function Wishlist() {
                                 className="text-text-muted hover:text-green transition-colors p-1" title={t('wishlist.addToCollection')}>
                                 <Check size={14} />
                               </button>
-                              <button onClick={() => {
-                                if (confirm(`${card?.name} ${t('wishlist.removeConfirm')}`)) removeMutation.mutate(item.id)
+                              <button onClick={async () => {
+                                const confirmed = await confirmDialog({
+                                  title: t('common.remove'),
+                                  message: `${card?.name} ${t('wishlist.removeConfirm')}`,
+                                  confirmLabel: t('common.remove'),
+                                  destructive: true,
+                                })
+                                if (confirmed) removeMutation.mutate(item.id)
                               }} className="text-text-muted hover:text-brand-red transition-colors p-1">
                                 <Trash2 size={14} />
                               </button>
@@ -473,9 +481,15 @@ export default function Wishlist() {
                             className="text-text-muted hover:text-green transition-colors p-1" title={t('wishlist.addToCollection')}>
                             <Check size={12} />
                           </button>
-                          <button onClick={(e) => {
+                          <button onClick={async (e) => {
                             e.stopPropagation()
-                            if (confirm(`${card?.name} ${t('wishlist.removeConfirm')}`)) removeMutation.mutate(item.id)
+                            const confirmed = await confirmDialog({
+                              title: t('common.remove'),
+                              message: `${card?.name} ${t('wishlist.removeConfirm')}`,
+                              confirmLabel: t('common.remove'),
+                              destructive: true,
+                            })
+                            if (confirmed) removeMutation.mutate(item.id)
                           }} className="text-text-muted hover:text-brand-red transition-colors p-1">
                             <Trash2 size={12} />
                           </button>
@@ -494,8 +508,14 @@ export default function Wishlist() {
           item={selectedItem}
           onClose={() => setSelectedItem(null)}
           onAddToCollection={(cardId) => addToColMutation.mutate(cardId)}
-          onRemove={(item) => {
-            if (confirm(`${item.card?.name} ${t('wishlist.removeConfirm')}`)) {
+          onRemove={async (item) => {
+            const confirmed = await confirmDialog({
+              title: t('common.remove'),
+              message: `${item.card?.name} ${t('wishlist.removeConfirm')}`,
+              confirmLabel: t('common.remove'),
+              destructive: true,
+            })
+            if (confirmed) {
               removeMutation.mutate(item.id)
               setSelectedItem(null)
             }

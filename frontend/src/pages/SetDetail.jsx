@@ -1,23 +1,17 @@
-import { useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { useRef, useState } from 'react'
+import { createPortal, flushSync } from 'react-dom'
 import { useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Plus, Trash2, X, Heart, BookMarked, HelpCircle } from 'lucide-react'
-import { getSetChecklist, addToCollection, addToWishlist, updateCollectionItem, removeFromCollection, getBinders, addOwnedSetToBinder, addOwnedSetToAutoBinder } from '../api/client'
+import { ArrowLeft, Plus, X, BookMarked, HelpCircle } from 'lucide-react'
+import { getSetChecklist, getBinders, addOwnedSetToBinder, addOwnedSetToAutoBinder } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
 import { resolveCardImageUrl, resolveSetImageUrl } from '../utils/imageUrl'
-import { CARD_VARIANTS, getAvailableVariants, getDefaultVariantOrNull } from '../utils/cardVariants'
 import { HOLO_FIELD_MAP } from '../utils/prices'
-import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
-import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
-import MoneyInput from '../components/MoneyInput'
-import { parseMoneyInputValue } from '../utils/moneyInput'
 import { useDetailBackNavigation, useScrollToTopOnPush } from '../hooks/useListScrollRestoration'
-import { CardDialog, CardDisplay, CardLegend } from '../components/card-system'
-
-const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
+import { CardDisplay, CardLegend } from '../components/card-system'
+import { CardModal } from '../components/CardItem'
 
 const SET_SORT_OPTIONS = [
   'number',
@@ -83,234 +77,6 @@ function sortSetCards(cards, sortBy, pricePrimaryField) {
   return sorted
 }
 
-function OwnedVersionRow({ item, onQuantityChange, onRemove, isUpdating, isRemoving, t }) {
-  const [quantity, setQuantity] = useState(item.quantity || 1)
-  const [savedQuantity, setSavedQuantity] = useState(item.quantity || 1)
-
-  const commitQuantity = () => {
-    const nextQuantity = Math.max(1, parseInt(quantity, 10) || 1)
-    setQuantity(nextQuantity)
-    if (nextQuantity !== savedQuantity) {
-      setSavedQuantity(nextQuantity)
-      onQuantityChange(item, nextQuantity)
-    }
-  }
-
-  return (
-    <div className="flex items-center gap-2 rounded-xl bg-bg-card border border-border p-2">
-      <div className="flex-1 min-w-0">
-        <p className="text-sm text-text-primary font-medium truncate">
-          {[item.variant || 'Normal', item.condition].filter(Boolean).join(' · ')}
-        </p>
-      </div>
-      <input
-        type="number"
-        min="1"
-        value={quantity}
-        onChange={(e) => setQuantity(e.target.value)}
-        onBlur={commitQuantity}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') e.currentTarget.blur()
-        }}
-        disabled={isUpdating || isRemoving}
-        className="input text-center px-2 py-1.5"
-        style={{ width: '4.25rem', colorScheme: 'dark' }}
-        aria-label={t('card.quantity')}
-        title={t('card.quantity')}
-      />
-      <button
-        onClick={() => onRemove(item)}
-        disabled={isRemoving}
-        className="btn-ghost text-brand-red border-brand-red/30 hover:bg-brand-red/10 px-2 py-1.5"
-        title={t('collection.remove')}
-      >
-        <Trash2 size={14} />
-      </button>
-    </div>
-  )
-}
-
-function SetCardActionModal({ card, setLang, initialTab = 'overview', onClose, onAdd, onAddWishlist, onQuantityChange, onRemove, isAdding, isAddingWishlist, isUpdatingQuantity, isRemoving, t }) {
-  const { exchangeRate, exchangeRateReady, formatPrice, pricePrimaryField } = useSettings()
-  const [addQuantity, setAddQuantity] = useState(1)
-  const [addCondition, setAddCondition] = useState('NM')
-  const [addVariant, setAddVariant] = useState('Normal')
-  const [addLang, setAddLang] = useState(setLang)
-  const [addPrice, setAddPrice] = useState('')
-  const [activeTab, setActiveTab] = useState(initialTab)
-
-  useEffect(() => {
-    if (!card) return
-    setAddQuantity(1)
-    setAddCondition('NM')
-    setAddVariant(getDefaultVariantOrNull(card))
-    setAddLang(setLang)
-    setAddPrice('')
-    setActiveTab(initialTab)
-  }, [card, initialTab, setLang])
-
-  if (!card) return null
-  const availableVariants = getAvailableVariants(card)
-  const variants = availableVariants.length > 0 ? availableVariants : CARD_VARIANTS
-  const ownedItems = card.owned_items || []
-  const marketPrice = setSortPrice(card, pricePrimaryField)
-  const tabs = [
-    { id: 'overview', label: t('cardTabs.overview') },
-    { id: 'prices', label: t('cardTabs.prices') },
-    ...(ownedItems.length > 0 ? [{ id: 'owned', label: t('cardTabs.owned') }] : []),
-    { id: 'add', label: t('cardTabs.add') },
-    { id: 'wishlist', label: t('cardTabs.wishlist') },
-  ]
-
-  const submitAddVersion = (event) => {
-    event.preventDefault()
-    if (!exchangeRateReady) return
-    onAdd({
-      card,
-      quantity: Math.max(1, parseInt(addQuantity, 10) || 1),
-      condition: addCondition,
-      variant: addVariant,
-      lang: addLang,
-      purchase_price: parseMoneyInputValue(addPrice, exchangeRate),
-    })
-  }
-
-  return (
-    <CardDialog
-      card={card}
-      image={resolveCardImageUrl(card)}
-      price={marketPrice > 0 ? formatPrice(marketPrice) : null}
-      tabs={tabs}
-      activeTab={activeTab}
-      onTabChange={setActiveTab}
-      onClose={onClose}
-    >
-      {activeTab === 'overview' && (
-        <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
-          {[
-            [t('card.rarity'), card.rarity],
-            [t('card.type'), card.supertype],
-            [t('card.hp'), card.hp],
-            [t('card.artist'), card.artist],
-            [t('lang.selectLabel'), setLang.toUpperCase()],
-          ].filter(([, value]) => value).map(([label, value]) => (
-            <div key={label} className="rounded-xl border border-border bg-bg-card p-3">
-              <p className="text-xs text-text-muted">{label}</p>
-              <p className="mt-1 text-sm font-bold text-text-primary">{value}</p>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {activeTab === 'prices' && (
-        <div className="rounded-xl border border-border bg-bg-card p-4">
-          <p className="text-xs font-bold uppercase tracking-wide text-text-muted">{t('collection.marketPrice')}</p>
-          <p className="mt-2 text-2xl font-black text-green">{marketPrice > 0 ? formatPrice(marketPrice) : '—'}</p>
-        </div>
-      )}
-
-      {activeTab === 'add' && (
-        <form onSubmit={submitAddVersion} className="space-y-3 rounded-xl border border-brand-red/30 bg-bg-card p-3">
-              <p className="text-xs font-semibold text-text-muted mb-2 uppercase tracking-wide">{t('setDetail.addVersion')}</p>
-              <p className="text-xs text-text-secondary -mt-1">{t('collection.addAnotherVersionHelp')}</p>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-text-muted mb-1 block">{t('card.quantity')}</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={addQuantity}
-                    onChange={(e) => setAddQuantity(e.target.value)}
-                    className="input"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-text-muted mb-1 block">{t('card.condition')}</label>
-                  <select value={addCondition} onChange={(e) => setAddCondition(e.target.value)} className="select">
-                    {CONDITIONS.map(condition => <option key={condition} value={condition}>{condition}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs text-text-muted mb-1 block">✨ {t('card.variant')}</label>
-                <select value={addVariant} onChange={(e) => setAddVariant(e.target.value)} className="select">
-                  {variants.map(variant => <option key={variant} value={variant}>{variant}</option>)}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-xs text-text-muted mb-1.5 block">🌐 {t('lang.selectLabel')}</label>
-                <TcgdexLanguageSelect value={addLang} onChange={setAddLang} className="select w-full" />
-              </div>
-
-              <div>
-                <label className="text-xs text-text-muted mb-1 block">{t('card.purchasePrice')}</label>
-                <MoneyInput
-                  placeholder={t('card.purchasePricePlaceholder')}
-                  value={addPrice}
-                  onChange={(e) => setAddPrice(e.target.value)}
-                />
-              </div>
-
-              <div>
-                <button type="submit" disabled={isAdding || !exchangeRateReady} className="btn-primary justify-center">
-                  <Plus size={14} /> {isAdding ? t('card.adding') : t('collection.addVersionToCollection')}
-                </button>
-              </div>
-        </form>
-      )}
-
-      {activeTab === 'wishlist' && (
-        <div className="space-y-3 rounded-xl border border-border bg-bg-card p-4">
-          <label className="block">
-            <span className="mb-1 block text-xs text-text-muted">{t('card.quantity')}</span>
-            <input
-              type="number"
-              min="1"
-              max="99"
-              value={addQuantity}
-              onChange={(event) => setAddQuantity(event.target.value)}
-              className="input"
-            />
-          </label>
-          <button
-            type="button"
-            disabled={isAddingWishlist}
-            className="btn-primary w-full justify-center"
-            onClick={() => onAddWishlist({
-              card,
-              quantity: Math.max(1, Math.min(99, parseInt(addQuantity, 10) || 1)),
-            })}
-          >
-            <Heart size={14} /> {t('binderTypes.addToWishlist')}
-          </button>
-        </div>
-      )}
-
-      {activeTab === 'owned' && ownedItems.length > 0 && (
-        <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">{t('setDetail.ownedVersions')}</p>
-          <div className="space-y-2">
-            {ownedItems.map(item => (
-              <OwnedVersionRow
-                key={item.id}
-                item={item}
-                onQuantityChange={onQuantityChange}
-                onRemove={onRemove}
-                isUpdating={isUpdatingQuantity}
-                isRemoving={isRemoving}
-                t={t}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-    </CardDialog>
-  )
-}
-
 export default function SetDetail() {
   const { setId } = useParams()
   const goBack = useDetailBackNavigation('sets', '/sets')
@@ -321,9 +87,15 @@ export default function SetDetail() {
   const [sortBy, setSortBy] = useState('number')
   const [rarityFilter, setRarityFilter] = useState('all')
   const [selectedCard, setSelectedCard] = useState(null)
-  const [selectedCardTab, setSelectedCardTab] = useState('overview')
+  const [selectedCardTab, setSelectedCardTab] = useState('add')
   const [binderPickerOpen, setBinderPickerOpen] = useState(false)
   const [badgeLegendOpen, setBadgeLegendOpen] = useState(false)
+  const [isReturningToSets, setIsReturningToSets] = useState(false)
+
+  const returnToSets = () => {
+    flushSync(() => setIsReturningToSets(true))
+    goBack()
+  }
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['set-checklist', setId],
@@ -331,59 +103,6 @@ export default function SetDetail() {
   })
 
   const setLang = data?.set?.lang || 'en'
-
-  const addMutation = useMutation({
-    mutationFn: ({ card, quantity = 1, condition = 'NM', variant, lang = setLang, purchase_price }) => addToCollection({
-      card_id: card.id,
-      quantity,
-      condition,
-      variant: variant === undefined ? getDefaultVariantOrNull(card) : variant,
-      lang,
-      purchase_price,
-    }),
-    onSuccess: () => {
-      toast.success(t('card.addedToCollection'))
-      invalidateCardState(queryClient, { setId })
-      invalidateTcgdexFilterLanguages(queryClient)
-      setSelectedCard(null)
-    },
-    onError: () => toast.error(t('card.addFailed')),
-  })
-
-  const wishlistMutation = useMutation({
-    mutationFn: ({ card, quantity = 1 }) => addToWishlist({
-      card_id: card.id,
-      quantity,
-    }),
-    onSuccess: () => {
-      toast.success(t('card.addedToWishlist'))
-      invalidateCardState(queryClient, { setId })
-      invalidateTcgdexFilterLanguages(queryClient)
-      setSelectedCard(null)
-    },
-    onError: () => toast.error(t('card.wishlistFailed')),
-  })
-
-  const removeMutation = useMutation({
-    mutationFn: (item) => removeFromCollection(item.id),
-    onSuccess: () => {
-      toast.success(t('collection.removed'))
-      invalidateCardState(queryClient, { setId })
-      invalidateTcgdexFilterLanguages(queryClient)
-      setSelectedCard(null)
-    },
-    onError: () => toast.error(t('collection.removeFailed')),
-  })
-
-  const quantityMutation = useMutation({
-    mutationFn: ({ item, quantity }) => updateCollectionItem(item.id, { quantity }),
-    onSuccess: () => {
-      toast.success(t('collection.updated'))
-      invalidateCardState(queryClient, { setId })
-      invalidateTcgdexFilterLanguages(queryClient)
-    },
-    onError: () => toast.error(t('collection.updateFailed')),
-  })
 
   const bindersQuery = useQuery({
     queryKey: ['binders'],
@@ -417,6 +136,10 @@ export default function SetDetail() {
     addOwnedMutation.mutate(args)
   }
 
+  if (isReturningToSets) {
+    return <div className="fixed inset-0 z-40 bg-bg" aria-hidden="true" />
+  }
+
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -433,7 +156,7 @@ export default function SetDetail() {
     return (
       <div className="card text-center py-12">
         <p className="text-brand-red">{t('setDetail.loadFailed')} {error.message}</p>
-        <button onClick={goBack} className="btn-ghost mt-4 mx-auto">
+        <button onClick={returnToSets} className="btn-ghost mt-4 mx-auto">
           <ArrowLeft size={16} /> {t('setDetail.goBack')}
         </button>
       </div>
@@ -458,7 +181,7 @@ export default function SetDetail() {
 
   return (
     <div className="space-y-4 pb-2">
-      <button onClick={goBack} className="btn-ghost text-sm py-1.5">
+      <button onClick={returnToSets} className="btn-ghost text-sm py-1.5">
         <ArrowLeft size={14} /> {t('nav.sets')}
       </button>
 
@@ -605,7 +328,7 @@ export default function SetDetail() {
             price={setSortPrice(card, pricePrimaryField) > 0 ? formatPrice(setSortPrice(card, pricePrimaryField)) : null}
             dimWhenUnowned
             onClick={() => {
-              setSelectedCardTab('overview')
+              setSelectedCardTab('add')
               setSelectedCard(card)
             }}
             onAdd={() => {
@@ -616,21 +339,13 @@ export default function SetDetail() {
         ))}
       </div>
 
-      <SetCardActionModal
+      {selectedCard && <CardModal
+        key={selectedCard.id}
         card={selectedCard}
-        setLang={setLang}
+        defaultLang={setLang}
         initialTab={selectedCardTab}
         onClose={() => setSelectedCard(null)}
-        onAdd={(payload) => addMutation.mutate(payload)}
-        onAddWishlist={(payload) => wishlistMutation.mutate(payload)}
-        onQuantityChange={(item, quantity) => quantityMutation.mutate({ item, quantity })}
-        onRemove={(item) => removeMutation.mutate(item)}
-        isAdding={addMutation.isPending}
-        isAddingWishlist={wishlistMutation.isPending}
-        isUpdatingQuantity={quantityMutation.isPending}
-        isRemoving={removeMutation.isPending}
-        t={t}
-      />
+      />}
 
       {binderPickerOpen && createPortal(
         <div

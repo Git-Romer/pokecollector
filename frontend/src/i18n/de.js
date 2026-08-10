@@ -470,11 +470,12 @@ const de = {
     deleted: 'Binder gelöscht!',
     createFailed: 'Fehler beim Erstellen',
     updateFailed: 'Fehler beim Aktualisieren',
-    deleteConfirm: 'Binder löschen?',
+    deleteConfirm: 'Binder "{name}" löschen?',
     sharePublicly: 'Öffentlich teilen',
     publicUpdated: 'Freigabe aktualisiert',
     enablePublicProfileHint: 'Aktiviere dein öffentliches Profil in den Einstellungen',
     copyPublicLink: 'Öffentlichen Link kopieren',
+    addCards: 'Karten hinzufügen',
   },
 
   // Analytics
