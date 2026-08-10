@@ -471,11 +471,12 @@ const en = {
     deleted: 'Binder deleted!',
     createFailed: 'Failed to create binder',
     updateFailed: 'Failed to update binder',
-    deleteConfirm: 'Delete binder?',
+    deleteConfirm: 'Delete binder "{name}"?',
     sharePublicly: 'Share publicly',
     publicUpdated: 'Sharing setting updated',
     enablePublicProfileHint: 'Enable your public profile in Settings to share',
     copyPublicLink: 'Copy public link',
+    addCards: 'Add cards',
   },
 
   // Analytics

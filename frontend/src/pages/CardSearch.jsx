@@ -142,7 +142,7 @@ export default function CardSearch() {
   const [showCustomModal, setShowCustomModal] = useState(false)
   const [showScanner, setShowScanner] = useState(false)
   const [selectedCard, setSelectedCard] = useState(null)
-  const [selectedCardTab, setSelectedCardTab] = useState('overview')
+  const [selectedCardTab, setSelectedCardTab] = useState('add')
   const [selectMode, setSelectMode] = useState(false)
   const [selectedItems, setSelectedItems] = useState(new Map()) // card.id -> { card_id, lang }
   const pageSize = 20
@@ -773,7 +773,7 @@ export default function CardSearch() {
                     onClick={() => {
                       if (selectMode) toggleSelected(card)
                       else {
-                        setSelectedCardTab('overview')
+                        setSelectedCardTab('add')
                         setSelectedCard(card)
                       }
                     }}

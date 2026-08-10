@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getOwnedVariants } from './cardVariants'
+import { getAvailableVariants, getOwnedVariants } from './cardVariants'
 
 const row = (over = {}) => ({
   id: 1, card_id: 'sv01-003_en', card: { id: 'sv01-003_en', name: 'Card' },
@@ -86,6 +86,27 @@ describe('getOwnedVariants', () => {
 
   it('returns an empty array for no rows', () => {
     expect(getOwnedVariants([])).toEqual([])
+  })
+})
+
+describe('getAvailableVariants', () => {
+  it('uses TCGplayer pricing as evidence when TCGdex flags contradict it', () => {
+    expect(getAvailableVariants({
+      variants_normal: true,
+      variants_reverse: false,
+      variants_holo: false,
+      price_tcg_reverse_market: 0.22,
+      price_tcg_holo_market: 0.41,
+    })).toEqual(['Normal', 'Reverse Holo', 'Holo'])
+  })
+
+  it('does not infer a variant from missing or zero prices', () => {
+    expect(getAvailableVariants({
+      variants_normal: false,
+      variants_reverse: false,
+      variants_holo: false,
+      price_tcg_reverse_market: 0,
+    })).toEqual([])
   })
 })
 

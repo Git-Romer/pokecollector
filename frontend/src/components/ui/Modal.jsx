@@ -17,6 +17,7 @@ const DESKTOP_MEDIA_QUERY = '(min-width: 1024px)'
  *   children  {node}      — modal content
  *   size      {string}    — 'sm' | 'md' | 'lg' | 'xl' (default: 'md')
  *   className {string}    — extra classes for the inner panel
+ *   overlayClassName {string} — stacking class for the backdrop (default: 'z-50')
  *   mobileSheet {boolean} — if true, renders as Sheet on mobile (default: true)
  */
 export default function Modal({
@@ -26,6 +27,7 @@ export default function Modal({
   children,
   size = 'md',
   className = '',
+  overlayClassName = 'z-50',
   mobileSheet = true,
   isObscured = false,
 }) {
@@ -101,6 +103,7 @@ export default function Modal({
         closeLabel={t('common.close')}
         dialogLabel={t('common.dialog')}
         isObscured={isObscured}
+        overlayClassName={overlayClassName}
       >
         {children}
       </DesktopModal>
@@ -118,13 +121,14 @@ export default function Modal({
       closeLabel={t('common.close')}
       dialogLabel={t('common.dialog')}
       isObscured={isObscured}
+      overlayClassName={overlayClassName}
     >
       {children}
     </DesktopModal>
   )
 }
 
-function DesktopModal({ isOpen, onClose, title, children, sizeClass, className = '', closeLabel = 'Close', dialogLabel = 'Dialog', isObscured = false }) {
+function DesktopModal({ isOpen, onClose, title, children, sizeClass, className = '', overlayClassName = 'z-50', closeLabel = 'Close', dialogLabel = 'Dialog', isObscured = false }) {
   const titleId = useId()
   const { dialogRef, onDialogKeyDown } = useDialogBehavior(isOpen, onClose, { restoreFocus: false })
   if (!isOpen) return null
@@ -133,7 +137,7 @@ function DesktopModal({ isOpen, onClose, title, children, sizeClass, className =
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-50 bg-black/60 animate-fade-in flex items-end sm:items-center justify-center p-4"
+        className={`fixed inset-0 ${overlayClassName} bg-black/60 animate-fade-in flex items-end sm:items-center justify-center p-4`}
         onClick={onClose}
       >
         {/* Panel — stop propagation so clicks inside don't close */}

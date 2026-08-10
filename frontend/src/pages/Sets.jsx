@@ -9,7 +9,7 @@ import { resolveSetImageUrl } from '../utils/imageUrl'
 import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
 import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import { normalizeTcgdexLanguage, tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
-import { textIncludes } from '../utils/textSearch'
+import { setMatchesSearch } from '../utils/textSearch'
 import { getSavedListScrollPosition, isSavedPositionForLocation, useListScrollRestoration } from '../hooks/useListScrollRestoration'
 
 const DEFAULT_SET_FILTERS = {
@@ -197,7 +197,7 @@ export default function Sets() {
   const filtered = useMemo(() => {
     let result = sets.filter(s => {
       if (!showHiddenSets && hiddenSetIdSet.has(String(s.id))) return false
-      if (search && !textIncludes(s.name, search)) return false
+      if (search && !setMatchesSearch(s, search)) return false
       if (series && s.series !== series) return false
       const owned = s.owned_count ?? 0
       const total = s.total ?? 0
@@ -249,7 +249,7 @@ export default function Sets() {
   const hasActiveFilters = search || series || sortBy !== DEFAULT_SET_FILTERS.sortBy || sortOrder !== DEFAULT_SET_FILTERS.sortOrder || progressFilter !== DEFAULT_SET_FILTERS.progressFilter || langFilter !== DEFAULT_SET_FILTERS.langFilter || showHiddenSets !== DEFAULT_SET_FILTERS.showHiddenSets
 
   return (
-    <div className="space-y-4 pb-2">
+    <div data-scroll-list="sets" className="space-y-4 pb-2">
 
       {/* ─── Header ───────────────────────────────────────────────── */}
       <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">

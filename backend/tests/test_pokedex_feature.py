@@ -71,6 +71,44 @@ class PokedexMetadataTests(unittest.TestCase):
         # Rich variant arrays also populate the legacy availability booleans.
         self.assertTrue(parsed["variants_holo"])
 
+    def test_tcgplayer_prices_override_contradictory_variant_flags(self):
+        parsed = parse_card_for_db({
+            "id": "me04-068",
+            "localId": "068",
+            "name": "Goodra",
+            "category": "Pokemon",
+            "variants": {"normal": True, "reverse": False, "holo": False},
+            "pricing": {
+                "tcgplayer": {
+                    "reverse-holofoil": {"marketPrice": 0.22},
+                    "holofoil": {"marketPrice": 0.41},
+                },
+            },
+        }, lang="en")
+
+        self.assertTrue(parsed["variants_normal"])
+        self.assertTrue(parsed["variants_reverse"])
+        self.assertTrue(parsed["variants_holo"])
+
+    def test_empty_tcgplayer_prices_do_not_override_variant_flags(self):
+        parsed = parse_card_for_db({
+            "id": "me04-069",
+            "localId": "069",
+            "name": "Test card",
+            "category": "Pokemon",
+            "variants": {"normal": True, "reverse": False, "holo": False},
+            "pricing": {
+                "tcgplayer": {
+                    "reverse-holofoil": {"marketPrice": None, "lowPrice": 0},
+                    "holofoil": {"marketPrice": float("nan")},
+                },
+            },
+        }, lang="en")
+
+        self.assertTrue(parsed["variants_normal"])
+        self.assertFalse(parsed["variants_reverse"])
+        self.assertFalse(parsed["variants_holo"])
+
     def test_missing_dex_id_falls_back_to_mega_species_name(self):
         self.assertEqual(infer_dex_ids_from_name({
             "name": "Mega-Glurak Y-ex",

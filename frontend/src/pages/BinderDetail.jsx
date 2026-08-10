@@ -695,7 +695,7 @@ export default function BinderDetail() {
             }}
             className="btn-primary flex-shrink-0"
           >
-            <Plus size={16} /> {t('common.add')} {t('nav.cards')}
+            <Plus size={16} /> {t('binders.addCards')}
           </button>
           {isCollection && (
             <button

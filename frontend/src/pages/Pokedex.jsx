@@ -152,7 +152,7 @@ export default function Pokedex() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-5 px-4 pb-28 pt-2 sm:px-6 lg:px-8">
+    <div data-scroll-list="pokedex" className="mx-auto w-full max-w-7xl space-y-5 px-4 pb-28 pt-2 sm:px-6 lg:px-8">
       <section className="rounded-3xl border border-border bg-gradient-to-br from-bg-card to-bg-surface p-5 sm:p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>

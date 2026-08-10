@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { Plus, Trash2, Edit2, BookOpen, Star, Package, Check, X, Library, Heart, Globe, Lock, Copy } from 'lucide-react'
 import { getBinders, createBinder, updateBinder, deleteBinder, getWishlist, getProfile } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
+import { useConfirmDialog } from '../contexts/ConfirmDialogContext'
 import TabNav from '../components/TabNav'
 import AvatarPicker from '../components/AvatarPicker'
 import toast from 'react-hot-toast'
@@ -142,6 +143,7 @@ function BinderForm({ initial = {}, onSubmit, onCancel, loading }) {
 export default function Binders() {
   const navigate = useNavigate()
   const { t } = useSettings()
+  const confirmDialog = useConfirmDialog()
   const queryClient = useQueryClient()
   const [creating, setCreating] = useState(false)
   const [editingId, setEditingId] = useState(null)
@@ -355,10 +357,17 @@ export default function Binders() {
                         className="text-text-muted hover:text-text-primary bg-bg/80 rounded p-1 transition-colors">
                         <Edit2 size={12} />
                       </button>
-                      <button onClick={(e) => {
+                      <button onClick={async (e) => {
                         e.stopPropagation()
-                        if (confirm(`${t('binders.deleteConfirm')} "${binder.name}"?`)) deleteMutation.mutate(binder.id)
-                      }} className="text-text-muted hover:text-brand-red bg-bg/80 rounded p-1 transition-colors">
+                        const confirmed = await confirmDialog({
+                          title: t('common.delete'),
+                          message: t('binders.deleteConfirm').replace('{name}', binder.name),
+                          confirmLabel: t('common.delete'),
+                          destructive: true,
+                        })
+                        if (confirmed) deleteMutation.mutate(binder.id)
+                      }} className="text-text-muted hover:text-brand-red bg-bg/80 rounded p-1 transition-colors"
+                        aria-label={`${t('common.delete')}: ${binder.name}`}>
                         <Trash2 size={12} />
                       </button>
                     </div>
