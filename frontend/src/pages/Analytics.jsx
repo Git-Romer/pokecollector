@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -12,15 +12,14 @@ import {
   getInvestmentTracker, getTradeStats, getAnalyticsNewSets, getProducts, createProduct
 } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
-import { CardRow } from '../components/card-system'
-import { CollectionCardIdentity, CollectionCardRow } from '../components/CollectionCardImage'
+import { CollectionCardIdentity, CollectionCardRow, OwnPhotoOverlayBadge, showsOwnPhoto, useCollectionPhotoUrl } from '../components/CollectionCardImage'
 import { CardModal } from '../components/CardItem'
 import { format, parseISO } from 'date-fns'
 import clsx from 'clsx'
 import PeriodSelector, { CARD_PERIODS, PERIOD_DAYS } from '../components/PeriodSelector'
 import AnalyticsSectionNav from '../components/AnalyticsSectionNav'
 import toast from 'react-hot-toast'
-import { resolveCardImageUrl } from '../utils/imageUrl'
+import { hasCatalogueImage, resolveCardImageUrl } from '../utils/imageUrl'
 import MoneyInput from '../components/MoneyInput'
 import { parseMoneyInputValue } from '../utils/moneyInput'
 
@@ -157,12 +156,32 @@ function AddExpenseModal({ onClose, onSuccess }) {
 }
 
 export default function Analytics() {
-  const { t, formatPrice, pricePrimaryField, currencySymbol } = useSettings()
+  const { t, formatPrice, pricePrimaryField, currencySymbol, settings } = useSettings()
   const [moversPeriod, setMoversPeriod] = useState('7d')
   const [moversSort, setMoversSort] = useState('percentage')
   const [activeTab, setActiveTab] = useState('duplicates')
   const [showExpenseModal, setShowExpenseModal] = useState(false)
   const [selectedCard, setSelectedCard] = useState(null)
+  const [selectedImageSource, setSelectedImageSource] = useState('catalogue')
+  const selectedPhotoItem = selectedCard?.collection_item_id ? {
+    id: selectedCard.collection_item_id,
+    card_id: selectedCard.card_id,
+    has_scan_photo: selectedCard.has_scan_photo,
+  } : null
+  const selectedOwnPhotoUrl = useCollectionPhotoUrl(selectedPhotoItem, { eager: true })
+  const selectedOwnPhotoDefault = showsOwnPhoto(
+    selectedPhotoItem,
+    selectedCard,
+    settings.prefer_own_card_photos === 'true',
+  )
+  const selectedHasCatalogueImage = hasCatalogueImage(selectedCard) || Boolean(selectedCard?.custom_image_url)
+  const selectedImage = selectedImageSource === 'own' && selectedOwnPhotoUrl
+    ? selectedOwnPhotoUrl
+    : resolveCardImageUrl(selectedCard, 'large')
+
+  useEffect(() => {
+    setSelectedImageSource(selectedOwnPhotoDefault ? 'own' : 'catalogue')
+  }, [selectedCard?.card_id, selectedOwnPhotoDefault])
   const queryClient = useQueryClient()
   const { data: duplicates = [], isLoading: dupLoading } = useQuery({
     queryKey: ['duplicates', pricePrimaryField],
@@ -287,7 +306,7 @@ export default function Analytics() {
                           <CollectionCardIdentity
                             item={item}
                             name={item.name}
-                            onClick={() => setSelectedCard({ ...item, id: item.card_id || item.id })}
+                            onClick={() => setSelectedCard({ ...item, collection_item_id: item.id, id: item.card_id || item.id })}
                           />
                         </td>
                         <td className="px-4 py-3 text-text-secondary text-xs">{item.set_name || '-'}</td>
@@ -313,7 +332,7 @@ export default function Analytics() {
                     ]}
                     value={formatPrice(item.total_value)}
                     valueSecondary={formatPrice(item.price_market)}
-                    onClick={() => setSelectedCard({ ...item, id: item.card_id || item.id })}
+                    onClick={() => setSelectedCard({ ...item, collection_item_id: item.id, id: item.card_id || item.id })}
                   />
                 ))}
               </div>
@@ -360,10 +379,14 @@ export default function Analytics() {
           ) : (
             <div className="space-y-2">
               {topMovers.map((card) => (
-                <CardRow
+                <CollectionCardRow
                   key={card.card_id}
+                  item={{
+                    id: card.collection_item_id,
+                    card_id: card.card_id,
+                    has_scan_photo: card.has_scan_photo,
+                  }}
                   card={card}
-                  image={resolveCardImageUrl(card)}
                   name={card.name}
                   subtext={card.rarity}
                   onClick={() => setSelectedCard({ ...card, id: card.card_id })}
@@ -729,6 +752,38 @@ export default function Analytics() {
       {selectedCard && (
         <CardModal
           card={selectedCard}
+          image={selectedImage}
+          imageOverlay={selectedImage === selectedOwnPhotoUrl ? <OwnPhotoOverlayBadge t={t} /> : null}
+          imageAccessory={selectedOwnPhotoUrl && selectedHasCatalogueImage ? (
+            <div className="grid grid-cols-2 gap-2" role="group" aria-label={t('collection.photoSource')}>
+              <button
+                type="button"
+                onClick={() => setSelectedImageSource('catalogue')}
+                aria-pressed={selectedImageSource === 'catalogue'}
+                className={clsx(
+                  'rounded-lg border px-2 py-2 text-xs font-bold transition-colors',
+                  selectedImageSource === 'catalogue'
+                    ? 'border-brand-red bg-brand-red/15 text-brand-red'
+                    : 'border-border bg-bg-card text-text-secondary hover:bg-bg-elevated',
+                )}
+              >
+                {t('collection.cataloguePhoto')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedImageSource('own')}
+                aria-pressed={selectedImageSource === 'own'}
+                className={clsx(
+                  'rounded-lg border px-2 py-2 text-xs font-bold transition-colors',
+                  selectedImageSource === 'own'
+                    ? 'border-brand-red bg-brand-red/15 text-brand-red'
+                    : 'border-border bg-bg-card text-text-secondary hover:bg-bg-elevated',
+                )}
+              >
+                {t('collection.myCardPhoto')}
+              </button>
+            </div>
+          ) : null}
           onClose={() => setSelectedCard(null)}
           initialTab="overview"
         />

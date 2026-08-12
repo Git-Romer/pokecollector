@@ -136,6 +136,46 @@ class CollectionPhotoTests(unittest.TestCase):
         self.assertTrue(self.entry.has_scan_photo)
         self.assertTrue(second.has_scan_photo)
 
+    def test_language_change_deletes_photo_after_final_old_reference(self):
+        from models import Card
+
+        self.db.add(Card(id="pmcg2-035_de", name="Pummeluff", set_id="pmcg2", number="035", lang="de"))
+        self.db.commit()
+        self._upload()
+
+        response = self.client.put(
+            f"/api/collection/{self.entry.id}",
+            json={"lang": "de"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["card_id"], "pmcg2-035_de")
+        self.assertEqual(self.client.get(f"/api/collection/{self.entry.id}/photo").status_code, 404)
+
+    def test_language_change_keeps_photo_when_old_reference_remains(self):
+        from models import Card, CollectionItem
+
+        self.db.add(Card(id="pmcg2-035_de", name="Pummeluff", set_id="pmcg2", number="035", lang="de"))
+        remaining = CollectionItem(
+            card_id=self.entry.card_id,
+            user_id=self.owner.id,
+            quantity=1,
+            condition="LP",
+            lang="ja",
+        )
+        self.db.add(remaining)
+        self.db.commit()
+        self._upload()
+
+        response = self.client.put(
+            f"/api/collection/{self.entry.id}",
+            json={"lang": "de"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.client.get(f"/api/collection/{remaining.id}/photo").status_code, 200)
+        self.assertEqual(self.client.get(f"/api/collection/{self.entry.id}/photo").status_code, 404)
+
     def test_the_stored_photo_carries_no_exif(self):
         """The reason normalisation exists: a phone photo carries GPS, a camera
         serial and a timestamp, none of which describe a Pokémon card."""

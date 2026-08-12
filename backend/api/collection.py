@@ -790,6 +790,8 @@ def update_collection_item(
             detail="This exact collection row is linked to a product. Unlink or sell the product-linked copies before changing variant, condition, language, or purchase price.",
         )
 
+    old_card_id = item.card_id
+
     # If lang is being changed, also update card_id to the correct language variant
     new_lang = update_data.get("lang")
     if new_lang and new_lang != item.lang:
@@ -808,6 +810,22 @@ def update_collection_item(
 
     for field, value in update_data.items():
         setattr(item, field, value)
+
+    if item.card_id != old_card_id:
+        # A physical photo belongs to the old printing and must not silently
+        # migrate to another language. Remove it only when this was the user's
+        # final collection reference to that old card; otherwise the remaining
+        # rows continue sharing it.
+        db.flush()
+        remaining_old_reference = db.query(CollectionItem.id).filter(
+            CollectionItem.user_id == current_user.id,
+            CollectionItem.card_id == old_card_id,
+        ).first()
+        if not remaining_old_reference:
+            db.query(CollectionCardPhoto).filter(
+                CollectionCardPhoto.user_id == current_user.id,
+                CollectionCardPhoto.card_id == old_card_id,
+            ).delete(synchronize_session=False)
 
     db.commit()
     db.refresh(item)

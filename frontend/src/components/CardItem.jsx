@@ -545,7 +545,7 @@ function OwnedVersionRow({ item, onQuantityChange, onRemove, isUpdating, isRemov
   )
 }
 
-export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItems = null, initialTab = 'overview', isForeignTemplate = false, onCopyTemplate, copyTemplatePending = false }) {
+export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItems = null, initialTab = 'overview', isForeignTemplate = false, onCopyTemplate, copyTemplatePending = false, image = null, imageOverlay = null, imageAccessory = null }) {
   if (!card || !card.id) return null
 
   const [activeTab, setActiveTab] = useState(initialTab)
@@ -758,7 +758,9 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
   return (
     <UnifiedCardDialog
       card={card}
-      image={cardImage}
+      image={image || cardImage}
+      imageOverlay={imageOverlay}
+      imageAccessory={imageAccessory}
       variantEffectSource={variant}
       price={selectedPrimaryPrice > 0 ? formatPrice(selectedPrimaryPrice) : null}
       tabs={modalTabs}

@@ -101,20 +101,25 @@ def get_top_movers(
     price_field = normalize_price_field(price_field)
     history_field = price_field if price_field in {"price_market", "price_trend", "price_low"} else "price_market"
 
-    # Get collection card IDs
-    col_card_ids = [
-        item.card_id
-        for item in db.query(CollectionItem.card_id).join(Card, Card.id == CollectionItem.card_id).filter(
-            CollectionItem.user_id == current_user.id,
-            visible_any_card_filter(db, current_user.id, "all"),
-        ).all()
-    ]
-    if not col_card_ids:
+    collection_items = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).options(
+        joinedload(CollectionItem.card)
+    ).filter(
+        CollectionItem.user_id == current_user.id,
+        visible_any_card_filter(db, current_user.id, "all"),
+    ).all()
+    if not collection_items:
         return []
 
+    _annotate_scan_photos(db, current_user, collection_items)
+    # Price movement is per printing, not per condition/variant row. Keep one
+    # owner-scoped collection reference so the frontend can fetch its photo.
+    collection_item_by_card = {}
+    for item in collection_items:
+        collection_item_by_card.setdefault(item.card_id, item)
+
     results = []
-    for card_id in col_card_ids:
-        card = db.query(Card).filter(Card.id == card_id).first()
+    for card_id, collection_item in collection_item_by_card.items():
+        card = collection_item.card
         if not card:
             continue
 
@@ -137,11 +142,13 @@ def get_top_movers(
         change_pct = ((current_price - old_price) / old_price * 100) if old_price > 0 else 0
 
         results.append({
+            "collection_item_id": collection_item.id,
             "card_id": card_id,
             "name": card.name,
             "images_small": card.images_small,
             "rarity": card.rarity,
             "is_custom": bool(card.is_custom),
+            "has_scan_photo": bool(collection_item.has_scan_photo),
             "current_price": round(current_price, 2),
             "old_price": round(old_price, 2),
             "change_abs": round(change_abs, 2),

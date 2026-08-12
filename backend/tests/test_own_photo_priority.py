@@ -16,6 +16,7 @@ false for an item with no photo, so a permanently-true flag can't hide here.
 """
 
 import io
+import datetime
 import unittest
 
 try:
@@ -23,7 +24,7 @@ try:
     from sqlalchemy.orm import sessionmaker
     from PIL import Image
 
-    from api.analytics import get_duplicates
+    from api.analytics import get_duplicates, get_top_movers
     from api.binders import (
         get_binder_cards,
         preview_binder_print_optimization,
@@ -31,7 +32,7 @@ try:
     )
     from api.dashboard import get_dashboard
     from database import Base
-    from models import Binder, BinderCard, Card, CollectionCardPhoto, CollectionItem, Set, User
+    from models import Binder, BinderCard, Card, CollectionCardPhoto, CollectionItem, PriceHistory, Set, User
     DEPS_AVAILABLE = True
 except ModuleNotFoundError:
     DEPS_AVAILABLE = False
@@ -263,6 +264,27 @@ class OwnPhotoPriorityTests(unittest.TestCase):
 
         result = get_duplicates(price_field="price_trend", db=self.db, current_user=self.user)
         self.assertFalse(any(r["id"] == self.photographed_item.id for r in result))
+
+    def test_top_movers_carries_the_photo_collection_reference(self):
+        self.photographed_card.price_trend = 100.0
+        self.db.add(PriceHistory(
+            card_id=self.photographed_card.id,
+            date=datetime.date.today() - datetime.timedelta(days=1),
+            price_trend=50.0,
+        ))
+        self.db.commit()
+
+        result = get_top_movers(
+            days=7,
+            price_field="price_trend",
+            sort_by="percentage",
+            db=self.db,
+            current_user=self.user,
+        )
+
+        photographed = self._by_collection_item_id(result, self.photographed_item.id)
+        self.assertTrue(photographed["has_scan_photo"])
+        self.assertEqual(photographed["card_id"], self.photographed_card.id)
 
 
 if __name__ == "__main__":

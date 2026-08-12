@@ -18,7 +18,9 @@ import { isSupportedScannerImage, SCANNER_IMAGE_ACCEPT } from '../utils/scannerI
 import { hasCatalogueImage } from '../utils/imageUrl'
 
 export async function attachScanFallbackPhoto({ created, match, getPhoto, uploadPhoto = uploadCollectionItemPhoto }) {
-  if (!getPhoto || created?.has_scan_photo || hasCatalogueImage(match)) return false
+  const createdCard = created?.card
+  const hasReferenceArtwork = hasCatalogueImage(createdCard) || Boolean(createdCard?.custom_image_url)
+  if (!getPhoto || !createdCard || created?.has_scan_photo || hasReferenceArtwork) return false
   try {
     const photo = await getPhoto()
     if (!photo) return false

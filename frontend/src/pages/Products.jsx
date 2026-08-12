@@ -9,6 +9,7 @@ import { getProducts, createProductBatch, updateProduct, bulkUpdateProductLifecy
 import { useSettings } from '../contexts/SettingsContext'
 import { useConfirmDialog } from '../contexts/ConfirmDialogContext'
 import { CardRow } from '../components/card-system'
+import CollectionCardImage from '../components/CollectionCardImage'
 import MoneyInput from '../components/MoneyInput'
 import PeriodSelector, { PRODUCT_PERIODS, getPeriodCutoff } from '../components/PeriodSelector'
 import AnalyticsSectionNav from '../components/AnalyticsSectionNav'
@@ -417,12 +418,13 @@ function ProductCardPicker({ isOpen, onClose, product, candidates, formatPrice, 
                   className="h-5 w-5 flex-shrink-0 accent-brand-red"
                   aria-label={t('products.selectCard').replace('{card}', card.name || item.card_id)}
                 />
-                <img
-                  src={resolveCardImageUrl(card)}
-                  alt=""
-                  className="h-14 w-10 flex-shrink-0 rounded object-cover bg-bg-card"
-                  loading="lazy"
-                />
+                <div className="h-14 w-10 flex-shrink-0 overflow-hidden rounded bg-bg-card">
+                  <CollectionCardImage
+                    item={item}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                </div>
                 <button
                   type="button"
                   onClick={() => toggleSelection(item.id, available)}
