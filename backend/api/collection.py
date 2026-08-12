@@ -1,14 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Response
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from api.auth import get_current_user
 from database import get_db
-from models import BinderCard, CollectionItem, Card, ProductCard, ProductPurchase, Set, User
+from models import BinderCard, CollectionItem, CollectionCardPhoto, Card, ProductCard, ProductPurchase, Set, User
 from schemas import CollectionItemCreate, CollectionItemUpdate, CollectionItemResponse, BulkCollectionAddRequest, BulkCollectionAddResponse
 from services import pokemon_api
 from services.card_fallbacks import apply_cross_language_fallbacks, build_missing_language_card
 from services.card_numbers import card_number_matches
+from services.collection_photos import MAX_UPLOAD_BYTES, InvalidPhoto, normalize_photo
 from services.card_visibility import visible_any_card_filter, visible_card_filter
 from services.binder_allocations import collection_item_allocated_quantity
 from services.digital_sets import digital_sets_enabled
@@ -73,7 +74,7 @@ def _product_source_payload(product_card: ProductCard, product) -> dict:
     }
 
 
-def _chunks(values: list[int], size: int):
+def _chunks(values: list, size: int):
     for start in range(0, len(values), size):
         yield values[start:start + size]
 
@@ -114,8 +115,35 @@ def _annotate_product_sources(db: Session, current_user: User, items: list[Colle
     return items
 
 
+def _annotate_scan_photos(db: Session, current_user: User, items: list[CollectionItem]) -> list[CollectionItem]:
+    """Flag which items have an owner-supplied photo, without loading any bytes.
+
+    Selecting only the foreign key is the point: these rows hold whole JPEGs, and
+    a collection query must never drag them along to answer a yes/no question.
+    """
+    for item in items:
+        item.has_scan_photo = False
+
+    card_ids = {item.card_id for item in items if item.card_id}
+    if not card_ids:
+        return items
+
+    with_photos: set[str] = set()
+    for chunk in _chunks(list(card_ids), 500):
+        rows = db.query(CollectionCardPhoto.card_id).filter(
+            CollectionCardPhoto.user_id == current_user.id,
+            CollectionCardPhoto.card_id.in_(chunk),
+        ).all()
+        with_photos.update(row[0] for row in rows)
+
+    for item in items:
+        item.has_scan_photo = item.card_id in with_photos
+    return items
+
+
 def _annotate_collection_items(db: Session, current_user: User, items: list[CollectionItem]) -> list[CollectionItem]:
     _annotate_standard_legality(items, _collection_standard_legal_fingerprints(db))
+    _annotate_scan_photos(db, current_user, items)
     return _annotate_product_sources(db, current_user, items)
 
 
@@ -762,6 +790,8 @@ def update_collection_item(
             detail="This exact collection row is linked to a product. Unlink or sell the product-linked copies before changing variant, condition, language, or purchase price.",
         )
 
+    old_card_id = item.card_id
+
     # If lang is being changed, also update card_id to the correct language variant
     new_lang = update_data.get("lang")
     if new_lang and new_lang != item.lang:
@@ -780,6 +810,22 @@ def update_collection_item(
 
     for field, value in update_data.items():
         setattr(item, field, value)
+
+    if item.card_id != old_card_id:
+        # A physical photo belongs to the old printing and must not silently
+        # migrate to another language. Remove it only when this was the user's
+        # final collection reference to that old card; otherwise the remaining
+        # rows continue sharing it.
+        db.flush()
+        remaining_old_reference = db.query(CollectionItem.id).filter(
+            CollectionItem.user_id == current_user.id,
+            CollectionItem.card_id == old_card_id,
+        ).first()
+        if not remaining_old_reference:
+            db.query(CollectionCardPhoto).filter(
+                CollectionCardPhoto.user_id == current_user.id,
+                CollectionCardPhoto.card_id == old_card_id,
+            ).delete(synchronize_session=False)
 
     db.commit()
     db.refresh(item)
@@ -814,9 +860,131 @@ def remove_from_collection(
             detail=f"This collection item has {allocated_quantity} copie(s) assigned to binders. Remove them from those binders first.",
         )
 
+    card_id = item.card_id
     db.delete(item)
+    db.flush()
+    remaining = db.query(CollectionItem.id).filter(
+        CollectionItem.user_id == current_user.id,
+        CollectionItem.card_id == card_id,
+    ).first()
+    if not remaining:
+        db.query(CollectionCardPhoto).filter(
+            CollectionCardPhoto.user_id == current_user.id,
+            CollectionCardPhoto.card_id == card_id,
+        ).delete(synchronize_session=False)
     db.commit()
     return {"message": "Removed from collection"}
+
+
+@router.get("/{item_id}/photo")
+def get_collection_item_photo(
+    item_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Serve the owner's own photo of a card the catalogue has no scan of.
+
+    Authenticated and scoped to the owner, unlike /api/images — a photograph of
+    a card is also a photograph of whatever it was lying on, and it is not part
+    of the shared catalogue. That is also why this is not on the images router,
+    which is mounted without authentication.
+
+    `no-store` is intentional. Authenticated responses must never be replayed
+    from a browser or proxy cache after another user signs into the same client.
+    """
+    entry = db.query(CollectionItem).filter(
+        CollectionItem.id == item_id,
+        CollectionItem.user_id == current_user.id,
+    ).first()
+    photo = db.query(CollectionCardPhoto).filter(
+        CollectionCardPhoto.user_id == current_user.id,
+        CollectionCardPhoto.card_id == entry.card_id,
+    ).first() if entry else None
+    if not photo:
+        raise HTTPException(status_code=404, detail="No photo for this collection item")
+    return Response(
+        content=photo.data,
+        media_type=photo.content_type or "image/jpeg",
+        headers={
+            "Cache-Control": "no-store",
+            "Pragma": "no-cache",
+            "Vary": "Authorization, Cookie",
+        },
+    )
+
+
+@router.post("/{item_id}/photo")
+async def upload_collection_item_photo(
+    item_id: int,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Attach a photo to a card already in the collection.
+
+    The scanner keeps its photo automatically, but only from the moment the card
+    is added — anything collected before that, or added by hand, or scanned and
+    resolved earlier (resolve discards the photo) has no picture and no way to
+    get one. This is that way.
+
+    Not gated on the card lacking a catalogue scan: the endpoint stores what it
+    is given, and the display rule that a catalogue scan wins lives in one place
+    on the frontend. Uploading against a cached card simply has no visible
+    effect, which is better than a confusing rejection.
+    """
+    entry = db.query(CollectionItem).filter(
+        CollectionItem.id == item_id,
+        CollectionItem.user_id == current_user.id,
+    ).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Collection item not found")
+    if entry.card and entry.card.is_custom:
+        raise HTTPException(status_code=400, detail="Custom cards already have editable artwork")
+
+    raw = await file.read(MAX_UPLOAD_BYTES + 1)
+    await file.close()
+    try:
+        data, content_type = normalize_photo(raw)
+    except InvalidPhoto as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    photo = db.query(CollectionCardPhoto).filter(
+        CollectionCardPhoto.user_id == current_user.id,
+        CollectionCardPhoto.card_id == entry.card_id,
+    ).first()
+    if not photo:
+        photo = CollectionCardPhoto(user_id=current_user.id, card_id=entry.card_id)
+        db.add(photo)
+    photo.data = data
+    photo.content_type = content_type
+    db.commit()
+    return {"collection_item_id": entry.id, "bytes": len(data)}
+
+
+@router.delete("/{item_id}/photo")
+def delete_collection_item_photo(
+    item_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Drop the owner's photo, falling the card back to the catalogue placeholder.
+
+    Present because the photo is the user's own: whatever ended up in frame, they
+    can take it back out without deleting the collection entry itself.
+    """
+    entry = db.query(CollectionItem).filter(
+        CollectionItem.id == item_id,
+        CollectionItem.user_id == current_user.id,
+    ).first()
+    photo = db.query(CollectionCardPhoto).filter(
+        CollectionCardPhoto.user_id == current_user.id,
+        CollectionCardPhoto.card_id == entry.card_id,
+    ).first() if entry else None
+    if not photo:
+        raise HTTPException(status_code=404, detail="No photo for this collection item")
+    db.delete(photo)
+    db.commit()
+    return {"message": "Photo removed"}
 
 
 @router.get("/stats/summary")

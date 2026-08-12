@@ -130,6 +130,11 @@ export const deleteScanJob = jobId =>
 export const fetchScanJobItemImage = (jobId, itemId) =>
   api.get(`/cards/recognize/jobs/${jobId}/items/${itemId}/image`, { responseType: 'blob' })
     .then(r => URL.createObjectURL(r.data))
+// Raw Blob rather than an object URL — for handing the scanned photo off to
+// uploadCollectionItemPhoto when a match is confirmed, not for display.
+export const fetchScanJobItemImageBlob = (jobId, itemId) =>
+  api.get(`/cards/recognize/jobs/${jobId}/items/${itemId}/image`, { responseType: 'blob' })
+    .then(r => r.data)
 
 // Custom card migration
 export const getCustomMatches = () => api.get('/cards/custom/matches')
@@ -141,6 +146,35 @@ export const getCollection = (params) => api.get('/collection/', { params })
 export const getUserCollection = (userId, params = {}) => api.get(`/collection/user/${userId}`, { params }).then(r => r.data)
 export const searchCollection = (params) => api.get('/collection/', { params })
 export const addToCollection = (data) => api.post('/collection/', data)
+
+// The owner's own photo of a card the catalogue has no scan of. A blob rather
+// than an <img src>: unlike /api/images this endpoint is authenticated, because
+// the photo belongs to the collector and not to the shared card catalogue.
+// Returns the Blob — callers make and revoke their own object URLs, so the
+// bytes can be cached once and rendered in several places.
+export const fetchCollectionItemPhoto = (itemId) =>
+  api.get(`/collection/${itemId}/photo`, { responseType: 'blob' }).then(r => r.data)
+
+// For cards collected before the scanner kept photos, added by hand, or scanned
+// and resolved earlier — resolve discards the photo, so there is otherwise no
+// way to give those a picture. The backend strips EXIF and bounds the size.
+export const uploadCollectionItemPhoto = (itemId, file) => {
+  const form = new FormData()
+  form.append('file', file)
+  // The header is required, not decoration: this client defaults every request
+  // to application/json, so without the override the multipart body is sent
+  // under the wrong content type and the server rejects it as a missing field.
+  return api.post(`/collection/${itemId}/photo`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }).then(r => r.data)
+}
+
+export const deleteCollectionItemPhoto = (itemId) =>
+  api.delete(`/collection/${itemId}/photo`).then(r => r.data)
+
+export const deleteAllCollectionCardPhotos = () =>
+  api.delete('/settings/card-photos').then(r => r.data)
+
 export const bulkAddToCollection = (items) => api.post('/collection/bulk-add', { items }).then(r => r.data)
 export const importCollectionCsv = (file) => {
   const formData = new FormData()

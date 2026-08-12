@@ -20,6 +20,7 @@ import { useSettings } from '../contexts/SettingsContext'
 import { CARD_VARIANTS, getDefaultVariantOrNull } from '../utils/cardVariants'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 import { CardIdentity } from '../components/card-system'
+import { CollectionCardIdentity } from '../components/CollectionCardImage'
 import { getEffectiveCardPrice, priceFieldFromPrimary } from '../utils/prices'
 import { formatMoneyInputValue, parseMoneyInputValue } from '../utils/moneyInput'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
@@ -119,13 +120,15 @@ function TradeHealthBar({ outgoingValue, incomingValue, scoreOutgoingValue, miss
   )
 }
 
-function MiniCardRow({ card, variant, meta, value, rightAction }) {
+function MiniCardRow({ collectionItem = null, card, variant, meta, value, rightAction }) {
+  const Identity = collectionItem ? CollectionCardIdentity : CardIdentity
   return (
     <div className="flex items-center gap-3 rounded-lg border border-border bg-bg-card p-2 min-w-0">
-      <CardIdentity
+      <Identity
         className="flex-1"
+        {...(collectionItem ? { item: collectionItem } : {})}
         card={card}
-        image={resolveCardImageUrl(card)}
+        {...(!collectionItem ? { image: resolveCardImageUrl(card) } : {})}
         name={cardTitle(card)}
         setNumber={cardSubtitle(card)}
         subtext={meta}
@@ -144,6 +147,7 @@ function DraftItem({ item, side, onUpdate, onRemove, t, formatPrice, exchangeRat
   return (
     <div className="rounded-lg border border-border bg-bg-elevated/40 p-3 space-y-3">
       <MiniCardRow
+        collectionItem={side === 'outgoing' ? item.collectionItem : null}
         card={card}
         variant={item.variant}
         meta={`${item.variant || 'Normal'} - ${item.condition || 'NM'} - ${item.lang || card?.lang || 'en'}`}
@@ -572,6 +576,7 @@ export default function Trades() {
                   {filteredCollection.map(item => (
                     <MiniCardRow
                       key={item.id}
+                      collectionItem={item}
                       card={item.card}
                       variant={item.variant}
                       meta={`${item.variant} - ${item.condition} - ${t('common.quantity')}: ${item.quantity}`}

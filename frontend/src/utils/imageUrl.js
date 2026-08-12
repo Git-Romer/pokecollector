@@ -7,6 +7,19 @@ export const setImageUrl = (setId, imageType) =>
 export const productImageUrl = (product) =>
   product?.image_url && product?.image_proxy_url ? product.image_proxy_url : '/cardback.jpg'
 
+// Whether TCGdex actually has a scan of this card.
+//
+// Cannot be inferred from resolveCardImageUrl: that returns an /api/images URL
+// for any card with an id, and the backend quietly redirects to the card back
+// when it has nothing to serve. So the only honest test is on the card record,
+// and callers that need to know — offering a custom image URL, or showing the
+// owner's own photo instead — have to ask here.
+export const hasCatalogueImage = (card) => Boolean(
+  card?.images?.large || card?.images_large
+  || card?.images?.small || card?.images_small
+  || card?.image
+)
+
 export const resolveCardImageUrl = (card, size = 'small') => {
   // card_id is the actual card identifier (e.g. "sv1-1_de")
   // id might be a collection item integer ID, so prefer card_id or string id

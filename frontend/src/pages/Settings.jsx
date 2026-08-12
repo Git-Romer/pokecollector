@@ -9,6 +9,7 @@ import {
   getUsers, createUser, updateUser, deleteUser, changePassword, changeAvatar, changeUsername,
   getContributors, getSupporters, getRescueDonations, getCustomMatches, downloadDebugLog,
   getProfile, updateProfile, deleteScanDiagnostics,
+  deleteAllCollectionCardPhotos,
 } from '../api/client'
 import api from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
@@ -21,7 +22,7 @@ import { formatDistanceToNow } from 'date-fns'
 import toast from 'react-hot-toast'
 import { TCGDEX_LANGUAGES, normalizeTcgdexLanguageCsv, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { APP_LANGUAGES } from '../utils/appLanguages'
-import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
+import { invalidateCollectionPhotoState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -321,6 +322,7 @@ export default function Settings() {
   const [debugModeEnabled, setDebugModeEnabled] = useState(false)
   const [scanDiagnosticsSaving, setScanDiagnosticsSaving] = useState(false)
   const [scanDiagnosticsDeleting, setScanDiagnosticsDeleting] = useState(false)
+  const [cardPhotosDeleting, setCardPhotosDeleting] = useState(false)
 
   // Recurring automatic full sync interval (days) and small price sync interval (minutes).
   const [fullSyncIntervalDays, setFullSyncIntervalDays] = useState('5')
@@ -618,6 +620,36 @@ export default function Settings() {
     }
   }
 
+  const handlePhotoPreferenceToggle = async (enabled) => {
+    try {
+      await updateSettings({ prefer_own_card_photos: enabled ? 'true' : 'false' })
+      invalidateCollectionPhotoState(queryClient)
+      toast.success(t('settings.saved'))
+    } catch {
+      toast.error(t('settings.saveFailed'))
+    }
+  }
+
+  const handleDeleteCardPhotos = async () => {
+    const confirmed = await confirmDialog({
+      title: t('common.delete'),
+      message: t('settings.deleteCardPhotosConfirm'),
+      confirmLabel: t('common.delete'),
+      destructive: true,
+    })
+    if (!confirmed) return
+    setCardPhotosDeleting(true)
+    try {
+      await deleteAllCollectionCardPhotos()
+      invalidateCollectionPhotoState(queryClient)
+      toast.success(t('settings.cardPhotosDeleted'))
+    } catch {
+      toast.error(t('settings.cardPhotosDeleteFailed'))
+    } finally {
+      setCardPhotosDeleting(false)
+    }
+  }
+
   const handleDeleteScanDiagnostics = async () => {
     const confirmed = await confirmDialog({
       title: t('common.delete'),
@@ -699,6 +731,7 @@ export default function Settings() {
   const scanDiagnosticsEnabled = settings.scan_diagnostics_enabled === 'true'
   const scanDiagnosticsAvailable = settings.scan_diagnostics_available === 'true'
   const scanDiagnosticsDeletionAvailable = settings.scan_diagnostics_deletion_available === 'true'
+  const preferOwnCardPhotos = settings.prefer_own_card_photos === 'true'
 
   const usernameMutation = useMutation({
     mutationFn: (username) => changeUsername(username),
@@ -966,7 +999,7 @@ export default function Settings() {
                   onChange={handleCurrencyChange}
                 />
               </SettingsRow>
-              <SettingsRow label={t('settings.priceType')} description={t('settings.priceTypeDesc')} last>
+              <SettingsRow label={t('settings.priceType')} description={t('settings.priceTypeDesc')}>
                 <SelectControl
                   value={currentPriceType}
                   options={[
@@ -979,6 +1012,31 @@ export default function Settings() {
                   ]}
                   onChange={handlePriceTypeChange}
                 />
+              </SettingsRow>
+              <SettingsRow
+                label={t('settings.preferOwnCardPhotos')}
+                description={t('settings.preferOwnCardPhotosDesc')}
+              >
+                <Toggle
+                  value={preferOwnCardPhotos}
+                  label={t('settings.preferOwnCardPhotos')}
+                  onChange={handlePhotoPreferenceToggle}
+                />
+              </SettingsRow>
+              <SettingsRow
+                label={t('settings.deleteCardPhotos')}
+                description={t('settings.deleteCardPhotosDesc')}
+                last
+              >
+                <button
+                  type="button"
+                  onClick={handleDeleteCardPhotos}
+                  disabled={cardPhotosDeleting}
+                  className="btn-ghost flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-brand-red disabled:opacity-50"
+                >
+                  <Trash2 size={13} />
+                  {cardPhotosDeleting ? t('common.deleting') : t('common.delete')}
+                </button>
               </SettingsRow>
             </SettingsCard>
           </section>

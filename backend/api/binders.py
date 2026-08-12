@@ -6,9 +6,9 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List
 from api.auth import get_current_user
 from database import get_db
-from models import Binder, BinderCard, Card, CollectionItem, Set, User, WishlistItem
+from models import Binder, BinderCard, Card, CollectionCardPhoto, CollectionItem, Set, User, WishlistItem
 from schemas import BinderCreate, BinderUpdate, BinderResponse, BinderCardUpdate, BinderCardSwitch, BinderPrintOptimizationApply
-from api.collection import ensure_card_exists, _find_card_by_code
+from api.collection import ensure_card_exists, _find_card_by_code, _annotate_scan_photos
 from services import pokemon_api
 from services.card_fallbacks import apply_cross_language_fallbacks
 from services.card_upsert import upsert_card
@@ -312,6 +312,18 @@ def _binder_card_summary(
         "owned": bool(owned_quantity),
         "is_current": is_current,
     }
+    # card is present whether or not collection_item is — a wishlist-scope
+    # summary has neither an owner nor a photo, but still needs somewhere for
+    # the frontend to resolve the catalogue image from. Callers with a real
+    # collection_item are expected to have run it through _annotate_scan_photos
+    # first; getattr covers a caller that forgot, rather than crashing here.
+    summary["card"] = {
+        "id": card.id,
+        "name": card.name,
+        "images_small": card.images_small,
+        "images_large": card.images_large,
+    }
+    summary["has_scan_photo"] = bool(getattr(collection_item, "has_scan_photo", False))
     if collection_item:
         summary.update({
             "collection_item_id": collection_item.id,
@@ -416,6 +428,11 @@ def _build_print_optimization_preview(db: Session, binder: Binder, current_user:
     ).order_by(BinderCard.added_at.desc()).all()
 
     recommendations = []
+    owned_photo_card_ids = {
+        card_id for (card_id,) in db.query(CollectionCardPhoto.card_id).filter(
+            CollectionCardPhoto.user_id == current_user.id,
+        ).all()
+    } if binder_type == "collection" else set()
     candidate_cache: dict[str, Card | None] = {}
     reserved_suggested_quantities: dict[int, int] = {}
     binder_collection_item_quantities = {
@@ -465,6 +482,11 @@ def _build_print_optimization_preview(db: Session, binder: Binder, current_user:
                 reserved_suggested_quantities.get(target_item.id, 0) + required_quantity
             )
             savings_per_copy = current_price - suggested_price
+            # Resolve photo flags from the one owner-scoped lookup above. Doing
+            # this inside the recommendation loop via _annotate_scan_photos
+            # caused one extra query per recommendation.
+            source_item.has_scan_photo = source_item.card_id in owned_photo_card_ids
+            target_item.has_scan_photo = target_item.card_id in owned_photo_card_ids
             recommendations.append({
                 "binder_card_id": bc.id,
                 "required_quantity": required_quantity,
@@ -835,6 +857,11 @@ def get_binder_cards(
         BinderCard.binder_id == binder_id,
         visible_any_card_filter(db, current_user.id, "all"),
     ).order_by(BinderCard.added_at.desc()).all()
+    _annotate_scan_photos(
+        db,
+        current_user,
+        [bc.collection_item for bc in binder_cards if bc.collection_item and bc.collection_item.user_id == current_user.id],
+    )
 
     collection_quantities = dict(
         db.query(CollectionItem.card_id, func.coalesce(func.sum(CollectionItem.quantity), 0))
@@ -962,6 +989,16 @@ def get_binder_cards(
             "condition": col_item.condition if col_item else None,
             "lang": col_item.lang if col_item else (bc.card.lang or "en"),
             "collection_item_id": exact_col_item.id if exact_col_item else None,
+            "has_scan_photo": bool(exact_col_item.has_scan_photo) if exact_col_item else False,
+            # Nested alongside the existing flattened fields (additive, not a
+            # replacement) for consistency with the other endpoints that
+            # annotate an owned collection item's photo the same way.
+            "card": {
+                "id": bc.card.id,
+                "name": bc.card.name,
+                "images_small": bc.card.images_small,
+                "images_large": bc.card.images_large,
+            },
             "binder_card_id": bc.id,
         }
         if binder_type == "collection" and exact_col_item:
@@ -1490,6 +1527,7 @@ def get_binder_entry_equivalent_prints(
             Card.is_custom.is_(False),
             visible_any_card_filter(db, current_user.id, "all"),
         ).all()
+        _annotate_scan_photos(db, current_user, collection_items)
 
         summaries = []
         for item in collection_items:

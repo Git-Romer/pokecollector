@@ -172,6 +172,42 @@ class CollectionItem(Base):
     card = relationship("Card", back_populates="collection_items")
 
 
+class CollectionCardPhoto(Base):
+    """One private photograph per owner and catalogue card.
+
+    Roughly one card in fourteen — trainer kits, Japanese printings, the newest
+    energy subsets — has no TCGdex image, and the collection shows a card back
+    for it. The scanner already took a photograph of the physical card, so this
+    keeps that photo instead of discarding it on resolve.
+
+    Deliberately keyed by owner and card rather than stored on the shared card:
+
+      * `cards` is a catalogue shared by every user of the instance, and
+        `/api/images` is mounted without authentication (see api/images.py,
+        which gates on set/language visibility rather than on a user). A photo
+        stored there would be served to anyone who can reach the instance.
+      * A photograph of a card is also a photograph of whatever it was resting
+        on. That is the owner's, not the catalogue's.
+
+    All grouped collection rows for the same card share this photo. That matches
+    catalogue artwork: condition, variant, price and quantity do not create a
+    different printing. The bytes remain in a separate authenticated table so
+    ordinary collection queries only ever load a yes/no flag.
+    """
+    __tablename__ = "collection_card_photos"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    card_id = Column(String, ForeignKey("cards.id", ondelete="CASCADE"), nullable=False, index=True)
+    data = Column(LargeBinary, nullable=False)
+    content_type = Column(String, default="image/jpeg")
+    created_at = Column(DateTime, default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "card_id", name="uq_collection_card_photo_user_card"),
+    )
+
+
 class WishlistItem(Base):
     __tablename__ = "wishlist"
 
