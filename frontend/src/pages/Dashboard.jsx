@@ -1,4 +1,5 @@
 
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -6,23 +7,23 @@ import {
   ResponsiveContainer, Area, AreaChart
 } from 'recharts'
 import { TrendingUp, TrendingDown } from 'lucide-react'
-import { getDashboard } from '../api/client'
+import { getDashboard, getInvestmentTracker } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import { useAuth } from '../contexts/AuthContext'
-import { format, parseISO } from 'date-fns'
 import TrainerCard from '../components/TrainerCard'
 import PokeBallLoader from '../components/PokeBallLoader'
-import { resolveCardImageUrl } from '../utils/imageUrl'
 import { collectionItemTargetUrl } from '../utils/navigation'
 import AnalyticsSectionNav from '../components/AnalyticsSectionNav'
-import { CardDisplay, CardLegend, withCollectionItemState } from '../components/card-system'
+import { CardLegend, withCollectionItemState } from '../components/card-system'
+import { CollectionCardDisplay } from '../components/CollectionCardImage'
+import { mapPortfolioChartData, portfolioApiPeriod, PORTFOLIO_PERIODS } from '../utils/portfolioChart'
 
 const CustomTooltip = ({ active, payload, label }) => {
   const { formatPrice, t } = useSettings()
   if (active && payload && payload.length) {
     return (
       <div className="bg-bg-surface border border-border rounded-lg p-3 text-sm shadow-xl">
-        <p className="text-text-muted mb-1">{label}</p>
+        <p className="text-text-muted mb-1">{payload[0]?.payload?.tooltipLabel || label}</p>
         {payload.map((entry, i) => (
           <p key={i} style={{ color: entry.color }} className="font-medium">
             {entry.name}: {formatPrice(entry.value)}
@@ -42,12 +43,24 @@ export default function Dashboard() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const priceField = pricePrimaryField
+  const [chartPeriod, setChartPeriod] = useState('1M')
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['dashboard', priceField],
     queryFn: () => getDashboard({ price_field: priceField }).then(r => r.data),
     refetchInterval: 60000,
   })
+
+  const { data: investmentData = [] } = useQuery({
+    queryKey: ['investment-tracker', chartPeriod, priceField],
+    queryFn: () => getInvestmentTracker({ period: portfolioApiPeriod(chartPeriod), price_field: priceField }).then(r => r.data),
+    refetchInterval: 120000,
+  })
+
+  const chartData = useMemo(
+    () => mapPortfolioChartData(investmentData, chartPeriod, t('home.legacySnapshot')),
+    [investmentData, chartPeriod, t],
+  )
 
   if (isLoading) {
     return (
@@ -92,14 +105,6 @@ export default function Dashboard() {
       </div>
     )
   }
-
-  const valueHistory = data?.value_history || []
-  const chartData = valueHistory.map(item => ({
-    date: format(parseISO(item.date), 'MMM d'),
-    value: item.value,
-    cost: item.cost,
-    legacy: Boolean(item.legacy),
-  }))
 
   const pnl = data?.pnl || 0
   const performanceCostBasis = Number(data?.performance_cost_basis ?? data?.total_cost ?? 0)
@@ -158,10 +163,10 @@ export default function Dashboard() {
           <div className="flex gap-2.5 overflow-x-auto pb-2 no-scrollbar -mx-4 px-4">
             {data.recent_additions.slice(0, 12).map(card => (
               <div key={card.id} className="flex-shrink-0 w-20 group cursor-pointer" onClick={() => openCollectionItem(card)}>
-                <CardDisplay
+                <CollectionCardDisplay
                   variant="artwork"
+                  item={{ id: card.collection_item_id, has_scan_photo: card.has_scan_photo }}
                   card={card}
-                  image={resolveCardImageUrl(card)}
                   alt={card.name}
                   variantEffectSource={card.variant}
                   stateIndicatorProps={{ card: withCollectionItemState(card, card), alwaysShowQuantity: true }}
@@ -208,10 +213,10 @@ export default function Dashboard() {
             {data.top_cards.slice(0, 10).map((card, i) => (
               <div key={card.collection_item_id || card.id} className="flex-shrink-0 w-24 group cursor-pointer" onClick={() => openCollectionItem(card)}>
                 <div className="relative">
-                  <CardDisplay
+                  <CollectionCardDisplay
                     variant="artwork"
+                    item={{ id: card.collection_item_id, has_scan_photo: card.has_scan_photo }}
                     card={card}
-                    image={resolveCardImageUrl(card)}
                     alt={card.name}
                     variantEffectSource={card.variant}
                     stateIndicatorProps={{ card: withCollectionItemState(card, card), alwaysShowQuantity: true }}
@@ -261,10 +266,28 @@ export default function Dashboard() {
       {/* ─── 6. PORTFOLIO CHART ─────────────────────────────────────── */}
       <section>
         <div className="bg-bg-card border border-border rounded-2xl p-4">
-          <h2 className="text-sm font-bold text-text-primary uppercase tracking-wider mb-4">
-            {t('dashboard.portfolioHistory')}
-          </h2>
-          {chartData.length > 0 ? (
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-bold text-text-primary uppercase tracking-wider">
+              {t('dashboard.portfolioHistory')}
+            </h2>
+            <div className="flex gap-1">
+              {PORTFOLIO_PERIODS.map(period => (
+                <button
+                  key={period.key}
+                  type="button"
+                  onClick={() => setChartPeriod(period.key)}
+                  className={`rounded-lg border px-2 py-1 text-[10px] font-bold transition-colors ${
+                    chartPeriod === period.key
+                      ? 'border-gold/30 bg-gold/15 text-gold'
+                      : 'border-transparent bg-bg-elevated text-text-muted hover:text-text-primary'
+                  }`}
+                >
+                  {period.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {chartData.length > 1 ? (
             <ResponsiveContainer width="100%" height={220}>
               <AreaChart data={chartData}>
                 <defs>
@@ -278,7 +301,7 @@ export default function Dashboard() {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#2a2a3d" />
-                <XAxis dataKey="date" tick={{ fill: '#606078', fontSize: 11 }} />
+                <XAxis dataKey="date" tick={{ fill: '#606078', fontSize: 11 }} interval="preserveStartEnd" />
                 <YAxis tick={{ fill: '#606078', fontSize: 11 }} tickFormatter={(v) => formatPrice(v)} />
                 <Tooltip content={<CustomTooltip />} />
                 <Area

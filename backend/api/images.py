@@ -66,6 +66,9 @@ def _set_fallback_response():
 
 def _is_globally_visible_card_image(db: Session, card: Card) -> bool:
     if getattr(card, "is_custom", False):
+        # Manual card IDs use unguessable UUIDs. Access control is enforced on
+        # card discovery and API data, while image elements can keep using this
+        # same-origin URL without exposing the bearer token in query strings.
         return True
     card_lang = card.lang or "en"
     if card_lang in set(get_configured_sync_languages(db)):
@@ -173,7 +176,11 @@ def _get_or_fetch_custom_image(
 
 
 @router.get("/card/{card_id}/{size}")
-def get_card_image(card_id: str, size: str, db: Session = Depends(get_db)):
+def get_card_image(
+    card_id: str,
+    size: str,
+    db: Session = Depends(get_db),
+):
     if size not in ("small", "large"):
         raise HTTPException(status_code=400, detail="size must be small or large")
 
@@ -192,7 +199,15 @@ def get_card_image(card_id: str, size: str, db: Session = Depends(get_db)):
         return _card_back_response()
 
     try:
-        if card.custom_image_url and url == card.custom_image_url:
+        if card.is_custom:
+            url_hash = hashlib.sha1(url.encode("utf-8")).hexdigest()
+            data, content_type = _get_or_fetch_custom_image(
+                db,
+                f"card:{card_id}:{size}:manual:{url_hash}",
+                url,
+                allowed_content_types=_ALLOWED_CUSTOM_IMAGE_TYPES,
+            )
+        elif card.custom_image_url and url == card.custom_image_url:
             data, content_type = _get_or_fetch_custom_image(db, f"card:{card_id}:{size}:custom", url)
         else:
             url_hash = hashlib.sha1(url.encode("utf-8")).hexdigest()

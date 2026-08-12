@@ -112,6 +112,7 @@ export function CardArtworkFrame({
   className = '',
   imageClassName = 'w-full h-full object-cover',
   loading = 'lazy',
+  viewportRef,
 }) {
   const { t } = useSettings()
   const kinds = getCardFallbackKinds(card)
@@ -120,6 +121,7 @@ export function CardArtworkFrame({
 
   return (
     <div
+      ref={viewportRef}
       className={clsx(
         'unified-card-frame',
         interactive && 'unified-card-frame-interactive',
@@ -200,10 +202,11 @@ export function CompactCardArtwork({
   alt,
   variantEffectSource,
   className = '',
+  viewportRef,
   ...frameProps
 }) {
   return (
-    <div className={clsx('unified-card-compact-artwork flex-shrink-0', className)}>
+    <div ref={viewportRef} className={clsx('unified-card-compact-artwork flex-shrink-0', className)}>
       <CardArtworkFrame
         card={card}
         image={image}
@@ -221,6 +224,8 @@ export function CompactCardArtwork({
 export function UnifiedCardDialog({
   card,
   image,
+  imageOverlay,
+  imageAccessory,
   variantEffectSource = card,
   price,
   tabs = [],
@@ -320,6 +325,7 @@ export function UnifiedCardDialog({
                 <CardArtworkFrame
                   card={card}
                   image={image}
+                  overlay={imageOverlay}
                   alt={card.name}
                   variantEffectSource={variantEffectSource}
                   showStateIndicators={false}
@@ -328,6 +334,9 @@ export function UnifiedCardDialog({
               </div>
               <div className="min-w-0 flex-1 pr-9 sm:mt-4 sm:pr-0">
                 <h2 className="break-words text-base font-black text-text-primary sm:text-xl">{card.name}</h2>
+                {card.is_custom && (
+                  <span className="badge-yellow mt-1.5 inline-flex px-2 py-0.5 text-[10px]">Custom</span>
+                )}
                 {(setNumber || price) && (
                   <div className="mt-1.5 flex min-w-0 items-center justify-between gap-2">
                     <span className="truncate font-mono text-xs font-black text-brand-red">{setNumber}</span>
@@ -338,6 +347,7 @@ export function UnifiedCardDialog({
                 <FallbackBadges card={card} className="mt-2" />
               </div>
             </div>
+            {imageAccessory && <div className="mt-3">{imageAccessory}</div>}
           </aside>
 
           <section className="min-w-0">
@@ -404,7 +414,6 @@ export function CardCaption({
   price,
   languageLabel,
   captionAccessory,
-  custom = card?.is_custom,
   loading = false,
   className = '',
 }) {
@@ -419,7 +428,6 @@ export function CardCaption({
         <>
           <div className="flex h-5 min-w-0 items-center gap-1.5 overflow-hidden">
             {name && <h3 className="unified-card-caption-name" title={name}>{name}</h3>}
-            {custom && <span className="badge-yellow shrink-0 px-1.5 py-0.5 text-[9px]">Custom</span>}
             {languageLabel && <span className="badge-gray shrink-0 px-1.5 py-0.5 text-[9px]">{languageLabel}</span>}
             {captionAccessory && <span className="ml-auto flex shrink-0 items-center">{captionAccessory}</span>}
           </div>
@@ -455,11 +463,12 @@ export default function UnifiedCard({
   compact = false,
   loading = 'lazy',
   className = '',
+  viewportRef,
 }) {
   const [artworkLoading, setArtworkLoading] = useState(true)
 
   return (
-    <div className={clsx('min-w-0', className)}>
+    <div ref={viewportRef} className={clsx('min-w-0', className)}>
       <CardArtworkFrame
         card={card}
         image={image}

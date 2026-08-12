@@ -5,6 +5,7 @@ import { ArrowLeft, Clock3, Loader2, ScanLine, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import {
   deleteScanJob,
+  fetchScanJobItemImageBlob,
   getScanJob,
   getScanJobs,
   resolveScanJobItem,
@@ -210,6 +211,9 @@ function JobDetail({ jobId, onObscuredChange }) {
         <ScanAddModal
           match={addSelection.match}
           defaultLang={addSelection.item.recognized?.language || addSelection.match.lang || 'en'}
+          getPhoto={() => addSelection.item.has_image
+            ? fetchScanJobItemImageBlob(job.id, addSelection.item.id)
+            : Promise.resolve(null)}
           onClose={() => setAddSelection(null)}
           onAdded={() => {
             resolveMutation.mutate({

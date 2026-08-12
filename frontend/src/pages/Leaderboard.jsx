@@ -21,14 +21,14 @@ function rankLabel(rank) {
 
 function TrainerAvatar({ avatarId, username }) {
   if (!avatarId) {
-    return <img src="/pokeball.svg" alt={username} className="h-12 w-12 rounded-full border border-border bg-bg-card p-2" />
+    return <img src="/pokeball.svg" alt={username} className="h-12 w-12 shrink-0 rounded-full border border-border bg-bg-card p-2" />
   }
 
   return (
     <img
       src={`https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/${avatarId}.gif`}
       alt={username}
-      className="h-12 w-12 rounded-full border border-border bg-bg-card p-1 pixelated"
+      className="h-12 w-12 shrink-0 rounded-full border border-border bg-bg-card p-1 pixelated"
     />
   )
 }
@@ -110,21 +110,21 @@ export default function Leaderboard() {
                 onClick={() => trainer.user_id !== currentUser?.id && navigate(`/leaderboard/compare/${trainer.user_id}`)}
                 className={`w-full rounded-2xl border border-border bg-bg-card p-4 text-left transition-all ${trainer.user_id !== currentUser?.id ? 'hover:border-yellow/40 hover:bg-bg-elevated cursor-pointer' : ''}`}
               >
-                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                  <div className="flex items-start gap-3">
+                <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_35rem] lg:items-center lg:gap-6">
+                  <div className="flex min-w-0 items-start gap-3">
                     <div className="flex h-12 min-w-12 items-center justify-center rounded-2xl bg-bg-primary text-lg font-black">
                       {rankLabel(index + 1)}
                     </div>
                     <TrainerAvatar avatarId={trainer.avatar_id} username={trainer.username} />
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <p className="text-lg font-semibold text-text-primary">{trainer.username}</p>
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <p className="truncate text-lg font-semibold text-text-primary">{trainer.username}</p>
                         {trainer.public_handle && (
                           <Link
                             to={`/u/${trainer.public_handle}`}
                             onClick={(e) => e.stopPropagation()}
                             title={t('leaderboard.viewPublicProfile')}
-                            className="text-text-muted hover:text-brand-red transition-colors"
+                            className="shrink-0 text-text-muted hover:text-brand-red transition-colors"
                           >
                             <Globe size={14} />
                           </Link>
@@ -132,11 +132,11 @@ export default function Leaderboard() {
                       </div>
                       <p className="text-xs uppercase tracking-[0.2em] text-text-muted">{trainer.role}</p>
                       {trainer.user_id !== currentUser?.id && (
-                      <div className="flex gap-2 mt-1">
+                      <div className="mt-1 flex min-w-0 gap-2">
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); navigate(`/collection/user/${trainer.user_id}`) }}
-                          className="text-[10px] text-brand-red hover:text-brand-red/80 font-semibold"
+                          className="truncate text-[10px] font-semibold text-brand-red hover:text-brand-red/80"
                         >
                           {t('leaderboard.viewCollection')}
                         </button>
@@ -145,7 +145,7 @@ export default function Leaderboard() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:items-center">
+                  <div className="grid grid-cols-2 gap-3 lg:grid-cols-[6rem_5rem_15rem_6rem] lg:items-center lg:gap-4">
                     <div>
                       <p className="text-[11px] uppercase tracking-[0.2em] text-text-muted">{t('leaderboard.value')}</p>
                       <p className="mt-1 text-sm font-semibold text-yellow">{formatPrice(trainer.total_value)}</p>
@@ -154,11 +154,11 @@ export default function Leaderboard() {
                       <p className="text-[11px] uppercase tracking-[0.2em] text-text-muted">{t('leaderboard.cards')}</p>
                       <p className="mt-1 text-sm font-semibold text-text-primary">{Number(trainer.total_cards ?? 0).toLocaleString()}</p>
                     </div>
-                    <div className="col-span-2 md:col-span-1">
+                    <div className="col-span-2 min-w-0 lg:col-span-1">
                       <p className="text-[11px] uppercase tracking-[0.2em] text-text-muted">{t('leaderboard.bestCard')}</p>
                       {bestCard ? (
                         <CardIdentity
-                          className="mt-1"
+                          className="mt-1 w-full max-w-full"
                           card={bestCard}
                           image={resolveCardImageUrl(bestCard)}
                           name={bestCard.name}

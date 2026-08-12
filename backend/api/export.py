@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 from api.auth import get_current_user
 from database import get_db
 from services.card_values import effective_market_price, normalize_price_field
-from services.card_visibility import visible_card_filter
+from services.card_visibility import visible_any_card_filter
 from models import CollectionItem, Card, User
 import io
 import csv
@@ -47,7 +47,7 @@ def export_csv(
         joinedload(CollectionItem.card).joinedload(Card.set_ref)
     ).filter(
         CollectionItem.user_id == current_user.id,
-        visible_card_filter(db, current_user.id, "all"),
+        visible_any_card_filter(db, current_user.id, "all"),
     ).all()
 
     output = io.StringIO()
@@ -118,7 +118,7 @@ def export_pdf(
             joinedload(CollectionItem.card).joinedload(Card.set_ref)
         ).filter(
             CollectionItem.user_id == current_user.id,
-            visible_card_filter(db, current_user.id, "all"),
+            visible_any_card_filter(db, current_user.id, "all"),
         ).all()
 
         buffer = io.BytesIO()

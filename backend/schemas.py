@@ -56,6 +56,10 @@ class CardBase(BaseModel):
     data_source_lang: Optional[str] = None
     custom_image_url: Optional[str] = None
     is_custom: bool = False
+    custom_owner_id: Optional[int] = None
+    custom_owner_username: Optional[str] = None
+    is_custom_owner: bool = False
+    is_shared_template: bool = False
     is_digital: bool = False
     price_market: Optional[float] = None
     price_low: Optional[float] = None
@@ -104,6 +108,7 @@ class CardCustomCreate(BaseModel):
     artist: Optional[str] = None
     image_url: Optional[str] = None
     lang: Optional[str] = None
+    is_shared_template: bool = False
 
 
 class CustomCardUpdate(BaseModel):
@@ -115,6 +120,7 @@ class CustomCardUpdate(BaseModel):
     image_url: Optional[str] = None
     hp: Optional[str] = None
     lang: Optional[str] = None
+    is_shared_template: Optional[bool] = None
 
 
 class CardCustomImageUpdate(BaseModel):
@@ -174,6 +180,10 @@ class CollectionItemResponse(BaseModel):
     lang: str = "en"
     added_at: Optional[datetime] = None
     standard_legal: bool = False
+    # True when the owner has their own private photo of this card. A flag rather
+    # than the image: bytes use a separate authenticated endpoint so collection
+    # listings stay small.
+    has_scan_photo: bool = False
     product_sources: List[CollectionProductSourceResponse] = Field(default_factory=list)
     card: Optional[CardWithSet] = None
 

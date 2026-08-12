@@ -150,6 +150,22 @@ def visible_card_filter(db: Session, user_id: int, requested_lang: str | None = 
     return and_(or_(Card.lang.in_(active_languages), card_pair_filter(pinned_pairs)), digital_clause)
 
 
+def visible_custom_card_filter(user_id: int):
+    """Custom cards are visible only to their owner or as shared templates."""
+    return and_(
+        Card.is_custom == True,
+        or_(Card.custom_owner_id == user_id, Card.is_shared_template == True),
+    )
+
+
+def visible_any_card_filter(db: Session, user_id: int, requested_lang: str | None = "all"):
+    """Predicate for catalogue cards plus user-visible custom cards."""
+    return or_(
+        and_(Card.is_custom == False, visible_card_filter(db, user_id, requested_lang)),
+        visible_custom_card_filter(user_id),
+    )
+
+
 def sync_set_filter(db: Session):
     """Predicate for localized sets that full sync should maintain app-wide."""
     active_languages = set(get_configured_sync_languages(db))

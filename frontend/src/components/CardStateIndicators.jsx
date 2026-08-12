@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { useId, useState } from 'react'
-import { Check, Circle, Heart, HelpCircle, Medal, Package, Sparkles, SquareAsterisk } from 'lucide-react'
+import { Check, Circle, Heart, HelpCircle, Medal, Package, Pencil, Sparkles, SquareAsterisk } from 'lucide-react'
 import { useSettings } from '../contexts/SettingsContext'
 import { CARD_VARIANTS, getCardOwnedVariants, VARIANT_PILL_META } from '../utils/cardVariants'
 
@@ -32,10 +32,20 @@ export default function CardStateIndicators({
 }) {
   const { t } = useSettings()
   const { variants, wishlisted } = getCardState(card, showOwnership, showWishlist)
-  if (!variants.length && !wishlisted) return null
+  const isCustom = card?.is_custom === true
+  if (!variants.length && !wishlisted && !isCustom) return null
 
   return <div className={clsx('pointer-events-none flex items-start justify-between gap-1', className)}>
     <div className="flex flex-wrap items-start gap-1">
+      {isCustom && (
+        <span
+          title={t('cardSearch.customCard')}
+          aria-label={t('cardSearch.customCard')}
+          className="inline-flex items-center rounded border border-yellow/50 bg-yellow/90 p-1 text-black shadow-sm"
+        >
+          <Pencil size={compact ? 10 : 11} strokeWidth={2.5} aria-hidden />
+        </span>
+      )}
       {variants.map(({ variant, quantity }) => {
         const Icon = VARIANT_ICONS[variant]
         const meta = VARIANT_PILL_META[variant]

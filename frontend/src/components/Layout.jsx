@@ -1,9 +1,11 @@
 import { Outlet, useLocation } from 'react-router-dom'
 import AppNav from './AppNav'
+import { useReleaseManualHistoryScrollRestoration } from '../hooks/useListScrollRestoration'
 
 export default function Layout() {
   const location = useLocation()
   const isHome = location.pathname === '/'
+  useReleaseManualHistoryScrollRestoration()
 
   return (
     <div className="min-h-dvh flex flex-col bg-bg overflow-x-hidden">

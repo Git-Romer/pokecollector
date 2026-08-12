@@ -8,6 +8,7 @@ import { forceChangePassword } from './api/client'
 import Layout from './components/Layout'
 import { useSettings } from './contexts/SettingsContext'
 import PublicHomeButton from './components/PublicHomeButton'
+import { ConfirmDialogProvider } from './contexts/ConfirmDialogContext'
 
 const HomeScreen = lazy(() => import('./pages/HomeScreen'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
@@ -188,18 +189,20 @@ export default function App() {
   return (
     <AuthProvider>
       <SettingsProvider>
-        <BrowserRouter>
-          <Routes>
-            {import.meta.env.DEV && <Route path="/__card-system" element={lazyRoute(<CardSystemGallery />)} />}
-            <Route path="/login" element={lazyRoute(<Login />)} />
-            <Route path="/u" element={<PublicRoutes />}>
-              <Route index element={lazyRoute(<PublicDirectory />)} />
-              <Route path=":handle" element={lazyRoute(<PublicProfile />)} />
-              <Route path=":handle/binder/:binderId" element={lazyRoute(<PublicBinderView />)} />
-            </Route>
-            <Route path="/*" element={<ProtectedRoutes />} />
-          </Routes>
-        </BrowserRouter>
+        <ConfirmDialogProvider>
+          <BrowserRouter>
+            <Routes>
+              {import.meta.env.DEV && <Route path="/__card-system" element={lazyRoute(<CardSystemGallery />)} />}
+              <Route path="/login" element={lazyRoute(<Login />)} />
+              <Route path="/u" element={<PublicRoutes />}>
+                <Route index element={lazyRoute(<PublicDirectory />)} />
+                <Route path=":handle" element={lazyRoute(<PublicProfile />)} />
+                <Route path=":handle/binder/:binderId" element={lazyRoute(<PublicBinderView />)} />
+              </Route>
+              <Route path="/*" element={<ProtectedRoutes />} />
+            </Routes>
+          </BrowserRouter>
+        </ConfirmDialogProvider>
       </SettingsProvider>
     </AuthProvider>
   )

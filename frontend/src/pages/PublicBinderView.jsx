@@ -89,7 +89,7 @@ export default function PublicBinderView() {
                 layerOffset={layerOffset}
                 variantEffectSource={tile.prints}
                 stateIndicatorProps={{
-                  card: { owned_variants: tile.prints },
+                  card: { ...tile, owned_variants: tile.prints },
                   showWishlist: false,
                   alwaysShowQuantity: true,
                 }}

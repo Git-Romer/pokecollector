@@ -2,9 +2,10 @@ import { useEffect, useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { Camera, Upload, ImagePlus, Trash2, X, Check, Loader2, RefreshCw, Plus } from 'lucide-react'
-import { recognizeCard, addToCollection, enqueueScanJob } from '../api/client'
+import { recognizeCard, addToCollection, enqueueScanJob, uploadCollectionItemPhoto } from '../api/client'
 import { useQueryClient } from '@tanstack/react-query'
 import { useSettings } from '../contexts/SettingsContext'
+import { useConfirmDialog } from '../contexts/ConfirmDialogContext'
 import toast from 'react-hot-toast'
 import { CARD_VARIANTS, getDefaultVariant } from '../utils/cardVariants'
 import TcgdexLanguageSelect from './TcgdexLanguageSelect'
@@ -14,9 +15,31 @@ import { parseMoneyInputValue } from '../utils/moneyInput'
 import { CardDisplay } from './card-system'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { isSupportedScannerImage, SCANNER_IMAGE_ACCEPT } from '../utils/scannerImages'
+import { hasCatalogueImage } from '../utils/imageUrl'
+
+export async function attachScanFallbackPhoto({ created, match, getPhoto, uploadPhoto = uploadCollectionItemPhoto }) {
+  const createdCard = created?.card
+  const hasReferenceArtwork = hasCatalogueImage(createdCard) || Boolean(createdCard?.custom_image_url)
+  if (!getPhoto || !createdCard || created?.has_scan_photo || hasReferenceArtwork) return false
+  try {
+    const photo = await getPhoto()
+    if (!photo) return false
+    await uploadPhoto(created.id, photo)
+    return true
+  } catch {
+    // Photo retention is best-effort and must never undo the collection add.
+    return false
+  }
+}
 
 // ─── Add-to-Collection Modal für Scan-Ergebnis ──────────────────────────────
-export function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
+// `getPhoto`, when given, resolves to the Blob/File the user actually scanned.
+// Callers decide how to source it: CardScanner has the raw File in hand,
+// ScanQueue fetches it from the job's stored bytes. Called only after the
+// collection item exists, and only matters for cards TCGdex has no scan of —
+// and only when the matched card has no catalogue artwork and no saved fallback.
+// A failed photo attach must never block adding the card itself.
+export function ScanAddModal({ match, defaultLang, getPhoto, onClose, onAdded }) {
   const { t, exchangeRate, exchangeRateReady } = useSettings()
   const [quantity, setQuantity] = useState(1)
   const [condition, setCondition] = useState('NM')
@@ -30,7 +53,7 @@ export function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
     if (!exchangeRateReady) return
     setAdding(true)
     try {
-      await addToCollection({
+      const { data: created } = await addToCollection({
         card_id: match.id,
         quantity,
         condition,
@@ -38,6 +61,10 @@ export function ScanAddModal({ match, defaultLang, onClose, onAdded }) {
         lang,
         purchase_price: parseMoneyInputValue(purchasePrice, exchangeRate),
       })
+      // Never overwrite a photo the item already has — grouping into an
+      // existing row (same card/variant/condition/lang) is common, and a
+      // second scan of the same card is not necessarily a better photo.
+      await attachScanFallbackPhoto({ created, match, getPhoto })
       invalidateCardState(queryClient)
       invalidateTcgdexFilterLanguages(queryClient)
       toast.success(`${match.name} ${t('scanner.addedToCollection')}!`)
@@ -161,8 +188,10 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
   const batchCameraRef = useRef()
   const batchGalleryRef = useRef()
   const scanPreviewRef = useRef(null)
+  const scannedFileRef = useRef(null)
   const stagedFilesRef = useRef([])
   const { t } = useSettings()
+  const confirmDialog = useConfirmDialog()
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -184,6 +213,7 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
     if (scanPreviewRef.current) URL.revokeObjectURL(scanPreviewRef.current)
     scanPreviewRef.current = URL.createObjectURL(file)
     setScanPreviewUrl(scanPreviewRef.current)
+    scannedFileRef.current = file
     setPhase('loading')
     try {
       const data = await recognizeCard(file)
@@ -200,6 +230,7 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
   const reset = () => {
     if (scanPreviewRef.current) URL.revokeObjectURL(scanPreviewRef.current)
     scanPreviewRef.current = null
+    scannedFileRef.current = null
     setScanPreviewUrl(null)
     setPhase('capture')
     setResults(null)
@@ -244,8 +275,16 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
     setStagedFiles([])
   }
 
-  const closeScanner = () => {
-    if (stagedFiles.length && !window.confirm(t('scanner.discardStagedConfirm'))) return
+  const closeScanner = async () => {
+    if (stagedFiles.length) {
+      const confirmed = await confirmDialog({
+        title: t('common.close'),
+        message: t('scanner.discardStagedConfirm'),
+        confirmLabel: t('common.close'),
+        destructive: true,
+      })
+      if (!confirmed) return
+    }
     clearStagedFiles()
     reset()
     onClose?.()
@@ -512,6 +551,7 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
         <ScanAddModal
           match={addModal}
           defaultLang={detectedLang}
+          getPhoto={() => Promise.resolve(scannedFileRef.current)}
           onClose={() => setAddModal(null)}
           onAdded={() => setAddModal(null)}
         />

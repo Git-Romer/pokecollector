@@ -162,6 +162,7 @@ class WishlistApiTests(unittest.TestCase):
             name="Custom Sprigatito",
             lang="en",
             is_custom=True,
+            custom_owner_id=self.user.id,
             variants_normal=True,
         )
         binder = Binder(name="Deck", user_id=self.user.id, binder_type="wishlist")

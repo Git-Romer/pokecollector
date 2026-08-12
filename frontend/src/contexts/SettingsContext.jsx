@@ -40,6 +40,7 @@ const DEFAULT_SETTINGS = {
   hidden_set_ids: '[]',
   debug_mode: 'false',
   public_profiles_enabled: 'false',
+  prefer_own_card_photos: 'false',
 }
 
 const LANGUAGE_STORAGE_KEY = 'app_language'

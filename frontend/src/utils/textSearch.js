@@ -13,3 +13,9 @@ export function textIncludes(value, query) {
   if (!normalizedQuery) return true
   return normalizeSearchText(value).includes(normalizedQuery)
 }
+
+export function setMatchesSearch(set, query) {
+  if (!normalizeSearchText(query)) return true
+  return [set?.name, set?.abbreviation, set?.tcg_set_id, set?.id]
+    .some(value => textIncludes(value, query))
+}

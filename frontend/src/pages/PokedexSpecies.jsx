@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, ChevronLeft, ChevronRight, SortAsc } from 'lucide-react'
@@ -70,6 +71,11 @@ export default function PokedexSpecies() {
   const language = settings.language === 'de' ? 'de' : 'en'
   const [cardLanguage, setCardLanguage] = useState('all')
   const [cardSort, setCardSort] = useState('price_asc')
+  const [isReturningToPokedex, setIsReturningToPokedex] = useState(false)
+  const returnToPokedex = () => {
+    flushSync(() => setIsReturningToPokedex(true))
+    goBack()
+  }
   const visibleLanguages = useVisibleTcgdexLanguages()
   const cardLanguageCodes = useMemo(() => [...new Set(
     visibleLanguages
@@ -109,6 +115,10 @@ export default function PokedexSpecies() {
     })
   }, [cardsQuery.data, cardSort, pricePrimaryField])
 
+  if (isReturningToPokedex) {
+    return <div className="fixed inset-0 z-40 bg-bg" aria-hidden="true" />
+  }
+
   if (speciesQuery.isLoading) return <div className="flex justify-center py-20"><PokeBallLoader size={52} /></div>
   if (speciesQuery.isError || !speciesQuery.data) return <p className="p-6 text-brand-red">{t('common.error')}</p>
 
@@ -121,7 +131,7 @@ export default function PokedexSpecies() {
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 px-4 pb-28 pt-2 sm:px-6 lg:px-8">
-      <button type="button" onClick={goBack} className="btn-ghost inline-flex items-center gap-2">
+      <button type="button" onClick={returnToPokedex} className="btn-ghost inline-flex items-center gap-2">
         <ArrowLeft size={16} /> {t('common.back')}
       </button>
 

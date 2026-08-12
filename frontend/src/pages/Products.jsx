@@ -7,7 +7,9 @@ import {
 import { Plus, Trash2, Edit2, TrendingUp, TrendingDown, Package, Check, X, SortAsc, Filter, ChevronUp, ChevronDown, Link2, DollarSign, History, AlertCircle, Search, ExternalLink } from 'lucide-react'
 import { getProducts, createProductBatch, updateProduct, bulkUpdateProductLifecycle, deleteProduct, getProductsSummary, getCollection, linkProductCards, unlinkProductCard, sellProductCard, addProductLedgerEntry, getApiErrorMessage } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
+import { useConfirmDialog } from '../contexts/ConfirmDialogContext'
 import { CardRow } from '../components/card-system'
+import CollectionCardImage from '../components/CollectionCardImage'
 import MoneyInput from '../components/MoneyInput'
 import PeriodSelector, { PRODUCT_PERIODS, getPeriodCutoff } from '../components/PeriodSelector'
 import AnalyticsSectionNav from '../components/AnalyticsSectionNav'
@@ -416,12 +418,13 @@ function ProductCardPicker({ isOpen, onClose, product, candidates, formatPrice, 
                   className="h-5 w-5 flex-shrink-0 accent-brand-red"
                   aria-label={t('products.selectCard').replace('{card}', card.name || item.card_id)}
                 />
-                <img
-                  src={resolveCardImageUrl(card)}
-                  alt=""
-                  className="h-14 w-10 flex-shrink-0 rounded object-cover bg-bg-card"
-                  loading="lazy"
-                />
+                <div className="h-14 w-10 flex-shrink-0 overflow-hidden rounded bg-bg-card">
+                  <CollectionCardImage
+                    item={item}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                </div>
                 <button
                   type="button"
                   onClick={() => toggleSelection(item.id, available)}
@@ -737,6 +740,7 @@ function ProductCardsModal({
 
 export default function Products() {
   const { t, formatPrice, pricePrimaryField } = useSettings()
+  const confirmDialog = useConfirmDialog()
   const [creating, setCreating] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [cardProductId, setCardProductId] = useState(null)
@@ -936,8 +940,14 @@ export default function Products() {
                 <button
                   className="btn-ghost justify-center"
                   disabled={bulkLifecycleMutation.isPending}
-                  onClick={() => {
-                    if (!confirm(t('products.confirmAllOpened').replace('{count}', reviewProducts.length))) return
+                  onClick={async () => {
+                    const confirmed = await confirmDialog({
+                      title: t('products.markAllOpened'),
+                      message: t('products.confirmAllOpened').replace('{count}', reviewProducts.length),
+                      confirmLabel: t('products.markAllOpened'),
+                      destructive: false,
+                    })
+                    if (!confirmed) return
                     bulkLifecycleMutation.mutate({
                       product_ids: reviewProducts.map(product => product.id),
                       lifecycle_status: 'opened',
@@ -949,8 +959,14 @@ export default function Products() {
                 <button
                   className="btn-ghost justify-center"
                   disabled={bulkLifecycleMutation.isPending}
-                  onClick={() => {
-                    if (!confirm(t('products.confirmAllSealed').replace('{count}', reviewProducts.length))) return
+                  onClick={async () => {
+                    const confirmed = await confirmDialog({
+                      title: t('products.markAllSealed'),
+                      message: t('products.confirmAllSealed').replace('{count}', reviewProducts.length),
+                      confirmLabel: t('products.markAllSealed'),
+                      destructive: false,
+                    })
+                    if (!confirmed) return
                     bulkLifecycleMutation.mutate({
                       product_ids: reviewProducts.map(product => product.id),
                       lifecycle_status: 'sealed',
@@ -1274,8 +1290,14 @@ export default function Products() {
                             <button onClick={() => setEditingId(p.id)} className="text-text-muted hover:text-text-primary p-1 transition-colors" aria-label={`${t('common.edit')}: ${p.product_name}`}>
                               <Edit2 size={14} />
                             </button>
-                            <button onClick={() => {
-                              if (confirm(`${t('products.deleteConfirm')} "${p.product_name}"?`)) deleteMutation.mutate(p.id)
+                            <button onClick={async () => {
+                              const confirmed = await confirmDialog({
+                                title: t('common.delete'),
+                                message: `${t('products.deleteConfirm')} "${p.product_name}"?`,
+                                confirmLabel: t('common.delete'),
+                                destructive: true,
+                              })
+                              if (confirmed) deleteMutation.mutate(p.id)
                             }} className="text-text-muted hover:text-brand-red p-1 transition-colors" aria-label={`${t('common.delete')}: ${p.product_name}`}>
                               <Trash2 size={14} />
                             </button>
@@ -1373,8 +1395,14 @@ export default function Products() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        if (confirm(`${t('products.deleteConfirm')} "${p.product_name}"?`)) deleteMutation.mutate(p.id)
+                      onClick={async () => {
+                        const confirmed = await confirmDialog({
+                          title: t('common.delete'),
+                          message: `${t('products.deleteConfirm')} "${p.product_name}"?`,
+                          confirmLabel: t('common.delete'),
+                          destructive: true,
+                        })
+                        if (confirmed) deleteMutation.mutate(p.id)
                       }}
                       className="flex h-11 w-11 items-center justify-center rounded-lg text-text-muted transition-colors hover:text-brand-red"
                       aria-label={`${t('common.delete')}: ${p.product_name}`}

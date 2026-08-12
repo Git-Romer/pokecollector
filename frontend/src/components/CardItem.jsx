@@ -4,8 +4,10 @@ import { useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { Plus, Heart, X, PenLine, Pencil, Trash2, ExternalLink } from 'lucide-react'
-import { addToCollection, addToWishlist, createCustomCard, updateCustomCard, updateCardCustomImage, deleteCustomCard, getSets, getPriceHistory } from '../api/client'
+import { addToCollection, addToWishlist, cloneCustomCard, createCustomCard, updateCustomCard, updateCardCustomImage, deleteCustomCard, getSets, getPriceHistory, updateCollectionItem, removeFromCollection } from '../api/client'
+import { useAuth } from '../contexts/AuthContext'
 import { useSettings } from '../contexts/SettingsContext'
+import { useConfirmDialog } from '../contexts/ConfirmDialogContext'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
 import { cardImageUrl, resolveCardImageUrl } from '../utils/imageUrl'
@@ -13,6 +15,7 @@ import { CARD_VARIANTS, getAvailableVariants, getDefaultVariant } from '../utils
 import MoneyInput from './MoneyInput'
 import { getEffectiveCardPrice } from '../utils/prices'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
+import TcgdexLanguageSelect from './TcgdexLanguageSelect'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import { parseMoneyInputValue } from '../utils/moneyInput'
 import { cardmarketLinks } from '../utils/cardmarket'
@@ -52,6 +55,7 @@ const POKEMON_TYPES = ['Fire', 'Water', 'Grass', 'Lightning', 'Psychic', 'Fighti
 
 export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoAddCollection = false, editCard = null }) {
   const { t, settings, exchangeRate, exchangeRateReady } = useSettings()
+  const confirmDialog = useConfirmDialog()
   const [name, setName] = useState(editCard?.name || '')
   const [setChoice, setSetChoice] = useState('')
   const [customSetId, setCustomSetId] = useState('')
@@ -61,6 +65,7 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
   const [hp, setHp] = useState(editCard?.hp || '')
   const [artist, setArtist] = useState(editCard?.artist || '')
   const [imageUrl, setImageUrl] = useState(editCard?.images_small || editCard?.image_url || '')
+  const [isSharedTemplate, setIsSharedTemplate] = useState(editCard?.is_shared_template || false)
 
   const [createdCard, setCreatedCard] = useState(null)
   const [quantity, setQuantity] = useState(1)
@@ -165,6 +170,7 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
       artist: artist.trim() || undefined,
       image_url: imageUrl.trim() || undefined,
       lang: selectedSet?.lang || 'en',
+      is_shared_template: isSharedTemplate,
     }
     if (isEditMode) {
       updateMutation.mutate(payload)
@@ -188,9 +194,15 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
     setSelectedTypes(prev => prev.includes(tp) ? prev.filter(t => t !== tp) : [...prev, tp])
   }
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!editCard) return
-    if (!window.confirm(t('common.confirm_delete'))) return
+    const confirmed = await confirmDialog({
+      title: t('common.delete'),
+      message: t('common.confirm_delete'),
+      confirmLabel: t('common.delete'),
+      destructive: true,
+    })
+    if (!confirmed) return
     deleteMutation.mutate()
   }
 
@@ -228,6 +240,18 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
                 <input type="text" required placeholder={t('cardSearch.customNamePlaceholder')} value={name}
                   onChange={(e) => setName(e.target.value)} className="input" />
               </div>
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-bg-card p-3">
+                <input
+                  type="checkbox"
+                  checked={isSharedTemplate}
+                  onChange={(event) => setIsSharedTemplate(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 accent-brand-red"
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-text-primary">{t('cardSearch.shareAsTemplate')}</span>
+                  <span className="block text-xs text-text-muted">{t('cardSearch.shareAsTemplateHelp')}</span>
+                </span>
+              </label>
               <div>
                 <label className="text-xs text-text-secondary mb-1 block">{t('common.set')}</label>
                 <select className="select" value={setChoice} onChange={(e) => setSetChoice(e.target.value)}>
@@ -376,9 +400,36 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
 export const CardItem = memo(function CardItem({ card, showActions = true, onAddToBinder = null, compact = false, lang = null, dimWhenUnowned = false }) {
   const [showModal, setShowModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
+  const [clonedCard, setClonedCard] = useState(null)
   const [modalTab, setModalTab] = useState('overview')
   const { t, pricePrimary, pricePrimaryField, formatPrice } = useSettings()
   const queryClient = useQueryClient()
+  const { user } = useAuth()
+  const ownsCustomCard = Boolean(
+    card.is_custom
+    && (card.is_custom_owner || Number(card.custom_owner_id) === Number(user?.id))
+  )
+  const isForeignTemplate = Boolean(card.is_custom && card.is_shared_template && !ownsCustomCard)
+
+  const cloneMutation = useMutation({
+    mutationFn: () => cloneCustomCard(card.id),
+    onSuccess: (clone) => {
+      setClonedCard(clone)
+      queryClient.invalidateQueries({ queryKey: ['custom-cards'] })
+      invalidateCardState(queryClient)
+      if (onAddToBinder) {
+        onAddToBinder(clone.id)
+      } else {
+        setModalTab('add')
+        setShowModal(true)
+      }
+      toast.success(t('cardSearch.templateCopied'))
+    },
+    onError: (err) => {
+      const detail = err?.response?.data?.detail || t('common.error')
+      toast.error(typeof detail === 'string' ? detail : detail?.message)
+    },
+  })
 
   const cardImage = card.images?.small || resolveCardImageUrl(card) || (card.image ? `${card.image}/low.webp` : null)
   const selectedPrice = getEffectiveCardPrice(card, null, pricePrimaryField)
@@ -404,10 +455,17 @@ export const CardItem = memo(function CardItem({ card, showActions = true, onAdd
         languageLabel={languageLabel}
         compact={compact}
         dimWhenUnowned={dimWhenUnowned}
-        onClick={() => openModal('overview')}
+        onClick={() => openModal(
+          isForeignTemplate
+            ? 'overview'
+            : showActions && !onAddToBinder
+              ? 'add'
+              : 'overview'
+        )}
         onAdd={showActions
           ? () => {
-              if (onAddToBinder) onAddToBinder(card.id)
+              if (isForeignTemplate) cloneMutation.mutate()
+              else if (onAddToBinder) onAddToBinder(card.id)
               else openModal('add')
             }
           : undefined}
@@ -415,9 +473,12 @@ export const CardItem = memo(function CardItem({ card, showActions = true, onAdd
 
       {showModal && (
         <CardModal
-          card={card}
+          card={clonedCard || card}
           onClose={() => setShowModal(false)}
-          onEdit={card.is_custom ? () => { setShowModal(false); setShowEditModal(true) } : undefined}
+          onEdit={ownsCustomCard ? () => { setShowModal(false); setShowEditModal(true) } : undefined}
+          isForeignTemplate={!clonedCard && isForeignTemplate}
+          onCopyTemplate={() => cloneMutation.mutate()}
+          copyTemplatePending={cloneMutation.isPending}
           initialTab={modalTab}
         />
       )}
@@ -436,22 +497,80 @@ export const CardItem = memo(function CardItem({ card, showActions = true, onAdd
   )
 })
 
-export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItems = null, initialTab = 'overview' }) {
+function OwnedVersionRow({ item, onQuantityChange, onRemove, isUpdating, isRemoving, t }) {
+  const [quantity, setQuantity] = useState(item.quantity || 1)
+
+  useEffect(() => {
+    setQuantity(item.quantity || 1)
+  }, [item.id, item.quantity])
+
+  const commitQuantity = () => {
+    const nextQuantity = Math.max(1, parseInt(quantity, 10) || 1)
+    setQuantity(nextQuantity)
+    if (nextQuantity !== item.quantity) onQuantityChange(item, nextQuantity)
+  }
+
+  return (
+    <div className="flex items-center gap-2 rounded-xl bg-bg-card border border-border p-2">
+      <div className="flex-1 min-w-0">
+        <p className="text-sm text-text-primary font-medium truncate">
+          {[item.variant || 'Normal', item.condition].filter(Boolean).join(' · ')}
+        </p>
+      </div>
+      <input
+        type="number"
+        min="1"
+        value={quantity}
+        onChange={(event) => setQuantity(event.target.value)}
+        onBlur={commitQuantity}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') event.currentTarget.blur()
+        }}
+        disabled={isUpdating || isRemoving}
+        className="input text-center px-2 py-1.5"
+        style={{ width: '4.25rem', colorScheme: 'dark' }}
+        aria-label={t('card.quantity')}
+        title={t('card.quantity')}
+      />
+      <button
+        type="button"
+        onClick={() => onRemove(item)}
+        disabled={isRemoving}
+        className="btn-ghost text-brand-red border-brand-red/30 hover:bg-brand-red/10 px-2 py-1.5"
+        title={t('collection.remove')}
+      >
+        <Trash2 size={14} />
+      </button>
+    </div>
+  )
+}
+
+export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItems = null, initialTab = 'overview', isForeignTemplate = false, onCopyTemplate, copyTemplatePending = false, image = null, imageOverlay = null, imageAccessory = null }) {
   if (!card || !card.id) return null
 
   const [activeTab, setActiveTab] = useState(initialTab)
   const [quantity, setQuantity] = useState(1)
   const [condition, setCondition] = useState('NM')
   const [variant, setVariant] = useState(() => getDefaultVariant(card))
+  const [collectionLang, setCollectionLang] = useState(card.lang || defaultLang || 'en')
   const [purchasePrice, setPurchasePrice] = useState('')
   const [resolvedCardId, setResolvedCardId] = useState(card.id)
   const [customImageUrl, setCustomImageUrl] = useState(card.custom_image_url || '')
   const [savedCustomImageUrl, setSavedCustomImageUrl] = useState(card.custom_image_url || '')
   const [customImageVersion, setCustomImageVersion] = useState(0)
+  const [localOwnedItems, setLocalOwnedItems] = useState(() => ownedItems || card.owned_items || [])
   const customImageInputId = useId()
   const { t, formatPrice, formatUsdPrice, pricePrimary, pricePrimaryField, exchangeRate, exchangeRateReady } = useSettings()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+
+  useEffect(() => {
+    setActiveTab(initialTab)
+  }, [card.id, initialTab])
+
+  useEffect(() => {
+    setResolvedCardId(card.id)
+  }, [card.id])
 
   // Price history chart
   const cardIdForHistory = card?.card_id || (typeof card?.id === 'string' ? card.id : null)
@@ -469,6 +588,14 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
     setSavedCustomImageUrl(nextUrl)
   }, [card.id, card.custom_image_url])
 
+  useEffect(() => {
+    setCollectionLang(card.lang || defaultLang || 'en')
+  }, [card.id, card.lang, defaultLang])
+
+  useEffect(() => {
+    setLocalOwnedItems(ownedItems || card.owned_items || [])
+  }, [card.id, card.owned_items, ownedItems])
+
   const safePriceHistory = Array.isArray(priceHistory) ? priceHistory : []
   const hasApiImage = Boolean(card?.images?.large || card?.images_large || card?.images?.small || card?.images_small || card?.image)
   const customImageCardId = card?.card_id || card?.id
@@ -476,7 +603,9 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
   const customImageProxyUrl = canEditCustomImage && savedCustomImageUrl
     ? `${cardImageUrl(customImageCardId, 'large')}?v=${customImageVersion}`
     : null
-  const cardImage = card?.images?.large
+  const manualImageProxyUrl = card.is_custom ? resolveCardImageUrl(card, 'large') : null
+  const cardImage = manualImageProxyUrl
+    || card?.images?.large
     || card?.images_large
     || (card?.image ? `${card.image}/high.webp` : null)
     || card?.images?.small
@@ -493,8 +622,9 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
     onClose()
     navigate(target)
   }
-  const modalOwnedItems = ownedItems || card.owned_items || []
-  const ownedQuantity = card.owned_quantity ?? modalOwnedItems.reduce((sum, item) => sum + (item.quantity || 0), 0)
+  const modalOwnedItems = localOwnedItems
+  const detailedOwnedQuantity = modalOwnedItems.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0)
+  const ownedQuantity = modalOwnedItems.length > 0 ? detailedOwnedQuantity : (card.owned_quantity ?? 0)
   const availableVariants = getAvailableVariants(card)
   const selectableVariants = availableVariants.length > 0 ? availableVariants : CARD_VARIANTS
   const availableVariantKey = availableVariants.join('|')
@@ -526,6 +656,32 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
       onClose()
     },
     onError: () => toast.error(t('card.wishlistFailed')),
+  })
+
+  const quantityMutation = useMutation({
+    mutationFn: ({ item, quantity: nextQuantity }) => updateCollectionItem(item.id, { quantity: nextQuantity }),
+    onSuccess: (_response, { item, quantity: nextQuantity }) => {
+      setLocalOwnedItems(current => current.map(row => (
+        row.id === item.id ? { ...row, quantity: nextQuantity } : row
+      )))
+      toast.success(t('collection.updated'))
+      invalidateCardState(queryClient)
+      invalidateTcgdexFilterLanguages(queryClient)
+    },
+    onError: () => toast.error(t('collection.updateFailed')),
+  })
+
+  const removeMutation = useMutation({
+    mutationFn: (item) => removeFromCollection(item.id),
+    onSuccess: (_response, item) => {
+      const remaining = localOwnedItems.filter(row => row.id !== item.id)
+      setLocalOwnedItems(remaining)
+      if (remaining.length === 0) setActiveTab('add')
+      toast.success(t('collection.removed'))
+      invalidateCardState(queryClient)
+      invalidateTcgdexFilterLanguages(queryClient)
+    },
+    onError: () => toast.error(t('collection.removeFailed')),
   })
 
   const customImageMutation = useMutation({
@@ -593,14 +749,18 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
     { id: 'overview', label: t('cardTabs.overview') },
     { id: 'prices', label: t('cardTabs.prices') },
     ...(ownedQuantity > 0 ? [{ id: 'owned', label: t('cardTabs.owned') }] : []),
-    { id: 'add', label: t('cardTabs.add') },
-    { id: 'wishlist', label: t('cardTabs.wishlist') },
+    ...(!isForeignTemplate ? [
+      { id: 'add', label: t('cardTabs.add') },
+      { id: 'wishlist', label: t('cardTabs.wishlist') },
+    ] : []),
   ]
 
   return (
     <UnifiedCardDialog
       card={card}
-      image={cardImage}
+      image={image || cardImage}
+      imageOverlay={imageOverlay}
+      imageAccessory={imageAccessory}
       variantEffectSource={variant}
       price={selectedPrimaryPrice > 0 ? formatPrice(selectedPrimaryPrice) : null}
       tabs={modalTabs}
@@ -609,6 +769,21 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
       onClose={onClose}
     >
       <div className="min-w-0 space-y-4">
+
+            {isForeignTemplate && (
+              <div className="rounded-xl border border-yellow/30 bg-yellow/10 p-4">
+                <p className="text-sm font-semibold text-text-primary">{t('cardSearch.sharedTemplate')}</p>
+                <p className="mt-1 text-xs text-text-secondary">{t('cardSearch.sharedTemplateHelp')}</p>
+                <button
+                  type="button"
+                  onClick={onCopyTemplate}
+                  disabled={copyTemplatePending}
+                  className="btn-primary mt-3"
+                >
+                  <Plus size={16} /> {copyTemplatePending ? t('common.saving') : t('cardSearch.copyToCollection')}
+                </button>
+              </div>
+            )}
 
             {activeTab === 'overview' && <div className="grid grid-cols-2 gap-3 text-sm">
               {card.rarity && (
@@ -848,11 +1023,17 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
                 <div className="rounded-xl border border-green/30 bg-green/10 p-3">
                   <p className="text-sm font-semibold text-green">✓ {t('cardSearch.alreadyOwned')} · {ownedQuantity}x</p>
                   {modalOwnedItems.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1">
+                    <div className="mt-3 space-y-2">
                       {modalOwnedItems.map(item => (
-                        <span key={item.id} className="text-[10px] px-2 py-1 rounded-full bg-bg-elevated text-text-secondary border border-border">
-                          {[item.variant || 'Normal', item.condition, `${item.quantity}x`].filter(Boolean).join(' · ')}
-                        </span>
+                        <OwnedVersionRow
+                          key={item.id}
+                          item={item}
+                          onQuantityChange={(row, nextQuantity) => quantityMutation.mutate({ item: row, quantity: nextQuantity })}
+                          onRemove={(row) => removeMutation.mutate(row)}
+                          isUpdating={quantityMutation.isPending}
+                          isRemoving={removeMutation.isPending}
+                          t={t}
+                        />
                       ))}
                     </div>
                   )}
@@ -892,6 +1073,10 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
                 </div>
               )}
               <div>
+                <label className="text-xs text-text-muted mb-1.5 block">🌐 {t('lang.selectLabel')}</label>
+                <TcgdexLanguageSelect value={collectionLang} onChange={setCollectionLang} className="select w-full" />
+              </div>
+              <div>
                 <label className="text-xs text-text-muted mb-1 block">{t('card.purchasePrice')}</label>
                 <MoneyInput
                   placeholder={t('card.purchasePricePlaceholder')}
@@ -905,7 +1090,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
                   card_id: resolvedCardId, quantity, condition,
                   variant,
                   purchase_price: parseMoneyInputValue(purchasePrice, exchangeRate),
-                  lang: card.lang || 'en',
+                  lang: collectionLang,
                 })} disabled={addMutation.isPending || !exchangeRateReady}>
                   <Plus size={16} /> {addMutation.isPending ? t('card.adding') : t('card.addToCollection')}
                 </button>

@@ -41,6 +41,7 @@ describe('groupCardsByPrint', () => {
       price_source_lang: 'en',
       image_source_lang: 'de',
       has_custom_image_fallback: true,
+      is_custom: true,
     })])
 
     expect(out[0]).toMatchObject({
@@ -48,6 +49,7 @@ describe('groupCardsByPrint', () => {
       price_source_lang: 'en',
       image_source_lang: 'de',
       has_custom_image_fallback: true,
+      is_custom: true,
     })
   })
 

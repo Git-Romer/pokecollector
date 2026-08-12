@@ -1,13 +1,15 @@
 import unittest
+import datetime
+from unittest.mock import patch
 
 try:
     from fastapi import HTTPException
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 
-    from api.auth import UpdateUserRequest, change_username, update_user
+    from api.auth import UpdateUserRequest, change_username, delete_user, update_user
     from database import Base
-    from models import User
+    from models import Card, Trade, TradeItem, User
 
     API_TEST_DEPS_AVAILABLE = True
 except ModuleNotFoundError:
@@ -156,6 +158,47 @@ class AuthAdminSafetyTests(unittest.TestCase):
         self.db.refresh(self.admin)
         self.assertEqual(self.admin.username, "Owner")
         self.assertEqual(self.admin.public_handle, "owner")
+
+    def test_delete_user_removes_trade_history_and_owned_manual_cards(self):
+        trainer = User(username="brock", hashed_password="x", role="trainer", is_active=True)
+        self.db.add(trainer)
+        self.db.commit()
+        self.db.refresh(trainer)
+        card = Card(
+            id="custom-brock-card",
+            name="Brock's card",
+            is_custom=True,
+            custom_owner_id=trainer.id,
+            lang="en",
+        )
+        trade = Trade(
+            user_id=trainer.id,
+            partner_name="Misty",
+            trade_date=datetime.date(2026, 8, 10),
+        )
+        self.db.add_all([card, trade])
+        self.db.flush()
+        card_id = card.id
+        self.db.add(TradeItem(
+            trade_id=trade.id,
+            user_id=trainer.id,
+            direction="incoming",
+            card_id=card.id,
+            quantity=1,
+            value_per_card=5,
+            value_total=5,
+            card_name=card.name,
+        ))
+        self.db.commit()
+
+        with patch("services.scan_trace.revoke_user_traces"):
+            result = delete_user(trainer.id, current_user=self.admin, db=self.db)
+
+        self.assertEqual(result, {"message": "User deleted"})
+        self.assertIsNone(self.db.query(User).filter(User.id == trainer.id).first())
+        self.assertEqual(self.db.query(Trade).filter(Trade.user_id == trainer.id).count(), 0)
+        self.assertEqual(self.db.query(TradeItem).filter(TradeItem.user_id == trainer.id).count(), 0)
+        self.assertIsNone(self.db.query(Card).filter(Card.id == card_id).first())
 
 
 if __name__ == "__main__":

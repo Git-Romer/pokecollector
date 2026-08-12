@@ -3,21 +3,27 @@ import { CompactCardArtwork, handleKeyboardActivation } from './UnifiedCard'
 
 export function CompactCardIdentity({
   image,
+  imageOverlay,
   card = {},
   name,
   subtext,
   setNumber,
   languageLabel,
+  // At this thumbnail size an overlay badge would sit on top of the whole
+  // image, so the own-photo marker rides next to the set number instead.
+  ownPhoto = false,
   variantEffectSource = null,
   details,
   onClick,
   loading = 'lazy',
   className = '',
+  viewportRef,
 }) {
   const Component = onClick ? 'button' : 'div'
 
   return (
     <Component
+      ref={viewportRef}
       type={onClick ? 'button' : undefined}
       className={clsx(
         'flex min-w-0 items-center gap-3 text-left',
@@ -29,16 +35,25 @@ export function CompactCardIdentity({
       <CompactCardArtwork
         card={card}
         image={image}
+        overlay={imageOverlay}
         alt={name}
         variantEffectSource={variantEffectSource}
         loading={loading}
       />
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        {name && <p className="truncate text-sm font-semibold leading-tight text-text-primary">{name}</p>}
-        {(setNumber || languageLabel) && (
+        {name && (
+          <div className="flex min-w-0 items-center gap-1.5">
+            <p className="truncate text-sm font-semibold leading-tight text-text-primary">{name}</p>
+            {card?.is_custom && (
+              <span className="badge-yellow shrink-0 px-1.5 py-0.5 text-[10px]">Custom</span>
+            )}
+          </div>
+        )}
+        {(setNumber || languageLabel || ownPhoto) && (
           <p className="flex min-w-0 items-center gap-1.5 text-xs leading-tight">
             {setNumber && <span className="truncate font-mono font-bold text-brand-red">{setNumber}</span>}
             {languageLabel && <span className="truncate text-text-muted">{languageLabel}</span>}
+            {ownPhoto && <span className="flex-shrink-0" aria-hidden>📷</span>}
           </p>
         )}
         {subtext && <p className="truncate text-xs leading-tight text-text-muted">{subtext}</p>}
@@ -68,6 +83,7 @@ export function CompactCardIdentity({
  */
 export default function CardListItem({
   image,
+  imageOverlay,
   card = {},
   name,
   subtext,
@@ -83,9 +99,11 @@ export default function CardListItem({
   className = '',
   variantEffectSource = null,
   loading = 'lazy',
+  viewportRef,
 }) {
   return (
     <div
+      ref={viewportRef}
       className={clsx(
         'flex items-center gap-3 p-3 rounded-xl border border-transparent',
         'bg-[rgba(20,20,40,0.6)] backdrop-blur-xl',
@@ -105,6 +123,7 @@ export default function CardListItem({
         className="flex-1"
         card={card}
         image={image}
+        imageOverlay={imageOverlay}
         name={name}
         subtext={subtext}
         setNumber={setNumber}

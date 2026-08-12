@@ -9,18 +9,20 @@ import {
   getUsers, createUser, updateUser, deleteUser, changePassword, changeAvatar, changeUsername,
   getContributors, getSupporters, getRescueDonations, getCustomMatches, downloadDebugLog,
   getProfile, updateProfile, deleteScanDiagnostics,
+  deleteAllCollectionCardPhotos,
 } from '../api/client'
 import api from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../hooks/useTheme'
 import { useSettings } from '../contexts/SettingsContext'
+import { useConfirmDialog } from '../contexts/ConfirmDialogContext'
 import Modal from '../components/ui/Modal'
 import AvatarPicker from '../components/AvatarPicker'
 import { formatDistanceToNow } from 'date-fns'
 import toast from 'react-hot-toast'
 import { TCGDEX_LANGUAGES, normalizeTcgdexLanguageCsv, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { APP_LANGUAGES } from '../utils/appLanguages'
-import { invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
+import { invalidateCollectionPhotoState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -309,6 +311,7 @@ export default function Settings() {
   const navigate = useNavigate()
   const { user, updateCurrentUser, multiUser } = useAuth()
   const { settings, updateSettings, t, pricePrimaryField, exchangeRate } = useSettings()
+  const confirmDialog = useConfirmDialog()
   const publicProfilesEnabled = settings.public_profiles_enabled === 'true'
   const { theme, setTheme, themes } = useTheme()
   const [activeTab, setActiveTab] = useState('general')
@@ -319,6 +322,7 @@ export default function Settings() {
   const [debugModeEnabled, setDebugModeEnabled] = useState(false)
   const [scanDiagnosticsSaving, setScanDiagnosticsSaving] = useState(false)
   const [scanDiagnosticsDeleting, setScanDiagnosticsDeleting] = useState(false)
+  const [cardPhotosDeleting, setCardPhotosDeleting] = useState(false)
 
   // Recurring automatic full sync interval (days) and small price sync interval (minutes).
   const [fullSyncIntervalDays, setFullSyncIntervalDays] = useState('5')
@@ -616,8 +620,44 @@ export default function Settings() {
     }
   }
 
+  const handlePhotoPreferenceToggle = async (enabled) => {
+    try {
+      await updateSettings({ prefer_own_card_photos: enabled ? 'true' : 'false' })
+      invalidateCollectionPhotoState(queryClient)
+      toast.success(t('settings.saved'))
+    } catch {
+      toast.error(t('settings.saveFailed'))
+    }
+  }
+
+  const handleDeleteCardPhotos = async () => {
+    const confirmed = await confirmDialog({
+      title: t('common.delete'),
+      message: t('settings.deleteCardPhotosConfirm'),
+      confirmLabel: t('common.delete'),
+      destructive: true,
+    })
+    if (!confirmed) return
+    setCardPhotosDeleting(true)
+    try {
+      await deleteAllCollectionCardPhotos()
+      invalidateCollectionPhotoState(queryClient)
+      toast.success(t('settings.cardPhotosDeleted'))
+    } catch {
+      toast.error(t('settings.cardPhotosDeleteFailed'))
+    } finally {
+      setCardPhotosDeleting(false)
+    }
+  }
+
   const handleDeleteScanDiagnostics = async () => {
-    if (!window.confirm(t('settings.scanDiagnosticsDeleteConfirm'))) return
+    const confirmed = await confirmDialog({
+      title: t('common.delete'),
+      message: t('settings.scanDiagnosticsDeleteConfirm'),
+      confirmLabel: t('common.delete'),
+      destructive: true,
+    })
+    if (!confirmed) return
     setScanDiagnosticsDeleting(true)
     try {
       await deleteScanDiagnostics()
@@ -656,7 +696,16 @@ export default function Settings() {
       toast.error(t('settings.selectSql'))
       return
     }
-    if (!confirm(t('settings.restoreConfirm'))) return
+    const confirmed = await confirmDialog({
+      title: t('common.restore'),
+      message: t('settings.restoreConfirm'),
+      confirmLabel: t('common.restore'),
+      destructive: true,
+    })
+    if (!confirmed) {
+      e.target.value = ''
+      return
+    }
 
     setRestoring(true)
     try {
@@ -682,6 +731,7 @@ export default function Settings() {
   const scanDiagnosticsEnabled = settings.scan_diagnostics_enabled === 'true'
   const scanDiagnosticsAvailable = settings.scan_diagnostics_available === 'true'
   const scanDiagnosticsDeletionAvailable = settings.scan_diagnostics_deletion_available === 'true'
+  const preferOwnCardPhotos = settings.prefer_own_card_photos === 'true'
 
   const usernameMutation = useMutation({
     mutationFn: (username) => changeUsername(username),
@@ -949,7 +999,7 @@ export default function Settings() {
                   onChange={handleCurrencyChange}
                 />
               </SettingsRow>
-              <SettingsRow label={t('settings.priceType')} description={t('settings.priceTypeDesc')} last>
+              <SettingsRow label={t('settings.priceType')} description={t('settings.priceTypeDesc')}>
                 <SelectControl
                   value={currentPriceType}
                   options={[
@@ -962,6 +1012,31 @@ export default function Settings() {
                   ]}
                   onChange={handlePriceTypeChange}
                 />
+              </SettingsRow>
+              <SettingsRow
+                label={t('settings.preferOwnCardPhotos')}
+                description={t('settings.preferOwnCardPhotosDesc')}
+              >
+                <Toggle
+                  value={preferOwnCardPhotos}
+                  label={t('settings.preferOwnCardPhotos')}
+                  onChange={handlePhotoPreferenceToggle}
+                />
+              </SettingsRow>
+              <SettingsRow
+                label={t('settings.deleteCardPhotos')}
+                description={t('settings.deleteCardPhotosDesc')}
+                last
+              >
+                <button
+                  type="button"
+                  onClick={handleDeleteCardPhotos}
+                  disabled={cardPhotosDeleting}
+                  className="btn-ghost flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-brand-red disabled:opacity-50"
+                >
+                  <Trash2 size={13} />
+                  {cardPhotosDeleting ? t('common.deleting') : t('common.delete')}
+                </button>
               </SettingsRow>
             </SettingsCard>
           </section>
@@ -1227,7 +1302,13 @@ export default function Settings() {
               <SettingsRow label={t('settings.clearImageCache')} description={t('settings.clearImageCacheDesc')}>
                 <button
                   onClick={async () => {
-                    if (!confirm(t('settings.clearImageCacheConfirm'))) return
+                    const confirmed = await confirmDialog({
+                      title: t('settings.clearImageCache'),
+                      message: t('settings.clearImageCacheConfirm'),
+                      confirmLabel: t('common.clear'),
+                      destructive: true,
+                    })
+                    if (!confirmed) return
                     try {
                       await api.post('/backup/clear-image-cache')
                       toast.success(t('settings.clearImageCacheSuccess'))
@@ -1491,6 +1572,7 @@ export default function Settings() {
 }
 
 function UsersTab({ t, queryClient }) {
+  const confirmDialog = useConfirmDialog()
   const [showModal, setShowModal] = useState(false)
   const [editingUser, setEditingUser] = useState(null)
   const [formUsername, setFormUsername] = useState('')
@@ -1578,7 +1660,15 @@ function UsersTab({ t, queryClient }) {
                   </button>
                   <button onClick={() => openEdit(u)} className="text-text-muted hover:text-text-primary"><Pencil size={15} /></button>
                   {u.id !== currentUser?.id && (
-                    <button onClick={() => { if (window.confirm(t('settings.users.deleteConfirm'))) deleteMut.mutate(u.id) }} className="text-text-muted hover:text-brand-red"><Trash2 size={15} /></button>
+                    <button onClick={async () => {
+                      const confirmed = await confirmDialog({
+                        title: t('common.delete'),
+                        message: t('settings.users.deleteConfirm'),
+                        confirmLabel: t('common.delete'),
+                        destructive: true,
+                      })
+                      if (confirmed) deleteMut.mutate(u.id)
+                    }} className="text-text-muted hover:text-brand-red"><Trash2 size={15} /></button>
                   )}
                 </div>
               </SettingsRow>

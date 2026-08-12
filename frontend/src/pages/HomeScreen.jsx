@@ -12,15 +12,15 @@ import { getDashboard, triggerPriceSync, getSyncStatus, getInvestmentTracker, ge
 import { useSettings } from '../contexts/SettingsContext'
 import { useAuth } from '../contexts/AuthContext'
 import toast from 'react-hot-toast'
-import { format, parseISO } from 'date-fns'
-import { resolveCardImageUrl } from '../utils/imageUrl'
 import { collectionItemTargetUrl } from '../utils/navigation'
-import { CardDisplay, CardLegend, withCollectionItemState } from '../components/card-system'
+import { CardLegend, withCollectionItemState } from '../components/card-system'
+import { CollectionCardDisplay } from '../components/CollectionCardImage'
 import {
   SCAN_JOBS_QUERY_KEY,
   hasActiveScanJobs,
   scanAttentionCount,
 } from '../utils/scanJobs'
+import { mapPortfolioChartData, portfolioApiPeriod, PORTFOLIO_PERIODS } from '../utils/portfolioChart'
 
 // Compact number formatter for mobile (1.2k, 3.4M, etc.)
 function compactNum(n) {
@@ -30,14 +30,6 @@ function compactNum(n) {
   if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, '') + 'k'
   return n.toLocaleString()
 }
-
-// ── Time-range definitions ────────────────────────────────────────────────────
-const PERIODS = [
-  { key: '1W',  label: '1W',   apiPeriod: '1w' },
-  { key: '1M',  label: '1M',   apiPeriod: '1m' },
-  { key: '1Y',  label: '1Y',   apiPeriod: '1y' },
-  { key: 'MAX', label: 'Max',  apiPeriod: 'max' },
-]
 
 // ── Custom chart tooltip ──────────────────────────────────────────────────────
 function ChartTooltip({ active, payload, label, formatPrice }) {
@@ -59,13 +51,12 @@ function ChartTooltip({ active, payload, label, formatPrice }) {
 
 // ── Card thumbnail ────────────────────────────────────────────────────────────
 function CardThumb({ card, onClick }) {
-  const img = resolveCardImageUrl(card)
   return (
     <div className="w-[110px] flex-shrink-0">
-      <CardDisplay
+      <CollectionCardDisplay
         variant="artwork"
+        item={{ id: card.collection_item_id, has_scan_photo: card.has_scan_photo }}
         card={card}
-        image={img}
         alt={card.name}
         variantEffectSource={card.variant}
         interactive
@@ -163,10 +154,9 @@ export default function HomeScreen() {
   const scansActive = hasActiveScanJobs(scanJobs)
 
   // Portfolio history for chart — uses analytics/investment-tracker
-  const activePeriod = PERIODS.find(p => p.key === chartPeriod)
   const { data: investmentData = [] } = useQuery({
     queryKey: ['investment-tracker', chartPeriod, pricePrimaryField],
-    queryFn: () => getInvestmentTracker({ period: activePeriod?.apiPeriod ?? 'max', price_field: pricePrimaryField }).then(r => r.data),
+    queryFn: () => getInvestmentTracker({ period: portfolioApiPeriod(chartPeriod), price_field: pricePrimaryField }).then(r => r.data),
     refetchInterval: 120000,
   })
 
@@ -223,22 +213,10 @@ export default function HomeScreen() {
   const openCollectionItem = (card) => navigate(collectionItemTargetUrl(card))
 
   // Map chart data — backend already filters and downsamples
-  const chartData = useMemo(() => {
-    const fmtMap = { '1W': 'EEE dd.MM', '1Y': 'MMM yy', 'MAX': 'MMM yy' }
-    const dateFmt = fmtMap[chartPeriod] ?? 'dd.MM.'
-    return (investmentData || []).map(d => {
-      const snapshotDate = parseISO(d.date)
-      return {
-        date: format(snapshotDate, dateFmt),
-        tooltipLabel: chartPeriod === '1W'
-          ? format(snapshotDate, 'EEE dd.MM HH:mm')
-          : format(snapshotDate, dateFmt),
-        value: d.value,
-        legacy: Boolean(d.legacy),
-        legacyLabel: t('home.legacySnapshot'),
-      }
-    })
-  }, [investmentData, chartPeriod, t])
+  const chartData = useMemo(
+    () => mapPortfolioChartData(investmentData, chartPeriod, t('home.legacySnapshot')),
+    [investmentData, chartPeriod, t],
+  )
 
   // Determine chart color based on trend
   const chartColor = useMemo(() => {
@@ -483,7 +461,7 @@ export default function HomeScreen() {
           <div className="flex items-center justify-between mb-3">
             <p className="text-xs font-bold text-white uppercase tracking-wider">{t('home.portfolioHistory')}</p>
             <div className="flex gap-1">
-              {PERIODS.map(p => (
+              {PORTFOLIO_PERIODS.map(p => (
                 <button
                   key={p.key}
                   onClick={() => setChartPeriod(p.key)}
@@ -623,10 +601,10 @@ export default function HomeScreen() {
                 <div key={card.collection_item_id || card.id} className="flex-shrink-0 w-[110px] cursor-pointer group"
                   onClick={() => openCollectionItem(card)}>
                   <div className="relative">
-                    <CardDisplay
+                    <CollectionCardDisplay
                       variant="artwork"
+                      item={{ id: card.collection_item_id, has_scan_photo: card.has_scan_photo }}
                       card={card}
-                      image={resolveCardImageUrl(card)}
                       alt={card.name}
                       variantEffectSource={card.variant}
                       stateIndicatorProps={{ card: withCollectionItemState(card, card), alwaysShowQuantity: true }}

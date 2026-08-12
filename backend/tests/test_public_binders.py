@@ -162,6 +162,18 @@ class SerializationTests(unittest.TestCase):
             "/api/images/card/custom%20card%231/small",
         )
 
+    def test_public_binder_marks_manual_cards(self):
+        db = self._db()
+        user, binder = self._seed(db, show_values=False)
+        card = db.query(Card).filter(Card.id == "sv1-1_en").one()
+        card.is_custom = True
+        card.custom_owner_id = user.id
+        db.commit()
+
+        public_card = pp.serialize_binder_detail(db, binder, show_values=False)["cards"][0]
+
+        self.assertTrue(public_card["is_custom"])
+
     def test_binder_detail_shows_values_when_on(self):
         db = self._db()
         _, binder = self._seed(db, show_values=True)

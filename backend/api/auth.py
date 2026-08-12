@@ -267,18 +267,65 @@ def delete_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     # Delete all user-owned data first (foreign key constraints)
-    from models import CollectionItem, WishlistItem, Binder, BinderCard, ProductCard, ProductLedgerEntry, ProductPurchase, PortfolioSnapshot, UserSetting
+    from models import (
+        Binder,
+        BinderCard,
+        Card,
+        CollectionCardPhoto,
+        CollectionItem,
+        CustomCardMatch,
+        ImageCache,
+        PortfolioSnapshot,
+        PriceHistory,
+        ProductCard,
+        ProductLedgerEntry,
+        ProductPurchase,
+        Trade,
+        TradeItem,
+        UserSetting,
+        WishlistItem,
+    )
+    owned_custom_card_ids = [
+        card_id for (card_id,) in db.query(Card.id).filter(
+            Card.is_custom == True,
+            Card.custom_owner_id == user_id,
+        ).all()
+    ]
     db.query(BinderCard).filter(
         BinderCard.binder_id.in_(db.query(Binder.id).filter(Binder.user_id == user_id))
     ).delete(synchronize_session=False)
     db.query(Binder).filter(Binder.user_id == user_id).delete()
     db.query(ProductLedgerEntry).filter(ProductLedgerEntry.user_id == user_id).delete()
     db.query(ProductCard).filter(ProductCard.user_id == user_id).delete()
+    db.query(CollectionCardPhoto).filter(CollectionCardPhoto.user_id == user_id).delete()
     db.query(CollectionItem).filter(CollectionItem.user_id == user_id).delete()
     db.query(WishlistItem).filter(WishlistItem.user_id == user_id).delete()
     db.query(ProductPurchase).filter(ProductPurchase.user_id == user_id).delete()
+    db.query(TradeItem).filter(TradeItem.user_id == user_id).delete(
+        synchronize_session=False
+    )
+    db.query(Trade).filter(Trade.user_id == user_id).delete(
+        synchronize_session=False
+    )
     db.query(PortfolioSnapshot).filter(PortfolioSnapshot.user_id == user_id).delete()
     db.query(UserSetting).filter(UserSetting.user_id == user_id).delete()
+    if owned_custom_card_ids:
+        db.query(CustomCardMatch).filter(
+            CustomCardMatch.custom_card_id.in_(owned_custom_card_ids)
+        ).delete(synchronize_session=False)
+        db.query(PriceHistory).filter(
+            PriceHistory.card_id.in_(owned_custom_card_ids)
+        ).delete(synchronize_session=False)
+        db.query(TradeItem).filter(
+            TradeItem.card_id.in_(owned_custom_card_ids)
+        ).update({"card_id": None}, synchronize_session=False)
+        for card_id in owned_custom_card_ids:
+            db.query(ImageCache).filter(
+                ImageCache.image_key.like(f"card:{card_id}:%")
+            ).delete(synchronize_session=False)
+        db.query(Card).filter(Card.id.in_(owned_custom_card_ids)).delete(
+            synchronize_session=False
+        )
     traces_revoked = False
     try:
         from services.scan_trace import revoke_user_traces

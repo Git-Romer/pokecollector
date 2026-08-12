@@ -1,4 +1,5 @@
 import httpx
+import math
 import re
 from functools import lru_cache
 from typing import Optional, Dict, Any, List
@@ -527,6 +528,37 @@ def parse_card_for_db(card_data: Dict, default_set_id: Optional[str] = None, lan
 
     raw_variants = card_data.get("variants") or {}
     variants = raw_variants if isinstance(raw_variants, dict) else {}
+    variant_types = {
+        str(entry.get("type") or "").replace("_", "").replace("-", "").lower()
+        for entry in raw_variants
+        if isinstance(raw_variants, list) and isinstance(entry, dict)
+    }
+    pricing = card_data.get("pricing") or {}
+    tcgplayer = pricing.get("tcgplayer") if isinstance(pricing, dict) else {}
+    tcgplayer = tcgplayer if isinstance(tcgplayer, dict) else {}
+
+    def available_variant(flag_name: str, list_name: str, price_name: str):
+        """Union TCGdex variant flags with contradictory TCGplayer evidence."""
+        flag = variants.get(flag_name) if variants else (list_name in variant_types or None)
+        price_row = tcgplayer.get(price_name)
+        def is_positive_price(value):
+            if isinstance(value, bool):
+                return False
+            try:
+                numeric_value = float(value)
+            except (TypeError, ValueError):
+                return False
+            return math.isfinite(numeric_value) and numeric_value > 0
+
+        positive_price = (
+            any(is_positive_price(value) for value in price_row.values())
+            if isinstance(price_row, dict)
+            else False
+        )
+        if positive_price:
+            return True
+        return flag
+
     is_full_detail = "category" in card_data
     dex_ids = extract_dex_ids(card_data)
     if dex_ids is None and is_full_detail:
@@ -538,11 +570,6 @@ def parse_card_for_db(card_data: Dict, default_set_id: Optional[str] = None, lan
         dex_ids = []
     if is_full_detail and cardmarket_products is None:
         cardmarket_products = []
-    variant_types = {
-        str(entry.get("type") or "").replace("_", "").replace("-", "").lower()
-        for entry in raw_variants
-        if isinstance(raw_variants, list) and isinstance(entry, dict)
-    }
     retreat_raw = card_data.get("retreat")
     try:
         retreat = int(retreat_raw) if retreat_raw is not None else None
@@ -595,9 +622,9 @@ def parse_card_for_db(card_data: Dict, default_set_id: Optional[str] = None, lan
         "cardmarket_products": cardmarket_products,
         "retreat": retreat,
         "playable_fingerprint": playable_fingerprint(card_data),
-        "variants_normal": variants.get("normal") if variants else ("normal" in variant_types or None),
-        "variants_reverse": variants.get("reverse") if variants else ("reverse" in variant_types or None),
-        "variants_holo": variants.get("holo") if variants else ("holo" in variant_types or None),
+        "variants_normal": available_variant("normal", "normal", "normal"),
+        "variants_reverse": available_variant("reverse", "reverse", "reverse-holofoil"),
+        "variants_holo": available_variant("holo", "holo", "holofoil"),
         "variants_first_edition": variants.get("firstEdition") if variants else ("firstedition" in variant_types or None),
         "price_source_lang": None,
         **prices,
