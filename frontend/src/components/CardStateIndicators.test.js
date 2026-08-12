@@ -94,6 +94,15 @@ describe('CardStateLegend', () => {
 })
 
 describe('CardStateIndicators', () => {
+  it('shows a compact pencil marker for custom artwork cards', () => {
+    const markup = renderToStaticMarkup(createElement(CardStateIndicators, {
+      card: { is_custom: true },
+    }))
+
+    expect(markup).toContain('lucide-pencil')
+    expect(markup).toContain('aria-label="cardSearch.customCard"')
+  })
+
   it('can show every grouped variant quantity, including one copy', () => {
     const markup = renderToStaticMarkup(createElement(CardStateIndicators, {
       card: {

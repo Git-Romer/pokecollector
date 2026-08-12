@@ -5,6 +5,7 @@ import { Camera, Upload, ImagePlus, Trash2, X, Check, Loader2, RefreshCw, Plus }
 import { recognizeCard, addToCollection, enqueueScanJob, uploadCollectionItemPhoto } from '../api/client'
 import { useQueryClient } from '@tanstack/react-query'
 import { useSettings } from '../contexts/SettingsContext'
+import { useConfirmDialog } from '../contexts/ConfirmDialogContext'
 import toast from 'react-hot-toast'
 import { CARD_VARIANTS, getDefaultVariant } from '../utils/cardVariants'
 import TcgdexLanguageSelect from './TcgdexLanguageSelect'
@@ -181,6 +182,7 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
   const scannedFileRef = useRef(null)
   const stagedFilesRef = useRef([])
   const { t } = useSettings()
+  const confirmDialog = useConfirmDialog()
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -264,8 +266,16 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
     setStagedFiles([])
   }
 
-  const closeScanner = () => {
-    if (stagedFiles.length && !window.confirm(t('scanner.discardStagedConfirm'))) return
+  const closeScanner = async () => {
+    if (stagedFiles.length) {
+      const confirmed = await confirmDialog({
+        title: t('common.close'),
+        message: t('scanner.discardStagedConfirm'),
+        confirmLabel: t('common.close'),
+        destructive: true,
+      })
+      if (!confirmed) return
+    }
     clearStagedFiles()
     reset()
     onClose?.()

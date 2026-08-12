@@ -24,6 +24,16 @@ describe('CompactCardIdentity', () => {
     expect(markup).toContain('SSP 057')
     expect(markup).toContain('EN')
   })
+
+  it('shows the wider custom text badge in compact rows', () => {
+    const markup = renderToStaticMarkup(createElement(CompactCardIdentity, {
+      card: { id: 'custom-1', name: 'Manual Pikachu', is_custom: true },
+      name: 'Manual Pikachu',
+    }))
+
+    expect(markup).toContain('badge-yellow')
+    expect(markup).toContain('Custom')
+  })
 })
 
 describe('CardListItem', () => {

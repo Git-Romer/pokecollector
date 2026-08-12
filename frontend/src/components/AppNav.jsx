@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { LogOut } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -26,6 +27,45 @@ export default function AppNav() {
   const location = useLocation()
   const { user, logout, multiUser } = useAuth()
   const { t } = useSettings()
+  const homeButtonAnimations = useRef([])
+
+  const handleHomePointerEnter = (event) => {
+    if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    const reversingAnimations = homeButtonAnimations.current.filter(
+      (animation) => animation.playState === 'running' && animation.playbackRate < 0,
+    )
+    if (reversingAnimations.length === homeButtonAnimations.current.length && reversingAnimations.length > 0) {
+      reversingAnimations.forEach((animation) => animation.reverse())
+      return
+    }
+
+    homeButtonAnimations.current.forEach((animation) => animation.cancel())
+    const timing = { duration: 360, fill: 'both' }
+    const animations = [
+      event.currentTarget.animate(
+        [{ rotate: '0deg' }, { rotate: '360deg' }],
+        { ...timing, easing: 'linear' },
+      ),
+      event.currentTarget.animate(
+        [{ scale: 1 }, { scale: 1.08 }, { scale: 1 }],
+        { ...timing, easing: 'cubic-bezier(0.4, 0, 0.2, 1)' },
+      ),
+    ]
+    animations.forEach((animation) => {
+      animation.onfinish = () => {
+        if (animation.playbackRate < 0) animation.cancel()
+      }
+    })
+    homeButtonAnimations.current = animations
+  }
+
+  const handleHomePointerLeave = () => {
+    homeButtonAnimations.current.forEach((animation) => {
+      if (animation.playState === 'running' && animation.playbackRate > 0) animation.reverse()
+      else if (animation.playState === 'finished') animation.cancel()
+    })
+  }
 
   const handleLogout = () => { logout(); navigate('/login') }
 
@@ -70,9 +110,12 @@ export default function AppNav() {
       {/* Floating Pokeball home button — bottom left */}
       <button
         onClick={() => navigate('/')}
+        onPointerEnter={handleHomePointerEnter}
+        onPointerLeave={handleHomePointerLeave}
+        onPointerCancel={handleHomePointerLeave}
         aria-label={t('home.navigation')}
-        className="fixed bottom-6 left-4 z-50 w-12 h-12 rounded-full flex items-center justify-center
-          transition-all duration-200 active:scale-90 hover:scale-110"
+        className="pokeball-home-button fixed bottom-6 left-4 z-50 w-12 h-12 rounded-full flex items-center justify-center
+          transition-transform duration-200 active:scale-90"
         style={{
           background: 'linear-gradient(180deg, #e3000b 50%, #f5f5f5 50%)',
           boxShadow: '0 4px 20px rgba(0,0,0,0.5), 0 0 0 2px rgba(0,0,0,0.8), 0 0 16px rgba(227,0,11,0.3)',

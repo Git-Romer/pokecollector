@@ -13,7 +13,7 @@ from services import pokemon_api
 from services.card_fallbacks import apply_cross_language_fallbacks
 from services.card_upsert import upsert_card
 from services.card_values import effective_market_price, normalize_price_field
-from services.card_visibility import visible_card_filter, visible_set_filter
+from services.card_visibility import visible_any_card_filter, visible_set_filter
 from services.collection_csv import normalize_collection_variant
 from services.binder_csv import BINDER_CSV_DUPLICATE_QUANTITY_ERROR, combine_binder_required_quantity
 from services.binder_allocations import (
@@ -38,6 +38,14 @@ BINDER_CSV_PHYSICAL_COLUMNS = [*BINDER_CSV_LEGACY_COLUMNS, "variant", "condition
 BINDER_CSV_COLUMNS = [*BINDER_CSV_PHYSICAL_COLUMNS, "collection_item_id"]
 BINDER_CSV_MAX_BYTES = 256 * 1024
 BINDER_CSV_MAX_ROWS = 1000
+
+
+def _require_owned_custom_card(card: Card | None, user_id: int) -> None:
+    if not card or not card.is_custom or card.custom_owner_id == user_id:
+        return
+    if card.is_shared_template:
+        raise HTTPException(status_code=409, detail="Copy this shared template before adding it.")
+    raise HTTPException(status_code=404, detail="Card not found")
 
 
 def _clean_binder_format(value: str | None) -> str | None:
@@ -73,7 +81,7 @@ def _collection_binder_usage_counts(db: Session, current_user: User) -> dict[int
 def _binder_counts(db: Session, binder: Binder) -> tuple[int, int]:
     base_query = db.query(BinderCard).join(Card, Card.id == BinderCard.card_id).filter(
         BinderCard.binder_id == binder.id,
-        visible_card_filter(db, binder.user_id, "all"),
+        visible_any_card_filter(db, binder.user_id, "all"),
     )
     unique_count = base_query.with_entities(func.count(func.distinct(BinderCard.card_id))).scalar() or 0
     total_count = base_query.with_entities(
@@ -103,7 +111,7 @@ def _user_collection_quantities(db: Session, current_user: User, card_ids: list[
         Card, Card.id == CollectionItem.card_id
     ).filter(
         CollectionItem.user_id == current_user.id,
-        visible_card_filter(db, current_user.id, "all"),
+        visible_any_card_filter(db, current_user.id, "all"),
     )
     if card_ids is not None:
         if not card_ids:
@@ -140,7 +148,7 @@ def _user_wishlist_quantities(db: Session, current_user: User, card_ids: list[st
         Card, Card.id == WishlistItem.card_id
     ).filter(
         WishlistItem.user_id == current_user.id,
-        visible_card_filter(db, current_user.id, "all"),
+        visible_any_card_filter(db, current_user.id, "all"),
     )
     if card_ids is not None:
         if not card_ids:
@@ -349,7 +357,7 @@ def _cheapest_equivalent_candidate(
         Card.playable_fingerprint == source_card.playable_fingerprint,
         Card.lang == (source_card.lang or "en"),
         Card.is_custom.is_(False),
-        visible_card_filter(db, current_user.id, "all"),
+        visible_any_card_filter(db, current_user.id, "all"),
     ).all()
     priced_candidates = [(card, _price_sort_value(card, price_field=price_field)) for card in candidates]
     priced_candidates = [(card, price) for card, price in priced_candidates if price is not None]
@@ -383,7 +391,7 @@ def _collection_optimizer_candidates(
         Card.name == source_card.name,
         Card.lang == (source_card.lang or "en"),
         Card.is_custom.is_(False),
-        visible_card_filter(db, current_user.id, "all"),
+        visible_any_card_filter(db, current_user.id, "all"),
     ).all()
 
     candidates = []
@@ -416,7 +424,7 @@ def _build_print_optimization_preview(db: Session, binder: Binder, current_user:
         joinedload(BinderCard.collection_item),
     ).filter(
         BinderCard.binder_id == binder.id,
-        visible_card_filter(db, current_user.id, "all"),
+        visible_any_card_filter(db, current_user.id, "all"),
     ).order_by(BinderCard.added_at.desc()).all()
 
     recommendations = []
@@ -651,7 +659,7 @@ def convert_wishlist_binder_to_collection(
         CollectionItem.user_id == current_user.id,
         CollectionItem.card_id.in_(card_ids),
         CollectionItem.quantity > 0,
-        visible_card_filter(db, current_user.id, "all"),
+        visible_any_card_filter(db, current_user.id, "all"),
     ).order_by(CollectionItem.id.asc()).with_for_update(of=CollectionItem).all()
 
     usage_counts = _collection_binder_usage_counts(db, current_user)
@@ -840,7 +848,7 @@ def get_binder_cards(
         joinedload(BinderCard.collection_item),
     ).filter(
         BinderCard.binder_id == binder_id,
-        visible_card_filter(db, current_user.id, "all"),
+        visible_any_card_filter(db, current_user.id, "all"),
     ).order_by(BinderCard.added_at.desc()).all()
     _annotate_scan_photos(
         db,
@@ -852,7 +860,7 @@ def get_binder_cards(
         db.query(CollectionItem.card_id, func.coalesce(func.sum(CollectionItem.quantity), 0))
         .join(Card, Card.id == CollectionItem.card_id)
         .filter(CollectionItem.user_id == current_user.id)
-        .filter(visible_card_filter(db, current_user.id, "all"))
+        .filter(visible_any_card_filter(db, current_user.id, "all"))
         .group_by(CollectionItem.card_id)
         .all()
     )
@@ -873,7 +881,7 @@ def get_binder_cards(
     if binder_type == "collection":
         owned_items = db.query(CollectionItem.id, CollectionItem.quantity).join(Card, Card.id == CollectionItem.card_id).filter(
             CollectionItem.user_id == current_user.id,
-            visible_card_filter(db, current_user.id, "all"),
+            visible_any_card_filter(db, current_user.id, "all"),
         ).all()
         current_binder_quantities = {}
         for binder_card in binder_cards:
@@ -916,7 +924,7 @@ def get_binder_cards(
             col_item = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).filter(
                 CollectionItem.card_id == bc.card_id,
                 CollectionItem.user_id == current_user.id,
-                visible_card_filter(db, current_user.id, "all"),
+                visible_any_card_filter(db, current_user.id, "all"),
             ).first()
         in_collection = (
             int(collection_quantities.get(bc.card_id, 0) or 0) > 0
@@ -1182,7 +1190,8 @@ def add_card_to_binder(
         raise HTTPException(status_code=400, detail="Collection binders require an exact owned collection item")
 
     binder_type = binder.binder_type or "collection"
-    ensure_card_exists(db, card_id)
+    ensured_card = ensure_card_exists(db, card_id)
+    _require_owned_custom_card(ensured_card, current_user.id)
     binder = _relock_binder_for_write(
         db, binder_id, current_user.id, binder_type
     )
@@ -1234,7 +1243,7 @@ def add_collection_item_to_binder(
         .filter(
             CollectionItem.id == collection_item_id,
             CollectionItem.user_id == current_user.id,
-            visible_card_filter(db, current_user.id, "all"),
+            visible_any_card_filter(db, current_user.id, "all"),
         )
         .with_for_update(of=CollectionItem)
         .first()
@@ -1308,7 +1317,7 @@ def _add_owned_set_entries(
             Card.set_id == tcg_id,
             Card.lang == set_lang,
             CollectionItem.quantity > 0,
-            visible_card_filter(db, current_user.id, "all"),
+            visible_any_card_filter(db, current_user.id, "all"),
         )
         .order_by(CollectionItem.id.asc())
         .with_for_update(of=CollectionItem)
@@ -1436,7 +1445,7 @@ def update_binder_entry(
     bc = db.query(BinderCard).join(Card, Card.id == BinderCard.card_id).filter(
         BinderCard.id == binder_card_id,
         BinderCard.binder_id == binder_id,
-        visible_card_filter(db, current_user.id, "all"),
+        visible_any_card_filter(db, current_user.id, "all"),
     ).first()
     if not bc:
         raise HTTPException(status_code=404, detail="Binder entry not found")
@@ -1484,7 +1493,7 @@ def get_binder_entry_equivalent_prints(
     bc = db.query(BinderCard).join(Card, Card.id == BinderCard.card_id).options(joinedload(BinderCard.card)).filter(
         BinderCard.id == binder_card_id,
         BinderCard.binder_id == binder_id,
-        visible_card_filter(db, current_user.id, "all"),
+        visible_any_card_filter(db, current_user.id, "all"),
     ).first()
     if not bc or not bc.card:
         raise HTTPException(status_code=404, detail="Binder entry not found")
@@ -1509,7 +1518,7 @@ def get_binder_entry_equivalent_prints(
             Card.name == source_card.name,
             Card.lang == (source_card.lang or "en"),
             Card.is_custom.is_(False),
-            visible_card_filter(db, current_user.id, "all"),
+            visible_any_card_filter(db, current_user.id, "all"),
         ).all()
         _annotate_scan_photos(db, current_user, collection_items)
 
@@ -1558,7 +1567,7 @@ def get_binder_entry_equivalent_prints(
         Card.playable_fingerprint == source_card.playable_fingerprint,
         Card.lang == (source_card.lang or "en"),
         Card.is_custom.is_(False),
-        visible_card_filter(db, current_user.id, "all"),
+        visible_any_card_filter(db, current_user.id, "all"),
     ).all()
 
     summaries = [
@@ -1603,7 +1612,7 @@ def switch_binder_entry_card(
     bc = db.query(BinderCard).join(Card, Card.id == BinderCard.card_id).options(joinedload(BinderCard.card)).filter(
         BinderCard.id == binder_card_id,
         BinderCard.binder_id == binder_id,
-        visible_card_filter(db, current_user.id, "all"),
+        visible_any_card_filter(db, current_user.id, "all"),
     ).first()
     if not bc or not bc.card:
         raise HTTPException(status_code=404, detail="Binder entry not found")
@@ -1614,7 +1623,7 @@ def switch_binder_entry_card(
         target_item = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).options(joinedload(CollectionItem.card)).filter(
             CollectionItem.id == update.collection_item_id,
             CollectionItem.user_id == current_user.id,
-            visible_card_filter(db, current_user.id, "all"),
+            visible_any_card_filter(db, current_user.id, "all"),
         ).first()
         if not target_item or not target_item.card:
             raise HTTPException(status_code=404, detail="Collection item not found")
@@ -1692,11 +1701,17 @@ def switch_binder_entry_card(
 
     target_card = db.query(Card).filter(
         Card.id == update.card_id,
-        visible_card_filter(db, current_user.id, "all"),
+        visible_any_card_filter(db, current_user.id, "all"),
     ).first()
     if not target_card:
         _, detected_lang = pokemon_api.strip_lang_suffix(update.card_id)
-        target_card = ensure_card_exists(db, update.card_id, lang=detected_lang or "en")
+        target_card = ensure_card_exists(
+            db,
+            update.card_id,
+            lang=detected_lang or "en",
+            user_id=current_user.id,
+        )
+    _require_owned_custom_card(target_card, current_user.id)
 
     source_card = _ensure_card_gameplay_data(db, bc.card)
     target_card = _ensure_card_gameplay_data(db, target_card)
@@ -1757,7 +1772,7 @@ def add_binder_entry_to_wishlist(
     bc = db.query(BinderCard).join(Card, Card.id == BinderCard.card_id).filter(
         BinderCard.id == binder_card_id,
         BinderCard.binder_id == binder_id,
-        visible_card_filter(db, current_user.id, "all"),
+        visible_any_card_filter(db, current_user.id, "all"),
     ).first()
     if not bc:
         raise HTTPException(status_code=404, detail="Binder entry not found")
@@ -1879,7 +1894,7 @@ def add_binder_cards_to_wishlist(
         Card, Card.id == BinderCard.card_id
     ).filter(
         BinderCard.binder_id == binder_id,
-        visible_card_filter(db, current_user.id, "all"),
+        visible_any_card_filter(db, current_user.id, "all"),
     ).all()
     entries = []
     card_ids = []
@@ -1939,7 +1954,7 @@ def export_binder_csv(
         joinedload(BinderCard.collection_item),
     ).filter(
         BinderCard.binder_id == binder_id,
-        visible_card_filter(db, current_user.id, "all"),
+        visible_any_card_filter(db, current_user.id, "all"),
     ).order_by(BinderCard.added_at.asc()).all()
     binder_type = binder.binder_type or "collection"
 

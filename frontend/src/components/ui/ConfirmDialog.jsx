@@ -19,6 +19,7 @@ export default function ConfirmDialog({
       title={title}
       size="sm"
       mobileSheet={false}
+      overlayClassName="z-[500]"
     >
       <div className="space-y-4 p-5">
         <div className="flex items-start gap-3">

@@ -14,6 +14,7 @@ import api from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../hooks/useTheme'
 import { useSettings } from '../contexts/SettingsContext'
+import { useConfirmDialog } from '../contexts/ConfirmDialogContext'
 import Modal from '../components/ui/Modal'
 import AvatarPicker from '../components/AvatarPicker'
 import { formatDistanceToNow } from 'date-fns'
@@ -309,6 +310,7 @@ export default function Settings() {
   const navigate = useNavigate()
   const { user, updateCurrentUser, multiUser } = useAuth()
   const { settings, updateSettings, t, pricePrimaryField, exchangeRate } = useSettings()
+  const confirmDialog = useConfirmDialog()
   const publicProfilesEnabled = settings.public_profiles_enabled === 'true'
   const { theme, setTheme, themes } = useTheme()
   const [activeTab, setActiveTab] = useState('general')
@@ -617,7 +619,13 @@ export default function Settings() {
   }
 
   const handleDeleteScanDiagnostics = async () => {
-    if (!window.confirm(t('settings.scanDiagnosticsDeleteConfirm'))) return
+    const confirmed = await confirmDialog({
+      title: t('common.delete'),
+      message: t('settings.scanDiagnosticsDeleteConfirm'),
+      confirmLabel: t('common.delete'),
+      destructive: true,
+    })
+    if (!confirmed) return
     setScanDiagnosticsDeleting(true)
     try {
       await deleteScanDiagnostics()
@@ -656,7 +664,16 @@ export default function Settings() {
       toast.error(t('settings.selectSql'))
       return
     }
-    if (!confirm(t('settings.restoreConfirm'))) return
+    const confirmed = await confirmDialog({
+      title: t('common.restore'),
+      message: t('settings.restoreConfirm'),
+      confirmLabel: t('common.restore'),
+      destructive: true,
+    })
+    if (!confirmed) {
+      e.target.value = ''
+      return
+    }
 
     setRestoring(true)
     try {
@@ -1227,7 +1244,13 @@ export default function Settings() {
               <SettingsRow label={t('settings.clearImageCache')} description={t('settings.clearImageCacheDesc')}>
                 <button
                   onClick={async () => {
-                    if (!confirm(t('settings.clearImageCacheConfirm'))) return
+                    const confirmed = await confirmDialog({
+                      title: t('settings.clearImageCache'),
+                      message: t('settings.clearImageCacheConfirm'),
+                      confirmLabel: t('common.clear'),
+                      destructive: true,
+                    })
+                    if (!confirmed) return
                     try {
                       await api.post('/backup/clear-image-cache')
                       toast.success(t('settings.clearImageCacheSuccess'))
@@ -1491,6 +1514,7 @@ export default function Settings() {
 }
 
 function UsersTab({ t, queryClient }) {
+  const confirmDialog = useConfirmDialog()
   const [showModal, setShowModal] = useState(false)
   const [editingUser, setEditingUser] = useState(null)
   const [formUsername, setFormUsername] = useState('')
@@ -1578,7 +1602,15 @@ function UsersTab({ t, queryClient }) {
                   </button>
                   <button onClick={() => openEdit(u)} className="text-text-muted hover:text-text-primary"><Pencil size={15} /></button>
                   {u.id !== currentUser?.id && (
-                    <button onClick={() => { if (window.confirm(t('settings.users.deleteConfirm'))) deleteMut.mutate(u.id) }} className="text-text-muted hover:text-brand-red"><Trash2 size={15} /></button>
+                    <button onClick={async () => {
+                      const confirmed = await confirmDialog({
+                        title: t('common.delete'),
+                        message: t('settings.users.deleteConfirm'),
+                        confirmLabel: t('common.delete'),
+                        destructive: true,
+                      })
+                      if (confirmed) deleteMut.mutate(u.id)
+                    }} className="text-text-muted hover:text-brand-red"><Trash2 size={15} /></button>
                   )}
                 </div>
               </SettingsRow>

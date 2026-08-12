@@ -25,6 +25,7 @@ class PublicCard(BaseModel):
     set_name: Optional[str] = None
     number: Optional[str] = None
     rarity: Optional[str] = None
+    is_custom: bool = False
     lang: Optional[str] = None
     variant: Optional[str] = None
     data_source_lang: Optional[str] = None

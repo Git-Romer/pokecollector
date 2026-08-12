@@ -44,6 +44,57 @@ export const getNextDetailNavigationState = (state, listKey) => {
   }
 }
 
+export const restoreListScrollPosition = (saved, browserWindow = window, browserDocument = document) => {
+  browserWindow.scrollTo({ top: saved.scrollY, left: 0, behavior: 'auto' })
+
+  // A resized viewport or changed results can clamp the saved offset.
+  if (Math.abs(browserWindow.scrollY - saved.scrollY) > 2) {
+    browserDocument.getElementById(saved.anchorId)?.scrollIntoView({ block: 'center', behavior: 'auto' })
+  }
+}
+
+let activeHistoryRestoration = null
+
+export const releaseManualHistoryScrollRestoration = () => {
+  if (!activeHistoryRestoration) return
+  activeHistoryRestoration.browserHistory.scrollRestoration = activeHistoryRestoration.previousValue
+  activeHistoryRestoration = null
+}
+
+export const scheduleManualHistoryScrollRestorationRelease = (
+  delay = 1000,
+  browserWindow = globalThis,
+) => {
+  const restoration = activeHistoryRestoration
+  if (!restoration) return () => {}
+
+  const timeoutId = browserWindow.setTimeout(() => {
+    if (activeHistoryRestoration === restoration) releaseManualHistoryScrollRestoration()
+  }, delay)
+  return () => browserWindow.clearTimeout(timeoutId)
+}
+
+export const enableManualHistoryScrollRestoration = (
+  browserHistory = window.history,
+) => {
+  if (!browserHistory || !('scrollRestoration' in browserHistory)) return () => {}
+
+  if (activeHistoryRestoration?.browserHistory !== browserHistory) {
+    activeHistoryRestoration = {
+      browserHistory,
+      previousValue: browserHistory.scrollRestoration,
+    }
+  }
+
+  browserHistory.scrollRestoration = 'manual'
+  return releaseManualHistoryScrollRestoration
+}
+
+export const isListScrollSurfaceVisible = (key, browserDocument = document) => {
+  const surface = browserDocument.querySelector(`[data-scroll-list="${key}"]`)
+  return Boolean(surface?.getClientRects?.().length)
+}
+
 /**
  * React Router's <ScrollRestoration /> requires a data router, while this app
  * uses BrowserRouter. We also need to delay restoration until async list items
@@ -86,24 +137,24 @@ export function useListScrollRestoration({ key, isReady, listState = null }) {
     const saved = readSavedPosition(key)
     if (!isSavedPositionForLocation(saved, location)) return
 
-    let frame
-    let nestedFrame
-    const restore = () => {
-      window.scrollTo({ top: saved.scrollY, left: 0, behavior: 'auto' })
-
-      // A resized viewport or changed results can clamp the saved offset.
-      if (Math.abs(window.scrollY - saved.scrollY) > 2) {
-        document.getElementById(saved.anchorId)?.scrollIntoView({ block: 'center', behavior: 'auto' })
+    let frameId = null
+    const restoreWhenVisible = () => {
+      // React can prepare the returning route offscreen while keeping the detail
+      // route visible. Wait for the list surface itself to become visible so its
+      // offset is never applied to the old detail DOM.
+      if (!isListScrollSurfaceVisible(key)) {
+        frameId = window.requestAnimationFrame(restoreWhenVisible)
+        return
       }
+
+      restoreListScrollPosition(saved)
       restoredLocationKey.current = location.key
+      releaseManualHistoryScrollRestoration()
     }
 
-    frame = requestAnimationFrame(() => {
-      nestedFrame = requestAnimationFrame(restore)
-    })
+    frameId = window.requestAnimationFrame(restoreWhenVisible)
     return () => {
-      cancelAnimationFrame(frame)
-      cancelAnimationFrame(nestedFrame)
+      if (frameId !== null) window.cancelAnimationFrame(frameId)
     }
   }, [isReady, key, location.key, location.pathname, location.search, navigationType])
 
@@ -113,6 +164,17 @@ export function useListScrollRestoration({ key, isReady, listState = null }) {
 export function useDetailBackNavigation(listKey, fallbackPath) {
   const location = useLocation()
   const navigate = useNavigate()
+
+  useEffect(() => {
+    if (location.state?.fromList !== listKey) return undefined
+
+    // The list restores itself before paint. Native restoration would apply the
+    // saved list offset to the still-mounted detail DOM during the POP instead.
+    // The layout releases this only after the next non-detail route commits, so
+    // native restoration stays disabled for the entire POP transition.
+    enableManualHistoryScrollRestoration()
+    return undefined
+  }, [listKey, location.state])
 
   const goBack = useCallback(() => {
     const delta = getDetailBackDelta(location.state, listKey)
@@ -124,6 +186,15 @@ export function useDetailBackNavigation(listKey, fallbackPath) {
   }, [fallbackPath, listKey, location.state, navigate])
 
   return goBack
+}
+
+export function useReleaseManualHistoryScrollRestoration() {
+  const location = useLocation()
+
+  useEffect(() => {
+    if (location.state?.fromList) return
+    return scheduleManualHistoryScrollRestorationRelease()
+  }, [location.key, location.state])
 }
 
 export function useScrollToTopOnPush() {

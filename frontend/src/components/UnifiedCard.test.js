@@ -52,6 +52,14 @@ describe('CardCaption', () => {
     expect(markup).toContain('ml-auto flex shrink-0 items-center')
     expect(markup).toContain('aria-label="Progress: 0/1"')
   })
+
+  it('keeps the custom marker off the narrow caption row', () => {
+    const markup = renderToStaticMarkup(createElement(CardCaption, {
+      card: { name: 'Manual Pikachu', is_custom: true },
+    }))
+
+    expect(markup).not.toContain('Custom')
+  })
 })
 
 describe('CompactCardArtwork', () => {

@@ -39,7 +39,14 @@ export function CompactCardIdentity({
         loading={loading}
       />
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        {name && <p className="truncate text-sm font-semibold leading-tight text-text-primary">{name}</p>}
+        {name && (
+          <div className="flex min-w-0 items-center gap-1.5">
+            <p className="truncate text-sm font-semibold leading-tight text-text-primary">{name}</p>
+            {card?.is_custom && (
+              <span className="badge-yellow shrink-0 px-1.5 py-0.5 text-[10px]">Custom</span>
+            )}
+          </div>
+        )}
         {(setNumber || languageLabel || ownPhoto) && (
           <p className="flex min-w-0 items-center gap-1.5 text-xs leading-tight">
             {setNumber && <span className="truncate font-mono font-bold text-brand-red">{setNumber}</span>}

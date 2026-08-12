@@ -184,6 +184,7 @@ def get_set_checklist(
         query = db.query(Card).filter(
             Card.set_id == tcg_id,
             Card.lang == set_lang,
+            Card.is_custom == False,
         )
         if not fallback_enabled:
             query = query.filter(Card.data_source_lang.is_(None))
@@ -196,7 +197,10 @@ def get_set_checklist(
     # already have an explicit language in their DB id. Do not relabel sibling
     # rows like me04-001_en as German cards.
     if not cards:
-        legacy_cards = db.query(Card).filter(Card.set_id == tcg_id).all()
+        legacy_cards = db.query(Card).filter(
+            Card.set_id == tcg_id,
+            Card.is_custom == False,
+        ).all()
         repairable_cards = [
             card for card in legacy_cards
             if not has_lang_suffix(card.id)

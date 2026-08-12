@@ -255,6 +255,7 @@ def _serialize_card(bc: BinderCard, show_values: bool) -> dict:
         "set_name": card.set_ref.name if card.set_ref else None,
         "number": card.number,
         "rarity": card.rarity,
+        "is_custom": bool(card.is_custom),
         "lang": card.lang,
         "variant": variant,
         "data_source_lang": card.data_source_lang,
