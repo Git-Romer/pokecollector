@@ -1,6 +1,8 @@
+import fcntl
 import logging
 import os
 import secrets
+import tempfile
 from datetime import datetime, timedelta
 
 import bcrypt
@@ -42,22 +44,48 @@ def resolve_jwt_secret() -> str:
         )
 
     secret_file = _default_secret_file()
+    secret_dir = os.path.dirname(secret_file) or "."
+    tmp_path = None
     try:
-        if os.path.exists(secret_file):
-            with open(secret_file, "r", encoding="utf-8") as fh:
-                existing = fh.read().strip()
-            if existing:
-                return existing
+        os.makedirs(secret_dir, mode=0o700, exist_ok=True)
 
-        os.makedirs(os.path.dirname(secret_file), exist_ok=True)
-        new_secret = secrets.token_urlsafe(48)
-        tmp_path = f"{secret_file}.tmp"
-        fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(new_secret)
-        os.replace(tmp_path, secret_file)
-        logger.info("Generated and persisted a JWT signing key at %s", secret_file)
-        return new_secret
+        # Multiple workers can start at the same time. Serialize the read/create path so
+        # every worker uses the same key instead of racing through a shared fixed temp file.
+        lock_path = f"{secret_file}.lock"
+        lock_fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+
+            if os.path.exists(secret_file):
+                with open(secret_file, "r", encoding="utf-8") as fh:
+                    existing = fh.read().strip()
+                if existing:
+                    return existing
+
+            new_secret = secrets.token_urlsafe(48)
+            tmp_fd, tmp_path = tempfile.mkstemp(prefix=".jwt_secret.", dir=secret_dir)
+            try:
+                os.fchmod(tmp_fd, 0o600)
+                with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
+                    tmp_fd = None
+                    fh.write(new_secret)
+                    fh.flush()
+                    os.fsync(fh.fileno())
+                os.replace(tmp_path, secret_file)
+                tmp_path = None
+            finally:
+                if tmp_fd is not None:
+                    os.close(tmp_fd)
+                if tmp_path is not None:
+                    try:
+                        os.unlink(tmp_path)
+                    except FileNotFoundError:
+                        pass
+
+            logger.info("Generated and persisted a JWT signing key at %s", secret_file)
+            return new_secret
+        finally:
+            os.close(lock_fd)
     except OSError as exc:
         logger.warning(
             "Could not persist a JWT signing key (%s); using an ephemeral one. Set "

@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
 try:
@@ -57,6 +58,36 @@ class JwtSecretResolutionTests(unittest.TestCase):
         self.assertTrue(first)
         # survives "restart": a second resolution reads the same persisted key
         self.assertEqual(first, second)
+
+    def test_concurrent_startup_uses_one_persisted_key(self):
+        env = self._env()
+        with patch.dict(os.environ, env, clear=False):
+            os.environ.pop("JWT_SECRET_KEY", None)
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                secrets = list(executor.map(lambda _: resolve_jwt_secret(), range(16)))
+        self.assertEqual(len(set(secrets)), 1)
+
+    def test_empty_persisted_file_is_repaired(self):
+        os.makedirs(os.path.dirname(self.secret_file), exist_ok=True)
+        with open(self.secret_file, "w", encoding="utf-8"):
+            pass
+        env = self._env()
+        with patch.dict(os.environ, env, clear=False):
+            os.environ.pop("JWT_SECRET_KEY", None)
+            secret = resolve_jwt_secret()
+        self.assertTrue(secret)
+        with open(self.secret_file, "r", encoding="utf-8") as fh:
+            self.assertEqual(fh.read(), secret)
+
+    def test_relative_secret_file_path_is_supported(self):
+        old_cwd = os.getcwd()
+        self.addCleanup(os.chdir, old_cwd)
+        os.chdir(self.tmp.name)
+        with patch.dict(os.environ, {"JWT_SECRET_FILE": "jwt.key"}, clear=False):
+            os.environ.pop("JWT_SECRET_KEY", None)
+            secret = resolve_jwt_secret()
+        self.assertTrue(secret)
+        self.assertTrue(os.path.exists("jwt.key"))
 
     def test_persisted_key_file_is_not_world_readable(self):
         env = self._env()
