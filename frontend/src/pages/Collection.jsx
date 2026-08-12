@@ -2,7 +2,7 @@ import { useState, useMemo, useId, useRef, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Trash2, Check, X, Filter, SortAsc, Download, Upload, ChevronUp, ChevronDown, Search, PenLine, Grid2X2, List, Library, BookOpen, Heart, Copy, ArrowLeft, Package } from 'lucide-react'
+import { Trash2, Check, X, Filter, SortAsc, Download, Upload, Loader2, ChevronUp, ChevronDown, Search, PenLine, Grid2X2, List, Library, BookOpen, Heart, Copy, ArrowLeft, Package } from 'lucide-react'
 import { getCollection, updateCollectionItem, updateCardCustomImage, removeFromCollection, importCollectionCsv, exportCSV, exportPDF, getSets, addToCollection, getBinders, addCollectionItemToBinder, getWishlist, getApiErrorMessage, uploadCollectionItemPhoto, deleteCollectionItemPhoto } from '../api/client'
 import { CustomCardModal } from '../components/CardItem'
 import { useSettings } from '../contexts/SettingsContext'
@@ -526,12 +526,63 @@ function CollectionEditModal({ item, onClose }) {
     { id: 'binder', label: t('cardTabs.binder') },
   ]
 
+  const ownPhotoControls = !card?.is_custom ? (
+    <div className="space-y-2">
+      <div>
+        <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
+          {t('collection.ownPhotoLabel')}
+        </p>
+        <p className="mt-1 text-xs text-text-secondary">{t('collection.ownPhotoDesc')}</p>
+      </div>
+      <input
+        id={ownPhotoInputId}
+        type="file"
+        accept="image/*"
+        className="sr-only"
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (file) ownPhotoMutation.mutate(file)
+          e.target.value = ''
+        }}
+        disabled={ownPhotoMutation.isPending}
+      />
+      <div className="flex flex-wrap gap-2">
+        <label
+          htmlFor={ownPhotoInputId}
+          aria-disabled={ownPhotoMutation.isPending}
+          aria-label={ownPhotoMutation.isPending ? t('collection.processingOwnPhoto') : undefined}
+          className={clsx(
+            'btn-ghost inline-flex min-w-36 items-center justify-center gap-2 text-sm leading-none',
+            ownPhotoMutation.isPending ? 'cursor-not-allowed opacity-50' : 'cursor-pointer',
+          )}
+        >
+          {ownPhotoMutation.isPending ? (
+            <Loader2 size={18} className="animate-spin" aria-hidden />
+          ) : (
+            <>
+              <Upload size={16} className="shrink-0" aria-hidden />
+              <span>{hasOwnPhoto ? t('collection.replaceOwnPhoto') : t('collection.uploadOwnPhoto')}</span>
+            </>
+          )}
+        </label>
+        {hasOwnPhoto && (
+          <button
+            type="button"
+            onClick={() => removeOwnPhotoMutation.mutate()}
+            disabled={removeOwnPhotoMutation.isPending}
+            className="btn-ghost cursor-pointer text-sm"
+          >
+            {t('collection.removeOwnPhoto')}
+          </button>
+        )}
+      </div>
+    </div>
+  ) : null
+
   return (
     <CardDialog
       card={card}
       image={cardImage}
-      // Only when the photo is what is actually on screen — a custom image
-      // URL takes precedence over it above.
       imageOverlay={cardImage === ownPhotoUrl && <OwnPhotoOverlayBadge t={t} />}
       imageAccessory={ownPhotoUrl && hasReferenceArtwork ? (
         <div className="grid grid-cols-2 gap-2" role="group" aria-label={t('collection.photoSource')}>
@@ -540,7 +591,7 @@ function CollectionEditModal({ item, onClose }) {
             onClick={() => setSelectedImageSource('catalogue')}
             aria-pressed={selectedImageSource === 'catalogue'}
             className={clsx(
-              'rounded-lg border px-2 py-2 text-xs font-bold transition-colors',
+              'cursor-pointer rounded-lg border px-2 py-2 text-xs font-bold transition-colors',
               selectedImageSource === 'catalogue'
                 ? 'border-brand-red bg-brand-red/15 text-brand-red'
                 : 'border-border bg-bg-card text-text-secondary hover:bg-bg-elevated'
@@ -553,7 +604,7 @@ function CollectionEditModal({ item, onClose }) {
             onClick={() => setSelectedImageSource('own')}
             aria-pressed={selectedImageSource === 'own'}
             className={clsx(
-              'rounded-lg border px-2 py-2 text-xs font-bold transition-colors',
+              'cursor-pointer rounded-lg border px-2 py-2 text-xs font-bold transition-colors',
               selectedImageSource === 'own'
                 ? 'border-brand-red bg-brand-red/15 text-brand-red'
                 : 'border-border bg-bg-card text-text-secondary hover:bg-bg-elevated'
@@ -732,80 +783,65 @@ function CollectionEditModal({ item, onClose }) {
 
               {canEditCustomImage && (
                 <div className="bg-bg-card rounded-xl p-3 space-y-2 border border-border">
-                  <div>
-                    <label htmlFor={customImageInputId} className="text-xs text-text-muted font-medium uppercase tracking-wide block">
-                      {t('card.customImageUrl')}
-                    </label>
-                    <p className="text-xs text-text-secondary mt-1">
-                      {t('card.customImageUrlDesc')}
-                    </p>
-                  </div>
-                  <input
-                    id={customImageInputId}
-                    type="url"
-                    placeholder="https://..."
-                    value={customImageUrl}
-                    onChange={(e) => setCustomImageUrl(e.target.value)}
-                    className="input w-full"
-                  />
-                  {customImageProxyUrl && (
-                    <div className="w-20 h-28 rounded overflow-hidden border border-border">
-                      <img src={customImageProxyUrl} alt="" className="w-full h-full object-cover" />
-                    </div>
+                  {!hasOwnPhoto && (
+                    <>
+                      <div>
+                        <label htmlFor={customImageInputId} className="text-xs text-text-muted font-medium uppercase tracking-wide block">
+                          {t('card.customImageUrl')}
+                        </label>
+                        <p className="text-xs text-text-secondary mt-1">
+                          {t('card.customImageUrlDesc')}
+                        </p>
+                      </div>
+                      <input
+                        id={customImageInputId}
+                        type="url"
+                        placeholder="https://..."
+                        value={customImageUrl}
+                        onChange={(e) => setCustomImageUrl(e.target.value)}
+                        className="input w-full"
+                      />
+                      {customImageProxyUrl && (
+                        <div className="w-20 h-28 rounded overflow-hidden border border-border">
+                          <img src={customImageProxyUrl} alt="" className="w-full h-full object-cover" />
+                        </div>
+                      )}
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => customImageMutation.mutate(customImageUrl.trim())}
+                          disabled={customImageMutation.isPending || customImageUrl.trim() === savedCustomImageUrl}
+                          className="btn-primary text-sm"
+                        >
+                          {customImageMutation.isPending ? t('common.saving') : t('card.saveCustomImage')}
+                        </button>
+                        {savedCustomImageUrl && (
+                          <button
+                            type="button"
+                            onClick={() => customImageMutation.mutate('')}
+                            disabled={customImageMutation.isPending}
+                            className="btn-ghost text-sm"
+                          >
+                            {t('card.clearCustomImage')}
+                          </button>
+                        )}
+                      </div>
+                    </>
                   )}
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => customImageMutation.mutate(customImageUrl.trim())}
-                      disabled={customImageMutation.isPending || customImageUrl.trim() === savedCustomImageUrl}
-                      className="btn-primary text-sm"
-                    >
-                      {customImageMutation.isPending ? t('common.saving') : t('card.saveCustomImage')}
-                    </button>
-                    {savedCustomImageUrl && (
-                      <button
-                        type="button"
-                        onClick={() => customImageMutation.mutate('')}
-                        disabled={customImageMutation.isPending}
-                        className="btn-ghost text-sm"
-                      >
-                        {t('card.clearCustomImage')}
-                      </button>
-                    )}
+                  <div className={clsx(!hasOwnPhoto && 'border-t border-border pt-3')}>
+                    {ownPhotoControls}
                   </div>
                 </div>
               )}
 
-              {/* Available for catalogue cards with or without official art.
-                  Manually created cards already own their editable artwork. */}
-              {!card?.is_custom && <div className="bg-bg-card rounded-xl p-3 space-y-2 border border-border">
-                <label htmlFor={ownPhotoInputId} className="text-xs text-text-muted font-medium uppercase tracking-wide block">
-                  {t('collection.ownPhotoLabel')}
-                </label>
-                <p className="text-xs text-text-secondary">{t('collection.ownPhotoDesc')}</p>
-                <input
-                  id={ownPhotoInputId}
-                  type="file"
-                  accept="image/*"
-                  className="text-xs text-text-secondary file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-bg-elevated file:text-text-primary"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) ownPhotoMutation.mutate(file)
-                    e.target.value = ''
-                  }}
-                  disabled={ownPhotoMutation.isPending}
-                />
-                {ownPhotoUrl && (
-                  <button
-                    type="button"
-                    onClick={() => removeOwnPhotoMutation.mutate()}
-                    disabled={removeOwnPhotoMutation.isPending}
-                    className="btn-ghost text-sm block"
-                  >
-                    {t('collection.removeOwnPhoto')}
-                  </button>
-                )}
-              </div>}
+              {/* Cards without catalogue artwork share one box for both ways
+                  of supplying an image. Cards with artwork only need this
+                  compact private-photo control. */}
+              {!canEditCustomImage && ownPhotoControls && (
+                <div className="rounded-xl border border-border bg-bg-card p-3">
+                  {ownPhotoControls}
+                </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
                 <button

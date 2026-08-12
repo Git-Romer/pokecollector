@@ -1268,7 +1268,7 @@ export default function BinderDetail() {
                 onClick={() => setSelectedImageSource('catalogue')}
                 aria-pressed={selectedImageSource === 'catalogue'}
                 className={clsx(
-                  'rounded-lg border px-2 py-2 text-xs font-bold transition-colors',
+                  'cursor-pointer rounded-lg border px-2 py-2 text-xs font-bold transition-colors',
                   selectedImageSource === 'catalogue'
                     ? 'border-brand-red bg-brand-red/15 text-brand-red'
                     : 'border-border bg-bg-card text-text-secondary hover:bg-bg-elevated'
@@ -1281,7 +1281,7 @@ export default function BinderDetail() {
                 onClick={() => setSelectedImageSource('own')}
                 aria-pressed={selectedImageSource === 'own'}
                 className={clsx(
-                  'rounded-lg border px-2 py-2 text-xs font-bold transition-colors',
+                  'cursor-pointer rounded-lg border px-2 py-2 text-xs font-bold transition-colors',
                   selectedImageSource === 'own'
                     ? 'border-brand-red bg-brand-red/15 text-brand-red'
                     : 'border-border bg-bg-card text-text-secondary hover:bg-bg-elevated'
