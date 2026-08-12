@@ -25,6 +25,7 @@ try:
         InvalidPhoto,
         JPEG_QUALITY,
         MAX_EDGE,
+        MAX_SOURCE_PIXELS,
         MAX_UPLOAD_BYTES,
         normalize_photo,
     )
@@ -176,6 +177,16 @@ class NormalizePhotoTests(unittest.TestCase):
     def test_an_absurdly_large_upload_is_refused_before_decoding(self):
         with self.assertRaises(InvalidPhoto):
             normalize_photo(b"\xff\xd8\xff" + b"0" * MAX_UPLOAD_BYTES)
+
+    def test_pathological_dimensions_are_rejected_before_pixel_decode(self):
+        from unittest.mock import Mock, patch
+
+        header_only = Mock()
+        header_only.size = (MAX_SOURCE_PIXELS + 1, 1)
+        with patch("PIL.Image.open", return_value=header_only), patch("PIL.ImageOps.exif_transpose") as transpose:
+            with self.assertRaises(InvalidPhoto):
+                normalize_photo(b"plausible image header")
+        transpose.assert_not_called()
 
 
 if __name__ == "__main__":

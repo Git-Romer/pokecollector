@@ -172,6 +172,9 @@ export const uploadCollectionItemPhoto = (itemId, file) => {
 export const deleteCollectionItemPhoto = (itemId) =>
   api.delete(`/collection/${itemId}/photo`).then(r => r.data)
 
+export const deleteAllCollectionCardPhotos = () =>
+  api.delete('/settings/card-photos').then(r => r.data)
+
 export const bulkAddToCollection = (items) => api.post('/collection/bulk-add', { items }).then(r => r.data)
 export const importCollectionCsv = (file) => {
   const formData = new FormData()

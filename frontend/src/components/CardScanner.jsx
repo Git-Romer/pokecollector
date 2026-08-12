@@ -15,14 +15,28 @@ import { parseMoneyInputValue } from '../utils/moneyInput'
 import { CardDisplay } from './card-system'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { isSupportedScannerImage, SCANNER_IMAGE_ACCEPT } from '../utils/scannerImages'
+import { hasCatalogueImage } from '../utils/imageUrl'
+
+export async function attachScanFallbackPhoto({ created, match, getPhoto, uploadPhoto = uploadCollectionItemPhoto }) {
+  if (!getPhoto || created?.has_scan_photo || hasCatalogueImage(match)) return false
+  try {
+    const photo = await getPhoto()
+    if (!photo) return false
+    await uploadPhoto(created.id, photo)
+    return true
+  } catch {
+    // Photo retention is best-effort and must never undo the collection add.
+    return false
+  }
+}
 
 // ─── Add-to-Collection Modal für Scan-Ergebnis ──────────────────────────────
 // `getPhoto`, when given, resolves to the Blob/File the user actually scanned.
 // Callers decide how to source it: CardScanner has the raw File in hand,
 // ScanQueue fetches it from the job's stored bytes. Called only after the
 // collection item exists, and only matters for cards TCGdex has no scan of —
-// but own-photo priority means it always wins once attached, so it is worth
-// keeping either way, and a failure here must never block the add itself.
+// and only when the matched card has no catalogue artwork and no saved fallback.
+// A failed photo attach must never block adding the card itself.
 export function ScanAddModal({ match, defaultLang, getPhoto, onClose, onAdded }) {
   const { t, exchangeRate, exchangeRateReady } = useSettings()
   const [quantity, setQuantity] = useState(1)
@@ -48,14 +62,7 @@ export function ScanAddModal({ match, defaultLang, getPhoto, onClose, onAdded })
       // Never overwrite a photo the item already has — grouping into an
       // existing row (same card/variant/condition/lang) is common, and a
       // second scan of the same card is not necessarily a better photo.
-      if (getPhoto && !created.has_scan_photo) {
-        try {
-          const photo = await getPhoto()
-          if (photo) await uploadCollectionItemPhoto(created.id, photo)
-        } catch {
-          // Best-effort: the card is already added either way.
-        }
-      }
+      await attachScanFallbackPhoto({ created, match, getPhoto })
       invalidateCardState(queryClient)
       invalidateTcgdexFilterLanguages(queryClient)
       toast.success(`${match.name} ${t('scanner.addedToCollection')}!`)

@@ -31,7 +31,7 @@ vi.mock('axios', () => ({
   },
 }))
 
-const { uploadCollectionItemPhoto, getApiErrorMessage } = await import('./client')
+const { uploadCollectionItemPhoto, deleteAllCollectionCardPhotos, getApiErrorMessage } = await import('./client')
 
 describe('uploadCollectionItemPhoto', () => {
   beforeEach(() => post.mockClear())
@@ -86,5 +86,14 @@ describe('getApiErrorMessage on a validation failure', () => {
       const out = getApiErrorMessage({ response: { data: { detail } } }, 'fallback')
       expect(typeof out).toBe('string')
     }
+  })
+})
+
+describe('deleteAllCollectionCardPhotos', () => {
+  beforeEach(() => del.mockClear())
+
+  it('uses the owner-scoped settings cleanup endpoint', async () => {
+    await deleteAllCollectionCardPhotos()
+    expect(del).toHaveBeenCalledWith('/settings/card-photos')
   })
 })

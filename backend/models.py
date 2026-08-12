@@ -172,15 +172,15 @@ class CollectionItem(Base):
     card = relationship("Card", back_populates="collection_items")
 
 
-class CollectionItemPhoto(Base):
-    """The owner's own photograph of a card the catalogue has no scan of.
+class CollectionCardPhoto(Base):
+    """One private photograph per owner and catalogue card.
 
     Roughly one card in fourteen — trainer kits, Japanese printings, the newest
     energy subsets — has no TCGdex image, and the collection shows a card back
     for it. The scanner already took a photograph of the physical card, so this
     keeps that photo instead of discarding it on resolve.
 
-    Deliberately hung off the collection row rather than the card:
+    Deliberately keyed by owner and card rather than stored on the shared card:
 
       * `cards` is a catalogue shared by every user of the instance, and
         `/api/images` is mounted without authentication (see api/images.py,
@@ -189,21 +189,23 @@ class CollectionItemPhoto(Base):
       * A photograph of a card is also a photograph of whatever it was resting
         on. That is the owner's, not the catalogue's.
 
-    So it lives here, is served only to its owner, and is a separate table so
-    the bytes are never dragged along by an ordinary collection query.
+    All grouped collection rows for the same card share this photo. That matches
+    catalogue artwork: condition, variant, price and quantity do not create a
+    different printing. The bytes remain in a separate authenticated table so
+    ordinary collection queries only ever load a yes/no flag.
     """
-    __tablename__ = "collection_item_photos"
+    __tablename__ = "collection_card_photos"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    collection_item_id = Column(
-        Integer, ForeignKey("collection.id", ondelete="CASCADE"), nullable=False, unique=True, index=True
-    )
-    # Denormalised from the collection row so the serving endpoint can authorise
-    # in one query, and so an orphaned photo can never be served to anyone.
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    card_id = Column(String, ForeignKey("cards.id", ondelete="CASCADE"), nullable=False, index=True)
     data = Column(LargeBinary, nullable=False)
     content_type = Column(String, default="image/jpeg")
     created_at = Column(DateTime, default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "card_id", name="uq_collection_card_photo_user_card"),
+    )
 
 
 class WishlistItem(Base):

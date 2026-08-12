@@ -18,3 +18,18 @@ export function invalidateCardState(queryClient, { setId } = {}) {
     queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'set-checklist' })
   }
 }
+
+/** Refresh every owner-only surface whose payload carries has_scan_photo. */
+export function invalidateCollectionPhotoState(queryClient) {
+  // Blob queries use staleTime Infinity. Remove them so replacements/deletions
+  // cannot keep rendering a stale object after a failed 404 refetch.
+  queryClient.removeQueries({ queryKey: ['collection-photo'] })
+  invalidateCardState(queryClient)
+  const affected = new Set([
+    'duplicates',
+    'binder-cards',
+    'binder-entry-equivalents',
+    'binder-print-optimization',
+  ])
+  queryClient.invalidateQueries({ predicate: (query) => affected.has(query.queryKey[0]) })
+}

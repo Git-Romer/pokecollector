@@ -4,12 +4,12 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from api.auth import get_current_user
 from database import get_db
-from models import BinderCard, CollectionItem, CollectionItemPhoto, Card, ProductCard, ProductPurchase, Set, User
+from models import BinderCard, CollectionItem, CollectionCardPhoto, Card, ProductCard, ProductPurchase, Set, User
 from schemas import CollectionItemCreate, CollectionItemUpdate, CollectionItemResponse, BulkCollectionAddRequest, BulkCollectionAddResponse
 from services import pokemon_api
 from services.card_fallbacks import apply_cross_language_fallbacks, build_missing_language_card
 from services.card_numbers import card_number_matches
-from services.collection_photos import InvalidPhoto, normalize_photo
+from services.collection_photos import MAX_UPLOAD_BYTES, InvalidPhoto, normalize_photo
 from services.card_visibility import visible_any_card_filter, visible_card_filter
 from services.binder_allocations import collection_item_allocated_quantity
 from services.digital_sets import digital_sets_enabled
@@ -74,7 +74,7 @@ def _product_source_payload(product_card: ProductCard, product) -> dict:
     }
 
 
-def _chunks(values: list[int], size: int):
+def _chunks(values: list, size: int):
     for start in range(0, len(values), size):
         yield values[start:start + size]
 
@@ -124,20 +124,20 @@ def _annotate_scan_photos(db: Session, current_user: User, items: list[Collectio
     for item in items:
         item.has_scan_photo = False
 
-    item_ids = [item.id for item in items if item.id is not None]
-    if not item_ids:
+    card_ids = {item.card_id for item in items if item.card_id}
+    if not card_ids:
         return items
 
-    with_photos: set[int] = set()
-    for chunk in _chunks(item_ids, 500):
-        rows = db.query(CollectionItemPhoto.collection_item_id).filter(
-            CollectionItemPhoto.user_id == current_user.id,
-            CollectionItemPhoto.collection_item_id.in_(chunk),
+    with_photos: set[str] = set()
+    for chunk in _chunks(list(card_ids), 500):
+        rows = db.query(CollectionCardPhoto.card_id).filter(
+            CollectionCardPhoto.user_id == current_user.id,
+            CollectionCardPhoto.card_id.in_(chunk),
         ).all()
         with_photos.update(row[0] for row in rows)
 
     for item in items:
-        item.has_scan_photo = item.id in with_photos
+        item.has_scan_photo = item.card_id in with_photos
     return items
 
 
@@ -842,7 +842,18 @@ def remove_from_collection(
             detail=f"This collection item has {allocated_quantity} copie(s) assigned to binders. Remove them from those binders first.",
         )
 
+    card_id = item.card_id
     db.delete(item)
+    db.flush()
+    remaining = db.query(CollectionItem.id).filter(
+        CollectionItem.user_id == current_user.id,
+        CollectionItem.card_id == card_id,
+    ).first()
+    if not remaining:
+        db.query(CollectionCardPhoto).filter(
+            CollectionCardPhoto.user_id == current_user.id,
+            CollectionCardPhoto.card_id == card_id,
+        ).delete(synchronize_session=False)
     db.commit()
     return {"message": "Removed from collection"}
 
@@ -860,22 +871,27 @@ def get_collection_item_photo(
     of the shared catalogue. That is also why this is not on the images router,
     which is mounted without authentication.
 
-    `private` in Cache-Control keeps it out of any shared proxy cache for the
-    same reason; it is still cached by the browser, which is what makes the grid
-    quick on a second visit.
+    `no-store` is intentional. Authenticated responses must never be replayed
+    from a browser or proxy cache after another user signs into the same client.
     """
-    photo = db.query(CollectionItemPhoto).join(
-        CollectionItem, CollectionItem.id == CollectionItemPhoto.collection_item_id
-    ).filter(
-        CollectionItemPhoto.collection_item_id == item_id,
+    entry = db.query(CollectionItem).filter(
+        CollectionItem.id == item_id,
         CollectionItem.user_id == current_user.id,
     ).first()
+    photo = db.query(CollectionCardPhoto).filter(
+        CollectionCardPhoto.user_id == current_user.id,
+        CollectionCardPhoto.card_id == entry.card_id,
+    ).first() if entry else None
     if not photo:
         raise HTTPException(status_code=404, detail="No photo for this collection item")
     return Response(
         content=photo.data,
         media_type=photo.content_type or "image/jpeg",
-        headers={"Cache-Control": "private, max-age=86400"},
+        headers={
+            "Cache-Control": "no-store",
+            "Pragma": "no-cache",
+            "Vary": "Authorization, Cookie",
+        },
     )
 
 
@@ -904,20 +920,23 @@ async def upload_collection_item_photo(
     ).first()
     if not entry:
         raise HTTPException(status_code=404, detail="Collection item not found")
+    if entry.card and entry.card.is_custom:
+        raise HTTPException(status_code=400, detail="Custom cards already have editable artwork")
 
-    raw = await file.read()
+    raw = await file.read(MAX_UPLOAD_BYTES + 1)
+    await file.close()
     try:
         data, content_type = normalize_photo(raw)
     except InvalidPhoto as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    photo = db.query(CollectionItemPhoto).filter(
-        CollectionItemPhoto.collection_item_id == entry.id
+    photo = db.query(CollectionCardPhoto).filter(
+        CollectionCardPhoto.user_id == current_user.id,
+        CollectionCardPhoto.card_id == entry.card_id,
     ).first()
     if not photo:
-        photo = CollectionItemPhoto(collection_item_id=entry.id)
+        photo = CollectionCardPhoto(user_id=current_user.id, card_id=entry.card_id)
         db.add(photo)
-    photo.user_id = current_user.id
     photo.data = data
     photo.content_type = content_type
     db.commit()
@@ -935,12 +954,14 @@ def delete_collection_item_photo(
     Present because the photo is the user's own: whatever ended up in frame, they
     can take it back out without deleting the collection entry itself.
     """
-    photo = db.query(CollectionItemPhoto).join(
-        CollectionItem, CollectionItem.id == CollectionItemPhoto.collection_item_id
-    ).filter(
-        CollectionItemPhoto.collection_item_id == item_id,
+    entry = db.query(CollectionItem).filter(
+        CollectionItem.id == item_id,
         CollectionItem.user_id == current_user.id,
     ).first()
+    photo = db.query(CollectionCardPhoto).filter(
+        CollectionCardPhoto.user_id == current_user.id,
+        CollectionCardPhoto.card_id == entry.card_id,
+    ).first() if entry else None
     if not photo:
         raise HTTPException(status_code=404, detail="No photo for this collection item")
     db.delete(photo)

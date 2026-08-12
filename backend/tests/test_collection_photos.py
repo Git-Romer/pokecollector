@@ -9,8 +9,8 @@ Most of what is asserted here is access control. A photograph of a card is also
 a photograph of whatever it was resting on, and the obvious place to have put it
 — the shared `cards` catalogue, served by the unauthenticated /api/images router
 — would have handed every user's photos to anyone who could reach the instance.
-It hangs off the collection row instead, and the tests below are what holds that
-decision in place.
+It is keyed by owner and catalogue card, and the tests below hold that privacy
+boundary and the sharing across grouped collection rows in place.
 """
 
 import io
@@ -23,6 +23,7 @@ try:
 
     from api.auth import get_current_user
     from api.collection import _annotate_scan_photos, router as collection_router
+    from api.settings import router as settings_router
     from database import get_db
     API_TEST_DEPS_AVAILABLE = True
 except ModuleNotFoundError:
@@ -83,6 +84,7 @@ class CollectionPhotoTests(unittest.TestCase):
 
         app = FastAPI()
         app.include_router(collection_router, prefix="/api/collection")
+        app.include_router(settings_router, prefix="/api/settings")
         app.dependency_overrides[get_current_user] = lambda: self.current_user
         app.dependency_overrides[get_db] = lambda: self.db
         self.client = TestClient(app)
@@ -101,6 +103,8 @@ class CollectionPhotoTests(unittest.TestCase):
         resp = self.client.get(f"/api/collection/{self.entry.id}/photo")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.headers["content-type"], "image/jpeg")
+        self.assertEqual(resp.headers["cache-control"], "no-store")
+        self.assertIn("Authorization", resp.headers["vary"])
         # Not compared byte for byte: storing re-encodes to strip EXIF, so what
         # comes back is the same picture rather than the same file.
         self.assertEqual(_dominant_colour(resp.content), _dominant_colour(_fake_jpeg_bytes()))
@@ -112,6 +116,25 @@ class CollectionPhotoTests(unittest.TestCase):
         self.assertEqual(self._upload(colour=(20, 180, 90)).status_code, 200)
         resp = self.client.get(f"/api/collection/{self.entry.id}/photo")
         self.assertEqual(_dominant_colour(resp.content), _dominant_colour(_fake_jpeg_bytes((20, 180, 90))))
+
+    def test_all_grouped_rows_for_the_same_card_share_one_photo(self):
+        from models import CollectionItem
+
+        second = CollectionItem(
+            card_id=self.entry.card_id,
+            user_id=self.owner.id,
+            quantity=1,
+            condition="LP",
+            lang="ja",
+        )
+        self.db.add(second)
+        self.db.commit()
+
+        self._upload()
+        self.assertEqual(self.client.get(f"/api/collection/{second.id}/photo").status_code, 200)
+        _annotate_scan_photos(self.db, self.owner, [self.entry, second])
+        self.assertTrue(self.entry.has_scan_photo)
+        self.assertTrue(second.has_scan_photo)
 
     def test_the_stored_photo_carries_no_exif(self):
         """The reason normalisation exists: a phone photo carries GPS, a camera
@@ -145,6 +168,13 @@ class CollectionPhotoTests(unittest.TestCase):
     def test_uploading_junk_is_refused(self):
         resp = self._upload(data=b"not an image at all")
         self.assertEqual(resp.status_code, 400)
+
+    def test_upload_larger_than_limit_is_refused(self):
+        from services.collection_photos import MAX_UPLOAD_BYTES
+
+        resp = self._upload(data=b"x" * (MAX_UPLOAD_BYTES + 1))
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.json()["detail"], "Image too large")
 
     def test_a_photo_cannot_be_attached_to_a_collection_row_that_does_not_exist(self):
         resp = self.client.post(
@@ -180,25 +210,56 @@ class CollectionPhotoTests(unittest.TestCase):
         _annotate_scan_photos(self.db, self.other, [self.entry])
         self.assertFalse(self.entry.has_scan_photo)
 
-    def test_deleting_the_collection_item_takes_the_photo_with_it(self):
-        """Otherwise removing a card would leave its photograph on disk.
+    def test_delete_all_removes_only_the_current_users_card_photos(self):
+        from models import CollectionItem
 
-        There is no ORM relationship between the two, so this is the database
-        CASCADE doing the work — which means the test only proves anything with
-        foreign keys actually enforced. SQLite has them off by default; Postgres,
-        which is what runs in production, always enforces them.
-        """
-        from sqlalchemy import text
-        from models import CollectionItemPhoto
-
-        self._upload()
-        self.db.execute(text("PRAGMA foreign_keys=ON"))
-        self.assertEqual(self.db.execute(text("PRAGMA foreign_keys")).scalar(), 1)
-        self.db.delete(self.entry)
+        other_entry = CollectionItem(
+            card_id=self.entry.card_id,
+            user_id=self.other.id,
+            quantity=1,
+            lang="ja",
+        )
+        self.db.add(other_entry)
         self.db.commit()
+
+        self._upload(colour=(200, 30, 30))
+        self.current_user = self.other
+        other_upload = self.client.post(
+            f"/api/collection/{other_entry.id}/photo",
+            files={"file": ("card.jpg", _fake_jpeg_bytes((20, 180, 90)), "image/jpeg")},
+        )
+        self.assertEqual(other_upload.status_code, 200)
+
+        self.current_user = self.owner
+        response = self.client.delete("/api/settings/card-photos")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["deleted"], 1)
+        self.assertEqual(self.client.get(f"/api/collection/{self.entry.id}/photo").status_code, 404)
+
+        self.current_user = self.other
+        self.assertEqual(self.client.get(f"/api/collection/{other_entry.id}/photo").status_code, 200)
+
+    def test_photo_survives_until_the_users_final_row_for_that_card_is_removed(self):
+        from models import CollectionCardPhoto, CollectionItem
+
+        second = CollectionItem(
+            card_id=self.entry.card_id,
+            user_id=self.owner.id,
+            quantity=1,
+            condition="LP",
+            lang="ja",
+        )
+        self.db.add(second)
+        self.db.commit()
+        self._upload()
+
+        self.assertEqual(self.client.delete(f"/api/collection/{self.entry.id}").status_code, 200)
+        self.assertEqual(self.client.get(f"/api/collection/{second.id}/photo").status_code, 200)
+        self.assertEqual(self.client.delete(f"/api/collection/{second.id}").status_code, 200)
         self.assertIsNone(
-            self.db.query(CollectionItemPhoto).filter(
-                CollectionItemPhoto.collection_item_id == self.entry.id
+            self.db.query(CollectionCardPhoto).filter(
+                CollectionCardPhoto.user_id == self.owner.id,
+                CollectionCardPhoto.card_id == second.card_id,
             ).first()
         )
 

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List
 from api.auth import get_current_user
 from database import get_db
-from models import Binder, BinderCard, Card, CollectionItem, Set, User, WishlistItem
+from models import Binder, BinderCard, Card, CollectionCardPhoto, CollectionItem, Set, User, WishlistItem
 from schemas import BinderCreate, BinderUpdate, BinderResponse, BinderCardUpdate, BinderCardSwitch, BinderPrintOptimizationApply
 from api.collection import ensure_card_exists, _find_card_by_code, _annotate_scan_photos
 from services import pokemon_api
@@ -428,6 +428,11 @@ def _build_print_optimization_preview(db: Session, binder: Binder, current_user:
     ).order_by(BinderCard.added_at.desc()).all()
 
     recommendations = []
+    owned_photo_card_ids = {
+        card_id for (card_id,) in db.query(CollectionCardPhoto.card_id).filter(
+            CollectionCardPhoto.user_id == current_user.id,
+        ).all()
+    } if binder_type == "collection" else set()
     candidate_cache: dict[str, Card | None] = {}
     reserved_suggested_quantities: dict[int, int] = {}
     binder_collection_item_quantities = {
@@ -477,9 +482,11 @@ def _build_print_optimization_preview(db: Session, binder: Binder, current_user:
                 reserved_suggested_quantities.get(target_item.id, 0) + required_quantity
             )
             savings_per_copy = current_price - suggested_price
-            # _binder_card_summary reads has_scan_photo straight off these
-            # objects, so it must already be set before either call below.
-            _annotate_scan_photos(db, current_user, [source_item, target_item])
+            # Resolve photo flags from the one owner-scoped lookup above. Doing
+            # this inside the recommendation loop via _annotate_scan_photos
+            # caused one extra query per recommendation.
+            source_item.has_scan_photo = source_item.card_id in owned_photo_card_ids
+            target_item.has_scan_photo = target_item.card_id in owned_photo_card_ids
             recommendations.append({
                 "binder_card_id": bc.id,
                 "required_quantity": required_quantity,

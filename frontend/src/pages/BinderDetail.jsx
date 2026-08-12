@@ -5,7 +5,7 @@ import { ArrowLeft, Plus, Trash2, Package, Star, Download, Upload, X, Heart, Min
 import { getBinderCards, removeCardFromBinder, removeBinderEntry, addCardToBinder, addCollectionItemToBinder, searchCards, getCollection, updateBinderEntry, getBinderEntryEquivalentPrints, getBinderPrintOptimization, applyBinderPrintOptimization, switchBinderEntryCard, addBinderEntryToWishlist, addBinderCardsToWishlist, convertWishlistBinderToCollection, convertCollectionBinderToWishlist, importBinderCsv, exportBinderCsv, getApiErrorMessage } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
-import { resolveCardImageUrl } from '../utils/imageUrl'
+import { hasCatalogueImage, resolveCardImageUrl } from '../utils/imageUrl'
 import { cardNumberMatches } from '../utils/cardNumbers'
 import { normalizeSearchText, textIncludes } from '../utils/textSearch'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
@@ -219,7 +219,7 @@ function BinderCsvImportModal({ t, isWishlist, onClose, onChooseFile, onDownload
 export default function BinderDetail() {
   const { binderId } = useParams()
   const navigate = useNavigate()
-  const { t, formatPrice, pricePrimaryField } = useSettings()
+  const { t, formatPrice, pricePrimaryField, settings } = useSettings()
   const queryClient = useQueryClient()
   const [showSearch, setShowSearch] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -232,12 +232,28 @@ export default function BinderDetail() {
   const [binderSortBy, setBinderSortBy] = useState('recent')
   const [badgeLegendOpen, setBadgeLegendOpen] = useState(false)
   const [selectedCard, setSelectedCard] = useState(null)
+  const [selectedImageSource, setSelectedImageSource] = useState('catalogue')
   const [selectedCardTab, setSelectedCardTab] = useState('binder')
   const selectedCardPhotoItem = selectedCard
-    ? { id: selectedCard.collection_item_id, has_scan_photo: selectedCard.has_scan_photo }
+    ? {
+        id: selectedCard.collection_item_id,
+        card_id: selectedCard.card_id || selectedCard.id,
+        has_scan_photo: selectedCard.has_scan_photo,
+        card: selectedCard,
+      }
     : null
-  const selectedCardOwnPhoto = showsOwnPhoto(selectedCardPhotoItem)
-  const selectedCardPhotoUrl = useCollectionPhotoUrl(selectedCardPhotoItem)
+  const preferOwnPhotos = settings.prefer_own_card_photos === 'true'
+  const selectedCardOwnPhoto = showsOwnPhoto(selectedCardPhotoItem, selectedCard, preferOwnPhotos)
+  const selectedCardPhotoUrl = useCollectionPhotoUrl(selectedCardPhotoItem, { eager: true })
+  const selectedCardHasReference = hasCatalogueImage(selectedCard) || Boolean(selectedCard?.custom_image_url)
+  const selectedCardDefaultSource = selectedCardOwnPhoto ? 'own' : 'catalogue'
+  const selectedCardImage = selectedImageSource === 'own' && selectedCardPhotoUrl
+    ? selectedCardPhotoUrl
+    : resolveCardImageUrl(selectedCard, 'large')
+
+  useEffect(() => {
+    setSelectedImageSource(selectedCardDefaultSource)
+  }, [selectedCard?.binder_card_id, selectedCardDefaultSource])
   const [showCsvImportModal, setShowCsvImportModal] = useState(false)
   const [showPrintOptimizer, setShowPrintOptimizer] = useState(false)
   const [selectedPrintOptimizationIds, setSelectedPrintOptimizationIds] = useState([])
@@ -1241,10 +1257,40 @@ export default function BinderDetail() {
       {selectedCard && (
         <CardDialog
           card={selectedCard}
-          image={selectedCardOwnPhoto && selectedCardPhotoUrl ? selectedCardPhotoUrl : resolveCardImageUrl(selectedCard)}
-          imageOverlay={selectedCardOwnPhoto && selectedCardPhotoUrl && (
+          image={selectedCardImage}
+          imageOverlay={selectedCardImage === selectedCardPhotoUrl && (
             <OwnPhotoOverlayBadge t={t} />
           )}
+          imageAccessory={selectedCardPhotoUrl && selectedCardHasReference ? (
+            <div className="grid grid-cols-2 gap-2" role="group" aria-label={t('collection.photoSource')}>
+              <button
+                type="button"
+                onClick={() => setSelectedImageSource('catalogue')}
+                aria-pressed={selectedImageSource === 'catalogue'}
+                className={clsx(
+                  'rounded-lg border px-2 py-2 text-xs font-bold transition-colors',
+                  selectedImageSource === 'catalogue'
+                    ? 'border-brand-red bg-brand-red/15 text-brand-red'
+                    : 'border-border bg-bg-card text-text-secondary hover:bg-bg-elevated'
+                )}
+              >
+                {t('collection.cataloguePhoto')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedImageSource('own')}
+                aria-pressed={selectedImageSource === 'own'}
+                className={clsx(
+                  'rounded-lg border px-2 py-2 text-xs font-bold transition-colors',
+                  selectedImageSource === 'own'
+                    ? 'border-brand-red bg-brand-red/15 text-brand-red'
+                    : 'border-border bg-bg-card text-text-secondary hover:bg-bg-elevated'
+                )}
+              >
+                {t('collection.myCardPhoto')}
+              </button>
+            </div>
+          ) : null}
           variantEffectSource={selectedCard.variant}
           price={selectedCard.price_market > 0 ? formatPrice(selectedCard.price_market) : null}
           tabs={[

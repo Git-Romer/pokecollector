@@ -20,7 +20,7 @@ import { normalizeSearchText, textIncludes } from '../utils/textSearch'
 import { getEffectiveCardPrice } from '../utils/prices'
 import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
-import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
+import { invalidateCardState, invalidateCollectionPhotoState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import { formatMoneyInputValue, parseMoneyInputValue } from '../utils/moneyInput'
 
@@ -258,7 +258,7 @@ function CsvImportModal({ t, onClose, onChooseFile, onDownloadTemplate, isImport
 // ─── CollectionEditModal ────────────────────────────────────────────────────
 // Opens when clicking any card in the collection. Allows editing + deleting.
 function CollectionEditModal({ item, onClose }) {
-  const { t, formatPrice, pricePrimaryField, exchangeRate, exchangeRateReady } = useSettings()
+  const { t, formatPrice, pricePrimaryField, exchangeRate, exchangeRateReady, settings } = useSettings()
   const confirmDialog = useConfirmDialog()
   const queryClient = useQueryClient()
   const card = item.card
@@ -280,8 +280,17 @@ function CollectionEditModal({ item, onClose }) {
   const [savedCustomImageUrl, setSavedCustomImageUrl] = useState(card?.custom_image_url || '')
   const [customImageVersion, setCustomImageVersion] = useState(0)
   const [activeTab, setActiveTab] = useState('manage')
+  const [hasOwnPhoto, setHasOwnPhoto] = useState(Boolean(item.has_scan_photo))
+  const [selectedImageSource, setSelectedImageSource] = useState(
+    settings.prefer_own_card_photos === 'true' ? 'own' : 'catalogue'
+  )
   const customImageInputId = useId()
   const ownPhotoInputId = useId()
+  const photoItem = { ...item, has_scan_photo: hasOwnPhoto }
+
+  useEffect(() => {
+    setHasOwnPhoto(Boolean(item.has_scan_photo))
+  }, [item.id, item.has_scan_photo])
 
   const prevItemRef = useRef({
     id: item.id,
@@ -351,10 +360,18 @@ function CollectionEditModal({ item, onClose }) {
   const customImageProxyUrl = canEditCustomImage && savedCustomImageUrl
     ? `${cardImageUrl(item.card_id, 'large')}?v=${customImageVersion}`
     : null
-  // A custom image URL the owner went and found still wins over their snapshot:
-  // supplying one is a deliberate act, and it is normally a proper scan.
-  const ownPhotoUrl = useCollectionPhotoUrl(item)
-  const cardImage = customImageProxyUrl || ownPhotoUrl || resolveCardImageUrl(card, 'large')
+  const ownPhotoUrl = useCollectionPhotoUrl(photoItem, { eager: true })
+  const catalogueImage = customImageProxyUrl || resolveCardImageUrl(card, 'large')
+  const hasReferenceArtwork = Boolean(customImageProxyUrl) || hasApiImage || Boolean(card?.is_custom)
+  const preferOwnPhoto = settings.prefer_own_card_photos === 'true'
+  const defaultImageSource = hasOwnPhoto && !card?.is_custom && (preferOwnPhoto || !hasReferenceArtwork)
+    ? 'own'
+    : 'catalogue'
+  const cardImage = selectedImageSource === 'own' && ownPhotoUrl ? ownPhotoUrl : catalogueImage
+
+  useEffect(() => {
+    setSelectedImageSource(defaultImageSource)
+  }, [item.id, defaultImageSource])
 
   const updateMutation = useMutation({
     mutationFn: () => updateCollectionItem(item.id, {
@@ -432,14 +449,14 @@ function CollectionEditModal({ item, onClose }) {
   // Invalidating the photo query is what makes the new picture appear: the blob
   // is cached with staleTime Infinity, so nothing refetches on its own.
   const refreshOwnPhoto = () => {
-    queryClient.invalidateQueries({ queryKey: ['collection-photo', item.id] })
-    invalidateCardState(queryClient)
+    invalidateCollectionPhotoState(queryClient)
   }
 
   const ownPhotoMutation = useMutation({
     mutationFn: (file) => uploadCollectionItemPhoto(item.id, file),
     onSuccess: () => {
       toast.success(t('collection.ownPhotoSaved'))
+      setHasOwnPhoto(true)
       refreshOwnPhoto()
     },
     // getApiErrorMessage rather than the raw detail: a 422 answers with an
@@ -453,6 +470,7 @@ function CollectionEditModal({ item, onClose }) {
     mutationFn: () => deleteCollectionItemPhoto(item.id),
     onSuccess: () => {
       toast.success(t('collection.ownPhotoRemoved'))
+      setHasOwnPhoto(false)
       refreshOwnPhoto()
     },
     onError: (err) => toast.error(getApiErrorMessage(err, t('common.error'))),
@@ -515,6 +533,36 @@ function CollectionEditModal({ item, onClose }) {
       // Only when the photo is what is actually on screen — a custom image
       // URL takes precedence over it above.
       imageOverlay={cardImage === ownPhotoUrl && <OwnPhotoOverlayBadge t={t} />}
+      imageAccessory={ownPhotoUrl && hasReferenceArtwork ? (
+        <div className="grid grid-cols-2 gap-2" role="group" aria-label={t('collection.photoSource')}>
+          <button
+            type="button"
+            onClick={() => setSelectedImageSource('catalogue')}
+            aria-pressed={selectedImageSource === 'catalogue'}
+            className={clsx(
+              'rounded-lg border px-2 py-2 text-xs font-bold transition-colors',
+              selectedImageSource === 'catalogue'
+                ? 'border-brand-red bg-brand-red/15 text-brand-red'
+                : 'border-border bg-bg-card text-text-secondary hover:bg-bg-elevated'
+            )}
+          >
+            {t('collection.cataloguePhoto')}
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedImageSource('own')}
+            aria-pressed={selectedImageSource === 'own'}
+            className={clsx(
+              'rounded-lg border px-2 py-2 text-xs font-bold transition-colors',
+              selectedImageSource === 'own'
+                ? 'border-brand-red bg-brand-red/15 text-brand-red'
+                : 'border-border bg-bg-card text-text-secondary hover:bg-bg-elevated'
+            )}
+          >
+            {t('collection.myCardPhoto')}
+          </button>
+        </div>
+      ) : null}
       variantEffectSource={variant}
       price={marketPrice > 0 ? formatPrice(marketPrice) : null}
       tabs={dialogTabs}
@@ -728,11 +776,9 @@ function CollectionEditModal({ item, onClose }) {
                 </div>
               )}
 
-              {/* Unconditional — unlike the custom-image-URL panel above, this
-                  is not limited to cards with no catalogue image. The own
-                  photo always wins over the catalogue scan once attached, so
-                  attaching one has to be possible for any card. */}
-              <div className="bg-bg-card rounded-xl p-3 space-y-2 border border-border">
+              {/* Available for catalogue cards with or without official art.
+                  Manually created cards already own their editable artwork. */}
+              {!card?.is_custom && <div className="bg-bg-card rounded-xl p-3 space-y-2 border border-border">
                 <label htmlFor={ownPhotoInputId} className="text-xs text-text-muted font-medium uppercase tracking-wide block">
                   {t('collection.ownPhotoLabel')}
                 </label>
@@ -759,7 +805,7 @@ function CollectionEditModal({ item, onClose }) {
                     {t('collection.removeOwnPhoto')}
                   </button>
                 )}
-              </div>
+              </div>}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
                 <button

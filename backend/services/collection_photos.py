@@ -31,6 +31,10 @@ JPEG_QUALITY = 88
 
 # Refuse anything that is not plausibly a card photo before decoding it.
 MAX_UPLOAD_BYTES = 12 * 1024 * 1024
+# Reject pathological dimensions from the header before Pillow decodes the
+# pixel buffer. 40 MP comfortably covers modern phone cameras while preventing
+# a small compressed decompression bomb from consuming unbounded memory.
+MAX_SOURCE_PIXELS = 40_000_000
 
 
 class InvalidPhoto(ValueError):
@@ -51,6 +55,9 @@ def normalize_photo(data: bytes) -> tuple[bytes, str]:
         from PIL import Image, ImageOps
 
         img = Image.open(io.BytesIO(data))
+        width, height = img.size
+        if width <= 0 or height <= 0 or width * height > MAX_SOURCE_PIXELS:
+            raise InvalidPhoto("Image dimensions are too large")
         # Honour the orientation flag before discarding it, or stripping EXIF
         # would leave photos from every phone on their side. This also means the
         # stored bytes are upright, so nothing downstream has to re-read it.

@@ -10,7 +10,7 @@ nothing to prefer the photo over the missing catalogue scan with.
 These tests cover each endpoint that got the same treatment: binders (the
 card list, print-optimization preview, and equivalent-prints), the dashboard's
 top-valuable-cards strip, and the analytics duplicates list. Each check is the
-same shape: attach a CollectionItemPhoto, call the endpoint function directly,
+same shape: attach a CollectionCardPhoto, call the endpoint function directly,
 assert has_scan_photo is true and a nested card is present — then assert it is
 false for an item with no photo, so a permanently-true flag can't hide here.
 """
@@ -31,7 +31,7 @@ try:
     )
     from api.dashboard import get_dashboard
     from database import Base
-    from models import Binder, BinderCard, Card, CollectionItem, CollectionItemPhoto, Set, User
+    from models import Binder, BinderCard, Card, CollectionCardPhoto, CollectionItem, Set, User
     DEPS_AVAILABLE = True
 except ModuleNotFoundError:
     DEPS_AVAILABLE = False
@@ -84,9 +84,9 @@ class OwnPhotoPriorityTests(unittest.TestCase):
         self.db.refresh(self.photographed_item)
         self.db.refresh(self.bare_item)
 
-        self.db.add(CollectionItemPhoto(
-            collection_item_id=self.photographed_item.id,
+        self.db.add(CollectionCardPhoto(
             user_id=self.user.id,
+            card_id=self.photographed_card.id,
             data=_jpeg_bytes(),
             content_type="image/jpeg",
         ))

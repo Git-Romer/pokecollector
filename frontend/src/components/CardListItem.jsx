@@ -17,11 +17,13 @@ export function CompactCardIdentity({
   onClick,
   loading = 'lazy',
   className = '',
+  viewportRef,
 }) {
   const Component = onClick ? 'button' : 'div'
 
   return (
     <Component
+      ref={viewportRef}
       type={onClick ? 'button' : undefined}
       className={clsx(
         'flex min-w-0 items-center gap-3 text-left',
@@ -97,9 +99,11 @@ export default function CardListItem({
   className = '',
   variantEffectSource = null,
   loading = 'lazy',
+  viewportRef,
 }) {
   return (
     <div
+      ref={viewportRef}
       className={clsx(
         'flex items-center gap-3 p-3 rounded-xl border border-transparent',
         'bg-[rgba(20,20,40,0.6)] backdrop-blur-xl',
