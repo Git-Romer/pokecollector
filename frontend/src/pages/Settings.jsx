@@ -309,7 +309,7 @@ export default function Settings() {
   const [usernameInput, setUsernameInput] = useState('')
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const { user, updateCurrentUser, multiUser } = useAuth()
+  const { user, updateCurrentUser, multiUser, modeLocked } = useAuth()
   const { settings, updateSettings, t, pricePrimaryField, exchangeRate } = useSettings()
   const confirmDialog = useConfirmDialog()
   const publicProfilesEnabled = settings.public_profiles_enabled === 'true'
@@ -331,6 +331,28 @@ export default function Settings() {
   // Notification settings
   const [priceAlertsEnabled, setPriceAlertsEnabled] = useState(false)
   const [alertThreshold, setAlertThreshold] = useState('10')
+
+  // Changing authentication mode has immediate access consequences, so always warn first.
+  const [multiUserModalMode, setMultiUserModalMode] = useState(null)
+  const [multiUserSaving, setMultiUserSaving] = useState(false)
+
+  const applyMultiUserMode = async (val) => {
+    try {
+      await setAuthMode(val)
+      window.location.reload()
+      return true
+    } catch {
+      toast.error(t('common.error'))
+      return false
+    }
+  }
+
+  const confirmMultiUserChange = async () => {
+    if (!multiUserModalMode) return
+    setMultiUserSaving(true)
+    const applied = await applyMultiUserMode(multiUserModalMode === 'enable')
+    if (!applied) setMultiUserSaving(false)
+  }
 
   // Load individual settings from backend
   const { data: fullSyncIntervalData } = useQuery({
@@ -958,23 +980,67 @@ export default function Settings() {
               <SettingsCard>
                 <SettingsRow
                   label={t('settings.multiUserMode')}
-                  description={t('settings.multiUserModeDesc')}
+                  description={modeLocked ? t('settings.multiUserModeLocked') : t('settings.multiUserModeDesc')}
                   last
                 >
                   <Toggle
                     value={multiUser}
+                    disabled={modeLocked}
                     label={t('settings.multiUserMode')}
-                    onChange={async (val) => {
-                      try {
-                        await setAuthMode(val)
-                        window.location.reload()
-                      } catch {
-                        toast.error(t('common.error'))
-                      }
+                    onChange={(val) => {
+                      if (modeLocked) return
+                      setMultiUserModalMode(val ? 'enable' : 'disable')
                     }}
                   />
                 </SettingsRow>
               </SettingsCard>
+
+              <Modal
+                isOpen={Boolean(multiUserModalMode)}
+                onClose={() => {
+                  if (!multiUserSaving) setMultiUserModalMode(null)
+                }}
+                title={t(multiUserModalMode === 'disable'
+                  ? 'settings.multiUserDisableTitle'
+                  : 'settings.multiUserEnableTitle')}
+                size="sm"
+                mobileSheet={false}
+              >
+                <div className="space-y-4 p-4">
+                  <p className="text-sm text-text-primary">
+                    {multiUserModalMode === 'disable'
+                      ? t('settings.multiUserDisableWarning')
+                      : t('settings.multiUserEnableWarning').replace('{username}', user?.username ?? 'admin')}
+                  </p>
+                  <p className="text-xs text-text-muted">
+                    {t(multiUserModalMode === 'disable'
+                      ? 'settings.multiUserDisablePreserved'
+                      : 'settings.multiUserEnableResetHint')}
+                  </p>
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setMultiUserModalMode(null)}
+                      disabled={multiUserSaving}
+                      className="btn-ghost flex-1"
+                    >
+                      {t('common.cancel')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={confirmMultiUserChange}
+                      disabled={multiUserSaving}
+                      className="btn-primary flex-1 whitespace-normal"
+                    >
+                      {multiUserSaving
+                        ? t('common.saving')
+                        : t(multiUserModalMode === 'disable'
+                          ? 'settings.multiUserDisableConfirm'
+                          : 'settings.multiUserEnableConfirm')}
+                    </button>
+                  </div>
+                </div>
+              </Modal>
             </section>
           )}
 

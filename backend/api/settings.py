@@ -189,6 +189,11 @@ def get_tcgdex_filter_languages(db: Session = Depends(get_db), current_user: Use
 def update_settings(data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     pending_side_effects = []
     for key, value in data.items():
+        if key == "multi_user_mode":
+            raise HTTPException(
+                status_code=409,
+                detail="Multi-user mode can only be changed through /api/auth/mode",
+            )
         coerced_value = _coerce_setting_value(key, value)
         if key in ADMIN_ONLY_KEYS:
             if current_user.role != "admin":
