@@ -14,8 +14,9 @@ describe('loadAuthState', () => {
       multiUser: false,
       modeLocked: false,
       clearSession: false,
+      clearToken: false,
     })
-    expect(getMe).toHaveBeenCalledOnce()
+    expect(getMe).toHaveBeenCalledWith({ withoutToken: true, preserveSession: true })
   })
 
   it('resolves multi-user mode without requesting a user when no token exists', async () => {
@@ -30,20 +31,38 @@ describe('loadAuthState', () => {
       multiUser: true,
       modeLocked: true,
       clearSession: false,
+      clearToken: false,
     })
     expect(getMe).not.toHaveBeenCalled()
   })
 
+  it('clears a leftover token after single-user mode resolves', async () => {
+    await expect(loadAuthState({
+      token: 'leftover-token',
+      getAuthMode: vi.fn().mockResolvedValue({ multi_user: false, locked: false }),
+      getMe: vi.fn().mockResolvedValue({ id: 1, username: 'admin' }),
+    })).resolves.toMatchObject({
+      user: { id: 1, username: 'admin' },
+      multiUser: false,
+      clearSession: false,
+      clearToken: true,
+    })
+  })
+
   it('loads the current user when a multi-user token exists', async () => {
+    const getMe = vi.fn().mockResolvedValue({ id: 2, username: 'misty' })
+
     await expect(loadAuthState({
       token: 'valid-token',
       getAuthMode: vi.fn().mockResolvedValue({ multi_user: true, locked: false }),
-      getMe: vi.fn().mockResolvedValue({ id: 2, username: 'misty' }),
+      getMe,
     })).resolves.toMatchObject({
       user: { id: 2, username: 'misty' },
       multiUser: true,
       clearSession: false,
+      clearToken: false,
     })
+    expect(getMe).toHaveBeenCalledWith({ withoutToken: false, preserveSession: true })
   })
 
   it('treats an expired token as a resolved login state', async () => {
@@ -56,6 +75,7 @@ describe('loadAuthState', () => {
       multiUser: true,
       modeLocked: false,
       clearSession: true,
+      clearToken: true,
     })
   })
 
@@ -73,6 +93,21 @@ describe('loadAuthState', () => {
       getAuthMode: vi.fn().mockResolvedValue({ multi_user: true, locked: false }),
       getMe: vi.fn().mockRejectedValue(networkError),
     })).rejects.toBe(networkError)
+  })
+
+  it.each([
+    {},
+    { multi_user: null },
+    { multi_user: 'false' },
+  ])('rejects an invalid authentication mode response: %j', async mode => {
+    const getMe = vi.fn()
+
+    await expect(loadAuthState({
+      token: null,
+      getAuthMode: vi.fn().mockResolvedValue(mode),
+      getMe,
+    })).rejects.toThrow('Invalid authentication mode response')
+    expect(getMe).not.toHaveBeenCalled()
   })
 })
 

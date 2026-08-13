@@ -64,6 +64,60 @@ test('waits for a delayed single-user backend and recovers automatically', async
   expect(modeRequests).toBeGreaterThanOrEqual(3)
 })
 
+test('single-user bootstrap ignores a valid token left by another user', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('token', 'valid-user-token')
+    localStorage.setItem('user', JSON.stringify({ id: 2, username: 'misty', role: 'user' }))
+  })
+
+  const bootstrapAuthHeaders = []
+  await mockAppApi(page, async (route, path) => {
+    bootstrapAuthHeaders.push({ path, authorization: route.request().headers().authorization })
+    if (path === '/api/auth/mode') {
+      return route.fulfill({ json: { multi_user: false, locked: false } })
+    }
+    return route.fulfill({ json: admin })
+  })
+
+  await page.goto('/')
+
+  await expect(page.getByText('Hello,')).toBeVisible()
+  await expect(page.getByText('admin', { exact: true })).toBeVisible()
+  await expect(page.getByText('misty', { exact: true })).toHaveCount(0)
+  await expect(page).toHaveURL('/')
+  expect(bootstrapAuthHeaders).not.toHaveLength(0)
+  expect(bootstrapAuthHeaders.every(request => request.authorization === undefined)).toBe(true)
+  expect(await page.evaluate(() => localStorage.getItem('token'))).toBeNull()
+})
+
+test('single-user bootstrap ignores an expired leftover token without showing login', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('token', 'expired-user-token')
+    localStorage.setItem('user', JSON.stringify({ id: 2, username: 'misty', role: 'user' }))
+  })
+
+  let meAuthorization
+  await mockAppApi(page, async (route, path) => {
+    if (path === '/api/auth/mode') {
+      return route.fulfill({ json: { multi_user: false, locked: false } })
+    }
+    meAuthorization = route.request().headers().authorization
+    if (meAuthorization) {
+      return route.fulfill({ status: 401, json: { detail: 'Not authenticated' } })
+    }
+    return route.fulfill({ json: admin })
+  })
+
+  await page.goto('/')
+
+  await expect(page.getByText('Hello,')).toBeVisible()
+  await expect(page.getByText('admin', { exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Login' })).toHaveCount(0)
+  await expect(page).toHaveURL('/')
+  expect(meAuthorization).toBeUndefined()
+  expect(await page.evaluate(() => localStorage.getItem('token'))).toBeNull()
+})
+
 test('keeps a valid stored session through a temporary current-user failure', async ({ page }) => {
   await page.addInitScript(user => {
     localStorage.setItem('token', 'valid-token')
@@ -130,8 +184,10 @@ test('clears an expired session only after the backend confirms it', async ({ pa
 test('connection state fits a 320px viewport and supports manual retry', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 568 })
   let available = false
+  let modeRequests = 0
   await mockAppApi(page, async (route, path) => {
     if (path === '/api/auth/mode') {
+      modeRequests += 1
       if (!available) return route.fulfill({ status: 503, json: { detail: 'Starting' } })
       return route.fulfill({ json: { multi_user: false, locked: false } })
     }
@@ -142,9 +198,15 @@ test('connection state fits a 320px viewport and supports manual retry', async (
   await expect(page.getByRole('heading', { name: 'Cannot reach PokéCollector' })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 
+  const modeRequestsBeforeRetry = modeRequests
+  const retryRequest = page.waitForRequest(request => new URL(request.url()).pathname === '/api/auth/mode')
   available = true
-  await page.getByRole('button', { name: 'Try again' }).click()
+  await Promise.all([
+    retryRequest,
+    page.getByRole('button', { name: 'Try again' }).click(),
+  ])
 
   await expect(page.getByText('Hello,')).toBeVisible()
   await expect(page).toHaveURL('/')
+  expect(modeRequests).toBeGreaterThan(modeRequestsBeforeRetry)
 })

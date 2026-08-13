@@ -12,22 +12,37 @@ export function isUnauthorized(error) {
 export async function loadAuthState({ token, getAuthMode, getMe }) {
   const { multi_user: multiUser, locked } = await getAuthMode()
 
+  if (typeof multiUser !== 'boolean') {
+    throw new Error('Invalid authentication mode response')
+  }
+
   if (multiUser && !token) {
     return {
       user: null,
       multiUser: true,
       modeLocked: Boolean(locked),
       clearSession: false,
+      clearToken: false,
     }
   }
 
   try {
-    const user = await getMe()
+    const user = await getMe({
+      // Single-user mode must always resolve the automatic admin, regardless
+      // of any token left in the browser from an earlier multi-user session.
+      withoutToken: !multiUser,
+      // Bootstrap decides whether a 401 is an expired session. The shared
+      // interceptor must not redirect or clear storage before that decision.
+      preserveSession: true,
+    })
     return {
       user,
       multiUser: Boolean(multiUser),
       modeLocked: Boolean(locked),
       clearSession: false,
+      // Once single-user mode is confirmed, a token from an earlier
+      // multi-user session must not leak into the rest of the app's requests.
+      clearToken: !multiUser && Boolean(token),
     }
   } catch (error) {
     // An expired token is a resolved multi-user state, not a connectivity
@@ -39,6 +54,7 @@ export async function loadAuthState({ token, getAuthMode, getMe }) {
         multiUser: true,
         modeLocked: Boolean(locked),
         clearSession: true,
+        clearToken: true,
       }
     }
     throw error

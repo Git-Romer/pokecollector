@@ -37,9 +37,10 @@ export function AuthProvider({ children }) {
         setModeLocked(result.modeLocked)
         setUser(result.user)
 
+        if (result.clearToken) localStorage.removeItem('token')
+
         if (result.clearSession || !result.user) {
           localStorage.removeItem('user')
-          if (result.clearSession) localStorage.removeItem('token')
         } else {
           localStorage.setItem('user', JSON.stringify(result.user))
         }
