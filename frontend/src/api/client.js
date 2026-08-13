@@ -10,6 +10,8 @@ const api = axios.create({
 })
 
 api.interceptors.request.use((config) => {
+  if (config.skipAuthentication) return config
+
   const token = localStorage.getItem('token')
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
@@ -20,7 +22,7 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    if (error.response?.status === 401 && !error.config?.preserveSessionOnUnauthorized) {
       const token = localStorage.getItem('token')
       localStorage.removeItem('token')
       localStorage.removeItem('user')
@@ -41,8 +43,16 @@ export const login = (username, password) => {
   }).then(r => r.data)
 }
 
-export const getMe = () => api.get('/auth/me').then(r => r.data)
-export const getAuthMode = () => api.get('/auth/mode').then(r => r.data)
+export const getMe = ({ withoutToken = false, preserveSession = false } = {}) => api.get('/auth/me', {
+  skipAuthentication: withoutToken,
+  preserveSessionOnUnauthorized: preserveSession,
+}).then(r => r.data)
+export const getAuthMode = () => api.get('/auth/mode', {
+  // Mode discovery is public. A leftover token must not influence bootstrap
+  // or let a transient/invalid response destroy the stored session.
+  skipAuthentication: true,
+  preserveSessionOnUnauthorized: true,
+}).then(r => r.data)
 export const setAuthMode = (enabled) => api.put('/auth/mode', { enabled }).then(r => r.data)
 export const getUsers = () => api.get('/auth/users').then(r => r.data)
 export const createUser = (data) => api.post('/auth/users', data).then(r => r.data)
