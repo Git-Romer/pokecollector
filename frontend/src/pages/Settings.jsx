@@ -332,8 +332,8 @@ export default function Settings() {
   const [priceAlertsEnabled, setPriceAlertsEnabled] = useState(false)
   const [alertThreshold, setAlertThreshold] = useState('10')
 
-  // Enabling multi-user mode starts enforcing the login screen immediately, so warn first.
-  const [showMultiUserModal, setShowMultiUserModal] = useState(false)
+  // Changing authentication mode has immediate access consequences, so always warn first.
+  const [multiUserModalMode, setMultiUserModalMode] = useState(null)
   const [multiUserSaving, setMultiUserSaving] = useState(false)
 
   const applyMultiUserMode = async (val) => {
@@ -347,9 +347,10 @@ export default function Settings() {
     }
   }
 
-  const confirmEnableMultiUser = async () => {
+  const confirmMultiUserChange = async () => {
+    if (!multiUserModalMode) return
     setMultiUserSaving(true)
-    const applied = await applyMultiUserMode(true)
+    const applied = await applyMultiUserMode(multiUserModalMode === 'enable')
     if (!applied) setMultiUserSaving(false)
   }
 
@@ -988,36 +989,38 @@ export default function Settings() {
                     label={t('settings.multiUserMode')}
                     onChange={(val) => {
                       if (modeLocked) return
-                      if (val) {
-                        setShowMultiUserModal(true)
-                      } else {
-                        applyMultiUserMode(false)
-                      }
+                      setMultiUserModalMode(val ? 'enable' : 'disable')
                     }}
                   />
                 </SettingsRow>
               </SettingsCard>
 
               <Modal
-                isOpen={showMultiUserModal}
+                isOpen={Boolean(multiUserModalMode)}
                 onClose={() => {
-                  if (!multiUserSaving) setShowMultiUserModal(false)
+                  if (!multiUserSaving) setMultiUserModalMode(null)
                 }}
-                title={t('settings.multiUserEnableTitle')}
+                title={t(multiUserModalMode === 'disable'
+                  ? 'settings.multiUserDisableTitle'
+                  : 'settings.multiUserEnableTitle')}
                 size="sm"
                 mobileSheet={false}
               >
                 <div className="space-y-4 p-4">
                   <p className="text-sm text-text-primary">
-                    {t('settings.multiUserEnableWarning').replace('{username}', user?.username ?? 'admin')}
+                    {multiUserModalMode === 'disable'
+                      ? t('settings.multiUserDisableWarning')
+                      : t('settings.multiUserEnableWarning').replace('{username}', user?.username ?? 'admin')}
                   </p>
                   <p className="text-xs text-text-muted">
-                    {t('settings.multiUserEnableResetHint')}
+                    {t(multiUserModalMode === 'disable'
+                      ? 'settings.multiUserDisablePreserved'
+                      : 'settings.multiUserEnableResetHint')}
                   </p>
                   <div className="flex gap-3 pt-2">
                     <button
                       type="button"
-                      onClick={() => setShowMultiUserModal(false)}
+                      onClick={() => setMultiUserModalMode(null)}
                       disabled={multiUserSaving}
                       className="btn-ghost flex-1"
                     >
@@ -1025,11 +1028,15 @@ export default function Settings() {
                     </button>
                     <button
                       type="button"
-                      onClick={confirmEnableMultiUser}
+                      onClick={confirmMultiUserChange}
                       disabled={multiUserSaving}
-                      className="btn-primary flex-1"
+                      className="btn-primary flex-1 whitespace-normal"
                     >
-                      {multiUserSaving ? t('common.saving') : t('settings.multiUserEnableConfirm')}
+                      {multiUserSaving
+                        ? t('common.saving')
+                        : t(multiUserModalMode === 'disable'
+                          ? 'settings.multiUserDisableConfirm'
+                          : 'settings.multiUserEnableConfirm')}
                     </button>
                   </div>
                 </div>
