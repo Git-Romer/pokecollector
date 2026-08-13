@@ -16,11 +16,13 @@ export function AuthProvider({ children }) {
   })
   const [loading, setLoading] = useState(true)
   const [multiUser, setMultiUser] = useState(true)
+  const [modeLocked, setModeLocked] = useState(false)
 
   useEffect(() => {
     getAuthMode()
-      .then(({ multi_user }) => {
+      .then(({ multi_user, locked }) => {
         setMultiUser(multi_user)
+        setModeLocked(Boolean(locked))
         const token = localStorage.getItem('token')
         if (!multi_user || token) {
           return getMe().then((currentUser) => {
@@ -74,7 +76,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, multiUser, loginUser, updateCurrentUser, logout }}>
+    <AuthContext.Provider value={{ user, loading, multiUser, modeLocked, loginUser, updateCurrentUser, logout }}>
       {children}
     </AuthContext.Provider>
   )

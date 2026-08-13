@@ -840,6 +840,11 @@ const en = {
     // Settings page row labels
     multiUserMode: 'Multi-User Mode',
     multiUserModeDesc: 'Enable login screen and user management',
+    multiUserModeLocked: 'Pinned by the USER_MODE environment variable; change it there and restart.',
+    multiUserEnableTitle: 'Enable Multi-User Mode?',
+    multiUserEnableWarning: 'This turns on the login screen straight away and signs you out. You will need to sign back in as {username}, so make sure you know that password first.',
+    multiUserEnableResetHint: 'You can set or reset the admin password from the host with the set_admin_password script (see docs). And if you ever get locked out, USER_MODE=single restores local access.',
+    multiUserEnableConfirm: 'Enable and sign out',
     username: 'Username',
     usernameDesc: 'Your display name',
     trainerName: 'Trainer Name',

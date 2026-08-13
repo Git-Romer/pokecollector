@@ -45,6 +45,16 @@ def read_app_version() -> str:
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting Pokemon TCG Collection API...")
+    from api.auth import env_user_mode
+    _forced_mode = env_user_mode()
+    if _forced_mode == "single":
+        logger.warning(
+            "USER_MODE=single: single-user mode is forced and the login screen is disabled "
+            "regardless of the stored setting. This is a local recovery hatch - unset it once "
+            "you have regained access, and do not leave it set on a public install."
+        )
+    elif _forced_mode == "multi":
+        logger.info("USER_MODE=multi: multi-user mode is forced; the in-app toggle is disabled.")
     current_version = read_app_version()
     from database import DATABASE_URL, SessionLocal, engine, init_db
     from services.auth import bootstrap_admin

@@ -241,6 +241,23 @@ From the **Users** tab, admins can:
 
 The **Users** tab is only visible to admin users and only while multi-user mode is enabled. In single-user mode, PokéCollector skips login and uses the bootstrap admin account automatically.
 
+### Enabling multi-user mode without locking yourself out
+
+Turning on multi-user mode enforces the login screen immediately and signs you out, and you then sign back in as the bootstrap admin. In single-user mode you never had to enter that password, so if you did not set `ADMIN_PASSWORD` it is the random one from the first-run log and you may not know it. Set a known password **before** enabling multi-user mode. From the host:
+
+```bash
+# Docker
+docker compose exec backend python -m scripts.set_admin_password
+# Native install (run in the backend virtualenv, from the backend working directory)
+python -m scripts.set_admin_password
+```
+
+The script prompts for the new password (add `--username <name>` for a non-default admin, or `--make-admin` if the only admin was demoted).
+
+### Recovering from a lockout
+
+If you are already locked out of multi-user mode, set `USER_MODE=single` in the environment and restart. That pins single-user mode and disables the login screen regardless of the stored setting, so you regain local admin access; reset the password with the script above, then remove the variable and restart to return to multi-user mode. While `USER_MODE` is set, the Multi-User Mode toggle in Settings is disabled and shows that the environment controls it. Because `USER_MODE=single` disables the login screen, treat it as a local/LAN recovery tool and do not leave it set on an internet-facing install. (`USER_MODE=multi` pins multi-user mode instead, which is safe to leave set.)
+
 ---
 
 ## 🔧 Environment Variables
@@ -271,6 +288,7 @@ The **Users** tab is only visible to admin users and only while multi-user mode 
 | `TELEGRAM_CHAT_ID` | Initial Telegram chat ID for the admin user | *(empty)* |
 | `TCGDEX_SYNC_LANGUAGES` | Initial admin default for TCGdex set/card sync languages on first launch only. After bootstrap, the DB setting in Settings is authoritative. Comma-separated TCGdex language codes, or `all` to enable every supported TCGdex language. Empty or invalid values safely fall back to `en,de`. Extra languages increase sync time, API calls, and database size. | `en,de` |
 | `ADMIN_BOOTSTRAP_LOG` | Whether bootstrap credentials may be logged on first start | `true` |
+| `USER_MODE` | Pin the mode from the environment, overriding the stored setting and disabling the in-app toggle. `single` forces single-user (no login screen) and is the recovery hatch after a multi-user lockout; `multi` forces multi-user. Because `single` disables authentication, use it only on a local/LAN install and unset it once recovered. Unset means the in-app setting controls the mode. | *(unset)* |
 | `PUBLIC_MODE` | Enable SEO meta tags, Open Graph, and allow search engine indexing. Default blocks all crawlers. Requires rebuild. | `false` |
 | `CORS_ORIGINS` | Comma-separated list of allowed origins for CORS. If empty, allows all origins. Set to your domain for production (e.g. `https://pokecollector.romerg.de`). | *(all)* |
 | `POKEDEX_METADATA_BACKFILL_ON_STARTUP` | Run the one-time Pokédex metadata backfill automatically after startup when existing card rows are missing `dex_ids` or Cardmarket product metadata | `true` |
