@@ -46,7 +46,7 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting Pokemon TCG Collection API...")
     from api.auth import env_user_mode
-    _forced_mode = env_user_mode()
+    _forced_mode = env_user_mode(warn_invalid=True)
     if _forced_mode == "single":
         logger.warning(
             "USER_MODE=single: single-user mode is forced and the login screen is disabled "

@@ -340,15 +340,17 @@ export default function Settings() {
     try {
       await setAuthMode(val)
       window.location.reload()
+      return true
     } catch {
       toast.error(t('common.error'))
+      return false
     }
   }
 
   const confirmEnableMultiUser = async () => {
     setMultiUserSaving(true)
-    await applyMultiUserMode(true)
-    // reload navigates away; nothing else to do
+    const applied = await applyMultiUserMode(true)
+    if (!applied) setMultiUserSaving(false)
   }
 
   // Load individual settings from backend
@@ -998,7 +1000,9 @@ export default function Settings() {
 
               <Modal
                 isOpen={showMultiUserModal}
-                onClose={() => setShowMultiUserModal(false)}
+                onClose={() => {
+                  if (!multiUserSaving) setShowMultiUserModal(false)
+                }}
                 title={t('settings.multiUserEnableTitle')}
                 size="sm"
                 mobileSheet={false}
@@ -1014,6 +1018,7 @@ export default function Settings() {
                     <button
                       type="button"
                       onClick={() => setShowMultiUserModal(false)}
+                      disabled={multiUserSaving}
                       className="btn-ghost flex-1"
                     >
                       {t('common.cancel')}
@@ -1024,7 +1029,7 @@ export default function Settings() {
                       disabled={multiUserSaving}
                       className="btn-primary flex-1"
                     >
-                      {t('settings.multiUserEnableConfirm')}
+                      {multiUserSaving ? t('common.saving') : t('settings.multiUserEnableConfirm')}
                     </button>
                   </div>
                 </div>

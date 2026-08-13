@@ -89,7 +89,7 @@ def _sync_public_handle_for_username(db: Session, user: User, username: str) -> 
         raise HTTPException(status_code=422, detail=str(exc)) from None
 
 
-def env_user_mode() -> str | None:
+def env_user_mode(*, warn_invalid: bool = False) -> str | None:
     """USER_MODE pins the mode from the environment, overriding the stored setting:
     'single' forces single-user (login screen off), 'multi' forces multi-user (login on).
     Unset, blank, or unrecognised means no override. It is the recovery hatch for an admin
@@ -101,7 +101,7 @@ def env_user_mode() -> str | None:
         return "single"
     if raw in {"multi", "multi_user"}:
         return "multi"
-    if raw:
+    if raw and warn_invalid:
         logger.warning("USER_MODE=%r is not 'single' or 'multi'; ignoring it.", os.getenv("USER_MODE"))
     return None
 

@@ -15,6 +15,7 @@ try:
         multi_user_enabled,
         set_auth_mode,
     )
+    from api.settings import update_settings
     from database import Base
     from models import User
     from services.auth import hash_password
@@ -118,6 +119,16 @@ class MultiUserModeRecoveryTests(unittest.TestCase):
         # the stored setting was not changed by the rejected call
         self.assertFalse(get_auth_mode(db=self.db)["multi_user"])
 
+    def test_generic_settings_endpoint_cannot_change_user_mode(self):
+        with self.assertRaises(HTTPException) as exc:
+            update_settings(
+                {"multi_user_mode": "true"},
+                db=self.db,
+                current_user=self.admin,
+            )
+        self.assertEqual(exc.exception.status_code, 409)
+        self.assertFalse(get_auth_mode(db=self.db)["multi_user"])
+
     def test_user_mode_parsing(self):
         for val in ["single", "SINGLE", " single ", "single-user", "single_user"]:
             with patch.dict("os.environ", {"USER_MODE": val}):
@@ -130,6 +141,15 @@ class MultiUserModeRecoveryTests(unittest.TestCase):
                 self.assertIsNone(env_user_mode(), val)
                 self.assertFalse(mode_is_env_locked(), val)
 
+    def test_invalid_user_mode_only_warns_when_requested(self):
+        with (
+            patch.dict("os.environ", {"USER_MODE": "nonsense"}),
+            patch("api.auth.logger.warning") as warning,
+        ):
+            self.assertIsNone(env_user_mode())
+            warning.assert_not_called()
+            self.assertIsNone(env_user_mode(warn_invalid=True))
+            warning.assert_called_once()
 
 if __name__ == "__main__":
     unittest.main()
