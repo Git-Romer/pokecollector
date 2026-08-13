@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom
 import { Suspense, lazy, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import PokeBallLoader from './components/PokeBallLoader'
+import AuthStartupScreen from './components/AuthStartupScreen'
 import { SettingsProvider } from './contexts/SettingsContext'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { forceChangePassword } from './api/client'
@@ -128,14 +129,10 @@ function PublicRoutes() {
 }
 
 function ProtectedRoutes() {
-  const { user, loading, multiUser } = useAuth()
+  const { user, loading, connectionError, multiUser, retryConnection } = useAuth()
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-bg-primary">
-        <PokeBallLoader size={48} />
-      </div>
-    )
+    return <AuthStartupScreen connectionError={connectionError} onRetry={retryConnection} />
   }
 
   if (!user && multiUser) {

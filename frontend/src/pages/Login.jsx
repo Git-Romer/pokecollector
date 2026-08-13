@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { User } from 'lucide-react'
 import toast from 'react-hot-toast'
+import AuthStartupScreen from '../components/AuthStartupScreen'
 import { login } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { useSettings } from '../contexts/SettingsContext'
@@ -13,9 +14,13 @@ export default function Login() {
   const [username, setUsername] = useState(() => localStorage.getItem('lastUser') || '')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
-  const { user, loginUser, multiUser } = useAuth()
+  const { user, loading: authLoading, connectionError, loginUser, multiUser, retryConnection } = useAuth()
   const { t } = useSettings()
   const navigate = useNavigate()
+
+  if (authLoading) {
+    return <AuthStartupScreen connectionError={connectionError} onRetry={retryConnection} />
+  }
 
   if (user || !multiUser) {
     return <Navigate to="/" replace />
