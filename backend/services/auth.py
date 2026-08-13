@@ -1,6 +1,8 @@
+import fcntl
 import logging
 import os
 import secrets
+import tempfile
 from datetime import datetime, timedelta
 
 import bcrypt
@@ -11,7 +13,89 @@ from models import User
 
 logger = logging.getLogger(__name__)
 
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", secrets.token_urlsafe(32))
+
+def _default_secret_file() -> str:
+    return os.getenv(
+        "JWT_SECRET_FILE",
+        os.path.join(os.getenv("DATA_DIR", "/app/data"), "auth", "jwt_secret.key"),
+    )
+
+
+def resolve_jwt_secret() -> str:
+    """Resolve the JWT signing key.
+
+    An explicitly configured JWT_SECRET_KEY wins. It is rejected when blank, because
+    docker-compose passes it through as `${JWT_SECRET_KEY:-}` (present but empty) and
+    `os.getenv(key, fallback)` only uses the fallback when the variable is *absent*, not
+    when it is empty. That made the effective HMAC key the empty string on stock Compose
+    installs, so anyone could forge a valid admin token. When no key is configured, a
+    strong one is generated and persisted to a file so it survives restarts; if the file
+    cannot be written, an ephemeral key is used (unforgeable, but sessions reset on
+    restart) rather than falling back to a predictable value.
+    """
+    configured = os.getenv("JWT_SECRET_KEY")
+    if configured and configured.strip():
+        return configured
+
+    if configured is not None and not configured.strip():
+        logger.warning(
+            "JWT_SECRET_KEY is set but empty; ignoring it. Set a non-empty value, or "
+            "leave it unset to use a generated, persisted key."
+        )
+
+    secret_file = _default_secret_file()
+    secret_dir = os.path.dirname(secret_file) or "."
+    tmp_path = None
+    try:
+        os.makedirs(secret_dir, mode=0o700, exist_ok=True)
+
+        # Multiple workers can start at the same time. Serialize the read/create path so
+        # every worker uses the same key instead of racing through a shared fixed temp file.
+        lock_path = f"{secret_file}.lock"
+        lock_fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+
+            if os.path.exists(secret_file):
+                with open(secret_file, "r", encoding="utf-8") as fh:
+                    existing = fh.read().strip()
+                if existing:
+                    return existing
+
+            new_secret = secrets.token_urlsafe(48)
+            tmp_fd, tmp_path = tempfile.mkstemp(prefix=".jwt_secret.", dir=secret_dir)
+            try:
+                os.fchmod(tmp_fd, 0o600)
+                with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
+                    tmp_fd = None
+                    fh.write(new_secret)
+                    fh.flush()
+                    os.fsync(fh.fileno())
+                os.replace(tmp_path, secret_file)
+                tmp_path = None
+            finally:
+                if tmp_fd is not None:
+                    os.close(tmp_fd)
+                if tmp_path is not None:
+                    try:
+                        os.unlink(tmp_path)
+                    except FileNotFoundError:
+                        pass
+
+            logger.info("Generated and persisted a JWT signing key at %s", secret_file)
+            return new_secret
+        finally:
+            os.close(lock_fd)
+    except OSError as exc:
+        logger.warning(
+            "Could not persist a JWT signing key (%s); using an ephemeral one. Set "
+            "JWT_SECRET_KEY to a fixed value so sessions survive restarts.",
+            exc,
+        )
+        return secrets.token_urlsafe(48)
+
+
+SECRET_KEY = resolve_jwt_secret()
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 

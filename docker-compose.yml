@@ -60,6 +60,7 @@ services:
         condition: service_healthy
     volumes:
       - ./backups:/app/backups
+      - ./data/auth:/app/data/auth
       - ./data/pokedex-images:/app/data/pokedex-images
       - ./data/scan-uploads:/app/data/scan-uploads
       - ./data/scan-traces:/app/data/scan-traces
