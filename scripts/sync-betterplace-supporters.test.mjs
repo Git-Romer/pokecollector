@@ -1,0 +1,96 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+
+import {
+  buildBetterplaceRecords,
+  extractPublicName,
+  fetchCampaignOpinions,
+  mergeSupportersCsv,
+  parseCsv,
+} from './sync-betterplace-supporters.mjs'
+
+const eligibleOpinion = {
+  id: 123,
+  message: 'POKECOLLECTOR: CardCollector42',
+  author: { name: 'Public donor' },
+  confirmed_at: '2026-08-13T18:00:00+02:00',
+  donated_amount_in_cents: 2500,
+}
+
+test('extractPublicName requires the explicit prefix and validates CSV-safe names', () => {
+  assert.equal(extractPublicName('POKECOLLECTOR: CardCollector42'), 'CardCollector42')
+  assert.equal(extractPublicName('  POKECOLLECTOR:  Card Collector 42  '), 'Card Collector 42')
+  assert.equal(extractPublicName('POKECOLLECTOR: CardCollector42\nThank you for the project'), 'CardCollector42')
+  assert.equal(extractPublicName('CardCollector42'), null)
+  assert.equal(extractPublicName('POKECOLLECTOR: =HYPERLINK("bad")'), null)
+  assert.equal(extractPublicName(`POKECOLLECTOR: ${'x'.repeat(61)}`), null)
+})
+
+test('only confirmed, non-anonymous, explicitly opted-in donations are imported', () => {
+  const rows = buildBetterplaceRecords([
+    eligibleOpinion,
+    { ...eligibleOpinion, id: 124, author: null },
+    { ...eligibleOpinion, id: 125, confirmed_at: null },
+    { ...eligibleOpinion, id: 126, message: 'Thank you' },
+  ])
+
+  assert.deepEqual(rows, [{
+    date: '',
+    name: 'CardCollector42',
+    amount: '',
+    currency: 'EUR',
+    url: '',
+    source: 'betterplace:57435',
+  }])
+})
+
+test('merge preserves legacy supporters and replaces only campaign-managed rows', () => {
+  const existing = [
+    'date,name,amount,currency,url,source',
+    '2026-05-29,Legacy,10,EUR,https://example.com,',
+    ',Old imported,,EUR,,betterplace:57435',
+    '',
+  ].join('\n')
+
+  const merged = mergeSupportersCsv(existing, [eligibleOpinion])
+  const { records } = parseCsv(merged)
+  assert.equal(records.length, 2)
+  assert.equal(records[0].name, 'Legacy')
+  assert.equal(records[1].name, 'CardCollector42')
+  assert.equal(records[1].amount, '')
+  assert.equal(records[1].source, 'betterplace:57435')
+})
+
+test('merge refuses to wipe imported supporters when the campaign feed is unexpectedly empty', () => {
+  const existing = [
+    'date,name,amount,currency,url,source',
+    ',Imported supporter,,EUR,,betterplace:57435',
+    '',
+  ].join('\n')
+
+  assert.throws(
+    () => mergeSupportersCsv(existing, []),
+    /refusing to remove existing imported supporters/,
+  )
+})
+
+test('fetchCampaignOpinions follows pagination and rejects malformed payloads', async () => {
+  const pages = []
+  const fetchImpl = async (url) => {
+    pages.push(url.searchParams.get('page'))
+    const page = Number(url.searchParams.get('page'))
+    return {
+      ok: true,
+      json: async () => ({ data: [{ id: page }], total_pages: 2, total_entries: 2 }),
+    }
+  }
+
+  const result = await fetchCampaignOpinions({ fetchImpl })
+  assert.deepEqual(pages, ['1', '2'])
+  assert.deepEqual(result, [{ id: 1 }, { id: 2 }])
+
+  await assert.rejects(
+    () => fetchCampaignOpinions({ fetchImpl: async () => ({ ok: true, json: async () => ({ wrong: [] }) }) }),
+    /Unexpected Betterplace API response shape/,
+  )
+})

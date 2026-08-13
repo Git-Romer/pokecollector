@@ -1,0 +1,46 @@
+name: Sync Betterplace supporters
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-betterplace-supporters
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Test importer
+        run: node --test scripts/sync-betterplace-supporters.test.mjs
+
+      - name: Sync public supporter opt-ins
+        env:
+          BETTERPLACE_CAMPAIGN_ID: '57435'
+        run: node scripts/sync-betterplace-supporters.mjs
+
+      - name: Commit updated supporter list
+        run: |
+          if git diff --quiet -- SUPPORTERS.csv; then
+            echo "No supporter changes."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add SUPPORTERS.csv
+          git commit -m "chore: sync Betterplace supporters"
+          git push

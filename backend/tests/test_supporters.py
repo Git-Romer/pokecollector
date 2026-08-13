@@ -45,6 +45,7 @@ class SupportersTests(unittest.TestCase):
         self.assertEqual([supporter["name"] for supporter in supporters], ["Bella", "Anton", "Chris", "Dana"])
         self.assertEqual([supporter["crown"] for supporter in supporters], ["gold", "silver", "bronze", None])
         self.assertEqual(supporters[1]["total_amount"], 3.5)
+        self.assertTrue(supporters[1]["show_amount"])
         self.assertEqual(supporters[1]["donation_count"], 2)
         self.assertEqual(supporters[1]["first_supported_at"], "2026-05-29")
         self.assertEqual(supporters[1]["latest_supported_at"], "2026-05-30")
@@ -57,7 +58,20 @@ class SupportersTests(unittest.TestCase):
         self.assertEqual(supporters[0]["name"], "Anonymous")
         self.assertEqual(supporters[0]["total_amount"], 0.0)
         self.assertEqual(supporters[0]["currency"], "EUR")
-        self.assertEqual(supporters[0]["crown"], "gold")
+        self.assertFalse(supporters[0]["show_amount"])
+        self.assertIsNone(supporters[0]["crown"])
+
+    def test_betterplace_name_without_amount_does_not_show_zero_value(self):
+        supporters = parse_supporters_csv(
+            "date,name,amount,currency,url,source\n"
+            ",CardCollector42,,EUR,,betterplace:57435\n"
+        )
+
+        self.assertEqual(len(supporters), 1)
+        self.assertEqual(supporters[0]["name"], "CardCollector42")
+        self.assertEqual(supporters[0]["total_amount"], 0.0)
+        self.assertFalse(supporters[0]["show_amount"])
+        self.assertIsNone(supporters[0]["crown"])
 
     def test_empty_names_are_ignored(self):
         supporters = parse_supporters_csv("date,name,amount,currency,url\n2026-05-29,,1,EUR,\n")

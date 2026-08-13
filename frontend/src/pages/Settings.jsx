@@ -7,7 +7,7 @@ import {
   downloadBackup, restoreBackup, exportCSV,
   getSetting, setSetting, getTelegramStatus, saveSettings, setAuthMode,
   getUsers, createUser, updateUser, deleteUser, changePassword, changeAvatar, changeUsername,
-  getContributors, getSupporters, getRescueDonations, getCustomMatches, downloadDebugLog,
+  getContributors, getSupporters, getCustomMatches, downloadDebugLog,
   getProfile, updateProfile, deleteScanDiagnostics,
   deleteAllCollectionCardPhotos,
 } from '../api/client'
@@ -217,9 +217,11 @@ function SupporterCard({ supporter, t }) {
       )}
       <div className="min-w-0">
         <p className="text-xs font-semibold text-text-primary truncate">{supporter.name}</p>
-        <p className="text-[11px] text-text-secondary">
-          {formatSupporterAmount(supporter.total_amount, supporter.currency)} · {supporter.donation_count || 0} {supporter.donation_count === 1 ? t('settings.supporterDonation') : t('settings.supporterDonations')}
-        </p>
+        {supporter.show_amount && (
+          <p className="text-[11px] text-text-secondary">
+            {formatSupporterAmount(supporter.total_amount, supporter.currency)} · {supporter.donation_count || 0} {supporter.donation_count === 1 ? t('settings.supporterDonation') : t('settings.supporterDonations')}
+          </p>
+        )}
         {supporter.latest_supported_at && (
           <p className="text-[10px] text-text-muted">{t('settings.latestSupport')}: {supporter.latest_supported_at}</p>
         )}
@@ -236,26 +238,6 @@ function SupporterCard({ supporter, t }) {
   }
 
   return <div className="min-w-[180px] flex-1 max-w-xs">{content}</div>
-}
-
-function RescueDonationTotal({ t }) {
-  const { data: rescueDonations, isLoading } = useQuery({
-    queryKey: ['rescue-donations'],
-    queryFn: () => getRescueDonations(),
-    staleTime: 60 * 60 * 1000,
-  })
-
-  if (isLoading) {
-    return <div className="skeleton h-14 w-full max-w-xs mx-auto rounded-xl" />
-  }
-
-  return (
-    <div className="inline-flex flex-col items-center gap-1 px-4 py-2 rounded-xl bg-bg-elevated border border-border">
-      <span className="text-[10px] font-black uppercase tracking-[0.18em] text-text-muted">{t('settings.rescueDonationTotal')}</span>
-      <span className="text-lg font-black text-text-primary">{formatSupporterAmount(rescueDonations?.total_amount || 0, rescueDonations?.currency || 'EUR')}</span>
-      <span className="text-[10px] text-text-muted">{t('settings.rescueDonationBatchHint')}</span>
-    </div>
-  )
 }
 
 function SupportersSection({ t }) {
@@ -311,6 +293,9 @@ export default function Settings() {
   const navigate = useNavigate()
   const { user, updateCurrentUser, multiUser, modeLocked } = useAuth()
   const { settings, updateSettings, t, pricePrimaryField, exchangeRate } = useSettings()
+  const supportPageUrl = settings.language === 'de'
+    ? 'https://pokecollector.romerg.de/de/support/'
+    : 'https://pokecollector.romerg.de/support/'
   const confirmDialog = useConfirmDialog()
   const publicProfilesEnabled = settings.public_profiles_enabled === 'true'
   const { theme, setTheme, themes } = useTheme()
@@ -1602,20 +1587,15 @@ export default function Settings() {
             <SettingsCard>
               <div className="p-4 text-center space-y-3">
                 <p className="text-2xl">🐾</p>
-                <p className="text-sm text-text-secondary">
-                  {t('settings.sponsorMessage')}
-                </p>
-                <RescueDonationTotal t={t} />
-                <p className="text-xs text-text-muted">
-                  {t('settings.kofiHint')}
-                </p>
+                <p className="text-sm font-semibold text-text-secondary">PokéCollector × Tierrettung Köln-Porz</p>
+                <p className="text-xs text-text-muted">Betterplace · POKECOLLECTOR: [public name]</p>
                 <a
-                  href="https://ko-fi.com/gillesromer"
+                  href={supportPageUrl}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-brand-red text-white text-sm font-semibold hover:opacity-90 transition-opacity"
                 >
-                  ☕ {t('settings.kofiButton')}
+                  🐾 Betterplace
                 </a>
               </div>
             </SettingsCard>
