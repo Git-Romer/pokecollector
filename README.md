@@ -537,7 +537,7 @@ https://pokecollector.romerg.de/support/
 
 Betterplace processes the donation and forwards it to the selected animal rescue project. PokéCollector never receives the funds.
 
-To appear in the public supporter list, donate non-anonymously and begin the public Betterplace message with `POKECOLLECTOR: Your desired name`. Only the requested public name is copied to this repository. If the automatic import misses a donation, the support page includes a no-login manual review form.
+To appear in the public supporter list, donate non-anonymously and begin the public Betterplace message with `POKECOLLECTOR: Your desired name`. Only the requested public name is copied to this repository. If the automatic import misses a donation, the support page includes a no-login manual review form. Published names can be corrected or removed by contacting [info@romerg.de](mailto:info@romerg.de).
 
 Repository maintenance remains reviewable: the scheduled sync validates Betterplace's public feed and opens or updates a dedicated pull request containing only the `SUPPORTERS.csv` change. It never pushes supporter data directly to protected `main`.
 
