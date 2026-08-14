@@ -89,8 +89,8 @@ class ScannerConfigurationUpdate(BaseModel):
 
 
 SCANNER_TEST_IMAGE_B64 = (
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF"
-    "gAI/6hZ6WQAAAABJRU5ErkJggg=="
+    "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR4nGN4xvCfJMQw"
+    "qmFUw/DVAAC9iuUQ8Prt2QAAAABJRU5ErkJggg=="
 )
 
 ADMIN_ONLY_KEYS = {
@@ -273,12 +273,13 @@ def _scanner_configuration(db: Session, user_id: int, *, is_admin: bool = False)
     providers = []
     for provider in enabled_providers():
         key_row = _user_setting(db, user_id, _scanner_key_name(provider))
-        key_configured = bool(key_row and key_row.value)
+        key_configured = bool(key_row and str(key_row.value or "").strip())
+        models = allowed_models(provider)
         providers.append({
             "id": provider,
             "label": provider_label(provider),
-            "models": allowed_models(provider),
-            "default_model": installation_model(provider),
+            "models": models,
+            "default_model": models[0] if models else "",
             "selected_model": resolve_model(db, user_id, provider),
             "requires_api_key": _scanner_requires_key(provider),
             "api_key_configured": key_configured,
@@ -325,7 +326,7 @@ def _validated_scanner_draft(
     if data.api_key is not None and len(data.api_key) > 4096:
         raise HTTPException(status_code=422, detail="API key is too long.")
     existing = _user_setting(db, user_id, _scanner_key_name(provider))
-    credential = (existing.value if existing else "") or ""
+    credential = ((existing.value if existing else "") or "").strip()
     if data.clear_api_key:
         credential = ""
     elif data.api_key is not None:
@@ -380,12 +381,15 @@ async def test_scanner_configuration(
             client,
             credential,
             [
-                text_part("Inspect this image, then reply with only OK."),
+                text_part(
+                    "Inspect the image. Choose its fill color from MAGENTA, GREEN, "
+                    "BLUE, or ORANGE. Reply with exactly one of those words."
+                ),
                 image_part("image/png", SCANNER_TEST_IMAGE_B64),
             ],
             max_attempts=1,
         )
-    if not text.strip().lower().startswith("ok"):
+    if text.strip().upper() != "MAGENTA":
         raise HTTPException(
             status_code=502,
             detail="The selected model did not complete the scanner image test.",

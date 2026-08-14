@@ -172,7 +172,7 @@ Provider-specific errors are translated into the same scanner states:
 | Rate limit countdown | Wait for the displayed time. PokéCollector resumes the queued scan automatically. |
 | Daily quota or billing error | Check the provider account's quota and billing. Permanent billing exhaustion is not retried automatically. |
 
-Use **Test connection** in Scanner Settings for the real image-capability check. Avoid putting API keys in shell commands, URLs, screenshots, or issue reports.
+Use **Test** or **Test and save** in Scanner Settings for the real image-capability check. Avoid putting API keys in shell commands, URLs, screenshots, or issue reports.
 
 ## Privacy, costs, and backups
 

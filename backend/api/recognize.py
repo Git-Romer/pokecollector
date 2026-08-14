@@ -337,7 +337,7 @@ def get_gemini_key(db: Session, user_id: int = None) -> str:
             UserSetting.user_id == user_id, UserSetting.key == "gemini_api_key"
         ).first()
         if row and row.value:
-            return row.value
+            return row.value.strip()
     # No global/env fallback — each user must configure their own key
     return ""
 
@@ -1060,6 +1060,8 @@ async def recognize_sanitized_card(
     """Recognize one already-sanitized image for direct and queued scans."""
     provider = get_provider(db, user_id)
     api_key = provider.credential(db, user_id)
+    if trace:
+        trace.add_secret(api_key)
     if provider.requires_credential() and not api_key:
         if trace:
             trace.record_error(f"No {provider.name} API key is configured.")

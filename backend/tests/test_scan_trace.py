@@ -168,6 +168,26 @@ class ScanTraceTests(unittest.TestCase):
         self.assertNotIn("123456789:", payload["error"])
         self.assertIn("[REDACTED", payload["error"])
 
+    def test_arbitrary_key_is_redacted_from_successful_provider_data(self):
+        self._enable(self.user)
+        secret = "local-provider-key-with-no-known-prefix"
+        trace = create_scan_trace(self.db, self.user.id, mode="single")
+        trace.add_secret(secret)
+        trace.record_extraction(
+            raw_response=f'{{"echo":"{secret}"}}',
+            parsed={"nested": [secret]},
+            usage={"provider": {"credential": secret}},
+        )
+        trace.record_visual_verification(
+            raw_response=f"selected using {secret}", selected=1
+        )
+
+        path = trace.save()
+        saved = path.read_text(encoding="utf-8")
+
+        self.assertNotIn(secret, saved)
+        self.assertGreaterEqual(saved.count("[REDACTED_API_KEY]"), 4)
+
     def test_ground_truth_labels_all_attempts_for_one_item(self):
         self._enable(self.user)
         for selected in ("wrong-card", "right-card", None):

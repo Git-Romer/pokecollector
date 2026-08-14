@@ -13,6 +13,8 @@ from models import ScannerProviderLimitState
 
 DEFAULT_PENALTY_SECONDS = 30.0
 MAX_PENALTY_SECONDS = 14 * 24 * 60 * 60.0
+FALLBACK_PENALTY_SECONDS = (30.0, 120.0, 600.0, 1800.0, 3600.0, 21600.0)
+FALLBACK_RESET_AFTER = datetime.timedelta(hours=24)
 
 
 class ProviderScopeBlockedError(RuntimeError):
@@ -76,10 +78,26 @@ def penalize_provider_scope(
         if state is None:
             return DEFAULT_PENALTY_SECONDS
         now = datetime.datetime.utcnow()
-        penalty = min(
-            max(float(seconds or DEFAULT_PENALTY_SECONDS), 1.0),
-            MAX_PENALTY_SECONDS,
-        )
+        if seconds is None:
+            previous = 0.0
+            if (
+                state.blocked_until
+                and state.updated_at
+                and now - state.updated_at <= FALLBACK_RESET_AFTER
+            ):
+                previous = max(
+                    0.0,
+                    (state.blocked_until - state.updated_at).total_seconds(),
+                )
+            penalty = next(
+                (value for value in FALLBACK_PENALTY_SECONDS if value > previous + 0.5),
+                FALLBACK_PENALTY_SECONDS[-1],
+            )
+        else:
+            penalty = min(
+                max(float(seconds), 1.0),
+                MAX_PENALTY_SECONDS,
+            )
         proposed = now + datetime.timedelta(seconds=penalty)
         if state.blocked_until and state.blocked_until > proposed:
             return (state.blocked_until - now).total_seconds()

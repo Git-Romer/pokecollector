@@ -142,8 +142,11 @@ def enabled_providers() -> tuple[str, ...]:
 
 def resolve_model(db: Session, user_id: int | None, provider: str) -> str:
     """Resolve a provider-specific model, constrained by the admin allowlist."""
+    models = allowed_models(provider)
+    if not models:
+        return ""
     if user_id is None:
-        return installation_model(provider)
+        return models[0]
     row = (
         db.query(UserSetting)
         .filter(
@@ -153,7 +156,7 @@ def resolve_model(db: Session, user_id: int | None, provider: str) -> str:
         .first()
     )
     selected = ((row.value if row else "") or "").strip()
-    return selected if selected in allowed_models(provider) else installation_model(provider)
+    return selected if selected in models else models[0]
 
 
 def resolve_provider_name(db: Session, user_id: int | None) -> str:
@@ -486,7 +489,7 @@ class ScanProvider:
             .filter(UserSetting.user_id == user_id, UserSetting.key == "openai_api_key")
             .first()
         )
-        return (row.value if row else "") or ""
+        return ((row.value if row else "") or "").strip()
 
     def requires_credential(self) -> bool:
         return True if self.is_gemini else openai_requires_key()
@@ -551,14 +554,24 @@ class ScanProvider:
             payload = response.json()
             return extract_openai_text(payload), payload.get("usage")
         except (ValueError, TypeError) as exc:
-            # A 200 whose body is not a chat completion is the endpoint's fault,
-            # not the caller's, so it is a 502 rather than a raw 500.
+            # A structurally incompatible success will not heal through queue
+            # retries. Classify it as a permanent configuration problem rather
+            # than a transient 502 that can loop until the job expires.
             raise HTTPException(
-                status_code=502,
-                detail="The scanner endpoint returned an unreadable response.",
+                status_code=400,
+                detail=(
+                    "The scanner endpoint returned an incompatible response. "
+                    "Check that it supports OpenAI Chat Completions."
+                ),
             ) from exc
 
 
 def get_provider(db: Session, user_id: int | None) -> ScanProvider:
     name = resolve_provider_name(db, user_id)
-    return ScanProvider(name, resolve_model(db, user_id, name))
+    model = resolve_model(db, user_id, name)
+    if not model:
+        raise HTTPException(
+            status_code=400,
+            detail="No valid scanner model is configured. Ask an administrator to check Scanner Settings.",
+        )
+    return ScanProvider(name, model)

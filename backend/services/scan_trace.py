@@ -171,6 +171,29 @@ def _redact_error(message: str) -> str:
     return redacted
 
 
+def _redact_value(value: Any, secrets: tuple[str, ...]) -> Any:
+    """Recursively sanitize provider-controlled diagnostic data.
+
+    Pattern redaction catches known credential formats. Exact-value replacement
+    also protects arbitrary keys used by compatible endpoints, including keys
+    echoed inside otherwise successful response content or usage metadata.
+    """
+    if isinstance(value, str):
+        redacted = _redact_error(value)
+        for secret in secrets:
+            redacted = redacted.replace(secret, "[REDACTED_API_KEY]")
+        return redacted
+    if isinstance(value, dict):
+        return {
+            _redact_value(key, secrets) if isinstance(key, str) else key:
+            _redact_value(item, secrets)
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_redact_value(item, secrets) for item in value]
+    return value
+
+
 class ScanTrace:
     """Collect one scanner attempt without ever recording credentials."""
 
@@ -206,6 +229,16 @@ class ScanTrace:
             "correct": None,
         }
         self._image: bytes | None = None
+        self._secrets: list[str] = []
+
+    def add_secret(self, value: str | None) -> None:
+        """Register a request credential for exact-value diagnostic redaction."""
+        secret = str(value or "").strip()
+        if len(secret) >= 4 and secret not in self._secrets:
+            self._secrets.append(secret)
+
+    def _sanitize(self, value: Any) -> Any:
+        return _redact_value(value, tuple(self._secrets))
 
     def set_image(self, image_bytes: bytes | None) -> None:
         if not self.enabled or not image_bytes:
@@ -226,18 +259,18 @@ class ScanTrace:
             return
         section = self.data["extraction"]
         if prompt is not None:
-            section["prompt"] = prompt
+            section["prompt"] = self._sanitize(prompt)
         if raw_response is not None:
-            section["raw_response"] = raw_response
+            section["raw_response"] = self._sanitize(raw_response)
         if parsed is not None:
-            section["parsed"] = parsed
+            section["parsed"] = self._sanitize(parsed)
         if usage is not None:
-            section["usage"] = usage
+            section["usage"] = self._sanitize(usage)
 
     def record_visual_verification(self, *, raw_response: str, selected: int | None) -> None:
         if self.enabled:
             self.data["visual_verification"] = {
-                "raw_response": raw_response,
+                "raw_response": self._sanitize(raw_response),
                 "selected_position": selected,
             }
 
@@ -316,7 +349,7 @@ class ScanTrace:
 
     def record_error(self, message: str) -> None:
         if self.enabled:
-            self.data["error"] = _redact_error(message)
+            self.data["error"] = self._sanitize(message)
 
     def save(self) -> Path | None:
         user_dir = _user_dir(self.user_id, self._root)
@@ -353,7 +386,12 @@ class ScanTrace:
             json_temp = day / f".{stem}.{uuid.uuid4().hex}.json.tmp"
             _write_private(
                 json_temp,
-                json.dumps(self.data, indent=2, ensure_ascii=False, default=str),
+                json.dumps(
+                    self._sanitize(self.data),
+                    indent=2,
+                    ensure_ascii=False,
+                    default=str,
+                ),
             )
             if _is_revoked(self.user_id, self._root):
                 if image_temp:

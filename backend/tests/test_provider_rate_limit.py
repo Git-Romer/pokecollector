@@ -55,6 +55,21 @@ class ProviderRateLimitTests(unittest.TestCase):
         )
         self.assertGreater(remaining, 599)
 
+    def test_headerless_rate_limits_use_bounded_increasing_delays(self):
+        scope = "fallback-scope"
+        observed = []
+        for expected in provider_rate_limit.FALLBACK_PENALTY_SECONDS:
+            observed.append(
+                provider_rate_limit.penalize_provider_scope(scope, "openai")
+            )
+            with self.sessions() as db:
+                state = db.get(provider_rate_limit.ScannerProviderLimitState, scope)
+                now = datetime.datetime.utcnow()
+                state.updated_at = now - datetime.timedelta(seconds=expected + 1)
+                state.blocked_until = now - datetime.timedelta(seconds=1)
+                db.commit()
+        self.assertEqual(observed, list(provider_rate_limit.FALLBACK_PENALTY_SECONDS))
+
     def test_stale_fingerprints_are_purged(self):
         scope = "old-scope"
         provider_rate_limit.penalize_provider_scope(scope, "openai", seconds=30)

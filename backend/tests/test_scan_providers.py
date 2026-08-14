@@ -424,7 +424,7 @@ class ErrorMappingTests(unittest.TestCase):
             extract_openai_text({"choices": [{"message": {"content": None}}]}), ""
         )
 
-    def test_a_malformed_success_is_a_502_not_a_500(self):
+    def test_a_malformed_success_is_a_permanent_configuration_error(self):
         provider = ScanProvider(OPENAI)
         client = _FakeClient([_FakeResponse(200, {"unexpected": True})])
         with patch.dict(os.environ, {"OPENAI_BASE_URL": LOCAL_URL}), patch(
@@ -432,7 +432,8 @@ class ErrorMappingTests(unittest.TestCase):
         ):
             with self.assertRaises(HTTPException) as caught:
                 asyncio.run(provider.generate_text(client, "", [text_part("hi")]))
-        self.assertEqual(caught.exception.status_code, 502)
+        self.assertEqual(caught.exception.status_code, 400)
+        self.assertIn("incompatible response", caught.exception.detail)
 
     def test_a_rejected_gemini_model_also_points_at_settings(self):
         # A user who named their own Gemini model must not be sent after

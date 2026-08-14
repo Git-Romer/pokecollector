@@ -420,6 +420,7 @@ async def default_composite_processor(
         for position in range(len(images))
     ]
     for trace, image in zip(traces, images):
+        trace.add_secret(api_key)
         trace.set_image(image)
 
     try:

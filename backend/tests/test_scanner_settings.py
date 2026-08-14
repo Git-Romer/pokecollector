@@ -1,6 +1,7 @@
+import asyncio
 import os
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 try:
     from fastapi import HTTPException
@@ -12,11 +13,13 @@ try:
         _get_user_settings,
         _safe_endpoint_summary,
         _scanner_configuration,
+        test_scanner_configuration as run_scanner_configuration_test,
         update_scanner_configuration,
         update_settings,
     )
     from database import Base
     from models import User, UserSetting
+    from services.scan_providers import ScanProvider, get_provider
     DEPS = True
 except ModuleNotFoundError:
     DEPS = False
@@ -122,6 +125,58 @@ class ScannerConfigurationTests(unittest.TestCase):
         with patch.dict(os.environ, env), self.assertRaises(HTTPException):
             update_scanner_configuration(request, self.db, self.user)
         self.assertEqual(self._rows(), {})
+
+    def test_invalid_installation_model_blocks_runtime_scans(self):
+        env = {
+            "OPENAI_SCANNER_ENABLED": "true",
+            "OPENAI_MODEL": "invalid model with spaces",
+            "OPENAI_BASE_URL": "http://model-host:11434/v1",
+        }
+        self.db.add(
+            UserSetting(user_id=self.user.id, key="scanner_provider", value="openai")
+        )
+        self.db.commit()
+        with patch.dict(os.environ, env):
+            config = _scanner_configuration(self.db, self.user.id)
+            with self.assertRaises(HTTPException) as caught:
+                get_provider(self.db, self.user.id)
+        self.assertEqual(config["status"], "admin_setup_required")
+        self.assertEqual(config["model"], "")
+        self.assertEqual(caught.exception.status_code, 400)
+
+    def test_whitespace_only_legacy_key_is_not_ready(self):
+        self.db.add(
+            UserSetting(user_id=self.user.id, key="gemini_api_key", value="   ")
+        )
+        self.db.commit()
+        config = _scanner_configuration(self.db, self.user.id)
+        self.assertEqual(config["status"], "api_key_required")
+        self.assertFalse(config["providers"][0]["api_key_configured"])
+
+    def test_connection_test_rejects_text_only_ok_response(self):
+        request = ScannerConfigurationUpdate(
+            provider="gemini", model="gemini-flash-latest", api_key="test-key"
+        )
+        with patch.object(
+            ScanProvider,
+            "generate_text",
+            new=AsyncMock(return_value=("OK", None)),
+        ), self.assertRaises(HTTPException) as caught:
+            asyncio.run(run_scanner_configuration_test(request, self.db, self.user))
+        self.assertEqual(caught.exception.status_code, 502)
+
+    def test_connection_test_accepts_the_image_color(self):
+        request = ScannerConfigurationUpdate(
+            provider="gemini", model="gemini-flash-latest", api_key="test-key"
+        )
+        generate = AsyncMock(return_value=("MAGENTA", None))
+        with patch.object(ScanProvider, "generate_text", new=generate):
+            result = asyncio.run(
+                run_scanner_configuration_test(request, self.db, self.user)
+            )
+        self.assertEqual(result, {"status": "ready"})
+        parts = generate.await_args.args[2]
+        self.assertIn("image", parts[1])
 
     def test_legacy_settings_contract_never_returns_scanner_secrets(self):
         self.db.add(UserSetting(user_id=self.user.id, key="gemini_api_key", value="secret"))
