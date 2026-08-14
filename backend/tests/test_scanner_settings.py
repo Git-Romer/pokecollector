@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import os
 import unittest
 from unittest.mock import AsyncMock, patch
@@ -10,6 +11,7 @@ try:
 
     from api.settings import (
         ScannerConfigurationUpdate,
+        SCANNER_TEST_IMAGE_B64,
         _get_user_settings,
         _safe_endpoint_summary,
         _scanner_configuration,
@@ -176,14 +178,31 @@ class ScannerConfigurationTests(unittest.TestCase):
             )
         self.assertEqual(result, {"status": "ready"})
         parts = generate.await_args.args[2]
-        self.assertIn("image", parts[1])
+        encoded = parts[1]["image"]["data"]
+        decoded = base64.b64decode(encoded, validate=True)
+        self.assertEqual(decoded, base64.b64decode(SCANNER_TEST_IMAGE_B64, validate=True))
 
     def test_legacy_settings_contract_never_returns_scanner_secrets(self):
-        self.db.add(UserSetting(user_id=self.user.id, key="gemini_api_key", value="secret"))
+        self.db.add_all(
+            [
+                UserSetting(
+                    user_id=self.user.id,
+                    key="gemini_api_key",
+                    value="gemini-secret",
+                ),
+                UserSetting(
+                    user_id=self.user.id,
+                    key="openai_api_key",
+                    value="openai-secret",
+                ),
+            ]
+        )
         self.db.commit()
         result = _get_user_settings(self.db, self.user.id)
         self.assertNotIn("gemini_api_key", result)
-        self.assertNotIn("secret", repr(result))
+        self.assertNotIn("openai_api_key", result)
+        self.assertNotIn("gemini-secret", repr(result))
+        self.assertNotIn("openai-secret", repr(result))
 
     def test_legacy_bulk_update_cannot_bypass_atomic_validation(self):
         with self.assertRaises(HTTPException) as caught:

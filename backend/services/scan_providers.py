@@ -20,6 +20,7 @@ Two rules shape the design:
 
 import base64
 import datetime
+import logging
 import math
 import os
 import re
@@ -31,6 +32,8 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from models import UserSetting
+
+logger = logging.getLogger(__name__)
 
 GEMINI = "gemini"
 OPENAI = "openai"
@@ -328,6 +331,7 @@ async def post_openai_chat(
         penalize_provider_scope,
         provider_scope_fingerprint,
         raise_if_provider_blocked,
+        record_provider_scope_success,
     )
 
     last_error = None
@@ -348,6 +352,7 @@ async def post_openai_chat(
             if api_key:
                 headers["Authorization"] = f"Bearer {api_key}"
 
+            request_started_at = datetime.datetime.utcnow()
             resp = await client.post(url, headers=headers, json=payload)
 
             if resp.status_code == 429:
@@ -417,6 +422,15 @@ async def post_openai_chat(
                     status_code=503,
                     detail="The scanner provider is temporarily unavailable. Please try again shortly.",
                 )
+            try:
+                record_provider_scope_success(
+                    scope, request_started_at=request_started_at
+                )
+            except Exception:
+                # Rate-limit bookkeeping must never turn a valid provider response
+                # into a failed scan. No endpoint, credential, or upstream text is
+                # included in this diagnostic.
+                logger.warning("Could not reset scanner provider rate-limit state")
             return resp
         except HTTPException:
             raise

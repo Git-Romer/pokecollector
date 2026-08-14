@@ -1,5 +1,6 @@
 import unittest
 import datetime
+import os
 from unittest.mock import patch
 
 try:
@@ -9,7 +10,8 @@ try:
 
     from api.auth import UpdateUserRequest, change_username, delete_user, update_user
     from database import Base
-    from models import Card, Trade, TradeItem, User
+    from models import Card, Trade, TradeItem, User, UserSetting
+    from services.auth import bootstrap_admin
 
     API_TEST_DEPS_AVAILABLE = True
 except ModuleNotFoundError:
@@ -199,6 +201,36 @@ class AuthAdminSafetyTests(unittest.TestCase):
         self.assertEqual(self.db.query(Trade).filter(Trade.user_id == trainer.id).count(), 0)
         self.assertEqual(self.db.query(TradeItem).filter(TradeItem.user_id == trainer.id).count(), 0)
         self.assertIsNone(self.db.query(Card).filter(Card.id == card_id).first())
+
+
+@unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "Backend dependencies are not installed in this lightweight test environment")
+class BootstrapAdminTests(unittest.TestCase):
+    def setUp(self):
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        self.db = sessionmaker(bind=engine)()
+
+    def tearDown(self):
+        self.db.close()
+
+    def test_first_start_imports_the_gemini_environment_key_once(self):
+        env = {
+            "ADMIN_USERNAME": "admin",
+            "ADMIN_PASSWORD": "test-password",
+            "ADMIN_BOOTSTRAP_LOG": "false",
+            "GEMINI_API_KEY": "  first-start-key  ",
+        }
+        with patch.dict(os.environ, env):
+            bootstrap_admin(self.db)
+            bootstrap_admin(self.db)
+
+        admin = self.db.query(User).filter(User.role == "admin").one()
+        settings = self.db.query(UserSetting).filter(
+            UserSetting.user_id == admin.id,
+            UserSetting.key == "gemini_api_key",
+        ).all()
+        self.assertEqual(len(settings), 1)
+        self.assertEqual(settings[0].value, "first-start-key")
 
 
 if __name__ == "__main__":

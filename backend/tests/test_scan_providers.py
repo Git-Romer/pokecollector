@@ -88,8 +88,11 @@ class _Fixture:
         )
         blocked.start()
         penalize.start()
+        success = patch("services.provider_rate_limit.record_provider_scope_success")
+        success.start()
         self.addCleanup(blocked.stop)
         self.addCleanup(penalize.stop)
+        self.addCleanup(success.stop)
         engine = create_engine("sqlite:///:memory:")
         Base.metadata.create_all(engine)
         self.db = sessionmaker(bind=engine)()
@@ -252,17 +255,19 @@ class RequestShapingTests(unittest.TestCase):
 
     def _run(self, provider, api_key, parts, responses):
         client = _FakeClient(responses)
-        with patch("services.provider_rate_limit.raise_if_provider_blocked"):
+        with patch("services.provider_rate_limit.raise_if_provider_blocked"), patch(
+            "services.provider_rate_limit.record_provider_scope_success"
+        ) as success:
             text, usage = asyncio.run(
                 provider.generate_text(client, api_key, parts)
             )
-        return client, text, usage
+        return client, text, usage, success
 
     def test_openai_sends_text_and_an_image_data_uri(self):
         payload = {"choices": [{"message": {"content": '{"name": "Quaxly"}'}}],
                    "usage": {"total_tokens": 12}}
         with patch.dict(os.environ, {"OPENAI_BASE_URL": LOCAL_URL, "OPENAI_MODEL": "moondream"}):
-            client, text, usage = self._run(
+            client, text, usage, success = self._run(
                 ScanProvider(OPENAI), "",
                 [text_part("Describe"), image_part("image/jpeg", "QUJD")],
                 [_FakeResponse(200, payload)],
@@ -276,12 +281,13 @@ class RequestShapingTests(unittest.TestCase):
         self.assertEqual(text, '{"name": "Quaxly"}')
         self.assertEqual(extract_openai_text(payload), '{"name": "Quaxly"}')
         self.assertEqual(usage, {"total_tokens": 12})
+        success.assert_called_once()
 
     def test_no_authorization_header_when_there_is_no_key(self):
         # A local server has nothing to authenticate, and an empty bearer token
         # is worse than no header at all.
         with patch.dict(os.environ, {"OPENAI_BASE_URL": LOCAL_URL}):
-            client, _, _ = self._run(
+            client, _, _, _ = self._run(
                 ScanProvider(OPENAI), "",
                 [text_part("hi")],
                 [_FakeResponse(200, {"choices": [{"message": {"content": "ok"}}]})],
@@ -290,7 +296,7 @@ class RequestShapingTests(unittest.TestCase):
 
     def test_the_key_is_sent_when_there_is_one(self):
         with patch.dict(os.environ, {"OPENAI_BASE_URL": DEFAULT_OPENAI_BASE_URL}):
-            client, _, _ = self._run(
+            client, _, _, _ = self._run(
                 ScanProvider(OPENAI), "sk-abc",
                 [text_part("hi")],
                 [_FakeResponse(200, {"choices": [{"message": {"content": "ok"}}]})],
@@ -308,7 +314,7 @@ class RequestShapingTests(unittest.TestCase):
             })
 
         with patch("api.recognize.post_gemini_generate", new=fake_post):
-            client, text, usage = self._run(
+            client, text, usage, success = self._run(
                 ScanProvider(GEMINI), "AIzaKey",
                 [text_part("Describe"), image_part("image/png", "QUJD")],
                 [],
@@ -321,6 +327,7 @@ class RequestShapingTests(unittest.TestCase):
         # so the adapter must not quietly trim it.
         self.assertEqual(text, "  hello  ")
         self.assertEqual(usage, {"totalTokenCount": 3})
+        success.assert_not_called()
 
 
 @unittest.skipUnless(DEPS, "FastAPI/SQLAlchemy are not installed in this environment")
@@ -332,7 +339,7 @@ class ErrorMappingTests(unittest.TestCase):
         with patch("services.provider_rate_limit.raise_if_provider_blocked"), patch(
             "services.provider_rate_limit.penalize_provider_scope",
             side_effect=lambda *_args, seconds=None, **_kwargs: seconds or 30.0,
-        ):
+        ), patch("services.provider_rate_limit.record_provider_scope_success"):
             return asyncio.run(
                 post_openai_chat(client, "http://x/chat/completions", api_key, {}, max_attempts=2)
             )

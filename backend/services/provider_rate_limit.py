@@ -113,6 +113,44 @@ def penalize_provider_scope(
         db.close()
 
 
+def record_provider_scope_success(
+    scope: str,
+    *,
+    request_started_at: datetime.datetime | None = None,
+) -> bool:
+    """Reset fallback escalation after a successful provider request.
+
+    A request that started before another worker recorded a newer rate limit must
+    not clear that newer block when it eventually succeeds.
+    """
+    db = SessionLocal()
+    try:
+        state = (
+            db.query(ScannerProviderLimitState)
+            .filter(ScannerProviderLimitState.scope_fingerprint == scope)
+            .with_for_update()
+            .first()
+        )
+        if state is None:
+            return False
+        if (
+            request_started_at is not None
+            and state.updated_at is not None
+            and state.updated_at > request_started_at
+        ):
+            return False
+        state.blocked_until = None
+        state.blocked_reason = None
+        state.updated_at = datetime.datetime.utcnow()
+        db.commit()
+        return True
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
 def purge_stale_provider_limit_states(
     *, now: datetime.datetime | None = None, older_than_days: int = 14
 ) -> int:
