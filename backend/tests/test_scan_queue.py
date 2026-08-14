@@ -12,6 +12,7 @@ try:
     from database import Base
     from models import ScanJob, ScanJobItem, ScanQueueUserState, User
     from services import scan_queue, scan_storage
+    from services.scan_providers import ScanProvider
     from services.scan_queue import (
         ClaimedScanItem,
         claim_next_scan_item,
@@ -453,9 +454,18 @@ class CompositeProcessorTests(unittest.IsolatedAsyncioTestCase):
             image_bytes("green"),
             image_bytes("yellow"),
         ]
-        with patch("api.recognize.get_gemini_key", return_value="secret-key"), \
-                patch("api.recognize.recognize_composite_card_info", new=AsyncMock(return_value=composite_info)), \
-                patch("api.recognize.match_composite_card_info", new=matcher):
+        with (
+            patch(
+                "services.scan_providers.get_provider",
+                return_value=ScanProvider("gemini", "gemini-flash-latest"),
+            ),
+            patch("api.recognize.get_gemini_key", return_value="secret-key"),
+            patch(
+                "api.recognize.recognize_composite_card_info",
+                new=AsyncMock(return_value=composite_info),
+            ),
+            patch("api.recognize.match_composite_card_info", new=matcher),
+        ):
             results = await scan_queue.default_composite_processor(
                 db,
                 1,
