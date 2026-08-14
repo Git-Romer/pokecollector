@@ -119,6 +119,26 @@ class MultiUserModeRecoveryTests(unittest.TestCase):
         # the stored setting was not changed by the rejected call
         self.assertFalse(get_auth_mode(db=self.db)["multi_user"])
 
+    def test_single_key_settings_endpoint_cannot_change_user_mode(self):
+        # api/settings.py has two writers: PUT / (update_settings) and
+        # POST /{key} (set_setting). Guarding only the first leaves the rule
+        # that this setting moves only through /api/auth/mode reachable around.
+        from api.settings import set_setting
+
+        with self.assertRaises(HTTPException) as exc:
+            set_setting(
+                "multi_user_mode",
+                {"value": "true"},
+                db=self.db,
+                current_user=self.admin,
+            )
+        self.assertEqual(exc.exception.status_code, 409)
+        self.assertEqual(
+            exc.exception.detail,
+            "Multi-user mode can only be changed through /api/auth/mode",
+        )
+        self.assertFalse(get_auth_mode(db=self.db)["multi_user"])
+
     def test_generic_settings_endpoint_cannot_change_user_mode(self):
         with self.assertRaises(HTTPException) as exc:
             update_settings(
