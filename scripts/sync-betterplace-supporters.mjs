@@ -7,6 +7,16 @@ export const SOURCE_PREFIX = 'betterplace'
 export const DEFAULT_API_BASE_URL = 'https://api.betterplace.org/de/api_v4'
 export const REQUIRED_HEADERS = ['date', 'name', 'amount', 'currency', 'url', 'source']
 
+function publicNameKey(name) {
+  return String(name ?? '').trim().normalize('NFKC').toLocaleLowerCase('en-US')
+}
+
+function opinionId(value) {
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return String(value)
+  if (typeof value === 'string' && /^[1-9]\d*$/u.test(value.trim())) return value.trim()
+  throw new Error('Betterplace returned an entry with an invalid ID')
+}
+
 export function parseCsv(text) {
   const rows = []
   let row = []
@@ -93,15 +103,27 @@ export function buildBetterplaceRecords(opinions, campaignId = DEFAULT_CAMPAIGN_
   const records = []
 
   for (const opinion of opinions) {
-    const id = String(opinion?.id ?? '').trim()
-    if (!id) throw new Error('Betterplace returned an entry without an ID')
+    const id = opinionId(opinion?.id)
     if (seenIds.has(id)) throw new Error(`Betterplace returned duplicate entry ID ${id}`)
     seenIds.add(id)
 
+    if (opinion?.message != null && typeof opinion.message !== 'string') {
+      throw new Error(`Betterplace entry ${id} contains an invalid message`)
+    }
+    if (opinion?.author != null && (typeof opinion.author !== 'object' || Array.isArray(opinion.author))) {
+      throw new Error(`Betterplace entry ${id} contains an invalid author`)
+    }
+    if (opinion?.author?.name != null && typeof opinion.author.name !== 'string') {
+      throw new Error(`Betterplace entry ${id} contains an invalid author name`)
+    }
+    if (opinion?.confirmed_at != null && typeof opinion.confirmed_at !== 'string') {
+      throw new Error(`Betterplace entry ${id} contains an invalid confirmation date`)
+    }
+
     const publicName = extractPublicName(opinion?.message)
     const hasPublicAuthor = typeof opinion?.author?.name === 'string' && Boolean(opinion.author.name.trim())
-    const isConfirmed = Boolean(opinion?.confirmed_at)
-    const nameKey = publicName?.toLocaleLowerCase('en-US')
+    const isConfirmed = typeof opinion?.confirmed_at === 'string' && Boolean(opinion.confirmed_at.trim())
+    const nameKey = publicName ? publicNameKey(publicName) : null
     if (!publicName || seenNames.has(nameKey) || !hasPublicAuthor || !isConfirmed) continue
 
     seenNames.add(nameKey)
@@ -132,10 +154,20 @@ export function mergeSupportersCsv(existingCsv, opinions, campaignId = DEFAULT_C
   const managed = existingRecords.filter(record => record.source === source)
   const preserved = existingRecords.filter(record => record.source !== source)
   const imported = buildBetterplaceRecords(opinions, campaignId)
-  if (managed.length > 0 && imported.length === 0) {
-    throw new Error('Betterplace produced no eligible public opt-ins; refusing to remove existing imported supporters')
+
+  const managedNames = new Set(managed.map(record => publicNameKey(record.name)))
+  if (managedNames.has('')) {
+    throw new Error('SUPPORTERS.csv contains a managed Betterplace row without a public name')
   }
-  return writeCsv(headers, [...preserved, ...imported])
+  const importedNames = new Set(imported.map(record => publicNameKey(record.name)))
+  const missingManagedNames = [...managedNames].filter(name => !importedNames.has(name))
+  if (missingManagedNames.length > 0) {
+    throw new Error('Betterplace omitted existing public opt-ins; refusing to remove imported supporters automatically')
+  }
+
+  const preservedNames = new Set(preserved.map(record => publicNameKey(record.name)).filter(Boolean))
+  const nonDuplicateImports = imported.filter(record => !preservedNames.has(publicNameKey(record.name)))
+  return writeCsv(headers, [...preserved, ...nonDuplicateImports])
 }
 
 export async function fetchCampaignOpinions({
@@ -163,8 +195,7 @@ export async function fetchCampaignOpinions({
       throw new Error('Betterplace returned an unexpected page number')
     }
     for (const opinion of payload.data) {
-      const id = String(opinion?.id ?? '').trim()
-      if (!id) throw new Error('Betterplace returned an entry without an ID')
+      const id = opinionId(opinion?.id)
       if (seenIds.has(id)) {
         throw new Error(`Betterplace pagination repeated entry ID ${id}`)
       }
@@ -207,7 +238,7 @@ export async function main() {
   const updatedCsv = mergeSupportersCsv(existingCsv, opinions, campaignId)
 
   if (updatedCsv === existingCsv) {
-    console.log(`Supporter list is already current (${opinions.length} public campaign entries checked).`)
+    console.log(`Supporter list is already current (${opinions.length} campaign entries checked).`)
     return
   }
   if (dryRun) {

@@ -85,5 +85,19 @@ jobs:
           if [ -n "$pr_number" ]; then
             gh pr edit "$pr_number" --title "Update Betterplace supporters" --body "$body"
           else
-            gh pr create --base main --head "$UPDATE_BRANCH" --title "Update Betterplace supporters" --body "$body"
+            if ! gh pr create --base main --head "$UPDATE_BRANCH" --title "Update Betterplace supporters" --body "$body"; then
+              echo "::error::Enable 'Allow GitHub Actions to create and approve pull requests' under Settings > Actions > General > Workflow permissions. This workflow only creates review PRs; it never approves or merges them."
+              exit 1
+            fi
+          fi
+
+      - name: Close stale review pull request
+        if: steps.update.outputs.has_changes == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPDATE_BRANCH: automation/betterplace-supporters
+        run: |
+          pr_number="$(gh pr list --base main --head "$UPDATE_BRANCH" --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$pr_number" ]; then
+            gh pr close "$pr_number" --comment "Closing automatically because the latest validated Betterplace supporter list now matches main."
           fi

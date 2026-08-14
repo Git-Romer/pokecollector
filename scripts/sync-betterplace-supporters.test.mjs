@@ -46,11 +46,30 @@ test('only confirmed, non-anonymous, explicitly opted-in donations are imported'
   }])
 })
 
-test('merge preserves legacy supporters and replaces only campaign-managed rows', () => {
+test('malformed Betterplace identity and confirmation fields fail closed', () => {
+  assert.throws(
+    () => buildBetterplaceRecords([{ ...eligibleOpinion, id: { value: 123 } }]),
+    /invalid ID/,
+  )
+  assert.throws(
+    () => buildBetterplaceRecords([{ ...eligibleOpinion, message: { text: eligibleOpinion.message } }]),
+    /invalid message/,
+  )
+  assert.throws(
+    () => buildBetterplaceRecords([{ ...eligibleOpinion, author: 'Public donor' }]),
+    /invalid author/,
+  )
+  assert.throws(
+    () => buildBetterplaceRecords([{ ...eligibleOpinion, confirmed_at: 1 }]),
+    /invalid confirmation date/,
+  )
+})
+
+test('merge preserves legacy supporters and refreshes existing campaign-managed rows', () => {
   const existing = [
     'date,name,amount,currency,url,source',
     '2026-05-29,Legacy,10,EUR,https://example.com,',
-    ',Old imported,,EUR,,betterplace:57435',
+    ',CardCollector42,,EUR,,betterplace:57435',
     '',
   ].join('\n')
 
@@ -63,7 +82,7 @@ test('merge preserves legacy supporters and replaces only campaign-managed rows'
   assert.equal(records[1].source, 'betterplace:57435')
 })
 
-test('merge refuses to wipe imported supporters when no eligible opt-ins remain', () => {
+test('merge refuses to remove all or part of the existing imported supporters', () => {
   const existing = [
     'date,name,amount,currency,url,source',
     ',Imported supporter,,EUR,,betterplace:57435',
@@ -72,15 +91,41 @@ test('merge refuses to wipe imported supporters when no eligible opt-ins remain'
 
   assert.throws(
     () => mergeSupportersCsv(existing, []),
-    /refusing to remove existing imported supporters/,
+    /refusing to remove imported supporters automatically/,
   )
   assert.throws(
     () => mergeSupportersCsv(existing, [{
       ...eligibleOpinion,
       message: 'A public donation without the explicit opt-in prefix',
     }]),
-    /refusing to remove existing imported supporters/,
+    /refusing to remove imported supporters automatically/,
   )
+
+  const twoImported = [
+    'date,name,amount,currency,url,source',
+    ',CardCollector42,,EUR,,betterplace:57435',
+    ',Second supporter,,EUR,,betterplace:57435',
+    '',
+  ].join('\n')
+  assert.throws(
+    () => mergeSupportersCsv(twoImported, [eligibleOpinion]),
+    /refusing to remove imported supporters automatically/,
+  )
+})
+
+test('an imported public name does not duplicate or hide a manual supporter', () => {
+  const existing = [
+    'date,name,amount,currency,url,source',
+    '2026-05-29,CardCollector42,10,EUR,https://example.com,',
+    '',
+  ].join('\n')
+
+  const merged = mergeSupportersCsv(existing, [eligibleOpinion])
+  const { records } = parseCsv(merged)
+  assert.equal(records.length, 1)
+  assert.equal(records[0].name, 'CardCollector42')
+  assert.equal(records[0].amount, '10')
+  assert.equal(records[0].source, '')
 })
 
 test('merge rejects malformed CSV headers instead of rewriting ambiguous data', () => {
@@ -161,6 +206,7 @@ test('scheduled sync publishes a review branch instead of pushing to main', asyn
   assert.match(workflow, /pull-requests:\s*write/u)
   assert.match(workflow, /ref:\s*main/u)
   assert.match(workflow, /gh pr create/u)
+  assert.match(workflow, /gh pr close/u)
   assert.match(workflow, /HEAD:refs\/heads\/\$UPDATE_BRANCH/u)
   assert.doesNotMatch(workflow, /^\s+git push\s*$/mu)
 })
