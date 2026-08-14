@@ -177,7 +177,11 @@ export default function ScannerSettingsCard({ t }) {
               onChange={event => changeDraft(() => setModel(event.target.value))}
               className="select mt-1.5 w-full text-xs font-semibold"
             >
-              {selected.models.map(item => <option key={item} value={item}>{item}</option>)}
+              {selected.models.map(item => (
+                <option key={item} value={item}>
+                  {item}{item === selected.default_model ? ` · ${t('settings.scannerRecommended')}` : ''}
+                </option>
+              ))}
             </select>
             <span className="block text-[11px] text-text-muted mt-1">{t('settings.scannerModelManaged')}</span>
           </label>

@@ -128,6 +128,7 @@ test('guides provider selection and saves one guarded configuration', async ({ p
   await expect(page.getByText('Administrator-configured service.', { exact: false })).toBeVisible()
   await expect(page.getByText('No personal API key is required.')).toBeVisible()
   await expect(page.getByLabel('Model')).toBeEnabled()
+  await expect(page.getByLabel('Model').locator('option').first()).toHaveText('vision-fast · Recommended')
   await page.getByLabel('Model').selectOption('vision-accurate')
   await page.getByRole('button', { name: 'Test and save' }).click()
   await expect(page.getByText('Scanner configuration saved')).toBeVisible()

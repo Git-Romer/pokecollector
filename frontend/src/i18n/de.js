@@ -946,6 +946,7 @@ const de = {
     scannerPersonalKeyNotRequired: 'Kein persönlicher API Key erforderlich.',
     scannerModel: 'Modell',
     scannerModelManaged: 'Verfügbare Modelle werden vom Administrator verwaltet.',
+    scannerRecommended: 'Empfohlen',
     scannerApiKey: 'API Key',
     scannerGetKey: 'Key erstellen',
     scannerKeyConfigured: 'Ein Key ist hinterlegt. Gib nur zum Ersetzen einen neuen ein.',
