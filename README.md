@@ -18,7 +18,7 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - 👤 **Creator:** [Gilles Romer](https://romerg.de/)
 - ✉️ **Contact:** [info@romerg.de](mailto:info@romerg.de)
 
-![Version](https://img.shields.io/badge/version-v1.38.5-e3000b?style=flat-square) ![Dark Theme](https://img.shields.io/badge/theme-dark-1a1a2e?style=flat-square) ![TCGdex](https://img.shields.io/badge/card%20data-TCGdex-e3000b?style=flat-square) ![Docker](https://img.shields.io/badge/deploy-Docker-2496ed?style=flat-square) ![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square) ![React](https://img.shields.io/badge/frontend-React%2018-61dafb?style=flat-square) [![Support animal rescue](https://img.shields.io/badge/support-animal%20rescue-e3000b?style=flat-square)](https://pokecollector.romerg.de/support/)
+![Version](https://img.shields.io/badge/version-v1.38.5-e3000b?style=flat-square) ![Dark Theme](https://img.shields.io/badge/theme-dark-1a1a2e?style=flat-square) ![TCGdex](https://img.shields.io/badge/card%20data-TCGdex-e3000b?style=flat-square) ![Docker](https://img.shields.io/badge/deploy-Docker-2496ed?style=flat-square) ![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square) ![React](https://img.shields.io/badge/frontend-React%2018-61dafb?style=flat-square) [![Support animal rescue](https://img.shields.io/badge/support-animal%20rescue-e3000b?style=flat-square)](https://pokecollector.romerg.de/#support)
 
 **Current version:** `v1.38.5` · Releases are tracked on the [GitHub Releases page](https://github.com/Git-Romer/pokecollector/releases).
 
@@ -533,11 +533,11 @@ https://makerworld.com/de/models/2816777-high-dividers-with-set-logo-nfc-tag#pro
 
 If you want to support PokéCollector, you can donate directly to animal rescue through the official campaign:
 
-https://pokecollector.romerg.de/support/
+https://pokecollector.romerg.de/#support
 
 Betterplace processes the donation and forwards it to the selected animal rescue project. PokéCollector never receives the funds.
 
-To appear in the public supporter list, donate non-anonymously and begin the public Betterplace message with `POKECOLLECTOR: Your desired name`. Only the requested public name is copied to this repository. If the automatic import misses a donation, the support page includes a no-login manual review form. Published names can be corrected or removed by contacting [info@romerg.de](mailto:info@romerg.de).
+To appear in the public supporter list, donate non-anonymously and begin the public Betterplace message with `POKECOLLECTOR: Your desired name`. Only the requested public name is copied to this repository. If the automatic import misses a donation, the website's support section includes a no-login manual review form. Published names can be corrected or removed by contacting [info@romerg.de](mailto:info@romerg.de).
 
 Repository maintenance remains reviewable: the scheduled sync validates Betterplace's public feed and opens or updates a dedicated pull request containing only the `SUPPORTERS.csv` change. It never pushes supporter data directly to protected `main`.
 

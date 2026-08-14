@@ -294,8 +294,8 @@ export default function Settings() {
   const { user, updateCurrentUser, multiUser, modeLocked } = useAuth()
   const { settings, updateSettings, t, pricePrimaryField, exchangeRate } = useSettings()
   const supportPageUrl = settings.language === 'de'
-    ? 'https://pokecollector.romerg.de/de/support/'
-    : 'https://pokecollector.romerg.de/support/'
+    ? 'https://pokecollector.romerg.de/de/#support'
+    : 'https://pokecollector.romerg.de/#support'
   const confirmDialog = useConfirmDialog()
   const publicProfilesEnabled = settings.public_profiles_enabled === 'true'
   const { theme, setTheme, themes } = useTheme()
