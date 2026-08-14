@@ -1,5 +1,6 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { getAuthMode, getMe } from '../api/client'
+import { authRetryDelay, loadAuthState } from './authBootstrap'
 
 const AuthContext = createContext(null)
 
@@ -14,40 +15,57 @@ export function AuthProvider({ children }) {
       return null
     }
   })
-  const [loading, setLoading] = useState(true)
+  const [authStatus, setAuthStatus] = useState('loading')
   const [multiUser, setMultiUser] = useState(true)
   const [modeLocked, setModeLocked] = useState(false)
+  const [bootstrapVersion, setBootstrapVersion] = useState(0)
 
   useEffect(() => {
-    getAuthMode()
-      .then(({ multi_user, locked }) => {
-        setMultiUser(multi_user)
-        setModeLocked(Boolean(locked))
-        const token = localStorage.getItem('token')
-        if (!multi_user || token) {
-          return getMe().then((currentUser) => {
-            setUser(currentUser)
-            localStorage.setItem('user', JSON.stringify(currentUser))
-          })
+    let cancelled = false
+    let retryTimer = null
+
+    const bootstrap = async (attempt = 0) => {
+      try {
+        const result = await loadAuthState({
+          token: localStorage.getItem('token'),
+          getAuthMode,
+          getMe,
+        })
+        if (cancelled) return
+
+        setMultiUser(result.multiUser)
+        setModeLocked(result.modeLocked)
+        setUser(result.user)
+
+        if (result.clearToken) localStorage.removeItem('token')
+
+        if (result.clearSession || !result.user) {
+          localStorage.removeItem('user')
+        } else {
+          localStorage.setItem('user', JSON.stringify(result.user))
         }
-        setUser(null)
-      })
-      .catch(() => {
-        const token = localStorage.getItem('token')
-        if (token) {
-          return getMe().then((currentUser) => {
-            setUser(currentUser)
-            localStorage.setItem('user', JSON.stringify(currentUser))
-          })
-        }
-        setUser(null)
-      })
-      .catch(() => {
-        localStorage.removeItem('token')
-        localStorage.removeItem('user')
-        setUser(null)
-      })
-      .finally(() => setLoading(false))
+        setAuthStatus('ready')
+      } catch {
+        if (cancelled) return
+
+        // Do not guess the authentication mode or discard the session while
+        // the backend is unavailable. Keep protected routes on a connection
+        // screen and recover as soon as startup completes.
+        setAuthStatus('offline')
+        retryTimer = window.setTimeout(() => bootstrap(attempt + 1), authRetryDelay(attempt))
+      }
+    }
+
+    bootstrap()
+    return () => {
+      cancelled = true
+      if (retryTimer) window.clearTimeout(retryTimer)
+    }
+  }, [bootstrapVersion])
+
+  const retryConnection = useCallback(() => {
+    setAuthStatus('loading')
+    setBootstrapVersion((version) => version + 1)
   }, [])
 
   const loginUser = (token, userData) => {
@@ -75,8 +93,21 @@ export function AuthProvider({ children }) {
     window.location.href = '/login'
   }
 
+  const loading = authStatus !== 'ready'
+  const connectionError = authStatus === 'offline'
+
   return (
-    <AuthContext.Provider value={{ user, loading, multiUser, modeLocked, loginUser, updateCurrentUser, logout }}>
+    <AuthContext.Provider value={{
+      user,
+      loading,
+      connectionError,
+      multiUser,
+      modeLocked,
+      loginUser,
+      updateCurrentUser,
+      logout,
+      retryConnection,
+    }}>
       {children}
     </AuthContext.Provider>
   )

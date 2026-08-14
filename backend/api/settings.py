@@ -43,6 +43,30 @@ PER_USER_KEYS = {
     SCAN_DIAGNOSTICS_SETTING_KEY, PHOTO_PREFERENCE_SETTING_KEY,
 }
 
+# Settings that must not be written through the generic settings endpoints,
+# because changing them has constraints the dedicated endpoint owns. Writing
+# multi_user_mode directly would bypass the USER_MODE environment lock and the
+# confirmation shown by the settings page.
+DEDICATED_ENDPOINT_KEYS = {
+    "multi_user_mode": {
+        "label": "Multi-user mode",
+        "endpoint": "/api/auth/mode",
+    },
+}
+
+
+def _refuse_dedicated_setting(key: str) -> None:
+    dedicated = DEDICATED_ENDPOINT_KEYS.get(key)
+    if dedicated:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{dedicated['label']} can only be changed through "
+                f"{dedicated['endpoint']}"
+            ),
+        )
+
+
 ADMIN_ONLY_KEYS = {
     "full_sync_interval_days", "price_sync_interval_minutes", "multi_user_mode",
     "tcgdex_sync_languages", "debug_mode",
@@ -189,11 +213,7 @@ def get_tcgdex_filter_languages(db: Session = Depends(get_db), current_user: Use
 def update_settings(data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     pending_side_effects = []
     for key, value in data.items():
-        if key == "multi_user_mode":
-            raise HTTPException(
-                status_code=409,
-                detail="Multi-user mode can only be changed through /api/auth/mode",
-            )
+        _refuse_dedicated_setting(key)
         coerced_value = _coerce_setting_value(key, value)
         if key in ADMIN_ONLY_KEYS:
             if current_user.role != "admin":
@@ -314,6 +334,7 @@ def get_setting(key: str, db: Session = Depends(get_db), current_user: User = De
 
 @router.post("/{key}")
 def set_setting(key: str, body: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    _refuse_dedicated_setting(key)
     value = _coerce_setting_value(key, body.get("value", ""))
     if key in ADMIN_ONLY_KEYS:
         if current_user.role != "admin":
