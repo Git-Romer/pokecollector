@@ -160,6 +160,11 @@ const de = {
     signInToCollection: 'Melde dich bei deiner Sammlung an',
     switchUser: 'Anderer Benutzer',
     welcomeBack: 'Willkommen zurück',
+    startingTitle: 'PokéCollector wird gestartet',
+    startingMessage: 'Server und Sitzung werden überprüft...',
+    connectionTitle: 'PokéCollector ist nicht erreichbar',
+    connectionMessage: 'Der Server wird noch gestartet oder ist vorübergehend nicht verfügbar. PokéCollector verbindet sich automatisch erneut.',
+    retryConnection: 'Erneut versuchen',
   },
 
   // Home Screen
