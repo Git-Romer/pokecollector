@@ -16,8 +16,9 @@ A **base URL** is the address PokéCollector sends scanner requests to. PokéCol
 2. Choose a provider if the administrator enabled more than one.
 3. Choose a model if the administrator approved more than one.
 4. If an API key is requested, use the **Get a key** link and paste the key. Keys are stored but are never displayed again.
-5. Select **Test connection**. The test sends a tiny image to confirm that the model accepts scanner image requests. Hosted providers may charge a very small amount for this request.
-6. Save the configuration.
+5. Select **Test and save**. PokéCollector sends a tiny image to confirm that the model accepts scanner image requests, then saves the complete configuration only after the test succeeds. Hosted providers may charge a very small amount for this request.
+
+If the provider is temporarily unavailable, PokéCollector offers a secondary **Save without a successful test** action after the failed attempt. Use it only when the administrator has independently confirmed the provider configuration.
 
 The status at the top explains what is still needed:
 

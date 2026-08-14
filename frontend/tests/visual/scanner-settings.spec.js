@@ -22,6 +22,7 @@ const scannerConfiguration = {
       selected_model: 'gemini-flash-latest',
       requires_api_key: true,
       api_key_configured: true,
+      endpoint_type: 'hosted',
       key_help_url: 'https://aistudio.google.com/apikey',
       setup_help_url: 'https://github.com/Git-Romer/pokecollector/blob/main/docs/scanner-providers.md',
     },
@@ -33,6 +34,7 @@ const scannerConfiguration = {
       selected_model: 'vision-fast',
       requires_api_key: false,
       api_key_configured: false,
+      endpoint_type: 'custom',
       key_help_url: null,
       setup_help_url: 'https://github.com/Git-Romer/pokecollector/blob/main/docs/scanner-providers.md',
     },
@@ -110,21 +112,26 @@ test('guides provider selection and saves one guarded configuration', async ({ p
   await expect(page.getByText('Ready', { exact: true })).toBeVisible()
   await expect(page.getByLabel('Scanner provider')).toHaveValue('gemini')
   await expect(page.getByLabel('Model')).toHaveCount(0)
+  await expect(page.getByText('Cloud service. Card photos are sent to the provider', { exact: false })).toBeVisible()
+  await expect(page.getByText('Your personal API key is required.')).toBeVisible()
   await expect(page.getByRole('link', { name: /Get a key/ })).toHaveAttribute('href', 'https://aistudio.google.com/apikey')
   await expect(page.getByRole('link', { name: /Provider setup guide/ })).toHaveAttribute('href', /scanner-providers\.md/)
   await expect(page.getByText('Visual verification is automatic.', { exact: false })).toBeVisible()
   await expect(page.getByText('The connection test sends a tiny image', { exact: false })).toBeVisible()
-  await expect(page.getByText('Server configuration', { exact: true })).toBeVisible()
-  await expect(page.getByText('http://ollama:11434', { exact: false })).toBeVisible()
+  await expect(page.getByText('Server setup details', { exact: true })).toBeVisible()
+  await expect(page.getByText('http://ollama:11434', { exact: false })).toBeHidden()
   await expect(page.getByText('Base URL', { exact: true })).toHaveCount(0)
+  await page.getByText('Server setup details', { exact: true }).click()
+  await expect(page.getByText('http://ollama:11434', { exact: false })).toBeVisible()
 
   await page.getByLabel('Scanner provider').selectOption('openai')
+  await expect(page.getByText('Administrator-configured service.', { exact: false })).toBeVisible()
+  await expect(page.getByText('No personal API key is required.')).toBeVisible()
   await expect(page.getByLabel('Model')).toBeEnabled()
   await page.getByLabel('Model').selectOption('vision-accurate')
-  await page.getByRole('button', { name: 'Test connection' }).click()
-  await expect(page.getByText('Scanner connection is ready')).toBeVisible()
+  await page.getByRole('button', { name: 'Test and save' }).click()
+  await expect(page.getByText('Scanner configuration saved')).toBeVisible()
   await expect(page.getByText('Last test in this session: connection ready.')).toBeVisible()
-  await page.getByRole('button', { name: 'Save' }).click()
 
   await expect.poll(savedBody).toEqual({
     provider: 'openai',
@@ -133,6 +140,77 @@ test('guides provider selection and saves one guarded configuration', async ({ p
     clear_api_key: false,
   })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+})
+
+test('uses the same test-and-save flow for Gemini', async ({ page }) => {
+  const savedBody = await installApi(page)
+  await page.route('**/api/settings/scanner', route => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    return route.fulfill({ json: {
+      ...scannerConfiguration,
+      status: 'api_key_required',
+      providers: scannerConfiguration.providers.map(item => item.id === 'gemini'
+        ? { ...item, api_key_configured: false }
+        : item),
+    } })
+  })
+  await page.goto('/settings')
+
+  await expect(page.getByText('API key required', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Enter an API key to continue' })).toBeDisabled()
+  await page.getByLabel('API key').fill('new-gemini-key')
+  await page.getByRole('button', { name: 'Test and save' }).click()
+
+  await expect.poll(savedBody).toEqual({
+    provider: 'gemini',
+    model: 'gemini-flash-latest',
+    api_key: 'new-gemini-key',
+    clear_api_key: false,
+  })
+  await expect(page.getByText('Last test in this session: connection ready.')).toBeVisible()
+})
+
+test('lets a user intentionally remove a configured key without a connection test', async ({ page }) => {
+  const savedBody = await installApi(page)
+  let testRequests = 0
+  page.on('request', request => {
+    if (new URL(request.url()).pathname === '/api/settings/scanner/test') testRequests += 1
+  })
+  await page.goto('/settings')
+
+  await page.getByRole('button', { name: 'Remove configured key' }).click()
+  await page.getByRole('button', { name: 'Save changes' }).click()
+
+  await expect.poll(savedBody).toEqual({
+    provider: 'gemini',
+    model: 'gemini-flash-latest',
+    api_key: null,
+    clear_api_key: true,
+  })
+  expect(testRequests).toBe(0)
+})
+
+test('offers save without a successful test only after a provider failure', async ({ page }) => {
+  const savedBody = await installApi(page)
+  await page.route('**/api/settings/scanner/test', route => route.fulfill({
+    status: 503,
+    json: { detail: 'Provider temporarily unavailable.' },
+  }))
+  await page.goto('/settings')
+
+  await page.getByLabel('Scanner provider').selectOption('openai')
+  await page.getByRole('button', { name: 'Test and save' }).click()
+  await expect(page.getByText('Last test in this session: connection failed.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Save without a successful test' })).toBeVisible()
+  expect(savedBody()).toBeNull()
+
+  await page.getByRole('button', { name: 'Save without a successful test' }).click()
+  await expect.poll(savedBody).toEqual({
+    provider: 'openai',
+    model: 'vision-fast',
+    api_key: null,
+    clear_api_key: false,
+  })
 })
 
 test('does not expose providers the administrator left disabled', async ({ page }) => {
@@ -158,6 +236,6 @@ test('keeps administrator-only server details away from normal users', async ({ 
   await page.goto('/settings')
 
   await expect(page.getByText('Card scanner', { exact: true })).toBeVisible()
-  await expect(page.getByText('Server configuration', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('Server setup details', { exact: true })).toHaveCount(0)
   await expect(page.getByText('http://ollama:11434', { exact: false })).toHaveCount(0)
 })

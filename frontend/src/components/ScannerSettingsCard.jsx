@@ -23,6 +23,7 @@ export default function ScannerSettingsCard({ t }) {
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
   const [testStatus, setTestStatus] = useState('not_tested')
+  const [allowSaveWithoutTest, setAllowSaveWithoutTest] = useState(false)
 
   const selected = useMemo(
     () => data?.providers?.find(item => item.id === provider),
@@ -35,7 +36,6 @@ export default function ScannerSettingsCard({ t }) {
     setModel(data.model)
     setApiKey('')
     setClearApiKey(false)
-    setTestStatus('not_tested')
   }, [data, dirty])
 
   const chooseProvider = (nextProvider) => {
@@ -45,12 +45,14 @@ export default function ScannerSettingsCard({ t }) {
     setApiKey('')
     setClearApiKey(false)
     setTestStatus('not_tested')
+    setAllowSaveWithoutTest(false)
     setDirty(true)
   }
 
   const changeDraft = (callback) => {
     callback()
     setTestStatus('not_tested')
+    setAllowSaveWithoutTest(false)
     setDirty(true)
   }
 
@@ -61,33 +63,54 @@ export default function ScannerSettingsCard({ t }) {
     clear_api_key: clearApiKey,
   })
 
-  const save = async () => {
-    setSaving(true)
+  const persistDraft = async () => {
+    await updateScannerConfiguration(payload())
+    await queryClient.invalidateQueries({ queryKey: ['scanner-configuration'] })
+    setDirty(false)
+    setApiKey('')
+    setClearApiKey(false)
+    setAllowSaveWithoutTest(false)
+    toast.success(t('settings.scannerSaved'))
+  }
+
+  const testAndSave = async () => {
+    setTesting(true)
+    setAllowSaveWithoutTest(false)
     try {
-      await updateScannerConfiguration(payload())
-      await queryClient.invalidateQueries({ queryKey: ['scanner-configuration'] })
-      setDirty(false)
-      setApiKey('')
-      setClearApiKey(false)
-      toast.success(t('settings.scannerSaved'))
+      try {
+        await testScannerConfiguration(payload())
+      } catch (error) {
+        setTestStatus('failed')
+        setAllowSaveWithoutTest(dirty)
+        toast.error(error?.response?.data?.detail || t('settings.scannerTestFailed'))
+        return
+      }
+      setTestStatus('passed')
+      if (dirty) {
+        try {
+          await persistDraft()
+          setTestStatus('passed')
+        } catch (error) {
+          toast.error(error?.response?.data?.detail || t('settings.saveFailed'))
+        }
+      } else {
+        toast.success(t('settings.scannerTestPassed'))
+      }
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  const saveWithoutTest = async () => {
+    setSaving(true)
+    const failedTest = testStatus === 'failed'
+    try {
+      await persistDraft()
+      setTestStatus(failedTest ? 'failed' : 'not_tested')
     } catch (error) {
       toast.error(error?.response?.data?.detail || t('settings.saveFailed'))
     } finally {
       setSaving(false)
-    }
-  }
-
-  const test = async () => {
-    setTesting(true)
-    try {
-      await testScannerConfiguration(payload())
-      setTestStatus('passed')
-      toast.success(t('settings.scannerTestPassed'))
-    } catch (error) {
-      setTestStatus('failed')
-      toast.error(error?.response?.data?.detail || t('settings.scannerTestFailed'))
-    } finally {
-      setTesting(false)
     }
   }
 
@@ -131,6 +154,20 @@ export default function ScannerSettingsCard({ t }) {
             </select>
           </label>
         )}
+
+        <div className="rounded-xl px-3 py-2.5" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <p className="text-xs font-semibold text-text-primary">{selected.label}</p>
+          <p className="text-[11px] text-text-muted mt-1">
+            {selected.endpoint_type === 'hosted'
+              ? t('settings.scannerHostedProviderDesc')
+              : t('settings.scannerCustomProviderDesc')}
+          </p>
+          <p className="text-[11px] text-text-muted mt-1">
+            {selected.requires_api_key
+              ? t('settings.scannerPersonalKeyRequired')
+              : t('settings.scannerPersonalKeyNotRequired')}
+          </p>
+        </div>
 
         {selected.models.length > 1 && (
           <label className="block">
@@ -185,47 +222,64 @@ export default function ScannerSettingsCard({ t }) {
           </p>
         )}
         <div className="flex flex-wrap justify-end gap-2">
-          <button type="button" onClick={test} disabled={busy || !model || !hasUsableKey} className="btn-ghost px-3 py-2 text-xs disabled:opacity-50">
-            {testing ? t('settings.scannerTesting') : t('settings.scannerTest')}
-          </button>
-          <button type="button" onClick={save} disabled={busy || !model || !dirty} className="btn-primary-sm disabled:opacity-50">
-            {saving ? t('common.saving') : t('common.save')}
+          {allowSaveWithoutTest && dirty && (
+            <button type="button" onClick={saveWithoutTest} disabled={busy} className="btn-ghost px-3 py-2 text-xs disabled:opacity-50">
+              {saving ? t('common.saving') : t('settings.scannerSaveWithoutTest')}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={hasUsableKey ? testAndSave : saveWithoutTest}
+            disabled={busy || !model || (!hasUsableKey && !clearApiKey)}
+            className="btn-primary-sm disabled:opacity-50"
+          >
+            {testing
+              ? (dirty ? t('settings.scannerTestingAndSaving') : t('settings.scannerTesting'))
+              : saving
+                ? t('common.saving')
+                : !hasUsableKey
+                  ? (clearApiKey ? t('settings.scannerSaveChanges') : t('settings.scannerEnterKey'))
+                  : dirty
+                    ? t('settings.scannerTestAndSave')
+                    : t('settings.scannerTest')}
           </button>
         </div>
 
         {data.administrator && (
-          <div className="rounded-xl p-3 space-y-3" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)' }}>
-            <div className="flex flex-wrap items-start justify-between gap-2">
+          <details className="rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <summary className="cursor-pointer">
               <div>
                 <p className="text-xs font-semibold text-text-primary">{t('settings.scannerAdminSummary')}</p>
                 <p className="text-[11px] text-text-muted mt-0.5">{t('settings.scannerAdminSummaryDesc')}</p>
               </div>
-              <a href={data.administrator.setup_guide_url} target="_blank" rel="noreferrer" className="text-[11px] font-semibold text-brand-yellow hover:underline">
+            </summary>
+            <div className="pt-3 space-y-3">
+              <a href={data.administrator.setup_guide_url} target="_blank" rel="noreferrer" className="inline-block text-[11px] font-semibold text-brand-yellow hover:underline">
                 {t('settings.scannerAdminGuide')} ↗
               </a>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {data.administrator.providers.map(item => (
-                <div key={item.id} className="rounded-lg px-3 py-2" style={{ background: 'rgba(255,255,255,0.03)' }}>
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs font-semibold text-text-primary break-words">{item.label}</p>
-                    <span className={`shrink-0 text-[10px] font-bold ${item.enabled ? 'text-green' : 'text-text-muted'}`}>
-                      {item.enabled ? t('settings.scannerProviderEnabled') : t('settings.scannerProviderDisabled')}
-                    </span>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {data.administrator.providers.map(item => (
+                  <div key={item.id} className="rounded-lg px-3 py-2" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-semibold text-text-primary break-words">{item.label}</p>
+                      <span className={`shrink-0 text-[10px] font-bold ${item.enabled ? 'text-green' : 'text-text-muted'}`}>
+                        {item.enabled ? t('settings.scannerProviderEnabled') : t('settings.scannerProviderDisabled')}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-text-muted mt-1 break-all">
+                      {item.endpoint_type === 'hosted' ? t('settings.scannerHostedEndpoint') : t('settings.scannerCustomEndpoint')} · {item.endpoint}
+                    </p>
+                    <p className="text-[11px] text-text-muted mt-1 break-words">
+                      {t('settings.scannerApprovedModels')}: {item.models.join(', ') || t('settings.scannerNone')}
+                    </p>
+                    <p className="text-[11px] text-text-muted mt-1">
+                      {item.requires_api_key ? t('settings.scannerPerUserKey') : t('settings.scannerNoUserKey')}
+                    </p>
                   </div>
-                  <p className="text-[11px] text-text-muted mt-1 break-all">
-                    {item.endpoint_type === 'hosted' ? t('settings.scannerHostedEndpoint') : t('settings.scannerCustomEndpoint')} · {item.endpoint}
-                  </p>
-                  <p className="text-[11px] text-text-muted mt-1 break-words">
-                    {t('settings.scannerApprovedModels')}: {item.models.join(', ') || t('settings.scannerNone')}
-                  </p>
-                  <p className="text-[11px] text-text-muted mt-1">
-                    {item.requires_api_key ? t('settings.scannerPerUserKey') : t('settings.scannerNoUserKey')}
-                  </p>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
+          </details>
         )}
       </div>
     </div>

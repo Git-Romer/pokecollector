@@ -282,6 +282,11 @@ def _scanner_configuration(db: Session, user_id: int, *, is_admin: bool = False)
             "selected_model": resolve_model(db, user_id, provider),
             "requires_api_key": _scanner_requires_key(provider),
             "api_key_configured": key_configured,
+            "endpoint_type": (
+                "hosted"
+                if provider == GEMINI or openai_base_url() == DEFAULT_OPENAI_BASE_URL
+                else "custom"
+            ),
             "key_help_url": provider_key_help_url(provider),
             "setup_help_url": SCANNER_PROVIDER_GUIDE_URL,
         })

@@ -48,6 +48,7 @@ class ScannerConfigurationTests(unittest.TestCase):
         self.assertEqual([item["id"] for item in config["providers"]], ["gemini"])
         self.assertEqual(config["status"], "api_key_required")
         self.assertEqual(config["visual_verification"], "automatic")
+        self.assertEqual(config["providers"][0]["endpoint_type"], "hosted")
         self.assertNotIn("administrator", config)
 
     def test_admin_gets_a_secret_free_server_summary(self):
@@ -88,6 +89,7 @@ class ScannerConfigurationTests(unittest.TestCase):
             openai["models"], ["vision-default", "vision-fast", "vision-accurate"]
         )
         self.assertFalse(openai["requires_api_key"])
+        self.assertEqual(openai["endpoint_type"], "custom")
         self.assertIsNone(openai["key_help_url"])
 
     def test_provider_model_and_key_are_saved_atomically_and_per_provider(self):
