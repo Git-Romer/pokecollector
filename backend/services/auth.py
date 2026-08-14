@@ -1,4 +1,6 @@
 import fcntl
+import hashlib
+import hmac
 import logging
 import os
 import secrets
@@ -98,6 +100,12 @@ def resolve_jwt_secret() -> str:
 SECRET_KEY = resolve_jwt_secret()
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
+
+
+def secret_fingerprint(namespace: str, material: str) -> str:
+    """Create a stable, non-reversible identifier using the resolved server secret."""
+    scoped = f"{namespace}\0{material}".encode()
+    return hmac.new(SECRET_KEY.encode(), scoped, hashlib.sha256).hexdigest()
 
 
 def hash_password(password: str) -> str:

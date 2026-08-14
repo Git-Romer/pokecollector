@@ -354,6 +354,7 @@ async def default_scan_processor(
         job_id=job_id,
         item_id=item_id,
         filename="sanitized-scan.jpg",
+        provider=provider.name,
         model=provider.model(),
     )
     trace.set_image(image_bytes)
@@ -415,6 +416,7 @@ async def default_composite_processor(
             job_id=job_id,
             item_id=(trace_item_ids[position] if position < len(trace_item_ids) else None),
             filename=f"sanitized-scan-{position + 1}.jpg",
+            provider=provider.name,
             model=provider.model(),
         )
         for position in range(len(images))

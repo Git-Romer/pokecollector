@@ -9,7 +9,7 @@ This document reflects the current code layout at the repository root.
 | Frontend | React 18 + Vite + Tailwind CSS | 3000 |
 | Backend | FastAPI | 8000 |
 | Database | PostgreSQL 18 | 5432 |
-| External APIs | TCGdex, Gemini, Frankfurter, GitHub | external |
+| External APIs | TCGdex, Gemini or OpenAI-compatible scanner, Frankfurter, GitHub | external |
 | Containerization | Docker + docker compose | - |
 
 ## Directory Structure
@@ -116,6 +116,7 @@ Key ORM models in `backend/models.py`:
 - `ScanJobItem`
 - `ScanQueueUserState`
 - `GeminiQuotaState`
+- `ScannerProviderLimitState`
 
 Notable current model rules:
 
@@ -141,7 +142,7 @@ The split is defined in `backend/api/settings.py`:
   - currency
   - price display preferences
   - Telegram keys and alert preferences
-  - Gemini key
+  - Gemini/OpenAI-compatible provider keys and provider-specific scanner choices
   - scanner diagnostics consent
   - trainer name
 - `ADMIN_ONLY_KEYS`
@@ -182,16 +183,16 @@ Recognition is implemented in `backend/api/recognize.py` and surfaced through `f
 Current flow:
 
 1. The user captures or uploads up to 50 photos. Uploads are size-limited, re-encoded, orientation-normalized, stripped of metadata, and stored as private JPEG files.
-2. Single photos run individually. Batch-eligible photos are grouped into two-to-four-card composites to reduce Gemini calls; uncertain composite positions fall back to their original individual photo.
-3. Gemini extracts name, split collector number, printed total, set code, regulation mark, type, HP, language, and artist. Unclear small text must be returned as `null`.
+2. Single photos run individually. Batch-eligible photos are grouped into two-to-four-card composites to reduce provider calls; uncertain composite positions fall back to their original individual photo.
+3. The selected Gemini or OpenAI-compatible provider extracts name, split collector number, printed total, set code, regulation mark, type, HP, language, and artist. Unclear small text must be returned as `null`.
 4. TCGdex candidates are searched in the detected language with English fallback and ranked deterministically by local number, language, printed total, set code, regulation mark, artist, and HP. Missing fields are neutral; contradictions reduce rank.
 5. When metadata remains inconclusive, conservative pHash compares the original photo with a bounded candidate set. It accepts only a close, clearly separated winner with no metadata contradiction.
-6. Individual scans may use a second Gemini visual comparison if pHash abstains. Composite scans instead return to the individual queue path.
+6. Individual scans may use a second provider visual comparison if pHash abstains. Composite scans instead return to the individual queue path. Every selectable provider/model must first pass the same two-image capability test.
 7. Results are persisted in the `/scans` review inbox. Confirming or dismissing an item deletes its queued photo; unresolved jobs expire after 14 days.
 
-`backend/services/scan_queue.py` provides fair, restart-safe background dispatch with leases. Recognition attempts are capped separately from transient quota failures. `backend/services/gemini_rate_limit.py` shares quota state by API-key fingerprint so concurrent users of the same key cannot bypass a provider delay; distinct keys remain independent. Structured daily-quota signals are separated from short-term limits, and provider `Retry-After` / `google.rpc.RetryInfo` delays take precedence over fallback backoff.
+`backend/services/scan_queue.py` provides fair, restart-safe background dispatch with leases. Recognition attempts are capped separately from transient quota failures. Gemini shares quota state by its existing API-key fingerprint so upgrades preserve active pacing and quota blocks. Compatible providers persist blocks under a fingerprint keyed with the resolved private server secret, without storing credentials or administrator endpoint text. Structured daily-quota signals are separated from short-term limits, and provider `Retry-After` / `google.rpc.RetryInfo` delays take precedence over fallback backoff.
 
-Optional diagnostics live in `backend/services/scan_trace.py`. The server must set `SCAN_TRACE_DIR`, and each user must separately enable **Share scanner diagnostics** (off by default). Only opted-in attempts store a sanitized photo plus structured extraction/search/ranking data. Turning the toggle off stops future traces without deleting old ones; the adjacent delete action removes that user's trace subtree. `SCAN_TRACE_STORAGE_DIR` remains stable when collection is disabled so explicit and account deletion can still find old data. Account deletion writes a revocation marker before cleanup so an in-flight attempt cannot recreate the deleted user's files. No Gemini key or authentication credential is recorded.
+Optional diagnostics live in `backend/services/scan_trace.py`. The server must set `SCAN_TRACE_DIR`, and each user must separately enable **Share scanner diagnostics** (off by default). Only opted-in attempts store a sanitized photo plus structured extraction/search/ranking data, including provider and model identifiers. Turning the toggle off stops future traces without deleting old ones; the adjacent delete action removes that user's trace subtree. `SCAN_TRACE_STORAGE_DIR` remains stable when collection is disabled so explicit and account deletion can still find old data. Account deletion writes a revocation marker before cleanup so an in-flight attempt cannot recreate the deleted user's files. No provider key or authentication credential is recorded.
 
 ## Frontend State
 
@@ -223,13 +224,14 @@ Current frontend state layers:
 - English is the preferred fallback for missing data, images, and prices only when the same exact TCGdex card or set ID exists in English
 - Regional-only cards are not guessed by translated name
 
-### Gemini
+### Scanner providers
 
-- Used for smart scanner recognition
-- Key is read per user from `user_settings`
-- Scanner model is configurable through `GEMINI_MODEL` and defaults to `gemini-flash-latest`
-- Scanner calls use the API-key header rather than putting the key in the request URL
-- Transient capacity failures are retried; rate limits, invalid keys, and unavailable models are reported separately
+- Gemini is the default; administrators may also enable hosted or self-hosted OpenAI-compatible providers
+- Provider communication is isolated behind one shared scanner-provider layer, while matching, visual verification, queueing, and warnings remain provider-neutral
+- Users choose only administrator-approved providers and models; administrators can test an Advanced custom model before saving it
+- Every provider/model must pass the same two-image capability test used by the scanner workflow
+- Credentials are read per user from `user_settings`; endpoints and approved models remain administrator-controlled
+- Transient capacity failures are retried; rate limits, invalid keys, unavailable models, and permanent request failures are reported separately without reflecting arbitrary upstream messages
 
 ### Telegram
 

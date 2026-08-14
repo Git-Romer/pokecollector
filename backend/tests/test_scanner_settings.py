@@ -314,6 +314,39 @@ class ScannerConfigurationTests(unittest.TestCase):
             asyncio.run(run_scanner_configuration_test(request, self.db, self.user))
         self.assertEqual(self._rows(), {})
 
+    def test_custom_model_test_without_save_creates_no_reusable_proof(self):
+        env = {
+            "OPENAI_SCANNER_ENABLED": "true",
+            "OPENAI_MODEL": "approved-model",
+            "OPENAI_BASE_URL": "http://model-host:11434/v1",
+        }
+        test_request = ScannerConfigurationUpdate(
+            provider="openai",
+            model="new-vision-model",
+            custom_model=True,
+            save_on_success=False,
+        )
+        with patch.dict(os.environ, env), patch.object(
+            ScanProvider,
+            "generate_text",
+            new=AsyncMock(return_value=("MAGENTA-GREEN", None)),
+        ):
+            result = asyncio.run(
+                run_scanner_configuration_test(test_request, self.db, self.user)
+            )
+        self.assertEqual(result, {"status": "ready", "saved": False})
+        self.assertEqual(self._rows(), {})
+
+        save_request = ScannerConfigurationUpdate(
+            provider="openai",
+            model="new-vision-model",
+            custom_model=True,
+        )
+        with patch.dict(os.environ, env), self.assertRaises(HTTPException) as caught:
+            update_scanner_configuration(save_request, self.db, self.user)
+        self.assertEqual(caught.exception.status_code, 422)
+        self.assertEqual(self._rows(), {})
+
     def test_normal_user_cannot_test_or_save_a_custom_model(self):
         self.user.role = "trainer"
         self.db.commit()
@@ -332,6 +365,45 @@ class ScannerConfigurationTests(unittest.TestCase):
             asyncio.run(run_scanner_configuration_test(request, self.db, self.user))
         self.assertEqual(caught.exception.status_code, 422)
         self.assertEqual(self._rows(), {})
+
+    def test_normal_user_cannot_reuse_preseeded_custom_model_rows(self):
+        self.user.role = "trainer"
+        self.db.add_all(
+            [
+                UserSetting(
+                    user_id=self.user.id,
+                    key="scanner_provider",
+                    value="openai",
+                ),
+                UserSetting(
+                    user_id=self.user.id,
+                    key="scanner_model_openai",
+                    value="preseeded-custom-model",
+                ),
+                UserSetting(
+                    user_id=self.user.id,
+                    key="scanner_custom_model_openai",
+                    value="preseeded-custom-model",
+                ),
+            ]
+        )
+        self.db.commit()
+        env = {
+            "OPENAI_SCANNER_ENABLED": "true",
+            "OPENAI_MODEL": "approved-model",
+            "OPENAI_BASE_URL": "http://model-host:11434/v1",
+        }
+        request = ScannerConfigurationUpdate(
+            provider="openai",
+            model="preseeded-custom-model",
+            custom_model=True,
+            save_on_success=True,
+        )
+        with patch.dict(os.environ, env), self.assertRaises(HTTPException) as caught:
+            asyncio.run(run_scanner_configuration_test(request, self.db, self.user))
+        self.assertEqual(caught.exception.status_code, 422)
+        with patch.dict(os.environ, env):
+            self.assertEqual(get_provider(self.db, self.user.id).model(), "approved-model")
 
     def test_legacy_settings_contract_never_returns_scanner_secrets(self):
         self.db.add_all(

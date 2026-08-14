@@ -38,7 +38,7 @@ FastAPI app entry point: `backend/main.py`.
 | GET | `/api/cards/{card_id}/price-history` | Price history |
 | PUT | `/api/cards/{card_id}/custom-image` | Set temporary custom image URL |
 | GET | `/api/cards/{card_id}` | Card detail |
-| POST | `/api/cards/recognize` | Gemini-powered card recognition |
+| POST | `/api/cards/recognize` | Card recognition through the user's configured vision provider |
 | POST | `/api/cards/recognize/jobs` | Sanitize and enqueue up to 50 persistent scan photos |
 | GET | `/api/cards/recognize/jobs` | Current user's active/actionable scan jobs |
 | GET | `/api/cards/recognize/jobs/{job_id}` | User-scoped scan job and review items |
@@ -135,6 +135,9 @@ Custom cards belong to exactly one user. Owners may publish a card as a shared t
 | GET | `/api/images/card/{card_id}/{size}` | Card image proxy/cache |
 | GET | `/api/images/set/{set_id}/{image_type}` | Set logo/symbol proxy/cache |
 | GET | `/api/settings/` | Effective settings for current user |
+| GET | `/api/settings/scanner` | Typed provider/model readiness for the current user |
+| PUT | `/api/settings/scanner` | Save an already-verified scanner configuration or remove a key |
+| POST | `/api/settings/scanner/test` | Two-image capability test with optional atomic save |
 | GET | `/api/settings/tcgdex-languages` | Supported TCGdex language metadata |
 | PUT | `/api/settings/` | Update settings |
 | GET | `/api/settings/debug-log` | Admin-only debug log download |
@@ -209,6 +212,8 @@ Current settings are split in `backend/api/settings.py`:
   - `price_alerts_enabled`
   - `price_alert_threshold`
   - `gemini_api_key`
+  - `openai_api_key`
+  - provider-specific scanner provider/model settings managed by the dedicated scanner endpoint
   - `scan_diagnostics_enabled`
   - `trainer_name`
 - `ADMIN_ONLY_KEYS`
@@ -296,23 +301,25 @@ Environment controls:
 `backend/api/recognize.py`, `backend/api/scan_jobs.py`, and `backend/services/scan_queue.py` implement the persistent background queue used by the unified scanner. The direct single-card recognition endpoint remains available for API compatibility:
 
 1. Uploads are bounded, sanitized, orientation-normalized JPEGs with metadata removed.
-2. Two-to-four batch-eligible photos share one indexed composite Gemini request. Any missing or uncertain position is retried from its original individual photo.
-3. Gemini extracts name, split local/total collector number, printed set code, regulation mark, type, HP, language, and artist; uncertain small text stays `null`.
+2. Two-to-four batch-eligible photos share one indexed composite provider request. Any missing or uncertain position is retried from its original individual photo.
+3. The selected provider extracts name, split local/total collector number, printed set code, regulation mark, type, HP, language, and artist; uncertain small text stays `null`.
 4. TCGdex candidates are ranked deterministically by local number, language, printed total, set code, regulation mark, artist, and HP. Missing evidence is neutral and contradictions are negative.
-5. If metadata is inconclusive, conservative pHash can accept a close, clearly separated visual winner without another Gemini call. It never overrides known contradictions.
-6. Individual scans may use Gemini visual comparison when pHash abstains; composite scans fall back to individual recognition instead.
+5. If metadata is inconclusive, conservative pHash can accept a close, clearly separated visual winner without another provider call. It never overrides known contradictions.
+6. Individual scans may use the same provider's visual comparison when pHash abstains; composite scans fall back to individual recognition instead.
 7. Queue results remain reviewable after restarts. Confirming/dismissing an item deletes its queued photo; unreviewed jobs expire after 14 days.
 
-Gemini error handling:
+Provider error handling:
 
-- Transient `502`, `503`, and `504` responses are retried with backoff
+- Gemini and OpenAI-compatible providers share the queue contract while retaining provider-specific request formats
+- Permanent authentication, billing, model, and request errors stop immediately with fixed actionable messages; arbitrary upstream prose is not returned, logged, or persisted
+- Transient provider failures are retried with bounded backoff
 - Machine-readable daily-quota `429` responses are separated from short-term limits
 - Provider `Retry-After` or `google.rpc.RetryInfo` delays are used exactly when supplied; missing daily delays fall back to one hour and later six-hour intervals
 - Quota state is shared by an API-key fingerprint, so concurrent requests using the same key observe one block while different keys stay independent
 - Quota retries do not consume the three recognition attempts
 - Invalid API keys get a dedicated user-facing message
-- The scanner model defaults to `gemini-flash-latest` and can be changed with `GEMINI_MODEL`
-- Retired or unavailable Gemini models return a clear model-unavailable message with the upstream Google detail
+- Provider defaults and approved models are administrator-controlled; normal users select only enabled choices, while administrators may test an Advanced custom model
+- Retired or unavailable models return a fixed model-unavailable message without reflecting provider text
 - Temporary Gemini outages are returned clearly instead of leaking as generic backend `500` errors
 - Gemini requests send the API key via header instead of the request URL
 
@@ -326,7 +333,7 @@ Additional matching behavior:
 
 `backend/services/scan_trace.py` is disabled unless `SCAN_TRACE_DIR` points to storage the backend can create and write. Availability alone does not collect data: each user must opt in with `scan_diagnostics_enabled=true`, which is off by default. `SCAN_TRACE_STORAGE_DIR` is the stable cleanup location; standard Docker Compose keeps it at `/app/data/scan-traces` even when new collection is disabled.
 
-For opted-in attempts, one user-scoped JSON trace and sanitized JPEG are stored. Traces contain the generic prompt, raw Gemini text response, parsed fields and usage, TCGdex searches, ranked candidates and rank keys, pHash distances, visual-verification response, final mechanism, and errors. They never contain the Gemini API key or authentication credentials.
+For opted-in attempts, one user-scoped JSON trace and sanitized JPEG are stored. Traces contain the selected provider and model, generic prompt, redacted provider response, parsed fields and usage, TCGdex searches, ranked candidates and rank keys, pHash distances, visual-verification response, final mechanism, and errors. Configured credentials are redacted before persistence and are never returned by the settings API.
 
 When a queued candidate is confirmed, its TCGdex card id labels all stored attempts for that job item as ground truth. `backend/scripts/analyse_scan_traces.py` reports top-1 accuracy, retrieval/ranking misses, decision-mechanism performance, pHash outcomes, and optional field-null/failure details.
 

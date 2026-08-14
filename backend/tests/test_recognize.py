@@ -19,7 +19,6 @@ try:
         _phash_best_match,
         build_gemini_generate_url,
         get_gemini_model,
-        gemini_error_message,
         gemini_rate_limit_reason,
         gemini_retry_after_seconds,
         match_card_info,
@@ -560,11 +559,6 @@ class DeterministicMatchingTests(unittest.IsolatedAsyncioTestCase):
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")
 class RecognizeErrorTests(unittest.TestCase):
-    def test_extracts_gemini_error_message(self):
-        response = httpx.Response(404, json={"error": {"message": "model retired"}})
-
-        self.assertEqual(gemini_error_message(response), "model retired")
-
     def test_extracts_retry_delay_from_gemini_retry_info(self):
         response = httpx.Response(
             429,
@@ -624,22 +618,68 @@ class RecognizeErrorTests(unittest.TestCase):
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")
 class RecognizeApiTests(unittest.IsolatedAsyncioTestCase):
-    async def test_gemini_404_surfaces_upstream_message(self):
+    async def test_gemini_404_is_permanent_without_upstream_text(self):
+        upstream_secret = "This model echoed private-key-material."
+
         class FakeClient:
             async def post(self, *args, **kwargs):
                 return httpx.Response(
                     404,
-                    json={"error": {"message": "This model is no longer available to new users."}},
+                    json={"error": {"message": upstream_secret}},
+                )
+
+        with patch("api.recognize.acquire_gemini_slot") as acquire, \
+                patch("api.recognize.logger") as provider_logger:
+            acquire.return_value = None
+            with self.assertRaises(HTTPException) as ctx:
+                await post_gemini_generate(
+                    FakeClient(),
+                    "https://example.test/v1beta/models/removed-model:generateContent",
+                    "key",
+                    {},
+                )
+
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn("removed-model", ctx.exception.detail)
+        self.assertNotIn(upstream_secret, ctx.exception.detail)
+        from services.scan_queue import PermanentScanError, _scan_error_from_http
+
+        queue_error = _scan_error_from_http(ctx.exception)
+        self.assertIsInstance(queue_error, PermanentScanError)
+        self.assertNotIn(upstream_secret, str(queue_error))
+        self.assertNotIn(upstream_secret, repr(provider_logger.mock_calls))
+
+    async def test_other_gemini_4xx_errors_are_permanent_and_safe(self):
+        upstream_secret = "arbitrary-upstream-secret"
+
+        class FakeClient:
+            def __init__(self, status_code):
+                self.status_code = status_code
+
+            async def post(self, *args, **kwargs):
+                return httpx.Response(
+                    self.status_code,
+                    json={"error": {"message": upstream_secret}},
                 )
 
         with patch("api.recognize.acquire_gemini_slot") as acquire:
             acquire.return_value = None
-            with self.assertRaises(HTTPException) as ctx:
-                await post_gemini_generate(FakeClient(), "https://example.test", "key", {})
+            for status_code in (409, 422):
+                with self.subTest(status_code=status_code):
+                    with self.assertRaises(HTTPException) as ctx:
+                        await post_gemini_generate(
+                            FakeClient(status_code),
+                            "https://example.test/v1beta/models/test:generateContent",
+                            "key",
+                            {},
+                        )
+                    self.assertEqual(ctx.exception.status_code, 400)
+                    self.assertNotIn(upstream_secret, ctx.exception.detail)
+                    from services.scan_queue import PermanentScanError, _scan_error_from_http
 
-        self.assertEqual(ctx.exception.status_code, 502)
-        self.assertIn("GEMINI_MODEL", ctx.exception.detail)
-        self.assertIn("no longer available", ctx.exception.detail)
+                    queue_error = _scan_error_from_http(ctx.exception)
+                    self.assertIsInstance(queue_error, PermanentScanError)
+                    self.assertNotIn(upstream_secret, str(queue_error))
 
     async def test_gemini_429_persists_provider_retry_delay(self):
         class FakeClient:

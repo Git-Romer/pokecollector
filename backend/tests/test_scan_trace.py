@@ -119,6 +119,7 @@ class ScanTraceTests(unittest.TestCase):
             mode="single",
             job_id=10,
             item_id=20,
+            provider="gemini",
             model="gemini-test",
         )
         trace.set_image(b"sanitized-photo")
@@ -138,6 +139,7 @@ class ScanTraceTests(unittest.TestCase):
         self.assertIsNotNone(path)
         self.assertEqual(path.parent.parent.name, f"user-{self.user.id}")
         payload = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["provider"], "gemini")
         self.assertEqual(payload["decision"]["selected"], "base1-58")
         self.assertEqual(payload["candidates"][0]["rank_key"], [1, 0])
         self.assertNotIn("api_key", json.dumps(payload).lower())

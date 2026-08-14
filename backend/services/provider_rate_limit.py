@@ -1,10 +1,6 @@
 """Persistent blocking for non-Gemini scanner providers."""
 
 import datetime
-import hashlib
-import hmac
-import os
-
 from sqlalchemy.exc import IntegrityError
 
 from database import SessionLocal
@@ -26,11 +22,12 @@ class ProviderScopeBlockedError(RuntimeError):
 
 def provider_scope_fingerprint(provider: str, endpoint: str, credential: str) -> str:
     """Identify a hosted key or keyless endpoint without persisting either value."""
-    secret = os.environ.get(
-        "JWT_SECRET_KEY", "pokecollector-scanner-provider-state"
-    ).encode()
-    material = f"{provider}\0{endpoint}\0{credential}".encode()
-    return hmac.new(secret, material, hashlib.sha256).hexdigest()
+    from services.auth import secret_fingerprint
+
+    return secret_fingerprint(
+        "scanner-provider-limit",
+        f"{provider}\0{endpoint}\0{credential}",
+    )
 
 
 def _ensure_state(scope: str, provider: str) -> None:

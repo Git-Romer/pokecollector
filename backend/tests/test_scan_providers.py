@@ -486,7 +486,7 @@ class ErrorMappingTests(unittest.TestCase):
                     "https://x/v1beta/models/my-own-model:generateContent",
                     "k", {}, max_attempts=1,
                 ))
-        self.assertEqual(caught.exception.status_code, 502)
+        self.assertEqual(caught.exception.status_code, 400)
         self.assertIn("my-own-model", caught.exception.detail)
         self.assertIn("Einstellungen", caught.exception.detail)
 

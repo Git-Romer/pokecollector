@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-GEMINI_TRANSIENT_STATUS_CODES = {502, 503, 504}
+GEMINI_TRANSIENT_STATUS_CODES = {408, 425, 500, 502, 503, 504}
 DEFAULT_GEMINI_MODEL = "gemini-flash-latest"
 GEMINI_MODELS_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 MAX_GEMINI_RETRY_SECONDS = 14 * 24 * 60 * 60
@@ -232,17 +232,6 @@ def build_gemini_generate_url(model: str | None = None) -> str:
     return f"{GEMINI_MODELS_BASE_URL}/{gemini_model}:generateContent"
 
 
-def gemini_error_message(resp: httpx.Response) -> str:
-    """Extract the useful upstream Gemini error body when available."""
-    try:
-        data = resp.json()
-    except ValueError:
-        return resp.text.strip()
-    error = data.get("error") if isinstance(data, dict) else None
-    message = error.get("message") if isinstance(error, dict) else None
-    return str(message or "").strip()
-
-
 def gemini_retry_after_seconds(resp: httpx.Response) -> float | None:
     """Read Gemini's retry hint from a header or google.rpc.RetryInfo body."""
     def valid_delay(value: float) -> float | None:
@@ -379,25 +368,32 @@ async def post_gemini_generate(
                     retry_after_seconds=retry_after,
                     retry_reason=retry_reason,
                 )
-            if resp.status_code in {400, 401, 403}:
+            if resp.status_code in {401, 403}:
                 raise HTTPException(
                     status_code=400,
                     detail="Ungültiger Gemini API Key. Bitte in den Einstellungen prüfen.",
                 )
+            if resp.status_code == 400:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Gemini hat die Scanner-Anfrage abgelehnt. Bitte Bild und "
+                        "Modell in den Einstellungen prüfen."
+                    ),
+                )
             if resp.status_code == 404:
-                upstream_message = gemini_error_message(resp)
                 # A user can now name their own model, so pointing everyone at
                 # GEMINI_MODEL would send them after a setting they cannot see.
                 # The installation default is still named for administrators.
                 requested = _requested_gemini_model(gemini_url)
-                detail = (
-                    f"Gemini Modell \"{requested}\" nicht verfügbar. Bitte in den "
-                    "Einstellungen ein anderes Modell wählen, oder GEMINI_MODEL auf "
-                    "ein unterstütztes Modell setzen."
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Gemini Modell \"{requested}\" nicht verfügbar. Bitte in den "
+                        "Einstellungen ein anderes Modell wählen, oder GEMINI_MODEL auf "
+                        "ein unterstütztes Modell setzen."
+                    ),
                 )
-                if upstream_message:
-                    detail = f"{detail} Google meldet: {upstream_message}"
-                raise HTTPException(status_code=502, detail=detail)
             if resp.status_code in GEMINI_TRANSIENT_STATUS_CODES:
                 if attempt < max_attempts - 1:
                     await asyncio.sleep(2 ** attempt)
@@ -407,11 +403,18 @@ async def post_gemini_generate(
                     detail="Gemini ist gerade temporär überlastet oder nicht verfügbar. Bitte gleich nochmal versuchen.",
                 )
             if resp.is_error:
-                upstream_message = gemini_error_message(resp)
-                detail = f"Gemini Anfrage fehlgeschlagen ({resp.status_code})."
-                if upstream_message:
-                    detail = f"{detail} Google meldet: {upstream_message}"
-                raise HTTPException(status_code=502, detail=detail)
+                if 400 <= resp.status_code < 500:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "Gemini hat die Scanner-Anfrage abgelehnt "
+                            f"({resp.status_code}). Bitte Bild und Modell prüfen."
+                        ),
+                    )
+                raise HTTPException(
+                    status_code=503,
+                    detail="Gemini ist gerade nicht verfügbar. Bitte später erneut versuchen.",
+                )
             try:
                 record_gemini_success(api_key)
             except Exception:
@@ -1136,6 +1139,7 @@ async def recognize_card(
     except ScanUploadError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    provider = get_provider(db, current_user.id)
     trace = create_scan_trace(
         db,
         current_user.id,
@@ -1143,7 +1147,8 @@ async def recognize_card(
         filename="sanitized-upload.jpg",
         # Stamped with whichever provider will actually run, so diagnostics do not
         # attribute an OpenAI scan to the Gemini model.
-        model=get_provider(db, current_user.id).model(),
+        provider=provider.name,
+        model=provider.model(),
     )
     trace.set_image(sanitized.data)
     try:

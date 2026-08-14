@@ -206,6 +206,7 @@ class ScanTrace:
         job_id: int | None = None,
         item_id: int | None = None,
         filename: str | None = None,
+        provider: str | None = None,
         model: str | None = None,
     ):
         self.enabled = bool(enabled)
@@ -220,6 +221,7 @@ class ScanTrace:
             "job_id": job_id,
             "item_id": item_id,
             "filename": filename,
+            "provider": provider,
             "model": model,
             "extraction": {},
             "search": {"tcgdex": [], "prefilter": None},
@@ -419,6 +421,7 @@ def create_scan_trace(
     job_id: int | None = None,
     item_id: int | None = None,
     filename: str | None = None,
+    provider: str | None = None,
     model: str | None = None,
 ) -> ScanTrace:
     return ScanTrace(
@@ -428,6 +431,7 @@ def create_scan_trace(
         job_id=job_id,
         item_id=item_id,
         filename=filename,
+        provider=provider,
         model=model,
     )
 
