@@ -93,6 +93,30 @@ SCANNER_TEST_IMAGE_B64 = (
     "qmFUw/DVAAC9iuUQ8Prt2QAAAABJRU5ErkJggg=="
 )
 
+# Settings that must not be written through the generic settings endpoints,
+# because changing them has constraints the dedicated endpoint owns. Writing
+# multi_user_mode directly would bypass the USER_MODE environment lock and the
+# confirmation shown by the settings page.
+DEDICATED_ENDPOINT_KEYS = {
+    "multi_user_mode": {
+        "label": "Multi-user mode",
+        "endpoint": "/api/auth/mode",
+    },
+}
+
+
+def _refuse_dedicated_setting(key: str) -> None:
+    dedicated = DEDICATED_ENDPOINT_KEYS.get(key)
+    if dedicated:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{dedicated['label']} can only be changed through "
+                f"{dedicated['endpoint']}"
+            ),
+        )
+
+
 ADMIN_ONLY_KEYS = {
     "full_sync_interval_days", "price_sync_interval_minutes", "multi_user_mode",
     "tcgdex_sync_languages", "debug_mode",
@@ -426,11 +450,7 @@ def update_settings(data: dict, db: Session = Depends(get_db), current_user: Use
         )
     pending_side_effects = []
     for key, value in data.items():
-        if key == "multi_user_mode":
-            raise HTTPException(
-                status_code=409,
-                detail="Multi-user mode can only be changed through /api/auth/mode",
-            )
+        _refuse_dedicated_setting(key)
         coerced_value = _coerce_setting_value(key, value)
         if key in ADMIN_ONLY_KEYS:
             if current_user.role != "admin":
@@ -561,6 +581,7 @@ def set_setting(key: str, body: dict, db: Session = Depends(get_db), current_use
             status_code=409,
             detail="Use the atomic scanner configuration endpoint for scanner settings.",
         )
+    _refuse_dedicated_setting(key)
     value = _coerce_setting_value(key, body.get("value", ""))
     if key in ADMIN_ONLY_KEYS:
         if current_user.role != "admin":
