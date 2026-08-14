@@ -71,7 +71,7 @@ for (const line of lines.slice(1)) {
   else if (currency !== rowCurrency) currency = 'MIXED'
 }
 
-const replacement = `<!-- rescue-donation-total:start -->\n**Animal rescue donations sent so far:** ${formatAmount(total, currency)}\n<!-- rescue-donation-total:end -->`
+const replacement = `<!-- rescue-donation-total:start -->\n**Historic animal-rescue donations forwarded before Betterplace:** ${formatAmount(total, currency)}\n<!-- rescue-donation-total:end -->`
 const readme = readFileSync(readmePath, 'utf8')
 const updated = readme.replace(
   /<!-- rescue-donation-total:start -->[\s\S]*?<!-- rescue-donation-total:end -->/,

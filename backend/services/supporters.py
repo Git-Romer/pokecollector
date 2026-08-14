@@ -102,6 +102,7 @@ def parse_supporters_csv(text: str) -> list[dict]:
             "amount": float(amount),
             "currency": currency,
         }
+        has_amount = bool((row.get("amount") or "").strip())
 
         if key not in supporters_by_key:
             supporters_by_key[key] = {
@@ -109,11 +110,15 @@ def parse_supporters_csv(text: str) -> list[dict]:
                 "url": url,
                 "currency": currency,
                 "_total_amount": Decimal("0"),
+                "_has_amount": False,
+                "_all_amounts_present": True,
                 "donations": [],
             }
 
         supporter = supporters_by_key[key]
         supporter["_total_amount"] += amount
+        supporter["_has_amount"] = supporter["_has_amount"] or has_amount
+        supporter["_all_amounts_present"] = supporter["_all_amounts_present"] and has_amount
         supporter["donations"].append(donation)
         if not supporter.get("url") and url:
             supporter["url"] = url
@@ -131,6 +136,7 @@ def parse_supporters_csv(text: str) -> list[dict]:
         supporter["first_supported_at"] = min(dated_donations) if dated_donations else None
         supporter["latest_supported_at"] = max(dated_donations) if dated_donations else None
         supporter["total_amount"] = float(supporter.pop("_total_amount"))
+        supporter["show_amount"] = supporter.pop("_has_amount") and supporter.pop("_all_amounts_present")
 
     supporters.sort(
         key=lambda supporter: (
@@ -140,8 +146,13 @@ def parse_supporters_csv(text: str) -> list[dict]:
         )
     )
 
+    crown_index = 0
     for index, supporter in enumerate(supporters):
         supporter["rank"] = index + 1
-        supporter["crown"] = SUPPORTER_CROWNS[index] if index < len(SUPPORTER_CROWNS) else None
+        if supporter["show_amount"] and supporter["total_amount"] > 0 and crown_index < len(SUPPORTER_CROWNS):
+            supporter["crown"] = SUPPORTER_CROWNS[crown_index]
+            crown_index += 1
+        else:
+            supporter["crown"] = None
 
     return supporters

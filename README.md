@@ -18,9 +18,9 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - 👤 **Creator:** [Gilles Romer](https://romerg.de/)
 - ✉️ **Contact:** [info@romerg.de](mailto:info@romerg.de)
 
-![Version](https://img.shields.io/badge/version-v1.38.4-e3000b?style=flat-square) ![Dark Theme](https://img.shields.io/badge/theme-dark-1a1a2e?style=flat-square) ![TCGdex](https://img.shields.io/badge/card%20data-TCGdex-e3000b?style=flat-square) ![Docker](https://img.shields.io/badge/deploy-Docker-2496ed?style=flat-square) ![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square) ![React](https://img.shields.io/badge/frontend-React%2018-61dafb?style=flat-square) [![Ko-fi](https://img.shields.io/badge/support-Ko--fi-ff5e5b?style=flat-square&logo=ko-fi&logoColor=white)](https://ko-fi.com/gillesromer)
+![Version](https://img.shields.io/badge/version-v1.38.5-e3000b?style=flat-square) ![Dark Theme](https://img.shields.io/badge/theme-dark-1a1a2e?style=flat-square) ![TCGdex](https://img.shields.io/badge/card%20data-TCGdex-e3000b?style=flat-square) ![Docker](https://img.shields.io/badge/deploy-Docker-2496ed?style=flat-square) ![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square) ![React](https://img.shields.io/badge/frontend-React%2018-61dafb?style=flat-square) [![Support animal rescue](https://img.shields.io/badge/support-animal%20rescue-e3000b?style=flat-square)](https://pokecollector.romerg.de/#support)
 
-**Current version:** `v1.38.4` · Releases are tracked on the [GitHub Releases page](https://github.com/Git-Romer/pokecollector/releases).
+**Current version:** `v1.38.5` · Releases are tracked on the [GitHub Releases page](https://github.com/Git-Romer/pokecollector/releases).
 
 ![WebApp Preview](preview-homescreen.png)
 
@@ -96,7 +96,7 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - View other trainers' collections from the Leaderboard
 - Optional public trainer profiles with trainer-name URLs, a public directory, individually shared collection binders, and opt-in market values
 - Admin-controlled public sharing switch, disabled by default on new and upgraded installations
-- Community section in Settings with GitHub contributors and Ko-fi supporters
+- Community section in Settings with GitHub contributors and PokéCollector supporters
 
 ### 🎨 UX & Localization
 - Compact portal navigation with 6 primary home items and grouped tab navigation
@@ -399,6 +399,7 @@ PokéCollector is self-hosted, but it can call these external sources depending 
 | Telegram Bot API | `api.telegram.org` | Telegram notifications and alerts | Only when Telegram settings are configured and an alert/notification is sent |
 | Frankfurter | `api.frankfurter.dev` | Currency exchange rates | Currency conversion and Telegram price formatting when non-EUR values are needed |
 | GitHub | `api.github.com`, `raw.githubusercontent.com`, `avatars.githubusercontent.com`, `github.com` | Community contributor/supporter data, GitHub avatars, project links, and release/source links | Settings community section and linked project metadata |
+| Betterplace | `www.betterplace.org`, `api.betterplace.org` | Direct animal-rescue donation campaign and public opt-in supporter names | Browser opens the campaign; a scheduled GitHub Action reads the dedicated campaign's public donation feed |
 | Cardmarket | `www.cardmarket.com` | Product/search links for cards | Browser opens outbound links only; PokéCollector does not call a Cardmarket API |
 
 Build and dependency installation also contact package/distribution registries such as npm and the PostgreSQL apt repository when Docker images are built.
@@ -530,17 +531,21 @@ https://makerworld.com/de/models/2816777-high-dividers-with-set-logo-nfc-tag#pro
 
 ## ❤️ Support
 
-If you want to support the project, use Ko-fi:
+If you want to support PokéCollector, you can donate directly to animal rescue through the official campaign:
 
-https://ko-fi.com/gillesromer
+https://pokecollector.romerg.de/#support
 
-All donations go to an animal rescue organization. Supporters listed through Ko-fi can appear in the in-app Community section.
+Betterplace processes the donation and forwards it to the selected animal rescue project. PokéCollector never receives the funds.
+
+To appear in the public supporter list, donate non-anonymously and begin the public Betterplace message with `POKECOLLECTOR: Your desired name`. Only the requested public name is copied to this repository. If the automatic import misses a donation, the website's support section includes a no-login manual review form. Published names can be corrected or removed by contacting [info@romerg.de](mailto:info@romerg.de).
+
+Repository maintenance remains reviewable: the scheduled sync validates Betterplace's public feed and opens or updates a dedicated pull request containing only the `SUPPORTERS.csv` change. It never pushes supporter data directly to protected `main`.
 
 <!-- rescue-donation-total:start -->
-**Animal rescue donations sent so far:** €0.00
+**Historic animal-rescue donations forwarded before Betterplace:** €0.00
 <!-- rescue-donation-total:end -->
 
-Actual transfers to rescue organizations are tracked separately from supporter tips in `RESCUE_DONATIONS.csv`, because donations are sent in batches. After updating that CSV, run `node scripts/update-rescue-donation-total.mjs` to refresh this README total.
+Historic transfers made before the direct Betterplace campaign remain tracked in `RESCUE_DONATIONS.csv`. After updating that CSV, run `node scripts/update-rescue-donation-total.mjs` to refresh this README total.
 
 ---
 

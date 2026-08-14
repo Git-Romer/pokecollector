@@ -1,0 +1,103 @@
+name: Sync Betterplace supporters
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: sync-betterplace-supporters
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Test importer
+        run: node --test scripts/sync-betterplace-supporters.test.mjs
+
+      - name: Test supporter rendering data
+        working-directory: backend
+        run: python3 -m unittest -v tests.test_supporters
+
+      - name: Sync public supporter opt-ins
+        env:
+          BETTERPLACE_CAMPAIGN_ID: '57435'
+        run: node scripts/sync-betterplace-supporters.mjs
+
+      - name: Validate generated supporter list
+        run: |
+          git diff --check
+          node --test scripts/sync-betterplace-supporters.test.mjs
+          cd backend
+          python3 -m unittest -v tests.test_supporters
+
+      - name: Publish update branch
+        id: update
+        env:
+          UPDATE_BRANCH: automation/betterplace-supporters
+        run: |
+          if git diff --quiet -- SUPPORTERS.csv; then
+            echo "No supporter changes."
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin "refs/heads/$UPDATE_BRANCH" >/dev/null 2>&1; then
+            git fetch origin "refs/heads/$UPDATE_BRANCH:refs/remotes/origin/$UPDATE_BRANCH"
+          fi
+          git switch -C "$UPDATE_BRANCH"
+          git add SUPPORTERS.csv
+          git commit -m "chore: sync Betterplace supporters"
+          if git show-ref --verify --quiet "refs/remotes/origin/$UPDATE_BRANCH"; then
+            remote_head="$(git rev-parse "refs/remotes/origin/$UPDATE_BRANCH")"
+            git push --force-with-lease="refs/heads/$UPDATE_BRANCH:$remote_head" origin "HEAD:refs/heads/$UPDATE_BRANCH"
+          else
+            git push origin "HEAD:refs/heads/$UPDATE_BRANCH"
+          fi
+
+      - name: Open or update review pull request
+        if: steps.update.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPDATE_BRANCH: automation/betterplace-supporters
+        run: |
+          body="This automated update contains only public supporter names that explicitly opted in through the PokéCollector Betterplace campaign. No donor identity, email address, amount, date, message, or Betterplace donation ID is stored. Please review the SUPPORTERS.csv diff before merging."
+          pr_number="$(gh pr list --base main --head "$UPDATE_BRANCH" --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$pr_number" ]; then
+            gh pr edit "$pr_number" --title "Update Betterplace supporters" --body "$body"
+          else
+            if ! gh pr create --base main --head "$UPDATE_BRANCH" --title "Update Betterplace supporters" --body "$body"; then
+              echo "::error::Enable 'Allow GitHub Actions to create and approve pull requests' under Settings > Actions > General > Workflow permissions. This workflow only creates review PRs; it never approves or merges them."
+              exit 1
+            fi
+          fi
+
+      - name: Close stale review pull request
+        if: steps.update.outputs.has_changes == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPDATE_BRANCH: automation/betterplace-supporters
+        run: |
+          pr_number="$(gh pr list --base main --head "$UPDATE_BRANCH" --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$pr_number" ]; then
+            gh pr close "$pr_number" --comment "Closing automatically because the latest validated Betterplace supporter list now matches main."
+          fi
