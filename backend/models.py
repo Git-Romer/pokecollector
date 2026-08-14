@@ -632,3 +632,15 @@ class GeminiQuotaState(Base):
     consecutive_daily_failures = Column(Integer, default=0, nullable=False)
     interactive_pending_until = Column(DateTime, nullable=True)
     updated_at = Column(DateTime, default=func.now(), nullable=False)
+
+
+class ScannerProviderLimitState(Base):
+    """Persisted non-Gemini provider blocks without storing credentials or URLs."""
+
+    __tablename__ = "scanner_provider_limit_state"
+
+    scope_fingerprint = Column(String, primary_key=True)
+    provider = Column(String, nullable=False)
+    blocked_until = Column(DateTime, nullable=True, index=True)
+    blocked_reason = Column(String, nullable=True)
+    updated_at = Column(DateTime, default=func.now(), nullable=False)

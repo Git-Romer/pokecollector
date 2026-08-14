@@ -18,6 +18,7 @@ import { useSettings } from '../contexts/SettingsContext'
 import { useConfirmDialog } from '../contexts/ConfirmDialogContext'
 import Modal from '../components/ui/Modal'
 import AvatarPicker from '../components/AvatarPicker'
+import ScannerSettingsCard from '../components/ScannerSettingsCard'
 import { formatDistanceToNow } from 'date-fns'
 import toast from 'react-hot-toast'
 import { TCGDEX_LANGUAGES, normalizeTcgdexLanguageCsv, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
@@ -316,15 +317,6 @@ export default function Settings() {
   const { theme, setTheme, themes } = useTheme()
   const [activeTab, setActiveTab] = useState('general')
 
-  const [geminiKey, setGeminiKey] = useState('')
-  const [geminiDirty, setGeminiDirty] = useState(false)
-  const [scannerProvider, setScannerProvider] = useState('gemini')
-  const [openaiKey, setOpenaiKey] = useState('')
-  const [openaiDirty, setOpenaiDirty] = useState(false)
-  const [scannerModel, setScannerModel] = useState('')
-  const [scannerModelDirty, setScannerModelDirty] = useState(false)
-  const [visualVerification, setVisualVerification] = useState(true)
-  const [visualSaving, setVisualSaving] = useState(false)
   const [backupOptions, setBackupOptions] = useState(['full'])
   const [debugModeEnabled, setDebugModeEnabled] = useState(false)
   const [scanDiagnosticsSaving, setScanDiagnosticsSaving] = useState(false)
@@ -380,41 +372,6 @@ export default function Settings() {
   const { data: alertThresholdData } = useQuery({
     queryKey: ['setting', 'price_alert_threshold'],
     queryFn: () => getSetting('price_alert_threshold').catch(() => ({ value: '10' })),
-  })
-
-  const { data: geminiKeyData } = useQuery({
-    queryKey: ['setting', 'gemini_api_key'],
-    queryFn: () => getSetting('gemini_api_key').catch(() => ({ value: '' })),
-  })
-
-  const { data: openaiKeyData } = useQuery({
-    queryKey: ['setting', 'openai_api_key'],
-    queryFn: () => getSetting('openai_api_key').catch(() => ({ value: '' })),
-  })
-
-  const { data: scannerProviderData } = useQuery({
-    queryKey: ['setting', 'scanner_provider'],
-    queryFn: () => getSetting('scanner_provider').catch(() => ({ value: 'gemini' })),
-  })
-
-  const { data: scannerModelData } = useQuery({
-    queryKey: ['setting', 'scanner_model'],
-    queryFn: () => getSetting('scanner_model').catch(() => ({ value: '' })),
-  })
-  const { data: scannerModelDefaultData } = useQuery({
-    queryKey: ['setting', 'scanner_model_default'],
-    queryFn: () => getSetting('scanner_model_default').catch(() => ({ value: '' })),
-  })
-
-  const { data: visualDefaultData } = useQuery({
-    queryKey: ['setting', 'scanner_visual_verification_default'],
-    queryFn: () => getSetting('scanner_visual_verification_default').catch(() => ({ value: 'true' })),
-  })
-  const visualDefault = visualDefaultData?.value !== 'false'
-
-  const { data: visualVerificationData } = useQuery({
-    queryKey: ['setting', 'scanner_visual_verification'],
-    queryFn: () => getSetting('scanner_visual_verification').catch(() => ({ value: '' })),
   })
 
   // Public profile
@@ -485,35 +442,6 @@ export default function Settings() {
   useEffect(() => {
     if (alertThresholdData?.value) setAlertThreshold(alertThresholdData.value)
   }, [alertThresholdData])
-
-  useEffect(() => {
-    if (geminiKeyData?.value !== undefined && !geminiDirty) setGeminiKey(geminiKeyData.value)
-  }, [geminiKeyData])
-
-  useEffect(() => {
-    if (openaiKeyData?.value !== undefined && !openaiDirty) setOpenaiKey(openaiKeyData.value)
-  }, [openaiKeyData])
-
-  useEffect(() => {
-    if (scannerProviderData?.value) setScannerProvider(scannerProviderData.value)
-  }, [scannerProviderData])
-
-  useEffect(() => {
-    if (scannerModelData?.value !== undefined && !scannerModelDirty) {
-      setScannerModel(scannerModelData.value)
-    }
-  }, [scannerModelData])
-
-  useEffect(() => {
-    // Absent means "use the provider's default". That rule depends on
-    // OPENAI_BASE_URL, which is server-side, so take it from the API rather
-    // than guessing here: showing off while the scanner runs it on would cost
-    // an unexpected second paid call.
-    const stored = visualVerificationData?.value
-    if (stored === undefined) return
-    if (stored === '') setVisualVerification(visualDefault)
-    else setVisualVerification(stored === 'true')
-  }, [visualVerificationData, visualDefault])
 
   useEffect(() => {
     setDebugModeEnabled(settings.debug_mode === 'true')
@@ -619,40 +547,6 @@ export default function Settings() {
       toast.success(t('settings.saved'))
     } catch {
       toast.error(t('settings.saveFailed'))
-    }
-  }
-
-  const handleScannerProviderChange = async (value) => {
-    const previous = scannerProvider
-    setScannerProvider(value)
-    try {
-      await setSetting('scanner_provider', value)
-      queryClient.invalidateQueries({ queryKey: ['setting', 'scanner_provider'] })
-      // Both of these are derived from the provider, so a stale cache would show
-      // the previous provider's default model and visual-verification state.
-      queryClient.invalidateQueries({ queryKey: ['setting', 'scanner_model_default'] })
-      queryClient.invalidateQueries({ queryKey: ['setting', 'scanner_visual_verification_default'] })
-      toast.success(t('settings.saved'))
-    } catch {
-      // Put the control back, or it shows a provider the server never accepted.
-      setScannerProvider(previous)
-      toast.error(t('settings.saveFailed'))
-    }
-  }
-
-  const handleVisualVerificationToggle = async (enabled) => {
-    const previous = visualVerification
-    setVisualSaving(true)
-    setVisualVerification(enabled)
-    try {
-      await setSetting('scanner_visual_verification', enabled ? 'true' : 'false')
-      queryClient.invalidateQueries({ queryKey: ['setting', 'scanner_visual_verification'] })
-      toast.success(t('settings.saved'))
-    } catch {
-      setVisualVerification(previous)
-      toast.error(t('settings.saveFailed'))
-    } finally {
-      setVisualSaving(false)
     }
   }
 
@@ -1206,138 +1100,8 @@ export default function Settings() {
           {/* ── 6. KI / KARTEN-SCANNER ── */}
           <section className="space-y-1">
             <SectionHeader title={t('settings.sectionAI')} />
+            <ScannerSettingsCard t={t} />
             <SettingsCard>
-              <SettingsRow
-                label={t('settings.scannerProvider')}
-                description={t('settings.scannerProviderDesc')}
-              >
-                <SelectControl
-                  value={scannerProvider}
-                  onChange={handleScannerProviderChange}
-                  options={[
-                    { value: 'gemini', label: t('settings.scannerProviderGemini') },
-                    { value: 'openai', label: t('settings.scannerProviderOpenai') },
-                  ]}
-                />
-              </SettingsRow>
-              <SettingsRow
-                label={t('settings.scannerModel')}
-                description={t('settings.scannerModelDesc')}
-              >
-                <div className="mt-2 flex w-full items-center gap-2">
-                  <input
-                    type="text"
-                    value={scannerModel}
-                    onChange={e => { setScannerModel(e.target.value); setScannerModelDirty(true) }}
-                    placeholder={scannerModelDefaultData?.value || 'gpt-5.6-luna'}
-                    className="input flex-1 text-xs font-mono"
-                    style={{ minWidth: 0 }}
-                  />
-                  {scannerModelDirty && (
-                    <button
-                      onClick={async () => {
-                        try {
-                          await setSetting('scanner_model', scannerModel)
-                        } catch {
-                          // Stay dirty so an unsaved value is never presented as saved.
-                          toast.error(t('settings.saveFailed'))
-                          return
-                        }
-                        setScannerModelDirty(false)
-                        queryClient.invalidateQueries({ queryKey: ['setting', 'scanner_model'] })
-                        // The placeholder shows the installation default, which the provider
-                        // determines, so refresh it too.
-                        queryClient.invalidateQueries({ queryKey: ['setting', 'scanner_model_default'] })
-                        toast.success(t('settings.saved'))
-                      }}
-                      className="btn-primary-sm flex-shrink-0"
-                    >
-                      {t('common.save')}
-                    </button>
-                  )}
-                </div>
-              </SettingsRow>
-              {scannerProvider === 'openai' && (
-                <SettingsRow
-                  label={t('settings.openaiApiKey')}
-                  description={t('settings.openaiApiKeyDesc')}
-                >
-                  <div className="flex items-center gap-2 w-full mt-2">
-                    <input
-                      type={openaiDirty ? "text" : "password"}
-                      value={openaiKey}
-                      onChange={e => { setOpenaiKey(e.target.value); setOpenaiDirty(true) }}
-                      placeholder="sk-..."
-                      className="input flex-1 text-xs font-mono"
-                      style={{ minWidth: 0 }}
-                    />
-                    {openaiKey && !openaiDirty && (
-                      <span className="text-xs text-green flex-shrink-0">✅</span>
-                    )}
-                    {openaiDirty && (
-                      <button
-                        onClick={async () => {
-                          try {
-                            await setSetting('openai_api_key', openaiKey)
-                          } catch {
-                            // Stay dirty, so an unsaved key is never presented
-                            // as saved.
-                            toast.error(t('settings.saveFailed'))
-                            return
-                          }
-                          setOpenaiDirty(false)
-                          queryClient.invalidateQueries({ queryKey: ['setting', 'openai_api_key'] })
-                          toast.success(t('settings.apiKeySaved'))
-                        }}
-                        className="btn-primary-sm flex-shrink-0"
-                      >
-                        {t('common.save')}
-                      </button>
-                    )}
-                  </div>
-                </SettingsRow>
-              )}
-              {scannerProvider === 'gemini' && (
-                <SettingsRow label={t('settings.geminiApiKey')} description={t('settings.geminiApiKeyDesc')}>
-                  <div className="flex items-center gap-2 w-full mt-2">
-                    <input
-                      type={geminiDirty ? "text" : "password"}
-                      value={geminiKey}
-                      onChange={e => { setGeminiKey(e.target.value); setGeminiDirty(true) }}
-                      placeholder="AIza..."
-                      className="input flex-1 text-xs font-mono"
-                      style={{ minWidth: 0 }}
-                    />
-                    {geminiKey && !geminiDirty && (
-                      <span className="text-xs text-green flex-shrink-0">✅</span>
-                    )}
-                    {geminiDirty && (
-                      <button
-                        onClick={async () => {
-                          await saveSetting('gemini_api_key', geminiKey)
-                          setGeminiDirty(false)
-                          queryClient.invalidateQueries({ queryKey: ['setting', 'gemini_api_key'] })
-                          toast.success(t('settings.apiKeySaved'))
-                        }}
-                        className="btn-primary-sm flex-shrink-0"
-                      >
-                        {t('common.save')}
-                      </button>
-                    )}
-                  </div>
-                </SettingsRow>
-              )}
-              <SettingsRow
-                label={t('settings.visualVerification')}
-                description={t('settings.visualVerificationDesc')}
-              >
-                <Toggle
-                  value={visualVerification}
-                  onChange={handleVisualVerificationToggle}
-                  label={t('settings.visualVerification')}
-                  disabled={visualSaving}
-                />
-              </SettingsRow>
               <SettingsRow
                 label={t('settings.scanDiagnostics')}
                 description={scanDiagnosticsAvailable

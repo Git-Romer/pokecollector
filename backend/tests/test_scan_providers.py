@@ -11,7 +11,6 @@ try:
 
     from database import Base
     from models import User, UserSetting
-    from services import scan_providers
     from services.scan_providers import (
         DEFAULT_OPENAI_BASE_URL,
         GEMINI,
@@ -25,11 +24,8 @@ try:
         openai_requires_key,
         openai_retry_after_seconds,
         post_openai_chat,
-        resolve_model,
         resolve_provider_name,
         text_part,
-        visual_verification_default,
-        visual_verification_enabled,
     )
     DEPS = True
 except ModuleNotFoundError:
@@ -77,6 +73,22 @@ class _Fixture:
     """Shared setup only, deliberately not a TestCase."""
 
     def setUp(self):
+        env = patch.dict(os.environ, {
+            "OPENAI_SCANNER_ENABLED": "true",
+            "OPENAI_ALLOWED_MODELS": "chosen-model,moondream",
+            "GEMINI_ALLOWED_MODELS": "chosen-model",
+        })
+        env.start()
+        self.addCleanup(env.stop)
+        blocked = patch("services.provider_rate_limit.raise_if_provider_blocked")
+        penalize = patch(
+            "services.provider_rate_limit.penalize_provider_scope",
+            side_effect=lambda *_args, seconds=None, **_kwargs: seconds or 30.0,
+        )
+        blocked.start()
+        penalize.start()
+        self.addCleanup(blocked.stop)
+        self.addCleanup(penalize.stop)
         engine = create_engine("sqlite:///:memory:")
         Base.metadata.create_all(engine)
         self.db = sessionmaker(bind=engine)()
@@ -118,41 +130,6 @@ class ProviderResolutionTests(_Fixture, unittest.TestCase):
 
 
 @unittest.skipUnless(DEPS, "FastAPI/SQLAlchemy are not installed in this environment")
-class ModelValidationTests(unittest.TestCase):
-    """The stored value is exercised through the real coercion path, not written
-    straight into the database as the other tests do."""
-
-    def _coerce(self, value):
-        from api.settings import _coerce_setting_value
-        from services.scan_providers import SCANNER_MODEL_SETTING
-
-        return _coerce_setting_value(SCANNER_MODEL_SETTING, value)
-
-    def test_a_normal_model_name_is_kept(self):
-        self.assertEqual(self._coerce("  gpt-5.6-luna  "), "gpt-5.6-luna")
-
-    def test_blank_means_the_installation_default(self):
-        self.assertEqual(self._coerce("   "), "")
-        self.assertEqual(self._coerce(None), "")
-
-    def test_non_text_is_rejected(self):
-        for bad in ([1, 2], {"a": 1}, 42, True):
-            with self.subTest(bad=bad):
-                with self.assertRaises(HTTPException):
-                    self._coerce(bad)
-
-    def test_control_characters_are_rejected(self):
-        for bad in ["gpt\n4o", "gpt 4o", "gpt\t4o", "../etc/passwd\x00"]:
-            with self.subTest(bad=bad):
-                with self.assertRaises(HTTPException):
-                    self._coerce(bad)
-
-    def test_an_overlong_name_is_rejected(self):
-        with self.assertRaises(HTTPException):
-            self._coerce("m" * 101)
-
-
-@unittest.skipUnless(DEPS, "FastAPI/SQLAlchemy are not installed in this environment")
 class ModelSelectionTests(_Fixture, unittest.TestCase):
     """Users pick their own model; the installation setting is the fallback.
 
@@ -170,19 +147,19 @@ class ModelSelectionTests(_Fixture, unittest.TestCase):
 
     def test_a_users_own_model_wins(self):
         self._set("scanner_provider", "openai")
-        self._set("scanner_model", self.CHOSEN)
+        self._set("scanner_model_openai", self.CHOSEN)
         with patch.dict(os.environ, {"OPENAI_MODEL": self.INSTALLATION}):
             self.assertEqual(get_provider(self.db, self.user.id).model(), self.CHOSEN)
 
     def test_whitespace_is_not_a_model(self):
         self._set("scanner_provider", "openai")
-        self._set("scanner_model", "   ")
+        self._set("scanner_model_openai", "   ")
         with patch.dict(os.environ, {"OPENAI_MODEL": self.INSTALLATION}):
             self.assertEqual(get_provider(self.db, self.user.id).model(), self.INSTALLATION)
 
     def test_the_installation_model_is_reported_separately(self):
         self._set("scanner_provider", "openai")
-        self._set("scanner_model", self.CHOSEN)
+        self._set("scanner_model_openai", self.CHOSEN)
         with patch.dict(os.environ, {"OPENAI_MODEL": self.INSTALLATION}):
             provider = get_provider(self.db, self.user.id)
             self.assertEqual(provider.model(), self.CHOSEN)
@@ -190,7 +167,7 @@ class ModelSelectionTests(_Fixture, unittest.TestCase):
 
     def test_the_chosen_model_reaches_the_openai_request(self):
         self._set("scanner_provider", "openai")
-        self._set("scanner_model", self.CHOSEN)
+        self._set("scanner_model_openai", self.CHOSEN)
         provider = get_provider(self.db, self.user.id)
         client = _FakeClient([_FakeResponse(200, {"choices": [{"message": {"content": "ok"}}]})])
         with patch.dict(os.environ, {"OPENAI_BASE_URL": LOCAL_URL, "OPENAI_MODEL": self.INSTALLATION}):
@@ -201,7 +178,7 @@ class ModelSelectionTests(_Fixture, unittest.TestCase):
         # Gemini puts the model in the URL, so asserting provider.model() alone
         # would not have caught the request running on the installation model
         # while diagnostics recorded the user's choice.
-        self._set("scanner_model", self.CHOSEN)
+        self._set("scanner_model_gemini", self.CHOSEN)
         captured = {}
 
         async def fake_post(client, url, api_key, payload, *, max_attempts=3):
@@ -247,15 +224,23 @@ class EndpointConfigurationTests(unittest.TestCase):
         with patch.dict(os.environ, {"OPENAI_BASE_URL": LOCAL_URL}):
             self.assertFalse(openai_requires_key())
 
+    def test_an_invalid_key_requirement_does_not_disable_hosted_auth(self):
+        with patch.dict(os.environ, {
+            "OPENAI_BASE_URL": DEFAULT_OPENAI_BASE_URL,
+            "OPENAI_API_KEY_REQUIRED": "typo",
+        }):
+            self.assertTrue(openai_requires_key())
+
 
 @unittest.skipUnless(DEPS, "FastAPI/SQLAlchemy are not installed in this environment")
 class RequestShapingTests(unittest.TestCase):
 
     def _run(self, provider, api_key, parts, responses):
         client = _FakeClient(responses)
-        text, usage = asyncio.run(
-            provider.generate_text(client, api_key, parts)
-        )
+        with patch("services.provider_rate_limit.raise_if_provider_blocked"):
+            text, usage = asyncio.run(
+                provider.generate_text(client, api_key, parts)
+            )
         return client, text, usage
 
     def test_openai_sends_text_and_an_image_data_uri(self):
@@ -329,9 +314,13 @@ class ErrorMappingTests(unittest.TestCase):
     def _call(self, responses, api_key="sk-x"):
         client = _FakeClient(responses)
         self._last_client = client
-        return asyncio.run(
-            post_openai_chat(client, "http://x/chat/completions", api_key, {}, max_attempts=2)
-        )
+        with patch("services.provider_rate_limit.raise_if_provider_blocked"), patch(
+            "services.provider_rate_limit.penalize_provider_scope",
+            side_effect=lambda *_args, seconds=None, **_kwargs: seconds or 30.0,
+        ):
+            return asyncio.run(
+                post_openai_chat(client, "http://x/chat/completions", api_key, {}, max_attempts=2)
+            )
 
     def test_a_rate_limit_surfaces_as_429_with_retry_after(self):
         with self.assertRaises(HTTPException) as caught:
@@ -366,6 +355,21 @@ class ErrorMappingTests(unittest.TestCase):
         self.assertEqual(getattr(caught.exception, "retry_after_seconds", None), 12.0)
         self.assertEqual(getattr(caught.exception, "retry_reason", None), "rate_limit")
 
+    def test_exhausted_billing_quota_is_permanent(self):
+        with self.assertRaises(HTTPException) as caught:
+            self._call([_FakeResponse(429, {"error": {
+                "type": "insufficient_quota", "code": "insufficient_quota"
+            }})])
+        self.assertEqual(caught.exception.status_code, 400)
+        self.assertFalse(hasattr(caught.exception, "retry_after_seconds"))
+
+    def test_arbitrary_upstream_secret_is_never_logged(self):
+        secret = "arbitrary-compatible-endpoint-secret"
+        with patch("logging.Logger._log") as log_call:
+            with self.assertRaises(HTTPException):
+                self._call([_FakeResponse(400, {"error": {"message": secret}})])
+        self.assertNotIn(secret, repr(log_call.call_args_list))
+
     def test_no_upstream_text_reaches_the_detail_on_any_status(self):
         # Pattern redaction can only catch shapes it knows. An arbitrary
         # credential is not a shape, so provider text is kept out of the detail
@@ -382,12 +386,10 @@ class ErrorMappingTests(unittest.TestCase):
                     self._call(responses)
                 self.assertNotIn(secret, str(caught.exception.detail))
 
-    def test_a_429_without_retry_after_leaves_the_delay_unset(self):
-        # The queue treats any non-None value as authoritative, so 0.0 would
-        # mean "retry immediately" instead of falling back to its own default.
+    def test_a_429_without_retry_after_uses_the_shared_initial_delay(self):
         with self.assertRaises(HTTPException) as caught:
             self._call([_FakeResponse(429, {})])
-        self.assertIsNone(getattr(caught.exception, "retry_after_seconds", "missing"))
+        self.assertEqual(caught.exception.retry_after_seconds, 30.0)
 
     def test_list_content_is_joined_rather_than_returned_raw(self):
         # Some OpenAI-compatible servers answer with content parts. Returned raw
@@ -410,7 +412,9 @@ class ErrorMappingTests(unittest.TestCase):
     def test_a_malformed_success_is_a_502_not_a_500(self):
         provider = ScanProvider(OPENAI)
         client = _FakeClient([_FakeResponse(200, {"unexpected": True})])
-        with patch.dict(os.environ, {"OPENAI_BASE_URL": LOCAL_URL}):
+        with patch.dict(os.environ, {"OPENAI_BASE_URL": LOCAL_URL}), patch(
+            "services.provider_rate_limit.raise_if_provider_blocked"
+        ):
             with self.assertRaises(HTTPException) as caught:
                 asyncio.run(provider.generate_text(client, "", [text_part("hi")]))
         self.assertEqual(caught.exception.status_code, 502)
@@ -449,12 +453,12 @@ class ErrorMappingTests(unittest.TestCase):
         # A user who set their own model must be told which one failed and where
         # to change it, not sent after an env var they cannot see.
         client = _FakeClient([_FakeResponse(404, {"error": {"message": "no such model"}})])
-        with self.assertRaises(HTTPException) as caught:
+        with patch("services.provider_rate_limit.raise_if_provider_blocked"), self.assertRaises(HTTPException) as caught:
             asyncio.run(post_openai_chat(
                 client, "http://x/chat/completions", "", {"model": "made-up-model"},
                 max_attempts=1,
             ))
-        self.assertEqual(caught.exception.status_code, 502)
+        self.assertEqual(caught.exception.status_code, 400)
         self.assertIn("made-up-model", caught.exception.detail)
         self.assertIn("Settings", caught.exception.detail)
 
@@ -505,34 +509,6 @@ class RateLimiterIsolationTests(_Fixture, unittest.TestCase):
 
 
 @unittest.skipUnless(DEPS, "FastAPI/SQLAlchemy are not installed in this environment")
-class VisualVerificationToggleTests(_Fixture, unittest.TestCase):
-
-    def test_gemini_keeps_visual_verification_on_by_default(self):
-        self.assertTrue(visual_verification_enabled(self.db, self.user.id, GEMINI))
-
-    def test_a_self_hosted_endpoint_starts_with_it_off(self):
-        # The multi-image comparison is beyond most small local models, and a
-        # confident wrong pick is worse than no pick.
-        with patch.dict(os.environ, {"OPENAI_BASE_URL": LOCAL_URL}):
-            self.assertFalse(visual_verification_enabled(self.db, self.user.id, OPENAI))
-
-    def test_hosted_openai_keeps_it_on(self):
-        # The default follows capability, not provider name: gpt-4o does this at
-        # least as well as gemini-flash, so defaulting it off would be arbitrary.
-        with patch.dict(os.environ, {"OPENAI_BASE_URL": DEFAULT_OPENAI_BASE_URL}):
-            self.assertTrue(visual_verification_enabled(self.db, self.user.id, OPENAI))
-
-    def test_a_user_can_turn_it_on_for_a_self_hosted_endpoint(self):
-        self._set("scanner_visual_verification", "true")
-        with patch.dict(os.environ, {"OPENAI_BASE_URL": LOCAL_URL}):
-            self.assertTrue(visual_verification_enabled(self.db, self.user.id, OPENAI))
-
-    def test_a_user_can_turn_it_off_for_gemini(self):
-        self._set("scanner_visual_verification", "false")
-        self.assertFalse(visual_verification_enabled(self.db, self.user.id, GEMINI))
-
-
-@unittest.skipUnless(DEPS, "FastAPI/SQLAlchemy are not installed in this environment")
 class CredentialGateTests(_Fixture, unittest.TestCase):
 
     def test_a_local_endpoint_needs_no_credential(self):
@@ -576,12 +552,6 @@ class PerUserResolutionTests(_Fixture, unittest.TestCase):
         names = [get_provider(self.db, uid).name for uid in order]
         self.assertEqual(names, [GEMINI, OPENAI, GEMINI, OPENAI])
 
-    def test_each_user_gets_their_own_visual_default(self):
-        with patch.dict(os.environ, {"OPENAI_BASE_URL": LOCAL_URL}):
-            self.assertTrue(visual_verification_enabled(self.db, self.user.id, GEMINI))
-            self.assertFalse(visual_verification_enabled(self.db, self.other.id, OPENAI))
-
-
 @unittest.skipUnless(DEPS, "FastAPI/SQLAlchemy are not installed in this environment")
 class RetryAfterBoundsTests(unittest.TestCase):
     """A hostile or broken endpoint must not be able to stall the queue."""
@@ -599,17 +569,34 @@ class RetryAfterBoundsTests(unittest.TestCase):
         # the queue, leaving the item leased and aborting the drain pass.
         capped = self._retry_after("1e308")
         self.assertIsNotNone(capped)
-        self.assertLessEqual(capped, 24 * 60 * 60)
+        self.assertLessEqual(capped, 14 * 24 * 60 * 60)
 
     def test_a_normal_value_is_untouched(self):
         self.assertEqual(self._retry_after("30"), 30.0)
 
+    def test_http_date_uses_the_provider_date_as_baseline(self):
+        response = _FakeResponse(429, {}, {
+            "date": "Wed, 21 Oct 2015 07:28:00 GMT",
+            "retry-after": "Wed, 21 Oct 2015 07:30:00 GMT",
+        })
+        self.assertEqual(openai_retry_after_seconds(response), 120.0)
+
+    def test_openai_reset_duration_headers_are_supported(self):
+        response = _FakeResponse(429, {}, {
+            "x-ratelimit-reset-requests": "1m30s",
+            "x-ratelimit-reset-tokens": "45s",
+        })
+        self.assertEqual(openai_retry_after_seconds(response), 90.0)
+
     def test_a_capped_value_still_builds_a_valid_429(self):
         client = _FakeClient([_FakeResponse(429, {}, {"retry-after": "1e308"})])
-        with self.assertRaises(HTTPException) as caught:
+        with patch("services.provider_rate_limit.raise_if_provider_blocked"), patch(
+            "services.provider_rate_limit.penalize_provider_scope",
+            side_effect=lambda *_args, seconds=None, **_kwargs: seconds or 30.0,
+        ), self.assertRaises(HTTPException) as caught:
             asyncio.run(post_openai_chat(client, "http://x/chat/completions", "", {}, max_attempts=1))
         self.assertEqual(caught.exception.status_code, 429)
-        self.assertLessEqual(caught.exception.retry_after_seconds, 24 * 60 * 60)
+        self.assertLessEqual(caught.exception.retry_after_seconds, 14 * 24 * 60 * 60)
 
 
 @unittest.skipUnless(DEPS, "FastAPI/SQLAlchemy are not installed in this environment")
@@ -618,7 +605,7 @@ class RequestRejectionTests(unittest.TestCase):
     def test_a_400_is_not_reported_as_a_credential_problem(self):
         # A rejected image must not send a user with a valid key after their key.
         client = _FakeClient([_FakeResponse(400, {"error": {"message": "bad image"}})])
-        with self.assertRaises(HTTPException) as caught:
+        with patch("services.provider_rate_limit.raise_if_provider_blocked"), self.assertRaises(HTTPException) as caught:
             asyncio.run(post_openai_chat(client, "http://x/chat/completions", "sk-x", {}, max_attempts=1))
         self.assertEqual(caught.exception.status_code, 400)
         self.assertNotIn("key", str(caught.exception.detail).lower())
@@ -626,26 +613,9 @@ class RequestRejectionTests(unittest.TestCase):
     def test_a_401_still_points_at_the_key(self):
         with patch.dict(os.environ, {"OPENAI_BASE_URL": DEFAULT_OPENAI_BASE_URL}):
             client = _FakeClient([_FakeResponse(401, {})])
-            with self.assertRaises(HTTPException) as caught:
+            with patch("services.provider_rate_limit.raise_if_provider_blocked"), self.assertRaises(HTTPException) as caught:
                 asyncio.run(post_openai_chat(client, "http://x/chat/completions", "sk-x", {}, max_attempts=1))
         self.assertIn("key", str(caught.exception.detail).lower())
-
-
-@unittest.skipUnless(DEPS, "FastAPI/SQLAlchemy are not installed in this environment")
-class VisualDefaultPublicationTests(unittest.TestCase):
-    """The UI must be able to show the state the scanner will actually use."""
-
-    def test_hosted_openai_defaults_on(self):
-        with patch.dict(os.environ, {"OPENAI_BASE_URL": DEFAULT_OPENAI_BASE_URL}):
-            self.assertTrue(visual_verification_default(OPENAI))
-
-    def test_a_self_hosted_endpoint_defaults_off(self):
-        with patch.dict(os.environ, {"OPENAI_BASE_URL": LOCAL_URL}):
-            self.assertFalse(visual_verification_default(OPENAI))
-
-    def test_gemini_defaults_on_whatever_the_base_url_is(self):
-        with patch.dict(os.environ, {"OPENAI_BASE_URL": LOCAL_URL}):
-            self.assertTrue(visual_verification_default(GEMINI))
 
 
 @unittest.skipUnless(DEPS, "FastAPI/SQLAlchemy are not installed in this environment")

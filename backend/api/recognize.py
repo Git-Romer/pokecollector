@@ -27,7 +27,6 @@ from services.scan_providers import (
     image_part,
     image_part_from_bytes,
     text_part,
-    visual_verification_enabled,
 )
 import logging
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
@@ -1106,9 +1105,9 @@ async def recognize_sanitized_card(
             api_key=api_key,
             image_b64=image_b64,
             mime_type=content_type,
-            allow_visual_verification=visual_verification_enabled(
-                db, user_id, provider.name
-            ),
+            # Provider selection only changes the API boundary. Candidate
+            # verification remains the same automatic scanner step as Gemini.
+            allow_visual_verification=True,
             photo_bytes=image_bytes,
             trace=trace,
             provider=provider,

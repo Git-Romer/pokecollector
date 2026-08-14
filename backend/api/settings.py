@@ -1,10 +1,10 @@
 import logging
 import os
-import re
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
+from pydantic import BaseModel
 from api.auth import get_current_user
 from sqlalchemy.orm import Session
 from database import get_db
@@ -32,13 +32,18 @@ from services.scan_trace import (
 )
 
 from services.scan_providers import (
-    PROVIDERS,
-    SCANNER_MODEL_SETTING,
+    GEMINI,
+    SCANNER_MODEL_SETTINGS,
     ScanProvider,
+    allowed_models,
+    enabled_providers,
+    image_part,
+    installation_model,
+    openai_requires_key,
+    resolve_model,
     resolve_provider_name,
-    visual_verification_default,
     SCANNER_PROVIDER_SETTING,
-    VISUAL_VERIFICATION_SETTING,
+    text_part,
 )
 
 router = APIRouter()
@@ -52,9 +57,33 @@ PER_USER_KEYS = {
     "price_alerts_enabled", "price_alert_threshold",
     "gemini_api_key", "trainer_name", "portfolio_display_mode",
     "openai_api_key",
-    SCANNER_PROVIDER_SETTING, VISUAL_VERIFICATION_SETTING, SCANNER_MODEL_SETTING,
+    SCANNER_PROVIDER_SETTING, *SCANNER_MODEL_SETTINGS.values(),
     SCAN_DIAGNOSTICS_SETTING_KEY, PHOTO_PREFERENCE_SETTING_KEY,
 }
+
+MANAGED_SCANNER_KEYS = {
+    "gemini_api_key",
+    "openai_api_key",
+    SCANNER_PROVIDER_SETTING,
+    *SCANNER_MODEL_SETTINGS.values(),
+    # Prevent the removed PR prototype settings from being recreated through
+    # the legacy generic endpoint.
+    "scanner_model",
+    "scanner_visual_verification",
+}
+
+
+class ScannerConfigurationUpdate(BaseModel):
+    provider: str
+    model: str
+    api_key: str | None = None
+    clear_api_key: bool = False
+
+
+SCANNER_TEST_IMAGE_B64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF"
+    "gAI/6hZ6WQAAAABJRU5ErkJggg=="
+)
 
 ADMIN_ONLY_KEYS = {
     "full_sync_interval_days", "price_sync_interval_minutes", "multi_user_mode",
@@ -87,9 +116,6 @@ DEFAULT_SETTINGS = {
     PUBLIC_PROFILES_SETTING_KEY: "false",
     SCAN_DIAGNOSTICS_SETTING_KEY: "false",
     PHOTO_PREFERENCE_SETTING_KEY: "false",
-    # Existing installations have no stored provider, and this keeps them on
-    # Gemini exactly as before.
-    SCANNER_PROVIDER_SETTING: "gemini",
 }
 
 
@@ -110,40 +136,6 @@ def _coerce_setting_value(key: str, value) -> str:
         PHOTO_PREFERENCE_SETTING_KEY,
     }:
         return "true" if str(value).lower() in {"true", "1", "yes", "on"} else "false"
-    if key == SCANNER_PROVIDER_SETTING:
-        # Rejected at write time rather than falling back silently at scan time,
-        # so a typo surfaces here instead of quietly scanning with the wrong one.
-        provider = str(value).strip().lower()
-        if provider not in PROVIDERS:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Unsupported scanner provider. Choose one of: {', '.join(sorted(PROVIDERS))}.",
-            )
-        return provider
-    if key == SCANNER_MODEL_SETTING:
-        # Free text, because provider model names change constantly. Trimmed so a
-        # value of spaces means "use the installation default" rather than being
-        # sent upstream as a model name, and bounded so it cannot be used to
-        # stuff arbitrary content into the request.
-        if value is None:
-            return ""
-        if not isinstance(value, str):
-            raise HTTPException(status_code=422, detail="Model must be text.")
-        model = value.strip()
-        if not model:
-            return ""
-        if len(model) > 100:
-            raise HTTPException(status_code=422, detail="Model name is too long.")
-        # Restricted to the shape model identifiers actually take, so the value
-        # is safe wherever it lands, including a URL path for Gemini.
-        if not re.fullmatch(r"[A-Za-z0-9._:/-]+", model):
-            raise HTTPException(
-                status_code=422,
-                detail="Model name may only contain letters, numbers and . _ : / -",
-            )
-        return model
-    if key == VISUAL_VERIFICATION_SETTING:
-        return "true" if str(value).strip().lower() in {"true", "1", "yes", "on"} else "false"
     if key == "portfolio_display_mode":
         normalized = str(value).strip().lower()
         if normalized not in {"portfolio_value", "capital_invested"}:
@@ -183,7 +175,8 @@ def _get_user_settings(db: Session, user_id: int) -> dict:
 
     # Load this user's own settings
     for row in db.query(UserSetting).filter(UserSetting.user_id == user_id).all():
-        result[row.key] = row.value
+        if row.key not in MANAGED_SCANNER_KEYS:
+            result[row.key] = row.value
 
     # Env var fallback ONLY for admin — other users get empty defaults
     if _is_admin(db, user_id):
@@ -195,23 +188,10 @@ def _get_user_settings(db: Session, user_id: int) -> dict:
             env_chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
             if env_chat_id:
                 result["telegram_chat_id"] = env_chat_id
-        if "gemini_api_key" not in result:
-            env_gemini = os.environ.get("GEMINI_API_KEY", "")
-            if env_gemini:
-                result["gemini_api_key"] = env_gemini
 
     for key, value in DEFAULT_SETTINGS.items():
         result.setdefault(key, value)
     result["scan_diagnostics_available"] = "true" if trace_available() else "false"
-    # Published so the UI shows the state the scanner will actually use. The
-    # rule depends on OPENAI_BASE_URL, which the browser cannot see.
-    # Published so the field can show what a blank value will actually use.
-    result["scanner_model_default"] = ScanProvider(
-        resolve_provider_name(db, user_id)
-    ).installation_model()
-    result["scanner_visual_verification_default"] = (
-        "true" if visual_verification_default(resolve_provider_name(db, user_id)) else "false"
-    )
     result["scan_diagnostics_deletion_available"] = (
         "true" if trace_deletion_available() else "false"
     )
@@ -222,6 +202,135 @@ def _get_user_settings(db: Session, user_id: int) -> dict:
 @router.get("/")
 def get_settings(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return _get_user_settings(db, current_user.id)
+
+
+def _scanner_key_name(provider: str) -> str:
+    return "gemini_api_key" if provider == GEMINI else "openai_api_key"
+
+
+def _scanner_requires_key(provider: str) -> bool:
+    return provider == GEMINI or openai_requires_key()
+
+
+def _user_setting(db: Session, user_id: int, key: str) -> UserSetting | None:
+    return db.query(UserSetting).filter(
+        UserSetting.user_id == user_id, UserSetting.key == key
+    ).first()
+
+
+def _scanner_configuration(db: Session, user_id: int) -> dict:
+    selected = resolve_provider_name(db, user_id)
+    providers = []
+    for provider in enabled_providers():
+        key_row = _user_setting(db, user_id, _scanner_key_name(provider))
+        key_configured = bool(key_row and key_row.value)
+        providers.append({
+            "id": provider,
+            "label": "Gemini" if provider == GEMINI else "OpenAI-compatible",
+            "models": allowed_models(provider),
+            "default_model": installation_model(provider),
+            "selected_model": resolve_model(db, user_id, provider),
+            "requires_api_key": _scanner_requires_key(provider),
+            "api_key_configured": key_configured,
+        })
+    active = next(item for item in providers if item["id"] == selected)
+    ready = not active["requires_api_key"] or active["api_key_configured"]
+    status = (
+        "admin_setup_required"
+        if not active["models"]
+        else ("ready" if ready else "api_key_required")
+    )
+    return {
+        "provider": selected,
+        "model": active["selected_model"] if active["selected_model"] in active["models"] else active["default_model"],
+        "providers": providers,
+        "status": status,
+        "visual_verification": "automatic",
+    }
+
+
+def _validated_scanner_draft(
+    data: ScannerConfigurationUpdate,
+    db: Session,
+    user_id: int,
+    *,
+    require_ready: bool = False,
+) -> tuple[str, str, str]:
+    provider = data.provider.strip().lower()
+    if provider not in enabled_providers():
+        raise HTTPException(status_code=422, detail="This scanner provider is not enabled by the administrator.")
+    model = data.model.strip()
+    if model not in allowed_models(provider):
+        raise HTTPException(status_code=422, detail="Choose one of the models enabled by the administrator.")
+    if data.api_key is not None and len(data.api_key) > 4096:
+        raise HTTPException(status_code=422, detail="API key is too long.")
+    existing = _user_setting(db, user_id, _scanner_key_name(provider))
+    credential = (existing.value if existing else "") or ""
+    if data.clear_api_key:
+        credential = ""
+    elif data.api_key is not None:
+        credential = data.api_key.strip()
+    if require_ready and _scanner_requires_key(provider) and not credential:
+        raise HTTPException(status_code=422, detail="An API key is required for this provider.")
+    return provider, model, credential
+
+
+def _upsert_user_setting(db: Session, user_id: int, key: str, value: str) -> None:
+    row = _user_setting(db, user_id, key)
+    if row:
+        row.value = value
+    else:
+        db.add(UserSetting(user_id=user_id, key=key, value=value))
+
+
+@router.get("/scanner")
+def get_scanner_configuration(
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
+    return _scanner_configuration(db, current_user.id)
+
+
+@router.put("/scanner")
+def update_scanner_configuration(
+    data: ScannerConfigurationUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    provider, model, credential = _validated_scanner_draft(data, db, current_user.id)
+    _upsert_user_setting(db, current_user.id, SCANNER_PROVIDER_SETTING, provider)
+    _upsert_user_setting(db, current_user.id, SCANNER_MODEL_SETTINGS[provider], model)
+    if data.api_key is not None or data.clear_api_key:
+        _upsert_user_setting(db, current_user.id, _scanner_key_name(provider), credential)
+    db.commit()
+    return _scanner_configuration(db, current_user.id)
+
+
+@router.post("/scanner/test")
+async def test_scanner_configuration(
+    data: ScannerConfigurationUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    provider, model, credential = _validated_scanner_draft(
+        data, db, current_user.id, require_ready=True
+    )
+    candidate = ScanProvider(provider, model)
+    async with httpx.AsyncClient(timeout=30) as client:
+        text, _usage = await candidate.generate_text(
+            client,
+            credential,
+            [
+                text_part("Inspect this image, then reply with only OK."),
+                image_part("image/png", SCANNER_TEST_IMAGE_B64),
+            ],
+            max_attempts=1,
+        )
+    if not text.strip().lower().startswith("ok"):
+        raise HTTPException(
+            status_code=502,
+            detail="The selected model did not complete the scanner image test.",
+        )
+    return {"status": "ready"}
 
 
 @router.get("/tcgdex-languages")
@@ -246,6 +355,11 @@ def get_tcgdex_filter_languages(db: Session = Depends(get_db), current_user: Use
 
 @router.put("/")
 def update_settings(data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if MANAGED_SCANNER_KEYS.intersection(data):
+        raise HTTPException(
+            status_code=409,
+            detail="Use the atomic scanner configuration endpoint for scanner settings.",
+        )
     pending_side_effects = []
     for key, value in data.items():
         if key == "multi_user_mode":
@@ -361,6 +475,11 @@ def get_exchange_rate(
 
 @router.get("/{key}")
 def get_setting(key: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if key in MANAGED_SCANNER_KEYS:
+        raise HTTPException(
+            status_code=409,
+            detail="Use the scanner configuration endpoint for scanner settings.",
+        )
     if key == "sync_interval_hours":
         settings = _get_user_settings(db, current_user.id)
         days = int(settings.get("full_sync_interval_days", "5"))
@@ -373,6 +492,11 @@ def get_setting(key: str, db: Session = Depends(get_db), current_user: User = De
 
 @router.post("/{key}")
 def set_setting(key: str, body: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if key in MANAGED_SCANNER_KEYS:
+        raise HTTPException(
+            status_code=409,
+            detail="Use the atomic scanner configuration endpoint for scanner settings.",
+        )
     value = _coerce_setting_value(key, body.get("value", ""))
     if key in ADMIN_ONLY_KEYS:
         if current_user.role != "admin":

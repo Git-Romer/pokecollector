@@ -18,9 +18,9 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - 👤 **Creator:** [Gilles Romer](https://romerg.de/)
 - ✉️ **Contact:** [info@romerg.de](mailto:info@romerg.de)
 
-![Version](https://img.shields.io/badge/version-v1.38.3-e3000b?style=flat-square) ![Dark Theme](https://img.shields.io/badge/theme-dark-1a1a2e?style=flat-square) ![TCGdex](https://img.shields.io/badge/card%20data-TCGdex-e3000b?style=flat-square) ![Docker](https://img.shields.io/badge/deploy-Docker-2496ed?style=flat-square) ![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square) ![React](https://img.shields.io/badge/frontend-React%2018-61dafb?style=flat-square) [![Ko-fi](https://img.shields.io/badge/support-Ko--fi-ff5e5b?style=flat-square&logo=ko-fi&logoColor=white)](https://ko-fi.com/gillesromer)
+![Version](https://img.shields.io/badge/version-v1.39.0-e3000b?style=flat-square) ![Dark Theme](https://img.shields.io/badge/theme-dark-1a1a2e?style=flat-square) ![TCGdex](https://img.shields.io/badge/card%20data-TCGdex-e3000b?style=flat-square) ![Docker](https://img.shields.io/badge/deploy-Docker-2496ed?style=flat-square) ![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square) ![React](https://img.shields.io/badge/frontend-React%2018-61dafb?style=flat-square) [![Ko-fi](https://img.shields.io/badge/support-Ko--fi-ff5e5b?style=flat-square&logo=ko-fi&logoColor=white)](https://ko-fi.com/gillesromer)
 
-**Current version:** `v1.38.3` · Releases are tracked on the [GitHub Releases page](https://github.com/Git-Romer/pokecollector/releases).
+**Current version:** `v1.39.0` · Releases are tracked on the [GitHub Releases page](https://github.com/Git-Romer/pokecollector/releases).
 
 ![WebApp Preview](preview-homescreen.png)
 
@@ -62,7 +62,7 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - Multi-select search results and bulk-add matching cards to the collection
 - Unified persistent scanner with individual and composite batch recognition, via Gemini or any OpenAI-compatible vision endpoint
 - Persistent, restart-safe scan queue with a review inbox, 14-day expiry, and automatic retries that do not consume recognition attempts for rate limits
-- Shared per-key Gemini quota handling distinguishes daily quotas from short-term limits, honors provider retry delays, and blocks concurrent requests using the same key
+- Shared provider quota handling honors reset metadata and prevents queued scans from repeatedly hitting a blocked key or local endpoint; Gemini keeps its existing daily-quota classification and pacing
 - Deterministic matching ranks local number, printed total, set code, regulation mark, artist, and HP before optional visual verification
 - Conservative local pHash matching can resolve exceptionally clear candidates without a second Gemini request and safely abstains on ambiguous photos
 - Native camera and gallery capture with an optional positioning guide; queued photos are sanitized and deleted after confirmation or dismissal
@@ -285,8 +285,12 @@ If you are already locked out of multi-user mode, set `USER_MODE=single` in the 
 | `ADMIN_PASSWORD` | Password for the bootstrap admin account | Random, optionally logged |
 | `GEMINI_API_KEY` | Initial Gemini key for the admin user; other users configure their own key in Settings | *(empty)* |
 | `GEMINI_MODEL` | Gemini model used by the card scanner. Change this if Google retires the default model for new API keys. | `gemini-flash-latest` |
-| `OPENAI_BASE_URL` | OpenAI-compatible endpoint for the card scanner. Point it at a local server such as Ollama, llama.cpp or LM Studio (for example `http://host.docker.internal:11434/v1` when the model runs on the Docker host, or `http://127.0.0.1:11434/v1` for a non-container install). Deliberately an administrator setting: a user-supplied backend URL would let any account direct the server at an arbitrary host. | `https://api.openai.com/v1` |
-| `OPENAI_MODEL` | Model used when the scanner provider is set to OpenAI, for users who have not named one of their own. Must be vision capable. | `gpt-5.6-luna` |
+| `OPENAI_SCANNER_ENABLED` | Exposes the OpenAI-compatible provider in Scanner Settings. It stays hidden until deliberately enabled by an administrator. | `false` |
+| `OPENAI_BASE_URL` | OpenAI-compatible endpoint for the card scanner. Point it at a local server such as Ollama, llama.cpp or LM Studio (for example `http://host.docker.internal:11434/v1` when the model runs on the Docker host, or `http://127.0.0.1:11434/v1` for a non-container install). Deliberately an administrator setting: a user-supplied backend URL would let any account direct the server at an arbitrary host. On Linux, the model service must listen on an address reachable from Docker (for example `0.0.0.0:11434`, restricted with the host firewall); listening only on `127.0.0.1` is not reachable through `host.docker.internal`. | `https://api.openai.com/v1` |
+| `OPENAI_MODEL` | Installation-default OpenAI-compatible vision model. | `gpt-5.6-luna` |
+| `OPENAI_ALLOWED_MODELS` | Comma-separated administrator allowlist shown as a guarded dropdown. The installation default is always included. | `OPENAI_MODEL` only |
+| `OPENAI_API_KEY_REQUIRED` | Explicitly require or omit a per-user key. If unset, hosted OpenAI requires a key and custom endpoints do not. | *(automatic)* |
+| `GEMINI_ALLOWED_MODELS` | Comma-separated administrator allowlist shown as a guarded dropdown. | `GEMINI_MODEL` only |
 | `SCAN_TRACE_DIR` | Enables consent-controlled scanner diagnostics when set to a writable container path. With the standard compose volume, use `/app/data/scan-traces`. Each user must still opt in separately in Settings. | *(empty / disabled)* |
 | `SCAN_TRACE_STORAGE_DIR` | Stable cleanup path for previously stored scanner diagnostics. Standard Docker Compose sets this to `/app/data/scan-traces`; custom deployments should keep it pointed at the storage location even when `SCAN_TRACE_DIR` is unset. | `/app/data/scan-traces` with Docker Compose |
 | `TELEGRAM_BOT_TOKEN` | Initial Telegram bot token for the admin user | *(empty)* |
@@ -384,7 +388,7 @@ The old nested `pokemon-tcg-collection/` layout is no longer used.
 | Backend | Python 3.11, FastAPI, SQLAlchemy, APScheduler, Pydantic |
 | Database | PostgreSQL 18 |
 | Card Data | [TCGdex](https://tcgdex.dev/) |
-| AI Scanner | Google Gemini (default) or any OpenAI-compatible vision endpoint, including local Ollama, llama.cpp and LM Studio. Each user picks a provider in Settings; the endpoint is configured by the administrator. |
+| AI Scanner | Google Gemini (default) or an administrator-enabled OpenAI-compatible vision endpoint, including local Ollama, llama.cpp and LM Studio. Users only choose from approved providers and models; prompts and the scanner workflow stay provider-neutral. |
 | Deploy | Docker + Docker Compose |
 
 ---
@@ -398,7 +402,7 @@ PokéCollector is self-hosted, but it can call these external sources depending 
 | TCGdex | `api.tcgdex.net`, `assets.tcgdex.net` | Set/card catalogue data, images, prices, localized card metadata, Pokédex `dexId`, and Cardmarket product metadata | Initial sync, manual/admin sync, search fallbacks, metadata backfills, and card image display |
 | PokeAPI sprites | `raw.githubusercontent.com/PokeAPI/sprites` | Profile/avatar GIFs, achievement badges, binder icons, National Pokédex sprites, and official artwork cache | Browser image display, Pokédex image cache misses, and `scripts.cache_pokedex_images` |
 | Google Gemini | `generativelanguage.googleapis.com` | AI card scanner recognition | Only when scanner recognition is used and `GEMINI_API_KEY` is configured |
-| OpenAI-compatible endpoint | `OPENAI_BASE_URL`, by default `api.openai.com` | AI card scanner recognition | Only when a user selects the OpenAI provider. Card photos are sent to whichever endpoint the administrator configured, which may be a server on your own network. |
+| OpenAI-compatible endpoint | `OPENAI_BASE_URL`, by default `api.openai.com` | AI card scanner recognition | Only after an administrator enables the provider and a user selects it. Card photos are sent to the configured endpoint, which may be a server on your own network. |
 | Telegram Bot API | `api.telegram.org` | Telegram notifications and alerts | Only when Telegram settings are configured and an alert/notification is sent |
 | Frankfurter | `api.frankfurter.dev` | Currency exchange rates | Currency conversion and Telegram price formatting when non-EUR values are needed |
 | GitHub | `api.github.com`, `raw.githubusercontent.com`, `avatars.githubusercontent.com`, `github.com` | Community contributor/supporter data, GitHub avatars, project links, and release/source links | Settings community section and linked project metadata |

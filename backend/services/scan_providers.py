@@ -13,18 +13,18 @@ Two rules shape the design:
   let any account point the server at an arbitrary host, which is a server-side
   request forgery. Administrators configure the endpoint; users only choose between
   the providers the administrator has made available.
-- The Gemini rate limiter is keyed by a fingerprint of the API key. A local endpoint
-  usually has no key, so every account would share one bucket and one user's penalty
-  would block everybody. Non-Gemini providers therefore never enter that limiter.
+- Gemini retains its existing paced per-key limiter. Other providers persist only
+  upstream blocks: hosted scopes use a non-reversible key fingerprint and keyless
+  local scopes use the administrator-controlled endpoint.
 """
 
 import base64
-import json
-import logging
+import datetime
 import math
 import os
 import re
 from contextlib import nullcontext
+from email.utils import parsedate_to_datetime
 
 import httpx
 from fastapi import HTTPException
@@ -32,15 +32,13 @@ from sqlalchemy.orm import Session
 
 from models import UserSetting
 
-logger = logging.getLogger(__name__)
-
 GEMINI = "gemini"
 OPENAI = "openai"
-PROVIDERS = (GEMINI, OPENAI)
-
 SCANNER_PROVIDER_SETTING = "scanner_provider"
-VISUAL_VERIFICATION_SETTING = "scanner_visual_verification"
-SCANNER_MODEL_SETTING = "scanner_model"
+SCANNER_MODEL_SETTINGS = {
+    GEMINI: "scanner_model_gemini",
+    OPENAI: "scanner_model_openai",
+}
 
 DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 # The OpenAI counterpart to DEFAULT_GEMINI_MODEL: what an installation uses when
@@ -48,8 +46,8 @@ DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 # headline price, and overridable per installation and per user.
 DEFAULT_OPENAI_MODEL = "gpt-5.6-luna"
 
-# Retried rather than surfaced: the same classes Gemini already retries.
-OPENAI_TRANSIENT_STATUS_CODES = {502, 503, 504}
+OPENAI_TRANSIENT_STATUS_CODES = {408, 425, 500, 502, 503, 504}
+MODEL_PATTERN = re.compile(r"[A-Za-z0-9._:/-]{1,100}")
 
 
 def openai_base_url() -> str:
@@ -70,30 +68,68 @@ def openai_model() -> str:
     return (os.environ.get("OPENAI_MODEL") or "").strip() or DEFAULT_OPENAI_MODEL
 
 
-def openai_requires_key() -> bool:
-    """Only the hosted API needs a credential.
+def _env_bool(name: str, default: bool) -> bool:
+    value = (os.environ.get(name) or "").strip().lower()
+    if not value:
+        return default
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    return default
 
-    Pointing OPENAI_BASE_URL at a local server means there is usually nothing to
-    authenticate against, and demanding a key there would make local use impossible.
-    """
-    return openai_base_url() == DEFAULT_OPENAI_BASE_URL
+
+def openai_enabled() -> bool:
+    """OpenAI-compatible scanning is opt-in at installation level."""
+    return _env_bool("OPENAI_SCANNER_ENABLED", False)
+
+
+def openai_requires_key() -> bool:
+    default = openai_base_url() == DEFAULT_OPENAI_BASE_URL
+    return _env_bool("OPENAI_API_KEY_REQUIRED", default)
+
+
+def _allowed_models(env_name: str, installation_model: str) -> list[str]:
+    values = [part.strip() for part in (os.environ.get(env_name) or "").split(",")]
+    models = []
+    for value in [installation_model, *values]:
+        if value and MODEL_PATTERN.fullmatch(value) and value not in models:
+            models.append(value)
+    return models
+
+
+def installation_model(provider: str) -> str:
+    if provider == GEMINI:
+        from api.recognize import get_gemini_model
+
+        return get_gemini_model()
+    return openai_model()
+
+
+def allowed_models(provider: str) -> list[str]:
+    if provider == GEMINI:
+        return _allowed_models("GEMINI_ALLOWED_MODELS", installation_model(provider))
+    return _allowed_models("OPENAI_ALLOWED_MODELS", installation_model(provider))
+
+
+def enabled_providers() -> tuple[str, ...]:
+    return (GEMINI, OPENAI) if openai_enabled() else (GEMINI,)
 
 
 def resolve_model(db: Session, user_id: int | None, provider: str) -> str:
-    """The model this user scans with, or "" to use the installation default.
-
-    Free text on purpose: providers add models constantly, and a fixed list here
-    would be stale within weeks and would block anyone running a self-hosted
-    model with a name we have never heard of.
-    """
+    """Resolve a provider-specific model, constrained by the admin allowlist."""
     if user_id is None:
-        return ""
+        return installation_model(provider)
     row = (
         db.query(UserSetting)
-        .filter(UserSetting.user_id == user_id, UserSetting.key == SCANNER_MODEL_SETTING)
+        .filter(
+            UserSetting.user_id == user_id,
+            UserSetting.key == SCANNER_MODEL_SETTINGS[provider],
+        )
         .first()
     )
-    return ((row.value if row else "") or "").strip()
+    selected = ((row.value if row else "") or "").strip()
+    return selected if selected in allowed_models(provider) else installation_model(provider)
 
 
 def resolve_provider_name(db: Session, user_id: int | None) -> str:
@@ -112,44 +148,7 @@ def resolve_provider_name(db: Session, user_id: int | None) -> str:
     )
     value = (row.value if row else "") or ""
     value = value.strip().lower()
-    return value if value in PROVIDERS else GEMINI
-
-
-def visual_verification_default(provider: str) -> bool:
-    """The default for a provider, with no user preference stored.
-
-    The single source of truth for this rule: the settings API publishes it so
-    the UI can show the same state the scanner will actually use, rather than
-    reimplementing the condition in the frontend where OPENAI_BASE_URL is not
-    visible.
-    """
-    # openai_requires_key() is true only for the hosted API, which is the same
-    # signal that distinguishes it from a self-hosted endpoint.
-    return provider == GEMINI or openai_requires_key()
-
-
-def visual_verification_enabled(db: Session, user_id: int | None, provider: str) -> bool:
-    """Whether to spend a second model call on picking between candidates.
-
-    The default follows model capability rather than provider name. Gemini and
-    the hosted OpenAI API both handle the multi-image comparison well, so it
-    stays on for them and nothing changes for existing users. It starts off only
-    when the endpoint has been pointed at a self-hosted model, where the ask is
-    usually beyond what is running and a confident wrong pick is worse than no
-    pick at all. Either default can be overridden per user.
-    """
-    if user_id is not None:
-        row = (
-            db.query(UserSetting)
-            .filter(
-                UserSetting.user_id == user_id,
-                UserSetting.key == VISUAL_VERIFICATION_SETTING,
-            )
-            .first()
-        )
-        if row and row.value:
-            return str(row.value).strip().lower() in {"true", "1", "yes", "on"}
-    return visual_verification_default(provider)
+    return value if value in enabled_providers() else GEMINI
 
 
 class ProviderRateLimitError(HTTPException):
@@ -160,69 +159,83 @@ class ProviderRateLimitError(HTTPException):
     backoff at all.
     """
 
-    def __init__(self, *, retry_after_seconds: float | None, detail: str):
+    def __init__(
+        self, *, retry_after_seconds: float | None, detail: str, reason: str = "rate_limit"
+    ):
         self.retry_after_seconds = (
             float(retry_after_seconds) if retry_after_seconds else None
         )
-        self.retry_reason = "rate_limit"
+        self.retry_reason = reason
         headers = None
         if self.retry_after_seconds:
             headers = {"Retry-After": str(max(1, int(self.retry_after_seconds + 0.999)))}
         super().__init__(status_code=429, detail=detail, headers=headers)
 
 
-def log_upstream_detail(resp: httpx.Response, context: str) -> None:
-    """Record the provider's own message at debug level, and nowhere else.
-
-    Provider text is never put into HTTPException.detail: that detail is
-    returned to the caller, persisted as a queue-item error and surfaced in job
-    details. A compatible endpoint is free to say "Invalid API key: <secret>",
-    and pattern redaction can only catch credential shapes it already knows, so
-    an arbitrary token would survive it. Operators who need the upstream wording
-    can turn on debug logging.
-    """
-    from services.scan_trace import redact_sensitive
-
-    message = redact_sensitive(openai_error_message(resp)).strip()
-    if message:
-        logger.debug("Scanner provider %s: %s", context, message[:200])
-
-
-def openai_error_message(resp: httpx.Response) -> str:
-    """Best-effort upstream detail, without assuming the error envelope."""
+def openai_error_code(resp: httpx.Response) -> tuple[str, str]:
+    """Return bounded machine-readable classification, never provider prose."""
     try:
         payload = resp.json()
     except Exception:
-        return ""
+        return "", ""
     if isinstance(payload, dict):
         error = payload.get("error")
         if isinstance(error, dict):
-            return str(error.get("message") or "").strip()
-        if isinstance(error, str):
-            return error.strip()
-        if payload.get("message"):
-            return str(payload["message"]).strip()
-    return ""
+            error_type = str(error.get("type") or "")[:80]
+            code = str(error.get("code") or "")[:80]
+            safe = re.compile(r"[A-Za-z0-9_.-]{0,80}")
+            return (
+                error_type if safe.fullmatch(error_type) else "",
+                code if safe.fullmatch(code) else "",
+            )
+    return "", ""
 
 
-# A day is longer than any retry worth honouring in-process, and it keeps the
-# value inside what timedelta and the Retry-After header can represent. Without
-# a bound, 1e309 parses to infinity and overflows building the 429, while 1e308
-# survives that only to overflow timedelta in the queue and abort the drain.
-MAX_RETRY_AFTER_SECONDS = 24 * 60 * 60
+# Match the queue's 14-day retention ceiling and keep hostile values inside what
+# timedelta and the Retry-After header can safely represent.
+MAX_RETRY_AFTER_SECONDS = 14 * 24 * 60 * 60
 
 
 def openai_retry_after_seconds(resp: httpx.Response) -> float | None:
     raw = resp.headers.get("retry-after")
+    if raw:
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            try:
+                target = parsedate_to_datetime(raw)
+                if target.tzinfo is None:
+                    target = target.replace(tzinfo=datetime.timezone.utc)
+                date_header = resp.headers.get("date")
+                baseline = parsedate_to_datetime(date_header) if date_header else None
+                if baseline is None:
+                    baseline = datetime.datetime.now(datetime.timezone.utc)
+                elif baseline.tzinfo is None:
+                    baseline = baseline.replace(tzinfo=datetime.timezone.utc)
+                value = (target - baseline).total_seconds()
+            except (TypeError, ValueError, OverflowError):
+                value = 0
+        if math.isfinite(value) and value > 0:
+            return min(value, MAX_RETRY_AFTER_SECONDS)
+
+    resets = []
+    for name in ("x-ratelimit-reset-requests", "x-ratelimit-reset-tokens"):
+        value = _parse_reset_duration(resp.headers.get(name, ""))
+        if value:
+            resets.append(value)
+    return min(max(resets), MAX_RETRY_AFTER_SECONDS) if resets else None
+
+
+def _parse_reset_duration(raw: str) -> float | None:
+    raw = str(raw or "").strip().lower()
     if not raw:
         return None
-    try:
-        value = float(raw)
-    except (TypeError, ValueError):
+    factors = {"ms": 0.001, "s": 1.0, "m": 60.0, "h": 3600.0, "d": 86400.0}
+    parts = list(re.finditer(r"(\d+(?:\.\d+)?)(ms|s|m|h|d)", raw))
+    if not parts or "".join(part.group(0) for part in parts) != raw:
         return None
-    if not math.isfinite(value) or value <= 0:
-        return None
-    return min(value, MAX_RETRY_AFTER_SECONDS)
+    total = sum(float(part.group(1)) * factors[part.group(2)] for part in parts)
+    return total if math.isfinite(total) and total > 0 else None
 
 
 def _openai_content(parts: list[dict]) -> list[dict]:
@@ -281,16 +294,27 @@ async def post_openai_chat(
     *,
     max_attempts: int = 3,
 ) -> httpx.Response:
-    """Call an OpenAI-compatible endpoint, retrying the same transient classes.
-
-    Deliberately not routed through the Gemini rate limiter: see the module
-    docstring. A local endpoint has no shared quota to protect.
-    """
+    """Call a compatible endpoint and normalize its errors for the shared queue."""
     import asyncio
+    from services.provider_rate_limit import (
+        ProviderScopeBlockedError,
+        penalize_provider_scope,
+        provider_scope_fingerprint,
+        raise_if_provider_blocked,
+    )
 
     last_error = None
+    scope = provider_scope_fingerprint(OPENAI, url, api_key)
     for attempt in range(max_attempts):
         try:
+            try:
+                raise_if_provider_blocked(scope)
+            except ProviderScopeBlockedError as exc:
+                raise ProviderRateLimitError(
+                    retry_after_seconds=exc.retry_after_seconds,
+                    detail="The scanner provider is rate limited. Please try again shortly.",
+                    reason=exc.reason,
+                ) from None
             headers = {"Content-Type": "application/json"}
             # Sent only when there is one. A local server rejects, or ignores, an
             # Authorization header carrying an empty bearer token.
@@ -300,27 +324,38 @@ async def post_openai_chat(
             resp = await client.post(url, headers=headers, json=payload)
 
             if resp.status_code == 429:
-                log_upstream_detail(resp, "rate limited")
-                detail = "The scanner provider is rate limited. Please try again shortly."
+                error_type, error_code = openai_error_code(resp)
+                classification = {error_type.lower(), error_code.lower()}
+                if classification & {
+                    "insufficient_quota",
+                    "billing_hard_limit_reached",
+                    "billing_not_active",
+                    "account_deactivated",
+                }:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "The scanner provider has no usable billing quota. "
+                            "Check the provider account or choose another provider."
+                        ),
+                    )
+                delay = penalize_provider_scope(
+                    scope,
+                    OPENAI,
+                    seconds=openai_retry_after_seconds(resp),
+                    reason="rate_limit",
+                )
                 raise ProviderRateLimitError(
-                    retry_after_seconds=openai_retry_after_seconds(resp),
-                    detail=detail,
+                    retry_after_seconds=delay,
+                    detail="The scanner provider is rate limited. Please try again shortly.",
                 )
             if resp.status_code in {401, 403}:
-                # Deliberately no upstream text on the authentication classes.
-                # This is exactly where endpoints quote the offending credential
-                # back, and this detail is persisted and logged downstream.
-                log_upstream_detail(resp, "credentials rejected")
                 if openai_requires_key():
                     detail = "The OpenAI API key was rejected. Please check it in Settings."
                 else:
                     detail = "The scanner endpoint rejected the request."
                 raise HTTPException(status_code=400, detail=detail)
-            if resp.status_code == 400:
-                # Not an authentication failure: a rejected image, an oversized
-                # request or an unsupported option. Telling a user with a valid
-                # key to replace it sends them after the wrong thing.
-                log_upstream_detail(resp, "request rejected")
+            if resp.status_code in {400, 409, 413, 422}:
                 raise HTTPException(
                     status_code=400,
                     detail=(
@@ -329,13 +364,12 @@ async def post_openai_chat(
                     ),
                 )
             if resp.status_code == 404:
-                log_upstream_detail(resp, "model not found")
                 raise HTTPException(
-                    status_code=502,
+                    status_code=400,
                     detail=(
                         f"The scanner model \"{payload.get('model', '')}\" was not "
-                        "found at this endpoint. Change it in Settings, or ask an "
-                        "administrator to check the configured model and endpoint."
+                        "found. Choose an available model in Scanner Settings, or "
+                        "ask an administrator to check the endpoint."
                     ),
                 )
             if resp.status_code in OPENAI_TRANSIENT_STATUS_CODES:
@@ -347,10 +381,14 @@ async def post_openai_chat(
                     detail="The scanner provider is temporarily unavailable. Please try again shortly.",
                 )
             if resp.is_error:
-                log_upstream_detail(resp, f"error {resp.status_code}")
+                if 400 <= resp.status_code < 500:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"The scanner provider rejected the request ({resp.status_code}).",
+                    )
                 raise HTTPException(
-                    status_code=502,
-                    detail=f"The scanner request failed ({resp.status_code}).",
+                    status_code=503,
+                    detail="The scanner provider is temporarily unavailable. Please try again shortly.",
                 )
             return resp
         except HTTPException:
@@ -406,17 +444,11 @@ class ScanProvider:
         return self.name == GEMINI
 
     def model(self) -> str:
-        from api.recognize import get_gemini_model
-
-        if self._chosen_model:
-            return self._chosen_model
-        return get_gemini_model() if self.is_gemini else openai_model()
+        return self._chosen_model or installation_model(self.name)
 
     def installation_model(self) -> str:
         """The model used when this user has not named one."""
-        from api.recognize import get_gemini_model
-
-        return get_gemini_model() if self.is_gemini else openai_model()
+        return installation_model(self.name)
 
     def credential(self, db: Session, user_id: int | None) -> str:
         from api.recognize import get_gemini_key
