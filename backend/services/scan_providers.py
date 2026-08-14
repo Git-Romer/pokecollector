@@ -45,6 +45,11 @@ DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 # no model is configured. Chosen on measured card-scanning behaviour rather than
 # headline price, and overridable per installation and per user.
 DEFAULT_OPENAI_MODEL = "gpt-5.6-luna"
+SCANNER_PROVIDER_GUIDE_URL = (
+    "https://github.com/Git-Romer/pokecollector/blob/main/docs/scanner-providers.md"
+)
+GEMINI_API_KEY_HELP_URL = "https://aistudio.google.com/apikey"
+OPENAI_API_KEY_HELP_URL = "https://platform.openai.com/api-keys"
 
 OPENAI_TRANSIENT_STATUS_CODES = {408, 425, 500, 502, 503, 504}
 MODEL_PATTERN = re.compile(r"[A-Za-z0-9._:/-]{1,100}")
@@ -87,6 +92,25 @@ def openai_enabled() -> bool:
 def openai_requires_key() -> bool:
     default = openai_base_url() == DEFAULT_OPENAI_BASE_URL
     return _env_bool("OPENAI_API_KEY_REQUIRED", default)
+
+
+def provider_label(provider: str) -> str:
+    """Return an administrator-controlled display label, never raw markup."""
+    if provider == GEMINI:
+        return "Gemini"
+    fallback = "OpenAI" if openai_base_url() == DEFAULT_OPENAI_BASE_URL else "OpenAI-compatible"
+    configured = " ".join((os.environ.get("OPENAI_PROVIDER_LABEL") or "").split())
+    if not configured or len(configured) > 60 or any(ord(char) < 32 for char in configured):
+        return fallback
+    return configured
+
+
+def provider_key_help_url(provider: str) -> str | None:
+    if provider == GEMINI:
+        return GEMINI_API_KEY_HELP_URL
+    if openai_base_url() == DEFAULT_OPENAI_BASE_URL:
+        return OPENAI_API_KEY_HELP_URL
+    return None
 
 
 def _allowed_models(env_name: str, installation_model: str) -> list[str]:

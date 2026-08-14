@@ -22,6 +22,7 @@ export default function ScannerSettingsCard({ t }) {
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
+  const [testStatus, setTestStatus] = useState('not_tested')
 
   const selected = useMemo(
     () => data?.providers?.find(item => item.id === provider),
@@ -34,6 +35,7 @@ export default function ScannerSettingsCard({ t }) {
     setModel(data.model)
     setApiKey('')
     setClearApiKey(false)
+    setTestStatus('not_tested')
   }, [data, dirty])
 
   const chooseProvider = (nextProvider) => {
@@ -42,6 +44,13 @@ export default function ScannerSettingsCard({ t }) {
     setModel(next.selected_model || next.default_model)
     setApiKey('')
     setClearApiKey(false)
+    setTestStatus('not_tested')
+    setDirty(true)
+  }
+
+  const changeDraft = (callback) => {
+    callback()
+    setTestStatus('not_tested')
     setDirty(true)
   }
 
@@ -72,8 +81,10 @@ export default function ScannerSettingsCard({ t }) {
     setTesting(true)
     try {
       await testScannerConfiguration(payload())
+      setTestStatus('passed')
       toast.success(t('settings.scannerTestPassed'))
     } catch (error) {
+      setTestStatus('failed')
       toast.error(error?.response?.data?.detail || t('settings.scannerTestFailed'))
     } finally {
       setTesting(false)
@@ -97,6 +108,11 @@ export default function ScannerSettingsCard({ t }) {
           <div>
             <p className="text-sm font-semibold text-text-primary">{t('settings.scannerConfiguration')}</p>
             <p className="text-xs text-text-muted mt-1 max-w-2xl">{t('settings.scannerConfigurationDesc')}</p>
+            {selected.setup_help_url && (
+              <a href={selected.setup_help_url} target="_blank" rel="noreferrer" className="inline-block mt-1.5 text-[11px] font-semibold text-brand-yellow hover:underline">
+                {t('settings.scannerSetupHelp')} ↗
+              </a>
+            )}
           </div>
           <span className={`self-start rounded-full px-2.5 py-1 text-[11px] font-bold ${status === 'ready' ? 'bg-green/15 text-green' : 'bg-brand-red/15 text-brand-red'}`}>
             {status === 'ready'
@@ -116,27 +132,36 @@ export default function ScannerSettingsCard({ t }) {
           </label>
         )}
 
-        <label className="block">
-          <span className="text-xs font-semibold text-text-primary">{t('settings.scannerModel')}</span>
-          <select
-            value={model}
-            onChange={event => { setModel(event.target.value); setDirty(true) }}
-            className="select mt-1.5 w-full text-xs font-semibold"
-            disabled={selected.models.length === 1}
-          >
-            {selected.models.map(item => <option key={item} value={item}>{item}</option>)}
-          </select>
-          <span className="block text-[11px] text-text-muted mt-1">{t('settings.scannerModelManaged')}</span>
-        </label>
+        {selected.models.length > 1 && (
+          <label className="block">
+            <span className="text-xs font-semibold text-text-primary">{t('settings.scannerModel')}</span>
+            <select
+              value={model}
+              onChange={event => changeDraft(() => setModel(event.target.value))}
+              className="select mt-1.5 w-full text-xs font-semibold"
+            >
+              {selected.models.map(item => <option key={item} value={item}>{item}</option>)}
+            </select>
+            <span className="block text-[11px] text-text-muted mt-1">{t('settings.scannerModelManaged')}</span>
+          </label>
+        )}
 
         {selected.requires_api_key && (
-          <label className="block">
-            <span className="text-xs font-semibold text-text-primary">{t('settings.scannerApiKey')}</span>
+          <div className="block">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label htmlFor="scanner-api-key" className="text-xs font-semibold text-text-primary">{t('settings.scannerApiKey')}</label>
+              {selected.key_help_url && (
+                <a href={selected.key_help_url} target="_blank" rel="noreferrer" className="text-[11px] font-semibold text-brand-yellow hover:underline">
+                  {t('settings.scannerGetKey')} ↗
+                </a>
+              )}
+            </div>
             <input
+              id="scanner-api-key"
               type="password"
               autoComplete="off"
               value={apiKey}
-              onChange={event => { setApiKey(event.target.value); setClearApiKey(false); setDirty(true) }}
+              onChange={event => changeDraft(() => { setApiKey(event.target.value); setClearApiKey(false) })}
               placeholder={selected.api_key_configured && !clearApiKey ? t('settings.scannerKeyConfigured') : t('settings.scannerKeyPlaceholder')}
               className="input mt-1.5 w-full text-xs font-mono"
             />
@@ -144,15 +169,21 @@ export default function ScannerSettingsCard({ t }) {
               <button
                 type="button"
                 className="mt-1.5 text-[11px] text-brand-red"
-                onClick={() => { setApiKey(''); setClearApiKey(true); setDirty(true) }}
+                onClick={() => changeDraft(() => { setApiKey(''); setClearApiKey(true) })}
               >
                 {clearApiKey ? t('settings.scannerKeyWillBeRemoved') : t('settings.scannerRemoveKey')}
               </button>
             )}
-          </label>
+          </div>
         )}
 
         <p className="text-[11px] text-text-muted">{t('settings.scannerSameFlow')}</p>
+        <p className="text-[11px] text-text-muted">{t('settings.scannerTestDesc')}</p>
+        {testStatus !== 'not_tested' && (
+          <p role="status" className={`text-[11px] font-semibold ${testStatus === 'passed' ? 'text-green' : 'text-brand-red'}`}>
+            {testStatus === 'passed' ? t('settings.scannerTestStatusPassed') : t('settings.scannerTestStatusFailed')}
+          </p>
+        )}
         <div className="flex flex-wrap justify-end gap-2">
           <button type="button" onClick={test} disabled={busy || !model || !hasUsableKey} className="btn-ghost px-3 py-2 text-xs disabled:opacity-50">
             {testing ? t('settings.scannerTesting') : t('settings.scannerTest')}
@@ -161,6 +192,41 @@ export default function ScannerSettingsCard({ t }) {
             {saving ? t('common.saving') : t('common.save')}
           </button>
         </div>
+
+        {data.administrator && (
+          <div className="rounded-xl p-3 space-y-3" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold text-text-primary">{t('settings.scannerAdminSummary')}</p>
+                <p className="text-[11px] text-text-muted mt-0.5">{t('settings.scannerAdminSummaryDesc')}</p>
+              </div>
+              <a href={data.administrator.setup_guide_url} target="_blank" rel="noreferrer" className="text-[11px] font-semibold text-brand-yellow hover:underline">
+                {t('settings.scannerAdminGuide')} ↗
+              </a>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {data.administrator.providers.map(item => (
+                <div key={item.id} className="rounded-lg px-3 py-2" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold text-text-primary break-words">{item.label}</p>
+                    <span className={`shrink-0 text-[10px] font-bold ${item.enabled ? 'text-green' : 'text-text-muted'}`}>
+                      {item.enabled ? t('settings.scannerProviderEnabled') : t('settings.scannerProviderDisabled')}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-text-muted mt-1 break-all">
+                    {item.endpoint_type === 'hosted' ? t('settings.scannerHostedEndpoint') : t('settings.scannerCustomEndpoint')} · {item.endpoint}
+                  </p>
+                  <p className="text-[11px] text-text-muted mt-1 break-words">
+                    {t('settings.scannerApprovedModels')}: {item.models.join(', ') || t('settings.scannerNone')}
+                  </p>
+                  <p className="text-[11px] text-text-muted mt-1">
+                    {item.requires_api_key ? t('settings.scannerPerUserKey') : t('settings.scannerNoUserKey')}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

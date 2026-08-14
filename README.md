@@ -205,6 +205,8 @@ docker compose exec backend python -m scripts.cache_pokedex_images
 
 See [National Pokédex documentation](docs/POKEDEX.md) for the data model, routes, cache behavior, and Cardmarket links.
 
+For scanner keys, hosted OpenAI, Ollama, and other compatible vision servers, see the [scanner provider setup guide](docs/scanner-providers.md).
+
 ### 5. Login
 
 - In single-user mode, login is skipped and the app auto-authenticates as admin
@@ -286,6 +288,7 @@ If you are already locked out of multi-user mode, set `USER_MODE=single` in the 
 | `GEMINI_API_KEY` | Initial Gemini key for the admin user; other users configure their own key in Settings | *(empty)* |
 | `GEMINI_MODEL` | Gemini model used by the card scanner. Change this if Google retires the default model for new API keys. | `gemini-flash-latest` |
 | `OPENAI_SCANNER_ENABLED` | Exposes the OpenAI-compatible provider in Scanner Settings. It stays hidden until deliberately enabled by an administrator. | `false` |
+| `OPENAI_PROVIDER_LABEL` | Friendly name shown in Scanner Settings, for example `Local Ollama`. | `OpenAI` for the hosted API; `OpenAI-compatible` for a custom endpoint |
 | `OPENAI_BASE_URL` | OpenAI-compatible endpoint for the card scanner. Point it at a local server such as Ollama, llama.cpp or LM Studio (for example `http://host.docker.internal:11434/v1` when the model runs on the Docker host, or `http://127.0.0.1:11434/v1` for a non-container install). Deliberately an administrator setting: a user-supplied backend URL would let any account direct the server at an arbitrary host. On Linux, the model service must listen on an address reachable from Docker (for example `0.0.0.0:11434`, restricted with the host firewall); listening only on `127.0.0.1` is not reachable through `host.docker.internal`. | `https://api.openai.com/v1` |
 | `OPENAI_MODEL` | Installation-default OpenAI-compatible vision model. | `gpt-5.6-luna` |
 | `OPENAI_ALLOWED_MODELS` | Comma-separated administrator allowlist shown as a guarded dropdown. The installation default is always included. | `OPENAI_MODEL` only |
@@ -306,6 +309,8 @@ If you are already locked out of multi-user mode, set `USER_MODE=single` in the 
 | `PRE_UPGRADE_BACKUP_ENABLED` | Create an automatic SQL backup before startup migrations when an existing install starts on a new app version | `true` |
 | `PRE_UPGRADE_BACKUP_REQUIRED` | Stop startup if the automatic pre-upgrade backup fails. Set to `false` only if you have another verified backup process. | `true` |
 | `PRE_UPGRADE_BACKUP_KEEP` | Number of automatic pre-upgrade backups to retain in `/app/backups`; minimum `1` | `10` |
+
+The scanner provider variables are explained with copy-paste examples, user instructions, compatibility requirements, privacy notes, and troubleshooting in [docs/scanner-providers.md](docs/scanner-providers.md).
 
 Supported `TCGDEX_SYNC_LANGUAGES` codes: `en`, `fr`, `es`, `es-mx`, `it`, `pt`, `pt-br`, `pt-pt`, `de`, `nl`, `pl`, `ru`, `ja`, `ko`, `zh-tw`, `id`, `th`, `zh-cn`. The env value `all` expands to the full supported language list during first bootstrap.
 

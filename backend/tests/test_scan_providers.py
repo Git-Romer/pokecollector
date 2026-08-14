@@ -24,6 +24,7 @@ try:
         openai_requires_key,
         openai_retry_after_seconds,
         post_openai_chat,
+        provider_label,
         resolve_provider_name,
         text_part,
     )
@@ -230,6 +231,20 @@ class EndpointConfigurationTests(unittest.TestCase):
             "OPENAI_API_KEY_REQUIRED": "typo",
         }):
             self.assertTrue(openai_requires_key())
+
+    def test_the_administrator_can_give_a_custom_endpoint_a_friendly_label(self):
+        with patch.dict(os.environ, {
+            "OPENAI_BASE_URL": LOCAL_URL,
+            "OPENAI_PROVIDER_LABEL": "  Local   Ollama  ",
+        }):
+            self.assertEqual(provider_label(OPENAI), "Local Ollama")
+
+    def test_an_invalid_provider_label_uses_a_safe_default(self):
+        with patch.dict(os.environ, {
+            "OPENAI_BASE_URL": LOCAL_URL,
+            "OPENAI_PROVIDER_LABEL": "x" * 61,
+        }):
+            self.assertEqual(provider_label(OPENAI), "OpenAI-compatible")
 
 
 @unittest.skipUnless(DEPS, "FastAPI/SQLAlchemy are not installed in this environment")

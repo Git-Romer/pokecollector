@@ -1,5 +1,6 @@
 import logging
 import os
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -32,17 +33,24 @@ from services.scan_trace import (
 )
 
 from services.scan_providers import (
+    DEFAULT_OPENAI_BASE_URL,
     GEMINI,
+    OPENAI,
     SCANNER_MODEL_SETTINGS,
     ScanProvider,
     allowed_models,
     enabled_providers,
     image_part,
     installation_model,
+    openai_base_url,
+    openai_enabled,
     openai_requires_key,
+    provider_key_help_url,
+    provider_label,
     resolve_model,
     resolve_provider_name,
     SCANNER_PROVIDER_SETTING,
+    SCANNER_PROVIDER_GUIDE_URL,
     text_part,
 )
 
@@ -218,7 +226,49 @@ def _user_setting(db: Session, user_id: int, key: str) -> UserSetting | None:
     ).first()
 
 
-def _scanner_configuration(db: Session, user_id: int) -> dict:
+def _safe_endpoint_summary(url: str) -> str:
+    """Show admins where requests go without reflecting credentials or query data."""
+    try:
+        parsed = urlsplit(url)
+        if not parsed.scheme or not parsed.hostname:
+            return "Configured endpoint"
+        host = parsed.hostname
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        port = f":{parsed.port}" if parsed.port else ""
+        return urlunsplit((parsed.scheme, f"{host}{port}", "", "", ""))
+    except (TypeError, ValueError):
+        return "Configured endpoint"
+
+
+def _administrator_scanner_summary() -> dict:
+    openai_hosted = openai_base_url() == DEFAULT_OPENAI_BASE_URL
+    return {
+        "setup_guide_url": SCANNER_PROVIDER_GUIDE_URL,
+        "providers": [
+            {
+                "id": GEMINI,
+                "label": provider_label(GEMINI),
+                "enabled": True,
+                "endpoint_type": "hosted",
+                "endpoint": "Google Gemini API",
+                "models": allowed_models(GEMINI),
+                "requires_api_key": True,
+            },
+            {
+                "id": OPENAI,
+                "label": provider_label(OPENAI),
+                "enabled": openai_enabled(),
+                "endpoint_type": "hosted" if openai_hosted else "custom",
+                "endpoint": _safe_endpoint_summary(openai_base_url()),
+                "models": allowed_models(OPENAI),
+                "requires_api_key": openai_requires_key(),
+            },
+        ],
+    }
+
+
+def _scanner_configuration(db: Session, user_id: int, *, is_admin: bool = False) -> dict:
     selected = resolve_provider_name(db, user_id)
     providers = []
     for provider in enabled_providers():
@@ -226,12 +276,14 @@ def _scanner_configuration(db: Session, user_id: int) -> dict:
         key_configured = bool(key_row and key_row.value)
         providers.append({
             "id": provider,
-            "label": "Gemini" if provider == GEMINI else "OpenAI-compatible",
+            "label": provider_label(provider),
             "models": allowed_models(provider),
             "default_model": installation_model(provider),
             "selected_model": resolve_model(db, user_id, provider),
             "requires_api_key": _scanner_requires_key(provider),
             "api_key_configured": key_configured,
+            "key_help_url": provider_key_help_url(provider),
+            "setup_help_url": SCANNER_PROVIDER_GUIDE_URL,
         })
     active = next(item for item in providers if item["id"] == selected)
     ready = not active["requires_api_key"] or active["api_key_configured"]
@@ -240,13 +292,16 @@ def _scanner_configuration(db: Session, user_id: int) -> dict:
         if not active["models"]
         else ("ready" if ready else "api_key_required")
     )
-    return {
+    result = {
         "provider": selected,
         "model": active["selected_model"] if active["selected_model"] in active["models"] else active["default_model"],
         "providers": providers,
         "status": status,
         "visual_verification": "automatic",
     }
+    if is_admin:
+        result["administrator"] = _administrator_scanner_summary()
+    return result
 
 
 def _validated_scanner_draft(
@@ -287,7 +342,7 @@ def _upsert_user_setting(db: Session, user_id: int, key: str, value: str) -> Non
 def get_scanner_configuration(
     db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
 ):
-    return _scanner_configuration(db, current_user.id)
+    return _scanner_configuration(db, current_user.id, is_admin=current_user.role == "admin")
 
 
 @router.put("/scanner")
@@ -302,7 +357,7 @@ def update_scanner_configuration(
     if data.api_key is not None or data.clear_api_key:
         _upsert_user_setting(db, current_user.id, _scanner_key_name(provider), credential)
     db.commit()
-    return _scanner_configuration(db, current_user.id)
+    return _scanner_configuration(db, current_user.id, is_admin=current_user.role == "admin")
 
 
 @router.post("/scanner/test")

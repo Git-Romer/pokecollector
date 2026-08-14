@@ -10,6 +10,7 @@ try:
     from api.settings import (
         ScannerConfigurationUpdate,
         _get_user_settings,
+        _safe_endpoint_summary,
         _scanner_configuration,
         update_scanner_configuration,
         update_settings,
@@ -47,6 +48,31 @@ class ScannerConfigurationTests(unittest.TestCase):
         self.assertEqual([item["id"] for item in config["providers"]], ["gemini"])
         self.assertEqual(config["status"], "api_key_required")
         self.assertEqual(config["visual_verification"], "automatic")
+        self.assertNotIn("administrator", config)
+
+    def test_admin_gets_a_secret_free_server_summary(self):
+        env = {
+            "OPENAI_SCANNER_ENABLED": "true",
+            "OPENAI_PROVIDER_LABEL": "  Local   Ollama  ",
+            "OPENAI_BASE_URL": "https://user:password@vision.example.test:8443/v1?token=secret",
+            "OPENAI_MODEL": "vision-default",
+        }
+        with patch.dict(os.environ, env):
+            config = _scanner_configuration(self.db, self.user.id, is_admin=True)
+        summary = config["administrator"]
+        compatible = next(item for item in summary["providers"] if item["id"] == "openai")
+        self.assertEqual(compatible["label"], "Local Ollama")
+        self.assertEqual(compatible["endpoint"], "https://vision.example.test:8443")
+        self.assertEqual(compatible["endpoint_type"], "custom")
+        self.assertNotIn("password", repr(summary))
+        self.assertNotIn("secret", repr(summary))
+
+    def test_endpoint_summary_does_not_reflect_invalid_or_credential_data(self):
+        self.assertEqual(_safe_endpoint_summary("not a URL"), "Configured endpoint")
+        self.assertEqual(
+            _safe_endpoint_summary("http://name:key@[2001:db8::1]:11434/v1?q=private#x"),
+            "http://[2001:db8::1]:11434",
+        )
 
     def test_enabled_provider_and_models_are_guided_by_admin_allowlist(self):
         env = {
@@ -62,6 +88,7 @@ class ScannerConfigurationTests(unittest.TestCase):
             openai["models"], ["vision-default", "vision-fast", "vision-accurate"]
         )
         self.assertFalse(openai["requires_api_key"])
+        self.assertIsNone(openai["key_help_url"])
 
     def test_provider_model_and_key_are_saved_atomically_and_per_provider(self):
         env = {

@@ -22,25 +22,42 @@ const scannerConfiguration = {
       selected_model: 'gemini-flash-latest',
       requires_api_key: true,
       api_key_configured: true,
+      key_help_url: 'https://aistudio.google.com/apikey',
+      setup_help_url: 'https://github.com/Git-Romer/pokecollector/blob/main/docs/scanner-providers.md',
     },
     {
       id: 'openai',
-      label: 'OpenAI-compatible',
+      label: 'Local Ollama',
       models: ['vision-fast', 'vision-accurate'],
       default_model: 'vision-fast',
       selected_model: 'vision-fast',
       requires_api_key: false,
       api_key_configured: false,
+      key_help_url: null,
+      setup_help_url: 'https://github.com/Git-Romer/pokecollector/blob/main/docs/scanner-providers.md',
     },
   ],
+  administrator: {
+    setup_guide_url: 'https://github.com/Git-Romer/pokecollector/blob/main/docs/scanner-providers.md',
+    providers: [
+      {
+        id: 'gemini', label: 'Gemini', enabled: true, endpoint_type: 'hosted',
+        endpoint: 'Google Gemini API', models: ['gemini-flash-latest'], requires_api_key: true,
+      },
+      {
+        id: 'openai', label: 'Local Ollama', enabled: true, endpoint_type: 'custom',
+        endpoint: 'http://ollama:11434', models: ['vision-fast', 'vision-accurate'], requires_api_key: false,
+      },
+    ],
+  },
 }
 
-async function installApi(page) {
+async function installApi(page, user = USER) {
   await page.addInitScript(user => {
     localStorage.setItem('token', 'scanner-settings-token')
     localStorage.setItem('user', JSON.stringify(user))
     localStorage.setItem('app_language', 'en')
-  }, USER)
+  }, user)
 
   let savedBody = null
   await page.route('**/api/**', async route => {
@@ -48,7 +65,7 @@ async function installApi(page) {
     const path = new URL(request.url()).pathname
     if (!path.startsWith('/api/')) return route.continue()
     if (path === '/api/auth/mode') return route.fulfill({ json: { multi_user: true, locked: false } })
-    if (path === '/api/auth/me') return route.fulfill({ json: USER })
+    if (path === '/api/auth/me') return route.fulfill({ json: user })
     if (path === '/api/settings/scanner' && request.method() === 'GET') {
       return route.fulfill({ json: scannerConfiguration })
     }
@@ -92,8 +109,13 @@ test('guides provider selection and saves one guarded configuration', async ({ p
   await expect(page.getByText('Card scanner', { exact: true })).toBeVisible()
   await expect(page.getByText('Ready', { exact: true })).toBeVisible()
   await expect(page.getByLabel('Scanner provider')).toHaveValue('gemini')
-  await expect(page.getByLabel('Model')).toBeDisabled()
+  await expect(page.getByLabel('Model')).toHaveCount(0)
+  await expect(page.getByRole('link', { name: /Get a key/ })).toHaveAttribute('href', 'https://aistudio.google.com/apikey')
+  await expect(page.getByRole('link', { name: /Provider setup guide/ })).toHaveAttribute('href', /scanner-providers\.md/)
   await expect(page.getByText('Visual verification is automatic.', { exact: false })).toBeVisible()
+  await expect(page.getByText('The connection test sends a tiny image', { exact: false })).toBeVisible()
+  await expect(page.getByText('Server configuration', { exact: true })).toBeVisible()
+  await expect(page.getByText('http://ollama:11434', { exact: false })).toBeVisible()
   await expect(page.getByText('Base URL', { exact: true })).toHaveCount(0)
 
   await page.getByLabel('Scanner provider').selectOption('openai')
@@ -101,6 +123,7 @@ test('guides provider selection and saves one guarded configuration', async ({ p
   await page.getByLabel('Model').selectOption('vision-accurate')
   await page.getByRole('button', { name: 'Test connection' }).click()
   await expect(page.getByText('Scanner connection is ready')).toBeVisible()
+  await expect(page.getByText('Last test in this session: connection ready.')).toBeVisible()
   await page.getByRole('button', { name: 'Save' }).click()
 
   await expect.poll(savedBody).toEqual({
@@ -122,5 +145,19 @@ test('does not expose providers the administrator left disabled', async ({ page 
 
   await expect(page.getByText('Card scanner', { exact: true })).toBeVisible()
   await expect(page.getByLabel('Scanner provider')).toHaveCount(0)
-  await expect(page.getByRole('option', { name: 'OpenAI-compatible' })).toHaveCount(0)
+  await expect(page.getByRole('option', { name: 'Local Ollama' })).toHaveCount(0)
+})
+
+test('keeps administrator-only server details away from normal users', async ({ page }) => {
+  const trainer = { ...USER, username: 'trainer', role: 'trainer' }
+  await installApi(page, trainer)
+  await page.route('**/api/settings/scanner', route => route.fulfill({ json: {
+    ...scannerConfiguration,
+    administrator: undefined,
+  } }))
+  await page.goto('/settings')
+
+  await expect(page.getByText('Card scanner', { exact: true })).toBeVisible()
+  await expect(page.getByText('Server configuration', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('http://ollama:11434', { exact: false })).toHaveCount(0)
 })
