@@ -539,6 +539,8 @@ Betterplace processes the donation and forwards it to the selected animal rescue
 
 To appear in the public supporter list, donate non-anonymously and begin the public Betterplace message with `POKECOLLECTOR: Your desired name`. Only the requested public name is copied to this repository. If the automatic import misses a donation, the support page includes a no-login manual review form.
 
+Repository maintenance remains reviewable: the scheduled sync validates Betterplace's public feed and opens or updates a dedicated pull request containing only the `SUPPORTERS.csv` change. It never pushes supporter data directly to protected `main`.
+
 <!-- rescue-donation-total:start -->
 **Historic animal-rescue donations forwarded before Betterplace:** €0.00
 <!-- rescue-donation-total:end -->

@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 
 import {
   buildBetterplaceRecords,
@@ -151,4 +152,15 @@ test('fetchCampaignOpinions rejects duplicate and changing pagination snapshots'
     }),
     /pagination changed/,
   )
+})
+
+test('scheduled sync publishes a review branch instead of pushing to main', async () => {
+  const workflowUrl = new URL('../.github/workflows/sync-betterplace-supporters.yml', import.meta.url)
+  const workflow = await readFile(workflowUrl, 'utf8')
+
+  assert.match(workflow, /pull-requests:\s*write/u)
+  assert.match(workflow, /ref:\s*main/u)
+  assert.match(workflow, /gh pr create/u)
+  assert.match(workflow, /HEAD:refs\/heads\/\$UPDATE_BRANCH/u)
+  assert.doesNotMatch(workflow, /^\s+git push\s*$/mu)
 })

@@ -1588,7 +1588,6 @@ export default function Settings() {
               <div className="p-4 text-center space-y-3">
                 <p className="text-2xl">🐾</p>
                 <p className="text-sm font-semibold text-text-secondary">PokéCollector × Tierrettung Köln-Porz</p>
-                <p className="text-xs text-text-muted">Betterplace · POKECOLLECTOR: [public name]</p>
                 <a
                   href={supportPageUrl}
                   target="_blank"
