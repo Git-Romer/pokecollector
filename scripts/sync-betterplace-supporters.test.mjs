@@ -23,6 +23,7 @@ test('extractPublicName requires the explicit prefix and validates CSV-safe name
   assert.equal(extractPublicName('POKECOLLECTOR: CardCollector42\nThank you for the project'), 'CardCollector42')
   assert.equal(extractPublicName('CardCollector42'), null)
   assert.equal(extractPublicName('POKECOLLECTOR: =HYPERLINK("bad")'), null)
+  assert.equal(extractPublicName('POKECOLLECTOR: \u202e=HYPERLINK("bad")'), null)
   assert.equal(extractPublicName(`POKECOLLECTOR: ${'x'.repeat(61)}`), null)
 })
 
@@ -61,7 +62,7 @@ test('merge preserves legacy supporters and replaces only campaign-managed rows'
   assert.equal(records[1].source, 'betterplace:57435')
 })
 
-test('merge refuses to wipe imported supporters when the campaign feed is unexpectedly empty', () => {
+test('merge refuses to wipe imported supporters when no eligible opt-ins remain', () => {
   const existing = [
     'date,name,amount,currency,url,source',
     ',Imported supporter,,EUR,,betterplace:57435',
@@ -72,6 +73,28 @@ test('merge refuses to wipe imported supporters when the campaign feed is unexpe
     () => mergeSupportersCsv(existing, []),
     /refusing to remove existing imported supporters/,
   )
+  assert.throws(
+    () => mergeSupportersCsv(existing, [{
+      ...eligibleOpinion,
+      message: 'A public donation without the explicit opt-in prefix',
+    }]),
+    /refusing to remove existing imported supporters/,
+  )
+})
+
+test('merge rejects malformed CSV headers instead of rewriting ambiguous data', () => {
+  assert.throws(
+    () => mergeSupportersCsv('date,amount\n2026-08-14,10\n', []),
+    /missing the name header/,
+  )
+  assert.throws(
+    () => parseCsv('date,name,name\n2026-08-14,Alice,Alice\n'),
+    /duplicate headers/,
+  )
+  assert.throws(
+    () => parseCsv('date,name\n2026-08-14,Alice,unexpected\n'),
+    /more values than headers/,
+  )
 })
 
 test('fetchCampaignOpinions follows pagination and rejects malformed payloads', async () => {
@@ -81,7 +104,7 @@ test('fetchCampaignOpinions follows pagination and rejects malformed payloads', 
     const page = Number(url.searchParams.get('page'))
     return {
       ok: true,
-      json: async () => ({ data: [{ id: page }], total_pages: 2, total_entries: 2 }),
+      json: async () => ({ current_page: page, data: [{ id: page }], total_pages: 2, total_entries: 2 }),
     }
   }
 
@@ -92,5 +115,40 @@ test('fetchCampaignOpinions follows pagination and rejects malformed payloads', 
   await assert.rejects(
     () => fetchCampaignOpinions({ fetchImpl: async () => ({ ok: true, json: async () => ({ wrong: [] }) }) }),
     /Unexpected Betterplace API response shape/,
+  )
+})
+
+test('fetchCampaignOpinions rejects duplicate and changing pagination snapshots', async () => {
+  await assert.rejects(
+    () => fetchCampaignOpinions({
+      fetchImpl: async (url) => ({
+        ok: true,
+        json: async () => ({
+          current_page: Number(url.searchParams.get('page')),
+          data: [{ id: 1 }],
+          total_pages: 2,
+          total_entries: 2,
+        }),
+      }),
+    }),
+    /repeated entry ID 1/,
+  )
+
+  await assert.rejects(
+    () => fetchCampaignOpinions({
+      fetchImpl: async (url) => {
+        const page = Number(url.searchParams.get('page'))
+        return {
+          ok: true,
+          json: async () => ({
+            current_page: page,
+            data: [{ id: page }],
+            total_pages: page === 1 ? 2 : 3,
+            total_entries: 2,
+          }),
+        }
+      },
+    }),
+    /pagination changed/,
   )
 })

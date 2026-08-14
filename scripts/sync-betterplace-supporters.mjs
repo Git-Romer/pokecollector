@@ -43,7 +43,18 @@ export function parseCsv(text) {
   if (!rows.length) return { headers: [], records: [] }
 
   const headers = rows[0].map(header => header.trim())
-  const records = rows.slice(1).map(cells => Object.fromEntries(headers.map((header, index) => [header, cells[index] || ''])))
+  if (headers.some(header => !header)) {
+    throw new Error('SUPPORTERS.csv contains an empty header')
+  }
+  if (new Set(headers).size !== headers.length) {
+    throw new Error('SUPPORTERS.csv contains duplicate headers')
+  }
+  const records = rows.slice(1).map((cells, rowIndex) => {
+    if (cells.length > headers.length) {
+      throw new Error(`SUPPORTERS.csv row ${rowIndex + 2} has more values than headers`)
+    }
+    return Object.fromEntries(headers.map((header, index) => [header, cells[index] || '']))
+  })
   return { headers, records }
 }
 
@@ -82,14 +93,17 @@ export function buildBetterplaceRecords(opinions, campaignId = DEFAULT_CAMPAIGN_
   const records = []
 
   for (const opinion of opinions) {
-    const id = String(opinion?.id || '').trim()
+    const id = String(opinion?.id ?? '').trim()
+    if (!id) throw new Error('Betterplace returned an entry without an ID')
+    if (seenIds.has(id)) throw new Error(`Betterplace returned duplicate entry ID ${id}`)
+    seenIds.add(id)
+
     const publicName = extractPublicName(opinion?.message)
-    const hasPublicAuthor = Boolean(opinion?.author?.name?.trim())
+    const hasPublicAuthor = typeof opinion?.author?.name === 'string' && Boolean(opinion.author.name.trim())
     const isConfirmed = Boolean(opinion?.confirmed_at)
     const nameKey = publicName?.toLocaleLowerCase('en-US')
-    if (!id || seenIds.has(id) || !publicName || seenNames.has(nameKey) || !hasPublicAuthor || !isConfirmed) continue
+    if (!publicName || seenNames.has(nameKey) || !hasPublicAuthor || !isConfirmed) continue
 
-    seenIds.add(id)
     seenNames.add(nameKey)
     records.push({
       date: '',
@@ -106,19 +120,21 @@ export function buildBetterplaceRecords(opinions, campaignId = DEFAULT_CAMPAIGN_
 
 export function mergeSupportersCsv(existingCsv, opinions, campaignId = DEFAULT_CAMPAIGN_ID) {
   const { headers: existingHeaders, records: existingRecords } = parseCsv(existingCsv)
+  if (!existingHeaders.includes('name')) {
+    throw new Error('SUPPORTERS.csv is missing the name header')
+  }
   const headers = [...existingHeaders]
   for (const header of REQUIRED_HEADERS) {
     if (!headers.includes(header)) headers.push(header)
   }
-  if (!headers.includes('name')) throw new Error('SUPPORTERS.csv is missing the name header')
 
   const source = `${SOURCE_PREFIX}:${campaignId}`
   const managed = existingRecords.filter(record => record.source === source)
-  if (managed.length > 0 && opinions.length === 0) {
-    throw new Error('Betterplace returned an empty campaign feed; refusing to remove existing imported supporters')
-  }
   const preserved = existingRecords.filter(record => record.source !== source)
   const imported = buildBetterplaceRecords(opinions, campaignId)
+  if (managed.length > 0 && imported.length === 0) {
+    throw new Error('Betterplace produced no eligible public opt-ins; refusing to remove existing imported supporters')
+  }
   return writeCsv(headers, [...preserved, ...imported])
 }
 
@@ -128,8 +144,9 @@ export async function fetchCampaignOpinions({
   fetchImpl = fetch,
 } = {}) {
   const allOpinions = []
+  const seenIds = new Set()
   let page = 1
-  let totalPages = 1
+  let totalPages = null
   let totalEntries = null
 
   do {
@@ -142,7 +159,18 @@ export async function fetchCampaignOpinions({
     const payload = await response.json()
     if (!payload || !Array.isArray(payload.data)) throw new Error('Unexpected Betterplace API response shape')
 
-    allOpinions.push(...payload.data)
+    if (payload.current_page !== undefined && Number(payload.current_page) !== page) {
+      throw new Error('Betterplace returned an unexpected page number')
+    }
+    for (const opinion of payload.data) {
+      const id = String(opinion?.id ?? '').trim()
+      if (!id) throw new Error('Betterplace returned an entry without an ID')
+      if (seenIds.has(id)) {
+        throw new Error(`Betterplace pagination repeated entry ID ${id}`)
+      }
+      seenIds.add(id)
+      allOpinions.push(opinion)
+    }
     const pageTotalEntries = Number(payload.total_entries || 0)
     if (!Number.isInteger(pageTotalEntries) || pageTotalEntries < 0) {
       throw new Error('Unexpected Betterplace entry count')
@@ -151,12 +179,16 @@ export async function fetchCampaignOpinions({
       throw new Error('Betterplace pagination changed while the feed was being read')
     }
     totalEntries = pageTotalEntries
-    totalPages = Number(payload.total_pages || 0)
-    if (!Number.isInteger(totalPages) || totalPages < 0 || totalPages > 100) {
+    const pageTotalPages = Number(payload.total_pages || 0)
+    if (!Number.isInteger(pageTotalPages) || pageTotalPages < 0 || pageTotalPages > 100) {
       throw new Error('Unexpected Betterplace pagination metadata')
     }
+    if (totalPages !== null && totalPages !== pageTotalPages) {
+      throw new Error('Betterplace pagination changed while the feed was being read')
+    }
+    totalPages = pageTotalPages
     page += 1
-  } while (page <= totalPages)
+  } while (page <= (totalPages ?? 0))
 
   if (allOpinions.length !== totalEntries) {
     throw new Error(`Betterplace returned ${allOpinions.length} of ${totalEntries} expected entries`)
