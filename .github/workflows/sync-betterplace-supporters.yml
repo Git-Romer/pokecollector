@@ -18,16 +18,30 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # This repository intentionally allows only local actions. Keep setup
+      # shell-based so the workflow cannot be blocked before its job starts.
       - name: Check out repository
-        uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 0
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git init .
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          auth_header="$(printf 'x-access-token:%s' "${GH_TOKEN}" | base64 -w0)"
+          echo "::add-mask::${auth_header}"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: Basic ${auth_header}" fetch --force origin "${GITHUB_SHA}"
+          git checkout --detach FETCH_HEAD
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
+      - name: Verify runner Node.js toolchain
+        shell: bash
+        run: |
+          node --version
+          npm --version
+          node_major="$(node -p 'process.versions.node.split(".")[0]')"
+          if (( node_major < 22 )); then
+            echo "::error::The Betterplace sync requires Node.js 22 or newer; the runner provides Node.js ${node_major}."
+            exit 1
+          fi
 
       - name: Test importer
         run: node --test scripts/sync-betterplace-supporters.test.mjs
@@ -51,6 +65,7 @@ jobs:
       - name: Publish update branch
         id: update
         env:
+          GH_TOKEN: ${{ github.token }}
           UPDATE_BRANCH: automation/betterplace-supporters
         run: |
           if git diff --quiet -- SUPPORTERS.csv; then
@@ -61,6 +76,11 @@ jobs:
           echo "has_changes=true" >> "$GITHUB_OUTPUT"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          auth_header="$(printf 'x-access-token:%s' "${GH_TOKEN}" | base64 -w0)"
+          echo "::add-mask::${auth_header}"
+          git_with_auth() {
+            git -c "http.https://github.com/.extraheader=AUTHORIZATION: Basic ${auth_header}" "$@"
+          }
           if git ls-remote --exit-code --heads origin "refs/heads/$UPDATE_BRANCH" >/dev/null 2>&1; then
             git fetch origin "refs/heads/$UPDATE_BRANCH:refs/remotes/origin/$UPDATE_BRANCH"
           fi
@@ -69,9 +89,9 @@ jobs:
           git commit -m "chore: sync Betterplace supporters"
           if git show-ref --verify --quiet "refs/remotes/origin/$UPDATE_BRANCH"; then
             remote_head="$(git rev-parse "refs/remotes/origin/$UPDATE_BRANCH")"
-            git push --force-with-lease="refs/heads/$UPDATE_BRANCH:$remote_head" origin "HEAD:refs/heads/$UPDATE_BRANCH"
+            git_with_auth push --force-with-lease="refs/heads/$UPDATE_BRANCH:$remote_head" origin "HEAD:refs/heads/$UPDATE_BRANCH"
           else
-            git push origin "HEAD:refs/heads/$UPDATE_BRANCH"
+            git_with_auth push origin "HEAD:refs/heads/$UPDATE_BRANCH"
           fi
 
       - name: Open or update review pull request

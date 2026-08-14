@@ -18,9 +18,9 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - 👤 **Creator:** [Gilles Romer](https://romerg.de/)
 - ✉️ **Contact:** [info@romerg.de](mailto:info@romerg.de)
 
-![Version](https://img.shields.io/badge/version-v1.38.5-e3000b?style=flat-square) ![Dark Theme](https://img.shields.io/badge/theme-dark-1a1a2e?style=flat-square) ![TCGdex](https://img.shields.io/badge/card%20data-TCGdex-e3000b?style=flat-square) ![Docker](https://img.shields.io/badge/deploy-Docker-2496ed?style=flat-square) ![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square) ![React](https://img.shields.io/badge/frontend-React%2018-61dafb?style=flat-square) [![Support animal rescue](https://img.shields.io/badge/support-animal%20rescue-e3000b?style=flat-square)](https://pokecollector.romerg.de/#support)
+![Version](https://img.shields.io/badge/version-v1.38.6-e3000b?style=flat-square) ![Dark Theme](https://img.shields.io/badge/theme-dark-1a1a2e?style=flat-square) ![TCGdex](https://img.shields.io/badge/card%20data-TCGdex-e3000b?style=flat-square) ![Docker](https://img.shields.io/badge/deploy-Docker-2496ed?style=flat-square) ![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square) ![React](https://img.shields.io/badge/frontend-React%2018-61dafb?style=flat-square) [![Support animal rescue](https://img.shields.io/badge/support-animal%20rescue-e3000b?style=flat-square)](https://pokecollector.romerg.de/#support)
 
-**Current version:** `v1.38.5` · Releases are tracked on the [GitHub Releases page](https://github.com/Git-Romer/pokecollector/releases).
+**Current version:** `v1.38.6` · Releases are tracked on the [GitHub Releases page](https://github.com/Git-Romer/pokecollector/releases).
 
 ![WebApp Preview](preview-homescreen.png)
 
@@ -540,6 +540,8 @@ Betterplace processes the donation and forwards it to the selected animal rescue
 To appear in the public supporter list, donate non-anonymously and begin the public Betterplace message with `POKECOLLECTOR: Your desired name`. Only the requested public name is copied to this repository. If the automatic import misses a donation, the website's support section includes a no-login manual review form. Published names can be corrected or removed by contacting [info@romerg.de](mailto:info@romerg.de).
 
 Repository maintenance remains reviewable: the scheduled sync validates Betterplace's public feed and opens or updates a dedicated pull request containing only the `SUPPORTERS.csv` change. It never pushes supporter data directly to protected `main`.
+
+Manually reviewed supporters can still be added directly to `SUPPORTERS.csv`; leave `source` blank (or use another non-Betterplace source). The sync manages only rows whose source is `betterplace:57435`, preserves every manual row, and lets a manual row take precedence when the same public name also appears on Betterplace.
 
 <!-- rescue-donation-total:start -->
 **Historic animal-rescue donations forwarded before Betterplace:** €0.00

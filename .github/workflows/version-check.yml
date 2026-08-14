@@ -8,6 +8,9 @@ on:
       - frontend/package.json
       - frontend/package-lock.json
       - scripts/check-version.mjs
+      - scripts/sync-betterplace-supporters.mjs
+      - scripts/sync-betterplace-supporters.test.mjs
+      - .github/workflows/sync-betterplace-supporters.yml
       - .github/workflows/release.yml
       - .github/workflows/version-check.yml
   push:
@@ -19,6 +22,9 @@ on:
       - frontend/package.json
       - frontend/package-lock.json
       - scripts/check-version.mjs
+      - scripts/sync-betterplace-supporters.mjs
+      - scripts/sync-betterplace-supporters.test.mjs
+      - .github/workflows/sync-betterplace-supporters.yml
       - .github/workflows/release.yml
       - .github/workflows/version-check.yml
   workflow_dispatch:
@@ -44,3 +50,6 @@ jobs:
 
       - name: Check version consistency
         run: node scripts/check-version.mjs
+
+      - name: Check Betterplace sync safety and workflow policy
+        run: node --test scripts/sync-betterplace-supporters.test.mjs
