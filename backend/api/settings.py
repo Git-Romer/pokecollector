@@ -44,21 +44,26 @@ PER_USER_KEYS = {
 }
 
 # Settings that must not be written through the generic settings endpoints,
-# because changing them has consequences the dedicated endpoint owns. Writing
-# multi_user_mode directly turns the login screen on or off without the
-# confirmation the settings page shows, and without whatever /api/auth/mode
-# does around it.
+# because changing them has constraints the dedicated endpoint owns. Writing
+# multi_user_mode directly would bypass the USER_MODE environment lock and the
+# confirmation shown by the settings page.
 DEDICATED_ENDPOINT_KEYS = {
-    "multi_user_mode": "/api/auth/mode",
+    "multi_user_mode": {
+        "label": "Multi-user mode",
+        "endpoint": "/api/auth/mode",
+    },
 }
 
 
 def _refuse_dedicated_setting(key: str) -> None:
-    endpoint = DEDICATED_ENDPOINT_KEYS.get(key)
-    if endpoint:
+    dedicated = DEDICATED_ENDPOINT_KEYS.get(key)
+    if dedicated:
         raise HTTPException(
             status_code=409,
-            detail=f"Multi-user mode can only be changed through {endpoint}",
+            detail=(
+                f"{dedicated['label']} can only be changed through "
+                f"{dedicated['endpoint']}"
+            ),
         )
 
 
