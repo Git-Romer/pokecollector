@@ -19,11 +19,11 @@ export default function ScannerSettingsCard({ t }) {
   const [model, setModel] = useState('')
   const [apiKey, setApiKey] = useState('')
   const [clearApiKey, setClearApiKey] = useState(false)
+  const [usingCustomModel, setUsingCustomModel] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
   const [testStatus, setTestStatus] = useState('not_tested')
-  const [allowSaveWithoutTest, setAllowSaveWithoutTest] = useState(false)
 
   const selected = useMemo(
     () => data?.providers?.find(item => item.id === provider),
@@ -34,6 +34,8 @@ export default function ScannerSettingsCard({ t }) {
     if (!data || dirty) return
     setProvider(data.provider)
     setModel(data.model)
+    const active = data.providers.find(item => item.id === data.provider)
+    setUsingCustomModel(Boolean(active?.custom_model && active.custom_model === data.model))
     setApiKey('')
     setClearApiKey(false)
   }, [data, dirty])
@@ -42,53 +44,55 @@ export default function ScannerSettingsCard({ t }) {
     const next = data.providers.find(item => item.id === nextProvider)
     setProvider(nextProvider)
     setModel(next.selected_model || next.default_model)
+    setUsingCustomModel(Boolean(next.custom_model && next.custom_model === next.selected_model))
     setApiKey('')
     setClearApiKey(false)
     setTestStatus('not_tested')
-    setAllowSaveWithoutTest(false)
     setDirty(true)
   }
 
   const changeDraft = (callback) => {
     callback()
     setTestStatus('not_tested')
-    setAllowSaveWithoutTest(false)
     setDirty(true)
   }
 
-  const payload = () => ({
+  const payload = (saveOnSuccess = false) => ({
     provider,
     model,
     api_key: apiKey || null,
     clear_api_key: clearApiKey,
+    custom_model: usingCustomModel,
+    save_on_success: saveOnSuccess,
   })
 
   const persistDraft = async () => {
-    await updateScannerConfiguration(payload())
+    await updateScannerConfiguration(payload(false))
     await queryClient.invalidateQueries({ queryKey: ['scanner-configuration'] })
     setDirty(false)
     setApiKey('')
     setClearApiKey(false)
-    setAllowSaveWithoutTest(false)
     toast.success(t('settings.scannerSaved'))
   }
 
   const testAndSave = async () => {
     setTesting(true)
-    setAllowSaveWithoutTest(false)
     try {
       try {
-        await testScannerConfiguration(payload())
+        await testScannerConfiguration(payload(dirty))
       } catch (error) {
         setTestStatus('failed')
-        setAllowSaveWithoutTest(dirty)
         toast.error(error?.response?.data?.detail || t('settings.scannerTestFailed'))
         return
       }
       setTestStatus('passed')
       if (dirty) {
         try {
-          await persistDraft()
+          await queryClient.invalidateQueries({ queryKey: ['scanner-configuration'] })
+          setDirty(false)
+          setApiKey('')
+          setClearApiKey(false)
+          toast.success(t('settings.scannerSaved'))
           setTestStatus('passed')
         } catch (error) {
           toast.error(error?.response?.data?.detail || t('settings.saveFailed'))
@@ -101,12 +105,11 @@ export default function ScannerSettingsCard({ t }) {
     }
   }
 
-  const saveWithoutTest = async () => {
+  const saveKeyRemoval = async () => {
     setSaving(true)
-    const failedTest = testStatus === 'failed'
     try {
       await persistDraft()
-      setTestStatus(failedTest ? 'failed' : 'not_tested')
+      setTestStatus('not_tested')
     } catch (error) {
       toast.error(error?.response?.data?.detail || t('settings.saveFailed'))
     } finally {
@@ -169,7 +172,7 @@ export default function ScannerSettingsCard({ t }) {
           </p>
         </div>
 
-        {selected.models.length > 1 && (
+        {!usingCustomModel && selected.models.length > 1 && (
           <label className="block">
             <span className="text-xs font-semibold text-text-primary">{t('settings.scannerModel')}</span>
             <select
@@ -185,6 +188,41 @@ export default function ScannerSettingsCard({ t }) {
             </select>
             <span className="block text-[11px] text-text-muted mt-1">{t('settings.scannerModelManaged')}</span>
           </label>
+        )}
+
+        {selected.custom_model_allowed && (
+          <details className="rounded-xl px-3 py-2.5" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <summary className="cursor-pointer text-xs font-semibold text-text-primary">
+              {t('settings.scannerAdvancedModel')}
+            </summary>
+            <div className="pt-3 space-y-3">
+              <p className="text-[11px] text-text-muted">{t('settings.scannerAdvancedModelDesc')}</p>
+              <label className="flex items-center gap-2 text-xs text-text-primary">
+                <input
+                  type="checkbox"
+                  checked={usingCustomModel}
+                  onChange={event => changeDraft(() => {
+                    const enabled = event.target.checked
+                    setUsingCustomModel(enabled)
+                    setModel(enabled ? (selected.custom_model || '') : selected.default_model)
+                  })}
+                />
+                {t('settings.scannerUseCustomModel')}
+              </label>
+              {usingCustomModel && (
+                <label className="block">
+                  <span className="text-xs font-semibold text-text-primary">{t('settings.scannerModel')}</span>
+                  <input
+                    type="text"
+                    autoComplete="off"
+                    value={model}
+                    onChange={event => changeDraft(() => setModel(event.target.value))}
+                    className="input mt-1.5 w-full text-xs font-mono"
+                  />
+                </label>
+              )}
+            </div>
+          </details>
         )}
 
         {selected.requires_api_key && (
@@ -226,14 +264,9 @@ export default function ScannerSettingsCard({ t }) {
           </p>
         )}
         <div className="flex flex-wrap justify-end gap-2">
-          {allowSaveWithoutTest && dirty && (
-            <button type="button" onClick={saveWithoutTest} disabled={busy} className="btn-ghost px-3 py-2 text-xs disabled:opacity-50">
-              {saving ? t('common.saving') : t('settings.scannerSaveWithoutTest')}
-            </button>
-          )}
           <button
             type="button"
-            onClick={hasUsableKey ? testAndSave : saveWithoutTest}
+            onClick={hasUsableKey ? testAndSave : saveKeyRemoval}
             disabled={busy || !model || (!hasUsableKey && !clearApiKey)}
             className="btn-primary-sm disabled:opacity-50"
           >

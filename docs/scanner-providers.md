@@ -6,7 +6,7 @@ PokéCollector can scan cards with Google Gemini, hosted OpenAI, or a vision ser
 
 - The administrator enables providers, sets their base URL, chooses which models are allowed, and decides whether users need an API key.
 - Each user chooses from those approved providers and models in **Settings → AI / Card Scanner** and adds a personal API key only when required.
-- Users cannot enter a base URL or arbitrary model name. This keeps the form simple and prevents accounts from directing the backend to unintended network services.
+- Normal users cannot enter a base URL or arbitrary model name. This keeps the form simple and prevents accounts from directing the backend to unintended network services. Administrators can test a custom model under **Advanced model**; it remains administrator-only and cannot be saved until it passes the complete image test.
 
 A **base URL** is the address PokéCollector sends scanner requests to. PokéCollector adds `/chat/completions` to it, so an OpenAI-compatible base URL normally ends in `/v1`, for example `https://api.openai.com/v1` or `http://ollama:11434/v1`.
 
@@ -16,9 +16,9 @@ A **base URL** is the address PokéCollector sends scanner requests to. PokéCol
 2. Choose a provider if the administrator enabled more than one.
 3. Choose a model if the administrator approved more than one.
 4. If an API key is requested, use the **Get a key** link and paste the key. Keys are stored but are never displayed again.
-5. Select **Test and save**. PokéCollector sends a tiny image to confirm that the model accepts scanner image requests, then saves the complete configuration only after the test succeeds. Hosted providers may charge a very small amount for this request.
+5. Select **Test and save**. PokéCollector sends two tiny images in one request to confirm that the model supports the same multi-image workflow used by automatic visual verification. The complete configuration is saved atomically only after the test succeeds. Hosted providers may charge a very small amount for this request.
 
-If the provider is temporarily unavailable, PokéCollector offers a secondary **Save without a successful test** action after the failed attempt. Use it only when the administrator has independently confirmed the provider configuration.
+Provider and model changes cannot bypass this test. If the provider is temporarily unavailable, the existing saved configuration remains unchanged and the user can try again later. Removing a configured API key remains possible without a provider request.
 
 The status at the top explains what is still needed:
 
@@ -34,7 +34,9 @@ Put the chosen variables in the project `.env` file, then recreate the backend:
 docker compose up -d --build backend
 ```
 
-Open Scanner Settings as an administrator afterward. The **Server configuration** section shows enabled providers, the sanitized destination, approved models, and whether each user needs a key. It never displays API keys.
+Open Scanner Settings as an administrator afterward. The **Server setup details** section shows enabled providers, the sanitized destination, approved models, and whether each user needs a key. It never displays API keys.
+
+If a compatible vision model is not in the approved list, expand **Advanced model**, enable **Use a custom model**, and enter its exact identifier. **Test and save** verifies two-image input before storing it. Custom models are available only to the administrator who tested them; normal users continue to receive the guarded administrator-approved dropdown.
 
 ### Google Gemini
 
@@ -133,7 +135,7 @@ The same integration can work with llama.cpp, LM Studio, vLLM, or another hosted
 - The selected model supports image input.
 - Images are accepted as `data:` URLs in `image_url` content blocks.
 - The response uses the OpenAI Chat Completions `choices[].message.content` shape.
-- The exact model identifier is present in `OPENAI_MODEL` or `OPENAI_ALLOWED_MODELS`.
+- The exact model identifier is present in `OPENAI_MODEL` or `OPENAI_ALLOWED_MODELS`, or an administrator tests it through **Advanced model**.
 - Authentication accepts an optional `Authorization: Bearer <key>` header. Set `OPENAI_API_KEY_REQUIRED` accordingly.
 - Rate limits should preferably use `Retry-After` (seconds or an HTTP date) or OpenAI-style `x-ratelimit-reset-requests` / `x-ratelimit-reset-tokens` headers.
 
@@ -168,7 +170,7 @@ Provider-specific errors are translated into the same scanner states:
 | Selected model is unavailable | Ask the administrator to correct the model name or allowlist and confirm that the model is installed/enabled upstream. |
 | Administrator setup required | Check the environment variables and restart/recreate the backend. |
 | Connection refused or timed out | Verify the base URL from inside the backend container. For a host Ollama service, check `host.docker.internal`, `OLLAMA_HOST`, and the firewall. |
-| Image test fails but text requests work | The endpoint or model does not support the required image content format. Use a vision-capable model. |
+| Image test fails but single-image or text requests work | The endpoint or model does not support the required multi-image content format. Use a model that can inspect multiple images in one Chat Completions request. |
 | Rate limit countdown | Wait for the displayed time. PokéCollector resumes the queued scan automatically. |
 | Daily quota or billing error | Check the provider account's quota and billing. Permanent billing exhaustion is not retried automatically. |
 

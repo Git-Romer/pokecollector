@@ -15,6 +15,7 @@ try:
         DEFAULT_OPENAI_BASE_URL,
         GEMINI,
         OPENAI,
+        SCANNER_CUSTOM_MODEL_SETTINGS,
         ScanProvider,
         extract_openai_text,
         get_provider,
@@ -168,6 +169,23 @@ class ModelSelectionTests(_Fixture, unittest.TestCase):
             provider = get_provider(self.db, self.user.id)
             self.assertEqual(provider.model(), self.CHOSEN)
             self.assertEqual(provider.installation_model(), self.INSTALLATION)
+
+    def test_only_an_admins_verified_custom_model_reaches_runtime(self):
+        self._set("scanner_provider", "openai")
+        self._set("scanner_model_openai", "custom-vision-model")
+        self._set(
+            SCANNER_CUSTOM_MODEL_SETTINGS[OPENAI], "custom-vision-model"
+        )
+        with patch.dict(os.environ, {"OPENAI_MODEL": self.INSTALLATION}):
+            self.assertEqual(
+                get_provider(self.db, self.user.id).model(), "custom-vision-model"
+            )
+
+            self.user.role = "trainer"
+            self.db.commit()
+            self.assertEqual(
+                get_provider(self.db, self.user.id).model(), self.INSTALLATION
+            )
 
     def test_the_chosen_model_reaches_the_openai_request(self):
         self._set("scanner_provider", "openai")

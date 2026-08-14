@@ -31,7 +31,7 @@ import httpx
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from models import UserSetting
+from models import User, UserSetting
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +41,10 @@ SCANNER_PROVIDER_SETTING = "scanner_provider"
 SCANNER_MODEL_SETTINGS = {
     GEMINI: "scanner_model_gemini",
     OPENAI: "scanner_model_openai",
+}
+SCANNER_CUSTOM_MODEL_SETTINGS = {
+    GEMINI: "scanner_custom_model_gemini",
+    OPENAI: "scanner_custom_model_openai",
 }
 
 DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
@@ -146,10 +150,8 @@ def enabled_providers() -> tuple[str, ...]:
 def resolve_model(db: Session, user_id: int | None, provider: str) -> str:
     """Resolve a provider-specific model, constrained by the admin allowlist."""
     models = allowed_models(provider)
-    if not models:
-        return ""
     if user_id is None:
-        return models[0]
+        return models[0] if models else ""
     row = (
         db.query(UserSetting)
         .filter(
@@ -159,7 +161,23 @@ def resolve_model(db: Session, user_id: int | None, provider: str) -> str:
         .first()
     )
     selected = ((row.value if row else "") or "").strip()
-    return selected if selected in models else models[0]
+    if selected in models:
+        return selected
+
+    custom_row = (
+        db.query(UserSetting)
+        .filter(
+            UserSetting.user_id == user_id,
+            UserSetting.key == SCANNER_CUSTOM_MODEL_SETTINGS[provider],
+        )
+        .first()
+    )
+    custom_model = ((custom_row.value if custom_row else "") or "").strip()
+    if custom_model == selected and MODEL_PATTERN.fullmatch(custom_model):
+        user = db.query(User).filter(User.id == user_id).first()
+        if user and user.role == "admin":
+            return custom_model
+    return models[0] if models else ""
 
 
 def resolve_provider_name(db: Session, user_id: int | None) -> str:

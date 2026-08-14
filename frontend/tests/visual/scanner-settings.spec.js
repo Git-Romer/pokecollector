@@ -25,6 +25,8 @@ const scannerConfiguration = {
       endpoint_type: 'hosted',
       key_help_url: 'https://aistudio.google.com/apikey',
       setup_help_url: 'https://github.com/Git-Romer/pokecollector/blob/main/docs/scanner-providers.md',
+      custom_model_allowed: true,
+      custom_model: '',
     },
     {
       id: 'openai',
@@ -37,6 +39,8 @@ const scannerConfiguration = {
       endpoint_type: 'custom',
       key_help_url: null,
       setup_help_url: 'https://github.com/Git-Romer/pokecollector/blob/main/docs/scanner-providers.md',
+      custom_model_allowed: true,
+      custom_model: '',
     },
   ],
   administrator: {
@@ -62,6 +66,8 @@ async function installApi(page, user = USER) {
   }, user)
 
   let savedBody = null
+  let testedBody = null
+  let currentConfiguration = structuredClone(scannerConfiguration)
   await page.route('**/api/**', async route => {
     const request = route.request()
     const path = new URL(request.url()).pathname
@@ -69,23 +75,50 @@ async function installApi(page, user = USER) {
     if (path === '/api/auth/mode') return route.fulfill({ json: { multi_user: true, locked: false } })
     if (path === '/api/auth/me') return route.fulfill({ json: user })
     if (path === '/api/settings/scanner' && request.method() === 'GET') {
-      return route.fulfill({ json: scannerConfiguration })
+      const visible = user.role === 'admin'
+        ? currentConfiguration
+        : {
+            ...currentConfiguration,
+            administrator: undefined,
+            providers: currentConfiguration.providers.map(({ custom_model_allowed, custom_model, ...item }) => item),
+          }
+      return route.fulfill({ json: visible })
     }
     if (path === '/api/settings/scanner' && request.method() === 'PUT') {
       savedBody = request.postDataJSON()
-      const chosen = scannerConfiguration.providers.find(item => item.id === savedBody.provider)
-      return route.fulfill({ json: {
-        ...scannerConfiguration,
+      const chosen = currentConfiguration.providers.find(item => item.id === savedBody.provider)
+      currentConfiguration = {
+        ...currentConfiguration,
         provider: savedBody.provider,
         model: savedBody.model,
         status: 'ready',
-        providers: scannerConfiguration.providers.map(item => ({
+        providers: currentConfiguration.providers.map(item => ({
           ...item,
           selected_model: item.id === chosen.id ? savedBody.model : item.selected_model,
+          custom_model: item.id === chosen.id && savedBody.custom_model ? savedBody.model : item.custom_model,
         })),
-      } })
+      }
+      return route.fulfill({ json: currentConfiguration })
     }
-    if (path === '/api/settings/scanner/test') return route.fulfill({ json: { status: 'ready' } })
+    if (path === '/api/settings/scanner/test') {
+      testedBody = request.postDataJSON()
+      if (testedBody.save_on_success) {
+        savedBody = testedBody
+        const chosen = currentConfiguration.providers.find(item => item.id === testedBody.provider)
+        currentConfiguration = {
+          ...currentConfiguration,
+          provider: testedBody.provider,
+          model: testedBody.model,
+          status: 'ready',
+          providers: currentConfiguration.providers.map(item => ({
+            ...item,
+            selected_model: item.id === chosen.id ? testedBody.model : item.selected_model,
+            custom_model: item.id === chosen.id && testedBody.custom_model ? testedBody.model : item.custom_model,
+          })),
+        }
+      }
+      return route.fulfill({ json: { status: 'ready', saved: Boolean(testedBody.save_on_success) } })
+    }
     if (path === '/api/settings/') return route.fulfill({ json: {
       language: 'en', currency: 'EUR', price_primary: 'trend',
       price_display: '["trend"]', scan_diagnostics_available: 'false',
@@ -101,23 +134,26 @@ async function installApi(page, user = USER) {
     if (path === '/api/users/') return route.fulfill({ json: [] })
     return route.fulfill({ json: {} })
   })
-  return () => savedBody
+  return {
+    savedBody: () => savedBody,
+    testedBody: () => testedBody,
+  }
 }
 
 test('guides provider selection and saves one guarded configuration', async ({ page }) => {
-  const savedBody = await installApi(page)
+  const api = await installApi(page)
   await page.goto('/settings')
 
   await expect(page.getByText('Card scanner', { exact: true })).toBeVisible()
   await expect(page.getByText('Ready', { exact: true })).toBeVisible()
   await expect(page.getByLabel('Scanner provider')).toHaveValue('gemini')
-  await expect(page.getByLabel('Model')).toHaveCount(0)
+  await expect(page.getByRole('combobox', { name: /^Model/ })).toHaveCount(0)
   await expect(page.getByText('Cloud service. Card photos are sent to the provider', { exact: false })).toBeVisible()
   await expect(page.getByText('Your personal API key is required.')).toBeVisible()
   await expect(page.getByRole('link', { name: /Get a key/ })).toHaveAttribute('href', 'https://aistudio.google.com/apikey')
   await expect(page.getByRole('link', { name: /Provider setup guide/ })).toHaveAttribute('href', /scanner-providers\.md/)
   await expect(page.getByText('Visual verification is automatic.', { exact: false })).toBeVisible()
-  await expect(page.getByText('The connection test sends a tiny image', { exact: false })).toBeVisible()
+  await expect(page.getByText('The connection test sends two tiny images', { exact: false })).toBeVisible()
   await expect(page.getByText('Server setup details', { exact: true })).toBeVisible()
   await expect(page.getByText('http://ollama:11434', { exact: false })).toBeHidden()
   await expect(page.getByText('Base URL', { exact: true })).toHaveCount(0)
@@ -127,24 +163,26 @@ test('guides provider selection and saves one guarded configuration', async ({ p
   await page.getByLabel('Scanner provider').selectOption('openai')
   await expect(page.getByText('Administrator-configured service.', { exact: false })).toBeVisible()
   await expect(page.getByText('No personal API key is required.')).toBeVisible()
-  await expect(page.getByLabel('Model')).toBeEnabled()
-  await expect(page.getByLabel('Model').locator('option').first()).toHaveText('vision-fast · Recommended')
-  await page.getByLabel('Model').selectOption('vision-accurate')
+  await expect(page.getByRole('combobox', { name: /^Model/ })).toBeEnabled()
+  await expect(page.getByRole('combobox', { name: /^Model/ }).locator('option').first()).toHaveText('vision-fast · Recommended')
+  await page.getByRole('combobox', { name: /^Model/ }).selectOption('vision-accurate')
   await page.getByRole('button', { name: 'Test and save' }).click()
   await expect(page.getByText('Scanner configuration saved')).toBeVisible()
   await expect(page.getByText('Last test in this session: connection ready.')).toBeVisible()
 
-  await expect.poll(savedBody).toEqual({
+  await expect.poll(api.savedBody).toEqual({
     provider: 'openai',
     model: 'vision-accurate',
     api_key: null,
     clear_api_key: false,
+    custom_model: false,
+    save_on_success: true,
   })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 })
 
 test('uses the same test-and-save flow for Gemini', async ({ page }) => {
-  const savedBody = await installApi(page)
+  const api = await installApi(page)
   await page.route('**/api/settings/scanner', route => {
     if (route.request().method() !== 'GET') return route.fallback()
     return route.fulfill({ json: {
@@ -162,17 +200,19 @@ test('uses the same test-and-save flow for Gemini', async ({ page }) => {
   await page.getByLabel('API key').fill('new-gemini-key')
   await page.getByRole('button', { name: 'Test and save' }).click()
 
-  await expect.poll(savedBody).toEqual({
+  await expect.poll(api.savedBody).toEqual({
     provider: 'gemini',
     model: 'gemini-flash-latest',
     api_key: 'new-gemini-key',
     clear_api_key: false,
+    custom_model: false,
+    save_on_success: true,
   })
   await expect(page.getByText('Last test in this session: connection ready.')).toBeVisible()
 })
 
 test('lets a user intentionally remove a configured key without a connection test', async ({ page }) => {
-  const savedBody = await installApi(page)
+  const api = await installApi(page)
   let testRequests = 0
   page.on('request', request => {
     if (new URL(request.url()).pathname === '/api/settings/scanner/test') testRequests += 1
@@ -182,17 +222,19 @@ test('lets a user intentionally remove a configured key without a connection tes
   await page.getByRole('button', { name: 'Remove configured key' }).click()
   await page.getByRole('button', { name: 'Save changes' }).click()
 
-  await expect.poll(savedBody).toEqual({
+  await expect.poll(api.savedBody).toEqual({
     provider: 'gemini',
     model: 'gemini-flash-latest',
     api_key: null,
     clear_api_key: true,
+    custom_model: false,
+    save_on_success: false,
   })
   expect(testRequests).toBe(0)
 })
 
-test('offers save without a successful test only after a provider failure', async ({ page }) => {
-  const savedBody = await installApi(page)
+test('keeps configuration unchanged after a provider test failure', async ({ page }) => {
+  const api = await installApi(page)
   await page.route('**/api/settings/scanner/test', route => route.fulfill({
     status: 503,
     json: { detail: 'Provider temporarily unavailable.' },
@@ -202,16 +244,46 @@ test('offers save without a successful test only after a provider failure', asyn
   await page.getByLabel('Scanner provider').selectOption('openai')
   await page.getByRole('button', { name: 'Test and save' }).click()
   await expect(page.getByText('Last test in this session: connection failed.')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Save without a successful test' })).toBeVisible()
-  expect(savedBody()).toBeNull()
+  await expect(page.getByRole('button', { name: 'Save without a successful test' })).toHaveCount(0)
+  expect(api.savedBody()).toBeNull()
+})
 
-  await page.getByRole('button', { name: 'Save without a successful test' }).click()
-  await expect.poll(savedBody).toEqual({
-    provider: 'openai',
-    model: 'vision-fast',
+test('lets only an administrator test and save a custom model', async ({ page }) => {
+  const api = await installApi(page)
+  await page.goto('/settings')
+
+  await page.getByText('Advanced model', { exact: true }).click()
+  await page.getByLabel('Use a custom model').check()
+  await page.getByRole('textbox', { name: 'Model' }).fill('future-vision-model')
+  await page.getByRole('button', { name: 'Test and save' }).click()
+
+  await expect.poll(api.testedBody).toEqual({
+    provider: 'gemini',
+    model: 'future-vision-model',
     api_key: null,
     clear_api_key: false,
+    custom_model: true,
+    save_on_success: true,
   })
+  await expect.poll(api.savedBody).toEqual(api.testedBody())
+  await expect(page.getByText('Scanner configuration saved')).toBeVisible()
+})
+
+test('does not offer an untested custom model save bypass', async ({ page }) => {
+  const api = await installApi(page)
+  await page.route('**/api/settings/scanner/test', route => route.fulfill({
+    status: 502,
+    json: { detail: 'Multi-image test failed.' },
+  }))
+  await page.goto('/settings')
+
+  await page.getByText('Advanced model', { exact: true }).click()
+  await page.getByLabel('Use a custom model').check()
+  await page.getByRole('textbox', { name: 'Model' }).fill('untested-model')
+  await page.getByRole('button', { name: 'Test and save' }).click()
+
+  await expect(page.getByRole('button', { name: 'Save without a successful test' })).toHaveCount(0)
+  expect(api.savedBody()).toBeNull()
 })
 
 test('does not expose providers the administrator left disabled', async ({ page }) => {
@@ -230,13 +302,10 @@ test('does not expose providers the administrator left disabled', async ({ page 
 test('keeps administrator-only server details away from normal users', async ({ page }) => {
   const trainer = { ...USER, username: 'trainer', role: 'trainer' }
   await installApi(page, trainer)
-  await page.route('**/api/settings/scanner', route => route.fulfill({ json: {
-    ...scannerConfiguration,
-    administrator: undefined,
-  } }))
   await page.goto('/settings')
 
   await expect(page.getByText('Card scanner', { exact: true })).toBeVisible()
   await expect(page.getByText('Server setup details', { exact: true })).toHaveCount(0)
   await expect(page.getByText('http://ollama:11434', { exact: false })).toHaveCount(0)
+  await expect(page.getByText('Advanced model', { exact: true })).toHaveCount(0)
 })

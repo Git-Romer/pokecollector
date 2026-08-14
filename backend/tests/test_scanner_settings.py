@@ -12,6 +12,7 @@ try:
     from api.settings import (
         ScannerConfigurationUpdate,
         SCANNER_TEST_IMAGE_B64,
+        SCANNER_TEST_SECOND_IMAGE_B64,
         _get_user_settings,
         _safe_endpoint_summary,
         _scanner_configuration,
@@ -54,6 +55,7 @@ class ScannerConfigurationTests(unittest.TestCase):
         self.assertEqual(config["status"], "api_key_required")
         self.assertEqual(config["visual_verification"], "automatic")
         self.assertEqual(config["providers"][0]["endpoint_type"], "hosted")
+        self.assertNotIn("custom_model_allowed", config["providers"][0])
         self.assertNotIn("administrator", config)
 
     def test_admin_gets_a_secret_free_server_summary(self):
@@ -67,11 +69,16 @@ class ScannerConfigurationTests(unittest.TestCase):
             config = _scanner_configuration(self.db, self.user.id, is_admin=True)
         summary = config["administrator"]
         compatible = next(item for item in summary["providers"] if item["id"] == "openai")
+        configured_openai = next(
+            item for item in config["providers"] if item["id"] == "openai"
+        )
         self.assertEqual(compatible["label"], "Local Ollama")
         self.assertEqual(compatible["endpoint"], "https://vision.example.test:8443")
         self.assertEqual(compatible["endpoint_type"], "custom")
         self.assertNotIn("password", repr(summary))
         self.assertNotIn("secret", repr(summary))
+        self.assertTrue(configured_openai["custom_model_allowed"])
+        self.assertEqual(configured_openai["custom_model"], "")
 
     def test_endpoint_summary_does_not_reflect_invalid_or_credential_data(self):
         self.assertEqual(_safe_endpoint_summary("not a URL"), "Configured endpoint")
@@ -97,7 +104,7 @@ class ScannerConfigurationTests(unittest.TestCase):
         self.assertEqual(openai["endpoint_type"], "custom")
         self.assertIsNone(openai["key_help_url"])
 
-    def test_provider_model_and_key_are_saved_atomically_and_per_provider(self):
+    def test_provider_model_and_key_are_tested_and_saved_atomically(self):
         env = {
             "OPENAI_SCANNER_ENABLED": "true",
             "OPENAI_MODEL": "vision-default",
@@ -105,17 +112,66 @@ class ScannerConfigurationTests(unittest.TestCase):
             "OPENAI_BASE_URL": "https://api.openai.com/v1",
         }
         request = ScannerConfigurationUpdate(
-            provider="openai", model="vision-fast", api_key="secret-value"
+            provider="openai",
+            model="vision-fast",
+            api_key="secret-value",
+            save_on_success=True,
         )
-        with patch.dict(os.environ, env):
-            result = update_scanner_configuration(request, self.db, self.user)
+        with patch.dict(os.environ, env), patch.object(
+            ScanProvider,
+            "generate_text",
+            new=AsyncMock(return_value=("MAGENTA-GREEN", None)),
+        ):
+            result = asyncio.run(
+                run_scanner_configuration_test(request, self.db, self.user)
+            )
         rows = self._rows()
         self.assertEqual(rows["scanner_provider"], "openai")
         self.assertEqual(rows["scanner_model_openai"], "vision-fast")
+        self.assertEqual(rows["scanner_custom_model_openai"], "")
         self.assertEqual(rows["openai_api_key"], "secret-value")
         self.assertNotIn("scanner_model_gemini", rows)
         self.assertNotIn("secret-value", repr(result))
-        self.assertTrue(next(p for p in result["providers"] if p["id"] == "openai")["api_key_configured"])
+        self.assertEqual(result, {"status": "ready", "saved": True})
+
+    def test_approved_configuration_cannot_bypass_test_and_save(self):
+        env = {
+            "OPENAI_SCANNER_ENABLED": "true",
+            "OPENAI_MODEL": "vision-default",
+            "OPENAI_ALLOWED_MODELS": "vision-fast",
+            "OPENAI_BASE_URL": "http://model-host:11434/v1",
+        }
+        request = ScannerConfigurationUpdate(
+            provider="openai", model="vision-fast"
+        )
+        with patch.dict(os.environ, env), self.assertRaises(HTTPException) as caught:
+            update_scanner_configuration(request, self.db, self.user)
+        self.assertEqual(caught.exception.status_code, 409)
+        self.assertEqual(self._rows(), {})
+
+    def test_configured_key_can_still_be_removed_without_provider_access(self):
+        self.db.add_all(
+            [
+                UserSetting(
+                    user_id=self.user.id,
+                    key="scanner_provider",
+                    value="gemini",
+                ),
+                UserSetting(
+                    user_id=self.user.id,
+                    key="gemini_api_key",
+                    value="configured-key",
+                ),
+            ]
+        )
+        self.db.commit()
+        request = ScannerConfigurationUpdate(
+            provider="gemini",
+            model="gemini-flash-latest",
+            clear_api_key=True,
+        )
+        update_scanner_configuration(request, self.db, self.user)
+        self.assertEqual(self._rows()["gemini_api_key"], "")
 
     def test_disallowed_model_does_not_partially_change_configuration(self):
         env = {
@@ -167,20 +223,115 @@ class ScannerConfigurationTests(unittest.TestCase):
             asyncio.run(run_scanner_configuration_test(request, self.db, self.user))
         self.assertEqual(caught.exception.status_code, 502)
 
-    def test_connection_test_accepts_the_image_color(self):
+    def test_connection_test_requires_and_sends_two_valid_images(self):
         request = ScannerConfigurationUpdate(
             provider="gemini", model="gemini-flash-latest", api_key="test-key"
         )
-        generate = AsyncMock(return_value=("MAGENTA", None))
+        generate = AsyncMock(return_value=("MAGENTA-GREEN", None))
         with patch.object(ScanProvider, "generate_text", new=generate):
             result = asyncio.run(
                 run_scanner_configuration_test(request, self.db, self.user)
             )
-        self.assertEqual(result, {"status": "ready"})
+        self.assertEqual(result, {"status": "ready", "saved": False})
         parts = generate.await_args.args[2]
-        encoded = parts[1]["image"]["data"]
-        decoded = base64.b64decode(encoded, validate=True)
-        self.assertEqual(decoded, base64.b64decode(SCANNER_TEST_IMAGE_B64, validate=True))
+        self.assertNotIn("MAGENTA-GREEN", parts[0]["text"])
+        images = [part["image"]["data"] for part in parts if "image" in part]
+        self.assertEqual(len(images), 2)
+        decoded = [base64.b64decode(encoded, validate=True) for encoded in images]
+        self.assertEqual(
+            decoded,
+            [
+                base64.b64decode(SCANNER_TEST_IMAGE_B64, validate=True),
+                base64.b64decode(SCANNER_TEST_SECOND_IMAGE_B64, validate=True),
+            ],
+        )
+
+    def test_new_custom_model_cannot_be_saved_without_a_successful_test(self):
+        env = {
+            "OPENAI_SCANNER_ENABLED": "true",
+            "OPENAI_MODEL": "approved-model",
+            "OPENAI_BASE_URL": "http://model-host:11434/v1",
+        }
+        request = ScannerConfigurationUpdate(
+            provider="openai",
+            model="new-vision-model",
+            custom_model=True,
+        )
+        with patch.dict(os.environ, env), self.assertRaises(HTTPException) as caught:
+            update_scanner_configuration(request, self.db, self.user)
+        self.assertEqual(caught.exception.status_code, 422)
+        self.assertEqual(self._rows(), {})
+
+    def test_successful_custom_model_test_and_save_is_atomic(self):
+        env = {
+            "OPENAI_SCANNER_ENABLED": "true",
+            "OPENAI_MODEL": "approved-model",
+            "OPENAI_BASE_URL": "http://model-host:11434/v1",
+        }
+        request = ScannerConfigurationUpdate(
+            provider="openai",
+            model="new-vision-model",
+            custom_model=True,
+            save_on_success=True,
+        )
+        generate = AsyncMock(return_value=("MAGENTA-GREEN", None))
+        with patch.dict(os.environ, env), patch.object(
+            ScanProvider, "generate_text", new=generate
+        ):
+            result = asyncio.run(
+                run_scanner_configuration_test(request, self.db, self.user)
+            )
+
+        self.assertEqual(result, {"status": "ready", "saved": True})
+        self.assertEqual(
+            self._rows(),
+            {
+                "scanner_provider": "openai",
+                "scanner_model_openai": "new-vision-model",
+                "scanner_custom_model_openai": "new-vision-model",
+            },
+        )
+        with patch.dict(os.environ, env):
+            self.assertEqual(get_provider(self.db, self.user.id).model(), "new-vision-model")
+
+    def test_failed_custom_model_test_saves_nothing(self):
+        env = {
+            "OPENAI_SCANNER_ENABLED": "true",
+            "OPENAI_MODEL": "approved-model",
+            "OPENAI_BASE_URL": "http://model-host:11434/v1",
+        }
+        request = ScannerConfigurationUpdate(
+            provider="openai",
+            model="new-vision-model",
+            custom_model=True,
+            save_on_success=True,
+        )
+        with patch.dict(os.environ, env), patch.object(
+            ScanProvider,
+            "generate_text",
+            new=AsyncMock(return_value=("GREEN-MAGENTA", None)),
+        ), self.assertRaises(HTTPException):
+            asyncio.run(run_scanner_configuration_test(request, self.db, self.user))
+        self.assertEqual(self._rows(), {})
+
+    def test_normal_user_cannot_test_or_save_a_custom_model(self):
+        self.user.role = "trainer"
+        self.db.commit()
+        env = {
+            "OPENAI_SCANNER_ENABLED": "true",
+            "OPENAI_MODEL": "approved-model",
+            "OPENAI_BASE_URL": "http://model-host:11434/v1",
+        }
+        request = ScannerConfigurationUpdate(
+            provider="openai",
+            model="new-vision-model",
+            custom_model=True,
+            save_on_success=True,
+        )
+        with patch.dict(os.environ, env), self.assertRaises(HTTPException) as caught:
+            asyncio.run(run_scanner_configuration_test(request, self.db, self.user))
+        self.assertEqual(caught.exception.status_code, 422)
+        self.assertEqual(self._rows(), {})
 
     def test_legacy_settings_contract_never_returns_scanner_secrets(self):
         self.db.add_all(

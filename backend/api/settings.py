@@ -36,6 +36,8 @@ from services.scan_providers import (
     DEFAULT_OPENAI_BASE_URL,
     GEMINI,
     OPENAI,
+    MODEL_PATTERN,
+    SCANNER_CUSTOM_MODEL_SETTINGS,
     SCANNER_MODEL_SETTINGS,
     ScanProvider,
     allowed_models,
@@ -66,6 +68,7 @@ PER_USER_KEYS = {
     "gemini_api_key", "trainer_name", "portfolio_display_mode",
     "openai_api_key",
     SCANNER_PROVIDER_SETTING, *SCANNER_MODEL_SETTINGS.values(),
+    *SCANNER_CUSTOM_MODEL_SETTINGS.values(),
     SCAN_DIAGNOSTICS_SETTING_KEY, PHOTO_PREFERENCE_SETTING_KEY,
 }
 
@@ -74,6 +77,7 @@ MANAGED_SCANNER_KEYS = {
     "openai_api_key",
     SCANNER_PROVIDER_SETTING,
     *SCANNER_MODEL_SETTINGS.values(),
+    *SCANNER_CUSTOM_MODEL_SETTINGS.values(),
     # Prevent the removed PR prototype settings from being recreated through
     # the legacy generic endpoint.
     "scanner_model",
@@ -86,11 +90,18 @@ class ScannerConfigurationUpdate(BaseModel):
     model: str
     api_key: str | None = None
     clear_api_key: bool = False
+    custom_model: bool = False
+    save_on_success: bool = False
 
 
 SCANNER_TEST_IMAGE_B64 = (
     "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR4nGN4xvCfJMQw"
     "qmFUw/DVAAC9iuUQ8Prt2QAAAABJRU5ErkJggg=="
+)
+SCANNER_TEST_SECOND_IMAGE_B64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAACXBIWXMAAAABAAAA"
+    "AQBPJcTWAAAAGElEQVR4nGNk+MdAEmAhTfmohlENQ0kDAGoRATwbkCdPAAAAAElF"
+    "TkSuQmCC"
 )
 
 # Settings that must not be written through the generic settings endpoints,
@@ -299,7 +310,7 @@ def _scanner_configuration(db: Session, user_id: int, *, is_admin: bool = False)
         key_row = _user_setting(db, user_id, _scanner_key_name(provider))
         key_configured = bool(key_row and str(key_row.value or "").strip())
         models = allowed_models(provider)
-        providers.append({
+        provider_data = {
             "id": provider,
             "label": provider_label(provider),
             "models": models,
@@ -314,17 +325,27 @@ def _scanner_configuration(db: Session, user_id: int, *, is_admin: bool = False)
             ),
             "key_help_url": provider_key_help_url(provider),
             "setup_help_url": SCANNER_PROVIDER_GUIDE_URL,
-        })
+        }
+        if is_admin:
+            custom_row = _user_setting(
+                db, user_id, SCANNER_CUSTOM_MODEL_SETTINGS[provider]
+            )
+            custom_model = ((custom_row.value if custom_row else "") or "").strip()
+            provider_data["custom_model_allowed"] = True
+            provider_data["custom_model"] = (
+                custom_model if MODEL_PATTERN.fullmatch(custom_model) else ""
+            )
+        providers.append(provider_data)
     active = next(item for item in providers if item["id"] == selected)
     ready = not active["requires_api_key"] or active["api_key_configured"]
     status = (
         "admin_setup_required"
-        if not active["models"]
+        if not active["selected_model"]
         else ("ready" if ready else "api_key_required")
     )
     result = {
         "provider": selected,
-        "model": active["selected_model"] if active["selected_model"] in active["models"] else active["default_model"],
+        "model": active["selected_model"],
         "providers": providers,
         "status": status,
         "visual_verification": "automatic",
@@ -337,16 +358,34 @@ def _scanner_configuration(db: Session, user_id: int, *, is_admin: bool = False)
 def _validated_scanner_draft(
     data: ScannerConfigurationUpdate,
     db: Session,
-    user_id: int,
+    current_user: User,
     *,
     require_ready: bool = False,
-) -> tuple[str, str, str]:
+    allow_unverified_custom_model: bool = False,
+) -> tuple[str, str, str, bool]:
+    user_id = current_user.id
     provider = data.provider.strip().lower()
     if provider not in enabled_providers():
         raise HTTPException(status_code=422, detail="This scanner provider is not enabled by the administrator.")
     model = data.model.strip()
-    if model not in allowed_models(provider):
-        raise HTTPException(status_code=422, detail="Choose one of the models enabled by the administrator.")
+    custom_model = model not in allowed_models(provider)
+    if custom_model:
+        if not data.custom_model or current_user.role != "admin":
+            raise HTTPException(status_code=422, detail="Choose one of the models enabled by the administrator.")
+        if not MODEL_PATTERN.fullmatch(model):
+            raise HTTPException(
+                status_code=422,
+                detail="Enter a valid custom model identifier.",
+            )
+        verified = _user_setting(
+            db, user_id, SCANNER_CUSTOM_MODEL_SETTINGS[provider]
+        )
+        verified_model = ((verified.value if verified else "") or "").strip()
+        if not allow_unverified_custom_model and verified_model != model:
+            raise HTTPException(
+                status_code=422,
+                detail="A new custom model must pass the scanner image test before it can be saved.",
+            )
     if data.api_key is not None and len(data.api_key) > 4096:
         raise HTTPException(status_code=422, detail="API key is too long.")
     existing = _user_setting(db, user_id, _scanner_key_name(provider))
@@ -357,7 +396,7 @@ def _validated_scanner_draft(
         credential = data.api_key.strip()
     if require_ready and _scanner_requires_key(provider) and not credential:
         raise HTTPException(status_code=422, detail="An API key is required for this provider.")
-    return provider, model, credential
+    return provider, model, credential, custom_model
 
 
 def _upsert_user_setting(db: Session, user_id: int, key: str, value: str) -> None:
@@ -366,6 +405,27 @@ def _upsert_user_setting(db: Session, user_id: int, key: str, value: str) -> Non
         row.value = value
     else:
         db.add(UserSetting(user_id=user_id, key=key, value=value))
+
+
+def _persist_scanner_draft(
+    db: Session,
+    user_id: int,
+    data: ScannerConfigurationUpdate,
+    provider: str,
+    model: str,
+    credential: str,
+    custom_model: bool,
+) -> None:
+    _upsert_user_setting(db, user_id, SCANNER_PROVIDER_SETTING, provider)
+    _upsert_user_setting(db, user_id, SCANNER_MODEL_SETTINGS[provider], model)
+    _upsert_user_setting(
+        db,
+        user_id,
+        SCANNER_CUSTOM_MODEL_SETTINGS[provider],
+        model if custom_model else "",
+    )
+    if data.api_key is not None or data.clear_api_key:
+        _upsert_user_setting(db, user_id, _scanner_key_name(provider), credential)
 
 
 @router.get("/scanner")
@@ -381,11 +441,28 @@ def update_scanner_configuration(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    provider, model, credential = _validated_scanner_draft(data, db, current_user.id)
-    _upsert_user_setting(db, current_user.id, SCANNER_PROVIDER_SETTING, provider)
-    _upsert_user_setting(db, current_user.id, SCANNER_MODEL_SETTINGS[provider], model)
-    if data.api_key is not None or data.clear_api_key:
-        _upsert_user_setting(db, current_user.id, _scanner_key_name(provider), credential)
+    provider, model, credential, custom_model = _validated_scanner_draft(
+        data, db, current_user
+    )
+    if not (
+        data.clear_api_key
+        and data.api_key is None
+        and provider == resolve_provider_name(db, current_user.id)
+        and model == resolve_model(db, current_user.id, provider)
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Scanner configuration changes must pass Test and save.",
+        )
+    _persist_scanner_draft(
+        db,
+        current_user.id,
+        data,
+        provider,
+        model,
+        credential,
+        custom_model,
+    )
     db.commit()
     return _scanner_configuration(db, current_user.id, is_admin=current_user.role == "admin")
 
@@ -396,8 +473,12 @@ async def test_scanner_configuration(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    provider, model, credential = _validated_scanner_draft(
-        data, db, current_user.id, require_ready=True
+    provider, model, credential, custom_model = _validated_scanner_draft(
+        data,
+        db,
+        current_user,
+        require_ready=True,
+        allow_unverified_custom_model=True,
     )
     candidate = ScanProvider(provider, model)
     async with httpx.AsyncClient(timeout=30) as client:
@@ -406,19 +487,32 @@ async def test_scanner_configuration(
             credential,
             [
                 text_part(
-                    "Inspect the image. Choose its fill color from MAGENTA, GREEN, "
-                    "BLUE, or ORANGE. Reply with exactly one of those words."
+                    "Inspect both images in their supplied order. Identify each solid "
+                    "fill color using only MAGENTA, GREEN, BLUE, or ORANGE. Reply "
+                    "with exactly COLOR-COLOR and no other text."
                 ),
                 image_part("image/png", SCANNER_TEST_IMAGE_B64),
+                image_part("image/png", SCANNER_TEST_SECOND_IMAGE_B64),
             ],
             max_attempts=1,
         )
-    if text.strip().upper() != "MAGENTA":
+    if text.strip().upper() != "MAGENTA-GREEN":
         raise HTTPException(
             status_code=502,
             detail="The selected model did not complete the scanner image test.",
         )
-    return {"status": "ready"}
+    if data.save_on_success:
+        _persist_scanner_draft(
+            db,
+            current_user.id,
+            data,
+            provider,
+            model,
+            credential,
+            custom_model,
+        )
+        db.commit()
+    return {"status": "ready", "saved": data.save_on_success}
 
 
 @router.get("/tcgdex-languages")
