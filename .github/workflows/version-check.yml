@@ -7,7 +7,10 @@ on:
       - README.md
       - frontend/package.json
       - frontend/package-lock.json
+      - docker-compose.yml
       - scripts/check-version.mjs
+      - scripts/check-compose-ports.mjs
+      - scripts/check-compose-ports.test.mjs
       - scripts/sync-betterplace-supporters.mjs
       - scripts/sync-betterplace-supporters.test.mjs
       - .github/workflows/sync-betterplace-supporters.yml
@@ -21,7 +24,10 @@ on:
       - README.md
       - frontend/package.json
       - frontend/package-lock.json
+      - docker-compose.yml
       - scripts/check-version.mjs
+      - scripts/check-compose-ports.mjs
+      - scripts/check-compose-ports.test.mjs
       - scripts/sync-betterplace-supporters.mjs
       - scripts/sync-betterplace-supporters.test.mjs
       - .github/workflows/sync-betterplace-supporters.yml
@@ -50,6 +56,12 @@ jobs:
 
       - name: Check version consistency
         run: node scripts/check-version.mjs
+
+      - name: Check compose port mappings
+        run: node scripts/check-compose-ports.mjs
+
+      - name: Check compose port mapping safety
+        run: node --test scripts/check-compose-ports.test.mjs
 
       - name: Check Betterplace sync safety and workflow policy
         run: node --test scripts/sync-betterplace-supporters.test.mjs
