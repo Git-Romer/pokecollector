@@ -205,7 +205,8 @@ test('scheduled sync is compatible with local-only Actions and publishes a revie
 
   assert.match(workflow, /pull-requests:\s*write/u)
   assert.doesNotMatch(workflow, /^\s*uses:/mu)
-  assert.match(workflow, /fetch --force origin "\$\{GITHUB_SHA\}"/u)
+  assert.match(workflow, /fetch --force origin "refs\/heads\/main"/u)
+  assert.doesNotMatch(workflow, /GITHUB_SHA/u)
   assert.match(workflow, /node_major=/u)
   assert.match(workflow, /gh pr create/u)
   assert.match(workflow, /gh pr close/u)

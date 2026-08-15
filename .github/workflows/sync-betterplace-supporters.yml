@@ -29,7 +29,10 @@ jobs:
           git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
           auth_header="$(printf 'x-access-token:%s' "${GH_TOKEN}" | base64 -w0)"
           echo "::add-mask::${auth_header}"
-          git -c "http.https://github.com/.extraheader=AUTHORIZATION: Basic ${auth_header}" fetch --force origin "${GITHUB_SHA}"
+          # Always base supporter updates on protected main. A manual dispatch
+          # may be launched from another ref in the UI, but that ref must never
+          # leak unrelated commits into the automation pull request.
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: Basic ${auth_header}" fetch --force origin "refs/heads/main"
           git checkout --detach FETCH_HEAD
 
       - name: Verify runner Node.js toolchain
@@ -106,7 +109,7 @@ jobs:
             gh pr edit "$pr_number" --title "Update Betterplace supporters" --body "$body"
           else
             if ! gh pr create --base main --head "$UPDATE_BRANCH" --title "Update Betterplace supporters" --body "$body"; then
-              echo "::error::Enable 'Allow GitHub Actions to create and approve pull requests' under Settings > Actions > General > Workflow permissions. This workflow only creates review PRs; it never approves or merges them."
+              echo "::error::GitHub could not create the Betterplace review PR. Verify the workflow token's pull-request permission and the 'Allow GitHub Actions to create and approve pull requests' repository setting. This workflow never approves or merges PRs."
               exit 1
             fi
           fi
