@@ -6,62 +6,114 @@ const root = resolve(import.meta.dirname, '..')
 const portMappings = [
   {
     service: 'backend',
+    variable: 'BACKEND_PORT',
     published: '${BACKEND_PORT:-8000}',
     unsafePublished: '${BACKEND_PORT-8000}',
     container: '8000',
   },
   {
     service: 'frontend',
+    variable: 'FRONTEND_PORT',
     published: '${FRONTEND_PORT:-3000}',
     unsafePublished: '${FRONTEND_PORT-3000}',
     container: '80',
   },
 ]
 
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
+function isIgnorable(line) {
+  return line.trim() === '' || line.trim().startsWith('#')
 }
 
-function serviceBlock(compose, service) {
-  const pattern = new RegExp(
-    `^ {2}${escapeRegExp(service)}:\\s*(?:#.*)?$([\\s\\S]*?)(?=^ {2}[^\\s][^:\\n]*:\\s*(?:#.*)?$|^[^\\s#][^:\\n]*:\\s*(?:#.*)?$|(?![\\s\\S]))`,
-    'mu',
-  )
-  return compose.match(pattern)?.[1] ?? null
+function indentOf(line) {
+  return line.length - line.trimStart().length
 }
 
-function hasPortMapping(block, published, container) {
-  // Matches the mapping wherever it sits in the ports list, so adding another
-  // published port above it stays valid.
-  const pattern = new RegExp(
-    `^ {6}- "${escapeRegExp(published)}:${escapeRegExp(container)}"\\s*(?:#.*)?$`,
-    'mu',
-  )
-  return pattern.test(block)
+// Returns the lines belonging to `services:`, so a service-shaped block parked
+// under a top-level extension cannot be mistaken for a real service.
+function servicesLines(compose) {
+  const lines = compose.split('\n')
+  const start = lines.findIndex((line) => /^services:\s*(?:#.*)?$/u.test(line))
+  if (start === -1) {
+    return null
+  }
+
+  const rest = lines.slice(start + 1)
+  const end = rest.findIndex((line) => !isIgnorable(line) && indentOf(line) === 0)
+  return end === -1 ? rest : rest.slice(0, end)
+}
+
+function serviceLines(lines, service) {
+  const start = lines.findIndex((line) => new RegExp(`^ {2}${service}:\\s*(?:#.*)?$`, 'u').test(line))
+  if (start === -1) {
+    return null
+  }
+
+  const rest = lines.slice(start + 1)
+  const end = rest.findIndex((line) => !isIgnorable(line) && indentOf(line) <= 2)
+  return end === -1 ? rest : rest.slice(0, end)
+}
+
+// Only the entries of the service's own `ports:` list. Anything under another
+// key, including an ignored `x-` extension, is not a published port.
+function portEntries(lines) {
+  const start = lines.findIndex((line) => /^ {4}ports:\s*(?:#.*)?$/u.test(line))
+  if (start === -1) {
+    return null
+  }
+
+  const entries = []
+  for (const line of lines.slice(start + 1)) {
+    if (isIgnorable(line)) {
+      continue
+    }
+    if (indentOf(line) <= 4) {
+      break
+    }
+
+    const entry = line.match(/^ {6}- (.*?)\s*(?:#.*)?$/u)?.[1]
+    if (entry !== undefined) {
+      entries.push(entry)
+    }
+  }
+
+  return entries
 }
 
 export function checkComposePorts(compose) {
   const errors = []
+  const services = servicesLines(compose)
+
+  if (services === null) {
+    return ['docker-compose.yml is missing the services section']
+  }
 
   for (const mapping of portMappings) {
-    const block = serviceBlock(compose, mapping.service)
+    const block = serviceLines(services, mapping.service)
     if (block === null) {
       errors.push(`docker-compose.yml is missing the ${mapping.service} service`)
       continue
     }
 
-    if (hasPortMapping(block, mapping.published, mapping.container)) {
+    const entries = portEntries(block)
+    if (entries === null) {
+      errors.push(`${mapping.service} does not publish any ports`)
       continue
     }
 
-    if (hasPortMapping(block, mapping.unsafePublished, mapping.container)) {
+    if (entries.includes(`"${mapping.published}:${mapping.container}"`)) {
+      continue
+    }
+
+    if (entries.includes(`"${mapping.unsafePublished}:${mapping.container}"`)) {
       errors.push(
         `${mapping.service} must use ${mapping.published}:${mapping.container}; ${mapping.unsafePublished} is wrong because an empty variable silently leaves the port unpublished`,
       )
       continue
     }
 
-    errors.push(`Expected ${mapping.service} to publish ${mapping.published}:${mapping.container}`)
+    errors.push(
+      `Expected ${mapping.service} to publish "${mapping.published}:${mapping.container}" in its ports list, in quoted short syntax`,
+    )
   }
 
   return errors
