@@ -171,6 +171,9 @@ TELEGRAM_CHAT_ID=your_chat_id
 TCGDEX_SYNC_LANGUAGES=en,de
 PUBLIC_MODE=false
 CORS_ORIGINS=https://yourdomain.com
+# Host ports, if 8000 or 3000 are already taken on this host
+BACKEND_PORT=8000
+FRONTEND_PORT=3000
 ```
 
 ### 2. Start
@@ -182,10 +185,10 @@ docker compose up -d
 
 ### 3. Open
 
-| Service | URL |
-|---------|-----|
-| App | http://localhost:3000 |
-| API docs | http://localhost:8000/docs |
+| Service | Default URL | Host port variable |
+|---------|-------------|--------------------|
+| App | http://localhost:3000 | `FRONTEND_PORT` |
+| API docs | http://localhost:8000/docs | `BACKEND_PORT` |
 
 ### 4. First Sync
 
@@ -300,6 +303,8 @@ If you are already locked out of multi-user mode, set `USER_MODE=single` in the 
 | `PRE_UPGRADE_BACKUP_ENABLED` | Create an automatic SQL backup before startup migrations when an existing install starts on a new app version | `true` |
 | `PRE_UPGRADE_BACKUP_REQUIRED` | Stop startup if the automatic pre-upgrade backup fails. Set to `false` only if you have another verified backup process. | `true` |
 | `PRE_UPGRADE_BACKUP_KEEP` | Number of automatic pre-upgrade backups to retain in `/app/backups`; minimum `1` | `10` |
+| `BACKEND_PORT` | Host port the backend is published on. Change it if another stack on the same host already uses `8000`. The container port is unaffected. | `8000` |
+| `FRONTEND_PORT` | Host port the frontend is published on. Change it if another stack on the same host already uses `3000`. The container port is unaffected. | `3000` |
 
 Supported `TCGDEX_SYNC_LANGUAGES` codes: `en`, `fr`, `es`, `es-mx`, `it`, `pt`, `pt-br`, `pt-pt`, `de`, `nl`, `pl`, `ru`, `ja`, `ko`, `zh-tw`, `id`, `th`, `zh-cn`. The env value `all` expands to the full supported language list during first bootstrap.
 
