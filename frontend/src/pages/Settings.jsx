@@ -289,20 +289,39 @@ export function supporterQueryOptions(queryFn = getSupporters) {
   return {
     queryKey: ['supporters'],
     queryFn,
+    enabled: false,
     retry: false,
     staleTime: 0,
-    gcTime: 0,
-    refetchInterval: 60 * 1000,
+    gcTime: Infinity,
+    refetchInterval: false,
     refetchIntervalInBackground: false,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: 'always',
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     networkMode: 'always',
   }
 }
 
 function SupportersSection({ t }) {
-  const { data: supporters = [], isLoading, isError, isRefetchError } = useQuery(supporterQueryOptions())
-  return <SupportersPanel supporters={supporters} isLoading={isLoading} unavailable={isError || isRefetchError} t={t} />
+  // Reuse one entry request across React StrictMode's effect replay, but not across real remounts.
+  const entryRequestRef = useRef(null)
+  const [entryPending, setEntryPending] = useState(true)
+  const { data: supporters = [], refetch, isFetching, isError, isRefetchError } = useQuery(supporterQueryOptions())
+
+  useEffect(() => {
+    let active = true
+    const entryRequest = entryRequestRef.current || refetch()
+    entryRequestRef.current = entryRequest
+    const finishEntry = () => {
+      if (active) setEntryPending(false)
+    }
+    void entryRequest.then(finishEntry, finishEntry)
+    return () => {
+      active = false
+    }
+  }, [refetch])
+
+  return <SupportersPanel supporters={supporters} isLoading={entryPending || isFetching} unavailable={isError || isRefetchError} t={t} />
 }
 
 
