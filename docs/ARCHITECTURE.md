@@ -185,8 +185,9 @@ Current flow:
 3. Gemini extracts name, split collector number, printed total, set code, regulation mark, type, HP, language, and artist. Unclear small text must be returned as `null`.
 4. TCGdex candidates are searched in the detected language with English fallback and ranked deterministically by local number, language, printed total, set code, regulation mark, artist, and HP. Missing fields are neutral; contradictions reduce rank.
 5. When metadata remains inconclusive, conservative pHash compares the original photo with a bounded candidate set. It accepts only a close, clearly separated winner with no metadata contradiction.
-6. Individual scans may use a second Gemini visual comparison if pHash abstains. Composite scans instead return to the individual queue path.
-7. Results are persisted in the `/scans` review inbox. Confirming or dismissing an item deletes its queued photo; unresolved jobs expire after 14 days.
+6. If pHash abstains, a second colour-aware artwork pass (structural hashes plus a colour hash, weighted) tries the same bounded candidate set under the same contradiction guard — colour differences separate same-artwork reprints that a single structural hash misses.
+7. Individual scans may use a third Gemini visual comparison if pHash and the artwork pass both abstain. Composite scans instead return to the individual queue path.
+8. Results are persisted in the `/scans` review inbox. Confirming or dismissing an item deletes its queued photo; unresolved jobs expire after 14 days.
 
 `backend/services/scan_queue.py` provides fair, restart-safe background dispatch with leases. Recognition attempts are capped separately from transient quota failures. `backend/services/gemini_rate_limit.py` shares quota state by API-key fingerprint so concurrent users of the same key cannot bypass a provider delay; distinct keys remain independent. Structured daily-quota signals are separated from short-term limits, and provider `Retry-After` / `google.rpc.RetryInfo` delays take precedence over fallback backoff.
 
