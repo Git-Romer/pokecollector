@@ -167,7 +167,7 @@ Defined in `frontend/src/components/TabNav.jsx`.
   - backup and restore
   - Community sections for contributors and supporters
 
-The supporter section calls the installation's own `/api/community/supporters` endpoint only while the view is mounted. It refetches every 60 seconds, keeps no persistent browser cache, and immediately replaces previously rendered names with a temporary unavailable state after any failed refresh. The browser never calls the public website registry directly.
+The supporter section calls the installation's own `/api/community/supporters` endpoint once whenever the Community view is entered. It retains the last valid result only in the browser's in-memory query cache, hides that cache while the entry fetch is pending or after it fails, and performs no timed, background, or focus-based refreshes. The browser never calls the public website registry directly, and no supporter projection is persisted by the installation.
 
 ## Card UI
 
