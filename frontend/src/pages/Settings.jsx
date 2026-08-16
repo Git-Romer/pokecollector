@@ -194,8 +194,8 @@ const CURRENCY_SYMBOLS = {
   GBP: '£',
 }
 
-function formatSupporterAmount(amount, currency = 'EUR') {
-  const numericAmount = Number(amount || 0)
+function formatSupporterAmount(amountCents, currency = 'EUR') {
+  const numericAmount = Number(amountCents || 0) / 100
   const safeCurrency = currency || 'EUR'
   const formattedAmount = Number.isFinite(numericAmount) ? numericAmount.toFixed(2) : '0.00'
   const symbol = CURRENCY_SYMBOLS[safeCurrency]
@@ -204,6 +204,7 @@ function formatSupporterAmount(amount, currency = 'EUR') {
 }
 
 function SupporterCard({ supporter, t }) {
+  const support = supporter.support
   const content = (
     <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-bg-elevated border border-border text-left transition-colors hover:border-brand-red/50">
       {supporter.crown && (
@@ -217,13 +218,13 @@ function SupporterCard({ supporter, t }) {
       )}
       <div className="min-w-0">
         <p className="text-xs font-semibold text-text-primary truncate">{supporter.name}</p>
-        {supporter.show_amount && (
+        {support && (
           <p className="text-[11px] text-text-secondary">
-            {formatSupporterAmount(supporter.total_amount, supporter.currency)} · {supporter.donation_count || 0} {supporter.donation_count === 1 ? t('settings.supporterDonation') : t('settings.supporterDonations')}
+            {formatSupporterAmount(support.total_amount_cents, support.currency)} · {support.donation_count} {support.donation_count === 1 ? t('settings.supporterDonation') : t('settings.supporterDonations')}
           </p>
         )}
-        {supporter.latest_supported_at && (
-          <p className="text-[10px] text-text-muted">{t('settings.latestSupport')}: {supporter.latest_supported_at}</p>
+        {support?.latest_supported_on && (
+          <p className="text-[10px] text-text-muted">{t('settings.latestSupport')}: {support.latest_supported_on}</p>
         )}
       </div>
     </div>
@@ -240,18 +241,22 @@ function SupporterCard({ supporter, t }) {
   return <div className="min-w-[180px] flex-1 max-w-xs">{content}</div>
 }
 
-function SupportersSection({ t }) {
-  const { data: supporters = [], isLoading } = useQuery({
-    queryKey: ['supporters'],
-    queryFn: () => getSupporters(),
-    staleTime: 60 * 60 * 1000,
-  })
-
+export function SupportersPanel({ supporters = [], isLoading = false, unavailable = false, t }) {
   if (isLoading) {
     return (
       <SettingsCard>
         <div className="p-4 flex justify-center">
           <div className="skeleton h-8 w-48 rounded" />
+        </div>
+      </SettingsCard>
+    )
+  }
+
+  if (unavailable) {
+    return (
+      <SettingsCard>
+        <div className="p-4 text-center">
+          <p className="text-sm text-text-muted">{t('settings.supportersUnavailable')}</p>
         </div>
       </SettingsCard>
     )
@@ -278,6 +283,26 @@ function SupportersSection({ t }) {
       </div>
     </SettingsCard>
   )
+}
+
+export function supporterQueryOptions(queryFn = getSupporters) {
+  return {
+    queryKey: ['supporters'],
+    queryFn,
+    retry: false,
+    staleTime: 0,
+    gcTime: 0,
+    refetchInterval: 60 * 1000,
+    refetchIntervalInBackground: false,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: 'always',
+    networkMode: 'always',
+  }
+}
+
+function SupportersSection({ t }) {
+  const { data: supporters = [], isLoading, isError, isRefetchError } = useQuery(supporterQueryOptions())
+  return <SupportersPanel supporters={supporters} isLoading={isLoading} unavailable={isError || isRefetchError} t={t} />
 }
 
 
