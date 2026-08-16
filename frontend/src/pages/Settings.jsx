@@ -195,12 +195,41 @@ const CURRENCY_SYMBOLS = {
 }
 
 function formatSupporterAmount(amountCents, currency = 'EUR') {
-  const numericAmount = Number(amountCents || 0) / 100
+  const cents = typeof amountCents === 'bigint' ? amountCents : BigInt(amountCents || 0)
   const safeCurrency = currency || 'EUR'
-  const formattedAmount = Number.isFinite(numericAmount) ? numericAmount.toFixed(2) : '0.00'
+  const formattedAmount = `${cents / 100n}.${String(cents % 100n).padStart(2, '0')}`
   const symbol = CURRENCY_SYMBOLS[safeCurrency]
   if (symbol) return `${symbol}${formattedAmount}`
   return `${formattedAmount} ${safeCurrency}`
+}
+
+export function summarizeSupporters(supporters = []) {
+  const amountTotals = new Map()
+  let donationCount = 0n
+  let hasMixedCurrency = false
+
+  for (const supporter of supporters) {
+    if (!supporter.support) continue
+    const support = supporter.support
+    donationCount += BigInt(support.donation_count)
+    if (support.currency === 'MIXED') {
+      hasMixedCurrency = true
+      continue
+    }
+    amountTotals.set(
+      support.currency,
+      (amountTotals.get(support.currency) || 0n) + BigInt(support.total_amount_cents),
+    )
+  }
+
+  return {
+    supporterCount: supporters.length,
+    donationCount,
+    amountTotals: [...amountTotals.entries()]
+      .sort(([leftCurrency], [rightCurrency]) => leftCurrency.localeCompare(rightCurrency))
+      .map(([currency, amountCents]) => ({ currency, amountCents })),
+    hasMixedCurrency,
+  }
 }
 
 function SupporterCard({ supporter, t }) {
@@ -272,9 +301,27 @@ export function SupportersPanel({ supporters = [], isLoading = false, unavailabl
     )
   }
 
+  const summary = summarizeSupporters(supporters)
+  const supporterLabel = summary.supporterCount === 1 ? t('settings.supporter') : t('settings.supporterPlural')
+  const donationLabel = summary.donationCount === 1n ? t('settings.supporterDonation') : t('settings.supporterDonations')
+
   return (
     <SettingsCard>
       <div className="p-4">
+        <div className="mb-4 pb-4 border-b border-border flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-text-secondary">
+          <span><strong className="text-text-primary">{summary.supporterCount}</strong> {supporterLabel}</span>
+          <span><strong className="text-text-primary">{summary.donationCount.toString()}</strong> {donationLabel}</span>
+          {summary.amountTotals.length > 0 && (
+            <span>
+              <strong className="text-text-primary">
+                {summary.amountTotals
+                  .map(({ currency, amountCents }) => formatSupporterAmount(amountCents, currency))
+                  .join(' + ')}
+              </strong>{' '}{t('settings.totalSupport')}
+            </span>
+          )}
+          {summary.hasMixedCurrency && <span>{t('settings.mixedCurrencySupport')}</span>}
+        </div>
         <div className="flex flex-wrap gap-3 justify-center">
           {supporters.map((supporter, index) => (
             <SupporterCard key={`${supporter.name}-${supporter.url || index}`} supporter={supporter} t={t} />

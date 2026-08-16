@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { QueryClient, QueryObserver } from '@tanstack/react-query'
 import { describe, expect, it } from 'vitest'
 
-import { supporterQueryOptions, SupportersPanel } from './Settings'
+import { supporterQueryOptions, summarizeSupporters, SupportersPanel } from './Settings'
 
 
 const translations = {
@@ -10,6 +10,11 @@ const translations = {
   'settings.supportersUnavailable': 'Supporters unavailable',
   'settings.supporterDonation': 'donation',
   'settings.supporterDonations': 'donations',
+  'settings.supporter': 'supporter',
+  'settings.supporterPlural': 'supporters',
+  'settings.supporters': 'supporters',
+  'settings.totalSupport': 'total support',
+  'settings.mixedCurrencySupport': 'plus mixed-currency support',
   'settings.latestSupport': 'Latest support',
 }
 
@@ -28,6 +33,119 @@ const supporter = {
 }
 
 describe('SupportersPanel', () => {
+  it('summarizes supporter, donation, and per-currency amount totals exactly', () => {
+    const summary = summarizeSupporters([
+      supporter,
+      {
+        ...supporter,
+        name: 'Second Trainer',
+        support: {
+          total_amount_cents: 250,
+          currency: 'USD',
+          donation_count: 1,
+          latest_supported_on: null,
+        },
+      },
+      { ...supporter, name: 'Manual Trainer', support: null },
+      {
+        ...supporter,
+        name: 'Mixed Trainer',
+        support: {
+          total_amount_cents: 500,
+          currency: 'MIXED',
+          donation_count: 3,
+          latest_supported_on: null,
+        },
+      },
+    ])
+
+    expect(summary).toEqual({
+      supporterCount: 4,
+      donationCount: 6n,
+      amountTotals: [
+        { currency: 'EUR', amountCents: 1050n },
+        { currency: 'USD', amountCents: 250n },
+      ],
+      hasMixedCurrency: true,
+    })
+  })
+
+  it('keeps totals exact when individually safe amounts exceed the safe range together', () => {
+    const summary = summarizeSupporters([
+      {
+        ...supporter,
+        name: 'First Trainer',
+        support: {
+          total_amount_cents: Number.MAX_SAFE_INTEGER,
+          currency: 'EUR',
+          donation_count: Number.MAX_SAFE_INTEGER,
+          latest_supported_on: null,
+        },
+      },
+      {
+        ...supporter,
+        name: 'Second Trainer',
+        support: {
+          total_amount_cents: Number.MAX_SAFE_INTEGER,
+          currency: 'EUR',
+          donation_count: Number.MAX_SAFE_INTEGER,
+          latest_supported_on: null,
+        },
+      },
+    ])
+
+    expect(summary.donationCount).toBe(18014398509481982n)
+    expect(summary.amountTotals).toEqual([
+      { currency: 'EUR', amountCents: 18014398509481982n },
+    ])
+  })
+
+  it('renders supporter, donation, and currency-safe totals above the cards', () => {
+    const html = renderToStaticMarkup(
+      <SupportersPanel
+        supporters={[
+          supporter,
+          {
+            ...supporter,
+            name: 'Second Trainer',
+            support: {
+              total_amount_cents: 250,
+              currency: 'USD',
+              donation_count: 1,
+              latest_supported_on: null,
+            },
+          },
+        ]}
+        t={t}
+      />,
+    )
+    expect(html).toContain('2</strong> supporters')
+    expect(html).toContain('3</strong> donations')
+    expect(html).toContain('€10.50 + $2.50')
+    expect(html).toContain('total support')
+  })
+
+  it('labels mixed-currency support without presenting it as a combined total', () => {
+    const html = renderToStaticMarkup(
+      <SupportersPanel
+        supporters={[
+          {
+            ...supporter,
+            support: {
+              total_amount_cents: 500,
+              currency: 'MIXED',
+              donation_count: 1,
+              latest_supported_on: null,
+            },
+          },
+        ]}
+        t={t}
+      />,
+    )
+    expect(html).toContain('plus mixed-currency support')
+    expect(html).not.toContain('total support')
+  })
+
   it('disables every automatic refetch trigger while retaining the in-memory session cache', () => {
     const options = supporterQueryOptions(() => Promise.resolve([]))
     expect(options.enabled).toBe(false)
