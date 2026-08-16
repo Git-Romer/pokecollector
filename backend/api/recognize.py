@@ -12,6 +12,7 @@ from email.utils import parsedate_to_datetime
 from functools import lru_cache
 from urllib.parse import urlparse
 from services.tcgdex_languages import is_supported_tcgdex_language, normalize_tcgdex_language
+from services.card_field_cleanup import clean_card_info, energy_search_name
 from services.gemini_rate_limit import (
     GeminiKeyBlockedError,
     acquire_gemini_slot,
@@ -96,27 +97,44 @@ def prioritize_cards_by_number(
     return matches + rest, len(matches)
 
 
+def _card_set_id(card: dict) -> str:
+    """TCGdex set id from a raw search-result card id: 'mee-006' -> 'mee'."""
+    card_id = str(card.get("id") or "")
+    return card_id.rsplit("-", 1)[0] if "-" in card_id else ""
+
+
 def select_search_candidates(
     cards: list[dict],
     recognized_number,
     *,
     number_field: str = "number",
+    set_ids: frozenset[str] | None = None,
     baseline_limit: int = 8,
     matching_extra_limit: int = 4,
 ) -> list[dict]:
-    """Keep baseline search results and append bounded number matches."""
+    """Keep baseline search results and append bounded number/set matches.
+
+    TCGdex sorts name search results by card number, so anything numbered
+    above the baseline slice is silently discarded. A set code narrows the
+    printing just as well as a number does — a real Energy card with its
+    number misread but its set code read correctly was otherwise lost from
+    a 51-result search in favour of unrelated printings sorted ahead of it.
+    """
     selected = list(cards[:baseline_limit])
     for card in selected:
         card["_number_extra"] = False
     target = normalize_scanner_card_number(recognized_number)
-    if not target:
+    set_ids = set_ids or frozenset()
+    if not target and not set_ids:
         return selected
     extras = 0
     selected_ids = {id(card) for card in selected}
     for card in cards[baseline_limit:]:
         if extras >= matching_extra_limit:
             break
-        if normalize_scanner_card_number(card.get(number_field)) != target:
+        number_hit = bool(target) and normalize_scanner_card_number(card.get(number_field)) == target
+        set_hit = bool(set_ids) and _card_set_id(card) in set_ids
+        if not (number_hit or set_hit):
             continue
         if id(card) not in selected_ids:
             card["_number_extra"] = True
@@ -773,13 +791,31 @@ async def _search_and_rank_candidates(
     language = normalize_tcgdex_language(card_info.get("language", "en"))
     if not is_supported_tcgdex_language(language):
         language = "en"
-    search_pairs = [(language, simple_name)]
+    search_pairs = []
+    # A basic Energy card prints only "Basic Energy" or "Energy"; TCGdex names
+    # the same card "Water Energy". Searching the printed text returns nothing
+    # (or a grab-bag of every element mixed together), so when the symbol gave
+    # us a concrete type, search that name first instead.
+    energy_name = energy_search_name(card_info)
+    if energy_name:
+        search_pairs.append(("en", energy_name))
+    search_pairs.append((language, simple_name))
     if simple_name != card_name:
         search_pairs.append((language, card_name))
     if language != "en":
         search_pairs.append(("en", simple_name_en))
         if simple_name_en != card_name_en:
             search_pairs.append(("en", card_name_en))
+
+    # A recognized set code narrows the printing as well as a number does, and
+    # deserves the same protection from the per-search head slice.
+    prefilter_set_ids: frozenset[str] = frozenset()
+    set_code = str(card_info.get("set_code") or "").strip().upper() or None
+    if set_code:
+        rows = db.query(Set.tcg_set_id).filter(
+            Set.abbreviation.in_({set_code, set_code.lower()})
+        ).all()
+        prefilter_set_ids = frozenset(row[0] for row in rows if row[0])
 
     candidates = []
     for search_language, search_name in search_pairs:
@@ -805,6 +841,7 @@ async def _search_and_rank_candidates(
                 cards,
                 card_info.get("number_local"),
                 number_field="localId",
+                set_ids=prefilter_set_ids,
             )
             for card in selected_cards:
                 card_id = card.get("id")
@@ -892,7 +929,7 @@ async def match_card_info(
     trace: ScanTrace | None = None,
 ) -> dict:
     """Shared deterministic matcher for both individual and composite scans."""
-    card_info = normalize_recognized_card_info(card_info)
+    card_info = clean_card_info(normalize_recognized_card_info(card_info))
     candidates, number_match_count = await _search_and_rank_candidates(db, card_info, trace)
     confident, decision = _metadata_decision(card_info, candidates)
 
