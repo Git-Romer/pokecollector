@@ -950,6 +950,7 @@ const de = {
     supporters: 'Unterstützer',
     sponsors: 'Unterstützen',
     noSupportersYet: 'Noch keine Unterstützer. Sei der Erste! ❤️',
+    supportersUnavailable: 'Die Unterstützerliste ist vorübergehend nicht verfügbar.',
     supporterDonation: 'Spende',
     supporterDonations: 'Spenden',
     latestSupport: 'Letzte Unterstützung',

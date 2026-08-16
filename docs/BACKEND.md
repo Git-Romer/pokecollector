@@ -103,7 +103,7 @@ Custom cards belong to exactly one user. Owners may publish a card as a shared t
 | GET | `/api/social/compare/{user_id}` | Multi-user comparison |
 | GET | `/api/social/achievements/{user_id}` | Achievement progress |
 | GET | `/api/github/contributors` | Public GitHub contributors feed |
-| GET | `/api/github/supporters` | Supporters from `SUPPORTERS.csv` |
+| GET | `/api/community/supporters` | Fresh, strictly validated public supporter registry projection; returns `503` with `Cache-Control: no-store` on any upstream or validation failure |
 | GET | `/api/github/rescue-donations` | Rescue donation total from `RESCUE_DONATIONS.csv` |
 
 ### Products, Export, Backup, Sync, Settings

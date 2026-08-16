@@ -70,7 +70,6 @@ pokecollector/
 │   │   └── pages/
 │   └── index.html
 ├── docs/
-├── SUPPORTERS.csv
 ├── docker-compose.yml
 └── README.md
 ```
@@ -239,8 +238,10 @@ Current frontend state layers:
 ### GitHub / Community
 
 - `backend/api/github.py` fetches contributors from the GitHub API
-- Supporters are read from `SUPPORTERS.csv`
-- `frontend/src/pages/Settings.jsx` renders both in the Community section
+- `backend/api/community.py` is the only client of the versioned public supporter registry at `pokecollector.romerg.de`
+- Supporter responses are size-bounded and strictly validated before use; unknown fields, unsafe values, malformed responses, redirects, and upstream failures are rejected
+- Supporter data is not persisted or served from a fallback. The visible Community view refetches every 60 seconds and hides stale data immediately after a failed refresh
+- `frontend/src/pages/Settings.jsx` renders contributors and the validated supporter projection in the Community section
 
 ## Security Notes
 
