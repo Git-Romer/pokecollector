@@ -7,7 +7,10 @@ on:
       - README.md
       - frontend/package.json
       - frontend/package-lock.json
+      - docker-compose.yml
       - scripts/check-version.mjs
+      - scripts/check-compose-ports.mjs
+      - scripts/check-compose-ports.test.mjs
       - .github/workflows/release.yml
       - .github/workflows/version-check.yml
   push:
@@ -18,7 +21,10 @@ on:
       - README.md
       - frontend/package.json
       - frontend/package-lock.json
+      - docker-compose.yml
       - scripts/check-version.mjs
+      - scripts/check-compose-ports.mjs
+      - scripts/check-compose-ports.test.mjs
       - .github/workflows/release.yml
       - .github/workflows/version-check.yml
   workflow_dispatch:
@@ -44,3 +50,9 @@ jobs:
 
       - name: Check version consistency
         run: node scripts/check-version.mjs
+
+      - name: Check compose port mappings
+        run: node scripts/check-compose-ports.mjs
+
+      - name: Check compose port mapping safety
+        run: node --test scripts/check-compose-ports.test.mjs
