@@ -7,7 +7,7 @@ import {
   downloadBackup, restoreBackup, exportCSV,
   getSetting, setSetting, getTelegramStatus, saveSettings, setAuthMode,
   getUsers, createUser, updateUser, deleteUser, changePassword, changeAvatar, changeUsername,
-  getContributors, getSupporters, getRescueDonations, getCustomMatches, downloadDebugLog,
+  getContributors, getSupporters, getCustomMatches, downloadDebugLog,
   getProfile, updateProfile, deleteScanDiagnostics,
   deleteAllCollectionCardPhotos,
 } from '../api/client'
@@ -195,16 +195,46 @@ const CURRENCY_SYMBOLS = {
   GBP: '£',
 }
 
-function formatSupporterAmount(amount, currency = 'EUR') {
-  const numericAmount = Number(amount || 0)
+function formatSupporterAmount(amountCents, currency = 'EUR') {
+  const cents = typeof amountCents === 'bigint' ? amountCents : BigInt(amountCents || 0)
   const safeCurrency = currency || 'EUR'
-  const formattedAmount = Number.isFinite(numericAmount) ? numericAmount.toFixed(2) : '0.00'
+  const formattedAmount = `${cents / 100n}.${String(cents % 100n).padStart(2, '0')}`
   const symbol = CURRENCY_SYMBOLS[safeCurrency]
   if (symbol) return `${symbol}${formattedAmount}`
   return `${formattedAmount} ${safeCurrency}`
 }
 
+export function summarizeSupporters(supporters = []) {
+  const amountTotals = new Map()
+  let donationCount = 0n
+  let hasMixedCurrency = false
+
+  for (const supporter of supporters) {
+    if (!supporter.support) continue
+    const support = supporter.support
+    donationCount += BigInt(support.donation_count)
+    if (support.currency === 'MIXED') {
+      hasMixedCurrency = true
+      continue
+    }
+    amountTotals.set(
+      support.currency,
+      (amountTotals.get(support.currency) || 0n) + BigInt(support.total_amount_cents),
+    )
+  }
+
+  return {
+    supporterCount: supporters.length,
+    donationCount,
+    amountTotals: [...amountTotals.entries()]
+      .sort(([leftCurrency], [rightCurrency]) => leftCurrency.localeCompare(rightCurrency))
+      .map(([currency, amountCents]) => ({ currency, amountCents })),
+    hasMixedCurrency,
+  }
+}
+
 function SupporterCard({ supporter, t }) {
+  const support = supporter.support
   const content = (
     <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-bg-elevated border border-border text-left transition-colors hover:border-brand-red/50">
       {supporter.crown && (
@@ -218,11 +248,13 @@ function SupporterCard({ supporter, t }) {
       )}
       <div className="min-w-0">
         <p className="text-xs font-semibold text-text-primary truncate">{supporter.name}</p>
-        <p className="text-[11px] text-text-secondary">
-          {formatSupporterAmount(supporter.total_amount, supporter.currency)} · {supporter.donation_count || 0} {supporter.donation_count === 1 ? t('settings.supporterDonation') : t('settings.supporterDonations')}
-        </p>
-        {supporter.latest_supported_at && (
-          <p className="text-[10px] text-text-muted">{t('settings.latestSupport')}: {supporter.latest_supported_at}</p>
+        {support && (
+          <p className="text-[11px] text-text-secondary">
+            {formatSupporterAmount(support.total_amount_cents, support.currency)} · {support.donation_count} {support.donation_count === 1 ? t('settings.supporterDonation') : t('settings.supporterDonations')}
+          </p>
+        )}
+        {support?.latest_supported_on && (
+          <p className="text-[10px] text-text-muted">{t('settings.latestSupport')}: {support.latest_supported_on}</p>
         )}
       </div>
     </div>
@@ -239,38 +271,22 @@ function SupporterCard({ supporter, t }) {
   return <div className="min-w-[180px] flex-1 max-w-xs">{content}</div>
 }
 
-function RescueDonationTotal({ t }) {
-  const { data: rescueDonations, isLoading } = useQuery({
-    queryKey: ['rescue-donations'],
-    queryFn: () => getRescueDonations(),
-    staleTime: 60 * 60 * 1000,
-  })
-
-  if (isLoading) {
-    return <div className="skeleton h-14 w-full max-w-xs mx-auto rounded-xl" />
-  }
-
-  return (
-    <div className="inline-flex flex-col items-center gap-1 px-4 py-2 rounded-xl bg-bg-elevated border border-border">
-      <span className="text-[10px] font-black uppercase tracking-[0.18em] text-text-muted">{t('settings.rescueDonationTotal')}</span>
-      <span className="text-lg font-black text-text-primary">{formatSupporterAmount(rescueDonations?.total_amount || 0, rescueDonations?.currency || 'EUR')}</span>
-      <span className="text-[10px] text-text-muted">{t('settings.rescueDonationBatchHint')}</span>
-    </div>
-  )
-}
-
-function SupportersSection({ t }) {
-  const { data: supporters = [], isLoading } = useQuery({
-    queryKey: ['supporters'],
-    queryFn: () => getSupporters(),
-    staleTime: 60 * 60 * 1000,
-  })
-
+export function SupportersPanel({ supporters = [], isLoading = false, unavailable = false, t }) {
   if (isLoading) {
     return (
       <SettingsCard>
         <div className="p-4 flex justify-center">
           <div className="skeleton h-8 w-48 rounded" />
+        </div>
+      </SettingsCard>
+    )
+  }
+
+  if (unavailable) {
+    return (
+      <SettingsCard>
+        <div className="p-4 text-center">
+          <p className="text-sm text-text-muted">{t('settings.supportersUnavailable')}</p>
         </div>
       </SettingsCard>
     )
@@ -286,9 +302,27 @@ function SupportersSection({ t }) {
     )
   }
 
+  const summary = summarizeSupporters(supporters)
+  const supporterLabel = summary.supporterCount === 1 ? t('settings.supporter') : t('settings.supporterPlural')
+  const donationLabel = summary.donationCount === 1n ? t('settings.supporterDonation') : t('settings.supporterDonations')
+
   return (
     <SettingsCard>
       <div className="p-4">
+        <div className="mb-4 pb-4 border-b border-border flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-text-secondary">
+          <span><strong className="text-text-primary">{summary.supporterCount}</strong> {supporterLabel}</span>
+          <span><strong className="text-text-primary">{summary.donationCount.toString()}</strong> {donationLabel}</span>
+          {summary.amountTotals.length > 0 && (
+            <span>
+              <strong className="text-text-primary">
+                {summary.amountTotals
+                  .map(({ currency, amountCents }) => formatSupporterAmount(amountCents, currency))
+                  .join(' + ')}
+              </strong>{' '}{t('settings.totalSupport')}
+            </span>
+          )}
+          {summary.hasMixedCurrency && <span>{t('settings.mixedCurrencySupport')}</span>}
+        </div>
         <div className="flex flex-wrap gap-3 justify-center">
           {supporters.map((supporter, index) => (
             <SupporterCard key={`${supporter.name}-${supporter.url || index}`} supporter={supporter} t={t} />
@@ -297,6 +331,45 @@ function SupportersSection({ t }) {
       </div>
     </SettingsCard>
   )
+}
+
+export function supporterQueryOptions(queryFn = getSupporters) {
+  return {
+    queryKey: ['supporters'],
+    queryFn,
+    enabled: false,
+    retry: false,
+    staleTime: 0,
+    gcTime: Infinity,
+    refetchInterval: false,
+    refetchIntervalInBackground: false,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    networkMode: 'always',
+  }
+}
+
+function SupportersSection({ t }) {
+  // Reuse one entry request across React StrictMode's effect replay, but not across real remounts.
+  const entryRequestRef = useRef(null)
+  const [entryPending, setEntryPending] = useState(true)
+  const { data: supporters = [], refetch, isFetching, isError, isRefetchError } = useQuery(supporterQueryOptions())
+
+  useEffect(() => {
+    let active = true
+    const entryRequest = entryRequestRef.current || refetch()
+    entryRequestRef.current = entryRequest
+    const finishEntry = () => {
+      if (active) setEntryPending(false)
+    }
+    void entryRequest.then(finishEntry, finishEntry)
+    return () => {
+      active = false
+    }
+  }, [refetch])
+
+  return <SupportersPanel supporters={supporters} isLoading={entryPending || isFetching} unavailable={isError || isRefetchError} t={t} />
 }
 
 
@@ -312,6 +385,9 @@ export default function Settings() {
   const navigate = useNavigate()
   const { user, updateCurrentUser, multiUser, modeLocked } = useAuth()
   const { settings, updateSettings, t, pricePrimaryField, exchangeRate } = useSettings()
+  const supportPageUrl = settings.language === 'de'
+    ? 'https://pokecollector.romerg.de/de/#support'
+    : 'https://pokecollector.romerg.de/#support'
   const confirmDialog = useConfirmDialog()
   const publicProfilesEnabled = settings.public_profiles_enabled === 'true'
   const { theme, setTheme, themes } = useTheme()
@@ -1565,20 +1641,14 @@ export default function Settings() {
             <SettingsCard>
               <div className="p-4 text-center space-y-3">
                 <p className="text-2xl">🐾</p>
-                <p className="text-sm text-text-secondary">
-                  {t('settings.sponsorMessage')}
-                </p>
-                <RescueDonationTotal t={t} />
-                <p className="text-xs text-text-muted">
-                  {t('settings.kofiHint')}
-                </p>
+                <p className="text-sm font-semibold text-text-secondary">PokéCollector × Tierrettung Köln-Porz</p>
                 <a
-                  href="https://ko-fi.com/gillesromer"
+                  href={supportPageUrl}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-brand-red text-white text-sm font-semibold hover:opacity-90 transition-opacity"
                 >
-                  ☕ {t('settings.kofiButton')}
+                  🐾 Betterplace
                 </a>
               </div>
             </SettingsCard>

@@ -168,6 +168,8 @@ Defined in `frontend/src/components/TabNav.jsx`.
   - backup and restore
   - Community sections for contributors and supporters
 
+The supporter section calls the installation's own `/api/community/supporters` endpoint once whenever the Community view is entered. It retains the last valid result only in the browser's in-memory query cache, hides that cache while the entry fetch is pending or after it fails, and performs no timed, background, or focus-based refreshes. Above the supporter cards it shows the supporter count, combined donation count, and exact known-currency totals grouped by currency; mixed-currency records are identified instead of being combined into a misleading amount. The browser never calls the public website registry directly, and no supporter projection is persisted by the installation.
+
 ## Card UI
 
 ### Shared card system
