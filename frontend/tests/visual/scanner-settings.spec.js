@@ -58,7 +58,7 @@ const scannerConfiguration = {
   },
 }
 
-async function installApi(page, user = USER) {
+async function installApi(page, user = USER, initialConfiguration = scannerConfiguration) {
   await page.addInitScript(user => {
     localStorage.setItem('token', 'scanner-settings-token')
     localStorage.setItem('user', JSON.stringify(user))
@@ -67,7 +67,7 @@ async function installApi(page, user = USER) {
 
   let savedBody = null
   let testedBody = null
-  let currentConfiguration = structuredClone(scannerConfiguration)
+  let currentConfiguration = structuredClone(initialConfiguration)
   await page.route('**/api/**', async route => {
     const request = route.request()
     const path = new URL(request.url()).pathname
@@ -110,6 +110,7 @@ async function installApi(page, user = USER) {
           provider: testedBody.provider,
           model: testedBody.model,
           status: 'ready',
+          visual_verification: testedBody.accept_degraded_visual_verification ? 'disabled' : 'automatic',
           providers: currentConfiguration.providers.map(item => ({
             ...item,
             selected_model: item.id === chosen.id ? testedBody.model : item.selected_model,
@@ -362,6 +363,32 @@ test('shows a persistent warning for an active limited scanner model', async ({ 
   await page.getByRole('combobox', { name: /^Model/ }).selectOption('vision-accurate')
   await expect(page.getByText('Retest required', { exact: true })).toBeVisible()
   await expect(page.getByText('Limited scanner mode', { exact: true }).first()).toBeVisible()
+})
+
+test('a successful unchanged retest upgrades and saves limited mode', async ({ page }) => {
+  const limitedConfiguration = {
+    ...scannerConfiguration,
+    provider: 'openai',
+    model: 'vision-fast',
+    visual_verification: 'disabled',
+    providers: scannerConfiguration.providers.map(item => item.id === 'openai'
+      ? { ...item, selected_model: 'vision-fast' }
+      : item),
+  }
+  const api = await installApi(page, USER, limitedConfiguration)
+  await page.goto('/settings')
+
+  await expect(page.getByText('Limited scanner mode', { exact: true }).first()).toBeVisible()
+  await page.getByRole('button', { name: 'Test connection' }).click()
+
+  await expect.poll(api.testedBody).toMatchObject({
+    provider: 'openai',
+    model: 'vision-fast',
+    save_on_success: true,
+    accept_degraded_visual_verification: false,
+  })
+  await expect(page.getByText('Scanner configuration saved')).toBeVisible()
+  await expect(page.getByText('Limited scanner mode', { exact: true })).toHaveCount(0)
 })
 
 test('shows the limited-mode warning inside the card scanner', async ({ page }) => {

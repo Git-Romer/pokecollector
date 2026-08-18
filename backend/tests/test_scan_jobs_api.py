@@ -193,6 +193,29 @@ class ScanJobsApiTests(unittest.TestCase):
         self.assertEqual(self.db.query(ScanJob).count(), 0)
         drain.assert_not_awaited()
 
+    def test_disabled_selected_provider_blocks_enqueue_before_upload_is_persisted(self):
+        self.db.add(
+            UserSetting(
+                user_id=self.user.id,
+                key="scanner_provider",
+                value="openai",
+            )
+        )
+        self.db.commit()
+
+        with patch.dict(os.environ, {"OPENAI_SCANNER_ENABLED": "false"}), patch(
+            "api.scan_jobs.drain_scan_queue", new=AsyncMock(return_value=0)
+        ) as drain:
+            response = self.client.post(
+                "/api/cards/recognize/jobs",
+                files={"files": ("card.jpg", _jpeg_bytes(), "image/jpeg")},
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("no longer enabled", response.json()["detail"])
+        self.assertEqual(self.db.query(ScanJob).count(), 0)
+        drain.assert_not_awaited()
+
     def test_resolve_deletes_photo_and_removes_fully_handled_job_from_inbox(self):
         created = self._enqueue()
         item = self.db.query(ScanJobItem).filter(ScanJobItem.job_id == created["id"]).one()

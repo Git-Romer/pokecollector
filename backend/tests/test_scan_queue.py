@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 try:
+    from fastapi import HTTPException
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy.pool import StaticPool
@@ -93,6 +94,16 @@ class ScanQueueTests(unittest.TestCase):
         self.db.commit()
         return job
 
+    def _select_openai_then_disable_it(self, user):
+        self.db.add(
+            UserSetting(
+                user_id=user.id,
+                key="scanner_provider",
+                value="openai",
+            )
+        )
+        self.db.commit()
+
     def test_dispatch_rotates_between_users(self):
         self._job(self.users[0], positions=(0, 1))
         self._job(self.users[1], positions=(0,))
@@ -163,6 +174,58 @@ class ScanQueueTests(unittest.TestCase):
 
         self.assertIn("Test and save", str(caught.exception))
         recognize.assert_not_awaited()
+
+    def test_disabled_selected_provider_blocks_already_queued_individual_photo(self):
+        user = self.users[0]
+        self._select_openai_then_disable_it(user)
+        generate = AsyncMock()
+
+        with patch.dict(os.environ, {"OPENAI_SCANNER_ENABLED": "false"}), patch.object(
+            ScanProvider, "generate_text", new=generate
+        ), self.assertRaises(HTTPException) as caught:
+            asyncio.run(
+                scan_queue.default_scan_processor(
+                    self.db,
+                    user.id,
+                    b"stored-card-photo",
+                    "image/jpeg",
+                    job_id=12,
+                    item_id=34,
+                )
+            )
+
+        self.assertEqual(caught.exception.status_code, 409)
+        self.assertIsInstance(
+            scan_queue._scan_error_from_http(caught.exception),
+            scan_queue.PermanentScanError,
+        )
+        generate.assert_not_awaited()
+
+    def test_disabled_selected_provider_blocks_already_queued_composite_photos(self):
+        user = self.users[0]
+        self._select_openai_then_disable_it(user)
+        generate = AsyncMock()
+
+        with patch.dict(os.environ, {"OPENAI_SCANNER_ENABLED": "false"}), patch.object(
+            ScanProvider, "generate_text", new=generate
+        ), self.assertRaises(HTTPException) as caught:
+            asyncio.run(
+                scan_queue.default_composite_processor(
+                    self.db,
+                    user.id,
+                    [b"first-photo", b"second-photo"],
+                    ["image/jpeg", "image/jpeg"],
+                    job_id=12,
+                    item_ids=[34, 35],
+                )
+            )
+
+        self.assertEqual(caught.exception.status_code, 409)
+        self.assertIsInstance(
+            scan_queue._scan_error_from_http(caught.exception),
+            scan_queue.PermanentScanError,
+        )
+        generate.assert_not_awaited()
 
     def test_unclear_composite_position_retries_without_confident_siblings(self):
         self._job(self.users[0], positions=(0, 1, 2, 3))

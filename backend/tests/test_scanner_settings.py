@@ -28,6 +28,7 @@ try:
     from services.scan_providers import (
         ProviderRequestRejectedError,
         SCANNER_CAPABILITY_DEGRADED,
+        SCANNER_CAPABILITY_FULL,
         ScanProvider,
         get_provider,
         scanner_capability_mode,
@@ -408,6 +409,50 @@ class ScannerConfigurationTests(unittest.TestCase):
         self.assertEqual(result["status"], "degraded_confirmation_required")
         self.assertEqual(generate.await_count, 2)
         self.assertEqual(self._rows(), {})
+
+    def test_successful_retest_upgrades_a_saved_degraded_proof(self):
+        env = {
+            "OPENAI_SCANNER_ENABLED": "true",
+            "OPENAI_MODEL": "improved-model",
+            "OPENAI_BASE_URL": "http://model-host:11434/v1",
+        }
+        degraded_request = ScannerConfigurationUpdate(
+            provider="openai",
+            model="improved-model",
+            save_on_success=True,
+            accept_degraded_visual_verification=True,
+        )
+        with patch.dict(os.environ, env), patch.object(
+            ScanProvider,
+            "generate_text",
+            new=AsyncMock(side_effect=[("GREEN-MAGENTA", None), ("MAGENTA", None)]),
+        ):
+            first = asyncio.run(
+                run_scanner_configuration_test(degraded_request, self.db, self.user)
+            )
+        self.assertEqual(first["status"], "degraded")
+
+        full_request = ScannerConfigurationUpdate(
+            provider="openai",
+            model="improved-model",
+            save_on_success=True,
+        )
+        with patch.dict(os.environ, env), patch.object(
+            ScanProvider,
+            "generate_text",
+            new=AsyncMock(return_value=("MAGENTA-GREEN", None)),
+        ):
+            second = asyncio.run(
+                run_scanner_configuration_test(full_request, self.db, self.user)
+            )
+            mode = scanner_capability_mode(
+                self.db, self.user.id, "openai", "improved-model"
+            )
+            config = _scanner_configuration(self.db, self.user.id)
+
+        self.assertEqual(second["status"], "ready")
+        self.assertEqual(mode, SCANNER_CAPABILITY_FULL)
+        self.assertEqual(config["visual_verification"], "automatic")
 
     def test_generic_provider_rejection_does_not_claim_limited_capability(self):
         env = {

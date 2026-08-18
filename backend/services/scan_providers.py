@@ -271,12 +271,19 @@ def resolve_model(db: Session, user_id: int | None, provider: str) -> str:
     return models[0] if models else ""
 
 
-def resolve_provider_name(db: Session, user_id: int | None) -> str:
-    """Which provider this user scans with, defaulting to Gemini.
+def resolve_provider_name(
+    db: Session,
+    user_id: int | None,
+    *,
+    require_enabled: bool = False,
+) -> str:
+    """Which provider this user selected, defaulting legacy values to Gemini.
 
     An unrecognised stored value falls back rather than raising: settings validation
     rejects bad input at write time, and a scan is the wrong place to fail over a
-    configuration typo.
+    configuration typo. A recognised provider that an administrator later disables
+    may fall back only while rendering Settings. Runtime provider resolution fails
+    closed so a card photo can never be rerouted to another provider silently.
     """
     if user_id is None:
         return GEMINI
@@ -287,7 +294,19 @@ def resolve_provider_name(db: Session, user_id: int | None) -> str:
     )
     value = (row.value if row else "") or ""
     value = value.strip().lower()
-    return value if value in enabled_providers() else GEMINI
+    if value not in {GEMINI, OPENAI}:
+        return GEMINI
+    if value not in enabled_providers():
+        if require_enabled:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Your selected scanner provider is no longer enabled. Choose and "
+                    "test an available provider in Scanner Settings before scanning."
+                ),
+            )
+        return GEMINI
+    return value
 
 
 class ProviderRateLimitError(HTTPException):
@@ -743,7 +762,7 @@ class ScanProvider:
 
 
 def get_provider(db: Session, user_id: int | None) -> ScanProvider:
-    name = resolve_provider_name(db, user_id)
+    name = resolve_provider_name(db, user_id, require_enabled=True)
     model = resolve_model(db, user_id, name)
     if not model:
         raise HTTPException(

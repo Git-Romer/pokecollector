@@ -119,6 +119,18 @@ class ProviderResolutionTests(_Fixture, unittest.TestCase):
         self._set("scanner_provider", "openai")
         self.assertEqual(resolve_provider_name(self.db, self.user.id), OPENAI)
 
+    def test_a_disabled_selected_provider_fails_closed_for_scanning(self):
+        self._set("scanner_provider", "openai")
+        with patch.dict(os.environ, {"OPENAI_SCANNER_ENABLED": "false"}), \
+                self.assertRaises(HTTPException) as caught:
+            get_provider(self.db, self.user.id)
+
+        self.assertEqual(caught.exception.status_code, 409)
+        self.assertIn("no longer enabled", caught.exception.detail)
+        # Settings can still render an available choice so the user can recover.
+        with patch.dict(os.environ, {"OPENAI_SCANNER_ENABLED": "false"}):
+            self.assertEqual(resolve_provider_name(self.db, self.user.id), GEMINI)
+
     def test_an_unknown_stored_value_falls_back_rather_than_failing_a_scan(self):
         self._set("scanner_provider", "definitely-not-a-provider")
         self.assertEqual(resolve_provider_name(self.db, self.user.id), GEMINI)

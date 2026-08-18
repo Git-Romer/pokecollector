@@ -86,10 +86,12 @@ export default function ScannerSettingsCard({ t }) {
 
   const testAndSave = async () => {
     setTesting(true)
-    let savedDegraded = false
+    const shouldSave = dirty
+      || data.status === 'retest_required'
+      || data.visual_verification === 'disabled'
+      || acceptDegraded
     try {
       try {
-        const shouldSave = dirty || data.status === 'retest_required' || acceptDegraded
         const result = await testScannerConfiguration(payload(shouldSave))
         if (result.status === 'degraded_confirmation_required') {
           setDegradedAvailable(true)
@@ -99,14 +101,13 @@ export default function ScannerSettingsCard({ t }) {
         }
         setDegradedAvailable(false)
         setAcceptDegraded(false)
-        savedDegraded = result.status === 'degraded'
         setTestStatus(result.status === 'degraded' ? 'degraded_saved' : 'passed')
       } catch (error) {
         setTestStatus('failed')
         toast.error(error?.response?.data?.detail || t('settings.scannerTestFailed'))
         return
       }
-      if (dirty || data.status === 'retest_required' || savedDegraded) {
+      if (shouldSave) {
         try {
           await queryClient.invalidateQueries({ queryKey: ['scanner-configuration'] })
           setDirty(false)

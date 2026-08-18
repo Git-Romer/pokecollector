@@ -484,7 +484,7 @@ def _scan_error_from_http(error: HTTPException) -> RuntimeError:
             retry_after_seconds=getattr(error, "retry_after_seconds", None),
             retry_reason=getattr(error, "retry_reason", None),
         )
-    if error.status_code in {400, 401, 403}:
+    if error.status_code in {400, 401, 403, 409}:
         return PermanentScanError(str(error.detail))
     return RecognitionScanError(str(error.detail))
 
