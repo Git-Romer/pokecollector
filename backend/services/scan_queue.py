@@ -391,7 +391,7 @@ async def default_composite_processor(
         match_composite_card_info,
         recognize_composite_card_info,
     )
-    from services.scan_providers import get_provider
+    from services.scan_providers import get_provider, require_scanner_capability_mode
     from services.card_composite import build_composite
     from services.scan_trace import create_scan_trace
 
@@ -399,6 +399,12 @@ async def default_composite_processor(
     if user is None or not user.is_active:
         raise PermanentScanError("The scan owner is no longer an active user.")
     provider = get_provider(db, user_id)
+    try:
+        require_scanner_capability_mode(
+            db, user_id, provider.name, provider.model()
+        )
+    except HTTPException as exc:
+        raise PermanentScanError(str(exc.detail)) from None
     api_key = provider.credential(db, user_id)
     # A local endpoint needs no credential, so ask the provider rather than
     # assuming an empty key means "not configured".

@@ -169,6 +169,7 @@ test('guides provider selection and saves one guarded configuration', async ({ p
   await expect(page.getByText('http://ollama:11434', { exact: false })).toBeVisible()
 
   await page.getByLabel('Scanner provider').selectOption('openai')
+  await expect(page.getByText('Retest required', { exact: true })).toBeVisible()
   await expect(page.getByText('Administrator-configured service.', { exact: false })).toBeVisible()
   await expect(page.getByText('No personal API key is required.')).toBeVisible()
   await expect(page.getByRole('combobox', { name: /^Model/ })).toBeEnabled()
@@ -304,7 +305,7 @@ test('requires an explicit administrator acknowledgment before saving limited mo
   await page.route('**/api/settings/scanner/test', async route => {
     attempts += 1
     const body = route.request().postDataJSON()
-    if (attempts === 1) {
+    if (attempts <= 2) {
       expect(body.accept_degraded_visual_verification).toBe(false)
       return route.fulfill({ json: {
         status: 'degraded_confirmation_required',
@@ -327,8 +328,15 @@ test('requires an explicit administrator acknowledgment before saving limited mo
   await expect(acknowledgment).toBeVisible()
   await expect(page.getByRole('button', { name: 'Save changes' })).toBeDisabled()
   await acknowledgment.check()
+  await page.getByRole('combobox', { name: /^Model/ }).selectOption('vision-accurate')
+  await expect(acknowledgment).toBeHidden()
+  await expect(page.getByRole('button', { name: 'Test and save' })).toBeEnabled()
+  await page.getByRole('button', { name: 'Test and save' }).click()
+  await expect(acknowledgment).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+  await acknowledgment.check()
   await page.getByRole('button', { name: 'Save changes' }).click()
-  await expect.poll(() => attempts).toBe(2)
+  await expect.poll(() => attempts).toBe(3)
   await expect(page.getByText('Scanner configuration saved')).toBeVisible()
   expect(api.savedBody()).toBeNull()
 })
@@ -351,6 +359,9 @@ test('shows a persistent warning for an active limited scanner model', async ({ 
 
   await expect(page.getByText('Limited scanner mode', { exact: true }).first()).toBeVisible()
   await expect(page.getByText('AI comparison with reference images is disabled', { exact: false }).first()).toBeVisible()
+  await page.getByRole('combobox', { name: /^Model/ }).selectOption('vision-accurate')
+  await expect(page.getByText('Retest required', { exact: true })).toBeVisible()
+  await expect(page.getByText('Limited scanner mode', { exact: true }).first()).toBeVisible()
 })
 
 test('shows the limited-mode warning inside the card scanner', async ({ page }) => {

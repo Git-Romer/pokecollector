@@ -186,7 +186,7 @@ Current flow:
 3. The selected Gemini or OpenAI-compatible provider extracts name, split collector number, printed total, set code, regulation mark, type, HP, language, and artist. Unclear small text must be returned as `null`.
 4. TCGdex candidates are searched in the detected language with English fallback and ranked deterministically by local number, language, printed total, set code, regulation mark, artist, and HP. Missing fields are neutral; contradictions reduce rank.
 5. When metadata remains inconclusive, conservative pHash compares the original photo with a bounded candidate set. It accepts only a close, clearly separated winner with no metadata contradiction.
-6. Individual scans may use a second provider visual comparison if pHash abstains. Composite scans instead return to the individual queue path. Every selectable provider/model must first pass the same two-image capability test.
+6. Individual scans may use a second provider visual comparison if pHash abstains. Composite scans instead return to the individual queue path. OpenAI-compatible selections must prove their configured endpoint/model before scanning. Models that pass only the single-image probe may be saved by an administrator in acknowledged limited mode, which disables the second visual-comparison step.
 7. Results are persisted in the `/scans` review inbox. Confirming or dismissing an item deletes its queued photo; unresolved jobs expire after 14 days.
 
 `backend/services/scan_queue.py` provides fair, restart-safe background dispatch with leases. Recognition attempts are capped separately from transient quota failures. Gemini shares quota state by its existing API-key fingerprint so upgrades preserve active pacing and quota blocks. Compatible providers persist blocks under a fingerprint keyed with the resolved private server secret, without storing credentials or administrator endpoint text. Structured daily-quota signals are separated from short-term limits, and provider `Retry-After` / `google.rpc.RetryInfo` delays take precedence over fallback backoff.
@@ -228,7 +228,7 @@ Current frontend state layers:
 - Gemini is the default; administrators may also enable hosted or self-hosted OpenAI-compatible providers
 - Provider communication is isolated behind one shared scanner-provider layer, while matching, visual verification, queueing, and warnings remain provider-neutral
 - Users choose only administrator-approved providers and models; administrators can test an Advanced custom model before saving it
-- Every provider/model must pass the same two-image capability test used by the scanner workflow
+- OpenAI-compatible provider/model selections must pass the real-image capability probe; an administrator may explicitly accept single-image-only limited mode, while Gemini keeps its established automatic verification behavior
 - Credentials are read per user from `user_settings`; endpoints and approved models remain administrator-controlled
 - Transient capacity failures are retried; rate limits, invalid keys, unavailable models, and permanent request failures are reported separately without reflecting arbitrary upstream messages
 

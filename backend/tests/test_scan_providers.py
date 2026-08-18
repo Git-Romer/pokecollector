@@ -377,6 +377,23 @@ class ErrorMappingTests(unittest.TestCase):
             with self.assertRaises(HTTPException) as caught:
                 self._call([_FakeResponse(401, {"error": {"message": "bad key"}})])
         self.assertEqual(caught.exception.status_code, 400)
+        self.assertEqual(caught.exception.rejection_reason, "authentication")
+
+    def test_only_a_known_multiple_image_rejection_is_classified_for_fallback(self):
+        with self.assertRaises(HTTPException) as caught:
+            self._call([_FakeResponse(400, {"error": {
+                "message": "This model supports only one image per request."
+            }})])
+        self.assertEqual(
+            caught.exception.rejection_reason,
+            "multiple_images_unsupported",
+        )
+
+        with self.assertRaises(HTTPException) as generic:
+            self._call([_FakeResponse(409, {"error": {
+                "message": "Request conflict."
+            }})])
+        self.assertEqual(generic.exception.rejection_reason, "request_rejected")
 
     def test_an_auth_error_never_echoes_the_upstream_text(self):
         # This is the class where endpoints quote the offending credential back,
@@ -401,6 +418,7 @@ class ErrorMappingTests(unittest.TestCase):
                 "type": "insufficient_quota", "code": "insufficient_quota"
             }})])
         self.assertEqual(caught.exception.status_code, 400)
+        self.assertEqual(caught.exception.rejection_reason, "billing")
         self.assertFalse(hasattr(caught.exception, "retry_after_seconds"))
 
     def test_arbitrary_upstream_secret_is_never_logged(self):

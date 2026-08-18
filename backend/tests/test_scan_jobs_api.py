@@ -16,7 +16,8 @@ try:
     from api.scan_jobs import router
     from api.auth import get_current_user
     from database import Base, get_db
-    from models import ScanJob, ScanJobItem, User
+    from models import ScanJob, ScanJobItem, User, UserSetting
+    from services.scan_providers import scanner_capability_proof
     from services.scan_storage import resolve_scan_path
 
     DEPS_AVAILABLE = True
@@ -157,6 +158,40 @@ class ScanJobsApiTests(unittest.TestCase):
         created = self._enqueue()
         item = self.db.query(ScanJobItem).filter(ScanJobItem.job_id == created["id"]).one()
         self.assertFalse(item.batch_mode)
+
+    def test_endpoint_change_blocks_enqueue_before_upload_is_persisted(self):
+        model = "vision-model"
+        first = {
+            "OPENAI_SCANNER_ENABLED": "true",
+            "OPENAI_MODEL": model,
+            "OPENAI_BASE_URL": "http://endpoint-a:11434/v1",
+        }
+        second = {**first, "OPENAI_BASE_URL": "http://endpoint-b:11434/v1"}
+        with patch.dict(os.environ, first):
+            proof = scanner_capability_proof("openai", model, "full")
+        self.db.add_all([
+            UserSetting(user_id=self.user.id, key="scanner_provider", value="openai"),
+            UserSetting(user_id=self.user.id, key="scanner_model_openai", value=model),
+            UserSetting(
+                user_id=self.user.id,
+                key="scanner_capability_openai",
+                value=proof,
+            ),
+        ])
+        self.db.commit()
+
+        with patch.dict(os.environ, second), patch(
+            "api.scan_jobs.drain_scan_queue", new=AsyncMock(return_value=0)
+        ) as drain:
+            response = self.client.post(
+                "/api/cards/recognize/jobs",
+                files={"files": ("card.jpg", _jpeg_bytes(), "image/jpeg")},
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("Test and save", response.json()["detail"])
+        self.assertEqual(self.db.query(ScanJob).count(), 0)
+        drain.assert_not_awaited()
 
     def test_resolve_deletes_photo_and_removes_fully_handled_job_from_inbox(self):
         created = self._enqueue()

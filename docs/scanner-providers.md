@@ -16,9 +16,9 @@ A **base URL** is the address PokéCollector sends scanner requests to. PokéCol
 2. Choose a provider if the administrator enabled more than one.
 3. Choose a model if the administrator approved more than one.
 4. If an API key is requested, use the **Get a key** link and paste the key. Keys are stored but are never displayed again.
-5. Select **Test and save**. PokéCollector sends two tiny real images in one request to confirm that the model supports the same multi-image workflow used by automatic visual verification. The complete configuration is saved atomically only after the test succeeds. Hosted providers may charge a very small amount for this request.
+5. Select **Test and save**. PokéCollector sends two tiny real images in one request to confirm multi-image input. Runtime visual verification may compare the source photo with several candidate references, so this is a small capability probe rather than an exact copy of a card scan. The complete configuration is saved atomically only after the test succeeds. Hosted providers may charge a very small amount for this request.
 
-If the two-image comparison fails but a follow-up one-image test succeeds, an administrator is shown an unchecked acknowledgment. Accepting it saves the model in limited mode with visual verification disabled. This is never selected silently. A warning remains visible in Scanner Settings and in the card scanner so users know to review similar card matches carefully.
+If the two-image comparison fails but a follow-up one-image test succeeds, an administrator is shown an unchecked acknowledgment. Accepting it saves that administrator's provider/model selection in limited mode with visual verification disabled. It does not enable limited mode for other user accounts. This is never selected silently. A warning remains visible in Scanner Settings and in the card scanner so users know to review similar card matches carefully.
 
 Provider and model changes cannot bypass this test. If the provider is temporarily unavailable, the existing saved configuration remains unchanged and the user can try again later. Removing a configured API key remains possible without a provider request.
 
@@ -41,7 +41,7 @@ Open Scanner Settings as an administrator afterward. The **Server setup details*
 
 If a compatible vision model is not in the approved list, expand **Advanced model**, enable **Use a custom model**, and enter its exact identifier. **Test and save** first verifies two-image input. If only the one-image fallback succeeds, the administrator may explicitly save limited mode. Custom models are available only to the administrator who tested them; normal users continue to receive the guarded administrator-approved dropdown.
 
-Capability proof is bound to the selected provider, model, and configured endpoint. Changing `OPENAI_BASE_URL` invalidates the proof and blocks scanning until the configuration is tested again. PokéCollector stores a non-reversible endpoint fingerprint for this comparison rather than copying endpoint credentials into the setting.
+Capability proof is bound to the selected provider, model, and configured endpoint. Changing `OPENAI_BASE_URL` invalidates the proof and blocks scanning until the configuration is tested again. PokéCollector stores a non-reversible endpoint fingerprint for this comparison rather than copying endpoint credentials into the setting. Rotating `JWT_SECRET_KEY` (or its persisted secret file) also changes that fingerprint and therefore requires a retest.
 
 ### Google Gemini
 

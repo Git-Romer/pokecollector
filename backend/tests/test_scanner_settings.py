@@ -26,6 +26,7 @@ try:
     from database import Base
     from models import User, UserSetting
     from services.scan_providers import (
+        ProviderRequestRejectedError,
         SCANNER_CAPABILITY_DEGRADED,
         ScanProvider,
         get_provider,
@@ -379,6 +380,58 @@ class ScannerConfigurationTests(unittest.TestCase):
         self.assertEqual(mode, SCANNER_CAPABILITY_DEGRADED)
         self.assertEqual(config["status"], "ready")
         self.assertEqual(config["visual_verification"], "disabled")
+
+    def test_known_multiple_image_rejection_can_offer_limited_mode(self):
+        env = {
+            "OPENAI_SCANNER_ENABLED": "true",
+            "OPENAI_MODEL": "single-image-model",
+            "OPENAI_BASE_URL": "http://model-host:11434/v1",
+        }
+        generate = AsyncMock(side_effect=[
+            ProviderRequestRejectedError(
+                detail="The scanner provider rejected this request.",
+                reason="multiple_images_unsupported",
+            ),
+            ("MAGENTA", None),
+        ])
+        request = ScannerConfigurationUpdate(
+            provider="openai",
+            model="single-image-model",
+            save_on_success=True,
+        )
+        with patch.dict(os.environ, env), patch.object(
+            ScanProvider, "generate_text", new=generate
+        ):
+            result = asyncio.run(
+                run_scanner_configuration_test(request, self.db, self.user)
+            )
+        self.assertEqual(result["status"], "degraded_confirmation_required")
+        self.assertEqual(generate.await_count, 2)
+        self.assertEqual(self._rows(), {})
+
+    def test_generic_provider_rejection_does_not_claim_limited_capability(self):
+        env = {
+            "OPENAI_SCANNER_ENABLED": "true",
+            "OPENAI_MODEL": "vision-model",
+            "OPENAI_BASE_URL": "http://model-host:11434/v1",
+        }
+        rejected = ProviderRequestRejectedError(
+            detail="The scanner endpoint rejected the request.",
+            reason="authentication",
+        )
+        generate = AsyncMock(side_effect=rejected)
+        request = ScannerConfigurationUpdate(
+            provider="openai",
+            model="vision-model",
+            save_on_success=True,
+        )
+        with patch.dict(os.environ, env), patch.object(
+            ScanProvider, "generate_text", new=generate
+        ), self.assertRaises(ProviderRequestRejectedError) as caught:
+            asyncio.run(run_scanner_configuration_test(request, self.db, self.user))
+        self.assertIs(caught.exception, rejected)
+        self.assertEqual(generate.await_count, 1)
+        self.assertEqual(self._rows(), {})
 
     def test_non_admin_cannot_accept_degraded_mode(self):
         self.user.role = "trainer"

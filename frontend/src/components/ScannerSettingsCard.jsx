@@ -144,7 +144,7 @@ export default function ScannerSettingsCard({ t }) {
   const status = !dirty && provider === data.provider
     ? data.status
     : selected.models.length
-      ? (hasUsableKey ? 'ready' : 'api_key_required')
+      ? (hasUsableKey ? 'retest_required' : 'api_key_required')
       : 'admin_setup_required'
   const busy = saving || testing
 
@@ -172,7 +172,7 @@ export default function ScannerSettingsCard({ t }) {
           </span>
         </div>
 
-        {!dirty && data.visual_verification === 'disabled' && (
+        {data.visual_verification === 'disabled' && (
           <div role="status" className="rounded-xl border border-brand-yellow/35 bg-brand-yellow/10 px-3 py-2.5">
             <p className="text-xs font-semibold text-brand-yellow">{t('settings.scannerDegradedTitle')}</p>
             <p className="mt-1 text-[11px] text-text-secondary">{t('settings.scannerDegradedWarning')}</p>

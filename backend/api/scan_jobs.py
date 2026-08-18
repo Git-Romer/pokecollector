@@ -91,10 +91,13 @@ async def enqueue_scan_job(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Sanitize a batch, persist it, and return without waiting for Gemini."""
-    from services.scan_providers import get_provider
+    """Sanitize a batch, persist it, and return without waiting for its provider."""
+    from services.scan_providers import get_provider, require_scanner_capability_mode
 
     provider = get_provider(db, current_user.id)
+    require_scanner_capability_mode(
+        db, current_user.id, provider.name, provider.model()
+    )
     if provider.requires_credential() and not provider.credential(db, current_user.id):
         raise HTTPException(
             status_code=400,

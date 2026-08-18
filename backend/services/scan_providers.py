@@ -219,6 +219,25 @@ def scanner_capability_mode(
     return mode if mode in {SCANNER_CAPABILITY_FULL, SCANNER_CAPABILITY_DEGRADED} else None
 
 
+def require_scanner_capability_mode(
+    db: Session,
+    user_id: int | None,
+    provider: str,
+    model: str,
+) -> str:
+    """Require a proof for compatible providers before any scan reaches them."""
+    mode = scanner_capability_mode(db, user_id, provider, model)
+    if provider == OPENAI and mode is None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "The scanner provider or endpoint changed. Test and save it again "
+                "in Scanner Settings before scanning."
+            ),
+        )
+    return mode or SCANNER_CAPABILITY_FULL
+
+
 def resolve_model(db: Session, user_id: int | None, provider: str) -> str:
     """Resolve a provider-specific model, constrained by the admin allowlist."""
     models = allowed_models(provider)
@@ -292,6 +311,14 @@ class ProviderRateLimitError(HTTPException):
         super().__init__(status_code=429, detail=detail, headers=headers)
 
 
+class ProviderRequestRejectedError(HTTPException):
+    """A safe provider rejection with an internal, machine-readable reason."""
+
+    def __init__(self, *, detail: str, reason: str = "request_rejected"):
+        self.rejection_reason = reason
+        super().__init__(status_code=400, detail=detail)
+
+
 def openai_error_code(resp: httpx.Response) -> tuple[str, str]:
     """Return bounded machine-readable classification, never provider prose."""
     try:
@@ -309,6 +336,47 @@ def openai_error_code(resp: httpx.Response) -> tuple[str, str]:
                 code if safe.fullmatch(code) else "",
             )
     return "", ""
+
+
+def openai_rejection_reason(resp: httpx.Response) -> str:
+    """Classify only known-safe rejection shapes without returning provider prose."""
+    error_type, error_code = openai_error_code(resp)
+    machine_values = {error_type.lower(), error_code.lower()}
+    if machine_values & {
+        "multiple_images_not_supported",
+        "multiple_images_unsupported",
+        "too_many_images",
+    }:
+        return "multiple_images_unsupported"
+    try:
+        payload = resp.json()
+    except Exception:
+        return "request_rejected"
+    message = ""
+    if isinstance(payload, dict):
+        error = payload.get("error")
+        if isinstance(error, dict):
+            message = str(error.get("message") or "")
+        elif isinstance(error, str):
+            message = error
+    normalized = " ".join(message.lower()[:2000].split())
+    multi_image_markers = (
+        "multiple images are not supported",
+        "multiple images not supported",
+        "does not support multiple images",
+        "doesn't support multiple images",
+        "only one image is supported",
+        "supports only one image",
+        "at most one image",
+        "more than one image",
+        "too many images",
+        "multi-image input is not supported",
+    )
+    return (
+        "multiple_images_unsupported"
+        if any(marker in normalized for marker in multi_image_markers)
+        else "request_rejected"
+    )
 
 
 # Match the queue's 14-day retention ceiling and keep hostile values inside what
@@ -454,12 +522,12 @@ async def post_openai_chat(
                     "billing_not_active",
                     "account_deactivated",
                 }:
-                    raise HTTPException(
-                        status_code=400,
+                    raise ProviderRequestRejectedError(
                         detail=(
                             "The scanner provider has no usable billing quota. "
                             "Check the provider account or choose another provider."
                         ),
+                        reason="billing",
                     )
                 delay = penalize_provider_scope(
                     scope,
@@ -476,23 +544,28 @@ async def post_openai_chat(
                     detail = "The OpenAI API key was rejected. Please check it in Settings."
                 else:
                     detail = "The scanner endpoint rejected the request."
-                raise HTTPException(status_code=400, detail=detail)
-            if resp.status_code in {400, 409, 413, 422}:
-                raise HTTPException(
-                    status_code=400,
+                raise ProviderRequestRejectedError(detail=detail, reason="authentication")
+            if resp.status_code in {400, 409, 422}:
+                raise ProviderRequestRejectedError(
                     detail=(
                         "The scanner provider rejected this request. The image or "
                         "model options may not be supported."
                     ),
+                    reason=openai_rejection_reason(resp),
+                )
+            if resp.status_code == 413:
+                raise ProviderRequestRejectedError(
+                    detail="The scanner provider rejected the request because it was too large.",
+                    reason="request_too_large",
                 )
             if resp.status_code == 404:
-                raise HTTPException(
-                    status_code=400,
+                raise ProviderRequestRejectedError(
                     detail=(
                         f"The scanner model \"{payload.get('model', '')}\" was not "
                         "found. Choose an available model in Scanner Settings, or "
                         "ask an administrator to check the endpoint."
                     ),
+                    reason="model_not_found",
                 )
             if resp.status_code in OPENAI_TRANSIENT_STATUS_CODES:
                 if attempt < max_attempts - 1:
@@ -504,8 +577,7 @@ async def post_openai_chat(
                 )
             if resp.is_error:
                 if 400 <= resp.status_code < 500:
-                    raise HTTPException(
-                        status_code=400,
+                    raise ProviderRequestRejectedError(
                         detail=f"The scanner provider rejected the request ({resp.status_code}).",
                     )
                 raise HTTPException(

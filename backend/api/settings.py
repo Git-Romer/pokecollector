@@ -44,6 +44,7 @@ from services.scan_providers import (
     SCANNER_CAPABILITY_FULL,
     SCANNER_MODEL_SETTINGS,
     ScanProvider,
+    ProviderRequestRejectedError,
     allowed_models,
     enabled_providers,
     image_part,
@@ -551,7 +552,10 @@ async def test_scanner_configuration(
                 max_attempts=3,
             )
         except HTTPException as exc:
-            if exc.status_code != 400:
+            if not (
+                isinstance(exc, ProviderRequestRejectedError)
+                and exc.rejection_reason == "multiple_images_unsupported"
+            ):
                 raise
             multi_error = exc
             text = ""

@@ -68,7 +68,7 @@ class ProviderCapabilityRuntimeTests(unittest.IsolatedAsyncioTestCase):
         provider = self._provider()
         matcher = AsyncMock(return_value={"recognized": {}, "matches": []})
         with patch("api.recognize.get_provider", return_value=provider), patch(
-            "api.recognize.scanner_capability_mode", return_value="degraded"
+            "api.recognize.require_scanner_capability_mode", return_value="degraded"
         ), patch("api.recognize.match_card_info", new=matcher):
             await recognize_sanitized_card(
                 object(), 7, b"image-bytes", "image/jpeg"
@@ -79,7 +79,11 @@ class ProviderCapabilityRuntimeTests(unittest.IsolatedAsyncioTestCase):
     async def test_changed_endpoint_proof_blocks_scanning_until_retested(self):
         provider = self._provider()
         with patch("api.recognize.get_provider", return_value=provider), patch(
-            "api.recognize.scanner_capability_mode", return_value=None
+            "api.recognize.require_scanner_capability_mode",
+            side_effect=HTTPException(
+                status_code=409,
+                detail="Test and save the scanner configuration again.",
+            ),
         ), self.assertRaises(HTTPException) as caught:
             await recognize_sanitized_card(
                 object(), 7, b"image-bytes", "image/jpeg"

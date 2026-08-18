@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import os
 import tempfile
@@ -10,9 +11,9 @@ try:
     from sqlalchemy.pool import StaticPool
 
     from database import Base
-    from models import ScanJob, ScanJobItem, ScanQueueUserState, User
+    from models import ScanJob, ScanJobItem, ScanQueueUserState, User, UserSetting
     from services import scan_queue, scan_storage
-    from services.scan_providers import ScanProvider
+    from services.scan_providers import ScanProvider, scanner_capability_proof
     from services.scan_queue import (
         ClaimedScanItem,
         claim_next_scan_item,
@@ -124,6 +125,44 @@ class ScanQueueTests(unittest.TestCase):
             [{"recognized": {"name": str(index)}, "matches": []} for index in range(4)],
         ))
         self.assertEqual(items[1].status, "pending")
+
+    def test_endpoint_change_blocks_an_already_queued_composite(self):
+        user = self.users[0]
+        model = "vision-model"
+        first = {
+            "OPENAI_SCANNER_ENABLED": "true",
+            "OPENAI_MODEL": model,
+            "OPENAI_BASE_URL": "http://endpoint-a:11434/v1",
+        }
+        second = {**first, "OPENAI_BASE_URL": "http://endpoint-b:11434/v1"}
+        with patch.dict(os.environ, first):
+            proof = scanner_capability_proof("openai", model, "full")
+        self.db.add_all([
+            UserSetting(user_id=user.id, key="scanner_provider", value="openai"),
+            UserSetting(user_id=user.id, key="scanner_model_openai", value=model),
+            UserSetting(
+                user_id=user.id,
+                key="scanner_capability_openai",
+                value=proof,
+            ),
+        ])
+        self.db.commit()
+        recognize = AsyncMock(return_value={})
+
+        with patch.dict(os.environ, second), patch(
+            "api.recognize.recognize_composite_card_info", new=recognize
+        ), self.assertRaises(scan_queue.PermanentScanError) as caught:
+            asyncio.run(
+                scan_queue.default_composite_processor(
+                    self.db,
+                    user.id,
+                    [b"first", b"second"],
+                    ["image/jpeg", "image/jpeg"],
+                )
+            )
+
+        self.assertIn("Test and save", str(caught.exception))
+        recognize.assert_not_awaited()
 
     def test_unclear_composite_position_retries_without_confident_siblings(self):
         self._job(self.users[0], positions=(0, 1, 2, 3))
