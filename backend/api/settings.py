@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
@@ -38,6 +39,9 @@ from services.scan_providers import (
     OPENAI,
     MODEL_PATTERN,
     SCANNER_CUSTOM_MODEL_SETTINGS,
+    SCANNER_CAPABILITY_SETTINGS,
+    SCANNER_CAPABILITY_DEGRADED,
+    SCANNER_CAPABILITY_FULL,
     SCANNER_MODEL_SETTINGS,
     ScanProvider,
     allowed_models,
@@ -51,6 +55,8 @@ from services.scan_providers import (
     provider_label,
     resolve_model,
     resolve_provider_name,
+    scanner_capability_mode,
+    scanner_capability_proof,
     SCANNER_PROVIDER_SETTING,
     SCANNER_PROVIDER_GUIDE_URL,
     text_part,
@@ -69,6 +75,7 @@ PER_USER_KEYS = {
     "openai_api_key",
     SCANNER_PROVIDER_SETTING, *SCANNER_MODEL_SETTINGS.values(),
     *SCANNER_CUSTOM_MODEL_SETTINGS.values(),
+    *SCANNER_CAPABILITY_SETTINGS.values(),
     SCAN_DIAGNOSTICS_SETTING_KEY, PHOTO_PREFERENCE_SETTING_KEY,
 }
 
@@ -78,6 +85,7 @@ MANAGED_SCANNER_KEYS = {
     SCANNER_PROVIDER_SETTING,
     *SCANNER_MODEL_SETTINGS.values(),
     *SCANNER_CUSTOM_MODEL_SETTINGS.values(),
+    *SCANNER_CAPABILITY_SETTINGS.values(),
     # Prevent the removed PR prototype settings from being recreated through
     # the legacy generic endpoint.
     "scanner_model",
@@ -92,6 +100,7 @@ class ScannerConfigurationUpdate(BaseModel):
     clear_api_key: bool = False
     custom_model: bool = False
     save_on_success: bool = False
+    accept_degraded_visual_verification: bool = False
 
 
 SCANNER_TEST_IMAGE_B64 = (
@@ -338,17 +347,32 @@ def _scanner_configuration(db: Session, user_id: int, *, is_admin: bool = False)
         providers.append(provider_data)
     active = next(item for item in providers if item["id"] == selected)
     ready = not active["requires_api_key"] or active["api_key_configured"]
+    capability_mode = scanner_capability_mode(
+        db, user_id, selected, active["selected_model"]
+    )
     status = (
         "admin_setup_required"
         if not active["selected_model"]
-        else ("ready" if ready else "api_key_required")
+        else (
+            "api_key_required"
+            if not ready
+            else (
+                "retest_required"
+                if capability_mode is None
+                else "ready"
+            )
+        )
     )
     result = {
         "provider": selected,
         "model": active["selected_model"],
         "providers": providers,
         "status": status,
-        "visual_verification": "automatic",
+        "visual_verification": (
+            "disabled"
+            if capability_mode == SCANNER_CAPABILITY_DEGRADED
+            else ("automatic" if capability_mode == SCANNER_CAPABILITY_FULL else "unverified")
+        ),
     }
     if is_admin:
         result["administrator"] = _administrator_scanner_summary()
@@ -428,6 +452,29 @@ def _persist_scanner_draft(
         _upsert_user_setting(db, user_id, _scanner_key_name(provider), credential)
 
 
+def _persist_scanner_capability(
+    db: Session,
+    user_id: int,
+    provider: str,
+    model: str,
+    mode: str,
+) -> None:
+    _upsert_user_setting(
+        db,
+        user_id,
+        SCANNER_CAPABILITY_SETTINGS[provider],
+        scanner_capability_proof(provider, model, mode),
+    )
+
+
+def _matches_capability_answer(text: str, expected: tuple[str, ...]) -> bool:
+    """Accept harmless formatting while still requiring only the requested colors."""
+    cleaned = re.sub(r"[*_`~]", "", str(text or "").upper()).strip()
+    separator = r"\s*[-\u2013\u2014]\s*"
+    answer = separator.join(re.escape(color) for color in expected)
+    return re.fullmatch(rf"\s*{answer}\s*[.!?]?\s*", cleaned) is not None
+
+
 @router.get("/scanner")
 def get_scanner_configuration(
     db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
@@ -473,6 +520,11 @@ async def test_scanner_configuration(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if data.accept_degraded_visual_verification and current_user.role != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Only an administrator can accept reduced scanner accuracy.",
+        )
     provider, model, credential, custom_model = _validated_scanner_draft(
         data,
         db,
@@ -482,25 +534,74 @@ async def test_scanner_configuration(
     )
     candidate = ScanProvider(provider, model)
     async with httpx.AsyncClient(timeout=30) as client:
-        text, _usage = await candidate.generate_text(
-            client,
-            credential,
-            [
-                text_part(
-                    "Inspect both images in their supplied order. Identify each solid "
-                    "fill color using only MAGENTA, GREEN, BLUE, or ORANGE. Reply "
-                    "with exactly COLOR-COLOR and no other text."
-                ),
-                image_part("image/png", SCANNER_TEST_IMAGE_B64),
-                image_part("image/png", SCANNER_TEST_SECOND_IMAGE_B64),
-            ],
-            max_attempts=1,
-        )
-    if text.strip().upper() != "MAGENTA-GREEN":
-        raise HTTPException(
-            status_code=502,
-            detail="The selected model did not complete the scanner image test.",
-        )
+        multi_error = None
+        try:
+            text, _usage = await candidate.generate_text(
+                client,
+                credential,
+                [
+                    text_part(
+                        "Inspect both images in their supplied order. Identify each solid "
+                        "fill color using only MAGENTA, GREEN, BLUE, or ORANGE. Reply "
+                        "with exactly COLOR-COLOR and no other text."
+                    ),
+                    image_part("image/png", SCANNER_TEST_IMAGE_B64),
+                    image_part("image/png", SCANNER_TEST_SECOND_IMAGE_B64),
+                ],
+                max_attempts=3,
+            )
+        except HTTPException as exc:
+            if exc.status_code != 400:
+                raise
+            multi_error = exc
+            text = ""
+
+        capability_mode = SCANNER_CAPABILITY_FULL
+        if not _matches_capability_answer(text, ("MAGENTA", "GREEN")):
+            try:
+                single_text, _usage = await candidate.generate_text(
+                    client,
+                    credential,
+                    [
+                        text_part(
+                            "Identify the solid fill color in this image using only "
+                            "MAGENTA, GREEN, BLUE, or ORANGE. Reply with exactly the "
+                            "color and no other text."
+                        ),
+                        image_part("image/png", SCANNER_TEST_IMAGE_B64),
+                    ],
+                    max_attempts=3,
+                )
+            except HTTPException:
+                if multi_error is not None:
+                    raise multi_error
+                raise
+            if not _matches_capability_answer(single_text, ("MAGENTA",)):
+                raise HTTPException(
+                    status_code=502,
+                    detail="The selected model did not complete the scanner image test.",
+                )
+            if provider != OPENAI:
+                raise HTTPException(
+                    status_code=502,
+                    detail="The selected model did not complete the scanner image test.",
+                )
+            if current_user.role != "admin":
+                raise HTTPException(
+                    status_code=502,
+                    detail=(
+                        "This model cannot compare multiple images. Ask an administrator "
+                        "to review the scanner setup."
+                    ),
+                )
+            if not data.accept_degraded_visual_verification:
+                return {
+                    "status": "degraded_confirmation_required",
+                    "saved": False,
+                    "visual_verification": False,
+                }
+            capability_mode = SCANNER_CAPABILITY_DEGRADED
+
     if data.save_on_success:
         _persist_scanner_draft(
             db,
@@ -511,8 +612,19 @@ async def test_scanner_configuration(
             credential,
             custom_model,
         )
+        _persist_scanner_capability(
+            db,
+            current_user.id,
+            provider,
+            model,
+            capability_mode,
+        )
         db.commit()
-    return {"status": "ready", "saved": data.save_on_success}
+    return {
+        "status": "ready" if capability_mode == SCANNER_CAPABILITY_FULL else "degraded",
+        "saved": data.save_on_success,
+        "visual_verification": capability_mode == SCANNER_CAPABILITY_FULL,
+    }
 
 
 @router.get("/tcgdex-languages")

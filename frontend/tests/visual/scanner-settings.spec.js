@@ -117,7 +117,11 @@ async function installApi(page, user = USER) {
           })),
         }
       }
-      return route.fulfill({ json: { status: 'ready', saved: Boolean(testedBody.save_on_success) } })
+      return route.fulfill({ json: {
+        status: 'ready',
+        saved: Boolean(testedBody.save_on_success),
+        visual_verification: true,
+      } })
     }
     if (path === '/api/settings/') return route.fulfill({ json: {
       language: 'en', currency: 'EUR', price_primary: 'trend',
@@ -125,6 +129,10 @@ async function installApi(page, user = USER) {
       scan_diagnostics_deletion_available: 'false',
     } })
     if (path === '/api/settings/exchange-rate') return route.fulfill({ json: { rate: 1 } })
+    if (path === '/api/settings/tcgdex-filter-languages') return route.fulfill({ json: { languages: [{ code: 'en', name: 'English' }] } })
+    if (path === '/api/sets/') return route.fulfill({ json: [] })
+    if (path === '/api/cards/custom') return route.fulfill({ json: [] })
+    if (path === '/api/cards/recognize/jobs') return route.fulfill({ json: { jobs: [] } })
     if (path === '/api/profile/') return route.fulfill({ json: { is_profile_public: false, public_show_values: false } })
     if (path === '/api/sync/status') return route.fulfill({ json: { is_running: false, is_price_sync_running: false } })
     if (path.includes('contributors') || path.includes('supporters') || path.includes('custom-matches')) {
@@ -152,8 +160,8 @@ test('guides provider selection and saves one guarded configuration', async ({ p
   await expect(page.getByText('Your personal API key is required.')).toBeVisible()
   await expect(page.getByRole('link', { name: /Get a key/ })).toHaveAttribute('href', 'https://aistudio.google.com/apikey')
   await expect(page.getByRole('link', { name: /Provider setup guide/ })).toHaveAttribute('href', /scanner-providers\.md/)
-  await expect(page.getByText('Visual verification is automatic.', { exact: false })).toBeVisible()
-  await expect(page.getByText('The connection test sends two tiny images', { exact: false })).toBeVisible()
+  await expect(page.getByText('Visual verification is automatic when', { exact: false })).toBeVisible()
+  await expect(page.getByText('The connection test sends two tiny real images', { exact: false })).toBeVisible()
   await expect(page.getByText('Server setup details', { exact: true })).toBeVisible()
   await expect(page.getByText('http://ollama:11434', { exact: false })).toBeHidden()
   await expect(page.getByText('Base URL', { exact: true })).toHaveCount(0)
@@ -177,6 +185,7 @@ test('guides provider selection and saves one guarded configuration', async ({ p
     clear_api_key: false,
     custom_model: false,
     save_on_success: true,
+    accept_degraded_visual_verification: false,
   })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 })
@@ -207,6 +216,7 @@ test('uses the same test-and-save flow for Gemini', async ({ page }) => {
     clear_api_key: false,
     custom_model: false,
     save_on_success: true,
+    accept_degraded_visual_verification: false,
   })
   await expect(page.getByText('Last test in this session: connection ready.')).toBeVisible()
 })
@@ -229,6 +239,7 @@ test('lets a user intentionally remove a configured key without a connection tes
     clear_api_key: true,
     custom_model: false,
     save_on_success: false,
+    accept_degraded_visual_verification: false,
   })
   expect(testRequests).toBe(0)
 })
@@ -264,6 +275,7 @@ test('lets only an administrator test and save a custom model', async ({ page })
     clear_api_key: false,
     custom_model: true,
     save_on_success: true,
+    accept_degraded_visual_verification: false,
   })
   await expect.poll(api.savedBody).toEqual(api.testedBody())
   await expect(page.getByText('Scanner configuration saved')).toBeVisible()
@@ -284,6 +296,79 @@ test('does not offer an untested custom model save bypass', async ({ page }) => 
 
   await expect(page.getByRole('button', { name: 'Save without a successful test' })).toHaveCount(0)
   expect(api.savedBody()).toBeNull()
+})
+
+test('requires an explicit administrator acknowledgment before saving limited mode', async ({ page }) => {
+  const api = await installApi(page)
+  let attempts = 0
+  await page.route('**/api/settings/scanner/test', async route => {
+    attempts += 1
+    const body = route.request().postDataJSON()
+    if (attempts === 1) {
+      expect(body.accept_degraded_visual_verification).toBe(false)
+      return route.fulfill({ json: {
+        status: 'degraded_confirmation_required',
+        saved: false,
+        visual_verification: false,
+      } })
+    }
+    expect(body.accept_degraded_visual_verification).toBe(true)
+    return route.fulfill({ json: {
+      status: 'degraded',
+      saved: true,
+      visual_verification: false,
+    } })
+  })
+  await page.goto('/settings')
+
+  await page.getByLabel('Scanner provider').selectOption('openai')
+  await page.getByRole('button', { name: 'Test and save' }).click()
+  const acknowledgment = page.getByLabel(/I understand that this model cannot compare multiple images/)
+  await expect(acknowledgment).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+  await acknowledgment.check()
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await expect.poll(() => attempts).toBe(2)
+  await expect(page.getByText('Scanner configuration saved')).toBeVisible()
+  expect(api.savedBody()).toBeNull()
+})
+
+test('shows a persistent warning for an active limited scanner model', async ({ page }) => {
+  await installApi(page)
+  await page.route('**/api/settings/scanner', route => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    return route.fulfill({ json: {
+      ...scannerConfiguration,
+      provider: 'openai',
+      model: 'vision-fast',
+      visual_verification: 'disabled',
+      providers: scannerConfiguration.providers.map(item => item.id === 'openai'
+        ? { ...item, selected_model: 'vision-fast' }
+        : item),
+    } })
+  })
+  await page.goto('/settings')
+
+  await expect(page.getByText('Limited scanner mode', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('AI comparison with reference images is disabled', { exact: false }).first()).toBeVisible()
+})
+
+test('shows the limited-mode warning inside the card scanner', async ({ page }) => {
+  await installApi(page)
+  await page.route('**/api/settings/scanner', route => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    return route.fulfill({ json: {
+      ...scannerConfiguration,
+      provider: 'openai',
+      model: 'vision-fast',
+      visual_verification: 'disabled',
+    } })
+  })
+  await page.goto('/search')
+
+  await page.getByRole('button', { name: 'Scan card' }).click()
+  await expect(page.getByText('Limited scanner mode', { exact: true })).toBeVisible()
+  await expect(page.getByText('AI comparison with reference images is disabled', { exact: false })).toBeVisible()
 })
 
 test('does not expose providers the administrator left disabled', async ({ page }) => {

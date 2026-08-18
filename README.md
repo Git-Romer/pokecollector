@@ -311,7 +311,7 @@ If you are already locked out of multi-user mode, set `USER_MODE=single` in the 
 | `PRE_UPGRADE_BACKUP_KEEP` | Number of automatic pre-upgrade backups to retain in `/app/backups`; minimum `1` | `10` |
 
 The scanner provider variables are explained with copy-paste examples, user instructions, compatibility requirements, privacy notes, and troubleshooting in [docs/scanner-providers.md](docs/scanner-providers.md).
-Administrators can also test an administrator-only custom model in Scanner Settings; it is saved only after passing the same multi-image capability check used to protect the automatic verification workflow.
+Administrators can also test an administrator-only custom model in Scanner Settings. A model that passes the multi-image capability check uses automatic visual verification. If it can inspect one image but cannot compare multiple images, an administrator may explicitly acknowledge and save a limited mode with visual verification disabled; the scanner displays a persistent warning while that mode is active.
 
 Supported `TCGDEX_SYNC_LANGUAGES` codes: `en`, `fr`, `es`, `es-mx`, `it`, `pt`, `pt-br`, `pt-pt`, `de`, `nl`, `pl`, `ru`, `ja`, `ko`, `zh-tw`, `id`, `th`, `zh-cn`. The env value `all` expands to the full supported language list during first bootstrap.
 

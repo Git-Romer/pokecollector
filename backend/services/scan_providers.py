@@ -20,6 +20,7 @@ Two rules shape the design:
 
 import base64
 import datetime
+import json
 import logging
 import math
 import os
@@ -46,6 +47,13 @@ SCANNER_CUSTOM_MODEL_SETTINGS = {
     GEMINI: "scanner_custom_model_gemini",
     OPENAI: "scanner_custom_model_openai",
 }
+SCANNER_CAPABILITY_SETTINGS = {
+    GEMINI: "scanner_capability_gemini",
+    OPENAI: "scanner_capability_openai",
+}
+SCANNER_CAPABILITY_FULL = "full"
+SCANNER_CAPABILITY_DEGRADED = "degraded"
+SCANNER_CAPABILITY_VERSION = 1
 
 DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 # The OpenAI counterpart to DEFAULT_GEMINI_MODEL: what an installation uses when
@@ -145,6 +153,70 @@ def allowed_models(provider: str) -> list[str]:
 
 def enabled_providers() -> tuple[str, ...]:
     return (GEMINI, OPENAI) if openai_enabled() else (GEMINI,)
+
+
+def _capability_endpoint_fingerprint(provider: str) -> str:
+    """Bind capability proof to an endpoint without storing endpoint credentials."""
+    from services.auth import secret_fingerprint
+
+    endpoint = "google-gemini-api" if provider == GEMINI else openai_base_url()
+    return secret_fingerprint("scanner-capability-endpoint", f"{provider}\0{endpoint}")
+
+
+def scanner_capability_proof(provider: str, model: str, mode: str) -> str:
+    if mode not in {SCANNER_CAPABILITY_FULL, SCANNER_CAPABILITY_DEGRADED}:
+        raise ValueError("Unsupported scanner capability mode")
+    return json.dumps(
+        {
+            "version": SCANNER_CAPABILITY_VERSION,
+            "model": model,
+            "endpoint_fingerprint": _capability_endpoint_fingerprint(provider),
+            "mode": mode,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def scanner_capability_mode(
+    db: Session,
+    user_id: int | None,
+    provider: str,
+    model: str,
+) -> str | None:
+    """Return the capability proved for this exact provider, model, and endpoint.
+
+    Gemini keeps its established automatic visual-verification behaviour. An
+    OpenAI-compatible endpoint is opt-in and must carry a reusable proof so an
+    administrator changing OPENAI_BASE_URL cannot accidentally reuse a result
+    obtained from a different server.
+    """
+    if provider == GEMINI:
+        return SCANNER_CAPABILITY_FULL
+    if user_id is None:
+        return None
+    row = (
+        db.query(UserSetting)
+        .filter(
+            UserSetting.user_id == user_id,
+            UserSetting.key == SCANNER_CAPABILITY_SETTINGS[provider],
+        )
+        .first()
+    )
+    try:
+        proof = json.loads((row.value if row else "") or "")
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(proof, dict):
+        return None
+    if proof.get("version") != SCANNER_CAPABILITY_VERSION:
+        return None
+    if proof.get("model") != model:
+        return None
+    if proof.get("endpoint_fingerprint") != _capability_endpoint_fingerprint(provider):
+        return None
+    mode = proof.get("mode")
+    return mode if mode in {SCANNER_CAPABILITY_FULL, SCANNER_CAPABILITY_DEGRADED} else None
 
 
 def resolve_model(db: Session, user_id: int | None, provider: str) -> str:

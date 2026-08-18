@@ -24,6 +24,8 @@ export default function ScannerSettingsCard({ t }) {
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
   const [testStatus, setTestStatus] = useState('not_tested')
+  const [degradedAvailable, setDegradedAvailable] = useState(false)
+  const [acceptDegraded, setAcceptDegraded] = useState(false)
 
   const selected = useMemo(
     () => data?.providers?.find(item => item.id === provider),
@@ -38,6 +40,8 @@ export default function ScannerSettingsCard({ t }) {
     setUsingCustomModel(Boolean(active?.custom_model && active.custom_model === data.model))
     setApiKey('')
     setClearApiKey(false)
+    setDegradedAvailable(false)
+    setAcceptDegraded(false)
   }, [data, dirty])
 
   const chooseProvider = (nextProvider) => {
@@ -48,12 +52,16 @@ export default function ScannerSettingsCard({ t }) {
     setApiKey('')
     setClearApiKey(false)
     setTestStatus('not_tested')
+    setDegradedAvailable(false)
+    setAcceptDegraded(false)
     setDirty(true)
   }
 
   const changeDraft = (callback) => {
     callback()
     setTestStatus('not_tested')
+    setDegradedAvailable(false)
+    setAcceptDegraded(false)
     setDirty(true)
   }
 
@@ -64,6 +72,7 @@ export default function ScannerSettingsCard({ t }) {
     clear_api_key: clearApiKey,
     custom_model: usingCustomModel,
     save_on_success: saveOnSuccess,
+    accept_degraded_visual_verification: acceptDegraded,
   })
 
   const persistDraft = async () => {
@@ -77,23 +86,33 @@ export default function ScannerSettingsCard({ t }) {
 
   const testAndSave = async () => {
     setTesting(true)
+    let savedDegraded = false
     try {
       try {
-        await testScannerConfiguration(payload(dirty))
+        const shouldSave = dirty || data.status === 'retest_required' || acceptDegraded
+        const result = await testScannerConfiguration(payload(shouldSave))
+        if (result.status === 'degraded_confirmation_required') {
+          setDegradedAvailable(true)
+          setAcceptDegraded(false)
+          setTestStatus('degraded')
+          return
+        }
+        setDegradedAvailable(false)
+        setAcceptDegraded(false)
+        savedDegraded = result.status === 'degraded'
+        setTestStatus(result.status === 'degraded' ? 'degraded_saved' : 'passed')
       } catch (error) {
         setTestStatus('failed')
         toast.error(error?.response?.data?.detail || t('settings.scannerTestFailed'))
         return
       }
-      setTestStatus('passed')
-      if (dirty) {
+      if (dirty || data.status === 'retest_required' || savedDegraded) {
         try {
           await queryClient.invalidateQueries({ queryKey: ['scanner-configuration'] })
           setDirty(false)
           setApiKey('')
           setClearApiKey(false)
           toast.success(t('settings.scannerSaved'))
-          setTestStatus('passed')
         } catch (error) {
           toast.error(error?.response?.data?.detail || t('settings.saveFailed'))
         }
@@ -122,9 +141,11 @@ export default function ScannerSettingsCard({ t }) {
 
   const hasUsableKey = !selected.requires_api_key
     || (!clearApiKey && (Boolean(apiKey) || selected.api_key_configured))
-  const status = selected.models.length
-    ? (hasUsableKey ? 'ready' : 'api_key_required')
-    : 'admin_setup_required'
+  const status = !dirty && provider === data.provider
+    ? data.status
+    : selected.models.length
+      ? (hasUsableKey ? 'ready' : 'api_key_required')
+      : 'admin_setup_required'
   const busy = saving || testing
 
   return (
@@ -145,9 +166,18 @@ export default function ScannerSettingsCard({ t }) {
               ? t('settings.scannerReady')
               : status === 'api_key_required'
                 ? t('settings.scannerKeyRequired')
+                : status === 'retest_required'
+                  ? t('settings.scannerRetestRequired')
                 : t('settings.scannerAdminSetupRequired')}
           </span>
         </div>
+
+        {!dirty && data.visual_verification === 'disabled' && (
+          <div role="status" className="rounded-xl border border-brand-yellow/35 bg-brand-yellow/10 px-3 py-2.5">
+            <p className="text-xs font-semibold text-brand-yellow">{t('settings.scannerDegradedTitle')}</p>
+            <p className="mt-1 text-[11px] text-text-secondary">{t('settings.scannerDegradedWarning')}</p>
+          </div>
+        )}
 
         {data.providers.length > 1 && (
           <label className="block">
@@ -258,16 +288,36 @@ export default function ScannerSettingsCard({ t }) {
 
         <p className="text-[11px] text-text-muted">{t('settings.scannerSameFlow')}</p>
         <p className="text-[11px] text-text-muted">{t('settings.scannerTestDesc')}</p>
+        {degradedAvailable && (
+          <label className="flex items-start gap-2 rounded-xl border border-brand-yellow/35 bg-brand-yellow/10 px-3 py-2.5 text-xs text-text-primary">
+            <input
+              type="checkbox"
+              checked={acceptDegraded}
+              onChange={event => setAcceptDegraded(event.target.checked)}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="block font-semibold text-brand-yellow">{t('settings.scannerDegradedTitle')}</span>
+              <span className="mt-1 block text-[11px] text-text-secondary">{t('settings.scannerDegradedAcknowledge')}</span>
+            </span>
+          </label>
+        )}
         {testStatus !== 'not_tested' && (
-          <p role="status" className={`text-[11px] font-semibold ${testStatus === 'passed' ? 'text-green' : 'text-brand-red'}`}>
-            {testStatus === 'passed' ? t('settings.scannerTestStatusPassed') : t('settings.scannerTestStatusFailed')}
+          <p role="status" className={`text-[11px] font-semibold ${testStatus === 'passed' ? 'text-green' : testStatus === 'degraded_saved' ? 'text-brand-yellow' : 'text-brand-red'}`}>
+            {testStatus === 'passed'
+              ? t('settings.scannerTestStatusPassed')
+              : testStatus === 'degraded_saved'
+                ? t('settings.scannerDegradedTitle')
+                : testStatus === 'degraded'
+                  ? t('settings.scannerDegradedWarning')
+                  : t('settings.scannerTestStatusFailed')}
           </p>
         )}
         <div className="flex flex-wrap justify-end gap-2">
           <button
             type="button"
             onClick={hasUsableKey ? testAndSave : saveKeyRemoval}
-            disabled={busy || !model || (!hasUsableKey && !clearApiKey)}
+            disabled={busy || !model || (!hasUsableKey && !clearApiKey) || (degradedAvailable && !acceptDegraded)}
             className="btn-primary-sm disabled:opacity-50"
           >
             {testing
@@ -276,7 +326,9 @@ export default function ScannerSettingsCard({ t }) {
                 ? t('common.saving')
                 : !hasUsableKey
                   ? (clearApiKey ? t('settings.scannerSaveChanges') : t('settings.scannerEnterKey'))
-                  : dirty
+                  : degradedAvailable
+                    ? t('settings.scannerSaveChanges')
+                  : dirty || data.status === 'retest_required'
                     ? t('settings.scannerTestAndSave')
                     : t('settings.scannerTest')}
           </button>

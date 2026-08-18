@@ -22,10 +22,13 @@ from services.scan_storage import MAX_FILE_BYTES, ScanUploadError, read_limited_
 from services.scan_trace import ScanTrace, create_scan_trace
 from services.scan_providers import (
     GEMINI,
+    OPENAI,
+    SCANNER_CAPABILITY_DEGRADED,
     ScanProvider,
     get_provider,
     image_part,
     image_part_from_bytes,
+    scanner_capability_mode,
     text_part,
 )
 import logging
@@ -1062,6 +1065,17 @@ async def recognize_sanitized_card(
 ) -> dict:
     """Recognize one already-sanitized image for direct and queued scans."""
     provider = get_provider(db, user_id)
+    capability_mode = scanner_capability_mode(
+        db, user_id, provider.name, provider.model()
+    )
+    if provider.name == OPENAI and capability_mode is None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "The scanner provider or endpoint changed. Test and save it again "
+                "in Scanner Settings before scanning."
+            ),
+        )
     api_key = provider.credential(db, user_id)
     if trace:
         trace.add_secret(api_key)
@@ -1110,9 +1124,9 @@ async def recognize_sanitized_card(
             api_key=api_key,
             image_b64=image_b64,
             mime_type=content_type,
-            # Provider selection only changes the API boundary. Candidate
-            # verification remains the same automatic scanner step as Gemini.
-            allow_visual_verification=True,
+            allow_visual_verification=(
+                capability_mode != SCANNER_CAPABILITY_DEGRADED
+            ),
             photo_bytes=image_bytes,
             trace=trace,
             provider=provider,

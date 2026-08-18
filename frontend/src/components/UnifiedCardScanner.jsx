@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { Camera, Check, HelpCircle, ImagePlus, Loader2, Trash2, Upload, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-import { enqueueScanJob } from '../api/client'
+import { enqueueScanJob, getScannerConfiguration } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import { isSupportedScannerImage, SCANNER_IMAGE_ACCEPT } from '../utils/scannerImages'
 import ConfirmDialog from './ui/ConfirmDialog'
@@ -46,6 +47,11 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
   const stagedFilesRef = useRef([])
   const { t } = useSettings()
   const navigate = useNavigate()
+  const { data: scannerConfiguration } = useQuery({
+    queryKey: ['scanner-configuration'],
+    queryFn: getScannerConfiguration,
+    enabled: isOpen,
+  })
 
   useEffect(() => {
     stagedFilesRef.current = stagedFiles
@@ -164,6 +170,12 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
       >
         <div className="space-y-4 p-4 sm:p-5">
           <p className="text-sm text-text-secondary">{t('scanner.subtitle')}</p>
+          {scannerConfiguration?.visual_verification === 'disabled' && (
+            <div role="status" className="rounded-xl border border-brand-yellow/35 bg-brand-yellow/10 px-3 py-2.5">
+              <p className="text-xs font-semibold text-brand-yellow">{t('settings.scannerDegradedTitle')}</p>
+              <p className="mt-1 text-[11px] text-text-secondary">{t('settings.scannerDegradedWarning')}</p>
+            </div>
+          )}
           <input
             ref={cameraRef}
             type="file"

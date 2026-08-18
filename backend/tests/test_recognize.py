@@ -26,6 +26,7 @@ try:
         normalize_scanner_card_number,
         post_gemini_generate,
         prioritize_cards_by_number,
+        recognize_sanitized_card,
         retain_ranked_candidates,
         select_search_candidates,
     )
@@ -46,6 +47,46 @@ class RecognizeConfigTests(unittest.TestCase):
         with patch.dict("os.environ", {"GEMINI_MODEL": "models/gemini-3.5-flash"}):
             self.assertEqual(get_gemini_model(), "gemini-3.5-flash")
             self.assertIn("/gemini-3.5-flash:generateContent", build_gemini_generate_url())
+
+
+@unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed")
+class ProviderCapabilityRuntimeTests(unittest.IsolatedAsyncioTestCase):
+    @staticmethod
+    def _provider():
+        provider = Mock()
+        provider.name = "openai"
+        provider.model.return_value = "single-image-model"
+        provider.credential.return_value = ""
+        provider.requires_credential.return_value = False
+        provider.generate_text = AsyncMock(return_value=(
+            '{"name":"Pikachu","name_en":"Pikachu","language":"en"}',
+            None,
+        ))
+        return provider
+
+    async def test_degraded_capability_disables_runtime_visual_verification(self):
+        provider = self._provider()
+        matcher = AsyncMock(return_value={"recognized": {}, "matches": []})
+        with patch("api.recognize.get_provider", return_value=provider), patch(
+            "api.recognize.scanner_capability_mode", return_value="degraded"
+        ), patch("api.recognize.match_card_info", new=matcher):
+            await recognize_sanitized_card(
+                object(), 7, b"image-bytes", "image/jpeg"
+            )
+
+        self.assertFalse(matcher.await_args.kwargs["allow_visual_verification"])
+
+    async def test_changed_endpoint_proof_blocks_scanning_until_retested(self):
+        provider = self._provider()
+        with patch("api.recognize.get_provider", return_value=provider), patch(
+            "api.recognize.scanner_capability_mode", return_value=None
+        ), self.assertRaises(HTTPException) as caught:
+            await recognize_sanitized_card(
+                object(), 7, b"image-bytes", "image/jpeg"
+            )
+
+        self.assertEqual(caught.exception.status_code, 409)
+        provider.generate_text.assert_not_awaited()
 
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")

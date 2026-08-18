@@ -1,12 +1,12 @@
 # Scanner provider setup
 
-PokéCollector can scan cards with Google Gemini, hosted OpenAI, or a vision server that implements the OpenAI Chat Completions format. Changing the provider changes only the API connection. The scanner uses the same prompts, matching steps, automatic visual verification, queue, warnings, and retry countdown for every provider.
+PokéCollector can scan cards with Google Gemini, hosted OpenAI, or a vision server that implements the OpenAI Chat Completions format. Changing the provider changes only the API connection. The scanner uses the same prompts, matching steps, queue, warnings, and retry countdown for every provider. Automatic visual verification remains enabled whenever the selected model proves that it can compare multiple images.
 
 ## Who configures what
 
 - The administrator enables providers, sets their base URL, chooses which models are allowed, and decides whether users need an API key.
 - Each user chooses from those approved providers and models in **Settings → AI / Card Scanner** and adds a personal API key only when required.
-- Normal users cannot enter a base URL or arbitrary model name. This keeps the form simple and prevents accounts from directing the backend to unintended network services. Administrators can test a custom model under **Advanced model**; it remains administrator-only and cannot be saved until it passes the complete image test.
+- Normal users cannot enter a base URL or arbitrary model name. This keeps the form simple and prevents accounts from directing the backend to unintended network services. Administrators can test a custom model under **Advanced model**. If it handles one image but cannot compare multiple images, only an administrator can explicitly acknowledge and save it in limited mode.
 
 A **base URL** is the address PokéCollector sends scanner requests to. PokéCollector adds `/chat/completions` to it, so an OpenAI-compatible base URL normally ends in `/v1`, for example `https://api.openai.com/v1` or `http://ollama:11434/v1`.
 
@@ -16,7 +16,9 @@ A **base URL** is the address PokéCollector sends scanner requests to. PokéCol
 2. Choose a provider if the administrator enabled more than one.
 3. Choose a model if the administrator approved more than one.
 4. If an API key is requested, use the **Get a key** link and paste the key. Keys are stored but are never displayed again.
-5. Select **Test and save**. PokéCollector sends two tiny images in one request to confirm that the model supports the same multi-image workflow used by automatic visual verification. The complete configuration is saved atomically only after the test succeeds. Hosted providers may charge a very small amount for this request.
+5. Select **Test and save**. PokéCollector sends two tiny real images in one request to confirm that the model supports the same multi-image workflow used by automatic visual verification. The complete configuration is saved atomically only after the test succeeds. Hosted providers may charge a very small amount for this request.
+
+If the two-image comparison fails but a follow-up one-image test succeeds, an administrator is shown an unchecked acknowledgment. Accepting it saves the model in limited mode with visual verification disabled. This is never selected silently. A warning remains visible in Scanner Settings and in the card scanner so users know to review similar card matches carefully.
 
 Provider and model changes cannot bypass this test. If the provider is temporarily unavailable, the existing saved configuration remains unchanged and the user can try again later. Removing a configured API key remains possible without a provider request.
 
@@ -24,6 +26,7 @@ The status at the top explains what is still needed:
 
 - **Ready**: the selected provider has the required user settings.
 - **API key required**: add or replace the key for the selected provider.
+- **Retest required**: the compatible endpoint changed since this model was tested. Test and save again before scanning.
 - **Administrator setup required**: the server has no usable approved model for that provider.
 
 ## Administrator setup
@@ -36,7 +39,9 @@ docker compose up -d --build backend
 
 Open Scanner Settings as an administrator afterward. The **Server setup details** section shows enabled providers, the sanitized destination, approved models, and whether each user needs a key. It never displays API keys.
 
-If a compatible vision model is not in the approved list, expand **Advanced model**, enable **Use a custom model**, and enter its exact identifier. **Test and save** verifies two-image input before storing it. Custom models are available only to the administrator who tested them; normal users continue to receive the guarded administrator-approved dropdown.
+If a compatible vision model is not in the approved list, expand **Advanced model**, enable **Use a custom model**, and enter its exact identifier. **Test and save** first verifies two-image input. If only the one-image fallback succeeds, the administrator may explicitly save limited mode. Custom models are available only to the administrator who tested them; normal users continue to receive the guarded administrator-approved dropdown.
+
+Capability proof is bound to the selected provider, model, and configured endpoint. Changing `OPENAI_BASE_URL` invalidates the proof and blocks scanning until the configuration is tested again. PokéCollector stores a non-reversible endpoint fingerprint for this comparison rather than copying endpoint credentials into the setting.
 
 ### Google Gemini
 
@@ -170,7 +175,8 @@ Provider-specific errors are translated into the same scanner states:
 | Selected model is unavailable | Ask the administrator to correct the model name or allowlist and confirm that the model is installed/enabled upstream. |
 | Administrator setup required | Check the environment variables and restart/recreate the backend. |
 | Connection refused or timed out | Verify the base URL from inside the backend container. For a host Ollama service, check `host.docker.internal`, `OLLAMA_HOST`, and the firewall. |
-| Image test fails but single-image or text requests work | The endpoint or model does not support the required multi-image content format. Use a model that can inspect multiple images in one Chat Completions request. |
+| Limited scanner mode | The model passed one-image recognition but could not compare multiple images. Visual verification is disabled; review similar matches carefully, or switch to a multi-image-capable model. |
+| Retest required after an endpoint change | `OPENAI_BASE_URL` no longer matches the endpoint used for the saved capability proof. Test and save the model again. |
 | Rate limit countdown | Wait for the displayed time. PokéCollector resumes the queued scan automatically. |
 | Daily quota or billing error | Check the provider account's quota and billing. Permanent billing exhaustion is not retried automatically. |
 
