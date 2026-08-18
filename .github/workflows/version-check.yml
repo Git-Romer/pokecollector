@@ -11,9 +11,6 @@ on:
       - scripts/check-version.mjs
       - scripts/check-compose-ports.mjs
       - scripts/check-compose-ports.test.mjs
-      - scripts/sync-betterplace-supporters.mjs
-      - scripts/sync-betterplace-supporters.test.mjs
-      - .github/workflows/sync-betterplace-supporters.yml
       - .github/workflows/release.yml
       - .github/workflows/version-check.yml
   push:
@@ -28,9 +25,6 @@ on:
       - scripts/check-version.mjs
       - scripts/check-compose-ports.mjs
       - scripts/check-compose-ports.test.mjs
-      - scripts/sync-betterplace-supporters.mjs
-      - scripts/sync-betterplace-supporters.test.mjs
-      - .github/workflows/sync-betterplace-supporters.yml
       - .github/workflows/release.yml
       - .github/workflows/version-check.yml
   workflow_dispatch:
@@ -62,6 +56,3 @@ jobs:
 
       - name: Check compose port mapping safety
         run: node --test scripts/check-compose-ports.test.mjs
-
-      - name: Check Betterplace sync safety and workflow policy
-        run: node --test scripts/sync-betterplace-supporters.test.mjs

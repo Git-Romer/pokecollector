@@ -393,7 +393,7 @@ export const downloadDebugLog = () => {
 
 // GitHub / Community
 export const getContributors = () => api.get('/github/contributors').then(r => r.data)
-export const getSupporters = () => api.get('/github/supporters').then(r => r.data)
+export const getSupporters = () => api.get('/community/supporters').then(r => r.data)
 export const getRescueDonations = () => api.get('/github/rescue-donations').then(r => r.data)
 
 // Social
