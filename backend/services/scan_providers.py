@@ -271,6 +271,19 @@ def resolve_model(db: Session, user_id: int | None, provider: str) -> str:
     return models[0] if models else ""
 
 
+def configured_provider_name(db: Session, user_id: int | None) -> str | None:
+    """Return a recognized stored provider without applying availability fallback."""
+    if user_id is None:
+        return None
+    row = (
+        db.query(UserSetting)
+        .filter(UserSetting.user_id == user_id, UserSetting.key == SCANNER_PROVIDER_SETTING)
+        .first()
+    )
+    value = ((row.value if row else "") or "").strip().lower()
+    return value if value in {GEMINI, OPENAI} else None
+
+
 def resolve_provider_name(
     db: Session,
     user_id: int | None,
@@ -285,16 +298,8 @@ def resolve_provider_name(
     may fall back only while rendering Settings. Runtime provider resolution fails
     closed so a card photo can never be rerouted to another provider silently.
     """
-    if user_id is None:
-        return GEMINI
-    row = (
-        db.query(UserSetting)
-        .filter(UserSetting.user_id == user_id, UserSetting.key == SCANNER_PROVIDER_SETTING)
-        .first()
-    )
-    value = (row.value if row else "") or ""
-    value = value.strip().lower()
-    if value not in {GEMINI, OPENAI}:
+    value = configured_provider_name(db, user_id)
+    if value is None:
         return GEMINI
     if value not in enabled_providers():
         if require_enabled:

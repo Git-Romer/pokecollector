@@ -46,6 +46,7 @@ from services.scan_providers import (
     ScanProvider,
     ProviderRequestRejectedError,
     allowed_models,
+    configured_provider_name,
     enabled_providers,
     image_part,
     installation_model,
@@ -314,6 +315,11 @@ def _administrator_scanner_summary() -> dict:
 
 
 def _scanner_configuration(db: Session, user_id: int, *, is_admin: bool = False) -> dict:
+    configured_provider = configured_provider_name(db, user_id)
+    provider_unavailable = (
+        configured_provider is not None
+        and configured_provider not in enabled_providers()
+    )
     selected = resolve_provider_name(db, user_id)
     providers = []
     for provider in enabled_providers():
@@ -359,7 +365,7 @@ def _scanner_configuration(db: Session, user_id: int, *, is_admin: bool = False)
             if not ready
             else (
                 "retest_required"
-                if capability_mode is None
+                if provider_unavailable or capability_mode is None
                 else "ready"
             )
         )

@@ -391,6 +391,34 @@ test('a successful unchanged retest upgrades and saves limited mode', async ({ p
   await expect(page.getByText('Limited scanner mode', { exact: true })).toHaveCount(0)
 })
 
+test('a disabled stored provider forces the visible fallback to be tested and saved', async ({ page }) => {
+  const trainer = { ...USER, role: 'trainer' }
+  const fallbackConfiguration = {
+    ...scannerConfiguration,
+    provider: 'gemini',
+    model: 'gemini-flash-latest',
+    status: 'retest_required',
+    visual_verification: 'unverified',
+    providers: [scannerConfiguration.providers[0]],
+    administrator: undefined,
+  }
+  const api = await installApi(page, trainer, fallbackConfiguration)
+  await page.goto('/settings')
+
+  await expect(page.getByText('Gemini', { exact: true }).first()).toBeVisible()
+  await expect(page.getByLabel('Scanner provider')).toHaveCount(0)
+  await expect(page.getByText('Retest required', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Test and save' }).click()
+
+  await expect.poll(api.testedBody).toMatchObject({
+    provider: 'gemini',
+    model: 'gemini-flash-latest',
+    save_on_success: true,
+  })
+  await expect.poll(api.savedBody).toMatchObject({ provider: 'gemini' })
+  await expect(page.getByText('Scanner configuration saved')).toBeVisible()
+})
+
 test('shows the limited-mode warning inside the card scanner', async ({ page }) => {
   await installApi(page)
   await page.route('**/api/settings/scanner', route => {

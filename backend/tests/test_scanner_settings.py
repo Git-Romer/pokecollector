@@ -68,6 +68,48 @@ class ScannerConfigurationTests(unittest.TestCase):
         self.assertNotIn("custom_model_allowed", config["providers"][0])
         self.assertNotIn("administrator", config)
 
+    def test_disabled_stored_provider_requires_and_persists_fallback_retest(self):
+        self.db.add_all([
+            UserSetting(
+                user_id=self.user.id,
+                key="scanner_provider",
+                value="openai",
+            ),
+            UserSetting(
+                user_id=self.user.id,
+                key="gemini_api_key",
+                value="configured-gemini-key",
+            ),
+        ])
+        self.db.commit()
+
+        with patch.dict(os.environ, {"OPENAI_SCANNER_ENABLED": "false"}):
+            before = _scanner_configuration(self.db, self.user.id)
+        self.assertEqual(before["provider"], "gemini")
+        self.assertEqual(before["status"], "retest_required")
+
+        request = ScannerConfigurationUpdate(
+            provider="gemini",
+            model=before["model"],
+            save_on_success=True,
+        )
+        with patch.dict(os.environ, {"OPENAI_SCANNER_ENABLED": "false"}), patch.object(
+            ScanProvider,
+            "generate_text",
+            new=AsyncMock(return_value=("MAGENTA-GREEN", None)),
+        ):
+            result = asyncio.run(
+                run_scanner_configuration_test(request, self.db, self.user)
+            )
+            after = _scanner_configuration(self.db, self.user.id)
+            provider = get_provider(self.db, self.user.id)
+
+        self.assertTrue(result["saved"])
+        self.assertEqual(after["provider"], "gemini")
+        self.assertEqual(after["status"], "ready")
+        self.assertEqual(provider.name, "gemini")
+        self.assertEqual(self._rows()["scanner_provider"], "gemini")
+
     def test_admin_gets_a_secret_free_server_summary(self):
         env = {
             "OPENAI_SCANNER_ENABLED": "true",
