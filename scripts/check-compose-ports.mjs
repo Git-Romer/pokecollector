@@ -106,7 +106,7 @@ export function checkComposePorts(compose) {
 
     if (entries.includes(`"${mapping.unsafePublished}:${mapping.container}"`)) {
       errors.push(
-        `${mapping.service} must use ${mapping.published}:${mapping.container}; ${mapping.unsafePublished} is wrong because an empty variable silently leaves the port unpublished`,
+        `${mapping.service} must use ${mapping.published}:${mapping.container}; ${mapping.unsafePublished} is wrong because an empty variable loses the stable default host port and may receive an ephemeral one`,
       )
       continue
     }

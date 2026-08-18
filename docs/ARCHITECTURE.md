@@ -12,7 +12,7 @@ This document reflects the current code layout at the repository root.
 | External APIs | TCGdex, Gemini, Frankfurter, GitHub | external |
 | Containerization | Docker + docker compose | - |
 
-Frontend and backend show the default host ports, set with `FRONTEND_PORT` and `BACKEND_PORT`. Inside the Compose network the frontend listens on `80`, the backend on `8000`, and PostgreSQL on `5432` without being published.
+The table lists the default published host ports, set with `FRONTEND_PORT` and `BACKEND_PORT`. Inside the Compose network the frontend listens on `80`, the backend on `8000`, and PostgreSQL on `5432` without being published.
 
 ## Directory Structure
 

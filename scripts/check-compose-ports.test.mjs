@@ -16,13 +16,13 @@ test('the current compose host-port mappings are correct', () => {
   assert.deepEqual(checkComposePorts(compose), [])
 })
 
-test('backend requires the colon default form so an empty variable still publishes the port', () => {
+test('backend requires the colon default form so an empty variable keeps the stable host port', () => {
   const mutated = replaceOnce(compose, '${BACKEND_PORT:-8000}', '${BACKEND_PORT-8000}')
 
   assert.ok(checkComposePorts(mutated).length > 0)
 })
 
-test('frontend requires the colon default form so an empty variable still publishes the port', () => {
+test('frontend requires the colon default form so an empty variable keeps the stable host port', () => {
   const mutated = replaceOnce(compose, '${FRONTEND_PORT:-3000}', '${FRONTEND_PORT-3000}')
 
   assert.ok(checkComposePorts(mutated).length > 0)
