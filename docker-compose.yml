@@ -47,6 +47,13 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-flash-latest}
+      GEMINI_ALLOWED_MODELS: ${GEMINI_ALLOWED_MODELS:-}
+      OPENAI_SCANNER_ENABLED: ${OPENAI_SCANNER_ENABLED:-false}
+      OPENAI_PROVIDER_LABEL: ${OPENAI_PROVIDER_LABEL:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-luna}
+      OPENAI_ALLOWED_MODELS: ${OPENAI_ALLOWED_MODELS:-}
+      OPENAI_API_KEY_REQUIRED: ${OPENAI_API_KEY_REQUIRED:-}
       TCGDEX_SYNC_LANGUAGES: ${TCGDEX_SYNC_LANGUAGES:-en,de}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       PRE_UPGRADE_BACKUP_ENABLED: ${PRE_UPGRADE_BACKUP_ENABLED:-true}
@@ -59,6 +66,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # Lets OPENAI_BASE_URL reach a model running on the Docker host. Automatic on
+    # Docker Desktop, but Linux Docker Engine needs it stated.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./backups:/app/backups
       - ./data/auth:/app/data/auth

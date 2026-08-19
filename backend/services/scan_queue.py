@@ -339,12 +339,14 @@ async def default_scan_processor(
     item_id: int | None = None,
 ) -> dict:
     """Reuse the proven single-card scanner path with background priority."""
-    from api.recognize import get_gemini_model, recognize_sanitized_card
+    from api.recognize import recognize_sanitized_card
+    from services.scan_providers import get_provider
     from services.scan_trace import create_scan_trace
 
     user = db.get(User, user_id)
     if user is None or not user.is_active:
         raise PermanentScanError("The scan owner is no longer an active user.")
+    provider = get_provider(db, user_id)
     trace = create_scan_trace(
         db,
         user_id,
@@ -352,11 +354,14 @@ async def default_scan_processor(
         job_id=job_id,
         item_id=item_id,
         filename="sanitized-scan.jpg",
-        model=get_gemini_model(),
+        provider=provider.name,
+        model=provider.model(),
     )
     trace.set_image(image_bytes)
     try:
-        with gemini_priority_scope("background"):
+        # Only Gemini has a shared per-key budget to protect; other providers get
+        # a no-op scope rather than queueing behind Gemini's limiter.
+        with provider.rate_limit_scope("background"):
             return await recognize_sanitized_card(
                 db,
                 user_id,
@@ -383,20 +388,30 @@ async def default_composite_processor(
     """Recognize a small grid and flag unclear positions for individual work."""
     from api.recognize import (
         CompositeRecognitionError,
-        get_gemini_model,
-        get_gemini_key,
         match_composite_card_info,
         recognize_composite_card_info,
     )
+    from services.scan_providers import get_provider, require_scanner_capability_mode
     from services.card_composite import build_composite
     from services.scan_trace import create_scan_trace
 
     user = db.get(User, user_id)
     if user is None or not user.is_active:
         raise PermanentScanError("The scan owner is no longer an active user.")
-    api_key = get_gemini_key(db, user_id=user_id)
-    if not api_key:
-        raise PermanentScanError("No Gemini API key is configured for the scan owner.")
+    provider = get_provider(db, user_id)
+    try:
+        require_scanner_capability_mode(
+            db, user_id, provider.name, provider.model()
+        )
+    except HTTPException as exc:
+        raise PermanentScanError(str(exc.detail)) from None
+    api_key = provider.credential(db, user_id)
+    # A local endpoint needs no credential, so ask the provider rather than
+    # assuming an empty key means "not configured".
+    if provider.requires_credential() and not api_key:
+        raise PermanentScanError(
+            f"No {provider.name} API key is configured for the scan owner."
+        )
 
     trace_item_ids = list(item_ids or [])
     traces = [
@@ -407,21 +422,24 @@ async def default_composite_processor(
             job_id=job_id,
             item_id=(trace_item_ids[position] if position < len(trace_item_ids) else None),
             filename=f"sanitized-scan-{position + 1}.jpg",
-            model=get_gemini_model(),
+            provider=provider.name,
+            model=provider.model(),
         )
         for position in range(len(images))
     ]
     for trace, image in zip(traces, images):
+        trace.add_secret(api_key)
         trace.set_image(image)
 
     try:
-        with gemini_priority_scope("background"):
+        with provider.rate_limit_scope("background"):
             try:
                 recognized_by_position = await recognize_composite_card_info(
                     api_key,
                     build_composite(images),
                     len(images),
                     traces=traces,
+                    provider=provider,
                 )
             except CompositeRecognitionError as exc:
                 for trace in traces:
@@ -466,7 +484,7 @@ def _scan_error_from_http(error: HTTPException) -> RuntimeError:
             retry_after_seconds=getattr(error, "retry_after_seconds", None),
             retry_reason=getattr(error, "retry_reason", None),
         )
-    if error.status_code in {400, 401, 403}:
+    if error.status_code in {400, 401, 403, 409}:
         return PermanentScanError(str(error.detail))
     return RecognitionScanError(str(error.detail))
 

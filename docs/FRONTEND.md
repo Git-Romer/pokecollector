@@ -160,7 +160,8 @@ Defined in `frontend/src/components/TabNav.jsx`.
   - theme picker
   - app language dropdown and currency controls
   - TCGdex sync-language selection for admins
-  - Telegram and Gemini keys
+  - Telegram configuration and guided Gemini/OpenAI-compatible scanner setup
+  - administrator-only tested custom scanner models and server setup summary
   - per-user scanner diagnostics consent and explicit stored-data deletion
   - sync controls
   - auth mode toggle

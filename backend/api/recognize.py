@@ -20,6 +20,16 @@ from services.gemini_rate_limit import (
 )
 from services.scan_storage import MAX_FILE_BYTES, ScanUploadError, read_limited_upload, sanitize_image_bytes
 from services.scan_trace import ScanTrace, create_scan_trace
+from services.scan_providers import (
+    GEMINI,
+    SCANNER_CAPABILITY_DEGRADED,
+    ScanProvider,
+    get_provider,
+    image_part,
+    image_part_from_bytes,
+    require_scanner_capability_mode,
+    text_part,
+)
 import logging
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from sqlalchemy.orm import Session
@@ -31,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-GEMINI_TRANSIENT_STATUS_CODES = {502, 503, 504}
+GEMINI_TRANSIENT_STATUS_CODES = {408, 425, 500, 502, 503, 504}
 DEFAULT_GEMINI_MODEL = "gemini-flash-latest"
 GEMINI_MODELS_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 MAX_GEMINI_RETRY_SECONDS = 14 * 24 * 60 * 60
@@ -224,17 +234,6 @@ def build_gemini_generate_url(model: str | None = None) -> str:
     return f"{GEMINI_MODELS_BASE_URL}/{gemini_model}:generateContent"
 
 
-def gemini_error_message(resp: httpx.Response) -> str:
-    """Extract the useful upstream Gemini error body when available."""
-    try:
-        data = resp.json()
-    except ValueError:
-        return resp.text.strip()
-    error = data.get("error") if isinstance(data, dict) else None
-    message = error.get("message") if isinstance(error, dict) else None
-    return str(message or "").strip()
-
-
 def gemini_retry_after_seconds(resp: httpx.Response) -> float | None:
     """Read Gemini's retry hint from a header or google.rpc.RetryInfo body."""
     def valid_delay(value: float) -> float | None:
@@ -329,9 +328,15 @@ def get_gemini_key(db: Session, user_id: int = None) -> str:
             UserSetting.user_id == user_id, UserSetting.key == "gemini_api_key"
         ).first()
         if row and row.value:
-            return row.value
+            return row.value.strip()
     # No global/env fallback — each user must configure their own key
     return ""
+
+
+def _requested_gemini_model(gemini_url: str) -> str:
+    """The model the failing request actually asked for, read back off the URL."""
+    tail = gemini_url.rsplit("/", 1)[-1]
+    return tail.split(":", 1)[0] or get_gemini_model()
 
 
 async def post_gemini_generate(
@@ -365,17 +370,32 @@ async def post_gemini_generate(
                     retry_after_seconds=retry_after,
                     retry_reason=retry_reason,
                 )
-            if resp.status_code in {400, 401, 403}:
+            if resp.status_code in {401, 403}:
                 raise HTTPException(
                     status_code=400,
                     detail="Ungültiger Gemini API Key. Bitte in den Einstellungen prüfen.",
                 )
+            if resp.status_code == 400:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Gemini hat die Scanner-Anfrage abgelehnt. Bitte Bild und "
+                        "Modell in den Einstellungen prüfen."
+                    ),
+                )
             if resp.status_code == 404:
-                upstream_message = gemini_error_message(resp)
-                detail = "Gemini Modell nicht verfügbar. Bitte GEMINI_MODEL auf ein unterstütztes Modell setzen."
-                if upstream_message:
-                    detail = f"{detail} Google meldet: {upstream_message}"
-                raise HTTPException(status_code=502, detail=detail)
+                # A user can now name their own model, so pointing everyone at
+                # GEMINI_MODEL would send them after a setting they cannot see.
+                # The installation default is still named for administrators.
+                requested = _requested_gemini_model(gemini_url)
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Gemini Modell \"{requested}\" nicht verfügbar. Bitte in den "
+                        "Einstellungen ein anderes Modell wählen, oder GEMINI_MODEL auf "
+                        "ein unterstütztes Modell setzen."
+                    ),
+                )
             if resp.status_code in GEMINI_TRANSIENT_STATUS_CODES:
                 if attempt < max_attempts - 1:
                     await asyncio.sleep(2 ** attempt)
@@ -385,11 +405,18 @@ async def post_gemini_generate(
                     detail="Gemini ist gerade temporär überlastet oder nicht verfügbar. Bitte gleich nochmal versuchen.",
                 )
             if resp.is_error:
-                upstream_message = gemini_error_message(resp)
-                detail = f"Gemini Anfrage fehlgeschlagen ({resp.status_code})."
-                if upstream_message:
-                    detail = f"{detail} Google meldet: {upstream_message}"
-                raise HTTPException(status_code=502, detail=detail)
+                if 400 <= resp.status_code < 500:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "Gemini hat die Scanner-Anfrage abgelehnt "
+                            f"({resp.status_code}). Bitte Bild und Modell prüfen."
+                        ),
+                    )
+                raise HTTPException(
+                    status_code=503,
+                    detail="Gemini ist gerade nicht verfügbar. Bitte später erneut versuchen.",
+                )
             try:
                 record_gemini_success(api_key)
             except Exception:
@@ -890,8 +917,14 @@ async def match_card_info(
     allow_visual_verification: bool = False,
     photo_bytes: bytes | None = None,
     trace: ScanTrace | None = None,
+    provider: ScanProvider | None = None,
 ) -> dict:
-    """Shared deterministic matcher for both individual and composite scans."""
+    """Shared deterministic matcher for both individual and composite scans.
+
+    provider defaults to Gemini so existing callers, including the tests, behave
+    exactly as before.
+    """
+    provider = provider or ScanProvider(GEMINI)
     card_info = normalize_recognized_card_info(card_info)
     candidates, number_match_count = await _search_and_rank_candidates(db, card_info, trace)
     confident, decision = _metadata_decision(card_info, candidates)
@@ -909,7 +942,10 @@ async def match_card_info(
         allow_visual_verification
         and not confident
         and can_compare
-        and bool(api_key)
+        # A credential is required only where the provider requires one. A local
+        # endpoint has no key by design, so testing the key here would silently
+        # disable this for exactly the setups the toggle exists for.
+        and (bool(api_key) or not provider.requires_credential())
         and bool(image_b64)
         and bool(mime_type)
     )
@@ -949,7 +985,7 @@ async def match_card_info(
                     )
                     parts = [
                         {"text": "Here is the original card photo:"},
-                        {"inline_data": {"mime_type": mime_type, "data": image_b64}},
+                        image_part(mime_type, image_b64),
                         {"text": (
                             "Choose the matching candidate using artwork and printed "
                             "identity details. Respond with only its number, or 0 if "
@@ -965,23 +1001,16 @@ async def match_card_info(
                             str(candidate.get("id") or "")
                         )
                         if candidate_bytes:
-                            parts.append({"inline_data": {
-                                "mime_type": "image/webp",
-                                "data": base64.b64encode(candidate_bytes).decode(),
-                            }})
+                            parts.append(image_part_from_bytes("image/webp", candidate_bytes))
                         else:
                             parts.append({"text": " (image unavailable)"})
 
-                    response = await post_gemini_generate(
+                    response_text, _visual_usage = await provider.generate_text(
                         client,
-                        build_gemini_generate_url(),
                         api_key,
-                        {"contents": [{"parts": parts}]},
+                        parts,
                         max_attempts=2,
                     )
-                    response_text = response.json()["candidates"][0]["content"][
-                        "parts"
-                    ][0]["text"]
                     pick_match = re.search(r"(\d+)", response_text)
                     selected_position = int(pick_match.group(1)) if pick_match else None
                     if trace:
@@ -996,7 +1025,12 @@ async def match_card_info(
                             candidates.remove(winner)
                             candidates.insert(0, winner)
                             confident = True
-                            decision = "gemini_visual"
+                            # Unchanged for Gemini: this value is persisted in
+                            # diagnostics and asserted by the existing tests.
+                            decision = (
+                                "gemini_visual" if provider.is_gemini
+                                else f"{provider.name}_visual"
+                            )
         except Exception as exc:
             logger.warning("Visual matching failed (non-blocking): %s", exc)
 
@@ -1029,41 +1063,39 @@ async def recognize_sanitized_card(
     trace: ScanTrace | None = None,
 ) -> dict:
     """Recognize one already-sanitized image for direct and queued scans."""
-    api_key = get_gemini_key(db, user_id=user_id)
-    if not api_key:
+    provider = get_provider(db, user_id)
+    capability_mode = require_scanner_capability_mode(
+        db, user_id, provider.name, provider.model()
+    )
+    api_key = provider.credential(db, user_id)
+    if trace:
+        trace.add_secret(api_key)
+    if provider.requires_credential() and not api_key:
         if trace:
-            trace.record_error("No Gemini API key is configured.")
+            trace.record_error(f"No {provider.name} API key is configured.")
         raise HTTPException(
             status_code=400,
-            detail="Kein Gemini API Key konfiguriert. Bitte in den Einstellungen eintragen.",
+            detail=provider.missing_credential_message(),
         )
 
     image_b64 = base64.b64encode(image_bytes).decode()
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            response = await post_gemini_generate(
+            response_text, usage = await provider.generate_text(
                 client,
-                build_gemini_generate_url(),
                 api_key,
-                {"contents": [{"parts": [
-                    {"text": RECOGNIZE_PROMPT},
-                    {"inline_data": {
-                        "mime_type": content_type,
-                        "data": image_b64,
-                    }},
-                ]}]},
+                [text_part(RECOGNIZE_PROMPT), image_part(content_type, image_b64)],
             )
-        payload = response.json()
-        response_text = payload["candidates"][0]["content"]["parts"][0]["text"].strip()
+        response_text = response_text.strip()
         if trace:
             trace.record_extraction(
                 prompt=RECOGNIZE_PROMPT,
                 raw_response=response_text,
-                usage=payload.get("usageMetadata"),
+                usage=usage,
             )
         json_match = re.search(r"\{.*\}", response_text, re.DOTALL)
         if not json_match:
-            raise ValueError("No JSON found in Gemini response")
+            raise ValueError("No JSON found in the scanner response")
         card_info = normalize_recognized_card_info(json.loads(json_match.group()))
         if trace:
             trace.record_extraction(parsed=card_info)
@@ -1083,9 +1115,12 @@ async def recognize_sanitized_card(
             api_key=api_key,
             image_b64=image_b64,
             mime_type=content_type,
-            allow_visual_verification=True,
+            allow_visual_verification=(
+                capability_mode != SCANNER_CAPABILITY_DEGRADED
+            ),
             photo_bytes=image_bytes,
             trace=trace,
+            provider=provider,
         )
     except HTTPException as exc:
         if trace:
@@ -1109,12 +1144,16 @@ async def recognize_card(
     except ScanUploadError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    provider = get_provider(db, current_user.id)
     trace = create_scan_trace(
         db,
         current_user.id,
         mode="single",
         filename="sanitized-upload.jpg",
-        model=get_gemini_model(),
+        # Stamped with whichever provider will actually run, so diagnostics do not
+        # attribute an OpenAI scan to the Gemini model.
+        provider=provider.name,
+        model=provider.model(),
     )
     trace.set_image(sanitized.data)
     try:
@@ -1164,38 +1203,34 @@ async def recognize_composite_card_info(
     count: int,
     *,
     traces: list[ScanTrace] | None = None,
+    provider: ScanProvider | None = None,
 ) -> dict[int, dict]:
-    """Return Gemini card information keyed by zero-based composite position."""
+    """Return recognized card information keyed by zero-based composite position."""
+    provider = provider or ScanProvider(GEMINI)
     image_b64 = base64.b64encode(image_bytes).decode()
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            response = await post_gemini_generate(
+            response_text, usage = await provider.generate_text(
                 client,
-                build_gemini_generate_url(),
                 api_key,
-                {
-                    "contents": [{
-                        "parts": [
-                            {"text": COMPOSITE_PROMPT.format(count=count)},
-                            {"inline_data": {"mime_type": "image/jpeg", "data": image_b64}},
-                        ]
-                    }]
-                },
+                [
+                    text_part(COMPOSITE_PROMPT.format(count=count)),
+                    image_part("image/jpeg", image_b64),
+                ],
             )
-        payload = response.json()
-        response_text = payload["candidates"][0]["content"]["parts"][0]["text"].strip()
+        response_text = response_text.strip()
         for trace in traces or []:
             trace.record_extraction(
                 prompt=COMPOSITE_PROMPT.format(count=count),
                 raw_response=response_text,
-                usage=payload.get("usageMetadata"),
+                usage=usage,
             )
         array_match = re.search(r"\[.*\]", response_text, re.DOTALL)
         if not array_match:
-            raise CompositeRecognitionError("Gemini returned no card list for the composite.")
+            raise CompositeRecognitionError("The scanner returned no card list for the composite.")
         rows = json.loads(array_match.group())
         if not isinstance(rows, list):
-            raise CompositeRecognitionError("Gemini returned an invalid composite card list.")
+            raise CompositeRecognitionError("The scanner returned an invalid composite card list.")
     except HTTPException:
         raise
     except CompositeRecognitionError:

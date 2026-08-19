@@ -1,4 +1,6 @@
 import fcntl
+import hashlib
+import hmac
 import logging
 import os
 import secrets
@@ -9,7 +11,7 @@ import bcrypt
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
-from models import User
+from models import User, UserSetting
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +102,12 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 
 
+def secret_fingerprint(namespace: str, material: str) -> str:
+    """Create a stable, non-reversible identifier using the resolved server secret."""
+    scoped = f"{namespace}\0{material}".encode()
+    return hmac.new(SECRET_KEY.encode(), scoped, hashlib.sha256).hexdigest()
+
+
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
@@ -137,6 +145,21 @@ def bootstrap_admin(db: Session):
     db.add(admin)
     db.commit()
     db.refresh(admin)
+
+    # init_db() runs before the first administrator exists, so its legacy settings
+    # migration cannot import GEMINI_API_KEY on a brand-new installation. Seed the
+    # key when the administrator is actually created; later startups keep the
+    # stored user setting unchanged.
+    gemini_api_key = (os.getenv("GEMINI_API_KEY") or "").strip()
+    if gemini_api_key:
+        db.add(
+            UserSetting(
+                user_id=admin.id,
+                key="gemini_api_key",
+                value=gemini_api_key,
+            )
+        )
+        db.commit()
 
     from sqlalchemy import text
 

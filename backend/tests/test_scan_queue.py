@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import os
 import tempfile
@@ -5,13 +6,15 @@ import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 try:
+    from fastapi import HTTPException
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy.pool import StaticPool
 
     from database import Base
-    from models import ScanJob, ScanJobItem, ScanQueueUserState, User
+    from models import ScanJob, ScanJobItem, ScanQueueUserState, User, UserSetting
     from services import scan_queue, scan_storage
+    from services.scan_providers import ScanProvider, scanner_capability_proof
     from services.scan_queue import (
         ClaimedScanItem,
         claim_next_scan_item,
@@ -91,6 +94,16 @@ class ScanQueueTests(unittest.TestCase):
         self.db.commit()
         return job
 
+    def _select_openai_then_disable_it(self, user):
+        self.db.add(
+            UserSetting(
+                user_id=user.id,
+                key="scanner_provider",
+                value="openai",
+            )
+        )
+        self.db.commit()
+
     def test_dispatch_rotates_between_users(self):
         self._job(self.users[0], positions=(0, 1))
         self._job(self.users[1], positions=(0,))
@@ -123,6 +136,96 @@ class ScanQueueTests(unittest.TestCase):
             [{"recognized": {"name": str(index)}, "matches": []} for index in range(4)],
         ))
         self.assertEqual(items[1].status, "pending")
+
+    def test_endpoint_change_blocks_an_already_queued_composite(self):
+        user = self.users[0]
+        model = "vision-model"
+        first = {
+            "OPENAI_SCANNER_ENABLED": "true",
+            "OPENAI_MODEL": model,
+            "OPENAI_BASE_URL": "http://endpoint-a:11434/v1",
+        }
+        second = {**first, "OPENAI_BASE_URL": "http://endpoint-b:11434/v1"}
+        with patch.dict(os.environ, first):
+            proof = scanner_capability_proof("openai", model, "full")
+        self.db.add_all([
+            UserSetting(user_id=user.id, key="scanner_provider", value="openai"),
+            UserSetting(user_id=user.id, key="scanner_model_openai", value=model),
+            UserSetting(
+                user_id=user.id,
+                key="scanner_capability_openai",
+                value=proof,
+            ),
+        ])
+        self.db.commit()
+        recognize = AsyncMock(return_value={})
+
+        with patch.dict(os.environ, second), patch(
+            "api.recognize.recognize_composite_card_info", new=recognize
+        ), self.assertRaises(scan_queue.PermanentScanError) as caught:
+            asyncio.run(
+                scan_queue.default_composite_processor(
+                    self.db,
+                    user.id,
+                    [b"first", b"second"],
+                    ["image/jpeg", "image/jpeg"],
+                )
+            )
+
+        self.assertIn("Test and save", str(caught.exception))
+        recognize.assert_not_awaited()
+
+    def test_disabled_selected_provider_blocks_already_queued_individual_photo(self):
+        user = self.users[0]
+        self._select_openai_then_disable_it(user)
+        generate = AsyncMock()
+
+        with patch.dict(os.environ, {"OPENAI_SCANNER_ENABLED": "false"}), patch.object(
+            ScanProvider, "generate_text", new=generate
+        ), self.assertRaises(HTTPException) as caught:
+            asyncio.run(
+                scan_queue.default_scan_processor(
+                    self.db,
+                    user.id,
+                    b"stored-card-photo",
+                    "image/jpeg",
+                    job_id=12,
+                    item_id=34,
+                )
+            )
+
+        self.assertEqual(caught.exception.status_code, 409)
+        self.assertIsInstance(
+            scan_queue._scan_error_from_http(caught.exception),
+            scan_queue.PermanentScanError,
+        )
+        generate.assert_not_awaited()
+
+    def test_disabled_selected_provider_blocks_already_queued_composite_photos(self):
+        user = self.users[0]
+        self._select_openai_then_disable_it(user)
+        generate = AsyncMock()
+
+        with patch.dict(os.environ, {"OPENAI_SCANNER_ENABLED": "false"}), patch.object(
+            ScanProvider, "generate_text", new=generate
+        ), self.assertRaises(HTTPException) as caught:
+            asyncio.run(
+                scan_queue.default_composite_processor(
+                    self.db,
+                    user.id,
+                    [b"first-photo", b"second-photo"],
+                    ["image/jpeg", "image/jpeg"],
+                    job_id=12,
+                    item_ids=[34, 35],
+                )
+            )
+
+        self.assertEqual(caught.exception.status_code, 409)
+        self.assertIsInstance(
+            scan_queue._scan_error_from_http(caught.exception),
+            scan_queue.PermanentScanError,
+        )
+        generate.assert_not_awaited()
 
     def test_unclear_composite_position_retries_without_confident_siblings(self):
         self._job(self.users[0], positions=(0, 1, 2, 3))
@@ -453,9 +556,18 @@ class CompositeProcessorTests(unittest.IsolatedAsyncioTestCase):
             image_bytes("green"),
             image_bytes("yellow"),
         ]
-        with patch("api.recognize.get_gemini_key", return_value="secret-key"), \
-                patch("api.recognize.recognize_composite_card_info", new=AsyncMock(return_value=composite_info)), \
-                patch("api.recognize.match_composite_card_info", new=matcher):
+        with (
+            patch(
+                "services.scan_providers.get_provider",
+                return_value=ScanProvider("gemini", "gemini-flash-latest"),
+            ),
+            patch("api.recognize.get_gemini_key", return_value="secret-key"),
+            patch(
+                "api.recognize.recognize_composite_card_info",
+                new=AsyncMock(return_value=composite_info),
+            ),
+            patch("api.recognize.match_composite_card_info", new=matcher),
+        ):
             results = await scan_queue.default_composite_processor(
                 db,
                 1,

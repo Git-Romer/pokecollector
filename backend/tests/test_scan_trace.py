@@ -119,6 +119,7 @@ class ScanTraceTests(unittest.TestCase):
             mode="single",
             job_id=10,
             item_id=20,
+            provider="gemini",
             model="gemini-test",
         )
         trace.set_image(b"sanitized-photo")
@@ -138,6 +139,7 @@ class ScanTraceTests(unittest.TestCase):
         self.assertIsNotNone(path)
         self.assertEqual(path.parent.parent.name, f"user-{self.user.id}")
         payload = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["provider"], "gemini")
         self.assertEqual(payload["decision"]["selected"], "base1-58")
         self.assertEqual(payload["candidates"][0]["rank_key"], [1, 0])
         self.assertNotIn("api_key", json.dumps(payload).lower())
@@ -167,6 +169,26 @@ class ScanTraceTests(unittest.TestCase):
         self.assertNotIn("eyJheader", payload["error"])
         self.assertNotIn("123456789:", payload["error"])
         self.assertIn("[REDACTED", payload["error"])
+
+    def test_arbitrary_key_is_redacted_from_successful_provider_data(self):
+        self._enable(self.user)
+        secret = "local-provider-key-with-no-known-prefix"
+        trace = create_scan_trace(self.db, self.user.id, mode="single")
+        trace.add_secret(secret)
+        trace.record_extraction(
+            raw_response=f'{{"echo":"{secret}"}}',
+            parsed={"nested": [secret]},
+            usage={"provider": {"credential": secret}},
+        )
+        trace.record_visual_verification(
+            raw_response=f"selected using {secret}", selected=1
+        )
+
+        path = trace.save()
+        saved = path.read_text(encoding="utf-8")
+
+        self.assertNotIn(secret, saved)
+        self.assertGreaterEqual(saved.count("[REDACTED_API_KEY]"), 4)
 
     def test_ground_truth_labels_all_attempts_for_one_item(self):
         self._enable(self.user)

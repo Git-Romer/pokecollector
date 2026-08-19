@@ -56,10 +56,23 @@ class GeminiRateLimitTests(unittest.IsolatedAsyncioTestCase):
         sleep.assert_not_awaited()
 
     async def test_fingerprint_is_stable_and_does_not_store_the_api_key(self):
-        first = gemini_rate_limit.key_fingerprint("very-secret-key")
-        second = gemini_rate_limit.key_fingerprint("very-secret-key")
-        self.assertEqual(first, second)
-        self.assertNotIn("very-secret-key", first)
+        with patch.dict(
+            gemini_rate_limit.os.environ,
+            {"JWT_SECRET_KEY": "existing-installation-secret"},
+        ):
+            first = gemini_rate_limit.key_fingerprint("very-secret-key")
+            second = gemini_rate_limit.key_fingerprint("very-secret-key")
+            self.assertEqual(first, second)
+            self.assertNotIn("very-secret-key", first)
+
+        with patch.dict(
+            gemini_rate_limit.os.environ,
+            {"JWT_SECRET_KEY": "a-different-installation-secret"},
+        ):
+            self.assertNotEqual(
+                first,
+                gemini_rate_limit.key_fingerprint("very-secret-key"),
+            )
 
     async def test_upstream_penalty_is_shared_by_every_worker_for_that_key(self):
         gemini_rate_limit.penalize_gemini_key("shared-key", seconds=90)

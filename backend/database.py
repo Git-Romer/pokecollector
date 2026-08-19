@@ -517,6 +517,13 @@ def _run_migrations(conn):
         "ALTER TABLE gemini_quota_state ADD COLUMN IF NOT EXISTS last_refill_at TIMESTAMP",
         "ALTER TABLE gemini_quota_state ADD COLUMN IF NOT EXISTS blocked_reason VARCHAR",
         "ALTER TABLE gemini_quota_state ADD COLUMN IF NOT EXISTS consecutive_daily_failures INTEGER NOT NULL DEFAULT 0",
+        """CREATE TABLE IF NOT EXISTS scanner_provider_limit_state (
+            scope_fingerprint VARCHAR PRIMARY KEY,
+            provider VARCHAR NOT NULL,
+            blocked_until TIMESTAMP,
+            blocked_reason VARCHAR,
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )""",
         "ALTER TABLE scan_job_items ADD COLUMN IF NOT EXISTS batch_mode BOOLEAN NOT NULL DEFAULT FALSE",
         "ALTER TABLE scan_job_items ADD COLUMN IF NOT EXISTS retry_reason VARCHAR",
         "CREATE INDEX IF NOT EXISTS ix_scan_jobs_user_id ON scan_jobs(user_id)",
@@ -534,6 +541,7 @@ def _run_migrations(conn):
            ON scan_job_items(status, next_attempt_at, lease_expires_at, user_id)""",
         "CREATE INDEX IF NOT EXISTS ix_scan_queue_user_state_last_dispatched_at ON scan_queue_user_state(last_dispatched_at)",
         "CREATE INDEX IF NOT EXISTS ix_gemini_quota_state_next_request_at ON gemini_quota_state(next_request_at)",
+        "CREATE INDEX IF NOT EXISTS ix_scanner_provider_limit_state_blocked_until ON scanner_provider_limit_state(blocked_until)",
         # v59: User-owned manual cards and copy-only shared templates.
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS custom_owner_id INTEGER",
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS is_shared_template BOOLEAN NOT NULL DEFAULT FALSE",

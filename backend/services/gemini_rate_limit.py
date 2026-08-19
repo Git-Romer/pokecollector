@@ -51,7 +51,12 @@ def burst_capacity() -> float:
 
 
 def key_fingerprint(api_key: str) -> str:
-    """Return a stable, non-reversible identifier without persisting the key."""
+    """Return the legacy stable identifier without persisting the API key.
+
+    Existing installations already persist quota and pacing state under this
+    fingerprint. Changing it in-place would silently discard active blocks after
+    an upgrade, so any hardening here requires an explicit state migration.
+    """
     secret = os.environ.get("JWT_SECRET_KEY", "pokecollector-gemini-quota-state").encode()
     return hmac.new(secret, api_key.encode(), hashlib.sha256).hexdigest()
 
