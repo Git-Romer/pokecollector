@@ -6,13 +6,14 @@ import json
 from typing import List
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from api.auth import get_current_user
 from database import get_db
 from models import ScanJob, ScanJobItem, User
+from services.scan_candidate_images import fetch_and_cache_candidate_image
 from services.scan_queue import (
     drain_scan_queue,
     job_progress,
@@ -161,10 +162,19 @@ def get_scan_job(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Poll progress and read every item for review, resolved ones included.
+
+    Resolved items are kept (not filtered out) so the review page can render
+    them as a collapsed, already-handled row instead of them simply vanishing
+    once the list refetches — the point of collapsing rather than removing is
+    that a reviewer working through a long batch can still see what they just
+    confirmed. `GET /recognize/jobs` is the separate "still needs attention"
+    inbox listing and keeps filtering resolved items out of *that* count.
+    """
     job = _get_own_job(db, job_id, current_user)
     items = (
         db.query(ScanJobItem)
-        .filter(ScanJobItem.job_id == job.id, ScanJobItem.resolved.is_(False))
+        .filter(ScanJobItem.job_id == job.id)
         .order_by(ScanJobItem.position.asc())
         .all()
     )
@@ -188,6 +198,47 @@ def get_scan_job_item_image(
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Scan photo not found.")
     return FileResponse(path, media_type="image/jpeg", filename="scan.jpg")
+
+
+@router.get("/recognize/jobs/{job_id}/items/{item_id}/candidates/{index}/image")
+async def get_scan_candidate_image(
+    job_id: int,
+    item_id: int,
+    index: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """A candidate's full-resolution scan, served from our own cache.
+
+    Reviewing means comparing the photo against a candidate at full size, and
+    proxying straight to the TCGdex asset CDN on every expand is slow enough
+    to read as broken. `services.scan_candidate_images` pre-warms the top
+    candidates during recognition, so this is usually a local cache read; a
+    miss falls back to fetching (and caching) here.
+
+    The URL is looked up from the item's own stored `matches`, never accepted
+    from the caller — taking a client-supplied URL here would make this an
+    open image-fetch proxy.
+    """
+    item = _get_own_item(db, job_id, item_id, current_user)
+    matches = item.matches or []
+    if not 0 <= index < len(matches):
+        raise HTTPException(status_code=404, detail="Candidate image not found.")
+
+    match = matches[index] if isinstance(matches[index], dict) else {}
+    url = match.get("image_hd") or match.get("image")
+    if not url:
+        raise HTTPException(status_code=404, detail="Candidate image not found.")
+
+    result = await fetch_and_cache_candidate_image(db, url)
+    if result is None:
+        raise HTTPException(status_code=502, detail="Could not load the candidate image.")
+    data, content_type = result
+    return Response(
+        content=data,
+        media_type=content_type,
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
 
 
 @router.post("/recognize/jobs/{job_id}/items/{item_id}/resolve")

@@ -11,6 +11,7 @@ try:
         MAX_GEMINI_RETRY_SECONDS,
         PHASH_CANDIDATE_LIMIT,
         RECOGNIZE_PROMPT,
+        _apply_printed_total_mismatch,
         _candidate_rank_key,
         _download_candidate_images,
         _metadata_decision,
@@ -483,6 +484,19 @@ class DeterministicMatchingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(_candidate_rank_key(recognized, matching)[2], 0)
         self.assertEqual(_candidate_rank_key(recognized, malformed)[2], 1)
         self.assertEqual(_candidate_rank_key(recognized, contradiction)[2], 2)
+
+    def test_printed_total_mismatch_is_exposed_only_for_a_contradiction(self):
+        recognized = normalize_recognized_card_info({"number_total": "100"})
+        matching = {"printed_total": 100}
+        unknown = {"printed_total": None}
+        contradiction = {"printed_total": 99}
+        candidates = [matching, unknown, contradiction]
+
+        _apply_printed_total_mismatch(recognized, candidates)
+
+        self.assertFalse(matching["printed_total_mismatch"])
+        self.assertFalse(unknown["printed_total_mismatch"])
+        self.assertTrue(contradiction["printed_total_mismatch"])
 
     def test_artist_prefix_and_hp_can_resolve_numberless_card(self):
         recognized = normalize_recognized_card_info({

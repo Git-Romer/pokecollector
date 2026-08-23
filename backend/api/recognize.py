@@ -18,6 +18,7 @@ from services.gemini_rate_limit import (
     penalize_gemini_key,
     record_gemini_success,
 )
+from services.scan_candidate_images import prewarm_candidate_images
 from services.scan_storage import MAX_FILE_BYTES, ScanUploadError, read_limited_upload, sanitize_image_bytes
 from services.scan_trace import ScanTrace, create_scan_trace
 from services.scan_providers import (
@@ -194,6 +195,20 @@ def _printed_total_signal(recognized_total, candidate_total) -> int:
     if normalized is None or candidate_normalized is None:
         return 1
     return 0 if normalized == candidate_normalized else 2
+
+
+def _apply_printed_total_mismatch(card_info: dict, candidates: list[dict]) -> None:
+    """Surface the ranker's printed-total contradiction as a plain boolean.
+
+    `_candidate_rank_key` already scores this (see `_printed_total_signal`
+    above) to rank a contradicting printing lower, but that score never
+    reaches the public candidate dict. The review grid needs it as a visible
+    badge, not just a silent ranking effect, so mark each candidate in place.
+    """
+    for candidate in candidates:
+        candidate["printed_total_mismatch"] = (
+            _printed_total_signal(card_info.get("number_total"), candidate.get("printed_total")) == 2
+        )
 
 
 _ARTIST_PREFIX = re.compile(
@@ -892,6 +907,7 @@ async def _search_and_rank_candidates(
 
     await _fill_candidate_details(db, deduped, card_info)
     deduped.sort(key=lambda card: _candidate_rank_key(card_info, card))
+    _apply_printed_total_mismatch(card_info, deduped)
     number_match_count = sum(
         1
         for card in deduped
@@ -1038,6 +1054,19 @@ async def match_card_info(
         {key: value for key, value in card.items() if key != "_number_extra"}
         for card in retain_ranked_candidates(candidates)
     ]
+
+    # Warm the review's first clicks while the reviewer is still working
+    # through the rest of the batch. Fired rather than awaited, and against
+    # its own database session (see prewarm_candidate_images), so a slow or
+    # failing CDN fetch here can never add latency to recognition itself.
+    if public_matches:
+        try:
+            asyncio.create_task(prewarm_candidate_images(public_matches))
+        except RuntimeError:
+            # No running event loop (e.g. certain sync test harnesses) — a
+            # cold cache on first review is the only consequence.
+            pass
+
     if trace:
         selected = (
             str(candidates[0].get("tcg_card_id") or "")
