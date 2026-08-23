@@ -20,6 +20,7 @@ from services.gemini_rate_limit import (
 )
 from services.scan_storage import MAX_FILE_BYTES, ScanUploadError, read_limited_upload, sanitize_image_bytes
 from services.scan_trace import ScanTrace, create_scan_trace
+from services.text_search import accent_insensitive_contains
 from services.scan_providers import (
     GEMINI,
     SCANNER_CAPABILITY_DEGRADED,
@@ -48,6 +49,11 @@ MAX_GEMINI_RETRY_SECONDS = 14 * 24 * 60 * 60
 PHASH_MAX_DISTANCE = 20
 PHASH_MIN_MARGIN = 5
 PHASH_CANDIDATE_LIMIT = 8
+# Deliberately generous relative to select_search_candidates' baseline_limit=8 +
+# matching_extra_limit=4 (12 total kept per query): a local ORDER BY cannot
+# replicate TCGdex's own relevance ranking, so this cap just needs to be wide
+# enough that a correct collector-number match rarely falls outside it.
+SEARCH_CANDIDATE_QUERY_LIMIT = 50
 MAX_REFERENCE_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_REFERENCE_IMAGE_PIXELS = 50_000_000
 TRUSTED_REFERENCE_IMAGE_HOSTS = {"assets.tcgdex.net"}
@@ -813,38 +819,55 @@ async def _search_and_rank_candidates(
         if len(candidates) >= 15:
             break
         try:
-            async with httpx.AsyncClient(timeout=15) as client:
-                response = await client.get(
-                    f"https://api.tcgdex.net/v2/{search_language}/cards",
-                    params={"name": search_name},
+            name_filter = accent_insensitive_contains(db, Card.name, search_name)
+            if name_filter is None:
+                rows = []
+            else:
+                rows = (
+                    db.query(Card)
+                    .filter(
+                        Card.is_custom == False,
+                        Card.lang == search_language,
+                        name_filter,
+                    )
+                    .order_by(Card.id)
+                    .limit(SEARCH_CANDIDATE_QUERY_LIMIT)
+                    .all()
                 )
-            cards = response.json() if response.status_code == 200 else []
+            cards = [
+                {
+                    "id": row.id,
+                    "tcg_card_id": row.tcg_card_id,
+                    "name": row.name,
+                    "number": row.number,
+                    "image": row.images_small,
+                    "rarity": row.rarity,
+                }
+                for row in rows
+            ]
             if trace:
                 trace.record_tcgdex(
                     language=search_language,
                     query=search_name,
-                    status=response.status_code,
-                    count=len(cards) if isinstance(cards, list) else None,
+                    status=200,
+                    count=len(cards),
                 )
-            if not isinstance(cards, list):
-                continue
             selected_cards = select_search_candidates(
                 cards,
                 card_info.get("number_local"),
-                number_field="localId",
+                number_field="number",
             )
             for card in selected_cards:
                 card_id = card.get("id")
                 if not card_id:
                     continue
                 candidates.append({
-                    "id": f"{card_id}_{search_language}",
-                    "tcg_card_id": card_id,
+                    "id": card_id,
+                    "tcg_card_id": card.get("tcg_card_id"),
                     "name": card.get("name"),
-                    "set": card.get("set", {}).get("name")
-                    if isinstance(card.get("set"), dict) else None,
-                    "number": card.get("localId"),
-                    "image": f"{card.get('image')}/low.webp" if card.get("image") else None,
+                    "set": None,
+                    "number": card.get("number"),
+                    "image": card.get("image"),
                     "rarity": card.get("rarity"),
                     "lang": search_language,
                     "_lang": search_language,

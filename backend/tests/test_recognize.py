@@ -29,7 +29,13 @@ try:
         recognize_sanitized_card,
         retain_ranked_candidates,
         select_search_candidates,
+        _search_and_rank_candidates,
     )
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from database import Base
+    from models import Card, Set
     API_TEST_DEPS_AVAILABLE = True
 except ModuleNotFoundError:
     HTTPException = Exception
@@ -213,6 +219,195 @@ class RecognizeCardNumberTests(unittest.TestCase):
         })
         self.assertEqual((legacy["number_local"], legacy["number_total"]), ("136", "182"))
         self.assertEqual(split["number"], "063/100")
+
+
+@unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/SQLAlchemy are not installed")
+class SearchAndRankCandidatesLocalDbTests(unittest.IsolatedAsyncioTestCase):
+    """`_search_and_rank_candidates` now matches against the local `cards`
+    table instead of calling the live TCGdex search API, so these seed an
+    in-memory SQLite DB (same harness as tests/test_accent_search.py) rather
+    than mocking httpx."""
+
+    def setUp(self):
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        Session = sessionmaker(bind=engine)
+        self.db = Session()
+
+    def tearDown(self):
+        self.db.close()
+
+    async def test_finds_local_card_by_exact_name_and_number(self):
+        # Regression case: a real scan recognized "Bill" but TCGdex live
+        # search was briefly unreachable even though the local catalogue
+        # already had the matching row.
+        self.db.add(Card(
+            id="base4-118_en",
+            tcg_card_id="base4-118",
+            name="Bill",
+            number="118",
+            rarity="Common",
+            images_small="https://assets.tcgdex.net/en/base/base4/118/low.webp",
+            lang="en",
+            is_custom=False,
+        ))
+        self.db.commit()
+
+        candidates, number_match_count = await _search_and_rank_candidates(
+            self.db, {"name": "Bill", "number_local": "118", "language": "en"}
+        )
+
+        self.assertEqual(len(candidates), 1)
+        candidate = candidates[0]
+        self.assertEqual(candidate["id"], "base4-118_en")
+        self.assertEqual(candidate["tcg_card_id"], "base4-118")
+        self.assertEqual(candidate["name"], "Bill")
+        self.assertEqual(candidate["number"], "118")
+        self.assertEqual(
+            candidate["image"], "https://assets.tcgdex.net/en/base/base4/118/low.webp"
+        )
+        self.assertEqual(candidate["rarity"], "Common")
+        self.assertEqual(candidate["lang"], "en")
+        self.assertEqual(candidate["_lang"], "en")
+        self.assertEqual(number_match_count, 1)
+
+    async def test_number_match_beyond_query_cap_still_floats_to_top(self):
+        cards = [
+            Card(
+                id=f"baseline-{number}_en",
+                tcg_card_id=f"baseline-{number}",
+                name="Energy Test",
+                number=str(number),
+                lang="en",
+                is_custom=False,
+            )
+            for number in range(1, 9)
+        ]
+        cards.append(Card(
+            id="late-match_en",
+            tcg_card_id="late-match",
+            name="Energy Test",
+            number="63",
+            lang="en",
+            is_custom=False,
+        ))
+        self.db.add_all(cards)
+        self.db.commit()
+
+        candidates, number_match_count = await _search_and_rank_candidates(
+            self.db,
+            {"name": "Energy Test", "number_local": "63", "language": "en"},
+        )
+
+        self.assertEqual(len(candidates), 9)
+        self.assertEqual(number_match_count, 1)
+        # The deterministic ranker sorts the agreeing number match first even
+        # though it fell outside select_search_candidates' baseline_limit=8.
+        self.assertEqual(candidates[0]["id"], "late-match_en")
+        self.assertEqual(
+            {card["id"] for card in candidates if card["id"] != "late-match_en"},
+            {f"baseline-{number}_en" for number in range(1, 9)},
+        )
+
+    async def test_falls_back_to_english_when_detected_language_has_no_local_row(self):
+        self.db.add(Card(
+            id="base4-118_en",
+            tcg_card_id="base4-118",
+            name="Bill",
+            number="118",
+            lang="en",
+            is_custom=False,
+        ))
+        self.db.commit()
+
+        candidates, _ = await _search_and_rank_candidates(
+            self.db, {"name": "Bill", "number_local": "118", "language": "de"}
+        )
+
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0]["id"], "base4-118_en")
+        self.assertEqual(candidates[0]["lang"], "en")
+
+    async def test_search_is_accent_insensitive_via_shared_text_search_helper(self):
+        self.db.add(Card(
+            id="sv1-1_en",
+            tcg_card_id="sv1-1",
+            name="Pokégear 3.0",
+            number="1",
+            lang="en",
+            is_custom=False,
+        ))
+        self.db.commit()
+
+        candidates, _ = await _search_and_rank_candidates(
+            self.db, {"name": "Pokegear 3.0", "language": "en"}
+        )
+
+        self.assertEqual([c["id"] for c in candidates], ["sv1-1_en"])
+
+    async def test_custom_cards_are_excluded(self):
+        self.db.add(Card(
+            id="custom-1_en",
+            tcg_card_id=None,
+            name="Bill",
+            number="118",
+            lang="en",
+            is_custom=True,
+        ))
+        self.db.commit()
+
+        candidates, _ = await _search_and_rank_candidates(
+            self.db, {"name": "Bill", "language": "en"}
+        )
+
+        self.assertEqual(candidates, [])
+
+    async def test_local_set_metadata_is_attached_from_sets_table(self):
+        self.db.add(Set(
+            id="base4_en",
+            tcg_set_id="base4",
+            name="Base Set 2",
+            abbreviation="B2",
+            printed_total=130,
+            lang="en",
+        ))
+        self.db.add(Card(
+            id="base4-118_en",
+            tcg_card_id="base4-118",
+            name="Bill",
+            number="118",
+            lang="en",
+            is_custom=False,
+        ))
+        self.db.commit()
+
+        candidates, _ = await _search_and_rank_candidates(
+            self.db, {"name": "Bill", "language": "en"}
+        )
+
+        self.assertEqual(candidates[0]["set"], "Base Set 2")
+        self.assertEqual(candidates[0]["set_abbreviation"], "B2")
+        self.assertEqual(candidates[0]["printed_total"], 130)
+
+    async def test_records_trace_as_a_db_query_not_an_http_call(self):
+        self.db.add(Card(
+            id="base4-118_en",
+            tcg_card_id="base4-118",
+            name="Bill",
+            number="118",
+            lang="en",
+            is_custom=False,
+        ))
+        self.db.commit()
+        trace = Mock()
+
+        await _search_and_rank_candidates(
+            self.db, {"name": "Bill", "language": "en"}, trace
+        )
+
+        trace.record_tcgdex.assert_any_call(
+            language="en", query="Bill", status=200, count=1
+        )
 
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed")
