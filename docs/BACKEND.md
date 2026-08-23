@@ -41,8 +41,9 @@ FastAPI app entry point: `backend/main.py`.
 | POST | `/api/cards/recognize` | Card recognition through the user's configured vision provider |
 | POST | `/api/cards/recognize/jobs` | Sanitize and enqueue up to 50 persistent scan photos |
 | GET | `/api/cards/recognize/jobs` | Current user's active/actionable scan jobs |
-| GET | `/api/cards/recognize/jobs/{job_id}` | User-scoped scan job and review items |
+| GET | `/api/cards/recognize/jobs/{job_id}` | User-scoped scan job and review items, resolved items included (collapsed row) |
 | GET | `/api/cards/recognize/jobs/{job_id}/items/{item_id}/image` | Private sanitized review photo |
+| GET | `/api/cards/recognize/jobs/{job_id}/items/{item_id}/candidates/{index}/image` | A candidate's full-resolution artwork, served from the shared image cache |
 | POST | `/api/cards/recognize/jobs/{job_id}/items/{item_id}/resolve` | Confirm/dismiss an item and delete its queued photo |
 | POST | `/api/cards/recognize/jobs/{job_id}/items/{item_id}/retry` | Retry one reviewable item individually |
 | DELETE | `/api/cards/recognize/jobs/{job_id}` | Delete a job and its queued photos |
@@ -327,7 +328,8 @@ Additional matching behavior:
 
 - Name suffixes like `EX`, `GX`, `V`, `VMAX`, `VSTAR`, `TAG TEAM`, `BREAK`, and `LV.X` are stripped before search
 - Search may fall back from detected card language to English
-- Result payload includes recognized metadata and candidate matches
+- Result payload includes recognized metadata and candidate matches, each flagged with `printed_total_mismatch` when its printed set total contradicts the recognized card (the same signal the ranker already uses to demote it)
+- `backend/services/scan_candidate_images.py` caches each candidate's full-resolution artwork in the shared `ImageCache` table (see `backend/api/images.py`); `match_card_info` fires a non-blocking prewarm of the top-ranked candidates so the review UI's first look is usually a local cache read
 
 ### Scanner diagnostics
 
