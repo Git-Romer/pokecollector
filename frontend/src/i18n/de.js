@@ -1249,6 +1249,15 @@ const de = {
     scanIndividually: 'Einzeln scannen',
     scanAllIndividually: 'Alle einzeln scannen',
     useAutomaticGrouping: 'Automatische Gruppierung verwenden',
+    previousMatch: 'Vorheriger Treffer',
+    nextMatch: 'Nächster Treffer',
+    acceptMatch: 'Treffer bestätigen',
+    arrowKeyHint: 'Pfeiltasten zum Durchblättern',
+    zoomHint: 'Scrollen oder klicken zum Zoomen',
+    expandCard: 'Foto vergrößern',
+    showDetails: 'Details anzeigen',
+    hideDetails: 'Details ausblenden',
+    printedTotalMismatch: 'Gedruckte Set-Gesamtzahl stimmt nicht mit diesem Foto überein',
   },
 
   // Language filter / card language
