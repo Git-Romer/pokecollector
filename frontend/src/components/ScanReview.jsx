@@ -65,7 +65,15 @@ export function useScanItemPhoto(jobId, item) {
 //   * a phone photo and a catalogue scan are never quite the same shape, so
 //     sizing each image independently leaves the two cards misaligned —
 //     which defeats the point of showing them side by side.
-const CARD_FRAME = 'h-[52vh] md:h-[62vh] w-[42vw] md:w-[30vw] max-w-[420px] flex items-center justify-center'
+//
+// Below `md` the pair stacks instead of sitting side by side (see the
+// container below), so height is the scarce dimension there, not width —
+// two frames at the desktop 52vh would need ~104vh stacked, well past the
+// viewport, and silently overflowed above and below the screen with no way
+// to scroll to the cut-off half. 38vh keeps both frames plus their captions
+// within a typical phone viewport; width goes the other way, since a
+// stacked frame is no longer sharing horizontal space with a sibling.
+const CARD_FRAME = 'h-[38vh] md:h-[62vh] w-[80vw] md:w-[30vw] max-w-[420px] flex items-center justify-center'
 const CARD_IMAGE = 'max-h-full max-w-full object-contain rounded-xl'
 
 // Progressive load for one candidate scan.
@@ -360,7 +368,11 @@ export function CardZoomModal({
         // browser's native selection, painting everything blue mid-pan.
         // There is nothing here worth selecting — it is a comparison, not a
         // document.
-        className="flex min-h-0 flex-1 select-none items-center justify-center py-3"
+        // overflow-y-auto is a safety net, not the primary fix: 38vh frames
+        // are sized to fit a typical phone viewport stacked, but a taller
+        // caption or a shorter viewport should be scrollable to reach rather
+        // than silently clipped the way a fixed-height overflow was before.
+        className="flex min-h-0 flex-1 select-none items-center justify-center overflow-y-auto py-3"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
