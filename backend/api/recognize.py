@@ -791,6 +791,68 @@ async def _fill_candidate_details(
         await asyncio.gather(*(fetch(card) for card in missing))
 
 
+async def _api_search_fallback(
+    search_language: str, search_name: str, trace: ScanTrace | None
+) -> list[dict]:
+    """Live TCGdex search — only called when the local catalogue has no rows
+    for this exact (language, name) pair. That is genuinely ambiguous: the
+    card may not exist at all, or the local sync simply has not reached its
+    set yet (a set released after the last full sync, or one an in-progress
+    full sync has not gotten to). Live TCGdex answers both cases the same
+    way a plain catalogue lookup always did, before the local-DB search was
+    the primary path.
+
+    Best-effort and silent on failure: this runs after the local search
+    already came up empty for this one pair, so a network error here just
+    means no fallback candidates for that pair, not a broken scan — the
+    other search pairs, and whatever local rows they found, are unaffected.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.get(
+                f"https://api.tcgdex.net/v2/{search_language}/cards",
+                params={"name": search_name},
+            )
+        api_cards = response.json() if response.status_code == 200 else []
+        if trace:
+            trace.record_tcgdex(
+                language=search_language,
+                query=search_name,
+                status=response.status_code,
+                count=len(api_cards) if isinstance(api_cards, list) else None,
+                source="api_fallback",
+            )
+        if not isinstance(api_cards, list):
+            return []
+        return [
+            {
+                # Composite id in the same "{tcg_id}_{lang}" shape the local
+                # rows already carry (Card.id), so downstream code (dedup,
+                # candidate_set_ids parsing) does not need to know which
+                # source a candidate came from.
+                "id": f"{card.get('id')}_{search_language}",
+                "tcg_card_id": card.get("id"),
+                "name": card.get("name"),
+                "number": card.get("localId"),
+                "image": f"{card.get('image')}/low.webp" if card.get("image") else None,
+                "rarity": card.get("rarity"),
+            }
+            for card in api_cards
+            if card.get("id")
+        ]
+    except Exception as exc:
+        if trace:
+            trace.record_tcgdex(
+                language=search_language,
+                query=search_name,
+                status=None,
+                count=None,
+                error=type(exc).__name__,
+                source="api_fallback",
+            )
+        return []
+
+
 async def _search_and_rank_candidates(
     db: Session,
     card_info: dict,
@@ -852,6 +914,17 @@ async def _search_and_rank_candidates(
                     status=200,
                     count=len(cards),
                 )
+
+            # The local catalogue lags TCGdex's own by however long it has
+            # been since the last full sync reached this set — a set
+            # released minutes ago, or one a still-running full sync has not
+            # gotten to yet, looks identical to "this card does not exist"
+            # from the DB's point of view. Only reached when the local
+            # search for this exact pair came back empty, so the common
+            # path (the card is already synced) never pays for it.
+            if not cards:
+                cards = await _api_search_fallback(search_language, search_name, trace)
+
             selected_cards = select_search_candidates(
                 cards,
                 card_info.get("number_local"),

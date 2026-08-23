@@ -320,9 +320,14 @@ class SearchAndRankCandidatesLocalDbTests(unittest.IsolatedAsyncioTestCase):
         ))
         self.db.commit()
 
-        candidates, _ = await _search_and_rank_candidates(
-            self.db, {"name": "Bill", "number_local": "118", "language": "de"}
-        )
+        # The "de" pair has no local row either, which now also triggers the
+        # live-API fallback (see the tests further down) — mocked here to an
+        # empty result so this test stays about the *local* English-fallback
+        # search pair, not a live network call to the real TCGdex API.
+        with self._mock_tcgdex_client([]):
+            candidates, _ = await _search_and_rank_candidates(
+                self.db, {"name": "Bill", "number_local": "118", "language": "de"}
+            )
 
         self.assertEqual(len(candidates), 1)
         self.assertEqual(candidates[0]["id"], "base4-118_en")
@@ -356,9 +361,14 @@ class SearchAndRankCandidatesLocalDbTests(unittest.IsolatedAsyncioTestCase):
         ))
         self.db.commit()
 
-        candidates, _ = await _search_and_rank_candidates(
-            self.db, {"name": "Bill", "language": "en"}
-        )
+        # The only local row is excluded (is_custom), so the local query is
+        # empty and the live-API fallback would otherwise fire for real —
+        # mocked to empty so this test stays about custom-card exclusion,
+        # not live network state.
+        with self._mock_tcgdex_client([]):
+            candidates, _ = await _search_and_rank_candidates(
+                self.db, {"name": "Bill", "language": "en"}
+            )
 
         self.assertEqual(candidates, [])
 
@@ -408,6 +418,111 @@ class SearchAndRankCandidatesLocalDbTests(unittest.IsolatedAsyncioTestCase):
         trace.record_tcgdex.assert_any_call(
             language="en", query="Bill", status=200, count=1
         )
+
+    @staticmethod
+    def _mock_tcgdex_client(json_payload=None, *, status_code=200, raises=None):
+        """Patch context manager for `async with httpx.AsyncClient(...) as client`,
+        matching this codebase's existing httpx-mocking convention (see
+        test_community_supporters.py) adapted for a class with no client
+        injection point to hand a MockTransport to directly."""
+        mock_response = Mock()
+        mock_response.status_code = status_code
+        mock_response.json = Mock(return_value=json_payload)
+        mock_client = AsyncMock()
+        if raises is not None:
+            mock_client.get = AsyncMock(side_effect=raises)
+        else:
+            mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client_cls = Mock()
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        return patch("api.recognize.httpx.AsyncClient", mock_client_cls)
+
+    async def test_local_hit_never_calls_the_live_api(self):
+        # The fallback only exists for the empty-local-result case; a card
+        # the sync already has must never pay for a network round trip.
+        self.db.add(Card(
+            id="base4-118_en", tcg_card_id="base4-118", name="Bill",
+            number="118", lang="en", is_custom=False,
+        ))
+        self.db.commit()
+
+        with self._mock_tcgdex_client([{"id": "should-not-be-used"}]) as mock_cls:
+            candidates, _ = await _search_and_rank_candidates(
+                self.db, {"name": "Bill", "language": "en"}
+            )
+
+        mock_cls.assert_not_called()
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0]["tcg_card_id"], "base4-118")
+
+    async def test_local_miss_falls_back_to_live_api(self):
+        # Regression case this whole feature is for: a set released after
+        # the last full sync (or one a full sync has not reached yet) has
+        # no local rows at all, which looks identical to "does not exist"
+        # unless the live API is asked.
+        api_payload = [{
+            "id": "sv99-1",
+            "name": "Brand New Card",
+            "localId": "1",
+            "image": "https://assets.tcgdex.net/en/sv/sv99/1",
+            "rarity": "Rare",
+        }]
+        with self._mock_tcgdex_client(api_payload):
+            candidates, _ = await _search_and_rank_candidates(
+                self.db, {"name": "Brand New Card", "language": "en"}
+            )
+
+        self.assertEqual(len(candidates), 1)
+        candidate = candidates[0]
+        self.assertEqual(candidate["id"], "sv99-1_en")
+        self.assertEqual(candidate["tcg_card_id"], "sv99-1")
+        self.assertEqual(candidate["number"], "1")
+        self.assertEqual(
+            candidate["image"], "https://assets.tcgdex.net/en/sv/sv99/1/low.webp"
+        )
+
+    async def test_local_miss_and_api_failure_yields_no_candidates_not_an_error(self):
+        # Best-effort: a network failure on the fallback must degrade to
+        # "no candidates from this pair", not blow up the whole scan.
+        with self._mock_tcgdex_client(raises=Exception("boom")):
+            candidates, number_match_count = await _search_and_rank_candidates(
+                self.db, {"name": "Totally Unknown Card", "language": "en"}
+            )
+
+        self.assertEqual(candidates, [])
+        self.assertEqual(number_match_count, 0)
+
+    async def test_api_fallback_trace_entry_is_tagged_by_source(self):
+        trace = Mock()
+
+        with self._mock_tcgdex_client([{"id": "sv99-1", "name": "New Card", "localId": "1"}]):
+            await _search_and_rank_candidates(
+                self.db, {"name": "New Card", "language": "en"}, trace
+            )
+
+        trace.record_tcgdex.assert_any_call(
+            language="en", query="New Card", status=200, count=1,
+            source="api_fallback",
+        )
+
+    async def test_local_hit_trace_entry_has_no_fallback_source_tag(self):
+        # The default ("local") is implicit, not an explicit kwarg — this
+        # pins that down so a future refactor cannot silently start tagging
+        # every entry as api_fallback without a test noticing.
+        self.db.add(Card(
+            id="base4-118_en", tcg_card_id="base4-118", name="Bill",
+            number="118", lang="en", is_custom=False,
+        ))
+        self.db.commit()
+        trace = Mock()
+
+        await _search_and_rank_candidates(
+            self.db, {"name": "Bill", "language": "en"}, trace
+        )
+
+        for call in trace.record_tcgdex.call_args_list:
+            self.assertNotIn("source", call.kwargs)
 
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed")
