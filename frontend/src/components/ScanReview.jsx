@@ -710,7 +710,13 @@ export function ScanItemPanel({ jobId, item, onAdd, onRetry, onDismiss, onReview
               </p>
               <button type="button" onClick={() => onRetry(item)} disabled={!item.has_image}
                 className="btn-secondary justify-center">
-                <RefreshCw size={14} /> {t('scanner.retryIndividually')}
+                {/* Retrying always drops the item out of a composite grid onto
+                    its own request — "individually" only describes something
+                    actually changing when the item was composited to begin
+                    with. An item that was already individual (the reviewer's
+                    own choice, or the only option under a single-image-only
+                    provider) just gets a plain retry. */}
+                <RefreshCw size={14} /> {item.batch_mode ? t('scanner.retryIndividually') : t('common.retry')}
               </button>
             </div>
           )}
