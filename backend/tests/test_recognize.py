@@ -220,6 +220,25 @@ class RecognizeCardNumberTests(unittest.TestCase):
         self.assertEqual((legacy["number_local"], legacy["number_total"]), ("136", "182"))
         self.assertEqual(split["number"], "063/100")
 
+    def test_drops_a_pokedex_reference_still_carrying_its_no_prefix(self):
+        # Some models leave the printed "No." text in place instead of
+        # extracting a bare number. That text is never a real collector
+        # number, so it must not reach matching as one.
+        for raw in ("No. 0094", "no94", "NO.152"):
+            with self.subTest(raw=raw):
+                normalized = normalize_recognized_card_info({"number_local": raw})
+                self.assertIsNone(normalized["number_local"])
+
+    def test_keeps_a_bare_number_local_including_large_ones(self):
+        # A vintage card's Pokedex-number mixup is caught by the prompt and by
+        # the "No." pattern above, not by guessing from magnitude: real modern
+        # sets legitimately run past 200 (e.g. Scarlet & Violet base sets), so
+        # a large bare number must survive untouched here.
+        for raw in ("030", "094", "226"):
+            with self.subTest(raw=raw):
+                normalized = normalize_recognized_card_info({"number_local": raw})
+                self.assertEqual(normalized["number_local"], raw)
+
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/SQLAlchemy are not installed")
 class SearchAndRankCandidatesLocalDbTests(unittest.IsolatedAsyncioTestCase):
@@ -523,6 +542,71 @@ class SearchAndRankCandidatesLocalDbTests(unittest.IsolatedAsyncioTestCase):
 
         for call in trace.record_tcgdex.call_args_list:
             self.assertNotIn("source", call.kwargs)
+
+    async def test_english_fallback_pair_is_skipped_once_native_search_has_enough(self):
+        # name_en is the model's own translation and can name a different
+        # species entirely — confirmed on real vintage Japanese cards, where
+        # correctly-read native text still got translated to an unrelated
+        # Pokemon. Latin-script "de" stands in for that here so this test
+        # isn't also exercising accent_insensitive_contains' own (separate,
+        # pre-existing) handling of non-Latin scripts. Once the reliable
+        # native-language pairs already found enough candidates, searching a
+        # possibly-wrong translation adds only noise, so it must not run.
+        for number in range(4):
+            self.db.add(Card(
+                id=f"de-{number}_de", tcg_card_id=f"de-{number}", name="Bisasam",
+                number=str(number), lang="de", is_custom=False,
+            ))
+        self.db.add(Card(
+            id="wrong-species_en", tcg_card_id="wrong-species", name="Charizard",
+            number="4", lang="en", is_custom=False,
+        ))
+        self.db.commit()
+
+        candidates, _ = await _search_and_rank_candidates(
+            self.db,
+            {"name": "Bisasam", "name_en": "Charizard", "language": "de"},
+        )
+
+        self.assertEqual(len(candidates), 4)
+        self.assertTrue(all(card["_lang"] == "de" for card in candidates))
+        self.assertNotIn("wrong-species_en", [card["id"] for card in candidates])
+
+    async def test_english_fallback_pair_still_runs_when_native_search_is_thin(self):
+        self.db.add(Card(
+            id="de-1_de", tcg_card_id="de-1", name="Bisasam",
+            number="1", lang="de", is_custom=False,
+        ))
+        self.db.add(Card(
+            id="en-1_en", tcg_card_id="en-1", name="Bulbasaur",
+            number="1", lang="en", is_custom=False,
+        ))
+        self.db.commit()
+
+        candidates, _ = await _search_and_rank_candidates(
+            self.db,
+            {"name": "Bisasam", "name_en": "Bulbasaur", "language": "de"},
+        )
+
+        self.assertEqual(
+            {card["id"] for card in candidates}, {"de-1_de", "en-1_en"}
+        )
+
+    async def test_english_cards_never_reach_the_translation_fallback_path(self):
+        # language == "en" means the native pairs already searched the
+        # English name directly, so the fallback branch must never trigger
+        # regardless of how few results came back — nothing to be a fallback
+        # *for*. A spy on the pair-fetch helper pins this down directly.
+        with patch(
+            "api.recognize._fetch_candidates_for_pair", new=AsyncMock(return_value=[])
+        ) as spy:
+            await _search_and_rank_candidates(
+                self.db, {"name": "Bill", "name_en": "Bill", "language": "en"}
+            )
+
+        called_languages = {call.args[1] for call in spy.await_args_list}
+        self.assertEqual(called_languages, {"en"})
+        self.assertLessEqual(spy.await_count, 2)
 
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed")
@@ -870,6 +954,53 @@ class DeterministicMatchingTests(unittest.IsolatedAsyncioTestCase):
             "artist": "Kagemaru Himeno",
             "hp": "60",
         }]
+
+        confident, decision = _metadata_decision(recognized, candidates)
+
+        self.assertFalse(confident)
+        self.assertIsNone(decision)
+
+    def test_sole_candidate_resolves_a_trainer_card_with_no_hp_to_use(self):
+        # artist_hp can never fire for a Trainer/Energy card — it has no HP —
+        # so a real card was previously stuck unresolved even though the
+        # search only ever found this one candidate to begin with.
+        recognized = normalize_recognized_card_info({
+            "name": "Pokemon Flute", "card_type": "Trainer", "language": "en",
+        })
+        candidates = [{"id": "only-match", "name": "Pokemon Flute"}]
+
+        confident, decision = _metadata_decision(recognized, candidates)
+
+        self.assertTrue(confident)
+        self.assertEqual(decision, "sole_candidate")
+
+    def test_sole_candidate_does_not_override_a_contradiction(self):
+        # The existing contradiction guard runs first — this pins down that
+        # the new path only ever fills the gap it was added for and cannot
+        # reintroduce a wrong auto-match the old code correctly avoided.
+        recognized = normalize_recognized_card_info({
+            "number_local": "25", "number_total": "100",
+        })
+        candidates = [{"id": "only-candidate", "number": "25", "printed_total": 99}]
+
+        confident, decision = _metadata_decision(recognized, candidates)
+
+        self.assertFalse(confident)
+        self.assertIsNone(decision)
+
+    def test_sole_candidate_requires_there_to_really_be_only_one(self):
+        # The clear top pick here passes the uniqueness-of-rank and
+        # no-contradiction checks on its own (hp agrees, nothing disagrees),
+        # but only hp is confirmed — not artist too — so artist_hp cannot
+        # fire and this must fall through to the new path. It must not fire
+        # there either, because a second real candidate exists; this is what
+        # actually exercises `len(candidates) == 1` rather than being turned
+        # away earlier by the rank-key tie check.
+        recognized = normalize_recognized_card_info({"hp": "60"})
+        candidates = [
+            {"id": "top", "hp": "60"},
+            {"id": "other", "hp": None},
+        ]
 
         confident, decision = _metadata_decision(recognized, candidates)
 

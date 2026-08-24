@@ -169,11 +169,30 @@ def split_recognized_card_number(value) -> tuple[str | None, str | None]:
     return local, total
 
 
+# Older cards, and models that ignore the prompt's warning about them, sometimes
+# report the species' National Pokedex reference ("No. 0094") as if it were the
+# card's own collector number. This only matches that literal "No." text pattern
+# — never a bare number on magnitude alone, since large collector numbers are
+# completely normal on real modern sets (some run past 200) and must not be
+# discarded.
+_POKEDEX_NUMBER_TEXT = re.compile(r"\bno\.?\s*\d", re.IGNORECASE)
+
+
+def _drop_pokedex_number(value):
+    """Null out a number_local that is textually a Pokedex "No." reference."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return None if _POKEDEX_NUMBER_TEXT.search(text) else text
+
+
 def normalize_recognized_card_info(card_info: dict | None) -> dict:
     """Keep one canonical split identity while preserving the UI's combined number."""
     normalized = dict(card_info or {})
     legacy_local, legacy_total = split_recognized_card_number(normalized.get("number"))
-    local = normalized.get("number_local") or legacy_local
+    local = _drop_pokedex_number(normalized.get("number_local") or legacy_local)
     total = normalized.get("number_total") or legacy_total
     normalized["number_local"] = local
     normalized["number_total"] = total
@@ -456,11 +475,18 @@ IMPORTANT ACCURACY RULES:
   details. If any character is unclear, return null instead of guessing.
 - Only return set_code when printed alphanumeric characters are visible near the card
   number. Do not infer a code from the artwork or from recognizing the set.
+- Some cards, especially older ones, print a "No. 0094" or "No.94"-style reference
+  near the artwork or flavor text. That is the species' National Pokedex number, not
+  this card's collector number, and must never be used as number_local. Only use
+  number_local for a small index printed for this specific card, usually alongside
+  a "/" and a set total (like "094/165") or next to a set code. If the only number
+  on the card is a "No." Pokedex reference, or you cannot find a distinct collector
+  number, return null for number_local rather than reusing it.
 
 Extract:
 1. Card name exactly as printed, in the card's language
 2. English card name (same value when already English)
-3. Local collector number, or null
+3. Local collector number (never a "No." Pokedex reference — see the rule above), or null
 4. Printed set total/denominator, or null
 5. Printed set code/abbreviation, or null
 6. Regulation mark, or null
@@ -569,6 +595,18 @@ def _metadata_decision(card_info: dict, candidates: list[dict]) -> tuple[bool, s
         return True, "number_metadata"
     if not card_info.get("number_local") and {"artist", "hp"}.issubset(signals):
         return True, "artist_hp"
+
+    # The search already found exactly one candidate for this name and
+    # language, and — reaching this line — nothing about it contradicts what
+    # was read off the card (the contradiction check above already returned
+    # otherwise). There is no second candidate to confuse it with, so
+    # declining here would only withhold a real answer, not avoid a wrong
+    # one. This is the only path that does not require any specific signal
+    # to be confirmed, because uniqueness itself is the signal: it is what
+    # lets a Trainer/Energy card resolve too, which can never carry an HP
+    # value for the artist_hp path above to use.
+    if len(candidates) == 1:
+        return True, "sole_candidate"
     return False, None
 
 
@@ -853,6 +891,102 @@ async def _api_search_fallback(
         return []
 
 
+async def _fetch_candidates_for_pair(
+    db: Session,
+    search_language: str,
+    search_name: str,
+    card_info: dict,
+    trace: ScanTrace | None,
+) -> list[dict]:
+    """Local-DB search for one (language, name) pair, with live-API fallback."""
+    try:
+        name_filter = accent_insensitive_contains(db, Card.name, search_name)
+        if name_filter is None:
+            rows = []
+        else:
+            rows = (
+                db.query(Card)
+                .filter(
+                    Card.is_custom == False,
+                    Card.lang == search_language,
+                    name_filter,
+                )
+                .order_by(Card.id)
+                .limit(SEARCH_CANDIDATE_QUERY_LIMIT)
+                .all()
+            )
+        cards = [
+            {
+                "id": row.id,
+                "tcg_card_id": row.tcg_card_id,
+                "name": row.name,
+                "number": row.number,
+                "image": row.images_small,
+                "rarity": row.rarity,
+            }
+            for row in rows
+        ]
+        if trace:
+            trace.record_tcgdex(
+                language=search_language,
+                query=search_name,
+                status=200,
+                count=len(cards),
+            )
+
+        # The local catalogue lags TCGdex's own by however long it has been
+        # since the last full sync reached this set — a set released minutes
+        # ago, or one a still-running full sync has not gotten to yet, looks
+        # identical to "this card does not exist" from the DB's point of
+        # view. Only reached when the local search for this exact pair came
+        # back empty, so the common path (the card is already synced) never
+        # pays for it.
+        if not cards:
+            cards = await _api_search_fallback(search_language, search_name, trace)
+
+        selected_cards = select_search_candidates(
+            cards,
+            card_info.get("number_local"),
+            number_field="number",
+        )
+        found = []
+        for card in selected_cards:
+            card_id = card.get("id")
+            if not card_id:
+                continue
+            found.append({
+                "id": card_id,
+                "tcg_card_id": card.get("tcg_card_id"),
+                "name": card.get("name"),
+                "set": None,
+                "number": card.get("number"),
+                "image": card.get("image"),
+                "rarity": card.get("rarity"),
+                "lang": search_language,
+                "_lang": search_language,
+                "_number_extra": bool(card.get("_number_extra")),
+            })
+        return found
+    except Exception as exc:
+        if trace:
+            trace.record_tcgdex(
+                language=search_language,
+                query=search_name,
+                status=None,
+                count=None,
+                error=type(exc).__name__,
+            )
+        return []
+
+
+# Below this many candidates from the reliable native-language pairs, it is
+# worth risking the English-translation fallback to find more. At or above
+# it, the native search already has enough to work with and the fallback
+# would only add noise (see the fallback's own comment for why that risk is
+# real, not hypothetical).
+ENGLISH_FALLBACK_MIN_CANDIDATES = 3
+
+
 async def _search_and_rank_candidates(
     db: Session,
     card_info: dict,
@@ -868,94 +1002,42 @@ async def _search_and_rank_candidates(
     language = normalize_tcgdex_language(card_info.get("language", "en"))
     if not is_supported_tcgdex_language(language):
         language = "en"
-    search_pairs = [(language, simple_name)]
+    native_pairs = [(language, simple_name)]
     if simple_name != card_name:
-        search_pairs.append((language, card_name))
+        native_pairs.append((language, card_name))
+
+    # name_en is the model's own translation of the printed native-language name,
+    # not something read directly off the card the way name is — and a vision
+    # model that reads foreign scripts faithfully can still translate a real
+    # species name to the wrong one entirely (confirmed on real cards: correctly
+    # read katakana translated to an unrelated Pokemon in English). Searching
+    # with it is only a fallback for when the reliable native-language pairs did
+    # not already turn up enough on their own; running it unconditionally would
+    # merge wrong-species English candidates into results that name/number
+    # matching already had well in hand. English cards are unaffected: language
+    # == "en" here only when the native name already is the English name, so
+    # this whole fallback never triggers for them.
+    english_fallback_pairs = []
     if language != "en":
-        search_pairs.append(("en", simple_name_en))
+        english_fallback_pairs.append(("en", simple_name_en))
         if simple_name_en != card_name_en:
-            search_pairs.append(("en", card_name_en))
+            english_fallback_pairs.append(("en", card_name_en))
 
     candidates = []
-    for search_language, search_name in search_pairs:
+    for search_language, search_name in native_pairs:
         if len(candidates) >= 15:
             break
-        try:
-            name_filter = accent_insensitive_contains(db, Card.name, search_name)
-            if name_filter is None:
-                rows = []
-            else:
-                rows = (
-                    db.query(Card)
-                    .filter(
-                        Card.is_custom == False,
-                        Card.lang == search_language,
-                        name_filter,
-                    )
-                    .order_by(Card.id)
-                    .limit(SEARCH_CANDIDATE_QUERY_LIMIT)
-                    .all()
-                )
-            cards = [
-                {
-                    "id": row.id,
-                    "tcg_card_id": row.tcg_card_id,
-                    "name": row.name,
-                    "number": row.number,
-                    "image": row.images_small,
-                    "rarity": row.rarity,
-                }
-                for row in rows
-            ]
-            if trace:
-                trace.record_tcgdex(
-                    language=search_language,
-                    query=search_name,
-                    status=200,
-                    count=len(cards),
-                )
+        candidates.extend(
+            await _fetch_candidates_for_pair(db, search_language, search_name, card_info, trace)
+        )
 
-            # The local catalogue lags TCGdex's own by however long it has
-            # been since the last full sync reached this set — a set
-            # released minutes ago, or one a still-running full sync has not
-            # gotten to yet, looks identical to "this card does not exist"
-            # from the DB's point of view. Only reached when the local
-            # search for this exact pair came back empty, so the common
-            # path (the card is already synced) never pays for it.
-            if not cards:
-                cards = await _api_search_fallback(search_language, search_name, trace)
-
-            selected_cards = select_search_candidates(
-                cards,
-                card_info.get("number_local"),
-                number_field="number",
+    if english_fallback_pairs and len(candidates) < ENGLISH_FALLBACK_MIN_CANDIDATES:
+        for search_language, search_name in english_fallback_pairs:
+            if len(candidates) >= 15:
+                break
+            candidates.extend(
+                await _fetch_candidates_for_pair(db, search_language, search_name, card_info, trace)
             )
-            for card in selected_cards:
-                card_id = card.get("id")
-                if not card_id:
-                    continue
-                candidates.append({
-                    "id": card_id,
-                    "tcg_card_id": card.get("tcg_card_id"),
-                    "name": card.get("name"),
-                    "set": None,
-                    "number": card.get("number"),
-                    "image": card.get("image"),
-                    "rarity": card.get("rarity"),
-                    "lang": search_language,
-                    "_lang": search_language,
-                    "_number_extra": bool(card.get("_number_extra")),
-                })
-        except Exception as exc:
-            if trace:
-                trace.record_tcgdex(
-                    language=search_language,
-                    query=search_name,
-                    status=None,
-                    count=None,
-                    error=type(exc).__name__,
-                )
-            continue
 
     candidate_set_ids = {
         tcg_card_id.rsplit("-", 1)[0]
@@ -1273,7 +1355,9 @@ For each card return the same information as an individual scan:
 - index: the printed corner number
 - name: exact card name in the card's language
 - name_en: English card name
-- number_local: printed local collector number, or null
+- number_local: printed local collector number, or null (never a "No." Pokedex
+  reference near the artwork or flavor text — that is the species' National Pokedex
+  number, not this card's collector number)
 - number_total: printed set total/denominator, or null
 - set_code: printed alphanumeric set code near the number, or null
 - regulation_mark: boxed regulation letter, or null
@@ -1283,7 +1367,8 @@ For each card return the same information as an individual scan:
 - artist: printed illustrator credit, or null
 
 Only report small identity text when every character is visible. Never infer set_code from
-the artwork or from recognizing the set. If a detail is unclear, use null rather than
+the artwork or from recognizing the set. If a detail is unclear, or the only number visible
+is a "No." Pokedex reference rather than a distinct collector number, use null rather than
 guessing. Respond ONLY with a JSON array containing one object per card, without markdown
 or explanation.
 """
