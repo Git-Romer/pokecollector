@@ -1229,6 +1229,7 @@ const en = {
     detectedLanguage: 'Language:',
     matches: 'Matches',
     bestMatches: 'Best matches',
+    geminiFallbackUsed: 'Resolved via Gemini fallback',
     yourScan: 'Your scan',
     selectedMatch: 'Selected match',
     useSelectedMatch: 'Use selected match',

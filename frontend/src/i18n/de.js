@@ -1206,6 +1206,7 @@ const de = {
     detectedLanguage: 'Sprache:',
     matches: 'Übereinstimmungen',
     bestMatches: 'Beste Treffer',
+    geminiFallbackUsed: 'Über Gemini-Fallback ermittelt',
     yourScan: 'Dein Scan',
     selectedMatch: 'Ausgewählter Treffer',
     useSelectedMatch: 'Treffer verwenden',

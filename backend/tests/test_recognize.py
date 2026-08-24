@@ -1,3 +1,4 @@
+import contextlib
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -91,6 +92,176 @@ class ProviderCapabilityRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(caught.exception.status_code, 409)
         provider.generate_text.assert_not_awaited()
+
+
+@unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed")
+class GeminiFallbackTests(unittest.IsolatedAsyncioTestCase):
+    """recognize_sanitized_card retries with Gemini when the user's primary
+    (OpenAI-compatible) provider could not confidently identify the card and
+    the user opted in — see gemini_fallback_enabled()."""
+
+    @staticmethod
+    def _openai_provider():
+        provider = Mock()
+        provider.name = "openai"
+        provider.is_gemini = False
+        provider.model.return_value = "local-model"
+        provider.credential.return_value = ""
+        provider.requires_credential.return_value = False
+        provider.generate_text = AsyncMock(return_value=("{}", None))
+        return provider
+
+    @staticmethod
+    def _gemini_provider():
+        provider = Mock()
+        provider.name = "gemini"
+        provider.is_gemini = True
+        provider.model.return_value = "gemini-flash-latest"
+        provider.credential.return_value = "a-key"
+        provider.requires_credential.return_value = True
+        provider.generate_text = AsyncMock(return_value=("{}", None))
+        return provider
+
+    @staticmethod
+    def _match_result(confident: bool, *, source: str):
+        return {
+            "recognized": {},
+            "matches": [{"id": source}],
+            "_identity_confident": confident,
+            "_identity_decision": None,
+        }
+
+    @contextlib.contextmanager
+    def _patched(self, *, provider, matcher, fallback_enabled, gemini_key, gemini_provider=None):
+        # ScanProvider(GEMINI) is constructed for real inside the code under
+        # test for the fallback attempt — patching the class itself (rather
+        # than get_provider, which only supplies the *primary* provider) is
+        # what keeps that from making a real network call in these tests.
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(patch("api.recognize.get_provider", return_value=provider))
+            stack.enter_context(
+                patch("api.recognize.require_scanner_capability_mode", return_value="full")
+            )
+            stack.enter_context(patch("api.recognize.match_card_info", new=matcher))
+            stack.enter_context(
+                patch("api.recognize.gemini_fallback_enabled", return_value=fallback_enabled)
+            )
+            stack.enter_context(patch("api.recognize.get_gemini_key", return_value=gemini_key))
+            stack.enter_context(patch(
+                "api.recognize.ScanProvider",
+                return_value=gemini_provider or self._gemini_provider(),
+            ))
+            yield
+
+    async def test_disabled_by_default_even_when_unconfident(self):
+        provider = self._openai_provider()
+        matcher = AsyncMock(return_value=self._match_result(False, source="openai"))
+        with self._patched(
+            provider=provider, matcher=matcher, fallback_enabled=False, gemini_key="a-key",
+        ):
+            result = await recognize_sanitized_card(object(), 7, b"image-bytes", "image/jpeg")
+
+        self.assertEqual(matcher.await_count, 1)
+        self.assertEqual(result["matches"][0]["id"], "openai")
+
+    async def test_retries_with_gemini_when_enabled_and_unconfident(self):
+        provider = self._openai_provider()
+        results = iter([
+            self._match_result(False, source="openai"),
+            self._match_result(True, source="gemini"),
+        ])
+        matcher = AsyncMock(side_effect=lambda *a, **k: next(results))
+        gemini_provider = self._gemini_provider()
+        with self._patched(
+            provider=provider, matcher=matcher, fallback_enabled=True, gemini_key="a-key",
+            gemini_provider=gemini_provider,
+        ):
+            result = await recognize_sanitized_card(object(), 7, b"image-bytes", "image/jpeg")
+
+        self.assertEqual(matcher.await_count, 2)
+        self.assertEqual(result["matches"][0]["id"], "gemini")
+        self.assertTrue(result["_identity_confident"])
+        # The second attempt is a real, independent Gemini extraction — not a
+        # reuse of the OpenAI provider's (possibly wrong) fields.
+        second_provider = matcher.await_args_list[1].kwargs["provider"]
+        self.assertIs(second_provider, gemini_provider)
+        gemini_provider.generate_text.assert_awaited_once()
+
+    async def test_marks_recognized_with_whether_fallback_was_used(self):
+        # The review UI's post-hoc badge (item.recognized._gemini_fallback_used)
+        # reads this straight out of scan_job_items.recognized, since that's the
+        # only one of match_card_info's return fields the queue persists — see
+        # scan_queue.py, which only ever stores "recognized" and "matches".
+        provider = self._openai_provider()
+        results = iter([
+            self._match_result(False, source="openai"),
+            self._match_result(True, source="gemini"),
+        ])
+        matcher = AsyncMock(side_effect=lambda *a, **k: next(results))
+        with self._patched(
+            provider=provider, matcher=matcher, fallback_enabled=True, gemini_key="a-key",
+        ):
+            result = await recognize_sanitized_card(object(), 7, b"image-bytes", "image/jpeg")
+
+        self.assertTrue(result["recognized"]["_gemini_fallback_used"])
+
+    async def test_does_not_mark_fallback_used_when_it_was_never_attempted(self):
+        provider = self._openai_provider()
+        matcher = AsyncMock(return_value=self._match_result(True, source="openai"))
+        with self._patched(
+            provider=provider, matcher=matcher, fallback_enabled=True, gemini_key="a-key",
+        ):
+            result = await recognize_sanitized_card(object(), 7, b"image-bytes", "image/jpeg")
+
+        self.assertFalse(result["recognized"]["_gemini_fallback_used"])
+
+    async def test_skipped_without_a_configured_gemini_key(self):
+        provider = self._openai_provider()
+        matcher = AsyncMock(return_value=self._match_result(False, source="openai"))
+        with self._patched(
+            provider=provider, matcher=matcher, fallback_enabled=True, gemini_key="",
+        ):
+            result = await recognize_sanitized_card(object(), 7, b"image-bytes", "image/jpeg")
+
+        self.assertEqual(matcher.await_count, 1)
+        self.assertEqual(result["matches"][0]["id"], "openai")
+
+    async def test_skipped_when_already_confident(self):
+        provider = self._openai_provider()
+        matcher = AsyncMock(return_value=self._match_result(True, source="openai"))
+        with self._patched(
+            provider=provider, matcher=matcher, fallback_enabled=True, gemini_key="a-key",
+        ):
+            result = await recognize_sanitized_card(object(), 7, b"image-bytes", "image/jpeg")
+
+        self.assertEqual(matcher.await_count, 1)
+        self.assertEqual(result["matches"][0]["id"], "openai")
+
+    async def test_not_applied_when_primary_is_already_gemini(self):
+        provider = self._gemini_provider()
+        matcher = AsyncMock(return_value=self._match_result(False, source="gemini"))
+        with self._patched(
+            provider=provider, matcher=matcher, fallback_enabled=True, gemini_key="a-key",
+        ):
+            result = await recognize_sanitized_card(object(), 7, b"image-bytes", "image/jpeg")
+
+        self.assertEqual(matcher.await_count, 1)
+        self.assertEqual(result["matches"][0]["id"], "gemini")
+
+    async def test_a_failed_fallback_attempt_returns_the_original_result(self):
+        provider = self._openai_provider()
+        matcher = AsyncMock(side_effect=[
+            self._match_result(False, source="openai"),
+            RuntimeError("Gemini is unavailable"),
+        ])
+        with self._patched(
+            provider=provider, matcher=matcher, fallback_enabled=True, gemini_key="a-key",
+        ):
+            result = await recognize_sanitized_card(object(), 7, b"image-bytes", "image/jpeg")
+
+        self.assertEqual(matcher.await_count, 2)
+        self.assertEqual(result["matches"][0]["id"], "openai")
+        self.assertFalse(result["_identity_confident"])
 
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")
