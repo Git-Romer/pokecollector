@@ -933,6 +933,8 @@ const en = {
     importing: 'Running…',
     geminiApiKey: 'Gemini API Key',
     geminiApiKeyDesc: 'For camera card recognition (free at Google AI Studio)',
+    geminiFallback: 'Fall back to Gemini when unsure',
+    geminiFallbackDesc: 'Off by default. When your scanner provider is set to an OpenAI-compatible endpoint and it cannot confidently identify a card, retry that card with Gemini before giving up. Requires a Gemini API key configured above. No effect when Gemini is already your primary provider.',
     scanDiagnostics: 'Share scanner diagnostics',
     scanDiagnosticsDesc: 'Off by default. When enabled, sanitized card photos, model responses, extracted fields, candidates, and matching decisions are stored for accuracy analysis. Turning this off stops future collection but keeps existing diagnostics.',
     scanDiagnosticsUnavailable: 'New diagnostics collection is not enabled on this installation. You can still delete previously stored data.',
