@@ -29,6 +29,23 @@ TRANSIENT_BACKOFF_SECONDS = (30, 120, 600, 1800, 3600, 21600)
 RECOGNITION_BACKOFF_SECONDS = (2, 10, 30)
 TERMINAL_ITEM_STATUSES = {"done", "failed"}
 
+# process_claimed_scan_item() holds one DB connection open for the entire
+# recognition call below, including the vision-model HTTP round trip —
+# unavoidable without restructuring around a session-per-query pattern, since
+# the same session is threaded through to persist the result at the end. Each
+# retry request schedules its own independent background task, and FastAPI
+# runs those concurrently with no cap of their own, so a burst of retries (a
+# "retry all" click, or just several queued jobs finishing their backoff
+# around the same time) can each hold a connection for minutes at once —
+# especially with a slower provider (a local model, or Gemini under load).
+# Measured hitting real pool exhaustion (`QueuePool limit ... overflow 20
+# reached`) at a few dozen concurrent retries. A single-instance local
+# provider has no concurrency benefit anyway — one model processes one
+# request at a time regardless of how many arrive together — so bounding
+# this narrowly costs nothing.
+MAX_CONCURRENT_SCAN_PROCESSING = 3
+_scan_processing_semaphore = asyncio.Semaphore(MAX_CONCURRENT_SCAN_PROCESSING)
+
 
 @dataclass(frozen=True)
 class ClaimedScanItem:
@@ -497,79 +514,83 @@ async def process_claimed_scan_item(
 ) -> None:
     from database import SessionLocal
 
-    db = SessionLocal()
-    try:
+    # Bounds how many of these run at once — see MAX_CONCURRENT_SCAN_PROCESSING
+    # for why: the DB session opened just below stays checked out for the
+    # entire recognition call, including the slow vision-model HTTP work.
+    async with _scan_processing_semaphore:
+        db = SessionLocal()
         try:
-            items = _leased_items(db, claim)
-            if len(items) != len(claim.all_item_ids):
+            try:
+                items = _leased_items(db, claim)
+                if len(items) != len(claim.all_item_ids):
+                    db.rollback()
+                    return
+                image_bytes = [resolve_scan_path(item.image_path).read_bytes() for item in items]
+                user_id = items[0].user_id
+                content_types = [item.content_type for item in items]
+                job_id = items[0].job_id
+                item_ids = [item.id for item in items]
+                db.rollback()  # Release the row lock during upstream network work.
+                if claim.composite:
+                    if composite_processor is default_composite_processor:
+                        results = await composite_processor(
+                            db,
+                            user_id,
+                            image_bytes,
+                            content_types,
+                            job_id=job_id,
+                            item_ids=item_ids,
+                        )
+                    else:
+                        results = await composite_processor(
+                            db, user_id, image_bytes, content_types
+                        )
+                else:
+                    if processor is default_scan_processor:
+                        result = await processor(
+                            db,
+                            user_id,
+                            image_bytes[0],
+                            content_types[0],
+                            job_id=job_id,
+                            item_id=item_ids[0],
+                        )
+                    else:
+                        result = await processor(
+                            db, user_id, image_bytes[0], content_types[0]
+                        )
+                    results = [result]
+            except HTTPException as exc:
                 db.rollback()
+                error = _scan_error_from_http(exc)
+            except (FileNotFoundError, OSError, ScanUploadError) as exc:
+                db.rollback()
+                error = PermanentScanError(f"Stored scan photo is unavailable: {exc}")
+            except (TransientScanError, RecognitionScanError, PermanentScanError) as exc:
+                db.rollback()
+                error = exc
+            except Exception as exc:
+                db.rollback()
+                logger.exception("Unexpected scan processing error for item %s", claim.item_id)
+                error = TransientScanError(str(exc))
+            else:
+                if claim.composite:
+                    complete_claim_group(db, claim, results)
+                else:
+                    complete_claim(db, claim, results[0])
                 return
-            image_bytes = [resolve_scan_path(item.image_path).read_bytes() for item in items]
-            user_id = items[0].user_id
-            content_types = [item.content_type for item in items]
-            job_id = items[0].job_id
-            item_ids = [item.id for item in items]
-            db.rollback()  # Release the row lock during upstream network work.
-            if claim.composite:
-                if composite_processor is default_composite_processor:
-                    results = await composite_processor(
-                        db,
-                        user_id,
-                        image_bytes,
-                        content_types,
-                        job_id=job_id,
-                        item_ids=item_ids,
-                    )
-                else:
-                    results = await composite_processor(
-                        db, user_id, image_bytes, content_types
-                    )
-            else:
-                if processor is default_scan_processor:
-                    result = await processor(
-                        db,
-                        user_id,
-                        image_bytes[0],
-                        content_types[0],
-                        job_id=job_id,
-                        item_id=item_ids[0],
-                    )
-                else:
-                    result = await processor(
-                        db, user_id, image_bytes[0], content_types[0]
-                    )
-                results = [result]
-        except HTTPException as exc:
-            db.rollback()
-            error = _scan_error_from_http(exc)
-        except (FileNotFoundError, OSError, ScanUploadError) as exc:
-            db.rollback()
-            error = PermanentScanError(f"Stored scan photo is unavailable: {exc}")
-        except (TransientScanError, RecognitionScanError, PermanentScanError) as exc:
-            db.rollback()
-            error = exc
-        except Exception as exc:
-            db.rollback()
-            logger.exception("Unexpected scan processing error for item %s", claim.item_id)
-            error = TransientScanError(str(exc))
-        else:
-            if claim.composite:
-                complete_claim_group(db, claim, results)
-            else:
-                complete_claim(db, claim, results[0])
-            return
 
-        fail_claim(
-            db,
-            claim,
-            str(error),
-            transient=isinstance(error, TransientScanError),
-            permanent=isinstance(error, PermanentScanError),
-            retry_after_seconds=getattr(error, "retry_after_seconds", None),
-            retry_reason=getattr(error, "retry_reason", None),
-        )
-    finally:
-        db.close()
+            fail_claim(
+                db,
+                claim,
+                str(error),
+                transient=isinstance(error, TransientScanError),
+                permanent=isinstance(error, PermanentScanError),
+                retry_after_seconds=getattr(error, "retry_after_seconds", None),
+                retry_reason=getattr(error, "retry_reason", None),
+            )
+        finally:
+            db.close()
 
 
 async def drain_scan_queue(
