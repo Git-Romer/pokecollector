@@ -406,10 +406,17 @@ export function CardZoomModal({
               <div ref={frameRef} onClick={onCardClick}
                 className={`${CARD_FRAME} relative overflow-hidden ${zoomed ? 'cursor-grab' : 'cursor-zoom-in'}`}>
                 <img src={full || card.image} alt={card?.name}
-                  // Transition only the blur. Animating transform would make
-                  // every pan lag a frame behind the pointer.
-                  className={`${CARD_IMAGE} transition-[filter] duration-300 ${full ? '' : 'blur-md scale-105'}`}
-                  style={zoomStyle(zoom)} draggable={false} />
+                  // The loading placeholder is oversized via width/height,
+                  // not transform: transform is reserved for pan/zoom, and a
+                  // transition on it would make every pan lag a frame behind
+                  // the pointer. Sizing this way still lets the oversize
+                  // animate away smoothly instead of snapping the instant
+                  // the high-res image lands — the snap otherwise landed
+                  // mid-blur-fade and read as the candidate briefly being a
+                  // different scale from the photo beside it.
+                  className={`${CARD_IMAGE} transition-[filter,width,height] duration-300 ${full ? '' : 'blur-md'}`}
+                  style={{ ...zoomStyle(zoom), ...(full ? null : { width: '105%', height: '105%' }) }}
+                  draggable={false} />
                 {/* Centred over the card it belongs to: tucked in a corner
                     it read as page furniture rather than as this image still
                     loading. */}
