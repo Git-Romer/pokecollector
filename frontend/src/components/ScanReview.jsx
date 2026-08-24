@@ -73,7 +73,15 @@ export function useScanItemPhoto(jobId, item) {
 // to scroll to the cut-off half. 38vh keeps both frames plus their captions
 // within a typical phone viewport; width goes the other way, since a
 // stacked frame is no longer sharing horizontal space with a sibling.
-const CARD_FRAME = 'h-[38vh] md:h-[62vh] w-[80vw] md:w-[30vw] max-w-[420px] flex items-center justify-center'
+//
+// dvh, not vh: a mobile browser's address bar makes the visible viewport
+// smaller than 100vh, since vh is pinned to the layout viewport with the
+// bar retracted. Sized against that larger, hypothetical viewport, the two
+// stacked frames plus header and accept bar can end up taller than what is
+// actually on screen with the bar showing — which reads as the top frame
+// getting cut off, not as something scrollable. dvh tracks the viewport
+// that's actually visible.
+const CARD_FRAME = 'h-[38dvh] md:h-[62dvh] w-[80vw] md:w-[30vw] max-w-[420px] flex items-center justify-center'
 const CARD_IMAGE = 'max-h-full max-w-full object-contain rounded-xl'
 
 // Progressive load for one candidate scan.
@@ -350,7 +358,13 @@ export function CardZoomModal({
     // Clicking anywhere closes, the image included — the whole overlay is
     // the dismiss target, which is what a full-screen viewer is expected to
     // do.
-    <div className="fixed inset-0 z-[400] flex cursor-zoom-out flex-col bg-black/90 p-4" onClick={onClose}>
+    <div
+      // Extra top padding, floored at the existing p-4: on some mobile
+      // browsers a fixed, full-screen overlay can render partly behind the
+      // address bar rather than below it, and safe-area-inset-top is the
+      // platform's own answer for "how much is currently covered up top."
+      className="fixed inset-0 z-[400] flex cursor-zoom-out flex-col bg-black/90 p-4 [padding-top:max(1rem,env(safe-area-inset-top))]"
+      onClick={onClose}>
       <div className="flex flex-shrink-0 justify-end">
         <button type="button" onClick={onClose} aria-label={t('common.close')}
           className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 transition-colors hover:bg-white/20">
