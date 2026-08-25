@@ -985,6 +985,17 @@ async def _fetch_candidates_for_pair(
 # would only add noise (see the fallback's own comment for why that risk is
 # real, not hypothetical).
 ENGLISH_FALLBACK_MIN_CANDIDATES = 3
+# How many the fallback may add on top of whatever native search already
+# found. Confirmed on a real card (Japanese "マグマラシ" / Magmar, a species
+# TCGdex's own Japanese catalogue only has two printings of): with the
+# native pairs' own 15-candidate headroom reused here, two genuine
+# native-language matches got buried under a review grid of eight
+# translated English ones, reading as "barely finds the right language" even
+# though both native hits were ranked first. The fallback is a safety net
+# for when native search comes back thin, not a second full search — it
+# only needs to be able to fill in the gap up to ENGLISH_FALLBACK_MIN_CANDIDATES,
+# not flood the rest of the display budget.
+ENGLISH_FALLBACK_MAX_CANDIDATES = ENGLISH_FALLBACK_MIN_CANDIDATES * 2
 
 
 async def _search_and_rank_candidates(
@@ -1033,11 +1044,14 @@ async def _search_and_rank_candidates(
 
     if english_fallback_pairs and len(candidates) < ENGLISH_FALLBACK_MIN_CANDIDATES:
         for search_language, search_name in english_fallback_pairs:
-            if len(candidates) >= 15:
+            if len(candidates) >= ENGLISH_FALLBACK_MAX_CANDIDATES:
                 break
-            candidates.extend(
-                await _fetch_candidates_for_pair(db, search_language, search_name, card_info, trace)
-            )
+            fetched = await _fetch_candidates_for_pair(db, search_language, search_name, card_info, trace)
+            # A single pair can itself return more than the remaining budget
+            # (select_search_candidates' own baseline_limit is 8), so the cap
+            # has to be enforced on what gets added, not just checked between
+            # pairs.
+            candidates.extend(fetched[:ENGLISH_FALLBACK_MAX_CANDIDATES - len(candidates)])
 
     candidate_set_ids = {
         tcg_card_id.rsplit("-", 1)[0]

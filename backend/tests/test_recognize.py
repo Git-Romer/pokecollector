@@ -592,6 +592,36 @@ class SearchAndRankCandidatesLocalDbTests(unittest.IsolatedAsyncioTestCase):
             {card["id"] for card in candidates}, {"de-1_de", "en-1_en"}
         )
 
+    async def test_english_fallback_stops_short_of_flooding_thin_native_results(self):
+        # Regression case: a real Japanese card (Magmar) where the native
+        # catalogue only had two genuine printings. Before this cap, the
+        # fallback filled all the way up to the shared 15-candidate budget,
+        # so the review grid showed two correct native cards buried under a
+        # wall of translated English ones -- read as "barely finds the
+        # right language" even though the native hits were still ranked
+        # first. Ten English matches here is deliberately far more than the
+        # cap, so this only passes if the fallback is actually bounded
+        # rather than merely coincidentally under the old 15-candidate cap.
+        self.db.add(Card(
+            id="de-1_de", tcg_card_id="de-1", name="Bisasam",
+            number="1", lang="de", is_custom=False,
+        ))
+        for number in range(10):
+            self.db.add(Card(
+                id=f"en-{number}_en", tcg_card_id=f"en-{number}", name="Bulbasaur",
+                number=str(number), lang="en", is_custom=False,
+            ))
+        self.db.commit()
+
+        candidates, _ = await _search_and_rank_candidates(
+            self.db,
+            {"name": "Bisasam", "name_en": "Bulbasaur", "language": "de"},
+        )
+
+        self.assertIn("de-1_de", [card["id"] for card in candidates])
+        self.assertLessEqual(len(candidates), 6)
+        self.assertLess(len(candidates), 11)
+
     async def test_english_cards_never_reach_the_translation_fallback_path(self):
         # language == "en" means the native pairs already searched the
         # English name directly, so the fallback branch must never trigger
