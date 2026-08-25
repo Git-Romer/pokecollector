@@ -254,7 +254,14 @@ def ensure_card_exists(
 def _add_collection_item(db: Session, current_user: User, item: CollectionItemCreate, commit: bool = True) -> str:
     """Add one item and return "added" or "updated"."""
     _, detected_lang = pokemon_api.strip_lang_suffix(item.card_id)
-    item_lang = _normalize_request_lang(item.lang or detected_lang or "en")
+    # `lang` defaults to "en" on the request schema, so an explicit language
+    # suffix on card_id (e.g. "..._ja") must win over that default -- otherwise
+    # a caller who only sends card_id gets silently redirected to the English
+    # card, which may not exist locally and triggers an avoidable live-API
+    # fetch (and failure, if the card is genuinely language-specific).
+    item_lang = _normalize_request_lang(
+        detected_lang if has_lang_suffix(item.card_id) else (item.lang or "en")
+    )
     item_variant = _normalize_collection_variant(item.variant)
 
     if item.card_id.startswith("custom-"):

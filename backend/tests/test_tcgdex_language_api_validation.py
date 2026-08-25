@@ -4,8 +4,9 @@ from unittest.mock import patch
 try:
     from fastapi import HTTPException
 
-    from api.collection import _parse_import_row, _normalize_request_lang, ensure_card_exists
+    from api.collection import _add_collection_item, _parse_import_row, _normalize_request_lang, ensure_card_exists
     from api.settings import _normalize_tcgdex_sync_languages
+    from schemas import CollectionItemCreate
     API_VALIDATION_DEPS_AVAILABLE = True
 except ModuleNotFoundError:
     HTTPException = Exception
@@ -85,6 +86,43 @@ class TcgdexLanguageApiValidationTests(unittest.TestCase):
         self.assertEqual(get_card.call_args_list[0].kwargs, {"lang": "zh-tw"})
         self.assertEqual(card.id, "sv1-1_zh-tw")
         self.assertEqual(card.lang, "zh-tw")
+
+    def test_add_collection_item_prefers_composite_id_suffix_over_default_lang(self):
+        # item.lang defaults to "en" on CollectionItemCreate when the caller
+        # doesn't pass it explicitly; a card_id with an explicit "_ja" suffix
+        # must still win, not get silently coerced to English.
+        class FakeQuery:
+            def filter(self, *args, **kwargs):
+                return self
+
+            def first(self):
+                return None
+
+        class FakeDb:
+            def __init__(self):
+                self.added = []
+
+            def query(self, *args, **kwargs):
+                return FakeQuery()
+
+            def add(self, item):
+                self.added.append(item)
+
+            def commit(self):
+                pass
+
+        fake_db = FakeDb()
+        user = type("User", (), {"id": 1})()
+        item = CollectionItemCreate(card_id="PMCG3-031_ja", quantity=1)
+        self.assertEqual(item.lang, "en")  # schema default, not overridden by the caller
+
+        with patch("api.collection.ensure_card_exists") as ensure_card_exists_mock:
+            result = _add_collection_item(fake_db, user, item)
+
+        self.assertEqual(result, "added")
+        ensure_card_exists_mock.assert_called_once_with(fake_db, "PMCG3-031_ja", lang="ja")
+        self.assertEqual(fake_db.added[0].card_id, "PMCG3-031_ja")
+        self.assertEqual(fake_db.added[0].lang, "ja")
 
 
 if __name__ == "__main__":
