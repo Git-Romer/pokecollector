@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { Camera, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Loader2, Plus, RefreshCw, Trash2, X } from 'lucide-react'
+import { AlertTriangle, Camera, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Loader2, Plus, RefreshCw, Trash2, X } from 'lucide-react'
 import { fetchScanCandidateImage, fetchScanJobItemImage } from '../api/client'
+import CardImage from './CardImage'
 import { tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { formatRetryCountdown } from '../utils/retryCountdown'
 
@@ -352,6 +353,22 @@ export function CardZoomModal({
   // lands. Above the early return: hooks cannot sit behind a conditional.
   const full = useCandidateFullImage(jobId, itemId, card ? index : null, cdnFull)
 
+  // useCandidateFullImage already falls back thumbnail-URL-if-cache-miss, but
+  // if that URL itself 404s or errors out there was nothing downstream to
+  // catch it — a bare <img> just renders broken, permanently under the
+  // "still loading" spinner below since `full` never arrives either. Keyed
+  // on the candidate so stepping to the next one doesn't inherit a stale
+  // failure.
+  const [imageFailed, setImageFailed] = useState(false)
+  const [retryAttempt, setRetryAttempt] = useState(0)
+  useEffect(() => {
+    setImageFailed(false)
+    setRetryAttempt(0)
+  }, [card?.id])
+  const retrySrc = full || (card?.image && retryAttempt > 0
+    ? `${card.image}${card.image.includes('?') ? '&' : '?'}retry=${retryAttempt}`
+    : card?.image)
+
   if (!card && !photoUrl) return null
 
   return createPortal(
@@ -419,27 +436,50 @@ export function CardZoomModal({
                   nothing. */}
               <div ref={frameRef} onClick={onCardClick}
                 className={`${CARD_FRAME} relative overflow-hidden ${zoomed ? 'cursor-grab' : 'cursor-zoom-in'}`}>
-                <img src={full || card.image} alt={card?.name}
-                  // The loading placeholder is oversized via width/height,
-                  // not transform: transform is reserved for pan/zoom, and a
-                  // transition on it would make every pan lag a frame behind
-                  // the pointer. Sizing this way still lets the oversize
-                  // animate away smoothly instead of snapping the instant
-                  // the high-res image lands — the snap otherwise landed
-                  // mid-blur-fade and read as the candidate briefly being a
-                  // different scale from the photo beside it.
-                  className={`${CARD_IMAGE} transition-[filter,width,height] duration-300 ${full ? '' : 'blur-md'}`}
-                  style={{ ...zoomStyle(zoom), ...(full ? null : { width: '105%', height: '105%' }) }}
-                  draggable={false} />
+                {!imageFailed && (
+                  <img src={retrySrc} alt={card?.name}
+                    // The loading placeholder is oversized via width/height,
+                    // not transform: transform is reserved for pan/zoom, and a
+                    // transition on it would make every pan lag a frame behind
+                    // the pointer. Sizing this way still lets the oversize
+                    // animate away smoothly instead of snapping the instant
+                    // the high-res image lands — the snap otherwise landed
+                    // mid-blur-fade and read as the candidate briefly being a
+                    // different scale from the photo beside it.
+                    className={`${CARD_IMAGE} transition-[filter,width,height] duration-300 ${full ? '' : 'blur-md'}`}
+                    style={{ ...zoomStyle(zoom), ...(full ? null : { width: '105%', height: '105%' }) }}
+                    draggable={false}
+                    onError={() => setImageFailed(true)} />
+                )}
                 {/* Centred over the card it belongs to: tucked in a corner
                     it read as page furniture rather than as this image still
                     loading. */}
-                {!full && (
+                {!full && !imageFailed && (
                   <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
                     <span className="rounded-full bg-black/55 p-3">
                       <Loader2 size={28} className="animate-spin text-white/90" />
                     </span>
                   </span>
+                )}
+                {/* The candidate URL 404'd or errored out -- same failure
+                    this card would hit anywhere else in the app, so the
+                    same "artwork unavailable, retry" state rather than a
+                    permanently blurred placeholder with a spinner that
+                    never resolves. */}
+                {imageFailed && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-bg-elevated p-3 text-center"
+                    onClick={e => e.stopPropagation()}>
+                    <span className="grid h-10 w-10 place-items-center rounded-full border border-brand-red/40 bg-brand-red/15 text-brand-red">
+                      <AlertTriangle size={18} aria-hidden />
+                    </span>
+                    <strong className="text-xs text-text-primary">{t('card.artworkUnavailable')}</strong>
+                    <span className="text-[10px] leading-tight text-text-muted">{t('card.artworkUnavailableHint')}</span>
+                    <button type="button" className="btn-ghost mt-1 min-h-8 px-3 py-1.5 text-xs"
+                      onClick={() => { setImageFailed(false); setRetryAttempt(a => a + 1) }}
+                      aria-label={t('card.retryImage')}>
+                      <RefreshCw size={13} aria-hidden />{t('common.retry')}
+                    </button>
+                  </div>
                 )}
               </div>
               <figcaption className="mt-2 space-y-0.5 text-center">
@@ -560,7 +600,16 @@ function CandidateGrid({ jobId, itemId, matches, onSelect, onZoom, t }) {
           >
             <div className="relative aspect-[2.5/3.5] w-full overflow-hidden rounded-xl ring-1 ring-white/5 transition-all duration-200 group-hover:ring-2 group-hover:ring-brand-red/30">
               {match.image ? (
-                <img src={match.image} alt={match.name}
+                // CardImage, not a bare <img>: a candidate URL failing to load
+                // (not just being absent) needs the same "artwork unavailable,
+                // retry" state every other card image gets — a broken image
+                // with no explanation is a worse result than the "no image at
+                // all" branch below, which at least offers a way out. Full
+                // (non-compact) error state, not compactError: these tiles
+                // are large enough that the icon-only compact mode used for
+                // small thumbnails elsewhere reads as unexplained, same
+                // complaint this is fixing in the first place.
+                <CardImage src={match.image} alt={match.name}
                   className="h-full w-full object-cover shadow-lg transition-transform duration-300 group-hover:scale-[1.02]" />
               ) : (
                 <div className="flex h-full w-full items-center justify-center rounded-xl bg-bg-surface">
