@@ -24,7 +24,11 @@ from services.scan_storage import (
 logger = logging.getLogger(__name__)
 
 MAX_RECOGNITION_ATTEMPTS = 3
-LEASE_SECONDS = 10 * 60
+# A slow local vision model (small hybrid-reasoning builds on consumer
+# hardware) can take minutes per card with retries, well past what used to be
+# a 10-minute lease — see VISION_REQUEST_TIMEOUT_SECONDS in api/recognize.py
+# for the worst case this needs to comfortably outlast.
+LEASE_SECONDS = 20 * 60
 TRANSIENT_BACKOFF_SECONDS = (30, 120, 600, 1800, 3600, 21600)
 RECOGNITION_BACKOFF_SECONDS = (2, 10, 30)
 TERMINAL_ITEM_STATUSES = {"done", "failed"}

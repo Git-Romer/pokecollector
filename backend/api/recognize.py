@@ -48,6 +48,15 @@ MAX_GEMINI_RETRY_SECONDS = 14 * 24 * 60 * 60
 PHASH_MAX_DISTANCE = 20
 PHASH_MIN_MARGIN = 5
 PHASH_CANDIDATE_LIMIT = 8
+# Gemini answers in a few seconds, but a local reasoning model (small
+# hybrid-thinking builds run on consumer hardware) routinely spends 15-45s
+# "thinking" through a single card before writing its answer — measured over
+# 120s on a real card with an ambiguous printed symbol the model kept
+# deliberating over. 30s cut that off mid-thought on a large fraction of real
+# cards, so every call that reaches a vision model gets this same generous
+# budget instead. Kept comfortably under scan_queue's LEASE_SECONDS even with
+# the 3-attempt retry these calls already use (3 * this + retry backoff).
+VISION_REQUEST_TIMEOUT_SECONDS = 180
 MAX_REFERENCE_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_REFERENCE_IMAGE_PIXELS = 50_000_000
 TRUSTED_REFERENCE_IMAGE_HOSTS = {"assets.tcgdex.net"}
@@ -951,7 +960,7 @@ async def match_card_info(
     )
     if should_try_phash or should_try_visual:
         try:
-            async with httpx.AsyncClient(timeout=20) as client:
+            async with httpx.AsyncClient(timeout=VISION_REQUEST_TIMEOUT_SECONDS) as client:
                 candidate_images = await _download_candidate_images(
                     client,
                     top_candidates[:PHASH_CANDIDATE_LIMIT],
@@ -1080,7 +1089,7 @@ async def recognize_sanitized_card(
 
     image_b64 = base64.b64encode(image_bytes).decode()
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=VISION_REQUEST_TIMEOUT_SECONDS) as client:
             response_text, usage = await provider.generate_text(
                 client,
                 api_key,
@@ -1209,7 +1218,7 @@ async def recognize_composite_card_info(
     provider = provider or ScanProvider(GEMINI)
     image_b64 = base64.b64encode(image_bytes).decode()
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=VISION_REQUEST_TIMEOUT_SECONDS) as client:
             response_text, usage = await provider.generate_text(
                 client,
                 api_key,

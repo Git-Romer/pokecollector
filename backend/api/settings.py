@@ -540,7 +540,10 @@ async def test_scanner_configuration(
         allow_unverified_custom_model=True,
     )
     candidate = ScanProvider(provider, model)
-    async with httpx.AsyncClient(timeout=30) as client:
+    # A slower local reasoning model can still take a while even on this tiny
+    # two-color test image, so this gets real headroom too rather than
+    # reporting "connection failed" for a model that was simply still thinking.
+    async with httpx.AsyncClient(timeout=60) as client:
         multi_error = None
         try:
             text, _usage = await candidate.generate_text(
