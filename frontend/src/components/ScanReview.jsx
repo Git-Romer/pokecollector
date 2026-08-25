@@ -467,7 +467,11 @@ export function CardZoomModal({
                     permanently blurred placeholder with a spinner that
                     never resolves. */}
                 {imageFailed && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-bg-elevated p-3 text-center"
+                  // Not bg-bg-elevated (a flat grey fill reads as a broken
+                  // layout against this modal's dark background, not as a
+                  // card-shaped placeholder). Same bg-black/55 the loading
+                  // spinner circle above already uses.
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-xl bg-black/55 p-3 text-center"
                     onClick={e => e.stopPropagation()}>
                     <span className="grid h-10 w-10 place-items-center rounded-full border border-brand-red/40 bg-brand-red/15 text-brand-red">
                       <AlertTriangle size={18} aria-hidden />
