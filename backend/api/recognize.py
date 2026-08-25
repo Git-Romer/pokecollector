@@ -860,6 +860,13 @@ async def _search_and_rank_candidates(
                     if isinstance(card.get("set"), dict) else None,
                     "number": card.get("localId"),
                     "image": f"{card.get('image')}/low.webp" if card.get("image") else None,
+                    # The zoom modal and the candidate-image cache endpoint
+                    # both already prefer image_hd over the 245px thumbnail
+                    # above -- it just never got populated, so every
+                    # candidate silently fell back to the low-res image even
+                    # when zoomed. /high.webp is the same TCGdex CDN
+                    # sibling path as /low.webp.
+                    "image_hd": f"{card.get('image')}/high.webp" if card.get("image") else None,
                     "rarity": card.get("rarity"),
                     "lang": search_language,
                     "_lang": search_language,

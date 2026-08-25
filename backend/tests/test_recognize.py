@@ -30,6 +30,7 @@ try:
         recognize_sanitized_card,
         retain_ranked_candidates,
         select_search_candidates,
+        _search_and_rank_candidates,
     )
     API_TEST_DEPS_AVAILABLE = True
 except ModuleNotFoundError:
@@ -782,6 +783,52 @@ class RecognizeApiTests(unittest.IsolatedAsyncioTestCase):
         penalize.assert_called_once_with("key", seconds=21.0, reason="daily_quota")
         self.assertEqual(ctx.exception.retry_after_seconds, 21)
         self.assertEqual(ctx.exception.retry_reason, "daily_quota")
+
+    async def test_candidates_carry_a_high_res_image_url(self):
+        # The zoom modal and the candidate-image cache endpoint both already
+        # prefer image_hd over the low-res thumbnail -- it just never got
+        # populated, so every candidate silently fell back to the thumbnail
+        # even when zoomed. /high.webp is the same TCGdex CDN sibling path
+        # as the /low.webp already used for the thumbnail.
+        class FakeResponse:
+            status_code = 200
+
+            def json(self):
+                return [{
+                    # No "-" in the id: the set-enrichment step below keys off
+                    # tcg_card_id containing one, and this test isn't
+                    # exercising that path -- it would otherwise need a real
+                    # DB session just to reach the image_hd assertion.
+                    "id": "swshalakazam",
+                    "name": "Alakazam",
+                    "image": "https://assets.tcgdex.net/en/base/base1/1",
+                    "rarity": "Rare Holo",
+                }]
+
+        class FakeClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *args):
+                return False
+
+            async def get(self, *args, **kwargs):
+                return FakeResponse()
+
+        with patch("api.recognize.httpx.AsyncClient", return_value=FakeClient()):
+            candidates, _ = await _search_and_rank_candidates(
+                None, {"name": "Alakazam", "language": "en"},
+            )
+
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(
+            candidates[0]["image_hd"],
+            "https://assets.tcgdex.net/en/base/base1/1/high.webp",
+        )
+        self.assertEqual(
+            candidates[0]["image"],
+            "https://assets.tcgdex.net/en/base/base1/1/low.webp",
+        )
 
 
 if __name__ == "__main__":
