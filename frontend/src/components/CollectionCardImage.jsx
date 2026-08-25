@@ -23,12 +23,12 @@ import { hasCatalogueImage, resolveCardImageUrl } from '../utils/imageUrl'
 
 const hasReferenceImage = (card) => Boolean(card?.custom_image_url) || hasCatalogueImage(card)
 
-// Personal photos are a fallback by default. A per-user preference can make
-// them primary, but never for manually created cards: those already have their
-// own editable artwork and keep the pencil marker as their sole source badge.
+// Personal photos are a fallback by default. A manually created card is no
+// exception: its only other artwork slot (image_url) needs a public HTTPS
+// URL, so plenty of them have no reference image at all and a private photo
+// is genuinely the only picture there is.
 export const showsOwnPhoto = (item, card, preferOwnPhotos = false) => Boolean(
   item?.has_scan_photo
-  && !card?.is_custom
   && (preferOwnPhotos || !hasReferenceImage(card))
 )
 

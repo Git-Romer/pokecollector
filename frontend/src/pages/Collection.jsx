@@ -362,9 +362,15 @@ function CollectionEditModal({ item, onClose }) {
     : null
   const ownPhotoUrl = useCollectionPhotoUrl(photoItem, { eager: true })
   const catalogueImage = customImageProxyUrl || resolveCardImageUrl(card, 'large')
-  const hasReferenceArtwork = Boolean(customImageProxyUrl) || hasApiImage || Boolean(card?.is_custom)
+  // hasApiImage already covers custom cards with an image_url set (the
+  // backend stores it in images_small/images_large same as a synced card),
+  // so it doesn't need an `is_custom` special case here -- one used to be
+  // here, and it meant a custom card with NO image_url was still treated as
+  // "has reference artwork", which permanently hid an uploaded own photo
+  // behind an actually-blank placeholder.
+  const hasReferenceArtwork = Boolean(customImageProxyUrl) || hasApiImage
   const preferOwnPhoto = settings.prefer_own_card_photos === 'true'
-  const defaultImageSource = hasOwnPhoto && !card?.is_custom && (preferOwnPhoto || !hasReferenceArtwork)
+  const defaultImageSource = hasOwnPhoto && (preferOwnPhoto || !hasReferenceArtwork)
     ? 'own'
     : 'catalogue'
   const cardImage = selectedImageSource === 'own' && ownPhotoUrl ? ownPhotoUrl : catalogueImage
@@ -526,7 +532,7 @@ function CollectionEditModal({ item, onClose }) {
     { id: 'binder', label: t('cardTabs.binder') },
   ]
 
-  const ownPhotoControls = !card?.is_custom ? (
+  const ownPhotoControls = (
     <div className="space-y-2">
       <div>
         <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
@@ -577,7 +583,7 @@ function CollectionEditModal({ item, onClose }) {
         )}
       </div>
     </div>
-  ) : null
+  )
 
   return (
     <CardDialog

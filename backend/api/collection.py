@@ -931,6 +931,11 @@ async def upload_collection_item_photo(
     is given, and the display rule that a catalogue scan wins lives in one place
     on the frontend. Uploading against a cached card simply has no visible
     effect, which is better than a confusing rejection.
+
+    Also available for custom cards: their only other artwork slot
+    (`image_url`) requires a public HTTPS URL, which isn't an option for
+    someone who just wants to attach their own photo of a physical card that
+    has no listing anywhere online.
     """
     entry = db.query(CollectionItem).filter(
         CollectionItem.id == item_id,
@@ -938,8 +943,6 @@ async def upload_collection_item_photo(
     ).first()
     if not entry:
         raise HTTPException(status_code=404, detail="Collection item not found")
-    if entry.card and entry.card.is_custom:
-        raise HTTPException(status_code=400, detail="Custom cards already have editable artwork")
 
     raw = await file.read(MAX_UPLOAD_BYTES + 1)
     await file.close()
