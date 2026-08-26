@@ -35,9 +35,11 @@ export default function ImageZoomOverlay({ src, alt = '', onClose }) {
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [showHint, setShowHint] = useState(true)
   const containerRef = useRef(null)
+  const imgRef = useRef(null)
   const dragState = useRef(null)
   const pinchState = useRef(null)
   const lastTapRef = useRef(0)
+  const draggedRef = useRef(false)
 
   useEffect(() => {
     const timer = setTimeout(() => setShowHint(false), 2600)
@@ -81,6 +83,7 @@ export default function ImageZoomOverlay({ src, alt = '', onClose }) {
 
   const handleMouseMove = (event) => {
     if (!dragState.current) return
+    draggedRef.current = true
     const { startX, startY, origin } = dragState.current
     setPosition({ x: origin.x + (event.clientX - startX), y: origin.y + (event.clientY - startY) })
   }
@@ -91,6 +94,22 @@ export default function ImageZoomOverlay({ src, alt = '', onClose }) {
 
   const handleDoubleClick = (event) => {
     toggleZoom({ x: event.clientX, y: event.clientY })
+  }
+
+  // The <img> itself has pointer-events: none (its own click can't be told
+  // apart from the pan surface behind it otherwise), so "clicked the image"
+  // vs "clicked the backdrop around it" is decided by comparing the click
+  // point against the image's actual rendered bounds instead of event.target.
+  const handleBackdropClick = (event) => {
+    if (draggedRef.current) {
+      draggedRef.current = false
+      return
+    }
+    const imgRect = imgRef.current?.getBoundingClientRect()
+    const withinImage = imgRect
+      && event.clientX >= imgRect.left && event.clientX <= imgRect.right
+      && event.clientY >= imgRect.top && event.clientY <= imgRect.bottom
+    if (!withinImage) onClose()
   }
 
   const handleTouchStart = (event) => {
@@ -130,6 +149,7 @@ export default function ImageZoomOverlay({ src, alt = '', onClose }) {
     }
     if (event.touches.length === 1 && dragState.current) {
       event.preventDefault()
+      draggedRef.current = true
       const touch = event.touches[0]
       const { startX, startY, origin } = dragState.current
       setPosition({ x: origin.x + (touch.clientX - startX), y: origin.y + (touch.clientY - startY) })
@@ -152,7 +172,6 @@ export default function ImageZoomOverlay({ src, alt = '', onClose }) {
       tabIndex={-1}
       onKeyDown={onDialogKeyDown}
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm"
-      onClick={onClose}
     >
       <button
         type="button"
@@ -167,7 +186,7 @@ export default function ImageZoomOverlay({ src, alt = '', onClose }) {
         ref={containerRef}
         className="relative h-full w-full touch-none overflow-hidden"
         style={{ cursor: scale > MIN_SCALE ? 'grab' : 'zoom-in' }}
-        onClick={(event) => event.stopPropagation()}
+        onClick={handleBackdropClick}
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
@@ -179,6 +198,7 @@ export default function ImageZoomOverlay({ src, alt = '', onClose }) {
         onTouchEnd={handleTouchEnd}
       >
         <img
+          ref={imgRef}
           src={src}
           alt={alt}
           draggable={false}
