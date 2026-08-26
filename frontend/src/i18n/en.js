@@ -1188,7 +1188,7 @@ const en = {
     wishlistFailed: 'Failed to add to wishlist',
     editCard: 'Edit card',
     zoomImage: 'Zoom image',
-    zoomHint: 'Scroll or pinch to zoom, drag to pan',
+    zoomHint: 'Tap or scroll to zoom, drag to pan',
     zoomIn: 'Zoom in',
     zoomOut: 'Zoom out',
     zoomReset: 'Reset zoom',

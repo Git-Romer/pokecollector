@@ -6,8 +6,7 @@ import { useSettings } from '../contexts/SettingsContext'
 
 const MIN_SCALE = 1
 const MAX_SCALE = 4
-const DOUBLE_TAP_SCALE = 2.5
-const DOUBLE_CLICK_MS = 320
+const CLICK_ZOOM_SCALE = 2.5
 
 function clampScale(scale) {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale))
@@ -25,9 +24,10 @@ function midpoint(touches) {
 
 /**
  * Full-screen pan/zoom viewer for a single image — scroll wheel or pinch to
- * zoom, drag to pan once zoomed, double-click/double-tap to toggle zoom.
- * On-screen +/-/reset controls exist both as a fallback for devices without
- * wheel/pinch input and as the visual hint that the image is zoomable.
+ * zoom, drag to pan once zoomed, a single click/tap on the image toggles
+ * zoom (clicking outside it closes the viewer instead). On-screen +/-/reset
+ * controls exist both as a fallback for devices without wheel/pinch input
+ * and as the visual hint that the image is zoomable.
  */
 export default function ImageZoomOverlay({ src, alt = '', onClose }) {
   const { t } = useSettings()
@@ -38,7 +38,6 @@ export default function ImageZoomOverlay({ src, alt = '', onClose }) {
   const imgRef = useRef(null)
   const dragState = useRef(null)
   const pinchState = useRef(null)
-  const lastTapRef = useRef(0)
   const draggedRef = useRef(false)
 
   useEffect(() => {
@@ -67,7 +66,7 @@ export default function ImageZoomOverlay({ src, alt = '', onClose }) {
   }
 
   const toggleZoom = (anchor) => {
-    applyScale(scale > MIN_SCALE ? MIN_SCALE : DOUBLE_TAP_SCALE, anchor)
+    applyScale(scale > MIN_SCALE ? MIN_SCALE : CLICK_ZOOM_SCALE, anchor)
   }
 
   const handleWheel = (event) => {
@@ -92,15 +91,14 @@ export default function ImageZoomOverlay({ src, alt = '', onClose }) {
     dragState.current = null
   }
 
-  const handleDoubleClick = (event) => {
-    toggleZoom({ x: event.clientX, y: event.clientY })
-  }
-
   // The <img> itself has pointer-events: none (its own click can't be told
   // apart from the pan surface behind it otherwise), so "clicked the image"
   // vs "clicked the backdrop around it" is decided by comparing the click
   // point against the image's actual rendered bounds instead of event.target.
-  const handleBackdropClick = (event) => {
+  // A single click on the image toggles zoom (matches the single-click
+  // "enlarge" pattern already used elsewhere in the app, e.g. the scan
+  // candidate compare view) — clicking the backdrop around it closes instead.
+  const handleContainerClick = (event) => {
     if (draggedRef.current) {
       draggedRef.current = false
       return
@@ -109,7 +107,11 @@ export default function ImageZoomOverlay({ src, alt = '', onClose }) {
     const withinImage = imgRect
       && event.clientX >= imgRect.left && event.clientX <= imgRect.right
       && event.clientY >= imgRect.top && event.clientY <= imgRect.bottom
-    if (!withinImage) onClose()
+    if (!withinImage) {
+      onClose()
+      return
+    }
+    toggleZoom({ x: event.clientX, y: event.clientY })
   }
 
   const handleTouchStart = (event) => {
@@ -123,19 +125,9 @@ export default function ImageZoomOverlay({ src, alt = '', onClose }) {
       dragState.current = null
       return
     }
-    if (event.touches.length === 1) {
-      const now = Date.now()
-      if (now - lastTapRef.current < DOUBLE_CLICK_MS) {
-        const touch = event.touches[0]
-        toggleZoom({ x: touch.clientX, y: touch.clientY })
-        lastTapRef.current = 0
-        return
-      }
-      lastTapRef.current = now
-      if (scale > MIN_SCALE) {
-        const touch = event.touches[0]
-        dragState.current = { startX: touch.clientX, startY: touch.clientY, origin: position }
-      }
+    if (event.touches.length === 1 && scale > MIN_SCALE) {
+      const touch = event.touches[0]
+      dragState.current = { startX: touch.clientX, startY: touch.clientY, origin: position }
     }
   }
 
@@ -186,13 +178,12 @@ export default function ImageZoomOverlay({ src, alt = '', onClose }) {
         ref={containerRef}
         className="relative h-full w-full touch-none overflow-hidden"
         style={{ cursor: scale > MIN_SCALE ? 'grab' : 'zoom-in' }}
-        onClick={handleBackdropClick}
+        onClick={handleContainerClick}
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={endDrag}
         onMouseLeave={endDrag}
-        onDoubleClick={handleDoubleClick}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}

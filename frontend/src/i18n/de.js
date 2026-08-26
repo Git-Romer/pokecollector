@@ -1165,7 +1165,7 @@ const de = {
     wishlistFailed: 'Fehler beim Hinzufügen zur Wunschliste',
     editCard: 'Karte bearbeiten',
     zoomImage: 'Bild vergrößern',
-    zoomHint: 'Scrollen oder zwei Finger zum Zoomen, ziehen zum Verschieben',
+    zoomHint: 'Tippen oder scrollen zum Zoomen, ziehen zum Verschieben',
     zoomIn: 'Vergrößern',
     zoomOut: 'Verkleinern',
     zoomReset: 'Zoom zurücksetzen',
