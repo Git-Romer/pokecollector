@@ -25,10 +25,10 @@ from services.scan_storage import (
 logger = logging.getLogger(__name__)
 
 MAX_RECOGNITION_ATTEMPTS = 3
-# A slow local vision model (small hybrid-reasoning builds on consumer
-# hardware) can take minutes per card with retries, well past what used to be
-# a 10-minute lease — see VISION_REQUEST_TIMEOUT_SECONDS in api/recognize.py
-# for the worst case this needs to comfortably outlast.
+# The largest selectable AI-response timeout can be consumed by three initial
+# recognition attempts and two visual-verification attempts. Twenty minutes
+# leaves several minutes for retry backoff, bounded reference downloads, and
+# database work before another worker may reclaim the item.
 LEASE_SECONDS = 20 * 60
 TRANSIENT_BACKOFF_SECONDS = (30, 120, 600, 1800, 3600, 21600)
 RECOGNITION_BACKOFF_SECONDS = (2, 10, 30)
@@ -424,7 +424,11 @@ async def default_composite_processor(
         match_composite_card_info,
         recognize_composite_card_info,
     )
-    from services.scan_providers import get_provider, require_scanner_capability_mode
+    from services.scan_providers import (
+        get_provider,
+        require_scanner_capability_mode,
+        resolve_scanner_request_timeout,
+    )
     from services.card_composite import build_composite
     from services.scan_trace import create_scan_trace
 
@@ -432,6 +436,9 @@ async def default_composite_processor(
     if user is None or not user.is_active:
         raise PermanentScanError("The scan owner is no longer an active user.")
     provider = get_provider(db, user_id)
+    request_timeout_seconds = resolve_scanner_request_timeout(
+        db, user_id, provider.name
+    )
     try:
         require_scanner_capability_mode(
             db, user_id, provider.name, provider.model()
@@ -473,6 +480,7 @@ async def default_composite_processor(
                     len(images),
                     traces=traces,
                     provider=provider,
+                    request_timeout_seconds=request_timeout_seconds,
                 )
             except CompositeRecognitionError as exc:
                 for trace in traces:

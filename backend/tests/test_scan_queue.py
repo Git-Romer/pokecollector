@@ -16,7 +16,11 @@ try:
     from database import Base
     from models import ScanJob, ScanJobItem, ScanQueueUserState, User, UserSetting
     from services import scan_queue, scan_storage
-    from services.scan_providers import ScanProvider, scanner_capability_proof
+    from services.scan_providers import (
+        MAX_SCANNER_REQUEST_TIMEOUT_SECONDS,
+        ScanProvider,
+        scanner_capability_proof,
+    )
     from services.scan_queue import (
         ClaimedScanItem,
         claim_next_scan_item,
@@ -118,6 +122,13 @@ class ScanQueueTests(unittest.TestCase):
         second = claim_next_scan_item(self.db)
         second_item = self.db.get(ScanJobItem, second.item_id)
         self.assertEqual(second_item.user_id, self.users[1].id)
+
+    def test_lease_covers_the_slowest_supported_recognition_path(self):
+        # One individual scan may use three extraction attempts followed by two
+        # visual-verification attempts. Preserve five minutes for backoff,
+        # reference downloads, and database work around those provider calls.
+        minimum = 5 * MAX_SCANNER_REQUEST_TIMEOUT_SECONDS + 5 * 60
+        self.assertGreaterEqual(scan_queue.LEASE_SECONDS, minimum)
 
     def test_batch_claim_groups_four_photos_and_keeps_forced_single_out(self):
         job = self._job(self.users[0], positions=(0, 1, 2, 3, 4))
@@ -808,6 +819,50 @@ class CompositeProcessorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             [call.kwargs["photo_bytes"] for call in matcher.await_args_list],
             [source_images[0], source_images[2], source_images[3]],
+        )
+
+    async def test_composite_uses_the_owners_provider_specific_timeout(self):
+        user = User(id=7, username="owner", hashed_password="x", is_active=True)
+        db = MagicMock()
+        db.get.return_value = user
+        provider = MagicMock()
+        provider.name = "openai"
+        provider.model.return_value = "vision-model"
+        provider.credential.return_value = ""
+        provider.requires_credential.return_value = False
+        provider.rate_limit_scope.return_value = unittest.mock.MagicMock(
+            __enter__=MagicMock(return_value=None),
+            __exit__=MagicMock(return_value=False),
+        )
+        recognize = AsyncMock(return_value={})
+
+        with patch(
+            "services.scan_providers.get_provider", return_value=provider
+        ), patch(
+            "services.scan_providers.require_scanner_capability_mode",
+            return_value="full",
+        ), patch(
+            "services.scan_providers.resolve_scanner_request_timeout",
+            return_value=120,
+        ) as resolver, patch(
+            "services.scan_trace.create_scan_trace"
+        ) as create_trace, patch(
+            "services.card_composite.build_composite", return_value=b"composite"
+        ), patch(
+            "api.recognize.recognize_composite_card_info", new=recognize
+        ):
+            create_trace.return_value = MagicMock()
+            result = await scan_queue.default_composite_processor(
+                db,
+                user.id,
+                [b"first", b"second"],
+                ["image/jpeg", "image/jpeg"],
+            )
+
+        self.assertEqual(result, [None, None])
+        resolver.assert_called_once_with(db, user.id, "openai")
+        self.assertEqual(
+            recognize.await_args.kwargs["request_timeout_seconds"], 120
         )
 
 

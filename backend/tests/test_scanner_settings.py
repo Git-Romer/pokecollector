@@ -27,6 +27,8 @@ try:
     from models import User, UserSetting
     from services.scan_providers import (
         ProviderRequestRejectedError,
+        SCANNER_REQUEST_TIMEOUT_OPTIONS,
+        SCANNER_REQUEST_TIMEOUT_SETTINGS,
         SCANNER_CAPABILITY_DEGRADED,
         SCANNER_CAPABILITY_FULL,
         ScanProvider,
@@ -67,6 +69,12 @@ class ScannerConfigurationTests(unittest.TestCase):
         self.assertEqual(config["providers"][0]["endpoint_type"], "hosted")
         self.assertNotIn("custom_model_allowed", config["providers"][0])
         self.assertNotIn("administrator", config)
+        self.assertEqual(config["request_timeout_seconds"], 30)
+        self.assertEqual(
+            config["request_timeout_options"],
+            list(SCANNER_REQUEST_TIMEOUT_OPTIONS),
+        )
+        self.assertEqual(config["providers"][0]["request_timeout_seconds"], 30)
 
     def test_disabled_stored_provider_requires_and_persists_fallback_retest(self):
         self.db.add_all([
@@ -192,6 +200,116 @@ class ScannerConfigurationTests(unittest.TestCase):
         self.assertEqual(proof["model"], "vision-fast")
         self.assertEqual(proof["mode"], "full")
         self.assertNotIn("api.openai.com", rows["scanner_capability_openai"])
+
+    def test_response_timeout_is_provider_specific_tested_and_saved_atomically(self):
+        env = {
+            "OPENAI_SCANNER_ENABLED": "true",
+            "OPENAI_MODEL": "vision-default",
+            "OPENAI_ALLOWED_MODELS": "vision-fast",
+            "OPENAI_BASE_URL": "http://model-host:11434/v1",
+        }
+        request = ScannerConfigurationUpdate(
+            provider="openai",
+            model="vision-fast",
+            request_timeout_seconds=180,
+            save_on_success=True,
+        )
+        client_timeouts = []
+
+        class CapturingClient:
+            def __init__(self, *, timeout):
+                client_timeouts.append(timeout)
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return False
+
+        with patch.dict(os.environ, env), patch(
+            "api.settings.httpx.AsyncClient", CapturingClient
+        ), patch.object(
+            ScanProvider,
+            "generate_text",
+            new=AsyncMock(return_value=("MAGENTA-GREEN", None)),
+        ):
+            result = asyncio.run(
+                run_scanner_configuration_test(request, self.db, self.user)
+            )
+            config = _scanner_configuration(self.db, self.user.id)
+
+        self.assertTrue(result["saved"])
+        self.assertEqual(client_timeouts, [180])
+        self.assertEqual(
+            self._rows()[SCANNER_REQUEST_TIMEOUT_SETTINGS["openai"]], "180"
+        )
+        self.assertNotIn(SCANNER_REQUEST_TIMEOUT_SETTINGS["gemini"], self._rows())
+        self.assertEqual(config["request_timeout_seconds"], 180)
+        self.assertEqual(
+            next(item for item in config["providers"] if item["id"] == "gemini")[
+                "request_timeout_seconds"
+            ],
+            30,
+        )
+
+    def test_unsupported_response_timeout_is_rejected_without_writes(self):
+        request = ScannerConfigurationUpdate(
+            provider="gemini",
+            model="gemini-flash-latest",
+            api_key="test-key",
+            request_timeout_seconds=45,
+            save_on_success=True,
+        )
+        generate = AsyncMock()
+        with patch.object(
+            ScanProvider, "generate_text", new=generate
+        ), self.assertRaises(HTTPException) as caught:
+            asyncio.run(run_scanner_configuration_test(request, self.db, self.user))
+        self.assertEqual(caught.exception.status_code, 422)
+        self.assertEqual(self._rows(), {})
+        generate.assert_not_awaited()
+
+    def test_key_removal_preserves_timeout_and_cannot_change_it_without_test(self):
+        self.db.add_all([
+            UserSetting(user_id=self.user.id, key="scanner_provider", value="gemini"),
+            UserSetting(
+                user_id=self.user.id,
+                key="scanner_model_gemini",
+                value="gemini-flash-latest",
+            ),
+            UserSetting(
+                user_id=self.user.id,
+                key=SCANNER_REQUEST_TIMEOUT_SETTINGS["gemini"],
+                value="120",
+            ),
+            UserSetting(user_id=self.user.id, key="gemini_api_key", value="secret"),
+        ])
+        self.db.commit()
+
+        changed = ScannerConfigurationUpdate(
+            provider="gemini",
+            model="gemini-flash-latest",
+            clear_api_key=True,
+            request_timeout_seconds=180,
+        )
+        with self.assertRaises(HTTPException) as caught:
+            update_scanner_configuration(changed, self.db, self.user)
+        self.assertEqual(caught.exception.status_code, 409)
+        self.assertEqual(self._rows()["gemini_api_key"], "secret")
+        self.assertEqual(
+            self._rows()[SCANNER_REQUEST_TIMEOUT_SETTINGS["gemini"]], "120"
+        )
+
+        legacy_request = ScannerConfigurationUpdate(
+            provider="gemini",
+            model="gemini-flash-latest",
+            clear_api_key=True,
+        )
+        update_scanner_configuration(legacy_request, self.db, self.user)
+        self.assertEqual(self._rows()["gemini_api_key"], "")
+        self.assertEqual(
+            self._rows()[SCANNER_REQUEST_TIMEOUT_SETTINGS["gemini"]], "120"
+        )
 
     def test_approved_configuration_cannot_bypass_test_and_save(self):
         env = {
@@ -578,6 +696,7 @@ class ScannerConfigurationTests(unittest.TestCase):
             provider="openai",
             model="new-vision-model",
             custom_model=True,
+            request_timeout_seconds=180,
             save_on_success=True,
         )
         generate = AsyncMock(return_value=("MAGENTA-GREEN", None))
@@ -610,6 +729,7 @@ class ScannerConfigurationTests(unittest.TestCase):
             provider="openai",
             model="new-vision-model",
             custom_model=True,
+            request_timeout_seconds=180,
             save_on_success=True,
         )
         with patch.dict(os.environ, env), patch.object(

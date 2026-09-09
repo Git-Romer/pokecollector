@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import ANY, AsyncMock, Mock, patch
 
 try:
     import httpx
@@ -69,6 +69,8 @@ class ProviderCapabilityRuntimeTests(unittest.IsolatedAsyncioTestCase):
         matcher = AsyncMock(return_value={"recognized": {}, "matches": []})
         with patch("api.recognize.get_provider", return_value=provider), patch(
             "api.recognize.require_scanner_capability_mode", return_value="degraded"
+        ), patch(
+            "api.recognize.resolve_scanner_request_timeout", return_value=30
         ), patch("api.recognize.match_card_info", new=matcher):
             await recognize_sanitized_card(
                 object(), 7, b"image-bytes", "image/jpeg"
@@ -84,6 +86,8 @@ class ProviderCapabilityRuntimeTests(unittest.IsolatedAsyncioTestCase):
                 status_code=409,
                 detail="Test and save the scanner configuration again.",
             ),
+        ), patch(
+            "api.recognize.resolve_scanner_request_timeout", return_value=30
         ), self.assertRaises(HTTPException) as caught:
             await recognize_sanitized_card(
                 object(), 7, b"image-bytes", "image/jpeg"
@@ -91,6 +95,27 @@ class ProviderCapabilityRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(caught.exception.status_code, 409)
         provider.generate_text.assert_not_awaited()
+
+    async def test_saved_timeout_reaches_extraction_and_visual_matching(self):
+        provider = self._provider()
+        matcher = AsyncMock(return_value={"recognized": {}, "matches": []})
+        observed = {}
+
+        async def generate(client, *_args, **_kwargs):
+            observed["timeout"] = client.timeout.read
+            return '{"name":"Pikachu","language":"en"}', None
+
+        provider.generate_text = AsyncMock(side_effect=generate)
+        with patch("api.recognize.get_provider", return_value=provider), patch(
+            "api.recognize.require_scanner_capability_mode", return_value="full"
+        ), patch(
+            "api.recognize.resolve_scanner_request_timeout", return_value=120
+        ) as resolver, patch("api.recognize.match_card_info", new=matcher):
+            await recognize_sanitized_card(object(), 7, b"image-bytes", "image/jpeg")
+
+        resolver.assert_called_once_with(ANY, 7, "openai")
+        self.assertEqual(observed["timeout"], 120)
+        self.assertEqual(matcher.await_args.kwargs["request_timeout_seconds"], 120)
 
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")
@@ -432,6 +457,54 @@ class PhashMatchingTests(unittest.IsolatedAsyncioTestCase):
         visual_call.assert_awaited_once()
         self.assertTrue(result["_identity_confident"])
         self.assertEqual(result["_identity_decision"], "gemini_visual")
+        self.assertEqual(result["matches"][0]["id"], "second")
+
+    async def test_visual_timeout_does_not_extend_reference_download_timeout(self):
+        candidates = [
+            {"id": "first", "number": None, "image": "first.webp"},
+            {"id": "second", "number": None, "image": "second.webp"},
+        ]
+        provider = Mock()
+        provider.name = "openai"
+        provider.is_gemini = False
+        provider.requires_credential.return_value = False
+        provider.generate_text = AsyncMock(return_value=("2", None))
+        client_timeouts = []
+
+        class CapturingClient:
+            def __init__(self, *, timeout):
+                client_timeouts.append(timeout)
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return False
+
+        with patch(
+            "api.recognize._search_and_rank_candidates",
+            new=AsyncMock(return_value=(candidates, 0)),
+        ), patch(
+            "api.recognize._download_candidate_images",
+            new=AsyncMock(return_value={}),
+        ), patch(
+            "api.recognize._phash_best_match", return_value=None
+        ), patch(
+            "api.recognize.httpx.AsyncClient", CapturingClient
+        ):
+            result = await match_card_info(
+                object(),
+                {"name": "Pikachu"},
+                image_b64="cGhvdG8=",
+                mime_type="image/jpeg",
+                allow_visual_verification=True,
+                provider=provider,
+                request_timeout_seconds=180,
+            )
+
+        self.assertEqual(client_timeouts, [20, 180])
+        self.assertEqual(provider.generate_text.await_args.kwargs["max_attempts"], 2)
+        self.assertTrue(result["_identity_confident"])
         self.assertEqual(result["matches"][0]["id"], "second")
 
 

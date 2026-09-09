@@ -1,5 +1,8 @@
 import axios from 'axios'
 import { isPublicSharePath } from '../utils/publicRoutes'
+import { scannerTestRequestTimeoutMs } from '../utils/scannerTimeout'
+
+export { scannerTestRequestTimeoutMs } from '../utils/scannerTimeout'
 
 const api = axios.create({
   baseURL: '/api',
@@ -372,7 +375,9 @@ export const getSetting = (key) => api.get(`/settings/${key}`).then(r => r.data)
 export const setSetting = (key, value) => api.post(`/settings/${key}`, { value }).then(r => r.data)
 export const getScannerConfiguration = () => api.get('/settings/scanner').then(r => r.data)
 export const updateScannerConfiguration = (data) => api.put('/settings/scanner', data).then(r => r.data)
-export const testScannerConfiguration = (data) => api.post('/settings/scanner/test', data).then(r => r.data)
+export const testScannerConfiguration = (data) => api.post('/settings/scanner/test', data, {
+  timeout: scannerTestRequestTimeoutMs(data?.request_timeout_seconds),
+}).then(r => r.data)
 export const getTelegramStatus = () => api.get('/settings/telegram_status').then(r => r.data)
 export const deleteScanDiagnostics = () => api.delete('/settings/scan-diagnostics').then(r => r.data)
 

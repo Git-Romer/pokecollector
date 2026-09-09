@@ -21,6 +21,7 @@ from services.gemini_rate_limit import (
 from services.scan_storage import MAX_FILE_BYTES, ScanUploadError, read_limited_upload, sanitize_image_bytes
 from services.scan_trace import ScanTrace, create_scan_trace
 from services.scan_providers import (
+    DEFAULT_SCANNER_REQUEST_TIMEOUT_SECONDS,
     GEMINI,
     SCANNER_CAPABILITY_DEGRADED,
     ScanProvider,
@@ -28,6 +29,7 @@ from services.scan_providers import (
     image_part,
     image_part_from_bytes,
     require_scanner_capability_mode,
+    resolve_scanner_request_timeout,
     text_part,
 )
 import logging
@@ -48,15 +50,6 @@ MAX_GEMINI_RETRY_SECONDS = 14 * 24 * 60 * 60
 PHASH_MAX_DISTANCE = 20
 PHASH_MIN_MARGIN = 5
 PHASH_CANDIDATE_LIMIT = 8
-# Gemini answers in a few seconds, but a local reasoning model (small
-# hybrid-thinking builds run on consumer hardware) routinely spends 15-45s
-# "thinking" through a single card before writing its answer — measured over
-# 120s on a real card with an ambiguous printed symbol the model kept
-# deliberating over. 30s cut that off mid-thought on a large fraction of real
-# cards, so every call that reaches a vision model gets this same generous
-# budget instead. Kept comfortably under scan_queue's LEASE_SECONDS even with
-# the 3-attempt retry these calls already use (3 * this + retry backoff).
-VISION_REQUEST_TIMEOUT_SECONDS = 180
 MAX_REFERENCE_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_REFERENCE_IMAGE_PIXELS = 50_000_000
 TRUSTED_REFERENCE_IMAGE_HOSTS = {"assets.tcgdex.net"}
@@ -927,6 +920,7 @@ async def match_card_info(
     photo_bytes: bytes | None = None,
     trace: ScanTrace | None = None,
     provider: ScanProvider | None = None,
+    request_timeout_seconds: int = DEFAULT_SCANNER_REQUEST_TIMEOUT_SECONDS,
 ) -> dict:
     """Shared deterministic matcher for both individual and composite scans.
 
@@ -960,9 +954,12 @@ async def match_card_info(
     )
     if should_try_phash or should_try_visual:
         try:
-            async with httpx.AsyncClient(timeout=VISION_REQUEST_TIMEOUT_SECONDS) as client:
+            # Reference-image hosts keep their short download timeout. A user
+            # choosing a slower AI response budget must not make external image
+            # downloads hang for the same duration.
+            async with httpx.AsyncClient(timeout=20) as download_client:
                 candidate_images = await _download_candidate_images(
-                    client,
+                    download_client,
                     top_candidates[:PHASH_CANDIDATE_LIMIT],
                 )
                 if should_try_phash:
@@ -988,7 +985,7 @@ async def match_card_info(
 
                 if not confident and should_try_visual:
                     candidate_images = await _download_candidate_images(
-                        client,
+                        download_client,
                         top_candidates,
                         candidate_images,
                     )
@@ -1014,12 +1011,15 @@ async def match_card_info(
                         else:
                             parts.append({"text": " (image unavailable)"})
 
-                    response_text, _visual_usage = await provider.generate_text(
-                        client,
-                        api_key,
-                        parts,
-                        max_attempts=2,
-                    )
+                    async with httpx.AsyncClient(
+                        timeout=request_timeout_seconds
+                    ) as vision_client:
+                        response_text, _visual_usage = await provider.generate_text(
+                            vision_client,
+                            api_key,
+                            parts,
+                            max_attempts=2,
+                        )
                     pick_match = re.search(r"(\d+)", response_text)
                     selected_position = int(pick_match.group(1)) if pick_match else None
                     if trace:
@@ -1073,6 +1073,9 @@ async def recognize_sanitized_card(
 ) -> dict:
     """Recognize one already-sanitized image for direct and queued scans."""
     provider = get_provider(db, user_id)
+    request_timeout_seconds = resolve_scanner_request_timeout(
+        db, user_id, provider.name
+    )
     capability_mode = require_scanner_capability_mode(
         db, user_id, provider.name, provider.model()
     )
@@ -1089,7 +1092,7 @@ async def recognize_sanitized_card(
 
     image_b64 = base64.b64encode(image_bytes).decode()
     try:
-        async with httpx.AsyncClient(timeout=VISION_REQUEST_TIMEOUT_SECONDS) as client:
+        async with httpx.AsyncClient(timeout=request_timeout_seconds) as client:
             response_text, usage = await provider.generate_text(
                 client,
                 api_key,
@@ -1130,6 +1133,7 @@ async def recognize_sanitized_card(
             photo_bytes=image_bytes,
             trace=trace,
             provider=provider,
+            request_timeout_seconds=request_timeout_seconds,
         )
     except HTTPException as exc:
         if trace:
@@ -1213,12 +1217,13 @@ async def recognize_composite_card_info(
     *,
     traces: list[ScanTrace] | None = None,
     provider: ScanProvider | None = None,
+    request_timeout_seconds: int = DEFAULT_SCANNER_REQUEST_TIMEOUT_SECONDS,
 ) -> dict[int, dict]:
     """Return recognized card information keyed by zero-based composite position."""
     provider = provider or ScanProvider(GEMINI)
     image_b64 = base64.b64encode(image_bytes).decode()
     try:
-        async with httpx.AsyncClient(timeout=VISION_REQUEST_TIMEOUT_SECONDS) as client:
+        async with httpx.AsyncClient(timeout=request_timeout_seconds) as client:
             response_text, usage = await provider.generate_text(
                 client,
                 api_key,
