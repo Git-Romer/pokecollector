@@ -1,12 +1,24 @@
 export const SCANNER_REQUEST_TIMEOUT_OPTIONS = [30, 60, 120, 180]
 export const DEFAULT_SCANNER_REQUEST_TIMEOUT_SECONDS = SCANNER_REQUEST_TIMEOUT_OPTIONS[0]
 
-export const scannerTestRequestTimeoutMs = (seconds) => {
-  const selected = SCANNER_REQUEST_TIMEOUT_OPTIONS.includes(Number(seconds))
+const normalizedScannerRequestTimeout = (seconds) => (
+  SCANNER_REQUEST_TIMEOUT_OPTIONS.includes(Number(seconds))
     ? Number(seconds)
     : DEFAULT_SCANNER_REQUEST_TIMEOUT_SECONDS
-  // The backend may retry a transient provider request three times. Keep the
-  // browser alive slightly longer so its generic 30-second limit cannot abort
-  // a valid slow-model test before the backend reaches its own bounded result.
-  return (selected * 3 + 10) * 1000
+)
+
+export const scannerTestRequestTimeoutMs = (seconds) => {
+  const selected = normalizedScannerRequestTimeout(seconds)
+  // The capability test can make a three-attempt multi-image request followed
+  // by a three-attempt single-image fallback. Cover the backend's complete
+  // bounded flow rather than letting Axios abandon a result first.
+  return (selected * 6 + 10) * 1000
+}
+
+export const scannerRecognitionRequestTimeoutMs = (seconds) => {
+  const selected = normalizedScannerRequestTimeout(seconds)
+  // A synchronous legacy/API scan can use three extraction attempts and two
+  // visual-verification attempts. The extra 90 seconds covers bounded TCGdex
+  // searches, reference downloads, retry backoff, and database work.
+  return (selected * 5 + 90) * 1000
 }

@@ -568,6 +568,9 @@ class ScannerConfigurationTests(unittest.TestCase):
             )
         self.assertEqual(result["status"], "degraded_confirmation_required")
         self.assertEqual(generate.await_count, 2)
+        self.assertTrue(
+            all(call.kwargs["max_attempts"] == 3 for call in generate.await_args_list)
+        )
         self.assertEqual(self._rows(), {})
 
     def test_successful_retest_upgrades_a_saved_degraded_proof(self):

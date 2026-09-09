@@ -1,8 +1,9 @@
 import axios from 'axios'
 import { isPublicSharePath } from '../utils/publicRoutes'
-import { scannerTestRequestTimeoutMs } from '../utils/scannerTimeout'
-
-export { scannerTestRequestTimeoutMs } from '../utils/scannerTimeout'
+import {
+  scannerRecognitionRequestTimeoutMs,
+  scannerTestRequestTimeoutMs,
+} from '../utils/scannerTimeout'
 
 const api = axios.create({
   baseURL: '/api',
@@ -113,11 +114,12 @@ export const getCustomCards = () => api.get('/cards/custom')
 export const cloneCustomCard = (cardId) => api.post(`/cards/custom/${cardId}/clone`).then(r => r.data)
 
 // Card recognition via Gemini Vision
-export const recognizeCard = (imageFile) => {
+export const recognizeCard = (imageFile, requestTimeoutSeconds) => {
   const formData = new FormData()
   formData.append('file', imageFile)
   return api.post('/cards/recognize', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: scannerRecognitionRequestTimeoutMs(requestTimeoutSeconds),
   }).then(r => r.data)
 }
 

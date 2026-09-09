@@ -11,6 +11,8 @@ const USER = {
 const scannerConfiguration = {
   provider: 'gemini',
   model: 'gemini-flash-latest',
+  request_timeout_seconds: 30,
+  request_timeout_options: [30, 60, 120, 180],
   status: 'ready',
   visual_verification: 'automatic',
   providers: [
@@ -20,6 +22,7 @@ const scannerConfiguration = {
       models: ['gemini-flash-latest'],
       default_model: 'gemini-flash-latest',
       selected_model: 'gemini-flash-latest',
+      request_timeout_seconds: 30,
       requires_api_key: true,
       api_key_configured: true,
       endpoint_type: 'hosted',
@@ -34,6 +37,7 @@ const scannerConfiguration = {
       models: ['vision-fast', 'vision-accurate'],
       default_model: 'vision-fast',
       selected_model: 'vision-fast',
+      request_timeout_seconds: 120,
       requires_api_key: false,
       api_key_configured: false,
       endpoint_type: 'custom',
@@ -91,10 +95,14 @@ async function installApi(page, user = USER, initialConfiguration = scannerConfi
         ...currentConfiguration,
         provider: savedBody.provider,
         model: savedBody.model,
+        request_timeout_seconds: savedBody.request_timeout_seconds,
         status: 'ready',
         providers: currentConfiguration.providers.map(item => ({
           ...item,
           selected_model: item.id === chosen.id ? savedBody.model : item.selected_model,
+          request_timeout_seconds: item.id === chosen.id
+            ? savedBody.request_timeout_seconds
+            : item.request_timeout_seconds,
           custom_model: item.id === chosen.id && savedBody.custom_model ? savedBody.model : item.custom_model,
         })),
       }
@@ -109,11 +117,15 @@ async function installApi(page, user = USER, initialConfiguration = scannerConfi
           ...currentConfiguration,
           provider: testedBody.provider,
           model: testedBody.model,
+          request_timeout_seconds: testedBody.request_timeout_seconds,
           status: 'ready',
           visual_verification: testedBody.accept_degraded_visual_verification ? 'disabled' : 'automatic',
           providers: currentConfiguration.providers.map(item => ({
             ...item,
             selected_model: item.id === chosen.id ? testedBody.model : item.selected_model,
+            request_timeout_seconds: item.id === chosen.id
+              ? testedBody.request_timeout_seconds
+              : item.request_timeout_seconds,
             custom_model: item.id === chosen.id && testedBody.custom_model ? testedBody.model : item.custom_model,
           })),
         }
@@ -188,8 +200,39 @@ test('guides provider selection and saves one guarded configuration', async ({ p
     custom_model: false,
     save_on_success: true,
     accept_degraded_visual_verification: false,
+    request_timeout_seconds: 120,
   })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+})
+
+test('restores each provider timeout and saves an explicit advanced choice', async ({ page }) => {
+  const api = await installApi(page)
+  await page.goto('/settings')
+
+  await page.getByText('Advanced request settings', { exact: true }).click()
+  const timeout = page.getByLabel('AI response timeout')
+  await expect(timeout).toHaveValue('30')
+
+  await page.getByLabel('Scanner provider').selectOption('openai')
+  await expect(timeout).toHaveValue('120')
+  await timeout.selectOption('180')
+
+  // Switching providers discards that unsaved draft and restores each
+  // provider's last tested value.
+  await page.getByLabel('Scanner provider').selectOption('gemini')
+  await expect(timeout).toHaveValue('30')
+  await page.getByLabel('Scanner provider').selectOption('openai')
+  await expect(timeout).toHaveValue('120')
+
+  await timeout.selectOption('180')
+  await page.getByRole('button', { name: 'Test and save' }).click()
+  await expect.poll(api.testedBody).toMatchObject({
+    provider: 'openai',
+    request_timeout_seconds: 180,
+    save_on_success: true,
+  })
+  await expect(timeout).toHaveValue('180')
+  await expect(page.getByText('Scanner configuration saved')).toBeVisible()
 })
 
 test('uses the same test-and-save flow for Gemini', async ({ page }) => {
@@ -219,6 +262,7 @@ test('uses the same test-and-save flow for Gemini', async ({ page }) => {
     custom_model: false,
     save_on_success: true,
     accept_degraded_visual_verification: false,
+    request_timeout_seconds: 30,
   })
   await expect(page.getByText('Last test in this session: connection ready.')).toBeVisible()
 })
@@ -242,6 +286,7 @@ test('lets a user intentionally remove a configured key without a connection tes
     custom_model: false,
     save_on_success: false,
     accept_degraded_visual_verification: false,
+    request_timeout_seconds: 30,
   })
   expect(testRequests).toBe(0)
 })
@@ -278,6 +323,7 @@ test('lets only an administrator test and save a custom model', async ({ page })
     custom_model: true,
     save_on_success: true,
     accept_degraded_visual_verification: false,
+    request_timeout_seconds: 30,
   })
   await expect.poll(api.savedBody).toEqual(api.testedBody())
   await expect(page.getByText('Scanner configuration saved')).toBeVisible()
