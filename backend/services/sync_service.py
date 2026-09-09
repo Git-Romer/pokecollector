@@ -1,18 +1,19 @@
 import logging
 import datetime
-
-from services.card_numbers import candidate_card_ids, number_matches_candidate
 import math
 from contextlib import contextmanager
 from typing import Any, Iterable, Mapping
+
 from sqlalchemy.orm import Session, load_only
 from sqlalchemy import func, or_, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
 from models import Card, Set, CollectionItem, WishlistItem, BinderCard, PriceHistory, SyncLog, PortfolioSnapshot, CustomCardMatch, User, UserSetting
 from services import pokemon_api, telegram
 from services.card_fallbacks import apply_cross_language_fallbacks, build_missing_language_cards_for_set
 from services.card_metadata import enrich_missing_card_metadata
+from services.card_numbers import candidate_card_ids, number_matches_candidate
 from services.card_upsert import upsert_card
 from services.card_visibility import card_pair_filter, get_configured_sync_languages, get_pinned_set_language_pairs, sync_set_filter
 from services.digital_sets import digital_sets_enabled, refresh_digital_catalogue_flags
@@ -656,7 +657,8 @@ def check_custom_card_matches(db: Session):
     """Check if any custom cards now have an equivalent card available via the TCGdex API.
 
     For each custom card that has both set_id and number:
-    - Tries GET /cards/{set_id}-{number} on TCGdex.
+    - Tries a bounded set of literal, padded, and unpadded TCGdex card ids.
+    - Confirms the returned localId matches the custom card number.
     - If found and not already matched (pending/migrated), creates a CustomCardMatch
       and sends a Telegram notification.
     """

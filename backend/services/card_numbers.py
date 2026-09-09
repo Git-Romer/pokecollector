@@ -43,6 +43,8 @@ def card_number_matches(stored_number: Optional[str], requested_number: object) 
     if stored == requested:
         return True
     return normalize_card_number(stored) == normalize_card_number(requested)
+
+
 # --------------------------------------------------------------------------
 # Matching a printed or hand-typed number against TCGdex ids
 # --------------------------------------------------------------------------
@@ -57,7 +59,7 @@ _PRINTED_NUMBER_RE = re.compile(r"^\s*([A-Za-z0-9]+)\s*(?:/\s*[A-Za-z0-9]+)?\s*$
 COMMON_PAD_WIDTH = 3
 
 
-def printed_number_variants(number: object) -> list:
+def printed_number_variants(number: object) -> list[str]:
     """Forms of a printed number worth querying, most literal first.
 
     The set total after the slash is dropped and the rest is kept **verbatim**,
@@ -68,7 +70,7 @@ def printed_number_variants(number: object) -> list:
 
     Reducing "74a" to "74" would name a different, real card, so it is not done.
     """
-    if not number:
+    if number is None:
         return []
     match = _PRINTED_NUMBER_RE.match(str(number))
     if not match:
@@ -76,13 +78,13 @@ def printed_number_variants(number: object) -> list:
     printed = match.group(1)
     variants = [printed]
     if printed.isdigit():
-        unpadded = printed.lstrip("0") or printed
+        unpadded = printed.lstrip("0") or "0"
         if unpadded != printed:
             variants.append(unpadded)
     return variants
 
 
-def card_number_variants(number: object) -> list:
+def card_number_variants(number: object) -> list[str]:
     """Every plausible localId for a printed number, most literal first.
 
     Adds the zero-padded form for numeric values, because a number typed by hand
@@ -93,7 +95,7 @@ def card_number_variants(number: object) -> list:
     for variant in printed_number_variants(number):
         candidates = [variant]
         if variant.isdigit():
-            unpadded = variant.lstrip("0") or variant
+            unpadded = variant.lstrip("0") or "0"
             candidates += [unpadded, unpadded.zfill(COMMON_PAD_WIDTH)]
         for candidate in candidates:
             if candidate not in variants:
@@ -114,7 +116,7 @@ def number_matches_candidate(printed_number: object, api_local_id: object) -> bo
     return local_id.casefold() in wanted
 
 
-def candidate_card_ids(set_id: Optional[str], number: object) -> list:
+def candidate_card_ids(set_id: Optional[str], number: object) -> list[str]:
     """TCGdex card ids to try for a set and a printed number.
 
     Used to decide whether a manually created card now exists in the catalogue.
