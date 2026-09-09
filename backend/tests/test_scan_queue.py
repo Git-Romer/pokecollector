@@ -2,7 +2,9 @@ import asyncio
 import datetime
 import os
 import tempfile
+import threading
 import unittest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 try:
@@ -507,6 +509,230 @@ class ScanQueueDrainTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(item.recognized["name"], "Snorlax")
         finally:
             db.close()
+
+
+@unittest.skipUnless(DEPS_AVAILABLE, "SQLAlchemy is not installed")
+class ScanProcessingConcurrencyTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.original_limiter = scan_queue._scan_processing_semaphore
+        scan_queue._scan_processing_semaphore = scan_queue._ProcessWideAsyncSemaphore(
+            scan_queue.MAX_CONCURRENT_SCAN_PROCESSING
+        )
+
+    def tearDown(self):
+        scan_queue._scan_processing_semaphore = self.original_limiter
+
+    def _processing_patches(self, sessions):
+        def session_factory():
+            session = MagicMock()
+            sessions.append(session)
+            return session
+
+        def leased_items(_db, claim):
+            return [
+                SimpleNamespace(
+                    id=claim.item_id,
+                    user_id=1,
+                    job_id=10,
+                    image_path=f"10/{claim.item_id}.jpg",
+                    content_type="image/jpeg",
+                )
+            ]
+
+        image_path = MagicMock()
+        image_path.read_bytes.return_value = b"safe-jpeg"
+        return (
+            patch("database.SessionLocal", side_effect=session_factory),
+            patch("services.scan_queue._leased_items", side_effect=leased_items),
+            patch("services.scan_queue.resolve_scan_path", return_value=image_path),
+            patch("services.scan_queue.complete_claim", return_value=True),
+            patch("services.scan_queue.fail_claim", return_value=True),
+        )
+
+    async def test_processing_never_exceeds_three_concurrent_items(self):
+        active = 0
+        peak = 0
+        started = 0
+        first_wave_started = asyncio.Event()
+        release = asyncio.Event()
+        sessions = []
+
+        async def processor(_db, _user_id, _image_bytes, _content_type):
+            nonlocal active, peak, started
+            active += 1
+            started += 1
+            peak = max(peak, active)
+            if started == scan_queue.MAX_CONCURRENT_SCAN_PROCESSING:
+                first_wave_started.set()
+            try:
+                await release.wait()
+                return {"recognized": {}, "matches": []}
+            finally:
+                active -= 1
+
+        claims = [
+            ClaimedScanItem(item_id=item_id, lease_token=f"lease-{item_id}")
+            for item_id in range(1, 7)
+        ]
+        patches = self._processing_patches(sessions)
+        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+            tasks = [
+                asyncio.create_task(
+                    scan_queue.process_claimed_scan_item(claim, processor=processor)
+                )
+                for claim in claims
+            ]
+            await asyncio.wait_for(first_wave_started.wait(), timeout=1)
+            await asyncio.sleep(0.05)
+            self.assertEqual(started, scan_queue.MAX_CONCURRENT_SCAN_PROCESSING)
+            self.assertEqual(peak, scan_queue.MAX_CONCURRENT_SCAN_PROCESSING)
+            release.set()
+            await asyncio.gather(*tasks)
+
+        self.assertEqual(started, len(claims))
+        self.assertTrue(all(session.close.call_count == 1 for session in sessions))
+
+    async def test_cancelled_processing_releases_its_slot(self):
+        started_ids = []
+        first_wave_started = asyncio.Event()
+        replacement_started = asyncio.Event()
+        release = asyncio.Event()
+        sessions = []
+
+        async def processor(db, _user_id, _image_bytes, _content_type):
+            item_id = db._scan_item_id
+            started_ids.append(item_id)
+            if len(started_ids) == scan_queue.MAX_CONCURRENT_SCAN_PROCESSING:
+                first_wave_started.set()
+            if item_id == 4:
+                replacement_started.set()
+            await release.wait()
+            return {"recognized": {}, "matches": []}
+
+        patches = self._processing_patches(sessions)
+
+        def identified_session_factory():
+            session = MagicMock()
+            sessions.append(session)
+            session._scan_item_id = len(sessions)
+            return session
+
+        claims = [
+            ClaimedScanItem(item_id=item_id, lease_token=f"lease-{item_id}")
+            for item_id in range(1, 5)
+        ]
+        with (
+            patch("database.SessionLocal", side_effect=identified_session_factory),
+            patches[1],
+            patches[2],
+            patches[3],
+            patches[4],
+        ):
+            tasks = [
+                asyncio.create_task(
+                    scan_queue.process_claimed_scan_item(claim, processor=processor)
+                )
+                for claim in claims
+            ]
+            await asyncio.wait_for(first_wave_started.wait(), timeout=1)
+            tasks[0].cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await tasks[0]
+            await asyncio.wait_for(replacement_started.wait(), timeout=1)
+            release.set()
+            await asyncio.gather(*tasks[1:])
+
+        self.assertEqual(started_ids, [1, 2, 3, 4])
+        self.assertTrue(all(session.close.call_count == 1 for session in sessions))
+
+    async def test_failed_processing_releases_slots_for_waiting_items(self):
+        first_wave = 0
+        first_wave_started = asyncio.Event()
+        release_failures = asyncio.Event()
+        replacement_started = asyncio.Event()
+        sessions = []
+
+        async def processor(db, _user_id, _image_bytes, _content_type):
+            nonlocal first_wave
+            item_id = db._scan_item_id
+            if item_id <= scan_queue.MAX_CONCURRENT_SCAN_PROCESSING:
+                first_wave += 1
+                if first_wave == scan_queue.MAX_CONCURRENT_SCAN_PROCESSING:
+                    first_wave_started.set()
+                await release_failures.wait()
+                raise scan_queue.TransientScanError("provider unavailable")
+            replacement_started.set()
+            return {"recognized": {}, "matches": []}
+
+        def identified_session_factory():
+            session = MagicMock()
+            sessions.append(session)
+            session._scan_item_id = len(sessions)
+            return session
+
+        claims = [
+            ClaimedScanItem(item_id=item_id, lease_token=f"lease-{item_id}")
+            for item_id in range(1, 5)
+        ]
+        patches = self._processing_patches(sessions)
+        with (
+            patch("database.SessionLocal", side_effect=identified_session_factory),
+            patches[1],
+            patches[2],
+            patches[3] as complete,
+            patches[4] as fail,
+        ):
+            tasks = [
+                asyncio.create_task(
+                    scan_queue.process_claimed_scan_item(claim, processor=processor)
+                )
+                for claim in claims
+            ]
+            await asyncio.wait_for(first_wave_started.wait(), timeout=1)
+            self.assertFalse(replacement_started.is_set())
+            release_failures.set()
+            await asyncio.wait_for(replacement_started.wait(), timeout=1)
+            await asyncio.gather(*tasks)
+
+        self.assertEqual(fail.call_count, scan_queue.MAX_CONCURRENT_SCAN_PROCESSING)
+        self.assertEqual(complete.call_count, 1)
+        self.assertTrue(all(session.close.call_count == 1 for session in sessions))
+
+    async def test_limiter_is_safe_across_scheduler_and_web_event_loops(self):
+        limiter = scan_queue._ProcessWideAsyncSemaphore(1)
+        first_entered = threading.Event()
+        release_first = threading.Event()
+        second_entered = asyncio.Event()
+
+        def run_first_loop():
+            async def hold_slot():
+                async with limiter:
+                    first_entered.set()
+                    while not release_first.is_set():
+                        await asyncio.sleep(0.01)
+
+            asyncio.run(hold_slot())
+
+        thread = threading.Thread(target=run_first_loop, daemon=True)
+        thread.start()
+        try:
+            self.assertTrue(first_entered.wait(timeout=1))
+
+            async def use_second_loop():
+                async with limiter:
+                    second_entered.set()
+
+            task = asyncio.create_task(use_second_loop())
+            await asyncio.sleep(0.05)
+            self.assertFalse(second_entered.is_set())
+            release_first.set()
+            await asyncio.wait_for(task, timeout=1)
+        finally:
+            release_first.set()
+            await asyncio.to_thread(thread.join, 1)
+
+        self.assertTrue(second_entered.is_set())
+        self.assertFalse(thread.is_alive())
 
 
 @unittest.skipUnless(DEPS_AVAILABLE, "SQLAlchemy is not installed")

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 import logging
+import threading
 import uuid
 from dataclasses import dataclass
 
@@ -29,22 +30,33 @@ TRANSIENT_BACKOFF_SECONDS = (30, 120, 600, 1800, 3600, 21600)
 RECOGNITION_BACKOFF_SECONDS = (2, 10, 30)
 TERMINAL_ITEM_STATUSES = {"done", "failed"}
 
-# process_claimed_scan_item() holds one DB connection open for the entire
-# recognition call below, including the vision-model HTTP round trip —
-# unavoidable without restructuring around a session-per-query pattern, since
-# the same session is threaded through to persist the result at the end. Each
-# retry request schedules its own independent background task, and FastAPI
-# runs those concurrently with no cap of their own, so a burst of retries (a
-# "retry all" click, or just several queued jobs finishing their backoff
-# around the same time) can each hold a connection for minutes at once —
-# especially with a slower provider (a local model, or Gemini under load).
-# Measured hitting real pool exhaustion (`QueuePool limit ... overflow 20
-# reached`) at a few dozen concurrent retries. A single-instance local
-# provider has no concurrency benefit anyway — one model processes one
-# request at a time regardless of how many arrive together — so bounding
-# this narrowly costs nothing.
 MAX_CONCURRENT_SCAN_PROCESSING = 3
-_scan_processing_semaphore = asyncio.Semaphore(MAX_CONCURRENT_SCAN_PROCESSING)
+_SCAN_PROCESSING_SLOT_POLL_SECONDS = 0.1
+
+
+class _ProcessWideAsyncSemaphore:
+    """Bound async work across the web and scheduler event loops in one process."""
+
+    def __init__(self, value: int):
+        self._semaphore = threading.BoundedSemaphore(value)
+
+    async def __aenter__(self):
+        # APScheduler drains the queue from a separate event loop, so an
+        # asyncio.Semaphore created at module import can become bound to the
+        # web loop and fail when the scheduler overlaps it. A non-blocking
+        # process-wide semaphore keeps the bound exact without blocking either
+        # loop's thread while all processing slots are occupied.
+        while not self._semaphore.acquire(blocking=False):
+            await asyncio.sleep(_SCAN_PROCESSING_SLOT_POLL_SECONDS)
+        return self
+
+    async def __aexit__(self, exc_type, exc, traceback):
+        self._semaphore.release()
+
+
+_scan_processing_semaphore = _ProcessWideAsyncSemaphore(
+    MAX_CONCURRENT_SCAN_PROCESSING
+)
 
 
 @dataclass(frozen=True)
