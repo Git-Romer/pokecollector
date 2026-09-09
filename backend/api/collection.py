@@ -195,6 +195,14 @@ def _normalize_request_lang(lang: Optional[str]) -> str:
     return normalized
 
 
+def _collection_item_language(card_id: str, requested_lang: Optional[str]) -> str:
+    """Resolve collection language, treating a composite card id as authoritative."""
+    _, detected_lang = pokemon_api.strip_lang_suffix(card_id)
+    return _normalize_request_lang(
+        detected_lang if has_lang_suffix(card_id) else (requested_lang or "en")
+    )
+
+
 def ensure_card_exists(
     db: Session,
     card_id: str,
@@ -254,15 +262,7 @@ def ensure_card_exists(
 
 def _add_collection_item(db: Session, current_user: User, item: CollectionItemCreate, commit: bool = True) -> str:
     """Add one item and return "added" or "updated"."""
-    _, detected_lang = pokemon_api.strip_lang_suffix(item.card_id)
-    # `lang` defaults to "en" on the request schema, so an explicit language
-    # suffix on card_id (e.g. "..._ja") must win over that default -- otherwise
-    # a caller who only sends card_id gets silently redirected to the English
-    # card, which may not exist locally and triggers an avoidable live-API
-    # fetch (and failure, if the card is genuinely language-specific).
-    item_lang = _normalize_request_lang(
-        detected_lang if has_lang_suffix(item.card_id) else (item.lang or "en")
-    )
+    item_lang = _collection_item_language(item.card_id, item.lang)
     item_variant = _normalize_collection_variant(item.variant)
 
     if item.card_id.startswith("custom-"):
@@ -524,8 +524,7 @@ def add_to_collection(
     db: Session = Depends(get_db),
 ):
     """Add a card to the collection. Cards with identical card_id+variant+lang+condition+purchase_price are grouped."""
-    _, detected_lang = pokemon_api.strip_lang_suffix(item.card_id)
-    item_lang = _normalize_request_lang(item.lang or detected_lang or "en")
+    item_lang = _collection_item_language(item.card_id, item.lang)
     item_variant = _normalize_collection_variant(item.variant)
 
     # Resolve the correct language-variant card_id
@@ -597,8 +596,7 @@ def bulk_add_to_collection(
 
     for item in request.items:
         try:
-            _, detected_lang = pokemon_api.strip_lang_suffix(item.card_id)
-            item_lang = _normalize_request_lang(item.lang or detected_lang or "en")
+            item_lang = _collection_item_language(item.card_id, item.lang)
             item_variant = _normalize_collection_variant(item.variant)
 
             if item.card_id.startswith("custom-"):
