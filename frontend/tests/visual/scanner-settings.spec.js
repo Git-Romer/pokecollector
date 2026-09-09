@@ -233,6 +233,7 @@ test('restores each provider timeout and saves an explicit advanced choice', asy
   })
   await expect(timeout).toHaveValue('180')
   await expect(page.getByText('Scanner configuration saved')).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
 })
 
 test('uses the same test-and-save flow for Gemini', async ({ page }) => {
