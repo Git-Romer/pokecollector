@@ -16,6 +16,7 @@ from services.digital_sets import digital_sets_enabled
 from services.standard_legality import is_standard_legal_card, is_standard_regulation_mark
 from services.tcgdex_languages import SUPPORTED_TCGDEX_LANGUAGES, has_lang_suffix, is_supported_tcgdex_language, normalize_tcgdex_language
 from services.collection_csv import collection_import_key, is_valid_collection_purchase_price, merge_collection_import_item, normalize_collection_variant
+from services.card_values import effective_market_price, normalize_price_field
 import datetime
 import csv
 import io
