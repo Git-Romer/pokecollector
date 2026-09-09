@@ -24,6 +24,7 @@ from services.scan_providers import (
     GEMINI,
     SCANNER_CAPABILITY_DEGRADED,
     ScanProvider,
+    gemini_fallback_enabled,
     get_provider,
     image_part,
     image_part_from_bytes,
@@ -1054,16 +1055,21 @@ async def match_card_info(
     }
 
 
-async def recognize_sanitized_card(
+async def _recognize_with_provider(
     db: Session,
     user_id: int,
     image_bytes: bytes,
     content_type: str,
+    provider: ScanProvider,
     *,
     trace: ScanTrace | None = None,
 ) -> dict:
-    """Recognize one already-sanitized image for direct and queued scans."""
-    provider = get_provider(db, user_id)
+    """Recognize one already-sanitized image with an explicit provider.
+
+    Split out of recognize_sanitized_card so the Gemini fallback below can run
+    this same extract-then-match pipeline a second time with a different
+    provider, instead of re-deriving it.
+    """
     capability_mode = require_scanner_capability_mode(
         db, user_id, provider.name, provider.model()
     )
@@ -1130,6 +1136,60 @@ async def recognize_sanitized_card(
         if trace:
             trace.record_error(f"Candidate matching failed: {type(exc).__name__}")
         raise
+
+
+async def recognize_sanitized_card(
+    db: Session,
+    user_id: int,
+    image_bytes: bytes,
+    content_type: str,
+    *,
+    trace: ScanTrace | None = None,
+) -> dict:
+    """Recognize one already-sanitized image for direct and queued scans.
+
+    Retries with Gemini when the user's configured provider is OpenAI-
+    compatible, opted in to the fallback setting, and could not confidently
+    identify the card on its own — see gemini_fallback_enabled(). Gemini's
+    own extraction runs from scratch rather than reusing the first attempt's
+    fields, so a weaker provider's misreadings never carry over into the
+    fallback attempt.
+    """
+    provider = get_provider(db, user_id)
+    result = await _recognize_with_provider(
+        db, user_id, image_bytes, content_type, provider, trace=trace
+    )
+    if result.get("recognized") is not None:
+        result["recognized"]["_gemini_fallback_used"] = False
+
+    if provider.is_gemini or result.get("_identity_confident"):
+        return result
+    if not gemini_fallback_enabled(db, user_id):
+        return result
+    if not get_gemini_key(db, user_id=user_id):
+        # Opted in but never configured a key: nothing to fall back to, and
+        # not this function's place to tell the user that mid-scan.
+        return result
+
+    try:
+        fallback_result = await _recognize_with_provider(
+            db, user_id, image_bytes, content_type, ScanProvider(GEMINI), trace=trace
+        )
+        if fallback_result.get("recognized") is not None:
+            # Persisted onto the recognized dict, not just the transient
+            # decision fields, so it survives into scan_job_items.recognized
+            # (see scan_queue.py) for the review UI's post-hoc badge — the
+            # queue only ever stores "recognized" and "matches", nothing else
+            # this function returns.
+            fallback_result["recognized"]["_gemini_fallback_used"] = True
+    except Exception as exc:
+        # Best-effort: the original (unconfident) result is still a real
+        # answer with real candidates. A failed fallback attempt — a rate
+        # limit, an expired key, a transient Gemini outage — must not turn
+        # that into a failed scan.
+        logger.warning("Gemini fallback recognition failed (non-blocking): %s", exc)
+        return result
+    return fallback_result
 
 
 @router.post("/recognize")

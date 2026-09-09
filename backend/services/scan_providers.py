@@ -55,6 +55,11 @@ SCANNER_CAPABILITY_FULL = "full"
 SCANNER_CAPABILITY_DEGRADED = "degraded"
 SCANNER_CAPABILITY_VERSION = 1
 
+# Opt-in, off by default: retry with Gemini when the OpenAI-compatible
+# provider could not confidently identify a card on its own. Gemini-as-primary
+# has nothing to fall back to, so this only ever applies the other direction.
+SCANNER_GEMINI_FALLBACK_SETTING_KEY = "scanner_gemini_fallback"
+
 DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 # The OpenAI counterpart to DEFAULT_GEMINI_MODEL: what an installation uses when
 # no model is configured. Chosen on measured card-scanning behaviour rather than
@@ -282,6 +287,22 @@ def configured_provider_name(db: Session, user_id: int | None) -> str | None:
     )
     value = ((row.value if row else "") or "").strip().lower()
     return value if value in {GEMINI, OPENAI} else None
+
+
+def gemini_fallback_enabled(db: Session, user_id: int | None) -> bool:
+    """Whether this user opted in to retrying an unconfident OpenAI-provider
+    scan with Gemini. Off by default; only meaningful for OPENAI as primary."""
+    if user_id is None:
+        return False
+    row = (
+        db.query(UserSetting)
+        .filter(
+            UserSetting.user_id == user_id,
+            UserSetting.key == SCANNER_GEMINI_FALLBACK_SETTING_KEY,
+        )
+        .first()
+    )
+    return (row.value if row else "") == "true"
 
 
 def resolve_provider_name(

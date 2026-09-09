@@ -397,6 +397,7 @@ export default function Settings() {
   const [debugModeEnabled, setDebugModeEnabled] = useState(false)
   const [scanDiagnosticsSaving, setScanDiagnosticsSaving] = useState(false)
   const [scanDiagnosticsDeleting, setScanDiagnosticsDeleting] = useState(false)
+  const [geminiFallbackSaving, setGeminiFallbackSaving] = useState(false)
   const [cardPhotosDeleting, setCardPhotosDeleting] = useState(false)
 
   // Recurring automatic full sync interval (days) and small price sync interval (minutes).
@@ -708,6 +709,18 @@ export default function Settings() {
     }
   }
 
+  const handleGeminiFallbackToggle = async (enabled) => {
+    setGeminiFallbackSaving(true)
+    try {
+      await updateSettings({ scanner_gemini_fallback: enabled ? 'true' : 'false' })
+      toast.success(t('settings.saved'))
+    } catch {
+      toast.error(t('settings.saveFailed'))
+    } finally {
+      setGeminiFallbackSaving(false)
+    }
+  }
+
   const handlePhotoPreferenceToggle = async (enabled) => {
     try {
       await updateSettings({ prefer_own_card_photos: enabled ? 'true' : 'false' })
@@ -819,6 +832,7 @@ export default function Settings() {
   const scanDiagnosticsEnabled = settings.scan_diagnostics_enabled === 'true'
   const scanDiagnosticsAvailable = settings.scan_diagnostics_available === 'true'
   const scanDiagnosticsDeletionAvailable = settings.scan_diagnostics_deletion_available === 'true'
+  const geminiFallbackEnabled = settings.scanner_gemini_fallback === 'true'
   const preferOwnCardPhotos = settings.prefer_own_card_photos === 'true'
 
   const usernameMutation = useMutation({
@@ -1178,6 +1192,17 @@ export default function Settings() {
             <SectionHeader title={t('settings.sectionAI')} />
             <ScannerSettingsCard t={t} />
             <SettingsCard>
+              <SettingsRow
+                label={t('settings.geminiFallback')}
+                description={t('settings.geminiFallbackDesc')}
+              >
+                <Toggle
+                  value={geminiFallbackEnabled}
+                  label={t('settings.geminiFallback')}
+                  onChange={handleGeminiFallbackToggle}
+                  disabled={geminiFallbackSaving}
+                />
+              </SettingsRow>
               <SettingsRow
                 label={t('settings.scanDiagnostics')}
                 description={scanDiagnosticsAvailable

@@ -59,6 +59,7 @@ from services.scan_providers import (
     resolve_provider_name,
     scanner_capability_mode,
     scanner_capability_proof,
+    SCANNER_GEMINI_FALLBACK_SETTING_KEY,
     SCANNER_PROVIDER_SETTING,
     SCANNER_PROVIDER_GUIDE_URL,
     text_part,
@@ -79,6 +80,7 @@ PER_USER_KEYS = {
     *SCANNER_CUSTOM_MODEL_SETTINGS.values(),
     *SCANNER_CAPABILITY_SETTINGS.values(),
     SCAN_DIAGNOSTICS_SETTING_KEY, PHOTO_PREFERENCE_SETTING_KEY,
+    SCANNER_GEMINI_FALLBACK_SETTING_KEY,
 }
 
 MANAGED_SCANNER_KEYS = {
@@ -170,6 +172,7 @@ DEFAULT_SETTINGS = {
     PUBLIC_PROFILES_SETTING_KEY: "false",
     SCAN_DIAGNOSTICS_SETTING_KEY: "false",
     PHOTO_PREFERENCE_SETTING_KEY: "false",
+    SCANNER_GEMINI_FALLBACK_SETTING_KEY: "false",
 }
 
 
@@ -187,7 +190,7 @@ def _coerce_setting_value(key: str, value) -> str:
         "debug_mode", "cross_language_price_fallback",
         "cross_language_image_fallback", DIGITAL_SETS_SETTING_KEY,
         PUBLIC_PROFILES_SETTING_KEY, SCAN_DIAGNOSTICS_SETTING_KEY,
-        PHOTO_PREFERENCE_SETTING_KEY,
+        PHOTO_PREFERENCE_SETTING_KEY, SCANNER_GEMINI_FALLBACK_SETTING_KEY,
     }:
         return "true" if str(value).lower() in {"true", "1", "yes", "on"} else "false"
     if key == "portfolio_display_mode":

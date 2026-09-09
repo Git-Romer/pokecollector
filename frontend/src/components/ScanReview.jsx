@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Camera, Loader2, Maximize2, RefreshCw, Trash2 } from 'lucide-react'
+import { Camera, Loader2, Maximize2, RefreshCw, Sparkles, Trash2 } from 'lucide-react'
 import { fetchScanJobItemImage } from '../api/client'
 import { CardDisplay } from './card-system'
 import Modal from './ui/Modal'
@@ -144,6 +144,11 @@ export function ScanItemPanel({ jobId, item, onAdd, onRetry, onDismiss, onModalC
               )}
               {item.recognized?.number && (
                 <p className="text-xs text-text-muted">Nr. {item.recognized.number}</p>
+              )}
+              {item.recognized?._gemini_fallback_used && (
+                <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-blue/30 bg-blue-subtle px-2 py-0.5 text-[10px] font-semibold text-blue">
+                  <Sparkles size={10} /> {t('scanner.geminiFallbackUsed')}
+                </span>
               )}
             </div>
             {!active && (
