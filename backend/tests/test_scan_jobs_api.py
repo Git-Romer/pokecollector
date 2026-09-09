@@ -169,6 +169,7 @@ class ScanJobsApiTests(unittest.TestCase):
             "OPENAI_SCANNER_ENABLED": "true",
             "OPENAI_MODEL": model,
             "OPENAI_BASE_URL": "http://endpoint:11434/v1",
+            "OPENAI_API_KEY_REQUIRED": "false",
         }
         with patch.dict(os.environ, env):
             proof = scanner_capability_proof("openai", model, "degraded")
