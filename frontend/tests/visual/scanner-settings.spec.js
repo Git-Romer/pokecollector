@@ -161,6 +161,59 @@ async function installApi(page, user = USER, initialConfiguration = scannerConfi
   }
 }
 
+async function stageScannerBatch(page) {
+  await page.goto('/search')
+  await page.getByRole('button', { name: 'Scan card' }).click()
+  await page.locator('input[type="file"][multiple]').setInputFiles([
+    { name: 'first.jpg', mimeType: 'image/jpeg', buffer: Buffer.from([0xff, 0xd8, 0xff, 0xd9]) },
+    { name: 'second.jpg', mimeType: 'image/jpeg', buffer: Buffer.from([0xff, 0xd8, 0xff, 0xd9]) },
+  ])
+  return page.getByRole('dialog', { name: 'Scan card' })
+}
+
+async function scannerActionsAreUnobstructed(page, scanner) {
+  const start = scanner.getByRole('button', { name: 'Start scanning' })
+  return page.evaluate(([startButton, homeButton]) => {
+    if (!homeButton) return true
+    const action = startButton.getBoundingClientRect()
+    const home = homeButton.getBoundingClientRect()
+    const left = Math.max(action.left, home.left)
+    const right = Math.min(action.right, home.right)
+    const top = Math.max(action.top, home.top)
+    const bottom = Math.min(action.bottom, home.bottom)
+    if (left >= right || top >= bottom) return true
+    return startButton.contains(document.elementFromPoint(
+      (left + right) / 2,
+      (top + bottom) / 2,
+    ))
+  }, [await start.elementHandle(), await page.locator('.pokeball-home-button').elementHandle()])
+}
+
+test('batch controls follow the verified multi-image capability without overflowing', async ({ page }) => {
+  await installApi(page)
+  const scanner = await stageScannerBatch(page)
+
+  await expect(scanner.getByRole('button', { name: 'Scan all individually' })).toBeVisible()
+  await expect(scanner.getByRole('button', { name: 'Scan individually' })).toHaveCount(2)
+  expect(await scanner.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+  expect(await scannerActionsAreUnobstructed(page, scanner)).toBe(true)
+})
+
+for (const visualVerification of ['disabled', 'unverified']) {
+  test(`${visualVerification} providers never offer composite controls`, async ({ page }) => {
+    await installApi(page, USER, {
+      ...scannerConfiguration,
+      visual_verification: visualVerification,
+    })
+    const scanner = await stageScannerBatch(page)
+
+    await expect(scanner.getByRole('button', { name: 'Scan all individually' })).toHaveCount(0)
+    await expect(scanner.getByRole('button', { name: 'Scan individually' })).toHaveCount(0)
+    expect(await scanner.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+    expect(await scannerActionsAreUnobstructed(page, scanner)).toBe(true)
+  })
+}
+
 test('guides provider selection and saves one guarded configuration', async ({ page }) => {
   const api = await installApi(page)
   await page.goto('/settings')

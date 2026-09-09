@@ -188,6 +188,68 @@ class ScanQueueTests(unittest.TestCase):
         self.assertIn("Test and save", str(caught.exception))
         recognize.assert_not_awaited()
 
+    def test_capability_downgrade_requeues_an_existing_composite_individually(self):
+        user = self.users[0]
+        model = "vision-model"
+        env = {
+            "OPENAI_SCANNER_ENABLED": "true",
+            "OPENAI_MODEL": model,
+            "OPENAI_BASE_URL": "http://endpoint:11434/v1",
+            "OPENAI_API_KEY_REQUIRED": "false",
+        }
+        with patch.dict(os.environ, env):
+            full_proof = scanner_capability_proof("openai", model, "full")
+            degraded_proof = scanner_capability_proof("openai", model, "degraded")
+        self.db.add_all([
+            UserSetting(user_id=user.id, key="scanner_provider", value="openai"),
+            UserSetting(user_id=user.id, key="scanner_model_openai", value=model),
+            UserSetting(
+                user_id=user.id,
+                key="scanner_capability_openai",
+                value=full_proof,
+            ),
+        ])
+        self._job(user, positions=(0, 1, 2))
+        items = self.db.query(ScanJobItem).order_by(ScanJobItem.position).all()
+        for item in items:
+            item.batch_mode = True
+        self.db.commit()
+        claim = claim_next_scan_item(self.db)
+        self.assertTrue(claim.composite)
+
+        capability = (
+            self.db.query(UserSetting)
+            .filter(
+                UserSetting.user_id == user.id,
+                UserSetting.key == "scanner_capability_openai",
+            )
+            .one()
+        )
+        capability.value = degraded_proof
+        self.db.commit()
+        recognize = AsyncMock()
+
+        with patch.dict(os.environ, env), patch(
+            "api.recognize.recognize_composite_card_info", new=recognize
+        ):
+            results = asyncio.run(
+                scan_queue.default_composite_processor(
+                    self.db,
+                    user.id,
+                    [b"first", b"second", b"third"],
+                    ["image/jpeg"] * 3,
+                )
+            )
+
+        self.assertEqual(results, [None, None, None])
+        recognize.assert_not_awaited()
+        self.assertTrue(complete_claim_group(self.db, claim, results))
+        self.db.expire_all()
+        items = self.db.query(ScanJobItem).order_by(ScanJobItem.position).all()
+        self.assertEqual([item.status for item in items], ["pending"] * 3)
+        self.assertEqual([item.batch_mode for item in items], [False] * 3)
+        self.assertFalse(claim_next_scan_item(self.db).composite)
+
     def test_disabled_selected_provider_blocks_already_queued_individual_photo(self):
         user = self.users[0]
         self._select_openai_then_disable_it(user)

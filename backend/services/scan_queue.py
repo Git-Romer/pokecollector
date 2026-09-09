@@ -425,6 +425,7 @@ async def default_composite_processor(
         recognize_composite_card_info,
     )
     from services.scan_providers import (
+        SCANNER_CAPABILITY_DEGRADED,
         get_provider,
         require_scanner_capability_mode,
         resolve_scanner_request_timeout,
@@ -440,11 +441,18 @@ async def default_composite_processor(
         db, user_id, provider.name
     )
     try:
-        require_scanner_capability_mode(
+        capability_mode = require_scanner_capability_mode(
             db, user_id, provider.name, provider.model()
         )
     except HTTPException as exc:
         raise PermanentScanError(str(exc.detail)) from None
+    # Jobs persist their grouping choice before the provider request starts. If
+    # the owner retests or changes the provider while a batch is waiting, do
+    # not let a group queued under a previous full-capability proof reach a
+    # provider now known to support only one image. Returning unresolved
+    # positions makes complete_claim_group() requeue each photo individually.
+    if capability_mode == SCANNER_CAPABILITY_DEGRADED:
+        return [None] * len(images)
     api_key = provider.credential(db, user_id)
     # A local endpoint needs no credential, so ask the provider rather than
     # assuming an empty key means "not configured".

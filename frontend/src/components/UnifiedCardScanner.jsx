@@ -142,7 +142,7 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
   // provider that already failed that probe cannot do this reliably either.
   // The server enforces this regardless of what these toggles say, so
   // showing them here would just be an override with nothing to override.
-  const canComposite = scannerConfiguration?.visual_verification !== 'disabled'
+  const canComposite = scannerConfiguration?.visual_verification === 'automatic'
 
   const startScanning = async () => {
     if (!stagedFiles.length || submitting) return
