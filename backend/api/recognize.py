@@ -20,7 +20,7 @@ from services.gemini_rate_limit import (
 )
 from services.scan_storage import MAX_FILE_BYTES, ScanUploadError, read_limited_upload, sanitize_image_bytes
 from services.scan_trace import ScanTrace, create_scan_trace
-from services.text_search import accent_insensitive_contains
+from services.text_search import accent_insensitive_contains, strip_diacritics
 from services.scan_providers import (
     DEFAULT_SCANNER_REQUEST_TIMEOUT_SECONDS,
     GEMINI,
@@ -51,10 +51,10 @@ MAX_GEMINI_RETRY_SECONDS = 14 * 24 * 60 * 60
 PHASH_MAX_DISTANCE = 20
 PHASH_MIN_MARGIN = 5
 PHASH_CANDIDATE_LIMIT = 8
-# Deliberately generous relative to select_search_candidates' baseline_limit=8 +
-# matching_extra_limit=4 (12 total kept per query): a local ORDER BY cannot
-# replicate TCGdex's own relevance ranking, so this cap just needs to be wide
-# enough that a correct collector-number match rarely falls outside it.
+# Deliberately generous relative to select_search_candidates' baseline_limit=8.
+# Exact collector-number matches are retained separately, so this cap bounds the
+# non-number baseline without risking that a heavily reprinted card name hides
+# the scanned printing beyond the local window.
 SEARCH_CANDIDATE_QUERY_LIMIT = 50
 MAX_REFERENCE_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_REFERENCE_IMAGE_PIXELS = 50_000_000
@@ -497,6 +497,18 @@ def _simplify_name(name: str) -> str:
     return _SUFFIXES.sub("", name).strip()
 
 
+def _normalized_scanner_name(name: object) -> str:
+    value = str(name or "").strip()
+    return re.sub(r"\s+", " ", strip_diacritics(value)).strip()
+
+
+def _scanner_names_compatible(expected: object, candidate: object) -> bool:
+    """Match complete printed names across accents, case, and whitespace."""
+    expected_name = _normalized_scanner_name(expected)
+    candidate_name = _normalized_scanner_name(candidate)
+    return bool(expected_name and expected_name == candidate_name)
+
+
 def _identity_signal(target, candidate, matcher) -> int:
     """Return 0 for agreement, 1 for unknown, and 2 for contradiction."""
     if target in (None, "") or candidate in (None, ""):
@@ -794,20 +806,24 @@ async def _fill_candidate_details(
 
 
 async def _api_search_fallback(
-    search_language: str, search_name: str, trace: ScanTrace | None
+    search_language: str,
+    search_name: str,
+    expected_name: str,
+    trace: ScanTrace | None,
 ) -> list[dict]:
-    """Live TCGdex search — only called when the local catalogue has no rows
-    for this exact (language, name) pair. That is genuinely ambiguous: the
-    card may not exist at all, or the local sync simply has not reached its
-    set yet (a set released after the last full sync, or one an in-progress
-    full sync has not gotten to). Live TCGdex answers both cases the same
-    way a plain catalogue lookup always did, before the local-DB search was
-    the primary path.
+    """Live TCGdex search for a compatible local miss or missing number.
 
-    Best-effort and silent on failure: this runs after the local search
-    already came up empty for this one pair, so a network error here just
-    means no fallback candidates for that pair, not a broken scan — the
-    other search pairs, and whatever local rows they found, are unaffected.
+    TCGdex name search is substring-based, so results must still match the
+    complete expected printed name before they can enter metadata ranking.
+    Either fallback case is genuinely ambiguous: the card may not exist, the
+    local sync may not have reached its set yet, or a new set may reuse a name
+    that already has older local printings. Live TCGdex answers those cases
+    the same way a plain catalogue lookup did before local-first search.
+
+    Best-effort and silent on failure: this runs only after the local search
+    could not supply the requested printing for this pair, so a network error
+    just means no fallback candidates, not a broken scan. Existing local rows
+    and results from other pairs remain available.
     """
     try:
         async with httpx.AsyncClient(timeout=15) as client:
@@ -841,6 +857,7 @@ async def _api_search_fallback(
             }
             for card in api_cards
             if card.get("id")
+            and _scanner_names_compatible(expected_name, card.get("name"))
         ]
     except Exception as exc:
         if trace:
@@ -860,8 +877,11 @@ async def _search_and_rank_candidates(
     card_info: dict,
     trace: ScanTrace | None = None,
 ) -> tuple[list[dict], int]:
-    card_name = str(card_info.get("name") or "").strip()
-    card_name_en = str(card_info.get("name_en") or card_name).strip() or card_name
+    card_name = re.sub(r"\s+", " ", str(card_info.get("name") or "").strip())
+    card_name_en = (
+        re.sub(r"\s+", " ", str(card_info.get("name_en") or card_name).strip())
+        or card_name
+    )
     if not card_name:
         raise HTTPException(status_code=422, detail="Kartenname konnte nicht erkannt werden.")
 
@@ -878,76 +898,67 @@ async def _search_and_rank_candidates(
         if simple_name_en != card_name_en:
             search_pairs.append(("en", card_name_en))
 
+    target_number = normalize_scanner_card_number(card_info.get("number_local"))
     candidates = []
     for search_language, search_name in search_pairs:
         if len(candidates) >= 15:
             break
+        expected_name = card_name_en if search_language == "en" else card_name
         try:
             name_filter = accent_insensitive_contains(db, Card.name, search_name)
             if name_filter is None:
                 rows = []
             else:
-                rows = (
+                local_query = (
                     db.query(Card)
                     .filter(
-                        Card.is_custom == False,
+                        Card.tcg_card_id.isnot(None),
+                        # Existing upgraded databases may still contain NULL
+                        # here. database.py already treats NULL and false as
+                        # catalogue rows, while true is always a user-created
+                        # card and must not become a scanner candidate.
+                        Card.is_custom.isnot(True),
                         Card.lang == search_language,
                         name_filter,
                     )
-                    .order_by(Card.id)
-                    .limit(SEARCH_CANDIDATE_QUERY_LIMIT)
-                    .all()
                 )
-            cards = [
-                {
-                    "id": row.id,
-                    "tcg_card_id": row.tcg_card_id,
-                    "name": row.name,
-                    "number": row.number,
-                    "image": row.images_small,
-                    "rarity": row.rarity,
-                }
-                for row in rows
-            ]
-            if trace:
-                trace.record_tcgdex(
-                    language=search_language,
-                    query=search_name,
-                    status=200,
-                    count=len(cards),
+                rows = []
+                matching_rows = []
+                projected_rows = local_query.with_entities(
+                    Card.id,
+                    Card.tcg_card_id,
+                    Card.name,
+                    Card.number,
+                    Card.images_small,
+                    Card.rarity,
+                ).order_by(Card.id)
+                for row in projected_rows.yield_per(200):
+                    if not _scanner_names_compatible(expected_name, row.name):
+                        continue
+                    if len(rows) < SEARCH_CANDIDATE_QUERY_LIMIT:
+                        rows.append(row)
+                    if (
+                        target_number
+                        and normalize_scanner_card_number(row.number) == target_number
+                        and len(matching_rows) < 12
+                    ):
+                        matching_rows.append(row)
+
+                    # Once both bounded windows are full, later rows cannot
+                    # change the selected local candidates.
+                    if (
+                        len(rows) >= SEARCH_CANDIDATE_QUERY_LIMIT
+                        and (not target_number or len(matching_rows) >= 12)
+                    ):
+                        break
+
+                present_ids = {row.id for row in rows}
+                rows.extend(
+                    row
+                    for row in matching_rows
+                    if row.id not in present_ids
                 )
-
-            # The local catalogue lags TCGdex's own by however long it has
-            # been since the last full sync reached this set — a set
-            # released minutes ago, or one a still-running full sync has not
-            # gotten to yet, looks identical to "this card does not exist"
-            # from the DB's point of view. Only reached when the local
-            # search for this exact pair came back empty, so the common
-            # path (the card is already synced) never pays for it.
-            if not cards:
-                cards = await _api_search_fallback(search_language, search_name, trace)
-
-            selected_cards = select_search_candidates(
-                cards,
-                card_info.get("number_local"),
-                number_field="number",
-            )
-            for card in selected_cards:
-                card_id = card.get("id")
-                if not card_id:
-                    continue
-                candidates.append({
-                    "id": card_id,
-                    "tcg_card_id": card.get("tcg_card_id"),
-                    "name": card.get("name"),
-                    "set": None,
-                    "number": card.get("number"),
-                    "image": card.get("image"),
-                    "rarity": card.get("rarity"),
-                    "lang": search_language,
-                    "_lang": search_language,
-                    "_number_extra": bool(card.get("_number_extra")),
-                })
+                rows = rows[:SEARCH_CANDIDATE_QUERY_LIMIT + 4]
         except Exception as exc:
             if trace:
                 trace.record_tcgdex(
@@ -957,7 +968,64 @@ async def _search_and_rank_candidates(
                     count=None,
                     error=type(exc).__name__,
                 )
-            continue
+            raise
+
+        cards = [
+            {
+                "id": row.id,
+                "tcg_card_id": row.tcg_card_id,
+                "name": row.name,
+                "number": row.number,
+                "image": row.images_small,
+                "rarity": row.rarity,
+            }
+            for row in rows
+        ]
+        if trace:
+            trace.record_tcgdex(
+                language=search_language,
+                query=search_name,
+                status=200,
+                count=len(cards),
+            )
+
+        # A reused name can already have many local printings while the
+        # newly released printing is not synced yet. With a recognized
+        # collector number, the local result is therefore sufficient only
+        # when at least one name-compatible row actually has that number.
+        # The live result is appended so the bounded selector retains the
+        # local baseline and promotes matching new printings from fallback.
+        local_has_number_match = bool(target_number and any(
+            normalize_scanner_card_number(card.get("number")) == target_number
+            for card in cards
+        ))
+        if not cards or (target_number and not local_has_number_match):
+            fallback_cards = await _api_search_fallback(
+                search_language, search_name, expected_name, trace
+            )
+            cards.extend(fallback_cards)
+
+        selected_cards = select_search_candidates(
+            cards,
+            card_info.get("number_local"),
+            number_field="number",
+        )
+        for card in selected_cards:
+            card_id = card.get("id")
+            if not card_id:
+                continue
+            candidates.append({
+                "id": card_id,
+                "tcg_card_id": card.get("tcg_card_id"),
+                "name": card.get("name"),
+                "set": None,
+                "number": card.get("number"),
+                "image": card.get("image"),
+                "rarity": card.get("rarity"),
+                "lang": search_language,
+                "_lang": search_language,
+                "_number_extra": bool(card.get("_number_extra")),
+            })
 
     candidate_set_ids = {
         tcg_card_id.rsplit("-", 1)[0]
