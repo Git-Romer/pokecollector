@@ -2,8 +2,8 @@ import { useEffect, useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { Camera, Upload, ImagePlus, Trash2, X, Check, Loader2, RefreshCw, Plus } from 'lucide-react'
-import { recognizeCard, addToCollection, enqueueScanJob, uploadCollectionItemPhoto } from '../api/client'
-import { useQueryClient } from '@tanstack/react-query'
+import { recognizeCard, addToCollection, enqueueScanJob, getScannerConfiguration, uploadCollectionItemPhoto } from '../api/client'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSettings } from '../contexts/SettingsContext'
 import { useConfirmDialog } from '../contexts/ConfirmDialogContext'
 import toast from 'react-hot-toast'
@@ -193,6 +193,11 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
   const { t } = useSettings()
   const confirmDialog = useConfirmDialog()
   const navigate = useNavigate()
+  const { data: scannerConfiguration } = useQuery({
+    queryKey: ['scanner-configuration'],
+    queryFn: getScannerConfiguration,
+    enabled: isOpen,
+  })
 
   useEffect(() => {
     stagedFilesRef.current = stagedFiles
@@ -216,7 +221,10 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
     scannedFileRef.current = file
     setPhase('loading')
     try {
-      const data = await recognizeCard(file)
+      const data = await recognizeCard(
+        file,
+        scannerConfiguration?.request_timeout_seconds,
+      )
       setResults(data)
       setSelectedMatch(data.matches?.[0] || null)
       setPhase('results')

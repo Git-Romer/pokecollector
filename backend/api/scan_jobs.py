@@ -92,10 +92,14 @@ async def enqueue_scan_job(
     current_user: User = Depends(get_current_user),
 ):
     """Sanitize a batch, persist it, and return without waiting for its provider."""
-    from services.scan_providers import get_provider, require_scanner_capability_mode
+    from services.scan_providers import (
+        SCANNER_CAPABILITY_DEGRADED,
+        get_provider,
+        require_scanner_capability_mode,
+    )
 
     provider = get_provider(db, current_user.id)
-    require_scanner_capability_mode(
+    capability_mode = require_scanner_capability_mode(
         db, current_user.id, provider.name, provider.model()
     )
     if provider.requires_credential() and not provider.credential(db, current_user.id):
@@ -115,9 +119,18 @@ async def enqueue_scan_job(
     except (TypeError, ValueError, json.JSONDecodeError):
         raise HTTPException(status_code=400, detail="Invalid individual scan selection.")
 
+    # A composite asks the model to read several cards out of one image, which
+    # needs the same multi-image capability visual verification does. A model
+    # that already failed that probe (or was saved in acknowledged limited
+    # mode) cannot do this reliably either, so every photo goes through
+    # individually regardless of what the client requested — the client's own
+    # UI hides the toggle for the same reason, but the server does not trust
+    # that alone.
     individual_set = set(requested_individual)
     batch_modes = [
-        len(files) > 1 and position not in individual_set
+        len(files) > 1
+        and position not in individual_set
+        and capability_mode != SCANNER_CAPABILITY_DEGRADED
         for position in range(len(files))
     ]
     try:
