@@ -712,6 +712,52 @@ class SearchAndRankCandidatesLocalDbTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual([card["name"] for card in candidates], ["Bill"])
 
+    async def test_english_fallback_does_not_block_one_exact_native_trainer(self):
+        self.db.add_all([
+            Card(
+                id="pmcg1-074_ja",
+                tcg_card_id="pmcg1-074",
+                name="マサキ",
+                number="074",
+                supertype="Trainer",
+                lang="ja",
+                is_custom=False,
+            ),
+            Card(
+                id="base1-91_en",
+                tcg_card_id="base1-91",
+                name="Bill",
+                number="91",
+                supertype="Trainer",
+                lang="en",
+                is_custom=False,
+            ),
+            Card(
+                id="base4-118_en",
+                tcg_card_id="base4-118",
+                name="Bill",
+                number="118",
+                supertype="Trainer",
+                lang="en",
+                is_custom=False,
+            ),
+        ])
+        self.db.commit()
+
+        recognized = normalize_recognized_card_info({
+            "name": "マサキ",
+            "name_en": "Bill",
+            "card_type": "Trainer",
+            "language": "ja",
+        })
+        candidates, _ = await _search_and_rank_candidates(self.db, recognized)
+        confident, decision = _metadata_decision(recognized, candidates)
+
+        self.assertEqual(len(candidates), 3)
+        self.assertEqual(candidates[0]["id"], "pmcg1-074_ja")
+        self.assertTrue(confident)
+        self.assertEqual(decision, "sole_candidate")
+
     async def test_search_is_accent_insensitive_via_shared_text_search_helper(self):
         self.db.add(Card(
             id="sv1-1_en",
@@ -1447,6 +1493,32 @@ class DeterministicMatchingTests(unittest.IsolatedAsyncioTestCase):
             "number": "119",
             "_lang": "en",
         }]
+
+        confident, decision = _metadata_decision(recognized, candidates)
+
+        self.assertFalse(confident)
+        self.assertIsNone(decision)
+
+    def test_multiple_native_trainers_remain_ambiguous(self):
+        recognized = normalize_recognized_card_info({
+            "name": "Bill",
+            "card_type": "trainer",
+            "language": "en",
+        })
+        candidates = [
+            {
+                "id": "bill-1",
+                "name": "Bill",
+                "card_type": "Trainer",
+                "_lang": "en",
+            },
+            {
+                "id": "bill-2",
+                "name": "Bill",
+                "card_type": "Trainer",
+                "_lang": "en",
+            },
+        ]
 
         confident, decision = _metadata_decision(recognized, candidates)
 

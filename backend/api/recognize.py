@@ -613,15 +613,24 @@ def _metadata_decision(card_info: dict, candidates: list[dict]) -> tuple[bool, s
         return True, "artist_hp"
 
     # Trainer and Energy cards cannot use the Pokemon-only HP corroboration
-    # path above. Uniqueness is safe only when the model and catalogue agree
-    # on that type and the sole candidate agrees on both exact name and
-    # language. Pokemon cards keep their existing metadata/visual safeguards.
+    # path above. English translation fallback can add other-language
+    # printings after one exact native result, so uniqueness is measured only
+    # among exact native-language candidates. The model and catalogue must
+    # still agree on the type. Pokemon cards keep their existing safeguards.
     card_type = _normalized_card_type(card_info.get("card_type"))
+    native_language = normalize_tcgdex_language(card_info.get("language"))
+    native_candidates = [
+        candidate
+        for candidate in ranked
+        if native_language
+        and normalize_tcgdex_language(candidate.get("_lang")) == native_language
+        and _scanner_names_compatible(card_info.get("name"), candidate.get("name"))
+    ]
     if (
-        len(candidates) == 1
+        len(native_candidates) == 1
+        and native_candidates[0] is top
         and card_type in {"trainer", "energy"}
         and _normalized_card_type(top.get("card_type")) == card_type
-        and _scanner_names_compatible(card_info.get("name"), top.get("name"))
         and "language" in signals
     ):
         return True, "sole_candidate"
