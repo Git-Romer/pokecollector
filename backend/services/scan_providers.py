@@ -43,6 +43,13 @@ SCANNER_MODEL_SETTINGS = {
     GEMINI: "scanner_model_gemini",
     OPENAI: "scanner_model_openai",
 }
+SCANNER_REQUEST_TIMEOUT_SETTINGS = {
+    GEMINI: "scanner_request_timeout_gemini",
+    OPENAI: "scanner_request_timeout_openai",
+}
+SCANNER_REQUEST_TIMEOUT_OPTIONS = (30, 60, 120, 180)
+DEFAULT_SCANNER_REQUEST_TIMEOUT_SECONDS = SCANNER_REQUEST_TIMEOUT_OPTIONS[0]
+MAX_SCANNER_REQUEST_TIMEOUT_SECONDS = SCANNER_REQUEST_TIMEOUT_OPTIONS[-1]
 SCANNER_CUSTOM_MODEL_SETTINGS = {
     GEMINI: "scanner_custom_model_gemini",
     OPENAI: "scanner_custom_model_openai",
@@ -269,6 +276,39 @@ def resolve_model(db: Session, user_id: int | None, provider: str) -> str:
         if user and user.role == "admin":
             return custom_model
     return models[0] if models else ""
+
+
+def normalize_scanner_request_timeout(value: object) -> int:
+    """Accept only the bounded timeout choices exposed by Scanner Settings."""
+    try:
+        timeout = int(str(value).strip())
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Choose a supported scanner response timeout.") from exc
+    if timeout not in SCANNER_REQUEST_TIMEOUT_OPTIONS:
+        raise ValueError("Choose a supported scanner response timeout.")
+    return timeout
+
+
+def resolve_scanner_request_timeout(
+    db: Session,
+    user_id: int | None,
+    provider: str,
+) -> int:
+    """Return a safe provider-specific timeout, defaulting legacy/bad rows."""
+    if user_id is None:
+        return DEFAULT_SCANNER_REQUEST_TIMEOUT_SECONDS
+    row = (
+        db.query(UserSetting)
+        .filter(
+            UserSetting.user_id == user_id,
+            UserSetting.key == SCANNER_REQUEST_TIMEOUT_SETTINGS[provider],
+        )
+        .first()
+    )
+    try:
+        return normalize_scanner_request_timeout(row.value if row else None)
+    except ValueError:
+        return DEFAULT_SCANNER_REQUEST_TIMEOUT_SECONDS
 
 
 def configured_provider_name(db: Session, user_id: int | None) -> str | None:

@@ -114,7 +114,7 @@ export default function AppNav() {
         onPointerLeave={handleHomePointerLeave}
         onPointerCancel={handleHomePointerLeave}
         aria-label={t('home.navigation')}
-        className="pokeball-home-button fixed bottom-6 left-4 z-50 w-12 h-12 rounded-full flex items-center justify-center
+        className="pokeball-home-button fixed bottom-6 left-4 z-40 w-12 h-12 rounded-full flex items-center justify-center
           transition-transform duration-200 active:scale-90"
         style={{
           background: 'linear-gradient(180deg, #e3000b 50%, #f5f5f5 50%)',

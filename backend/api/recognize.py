@@ -21,7 +21,9 @@ from services.gemini_rate_limit import (
 from services.scan_candidate_images import prewarm_candidate_images
 from services.scan_storage import MAX_FILE_BYTES, ScanUploadError, read_limited_upload, sanitize_image_bytes
 from services.scan_trace import ScanTrace, create_scan_trace
+from services.text_search import accent_insensitive_contains, strip_diacritics
 from services.scan_providers import (
+    DEFAULT_SCANNER_REQUEST_TIMEOUT_SECONDS,
     GEMINI,
     SCANNER_CAPABILITY_DEGRADED,
     ScanProvider,
@@ -29,6 +31,7 @@ from services.scan_providers import (
     image_part,
     image_part_from_bytes,
     require_scanner_capability_mode,
+    resolve_scanner_request_timeout,
     text_part,
 )
 import logging
@@ -49,6 +52,11 @@ MAX_GEMINI_RETRY_SECONDS = 14 * 24 * 60 * 60
 PHASH_MAX_DISTANCE = 20
 PHASH_MIN_MARGIN = 5
 PHASH_CANDIDATE_LIMIT = 8
+# Deliberately generous relative to select_search_candidates' baseline_limit=8.
+# Exact collector-number matches are retained separately, so this cap bounds the
+# non-number baseline without risking that a heavily reprinted card name hides
+# the scanned printing beyond the local window.
+SEARCH_CANDIDATE_QUERY_LIMIT = 50
 MAX_REFERENCE_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_REFERENCE_IMAGE_PIXELS = 50_000_000
 TRUSTED_REFERENCE_IMAGE_HOSTS = {"assets.tcgdex.net"}
@@ -164,11 +172,27 @@ def split_recognized_card_number(value) -> tuple[str | None, str | None]:
     return local, total
 
 
+_POKEDEX_NUMBER_TEXT = re.compile(r"\bno\.?\s*\d", re.IGNORECASE)
+
+
+def _drop_pokedex_number(value) -> str | None:
+    """Discard only an explicit ``No. 123``-style Pokedex reference."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return None if _POKEDEX_NUMBER_TEXT.search(text) else text
+
+
 def normalize_recognized_card_info(card_info: dict | None) -> dict:
     """Keep one canonical split identity while preserving the UI's combined number."""
     normalized = dict(card_info or {})
     legacy_local, legacy_total = split_recognized_card_number(normalized.get("number"))
-    local = normalized.get("number_local") or legacy_local
+    local = (
+        _drop_pokedex_number(normalized.get("number_local"))
+        or _drop_pokedex_number(legacy_local)
+    )
     total = normalized.get("number_total") or legacy_total
     normalized["number_local"] = local
     normalized["number_total"] = total
@@ -465,11 +489,18 @@ IMPORTANT ACCURACY RULES:
   details. If any character is unclear, return null instead of guessing.
 - Only return set_code when printed alphanumeric characters are visible near the card
   number. Do not infer a code from the artwork or from recognizing the set.
+- Some cards, especially older ones, print a "No. 0094" or "No.94"-style reference
+  near the artwork or flavor text. That is the species' National Pokedex number, not
+  this card's collector number, and must never be used as number_local. Only use
+  number_local for a small index printed for this specific card, usually alongside
+  a "/" and a set total (like "094/165") or next to a set code. If the only number
+  on the card is a "No." Pokedex reference, or you cannot find a distinct collector
+  number, return null for number_local rather than reusing it.
 
 Extract:
 1. Card name exactly as printed, in the card's language
 2. English card name (same value when already English)
-3. Local collector number, or null
+3. Local collector number (never a "No." Pokedex reference), or null
 4. Printed set total/denominator, or null
 5. Printed set code/abbreviation, or null
 6. Regulation mark, or null
@@ -502,6 +533,23 @@ _SUFFIXES = re.compile(
 
 def _simplify_name(name: str) -> str:
     return _SUFFIXES.sub("", name).strip()
+
+
+def _normalized_scanner_name(name: object) -> str:
+    value = str(name or "").strip()
+    return re.sub(r"\s+", " ", strip_diacritics(value)).strip()
+
+
+def _scanner_names_compatible(expected: object, candidate: object) -> bool:
+    """Match complete printed names across accents, case, and whitespace."""
+    expected_name = _normalized_scanner_name(expected)
+    candidate_name = _normalized_scanner_name(candidate)
+    return bool(expected_name and expected_name == candidate_name)
+
+
+def _normalized_card_type(value: object) -> str:
+    normalized = strip_diacritics(str(value or "")).strip()
+    return normalized if normalized in {"pokemon", "trainer", "energy"} else ""
 
 
 def _identity_signal(target, candidate, matcher) -> int:
@@ -578,6 +626,29 @@ def _metadata_decision(card_info: dict, candidates: list[dict]) -> tuple[bool, s
         return True, "number_metadata"
     if not card_info.get("number_local") and {"artist", "hp"}.issubset(signals):
         return True, "artist_hp"
+
+    # Trainer and Energy cards cannot use the Pokemon-only HP corroboration
+    # path above. English translation fallback can add other-language
+    # printings after one exact native result, so uniqueness is measured only
+    # among exact native-language candidates. The model and catalogue must
+    # still agree on the type. Pokemon cards keep their existing safeguards.
+    card_type = _normalized_card_type(card_info.get("card_type"))
+    native_language = normalize_tcgdex_language(card_info.get("language"))
+    native_candidates = [
+        candidate
+        for candidate in ranked
+        if native_language
+        and normalize_tcgdex_language(candidate.get("_lang")) == native_language
+        and _scanner_names_compatible(card_info.get("name"), candidate.get("name"))
+    ]
+    if (
+        len(native_candidates) == 1
+        and native_candidates[0] is top
+        and card_type in {"trainer", "energy"}
+        and _normalized_card_type(top.get("card_type")) == card_type
+        and "language" in signals
+    ):
+        return True, "sole_candidate"
     return False, None
 
 
@@ -800,13 +871,89 @@ async def _fill_candidate_details(
         await asyncio.gather(*(fetch(card) for card in missing))
 
 
+async def _api_search_fallback(
+    search_language: str,
+    search_name: str,
+    expected_name: str,
+    trace: ScanTrace | None,
+) -> list[dict]:
+    """Live TCGdex search for a compatible local miss or missing number.
+
+    TCGdex name search is substring-based, so results must still match the
+    complete expected printed name before they can enter metadata ranking.
+    Either fallback case is genuinely ambiguous: the card may not exist, the
+    local sync may not have reached its set yet, or a new set may reuse a name
+    that already has older local printings. Live TCGdex answers those cases
+    the same way a plain catalogue lookup did before local-first search.
+
+    Best-effort and silent on failure: this runs only after the local search
+    could not supply the requested printing for this pair, so a network error
+    just means no fallback candidates, not a broken scan. Existing local rows
+    and results from other pairs remain available.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.get(
+                f"https://api.tcgdex.net/v2/{search_language}/cards",
+                params={"name": search_name},
+            )
+        api_cards = response.json() if response.status_code == 200 else []
+        if trace:
+            trace.record_tcgdex(
+                language=search_language,
+                query=search_name,
+                status=response.status_code,
+                count=len(api_cards) if isinstance(api_cards, list) else None,
+                source="api_fallback",
+            )
+        if not isinstance(api_cards, list):
+            return []
+        return [
+            {
+                # Composite id in the same "{tcg_id}_{lang}" shape the local
+                # rows already carry (Card.id), so downstream code (dedup,
+                # candidate_set_ids parsing) does not need to know which
+                # source a candidate came from.
+                "id": f"{card.get('id')}_{search_language}",
+                "tcg_card_id": card.get("id"),
+                "name": card.get("name"),
+                "card_type": card.get("category") or card.get("supertype"),
+                "number": card.get("localId"),
+                "image": f"{card.get('image')}/low.webp" if card.get("image") else None,
+                "image_hd": f"{card.get('image')}/high.webp" if card.get("image") else None,
+                "rarity": card.get("rarity"),
+            }
+            for card in api_cards
+            if card.get("id")
+            and _scanner_names_compatible(expected_name, card.get("name"))
+        ]
+    except Exception as exc:
+        if trace:
+            trace.record_tcgdex(
+                language=search_language,
+                query=search_name,
+                status=None,
+                count=None,
+                error=type(exc).__name__,
+                source="api_fallback",
+            )
+        return []
+
+
+ENGLISH_FALLBACK_MIN_CANDIDATES = 3
+ENGLISH_FALLBACK_TOTAL_CANDIDATE_LIMIT = ENGLISH_FALLBACK_MIN_CANDIDATES * 2
+
+
 async def _search_and_rank_candidates(
     db: Session,
     card_info: dict,
     trace: ScanTrace | None = None,
 ) -> tuple[list[dict], int]:
-    card_name = str(card_info.get("name") or "").strip()
-    card_name_en = str(card_info.get("name_en") or card_name).strip() or card_name
+    card_name = re.sub(r"\s+", " ", str(card_info.get("name") or "").strip())
+    card_name_en = (
+        re.sub(r"\s+", " ", str(card_info.get("name_en") or card_name).strip())
+        or card_name
+    )
     if not card_name:
         raise HTTPException(status_code=422, detail="Kartenname konnte nicht erkannt werden.")
 
@@ -823,55 +970,81 @@ async def _search_and_rank_candidates(
         if simple_name_en != card_name_en:
             search_pairs.append(("en", card_name_en))
 
+    target_number = normalize_scanner_card_number(card_info.get("number_local"))
     candidates = []
+    candidate_keys = set()
+    native_candidate_count = 0
     for search_language, search_name in search_pairs:
         if len(candidates) >= 15:
             break
+        is_english_fallback = language != "en" and search_language == "en"
+        if is_english_fallback:
+            # name_en is an AI translation rather than text read directly
+            # from the card. Use it only when native-language search is thin,
+            # and cap the total review grid so noisy translated matches cannot
+            # bury the native candidates already found.
+            if native_candidate_count >= ENGLISH_FALLBACK_MIN_CANDIDATES:
+                break
+            if len(candidates) >= ENGLISH_FALLBACK_TOTAL_CANDIDATE_LIMIT:
+                break
+        expected_name = card_name if search_language == language else card_name_en
         try:
-            async with httpx.AsyncClient(timeout=15) as client:
-                response = await client.get(
-                    f"https://api.tcgdex.net/v2/{search_language}/cards",
-                    params={"name": search_name},
+            name_filter = accent_insensitive_contains(db, Card.name, search_name)
+            if name_filter is None:
+                rows = []
+            else:
+                local_query = (
+                    db.query(Card)
+                    .filter(
+                        Card.tcg_card_id.isnot(None),
+                        # Existing upgraded databases may still contain NULL
+                        # here. database.py already treats NULL and false as
+                        # catalogue rows, while true is always a user-created
+                        # card and must not become a scanner candidate.
+                        Card.is_custom.isnot(True),
+                        Card.lang == search_language,
+                        name_filter,
+                    )
                 )
-            cards = response.json() if response.status_code == 200 else []
-            if trace:
-                trace.record_tcgdex(
-                    language=search_language,
-                    query=search_name,
-                    status=response.status_code,
-                    count=len(cards) if isinstance(cards, list) else None,
+                rows = []
+                matching_rows = []
+                projected_rows = local_query.with_entities(
+                    Card.id,
+                    Card.tcg_card_id,
+                    Card.name,
+                    Card.supertype,
+                    Card.number,
+                    Card.images_small,
+                    Card.images_large,
+                    Card.rarity,
+                ).order_by(Card.id)
+                for row in projected_rows.yield_per(200):
+                    if not _scanner_names_compatible(expected_name, row.name):
+                        continue
+                    if len(rows) < SEARCH_CANDIDATE_QUERY_LIMIT:
+                        rows.append(row)
+                    if (
+                        target_number
+                        and normalize_scanner_card_number(row.number) == target_number
+                        and len(matching_rows) < 12
+                    ):
+                        matching_rows.append(row)
+
+                    # Once both bounded windows are full, later rows cannot
+                    # change the selected local candidates.
+                    if (
+                        len(rows) >= SEARCH_CANDIDATE_QUERY_LIMIT
+                        and (not target_number or len(matching_rows) >= 12)
+                    ):
+                        break
+
+                present_ids = {row.id for row in rows}
+                rows.extend(
+                    row
+                    for row in matching_rows
+                    if row.id not in present_ids
                 )
-            if not isinstance(cards, list):
-                continue
-            selected_cards = select_search_candidates(
-                cards,
-                card_info.get("number_local"),
-                number_field="localId",
-            )
-            for card in selected_cards:
-                card_id = card.get("id")
-                if not card_id:
-                    continue
-                candidates.append({
-                    "id": f"{card_id}_{search_language}",
-                    "tcg_card_id": card_id,
-                    "name": card.get("name"),
-                    "set": card.get("set", {}).get("name")
-                    if isinstance(card.get("set"), dict) else None,
-                    "number": card.get("localId"),
-                    "image": f"{card.get('image')}/low.webp" if card.get("image") else None,
-                    # The zoom modal and the candidate-image cache endpoint
-                    # both already prefer image_hd over the 245px thumbnail
-                    # above -- it just never got populated, so every
-                    # candidate silently fell back to the low-res image even
-                    # when zoomed. /high.webp is the same TCGdex CDN
-                    # sibling path as /low.webp.
-                    "image_hd": f"{card.get('image')}/high.webp" if card.get("image") else None,
-                    "rarity": card.get("rarity"),
-                    "lang": search_language,
-                    "_lang": search_language,
-                    "_number_extra": bool(card.get("_number_extra")),
-                })
+                rows = rows[:SEARCH_CANDIDATE_QUERY_LIMIT + 4]
         except Exception as exc:
             if trace:
                 trace.record_tcgdex(
@@ -881,7 +1054,88 @@ async def _search_and_rank_candidates(
                     count=None,
                     error=type(exc).__name__,
                 )
-            continue
+            raise
+
+        cards = [
+            {
+                "id": row.id,
+                "tcg_card_id": row.tcg_card_id,
+                "name": row.name,
+                "card_type": row.supertype,
+                "number": row.number,
+                "image": row.images_small,
+                "image_hd": row.images_large,
+                "rarity": row.rarity,
+            }
+            for row in rows
+        ]
+        if trace:
+            trace.record_tcgdex(
+                language=search_language,
+                query=search_name,
+                status=200,
+                count=len(cards),
+            )
+
+        # A reused name can already have many local printings while the
+        # newly released printing is not synced yet. With a recognized
+        # collector number, the local result is therefore sufficient only
+        # when at least one name-compatible row actually has that number.
+        # The live result is appended so the bounded selector retains the
+        # local baseline and promotes matching new printings from fallback.
+        local_has_number_match = bool(target_number and any(
+            normalize_scanner_card_number(card.get("number")) == target_number
+            for card in cards
+        ))
+        if not cards or (target_number and not local_has_number_match):
+            fallback_cards = await _api_search_fallback(
+                search_language, search_name, expected_name, trace
+            )
+            cards.extend(fallback_cards)
+
+        selected_cards = select_search_candidates(
+            cards,
+            card_info.get("number_local"),
+            number_field="number",
+        )
+        if is_english_fallback:
+            # The fallback has a tighter total cap than native search. Put an
+            # exact collector-number hit first so the cap cannot discard it
+            # behind the baseline name matches selected above.
+            selected_cards, _ = prioritize_cards_by_number(
+                selected_cards,
+                card_info.get("number_local"),
+                number_field="number",
+            )
+        for card in selected_cards:
+            if (
+                is_english_fallback
+                and len(candidates) >= ENGLISH_FALLBACK_TOTAL_CANDIDATE_LIMIT
+            ):
+                break
+            card_id = card.get("id")
+            if not card_id:
+                continue
+            candidate_key = (card_id, search_language)
+            if candidate_key in candidate_keys:
+                continue
+            candidate_keys.add(candidate_key)
+            candidates.append({
+                "id": card_id,
+                "tcg_card_id": card.get("tcg_card_id"),
+                "name": card.get("name"),
+                "card_type": card.get("card_type"),
+                "set": None,
+                "number": card.get("number"),
+                "image": card.get("image"),
+                "image_hd": card.get("image_hd"),
+                "rarity": card.get("rarity"),
+                "lang": search_language,
+                "_lang": search_language,
+                "_number_extra": bool(card.get("_number_extra")),
+            })
+            if not is_english_fallback:
+                native_candidate_count += 1
 
     candidate_set_ids = {
         tcg_card_id.rsplit("-", 1)[0]
@@ -941,6 +1195,7 @@ async def match_card_info(
     photo_bytes: bytes | None = None,
     trace: ScanTrace | None = None,
     provider: ScanProvider | None = None,
+    request_timeout_seconds: int = DEFAULT_SCANNER_REQUEST_TIMEOUT_SECONDS,
 ) -> dict:
     """Shared deterministic matcher for both individual and composite scans.
 
@@ -974,9 +1229,12 @@ async def match_card_info(
     )
     if should_try_phash or should_try_visual:
         try:
-            async with httpx.AsyncClient(timeout=20) as client:
+            # Reference-image hosts keep their short download timeout. A user
+            # choosing a slower AI response budget must not make external image
+            # downloads hang for the same duration.
+            async with httpx.AsyncClient(timeout=20) as download_client:
                 candidate_images = await _download_candidate_images(
-                    client,
+                    download_client,
                     top_candidates[:PHASH_CANDIDATE_LIMIT],
                 )
                 if should_try_phash:
@@ -1002,7 +1260,7 @@ async def match_card_info(
 
                 if not confident and should_try_visual:
                     candidate_images = await _download_candidate_images(
-                        client,
+                        download_client,
                         top_candidates,
                         candidate_images,
                     )
@@ -1028,12 +1286,15 @@ async def match_card_info(
                         else:
                             parts.append({"text": " (image unavailable)"})
 
-                    response_text, _visual_usage = await provider.generate_text(
-                        client,
-                        api_key,
-                        parts,
-                        max_attempts=2,
-                    )
+                    async with httpx.AsyncClient(
+                        timeout=request_timeout_seconds
+                    ) as vision_client:
+                        response_text, _visual_usage = await provider.generate_text(
+                            vision_client,
+                            api_key,
+                            parts,
+                            max_attempts=2,
+                        )
                     pick_match = re.search(r"(\d+)", response_text)
                     selected_position = int(pick_match.group(1)) if pick_match else None
                     if trace:
@@ -1100,6 +1361,9 @@ async def recognize_sanitized_card(
 ) -> dict:
     """Recognize one already-sanitized image for direct and queued scans."""
     provider = get_provider(db, user_id)
+    request_timeout_seconds = resolve_scanner_request_timeout(
+        db, user_id, provider.name
+    )
     capability_mode = require_scanner_capability_mode(
         db, user_id, provider.name, provider.model()
     )
@@ -1116,7 +1380,7 @@ async def recognize_sanitized_card(
 
     image_b64 = base64.b64encode(image_bytes).decode()
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=request_timeout_seconds) as client:
             response_text, usage = await provider.generate_text(
                 client,
                 api_key,
@@ -1157,6 +1421,7 @@ async def recognize_sanitized_card(
             photo_bytes=image_bytes,
             trace=trace,
             provider=provider,
+            request_timeout_seconds=request_timeout_seconds,
         )
     except HTTPException as exc:
         if trace:
@@ -1213,7 +1478,9 @@ For each card return the same information as an individual scan:
 - index: the printed corner number
 - name: exact card name in the card's language
 - name_en: English card name
-- number_local: printed local collector number, or null
+- number_local: printed local collector number, or null (never a "No." Pokedex
+  reference near the artwork or flavor text — that is the species' National Pokedex
+  number, not this card's collector number)
 - number_total: printed set total/denominator, or null
 - set_code: printed alphanumeric set code near the number, or null
 - regulation_mark: boxed regulation letter, or null
@@ -1223,7 +1490,8 @@ For each card return the same information as an individual scan:
 - artist: printed illustrator credit, or null
 
 Only report small identity text when every character is visible. Never infer set_code from
-the artwork or from recognizing the set. If a detail is unclear, use null rather than
+the artwork or from recognizing the set. If a detail is unclear, or the only number visible
+is a "No." Pokedex reference rather than a distinct collector number, use null rather than
 guessing. Respond ONLY with a JSON array containing one object per card, without markdown
 or explanation.
 """
@@ -1240,12 +1508,13 @@ async def recognize_composite_card_info(
     *,
     traces: list[ScanTrace] | None = None,
     provider: ScanProvider | None = None,
+    request_timeout_seconds: int = DEFAULT_SCANNER_REQUEST_TIMEOUT_SECONDS,
 ) -> dict[int, dict]:
     """Return recognized card information keyed by zero-based composite position."""
     provider = provider or ScanProvider(GEMINI)
     image_b64 = base64.b64encode(image_bytes).decode()
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=request_timeout_seconds) as client:
             response_text, usage = await provider.generate_text(
                 client,
                 api_key,

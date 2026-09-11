@@ -43,6 +43,8 @@ from services.scan_providers import (
     SCANNER_CAPABILITY_DEGRADED,
     SCANNER_CAPABILITY_FULL,
     SCANNER_MODEL_SETTINGS,
+    SCANNER_REQUEST_TIMEOUT_OPTIONS,
+    SCANNER_REQUEST_TIMEOUT_SETTINGS,
     ScanProvider,
     ProviderRequestRejectedError,
     allowed_models,
@@ -53,10 +55,12 @@ from services.scan_providers import (
     openai_base_url,
     openai_enabled,
     openai_requires_key,
+    normalize_scanner_request_timeout,
     provider_key_help_url,
     provider_label,
     resolve_model,
     resolve_provider_name,
+    resolve_scanner_request_timeout,
     scanner_capability_mode,
     scanner_capability_proof,
     SCANNER_PROVIDER_SETTING,
@@ -76,6 +80,7 @@ PER_USER_KEYS = {
     "gemini_api_key", "trainer_name", "portfolio_display_mode",
     "openai_api_key",
     SCANNER_PROVIDER_SETTING, *SCANNER_MODEL_SETTINGS.values(),
+    *SCANNER_REQUEST_TIMEOUT_SETTINGS.values(),
     *SCANNER_CUSTOM_MODEL_SETTINGS.values(),
     *SCANNER_CAPABILITY_SETTINGS.values(),
     SCAN_DIAGNOSTICS_SETTING_KEY, PHOTO_PREFERENCE_SETTING_KEY,
@@ -86,6 +91,7 @@ MANAGED_SCANNER_KEYS = {
     "openai_api_key",
     SCANNER_PROVIDER_SETTING,
     *SCANNER_MODEL_SETTINGS.values(),
+    *SCANNER_REQUEST_TIMEOUT_SETTINGS.values(),
     *SCANNER_CUSTOM_MODEL_SETTINGS.values(),
     *SCANNER_CAPABILITY_SETTINGS.values(),
     # Prevent the removed PR prototype settings from being recreated through
@@ -103,6 +109,7 @@ class ScannerConfigurationUpdate(BaseModel):
     custom_model: bool = False
     save_on_success: bool = False
     accept_degraded_visual_verification: bool = False
+    request_timeout_seconds: int | None = None
 
 
 SCANNER_TEST_IMAGE_B64 = (
@@ -332,6 +339,9 @@ def _scanner_configuration(db: Session, user_id: int, *, is_admin: bool = False)
             "models": models,
             "default_model": models[0] if models else "",
             "selected_model": resolve_model(db, user_id, provider),
+            "request_timeout_seconds": resolve_scanner_request_timeout(
+                db, user_id, provider
+            ),
             "requires_api_key": _scanner_requires_key(provider),
             "api_key_configured": key_configured,
             "endpoint_type": (
@@ -373,6 +383,8 @@ def _scanner_configuration(db: Session, user_id: int, *, is_admin: bool = False)
     result = {
         "provider": selected,
         "model": active["selected_model"],
+        "request_timeout_seconds": active["request_timeout_seconds"],
+        "request_timeout_options": list(SCANNER_REQUEST_TIMEOUT_OPTIONS),
         "providers": providers,
         "status": status,
         "visual_verification": (
@@ -393,7 +405,7 @@ def _validated_scanner_draft(
     *,
     require_ready: bool = False,
     allow_unverified_custom_model: bool = False,
-) -> tuple[str, str, str, bool]:
+) -> tuple[str, str, str, bool, int]:
     user_id = current_user.id
     provider = data.provider.strip().lower()
     if provider not in enabled_providers():
@@ -427,7 +439,15 @@ def _validated_scanner_draft(
         credential = data.api_key.strip()
     if require_ready and _scanner_requires_key(provider) and not credential:
         raise HTTPException(status_code=422, detail="An API key is required for this provider.")
-    return provider, model, credential, custom_model
+    try:
+        request_timeout_seconds = (
+            resolve_scanner_request_timeout(db, user_id, provider)
+            if data.request_timeout_seconds is None
+            else normalize_scanner_request_timeout(data.request_timeout_seconds)
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return provider, model, credential, custom_model, request_timeout_seconds
 
 
 def _upsert_user_setting(db: Session, user_id: int, key: str, value: str) -> None:
@@ -446,6 +466,7 @@ def _persist_scanner_draft(
     model: str,
     credential: str,
     custom_model: bool,
+    request_timeout_seconds: int,
 ) -> None:
     _upsert_user_setting(db, user_id, SCANNER_PROVIDER_SETTING, provider)
     _upsert_user_setting(db, user_id, SCANNER_MODEL_SETTINGS[provider], model)
@@ -454,6 +475,12 @@ def _persist_scanner_draft(
         user_id,
         SCANNER_CUSTOM_MODEL_SETTINGS[provider],
         model if custom_model else "",
+    )
+    _upsert_user_setting(
+        db,
+        user_id,
+        SCANNER_REQUEST_TIMEOUT_SETTINGS[provider],
+        str(request_timeout_seconds),
     )
     if data.api_key is not None or data.clear_api_key:
         _upsert_user_setting(db, user_id, _scanner_key_name(provider), credential)
@@ -495,7 +522,7 @@ def update_scanner_configuration(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    provider, model, credential, custom_model = _validated_scanner_draft(
+    provider, model, credential, custom_model, request_timeout_seconds = _validated_scanner_draft(
         data, db, current_user
     )
     if not (
@@ -503,6 +530,8 @@ def update_scanner_configuration(
         and data.api_key is None
         and provider == resolve_provider_name(db, current_user.id)
         and model == resolve_model(db, current_user.id, provider)
+        and request_timeout_seconds
+        == resolve_scanner_request_timeout(db, current_user.id, provider)
     ):
         raise HTTPException(
             status_code=409,
@@ -516,6 +545,7 @@ def update_scanner_configuration(
         model,
         credential,
         custom_model,
+        request_timeout_seconds,
     )
     db.commit()
     return _scanner_configuration(db, current_user.id, is_admin=current_user.role == "admin")
@@ -532,7 +562,7 @@ async def test_scanner_configuration(
             status_code=403,
             detail="Only an administrator can accept reduced scanner accuracy.",
         )
-    provider, model, credential, custom_model = _validated_scanner_draft(
+    provider, model, credential, custom_model, request_timeout_seconds = _validated_scanner_draft(
         data,
         db,
         current_user,
@@ -540,7 +570,9 @@ async def test_scanner_configuration(
         allow_unverified_custom_model=True,
     )
     candidate = ScanProvider(provider, model)
-    async with httpx.AsyncClient(timeout=30) as client:
+    # Use the same selected response budget as real scans so a slow local model
+    # is not rejected by the setup test before users can enable it.
+    async with httpx.AsyncClient(timeout=request_timeout_seconds) as client:
         multi_error = None
         try:
             text, _usage = await candidate.generate_text(
@@ -621,6 +653,7 @@ async def test_scanner_configuration(
             model,
             credential,
             custom_model,
+            request_timeout_seconds,
         )
         _persist_scanner_capability(
             db,

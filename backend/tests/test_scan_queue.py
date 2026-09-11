@@ -2,7 +2,9 @@ import asyncio
 import datetime
 import os
 import tempfile
+import threading
 import unittest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 try:
@@ -14,7 +16,11 @@ try:
     from database import Base
     from models import ScanJob, ScanJobItem, ScanQueueUserState, User, UserSetting
     from services import scan_queue, scan_storage
-    from services.scan_providers import ScanProvider, scanner_capability_proof
+    from services.scan_providers import (
+        MAX_SCANNER_REQUEST_TIMEOUT_SECONDS,
+        ScanProvider,
+        scanner_capability_proof,
+    )
     from services.scan_queue import (
         ClaimedScanItem,
         claim_next_scan_item,
@@ -117,6 +123,13 @@ class ScanQueueTests(unittest.TestCase):
         second_item = self.db.get(ScanJobItem, second.item_id)
         self.assertEqual(second_item.user_id, self.users[1].id)
 
+    def test_lease_covers_the_slowest_supported_recognition_path(self):
+        # One individual scan may use three extraction attempts followed by two
+        # visual-verification attempts. Preserve five minutes for backoff,
+        # reference downloads, and database work around those provider calls.
+        minimum = 5 * MAX_SCANNER_REQUEST_TIMEOUT_SECONDS + 5 * 60
+        self.assertGreaterEqual(scan_queue.LEASE_SECONDS, minimum)
+
     def test_batch_claim_groups_four_photos_and_keeps_forced_single_out(self):
         job = self._job(self.users[0], positions=(0, 1, 2, 3, 4))
         items = self.db.query(ScanJobItem).order_by(ScanJobItem.position).all()
@@ -174,6 +187,68 @@ class ScanQueueTests(unittest.TestCase):
 
         self.assertIn("Test and save", str(caught.exception))
         recognize.assert_not_awaited()
+
+    def test_capability_downgrade_requeues_an_existing_composite_individually(self):
+        user = self.users[0]
+        model = "vision-model"
+        env = {
+            "OPENAI_SCANNER_ENABLED": "true",
+            "OPENAI_MODEL": model,
+            "OPENAI_BASE_URL": "http://endpoint:11434/v1",
+            "OPENAI_API_KEY_REQUIRED": "false",
+        }
+        with patch.dict(os.environ, env):
+            full_proof = scanner_capability_proof("openai", model, "full")
+            degraded_proof = scanner_capability_proof("openai", model, "degraded")
+        self.db.add_all([
+            UserSetting(user_id=user.id, key="scanner_provider", value="openai"),
+            UserSetting(user_id=user.id, key="scanner_model_openai", value=model),
+            UserSetting(
+                user_id=user.id,
+                key="scanner_capability_openai",
+                value=full_proof,
+            ),
+        ])
+        self._job(user, positions=(0, 1, 2))
+        items = self.db.query(ScanJobItem).order_by(ScanJobItem.position).all()
+        for item in items:
+            item.batch_mode = True
+        self.db.commit()
+        claim = claim_next_scan_item(self.db)
+        self.assertTrue(claim.composite)
+
+        capability = (
+            self.db.query(UserSetting)
+            .filter(
+                UserSetting.user_id == user.id,
+                UserSetting.key == "scanner_capability_openai",
+            )
+            .one()
+        )
+        capability.value = degraded_proof
+        self.db.commit()
+        recognize = AsyncMock()
+
+        with patch.dict(os.environ, env), patch(
+            "api.recognize.recognize_composite_card_info", new=recognize
+        ):
+            results = asyncio.run(
+                scan_queue.default_composite_processor(
+                    self.db,
+                    user.id,
+                    [b"first", b"second", b"third"],
+                    ["image/jpeg"] * 3,
+                )
+            )
+
+        self.assertEqual(results, [None, None, None])
+        recognize.assert_not_awaited()
+        self.assertTrue(complete_claim_group(self.db, claim, results))
+        self.db.expire_all()
+        items = self.db.query(ScanJobItem).order_by(ScanJobItem.position).all()
+        self.assertEqual([item.status for item in items], ["pending"] * 3)
+        self.assertEqual([item.batch_mode for item in items], [False] * 3)
+        self.assertFalse(claim_next_scan_item(self.db).composite)
 
     def test_disabled_selected_provider_blocks_already_queued_individual_photo(self):
         user = self.users[0]
@@ -510,6 +585,230 @@ class ScanQueueDrainTests(unittest.IsolatedAsyncioTestCase):
 
 
 @unittest.skipUnless(DEPS_AVAILABLE, "SQLAlchemy is not installed")
+class ScanProcessingConcurrencyTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.original_limiter = scan_queue._scan_processing_semaphore
+        scan_queue._scan_processing_semaphore = scan_queue._ProcessWideAsyncSemaphore(
+            scan_queue.MAX_CONCURRENT_SCAN_PROCESSING
+        )
+
+    def tearDown(self):
+        scan_queue._scan_processing_semaphore = self.original_limiter
+
+    def _processing_patches(self, sessions):
+        def session_factory():
+            session = MagicMock()
+            sessions.append(session)
+            return session
+
+        def leased_items(_db, claim):
+            return [
+                SimpleNamespace(
+                    id=claim.item_id,
+                    user_id=1,
+                    job_id=10,
+                    image_path=f"10/{claim.item_id}.jpg",
+                    content_type="image/jpeg",
+                )
+            ]
+
+        image_path = MagicMock()
+        image_path.read_bytes.return_value = b"safe-jpeg"
+        return (
+            patch("database.SessionLocal", side_effect=session_factory),
+            patch("services.scan_queue._leased_items", side_effect=leased_items),
+            patch("services.scan_queue.resolve_scan_path", return_value=image_path),
+            patch("services.scan_queue.complete_claim", return_value=True),
+            patch("services.scan_queue.fail_claim", return_value=True),
+        )
+
+    async def test_processing_never_exceeds_three_concurrent_items(self):
+        active = 0
+        peak = 0
+        started = 0
+        first_wave_started = asyncio.Event()
+        release = asyncio.Event()
+        sessions = []
+
+        async def processor(_db, _user_id, _image_bytes, _content_type):
+            nonlocal active, peak, started
+            active += 1
+            started += 1
+            peak = max(peak, active)
+            if started == scan_queue.MAX_CONCURRENT_SCAN_PROCESSING:
+                first_wave_started.set()
+            try:
+                await release.wait()
+                return {"recognized": {}, "matches": []}
+            finally:
+                active -= 1
+
+        claims = [
+            ClaimedScanItem(item_id=item_id, lease_token=f"lease-{item_id}")
+            for item_id in range(1, 7)
+        ]
+        patches = self._processing_patches(sessions)
+        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+            tasks = [
+                asyncio.create_task(
+                    scan_queue.process_claimed_scan_item(claim, processor=processor)
+                )
+                for claim in claims
+            ]
+            await asyncio.wait_for(first_wave_started.wait(), timeout=1)
+            await asyncio.sleep(0.05)
+            self.assertEqual(started, scan_queue.MAX_CONCURRENT_SCAN_PROCESSING)
+            self.assertEqual(peak, scan_queue.MAX_CONCURRENT_SCAN_PROCESSING)
+            release.set()
+            await asyncio.gather(*tasks)
+
+        self.assertEqual(started, len(claims))
+        self.assertTrue(all(session.close.call_count == 1 for session in sessions))
+
+    async def test_cancelled_processing_releases_its_slot(self):
+        started_ids = []
+        first_wave_started = asyncio.Event()
+        replacement_started = asyncio.Event()
+        release = asyncio.Event()
+        sessions = []
+
+        async def processor(db, _user_id, _image_bytes, _content_type):
+            item_id = db._scan_item_id
+            started_ids.append(item_id)
+            if len(started_ids) == scan_queue.MAX_CONCURRENT_SCAN_PROCESSING:
+                first_wave_started.set()
+            if item_id == 4:
+                replacement_started.set()
+            await release.wait()
+            return {"recognized": {}, "matches": []}
+
+        patches = self._processing_patches(sessions)
+
+        def identified_session_factory():
+            session = MagicMock()
+            sessions.append(session)
+            session._scan_item_id = len(sessions)
+            return session
+
+        claims = [
+            ClaimedScanItem(item_id=item_id, lease_token=f"lease-{item_id}")
+            for item_id in range(1, 5)
+        ]
+        with (
+            patch("database.SessionLocal", side_effect=identified_session_factory),
+            patches[1],
+            patches[2],
+            patches[3],
+            patches[4],
+        ):
+            tasks = [
+                asyncio.create_task(
+                    scan_queue.process_claimed_scan_item(claim, processor=processor)
+                )
+                for claim in claims
+            ]
+            await asyncio.wait_for(first_wave_started.wait(), timeout=1)
+            tasks[0].cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await tasks[0]
+            await asyncio.wait_for(replacement_started.wait(), timeout=1)
+            release.set()
+            await asyncio.gather(*tasks[1:])
+
+        self.assertEqual(started_ids, [1, 2, 3, 4])
+        self.assertTrue(all(session.close.call_count == 1 for session in sessions))
+
+    async def test_failed_processing_releases_slots_for_waiting_items(self):
+        first_wave = 0
+        first_wave_started = asyncio.Event()
+        release_failures = asyncio.Event()
+        replacement_started = asyncio.Event()
+        sessions = []
+
+        async def processor(db, _user_id, _image_bytes, _content_type):
+            nonlocal first_wave
+            item_id = db._scan_item_id
+            if item_id <= scan_queue.MAX_CONCURRENT_SCAN_PROCESSING:
+                first_wave += 1
+                if first_wave == scan_queue.MAX_CONCURRENT_SCAN_PROCESSING:
+                    first_wave_started.set()
+                await release_failures.wait()
+                raise scan_queue.TransientScanError("provider unavailable")
+            replacement_started.set()
+            return {"recognized": {}, "matches": []}
+
+        def identified_session_factory():
+            session = MagicMock()
+            sessions.append(session)
+            session._scan_item_id = len(sessions)
+            return session
+
+        claims = [
+            ClaimedScanItem(item_id=item_id, lease_token=f"lease-{item_id}")
+            for item_id in range(1, 5)
+        ]
+        patches = self._processing_patches(sessions)
+        with (
+            patch("database.SessionLocal", side_effect=identified_session_factory),
+            patches[1],
+            patches[2],
+            patches[3] as complete,
+            patches[4] as fail,
+        ):
+            tasks = [
+                asyncio.create_task(
+                    scan_queue.process_claimed_scan_item(claim, processor=processor)
+                )
+                for claim in claims
+            ]
+            await asyncio.wait_for(first_wave_started.wait(), timeout=1)
+            self.assertFalse(replacement_started.is_set())
+            release_failures.set()
+            await asyncio.wait_for(replacement_started.wait(), timeout=1)
+            await asyncio.gather(*tasks)
+
+        self.assertEqual(fail.call_count, scan_queue.MAX_CONCURRENT_SCAN_PROCESSING)
+        self.assertEqual(complete.call_count, 1)
+        self.assertTrue(all(session.close.call_count == 1 for session in sessions))
+
+    async def test_limiter_is_safe_across_scheduler_and_web_event_loops(self):
+        limiter = scan_queue._ProcessWideAsyncSemaphore(1)
+        first_entered = threading.Event()
+        release_first = threading.Event()
+        second_entered = asyncio.Event()
+
+        def run_first_loop():
+            async def hold_slot():
+                async with limiter:
+                    first_entered.set()
+                    while not release_first.is_set():
+                        await asyncio.sleep(0.01)
+
+            asyncio.run(hold_slot())
+
+        thread = threading.Thread(target=run_first_loop, daemon=True)
+        thread.start()
+        try:
+            self.assertTrue(first_entered.wait(timeout=1))
+
+            async def use_second_loop():
+                async with limiter:
+                    second_entered.set()
+
+            task = asyncio.create_task(use_second_loop())
+            await asyncio.sleep(0.05)
+            self.assertFalse(second_entered.is_set())
+            release_first.set()
+            await asyncio.wait_for(task, timeout=1)
+        finally:
+            release_first.set()
+            await asyncio.to_thread(thread.join, 1)
+
+        self.assertTrue(second_entered.is_set())
+        self.assertFalse(thread.is_alive())
+
+
+@unittest.skipUnless(DEPS_AVAILABLE, "SQLAlchemy is not installed")
 class CompositeProcessorTests(unittest.IsolatedAsyncioTestCase):
     async def test_only_confident_metadata_matches_are_accepted_from_composite(self):
         from PIL import Image
@@ -582,6 +881,50 @@ class CompositeProcessorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             [call.kwargs["photo_bytes"] for call in matcher.await_args_list],
             [source_images[0], source_images[2], source_images[3]],
+        )
+
+    async def test_composite_uses_the_owners_provider_specific_timeout(self):
+        user = User(id=7, username="owner", hashed_password="x", is_active=True)
+        db = MagicMock()
+        db.get.return_value = user
+        provider = MagicMock()
+        provider.name = "openai"
+        provider.model.return_value = "vision-model"
+        provider.credential.return_value = ""
+        provider.requires_credential.return_value = False
+        provider.rate_limit_scope.return_value = unittest.mock.MagicMock(
+            __enter__=MagicMock(return_value=None),
+            __exit__=MagicMock(return_value=False),
+        )
+        recognize = AsyncMock(return_value={})
+
+        with patch(
+            "services.scan_providers.get_provider", return_value=provider
+        ), patch(
+            "services.scan_providers.require_scanner_capability_mode",
+            return_value="full",
+        ), patch(
+            "services.scan_providers.resolve_scanner_request_timeout",
+            return_value=120,
+        ) as resolver, patch(
+            "services.scan_trace.create_scan_trace"
+        ) as create_trace, patch(
+            "services.card_composite.build_composite", return_value=b"composite"
+        ), patch(
+            "api.recognize.recognize_composite_card_info", new=recognize
+        ):
+            create_trace.return_value = MagicMock()
+            result = await scan_queue.default_composite_processor(
+                db,
+                user.id,
+                [b"first", b"second"],
+                ["image/jpeg", "image/jpeg"],
+            )
+
+        self.assertEqual(result, [None, None])
+        resolver.assert_called_once_with(db, user.id, "openai")
+        self.assertEqual(
+            recognize.await_args.kwargs["request_timeout_seconds"], 120
         )
 
 

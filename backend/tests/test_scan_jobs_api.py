@@ -160,6 +160,50 @@ class ScanJobsApiTests(unittest.TestCase):
         item = self.db.query(ScanJobItem).filter(ScanJobItem.job_id == created["id"]).one()
         self.assertFalse(item.batch_mode)
 
+    def test_degraded_capability_forces_every_photo_individual(self):
+        # A composite needs the same multi-image capability visual
+        # verification does. A provider proven only single-image-capable
+        # cannot read several cards out of one grid reliably either, so the
+        # server must not composite for it even when the client asks to.
+        model = "vision-model"
+        env = {
+            "OPENAI_SCANNER_ENABLED": "true",
+            "OPENAI_MODEL": model,
+            "OPENAI_BASE_URL": "http://endpoint:11434/v1",
+            "OPENAI_API_KEY_REQUIRED": "false",
+        }
+        with patch.dict(os.environ, env):
+            proof = scanner_capability_proof("openai", model, "degraded")
+        self.db.add_all([
+            UserSetting(user_id=self.user.id, key="scanner_provider", value="openai"),
+            UserSetting(user_id=self.user.id, key="scanner_model_openai", value=model),
+            UserSetting(
+                user_id=self.user.id,
+                key="scanner_capability_openai",
+                value=proof,
+            ),
+        ])
+        self.db.commit()
+
+        with patch.dict(os.environ, env), patch(
+            "api.scan_jobs.drain_scan_queue", new=AsyncMock(return_value=0)
+        ):
+            response = self.client.post(
+                "/api/cards/recognize/jobs",
+                # Client claims nothing is individual — the server must
+                # override this, not trust it.
+                data={"individual_positions": "[]"},
+                files=[
+                    ("files", ("first.jpg", _jpeg_bytes(), "image/jpeg")),
+                    ("files", ("second.jpg", _jpeg_bytes(), "image/jpeg")),
+                    ("files", ("third.jpg", _jpeg_bytes(), "image/jpeg")),
+                ],
+            )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        items = self.db.query(ScanJobItem).order_by(ScanJobItem.position).all()
+        self.assertEqual([item.batch_mode for item in items], [False, False, False])
+
     def test_endpoint_change_blocks_enqueue_before_upload_is_persisted(self):
         model = "vision-model"
         first = {
