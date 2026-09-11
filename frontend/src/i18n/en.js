@@ -1275,6 +1275,15 @@ const en = {
     scanIndividually: 'Scan individually',
     scanAllIndividually: 'Scan all individually',
     useAutomaticGrouping: 'Use automatic grouping',
+    previousMatch: 'Previous match',
+    nextMatch: 'Next match',
+    acceptMatch: 'Accept match',
+    arrowKeyHint: 'Arrow keys to browse',
+    zoomHint: 'Scroll or click to zoom',
+    expandCard: 'Expand photo',
+    showDetails: 'Show details',
+    hideDetails: 'Hide details',
+    printedTotalMismatch: "Printed set total doesn't match this photo",
   },
 
   // Language filter / card language

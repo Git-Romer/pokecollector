@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 from unittest.mock import ANY, AsyncMock, Mock, patch
 
@@ -11,6 +12,7 @@ try:
         MAX_GEMINI_RETRY_SECONDS,
         PHASH_CANDIDATE_LIMIT,
         RECOGNIZE_PROMPT,
+        _apply_printed_total_mismatch,
         _candidate_rank_key,
         _download_candidate_images,
         _metadata_decision,
@@ -302,6 +304,7 @@ class SearchAndRankCandidatesLocalDbTests(unittest.IsolatedAsyncioTestCase):
             number="118",
             rarity="Common",
             images_small="https://assets.tcgdex.net/en/base/base4/118/low.webp",
+            images_large="https://assets.tcgdex.net/en/base/base4/118/high.webp",
             lang="en",
             is_custom=False,
         ))
@@ -319,6 +322,9 @@ class SearchAndRankCandidatesLocalDbTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(candidate["number"], "118")
         self.assertEqual(
             candidate["image"], "https://assets.tcgdex.net/en/base/base4/118/low.webp"
+        )
+        self.assertEqual(
+            candidate["image_hd"], "https://assets.tcgdex.net/en/base/base4/118/high.webp"
         )
         self.assertEqual(candidate["rarity"], "Common")
         self.assertEqual(candidate["lang"], "en")
@@ -1314,6 +1320,19 @@ class DeterministicMatchingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(_candidate_rank_key(recognized, malformed)[2], 1)
         self.assertEqual(_candidate_rank_key(recognized, contradiction)[2], 2)
 
+    def test_printed_total_mismatch_is_exposed_only_for_a_contradiction(self):
+        recognized = normalize_recognized_card_info({"number_total": "100"})
+        matching = {"printed_total": 100}
+        unknown = {"printed_total": None}
+        contradiction = {"printed_total": 99}
+        candidates = [matching, unknown, contradiction]
+
+        _apply_printed_total_mismatch(recognized, candidates)
+
+        self.assertFalse(matching["printed_total_mismatch"])
+        self.assertFalse(unknown["printed_total_mismatch"])
+        self.assertTrue(contradiction["printed_total_mismatch"])
+
     def test_artist_prefix_and_hp_can_resolve_numberless_card(self):
         recognized = normalize_recognized_card_info({
             "artist": "Illus. Kagemaru  Himeno",
@@ -1527,15 +1546,43 @@ class DeterministicMatchingTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_shared_matcher_is_used_without_visual_call_for_composites(self):
         recognized = {"name": "Pikachu", "number_local": "25"}
-        candidates = [{"id": "right", "number": "25"}, {"id": "wrong", "number": "26"}]
+        candidates = [
+            {"id": "right", "number": "25", "image": "https://assets.tcgdex.net/en/x/1/25/low.webp"},
+            {"id": "wrong", "number": "26", "image": "https://assets.tcgdex.net/en/x/1/26/low.webp"},
+        ]
+        prewarm = AsyncMock(return_value=0)
         with patch(
             "api.recognize._search_and_rank_candidates",
             new=AsyncMock(return_value=(candidates, 1)),
-        ):
+        ), patch("api.recognize.prewarm_candidate_images", new=prewarm):
             result = await match_card_info(object(), recognized)
         self.assertTrue(result["_identity_confident"])
         self.assertEqual(result["_identity_decision"], "number_unique")
         self.assertEqual(result["matches"][0]["id"], "right")
+        prewarm.assert_not_awaited()
+
+    async def test_shared_matcher_prewarms_only_for_persisted_queue_reviews(self):
+        recognized = {"name": "Pikachu", "number_local": "25"}
+        candidates = [
+            {"id": "first", "number": "25", "image": "https://assets.tcgdex.net/en/x/1/25/low.webp"},
+            {"id": "second", "number": "26", "image": "https://assets.tcgdex.net/en/x/1/26/low.webp"},
+        ]
+        prewarm = AsyncMock(return_value=2)
+        with patch(
+            "api.recognize._search_and_rank_candidates",
+            new=AsyncMock(return_value=(candidates, 1)),
+        ), patch("api.recognize.prewarm_candidate_images", new=prewarm):
+            immediate = await match_card_info(object(), recognized)
+            queued = await match_card_info(
+                object(),
+                recognized,
+                prewarm_candidates=True,
+            )
+            await asyncio.sleep(0)
+
+        self.assertTrue(immediate["_identity_confident"])
+        self.assertTrue(queued["_identity_confident"])
+        prewarm.assert_awaited_once_with(queued["matches"])
 
     async def test_shared_matcher_returns_late_match_without_losing_baseline(self):
         recognized = {"name": "Pikachu", "number_local": "63"}
@@ -1727,7 +1774,6 @@ class RecognizeApiTests(unittest.IsolatedAsyncioTestCase):
         penalize.assert_called_once_with("key", seconds=21.0, reason="daily_quota")
         self.assertEqual(ctx.exception.retry_after_seconds, 21)
         self.assertEqual(ctx.exception.retry_reason, "daily_quota")
-
 
 if __name__ == "__main__":
     unittest.main()

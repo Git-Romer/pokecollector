@@ -41,8 +41,9 @@ FastAPI app entry point: `backend/main.py`.
 | POST | `/api/cards/recognize` | Card recognition through the user's configured vision provider |
 | POST | `/api/cards/recognize/jobs` | Sanitize and enqueue up to 50 persistent scan photos |
 | GET | `/api/cards/recognize/jobs` | Current user's active/actionable scan jobs |
-| GET | `/api/cards/recognize/jobs/{job_id}` | User-scoped scan job and review items |
+| GET | `/api/cards/recognize/jobs/{job_id}` | User-scoped scan job and review items, resolved items included (collapsed row) |
 | GET | `/api/cards/recognize/jobs/{job_id}/items/{item_id}/image` | Private sanitized review photo |
+| GET | `/api/cards/recognize/jobs/{job_id}/items/{item_id}/candidates/{index}/image` | A candidate's full-resolution artwork, served from the shared image cache |
 | POST | `/api/cards/recognize/jobs/{job_id}/items/{item_id}/resolve` | Confirm/dismiss an item and delete its queued photo |
 | POST | `/api/cards/recognize/jobs/{job_id}/items/{item_id}/retry` | Retry one reviewable item individually |
 | DELETE | `/api/cards/recognize/jobs/{job_id}` | Delete a job and its queued photos |
@@ -306,7 +307,7 @@ Environment controls:
 4. Candidates are found by querying the locally synced `cards` table and ranked deterministically by local number, language, printed total, set code, regulation mark, artist, and HP. Missing evidence is neutral and contradictions are negative. Broad substring rows from either the local catalogue or live TCGdex are retained only when their complete names match after accent, case, and whitespace normalization, so an unrelated containing name or different card suffix cannot become a confident number match. A (language, name) search pair falls back to one live TCGdex call (`_api_search_fallback` in `backend/api/recognize.py`) when it has no name-compatible local rows, or when a collector number was recognized but none of those rows has that number. The second condition matters when a newly released printing reuses an existing card name before the local sync reaches it. The fallback result is used for that one scan only, never persisted to `cards`; a network failure there degrades to no fallback candidates for that pair. Scan traces tag each search-pair result's `source` as `local` or `api_fallback` so this can be measured after the fact.
 5. If metadata is inconclusive, conservative pHash can accept a close, clearly separated visual winner without another provider call. It never overrides known contradictions.
 6. Individual scans may use the same provider's visual comparison when pHash abstains; composite scans fall back to individual recognition instead.
-7. Queue results remain reviewable after restarts. Confirming/dismissing an item deletes its queued photo; unreviewed jobs expire after 14 days.
+7. Queue results remain reviewable after restarts. Confirming and adding a candidate uses one row-locked database transaction so concurrent tabs cannot increment the collection twice; confirming/dismissing then deletes the queued photo. Unreviewed jobs expire after 14 days.
 
 Provider error handling:
 
@@ -327,7 +328,8 @@ Additional matching behavior:
 
 - Name suffixes like `EX`, `GX`, `V`, `VMAX`, `VSTAR`, `TAG TEAM`, `BREAK`, and `LV.X` are stripped before search
 - Search may fall back from detected card language to English
-- Result payload includes recognized metadata and candidate matches
+- Result payload includes recognized metadata and candidate matches, each flagged with `printed_total_mismatch` when its printed set total contradicts the recognized card (the same signal the ranker already uses to demote it)
+- `backend/services/scan_candidate_images.py` caches each unresolved review's full-resolution candidate artwork in the shared `ImageCache` table (see `backend/api/images.py`); `match_card_info` fires a bounded, non-blocking prewarm of the top-ranked candidates so the review UI's first look is usually a local cache read. Fetches accept only image responses from the TCGdex HTTPS CDN, and this feature's cache entries are capped.
 
 ### Scanner diagnostics
 

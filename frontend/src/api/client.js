@@ -138,6 +138,9 @@ export const resolveScanJobItem = (jobId, itemId, cardId = null) =>
   api.post(`/cards/recognize/jobs/${jobId}/items/${itemId}/resolve`, {
     card_id: cardId,
   }).then(r => r.data)
+export const resolveAndAddScanJobItem = (jobId, itemId, data) =>
+  api.post(`/cards/recognize/jobs/${jobId}/items/${itemId}/resolve-and-add`, data)
+    .then(r => r.data)
 export const retryScanJobItem = (jobId, itemId) =>
   api.post(`/cards/recognize/jobs/${jobId}/items/${itemId}/retry`).then(r => r.data)
 export const deleteScanJob = jobId =>
@@ -150,6 +153,12 @@ export const fetchScanJobItemImage = (jobId, itemId) =>
 export const fetchScanJobItemImageBlob = (jobId, itemId) =>
   api.get(`/cards/recognize/jobs/${jobId}/items/${itemId}/image`, { responseType: 'blob' })
     .then(r => r.data)
+// Candidate artwork is served from our own cache and, like the photo above,
+// needs the bearer token — an <img src> cannot carry one — so this is fetched
+// as a blob rather than pointed at directly.
+export const fetchScanCandidateImage = (jobId, itemId, index) =>
+  api.get(`/cards/recognize/jobs/${jobId}/items/${itemId}/candidates/${index}/image`, { responseType: 'blob' })
+    .then(r => URL.createObjectURL(r.data))
 
 // Custom card migration
 export const getCustomMatches = () => api.get('/cards/custom/matches')

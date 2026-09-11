@@ -18,6 +18,7 @@ from services.gemini_rate_limit import (
     penalize_gemini_key,
     record_gemini_success,
 )
+from services.scan_candidate_images import prewarm_candidate_images
 from services.scan_storage import MAX_FILE_BYTES, ScanUploadError, read_limited_upload, sanitize_image_bytes
 from services.scan_trace import ScanTrace, create_scan_trace
 from services.text_search import accent_insensitive_contains, strip_diacritics
@@ -43,6 +44,10 @@ from models import Card, Setting, UserSetting, User, Set
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# The event loop only keeps weak references to fire-and-forget tasks. Retain
+# candidate prewarms until completion so they cannot disappear mid-download.
+_candidate_prewarm_tasks: set[asyncio.Task] = set()
 
 GEMINI_TRANSIENT_STATUS_CODES = {408, 425, 500, 502, 503, 504}
 DEFAULT_GEMINI_MODEL = "gemini-flash-latest"
@@ -218,6 +223,20 @@ def _printed_total_signal(recognized_total, candidate_total) -> int:
     if normalized is None or candidate_normalized is None:
         return 1
     return 0 if normalized == candidate_normalized else 2
+
+
+def _apply_printed_total_mismatch(card_info: dict, candidates: list[dict]) -> None:
+    """Surface the ranker's printed-total contradiction as a plain boolean.
+
+    `_candidate_rank_key` already scores this (see `_printed_total_signal`
+    above) to rank a contradicting printing lower, but that score never
+    reaches the public candidate dict. The review grid needs it as a visible
+    badge, not just a silent ranking effect, so mark each candidate in place.
+    """
+    for candidate in candidates:
+        candidate["printed_total_mismatch"] = (
+            _printed_total_signal(card_info.get("number_total"), candidate.get("printed_total")) == 2
+        )
 
 
 _ARTIST_PREFIX = re.compile(
@@ -905,6 +924,7 @@ async def _api_search_fallback(
                 "card_type": card.get("category") or card.get("supertype"),
                 "number": card.get("localId"),
                 "image": f"{card.get('image')}/low.webp" if card.get("image") else None,
+                "image_hd": f"{card.get('image')}/high.webp" if card.get("image") else None,
                 "rarity": card.get("rarity"),
             }
             for card in api_cards
@@ -999,6 +1019,7 @@ async def _search_and_rank_candidates(
                     Card.supertype,
                     Card.number,
                     Card.images_small,
+                    Card.images_large,
                     Card.rarity,
                 ).order_by(Card.id)
                 for row in projected_rows.yield_per(200):
@@ -1047,6 +1068,7 @@ async def _search_and_rank_candidates(
                 "card_type": row.supertype,
                 "number": row.number,
                 "image": row.images_small,
+                "image_hd": row.images_large,
                 "rarity": row.rarity,
             }
             for row in rows
@@ -1110,6 +1132,7 @@ async def _search_and_rank_candidates(
                 "set": None,
                 "number": card.get("number"),
                 "image": card.get("image"),
+                "image_hd": card.get("image_hd"),
                 "rarity": card.get("rarity"),
                 "lang": search_language,
                 "_lang": search_language,
@@ -1149,6 +1172,7 @@ async def _search_and_rank_candidates(
 
     await _fill_candidate_details(db, deduped, card_info)
     deduped.sort(key=lambda card: _candidate_rank_key(card_info, card))
+    _apply_printed_total_mismatch(card_info, deduped)
     number_match_count = sum(
         1
         for card in deduped
@@ -1176,6 +1200,7 @@ async def match_card_info(
     trace: ScanTrace | None = None,
     provider: ScanProvider | None = None,
     request_timeout_seconds: int = DEFAULT_SCANNER_REQUEST_TIMEOUT_SECONDS,
+    prewarm_candidates: bool = False,
 ) -> dict:
     """Shared deterministic matcher for both individual and composite scans.
 
@@ -1302,6 +1327,21 @@ async def match_card_info(
         {key: value for key, value in card.items() if key != "_number_extra"}
         for card in retain_ranked_candidates(candidates)
     ]
+
+    # Warm the review's first clicks while the reviewer is still working
+    # through the rest of the batch. Fired rather than awaited, and against
+    # its own database session (see prewarm_candidate_images), so a slow or
+    # failing CDN fetch here can never add latency to recognition itself.
+    if public_matches and prewarm_candidates:
+        try:
+            task = asyncio.create_task(prewarm_candidate_images(public_matches))
+            _candidate_prewarm_tasks.add(task)
+            task.add_done_callback(_candidate_prewarm_tasks.discard)
+        except RuntimeError:
+            # No running event loop (e.g. certain sync test harnesses) — a
+            # cold cache on first review is the only consequence.
+            pass
+
     if trace:
         selected = (
             str(candidates[0].get("tcg_card_id") or "")
@@ -1325,6 +1365,7 @@ async def recognize_sanitized_card(
     content_type: str,
     *,
     trace: ScanTrace | None = None,
+    prewarm_candidates: bool = False,
 ) -> dict:
     """Recognize one already-sanitized image for direct and queued scans."""
     provider = get_provider(db, user_id)
@@ -1389,6 +1430,7 @@ async def recognize_sanitized_card(
             trace=trace,
             provider=provider,
             request_timeout_seconds=request_timeout_seconds,
+            prewarm_candidates=prewarm_candidates,
         )
     except HTTPException as exc:
         if trace:
@@ -1531,6 +1573,7 @@ async def match_composite_card_info(
     *,
     photo_bytes: bytes | None = None,
     trace: ScanTrace | None = None,
+    prewarm_candidates: bool = False,
 ) -> dict:
     """Use local pHash before an uncertain composite falls back individually."""
     return await match_card_info(
@@ -1539,4 +1582,5 @@ async def match_composite_card_info(
         allow_visual_verification=False,
         photo_bytes=photo_bytes,
         trace=trace,
+        prewarm_candidates=prewarm_candidates,
     )
