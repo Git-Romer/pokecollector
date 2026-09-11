@@ -16,7 +16,7 @@ try:
     from api.scan_jobs import router
     from api.auth import get_current_user
     from database import Base, get_db
-    from models import ImageCache, ScanJob, ScanJobItem, User, UserSetting
+    from models import Card, CollectionItem, ImageCache, ScanJob, ScanJobItem, User, UserSetting
     from services.scan_candidate_images import cache_key_for
     from services.scan_providers import scanner_capability_proof
     from services.scan_storage import resolve_scan_path
@@ -292,6 +292,67 @@ class ScanJobsApiTests(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 200, response.text)
+        label.assert_called_once_with(self.user.id, created["id"], item.id, "card-1")
+
+    def test_resolve_rejects_an_already_handled_item(self):
+        created = self._enqueue()
+        item = self.db.query(ScanJobItem).filter(ScanJobItem.job_id == created["id"]).one()
+        item.status = "done"
+        item.resolved = True
+        item.matches = [{"id": "card-1_en", "tcg_card_id": "card-1"}]
+        self.db.commit()
+
+        with patch("services.scan_trace.record_ground_truth") as label:
+            response = self.client.post(
+                f"/api/cards/recognize/jobs/{created['id']}/items/{item.id}/resolve",
+                json={"card_id": "card-1"},
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("already", response.json()["detail"])
+        label.assert_not_called()
+
+    def test_atomic_add_and_resolve_cannot_increment_twice(self):
+        created = self._enqueue()
+        item = self.db.query(ScanJobItem).filter(ScanJobItem.job_id == created["id"]).one()
+        stored = resolve_scan_path(item.image_path)
+        item.status = "done"
+        item.matches = [{"id": "card-1_en", "tcg_card_id": "card-1"}]
+        self.db.add(Card(
+            id="card-1_en",
+            tcg_card_id="card-1",
+            name="Pikachu",
+            number="1",
+            lang="en",
+            is_custom=False,
+        ))
+        self.db.commit()
+        payload = {
+            "confirmed_card_id": "card-1",
+            "card_id": "card-1_en",
+            "quantity": 2,
+            "condition": "NM",
+            "variant": "Normal",
+            "lang": "en",
+            "purchase_price": None,
+        }
+
+        with patch("services.scan_trace.record_ground_truth", return_value=1) as label:
+            first = self.client.post(
+                f"/api/cards/recognize/jobs/{created['id']}/items/{item.id}/resolve-and-add",
+                json=payload,
+            )
+            duplicate = self.client.post(
+                f"/api/cards/recognize/jobs/{created['id']}/items/{item.id}/resolve-and-add",
+                json=payload,
+            )
+
+        self.assertEqual(first.status_code, 200, first.text)
+        self.assertEqual(first.json()["collection_item"]["quantity"], 2)
+        self.assertTrue(first.json()["item"]["resolved"])
+        self.assertEqual(duplicate.status_code, 409, duplicate.text)
+        self.assertEqual(self.db.query(CollectionItem).one().quantity, 2)
+        self.assertFalse(stored.exists())
         label.assert_called_once_with(self.user.id, created["id"], item.id, "card-1")
 
     def test_resolve_rejects_ground_truth_outside_the_returned_candidates(self):

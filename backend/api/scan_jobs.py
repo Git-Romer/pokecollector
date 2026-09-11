@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import json
 from typing import List
 
@@ -13,6 +14,7 @@ from sqlalchemy.orm import Session
 from api.auth import get_current_user
 from database import get_db
 from models import ScanJob, ScanJobItem, User
+from schemas import CollectionItemCreate, CollectionItemResponse
 from services.scan_candidate_images import fetch_and_cache_candidate_image
 from services.scan_queue import (
     drain_scan_queue,
@@ -23,6 +25,7 @@ from services.scan_queue import (
 from services.scan_storage import (
     ScanUploadError,
     create_scan_job,
+    delete_scan_image,
     delete_job_directory,
     resolve_scan_path,
 )
@@ -32,6 +35,15 @@ router = APIRouter()
 
 class ResolveScanItemRequest(BaseModel):
     card_id: str | None = None
+
+
+class ResolveAndAddScanItemRequest(CollectionItemCreate):
+    confirmed_card_id: str
+
+
+class ResolveAndAddScanItemResponse(BaseModel):
+    item: dict
+    collection_item: CollectionItemResponse
 
 
 def _get_own_job(db: Session, job_id: int, current_user: User) -> ScanJob:
@@ -50,13 +62,20 @@ def _get_own_item(
     job_id: int,
     item_id: int,
     current_user: User,
+    *,
+    for_update: bool = False,
 ) -> ScanJobItem:
     _get_own_job(db, job_id, current_user)
-    item = (
+    query = (
         db.query(ScanJobItem)
         .filter(ScanJobItem.id == item_id, ScanJobItem.job_id == job_id)
-        .first()
     )
+    if for_update:
+        # A caller may have loaded this row for an authorization/integrity
+        # precheck before waiting on the lock. Force the database's current
+        # values back into SQLAlchemy's identity-map instance after the wait.
+        query = query.with_for_update().populate_existing()
+    item = query.first()
     if item is None:
         raise HTTPException(status_code=404, detail="Scan item not found.")
     return item
@@ -262,7 +281,9 @@ def resolve_scan_job_item(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    item = _get_own_item(db, job_id, item_id, current_user)
+    item = _get_own_item(db, job_id, item_id, current_user, for_update=True)
+    if item.resolved:
+        raise HTTPException(status_code=409, detail="This scan has already been handled.")
     if item.status not in {"done", "failed"}:
         raise HTTPException(status_code=409, detail="This scan is still being processed.")
     card_id = str((data.card_id if data else "") or "").strip() or None
@@ -278,6 +299,87 @@ def resolve_scan_job_item(
 
         record_ground_truth(current_user.id, job_id, item_id, card_id)
     return _item_payload(resolve_scan_item(db, item))
+
+
+@router.post(
+    "/recognize/jobs/{job_id}/items/{item_id}/resolve-and-add",
+    response_model=ResolveAndAddScanItemResponse,
+)
+def resolve_and_add_scan_job_item(
+    job_id: int,
+    item_id: int,
+    data: ResolveAndAddScanItemRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Atomically add a reviewed card and mark its scan handled.
+
+    Locking the scan row makes retries and concurrent tabs idempotent: only
+    the first request can increment the collection quantity.
+    """
+    from api.collection import (
+        _annotate_collection_item,
+        _collection_item_language,
+        _upsert_collection_item,
+        ensure_card_exists,
+    )
+    from services import pokemon_api
+    from services.scan_trace import record_ground_truth
+
+    collection_data = CollectionItemCreate(**data.model_dump(exclude={"confirmed_card_id"}))
+    confirmed_card_id = str(data.confirmed_card_id or "").strip()
+    submitted_tcg_card_id, _ = pokemon_api.strip_lang_suffix(collection_data.card_id)
+
+    def validate_review(row: ScanJobItem) -> None:
+        if row.resolved:
+            raise HTTPException(status_code=409, detail="This scan has already been handled.")
+        if row.status != "done":
+            raise HTTPException(status_code=409, detail="This scan is not ready to add.")
+        allowed_ids = {
+            str(match.get("tcg_card_id") or "")
+            for match in (row.matches or [])
+            if isinstance(match, dict)
+        }
+        if not confirmed_card_id or confirmed_card_id not in allowed_ids:
+            raise HTTPException(status_code=422, detail="Confirmed card is not a scan candidate.")
+        if submitted_tcg_card_id != confirmed_card_id:
+            raise HTTPException(status_code=422, detail="Collection card does not match the confirmed candidate.")
+
+    # Check authorization and request integrity before a missing catalogue
+    # card is fetched or written.
+    validate_review(_get_own_item(db, job_id, item_id, current_user))
+    # A candidate normally already exists locally. If it does not, perform
+    # the potentially committing catalogue import before taking the scan-row
+    # lock; no commit may occur between that lock and the atomic final commit.
+    if not collection_data.card_id.startswith("custom-"):
+        item_lang = _collection_item_language(collection_data.card_id, collection_data.lang)
+        tcg_card_id, _ = pokemon_api.strip_lang_suffix(collection_data.card_id)
+        ensure_card_exists(db, f"{tcg_card_id}_{item_lang}", lang=item_lang)
+
+    item = _get_own_item(db, job_id, item_id, current_user, for_update=True)
+    # Revalidate under the row lock: another tab may have resolved it between
+    # the harmless precheck and this transaction.
+    validate_review(item)
+
+    _status, collection_item = _upsert_collection_item(
+        db,
+        current_user,
+        collection_data,
+        ensure_catalogue_card=False,
+    )
+    relative_path = item.image_path
+    item.resolved = True
+    item.image_path = None
+    item.updated_at = datetime.datetime.utcnow()
+    record_ground_truth(current_user.id, job_id, item_id, confirmed_card_id)
+    db.commit()
+    db.refresh(item)
+    db.refresh(collection_item)
+    delete_scan_image(relative_path)
+    return {
+        "item": _item_payload(item),
+        "collection_item": _annotate_collection_item(db, current_user, collection_item),
+    }
 
 
 @router.post("/recognize/jobs/{job_id}/items/{item_id}/retry")

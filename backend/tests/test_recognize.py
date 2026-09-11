@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 from unittest.mock import ANY, AsyncMock, Mock, patch
 
@@ -303,6 +304,7 @@ class SearchAndRankCandidatesLocalDbTests(unittest.IsolatedAsyncioTestCase):
             number="118",
             rarity="Common",
             images_small="https://assets.tcgdex.net/en/base/base4/118/low.webp",
+            images_large="https://assets.tcgdex.net/en/base/base4/118/high.webp",
             lang="en",
             is_custom=False,
         ))
@@ -320,6 +322,9 @@ class SearchAndRankCandidatesLocalDbTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(candidate["number"], "118")
         self.assertEqual(
             candidate["image"], "https://assets.tcgdex.net/en/base/base4/118/low.webp"
+        )
+        self.assertEqual(
+            candidate["image_hd"], "https://assets.tcgdex.net/en/base/base4/118/high.webp"
         )
         self.assertEqual(candidate["rarity"], "Common")
         self.assertEqual(candidate["lang"], "en")
@@ -1541,15 +1546,43 @@ class DeterministicMatchingTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_shared_matcher_is_used_without_visual_call_for_composites(self):
         recognized = {"name": "Pikachu", "number_local": "25"}
-        candidates = [{"id": "right", "number": "25"}, {"id": "wrong", "number": "26"}]
+        candidates = [
+            {"id": "right", "number": "25", "image": "https://assets.tcgdex.net/en/x/1/25/low.webp"},
+            {"id": "wrong", "number": "26", "image": "https://assets.tcgdex.net/en/x/1/26/low.webp"},
+        ]
+        prewarm = AsyncMock(return_value=0)
         with patch(
             "api.recognize._search_and_rank_candidates",
             new=AsyncMock(return_value=(candidates, 1)),
-        ):
+        ), patch("api.recognize.prewarm_candidate_images", new=prewarm):
             result = await match_card_info(object(), recognized)
         self.assertTrue(result["_identity_confident"])
         self.assertEqual(result["_identity_decision"], "number_unique")
         self.assertEqual(result["matches"][0]["id"], "right")
+        prewarm.assert_not_awaited()
+
+    async def test_shared_matcher_prewarms_only_for_persisted_queue_reviews(self):
+        recognized = {"name": "Pikachu", "number_local": "25"}
+        candidates = [
+            {"id": "first", "number": "25", "image": "https://assets.tcgdex.net/en/x/1/25/low.webp"},
+            {"id": "second", "number": "26", "image": "https://assets.tcgdex.net/en/x/1/26/low.webp"},
+        ]
+        prewarm = AsyncMock(return_value=2)
+        with patch(
+            "api.recognize._search_and_rank_candidates",
+            new=AsyncMock(return_value=(candidates, 1)),
+        ), patch("api.recognize.prewarm_candidate_images", new=prewarm):
+            immediate = await match_card_info(object(), recognized)
+            queued = await match_card_info(
+                object(),
+                recognized,
+                prewarm_candidates=True,
+            )
+            await asyncio.sleep(0)
+
+        self.assertTrue(immediate["_identity_confident"])
+        self.assertTrue(queued["_identity_confident"])
+        prewarm.assert_awaited_once_with(queued["matches"])
 
     async def test_shared_matcher_returns_late_match_without_losing_baseline(self):
         recognized = {"name": "Pikachu", "number_local": "63"}
@@ -1741,53 +1774,6 @@ class RecognizeApiTests(unittest.IsolatedAsyncioTestCase):
         penalize.assert_called_once_with("key", seconds=21.0, reason="daily_quota")
         self.assertEqual(ctx.exception.retry_after_seconds, 21)
         self.assertEqual(ctx.exception.retry_reason, "daily_quota")
-
-    async def test_candidates_carry_a_high_res_image_url(self):
-        # The zoom modal and the candidate-image cache endpoint both already
-        # prefer image_hd over the low-res thumbnail -- it just never got
-        # populated, so every candidate silently fell back to the thumbnail
-        # even when zoomed. /high.webp is the same TCGdex CDN sibling path
-        # as the /low.webp already used for the thumbnail.
-        class FakeResponse:
-            status_code = 200
-
-            def json(self):
-                return [{
-                    # No "-" in the id: the set-enrichment step below keys off
-                    # tcg_card_id containing one, and this test isn't
-                    # exercising that path -- it would otherwise need a real
-                    # DB session just to reach the image_hd assertion.
-                    "id": "swshalakazam",
-                    "name": "Alakazam",
-                    "image": "https://assets.tcgdex.net/en/base/base1/1",
-                    "rarity": "Rare Holo",
-                }]
-
-        class FakeClient:
-            async def __aenter__(self):
-                return self
-
-            async def __aexit__(self, *args):
-                return False
-
-            async def get(self, *args, **kwargs):
-                return FakeResponse()
-
-        with patch("api.recognize.httpx.AsyncClient", return_value=FakeClient()):
-            candidates, _ = await _search_and_rank_candidates(
-                None, {"name": "Alakazam", "language": "en"},
-            )
-
-        self.assertEqual(len(candidates), 1)
-        self.assertEqual(
-            candidates[0]["image_hd"],
-            "https://assets.tcgdex.net/en/base/base1/1/high.webp",
-        )
-        self.assertEqual(
-            candidates[0]["image"],
-            "https://assets.tcgdex.net/en/base/base1/1/low.webp",
-        )
-
 
 if __name__ == "__main__":
     unittest.main()

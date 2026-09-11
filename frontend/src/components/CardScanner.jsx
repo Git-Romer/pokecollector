@@ -16,6 +16,7 @@ import { CardDisplay } from './card-system'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { isSupportedScannerImage, SCANNER_IMAGE_ACCEPT } from '../utils/scannerImages'
 import { hasCatalogueImage } from '../utils/imageUrl'
+import { useDialogBehavior } from './ui/dialogBehavior'
 
 export async function attachScanFallbackPhoto({ created, match, getPhoto, uploadPhoto = uploadCollectionItemPhoto }) {
   const createdCard = created?.card
@@ -39,7 +40,15 @@ export async function attachScanFallbackPhoto({ created, match, getPhoto, upload
 // collection item exists, and only matters for cards TCGdex has no scan of —
 // and only when the matched card has no catalogue artwork and no saved fallback.
 // A failed photo attach must never block adding the card itself.
-export function ScanAddModal({ match, defaultLang, getPhoto, onClose, onAdded }) {
+export function ScanAddModal({
+  match,
+  defaultLang,
+  getPhoto,
+  onClose,
+  onAdded,
+  addCard,
+  preservePhotoBeforeAdd = false,
+}) {
   const { t, exchangeRate, exchangeRateReady } = useSettings()
   const [quantity, setQuantity] = useState(1)
   const [condition, setCondition] = useState('NM')
@@ -48,27 +57,47 @@ export function ScanAddModal({ match, defaultLang, getPhoto, onClose, onAdded })
   const [purchasePrice, setPurchasePrice] = useState('')
   const [adding, setAdding] = useState(false)
   const queryClient = useQueryClient()
+  const { dialogRef, onDialogKeyDown } = useDialogBehavior(true, onClose)
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = previousOverflow }
+  }, [])
 
   const handleAdd = async () => {
     if (!exchangeRateReady) return
     setAdding(true)
     try {
-      const { data: created } = await addToCollection({
+      const payload = {
         card_id: match.id,
         quantity,
         condition,
         variant,
         lang,
         purchase_price: parseMoneyInputValue(purchasePrice, exchangeRate),
-      })
+      }
+      // Resolving a queued scan deletes its private source photo. Retain the
+      // Blob before an atomic add+resolve so missing catalogue artwork can
+      // still receive the same best-effort fallback photo as direct scans.
+      const retainedPhoto = preservePhotoBeforeAdd && getPhoto
+        ? await getPhoto().catch(() => null)
+        : null
+      const created = addCard
+        ? await addCard(payload)
+        : (await addToCollection(payload)).data
       // Never overwrite a photo the item already has — grouping into an
       // existing row (same card/variant/condition/lang) is common, and a
       // second scan of the same card is not necessarily a better photo.
-      await attachScanFallbackPhoto({ created, match, getPhoto })
+      await attachScanFallbackPhoto({
+        created,
+        match,
+        getPhoto: retainedPhoto ? () => Promise.resolve(retainedPhoto) : getPhoto,
+      })
       invalidateCardState(queryClient)
       invalidateTcgdexFilterLanguages(queryClient)
       toast.success(`${match.name} ${t('scanner.addedToCollection')}!`)
-      onAdded && onAdded()
+      onAdded && onAdded(created)
       onClose()
     } catch (err) {
       const msg = err?.response?.data?.detail || t('card.addFailed')
@@ -80,6 +109,12 @@ export function ScanAddModal({ match, defaultLang, getPhoto, onClose, onAdded })
 
   return createPortal(
     <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('scanner.addToCollection')}
+      tabIndex={-1}
+      onKeyDown={onDialogKeyDown}
       className="fixed inset-0 z-[300] flex items-end justify-center bg-black/80 p-2 backdrop-blur-sm sm:items-center sm:p-3"
       onClick={onClose}
     >

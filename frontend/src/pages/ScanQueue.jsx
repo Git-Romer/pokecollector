@@ -8,6 +8,7 @@ import {
   fetchScanJobItemImageBlob,
   getScanJob,
   getScanJobs,
+  resolveAndAddScanJobItem,
   resolveScanJobItem,
   retryScanJobItem,
 } from '../api/client'
@@ -166,8 +167,9 @@ function JobDetail({ jobId, onObscuredChange }) {
   // decide there.
   const openNextReview = fromItemId => {
     const start = items.findIndex(candidate => candidate.id === fromItemId)
-    const next = items.find((candidate, idx) =>
-      idx > start && !candidate.resolved && candidate.status === 'done' && (candidate.matches || []).length)
+    const ordered = [...items.slice(start + 1), ...items.slice(0, Math.max(0, start))]
+    const next = ordered.find(candidate =>
+      !candidate.resolved && candidate.status === 'done' && (candidate.matches || []).length)
     setReview(next ? { itemId: next.id, matchIndex: 0 } : null)
   }
 
@@ -248,7 +250,9 @@ function JobDetail({ jobId, onObscuredChange }) {
           matches={reviewMatches}
           index={review.matchIndex}
           onIndex={matchIndex => setReview(current => ({ ...current, matchIndex }))}
-          onAccept={card => setAddSelection({ item: reviewItem, match: card, fromReview: true })}
+          onAccept={reviewItem.resolved
+            ? undefined
+            : card => setAddSelection({ item: reviewItem, match: card, fromReview: true })}
           onClose={() => setReview(null)}
           t={t}
         />
@@ -261,22 +265,35 @@ function JobDetail({ jobId, onObscuredChange }) {
           getPhoto={() => addSelection.item.has_image
             ? fetchScanJobItemImageBlob(job.id, addSelection.item.id)
             : Promise.resolve(null)}
+          preservePhotoBeforeAdd
+          addCard={async payload => {
+            const result = await resolveAndAddScanJobItem(
+              job.id,
+              addSelection.item.id,
+              {
+                ...payload,
+                confirmed_card_id: addSelection.match.tcg_card_id,
+              },
+            )
+            return result.collection_item
+          }}
           // Cancelling returns to the comparison for the same photo rather
           // than skipping it: backing out of the add form is not a decision
           // about the card, and silently advancing would strand the user.
           onClose={() => setAddSelection(null)}
           onAdded={() => {
-            // Adding the card *is* the review: it both clears the item and,
-            // via resolveScanJobItem's card_id, records the confirmed
-            // identity as ground truth for the scan traces.
-            resolveMutation.mutate({
-              item: addSelection.item,
-              cardId: addSelection.match.tcg_card_id,
-            })
+            // The server has atomically added the card and resolved this item
+            // before this callback runs, so a failed or duplicated request
+            // can never advance the batch or increment quantity twice.
             const cameFromReview = addSelection.fromReview
             const finishedItemId = addSelection.item?.id
+            const remaining = items.filter(
+              candidate => candidate.id !== finishedItemId && !candidate.resolved
+            )
             setAddSelection(null)
-            if (cameFromReview) openNextReview(finishedItemId)
+            invalidate()
+            if (remaining.length === 0) navigate('/scans', { replace: true })
+            else if (cameFromReview) openNextReview(finishedItemId)
           }}
         />
       )}

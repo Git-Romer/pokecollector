@@ -138,6 +138,9 @@ export const resolveScanJobItem = (jobId, itemId, cardId = null) =>
   api.post(`/cards/recognize/jobs/${jobId}/items/${itemId}/resolve`, {
     card_id: cardId,
   }).then(r => r.data)
+export const resolveAndAddScanJobItem = (jobId, itemId, data) =>
+  api.post(`/cards/recognize/jobs/${jobId}/items/${itemId}/resolve-and-add`, data)
+    .then(r => r.data)
 export const retryScanJobItem = (jobId, itemId) =>
   api.post(`/cards/recognize/jobs/${jobId}/items/${itemId}/retry`).then(r => r.data)
 export const deleteScanJob = jobId =>

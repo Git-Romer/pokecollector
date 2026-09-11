@@ -45,6 +45,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# The event loop only keeps weak references to fire-and-forget tasks. Retain
+# candidate prewarms until completion so they cannot disappear mid-download.
+_candidate_prewarm_tasks: set[asyncio.Task] = set()
+
 GEMINI_TRANSIENT_STATUS_CODES = {408, 425, 500, 502, 503, 504}
 DEFAULT_GEMINI_MODEL = "gemini-flash-latest"
 GEMINI_MODELS_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
@@ -1196,6 +1200,7 @@ async def match_card_info(
     trace: ScanTrace | None = None,
     provider: ScanProvider | None = None,
     request_timeout_seconds: int = DEFAULT_SCANNER_REQUEST_TIMEOUT_SECONDS,
+    prewarm_candidates: bool = False,
 ) -> dict:
     """Shared deterministic matcher for both individual and composite scans.
 
@@ -1327,9 +1332,11 @@ async def match_card_info(
     # through the rest of the batch. Fired rather than awaited, and against
     # its own database session (see prewarm_candidate_images), so a slow or
     # failing CDN fetch here can never add latency to recognition itself.
-    if public_matches:
+    if public_matches and prewarm_candidates:
         try:
-            asyncio.create_task(prewarm_candidate_images(public_matches))
+            task = asyncio.create_task(prewarm_candidate_images(public_matches))
+            _candidate_prewarm_tasks.add(task)
+            task.add_done_callback(_candidate_prewarm_tasks.discard)
         except RuntimeError:
             # No running event loop (e.g. certain sync test harnesses) — a
             # cold cache on first review is the only consequence.
@@ -1358,6 +1365,7 @@ async def recognize_sanitized_card(
     content_type: str,
     *,
     trace: ScanTrace | None = None,
+    prewarm_candidates: bool = False,
 ) -> dict:
     """Recognize one already-sanitized image for direct and queued scans."""
     provider = get_provider(db, user_id)
@@ -1422,6 +1430,7 @@ async def recognize_sanitized_card(
             trace=trace,
             provider=provider,
             request_timeout_seconds=request_timeout_seconds,
+            prewarm_candidates=prewarm_candidates,
         )
     except HTTPException as exc:
         if trace:
@@ -1564,6 +1573,7 @@ async def match_composite_card_info(
     *,
     photo_bytes: bytes | None = None,
     trace: ScanTrace | None = None,
+    prewarm_candidates: bool = False,
 ) -> dict:
     """Use local pHash before an uncertain composite falls back individually."""
     return await match_card_info(
@@ -1572,4 +1582,5 @@ async def match_composite_card_info(
         allow_visual_verification=False,
         photo_bytes=photo_bytes,
         trace=trace,
+        prewarm_candidates=prewarm_candidates,
     )

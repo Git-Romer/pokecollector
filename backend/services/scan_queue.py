@@ -401,6 +401,7 @@ async def default_scan_processor(
                 image_bytes,
                 content_type,
                 trace=trace,
+                prewarm_candidates=True,
             )
     except Exception as exc:
         trace.record_error(str(getattr(exc, "detail", exc)))
@@ -508,6 +509,7 @@ async def default_composite_processor(
                     card_info,
                     photo_bytes=images[position],
                     trace=traces[position],
+                    prewarm_candidates=True,
                 )
                 if not bool(result.get("_identity_confident")):
                     traces[position].record_decision("individual_fallback")

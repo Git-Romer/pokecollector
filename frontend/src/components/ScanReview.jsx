@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { AlertTriangle, Camera, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Loader2, Plus, RefreshCw, Trash2, X } from 'lucide-react'
 import { fetchScanCandidateImage, fetchScanJobItemImage } from '../api/client'
 import CardImage from './CardImage'
+import { useDialogBehavior } from './ui/dialogBehavior'
 import { tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { formatRetryCountdown } from '../utils/retryCountdown'
 
@@ -133,7 +134,13 @@ function useCandidateFullImage(jobId, itemId, index, fallbackUrl) {
       .then(next => {
         if (revoked) return URL.revokeObjectURL(next)
         objectUrl = next
-        setUrl(next)
+        return announceWhenDecoded(next)
+          .then(ready => { if (!revoked) setUrl(ready) })
+          .catch(() => {
+            URL.revokeObjectURL(next)
+            objectUrl = null
+            return useFallback()
+          })
       })
       .catch(useFallback)
     return () => {
@@ -256,18 +263,19 @@ export function CardZoomModal({
   const drag = useRef(null)
   // Either card will do — both frames are the same size by construction.
   const frameRef = useRef(null)
+  const closeOrReset = useCallback(() => (zoomed ? reset() : onClose()), [onClose, reset, zoomed])
+  const { dialogRef, onDialogKeyDown } = useDialogBehavior(true, closeOrReset, { restoreFocus: false })
+  const onModalKeyDown = e => {
+    if (e.key === 'ArrowLeft') { e.preventDefault(); step(-1); return }
+    if (e.key === 'ArrowRight') { e.preventDefault(); step(1); return }
+    onDialogKeyDown(e)
+  }
 
   useEffect(() => {
-    const onKey = e => {
-      // Escape backs out of the zoom first, then closes. Closing a modal the
-      // reviewer had zoomed into loses their place for no reason.
-      if (e.key === 'Escape') return zoomed ? reset() : onClose()
-      if (e.key === 'ArrowLeft') { e.preventDefault(); step(-1) }
-      if (e.key === 'ArrowRight') { e.preventDefault(); step(1) }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose, step, zoomed, reset])
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = previousOverflow }
+  }, [])
 
   // Wheel handling is attached natively rather than via onWheel: React's
   // wheel listener is passive, so preventDefault there is ignored and the
@@ -365,6 +373,11 @@ export function CardZoomModal({
     setImageFailed(false)
     setRetryAttempt(0)
   }, [card?.id])
+  // A failed thumbnail must not permanently hide a valid cached high-res
+  // image that completes moments later.
+  useEffect(() => {
+    if (full) setImageFailed(false)
+  }, [full])
   const retrySrc = full || (card?.image && retryAttempt > 0
     ? `${card.image}${card.image.includes('?') ? '&' : '?'}retry=${retryAttempt}`
     : card?.image)
@@ -376,6 +389,12 @@ export function CardZoomModal({
     // the dismiss target, which is what a full-screen viewer is expected to
     // do.
     <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('scanner.compareCandidate')}
+      tabIndex={-1}
+      onKeyDown={onModalKeyDown}
       // Extra top padding, floored at the existing p-4: on some mobile
       // browsers a fixed, full-screen overlay can render partly behind the
       // address bar rather than below it, and safe-area-inset-top is the
@@ -403,7 +422,7 @@ export function CardZoomModal({
         // are sized to fit a typical phone viewport stacked, but a taller
         // caption or a shorter viewport should be scrollable to reach rather
         // than silently clipped the way a fixed-height overflow was before.
-        className="flex min-h-0 flex-1 select-none items-center justify-center overflow-y-auto py-3"
+        className="flex min-h-0 flex-1 select-none items-start justify-center overflow-y-auto py-3 md:items-center"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
@@ -552,12 +571,17 @@ export function CardZoomModal({
 // the requests are ordinary GETs the <img> tag will hit again and find warm.
 // The seen set keeps a re-render from re-requesting.
 const prefetched = new Set()
+const MAX_PREFETCHED_IMAGES = 64
 
 function prefetchImage(url) {
   if (!url || prefetched.has(url)) return
+  if (prefetched.size >= MAX_PREFETCHED_IMAGES) {
+    prefetched.delete(prefetched.values().next().value)
+  }
   prefetched.add(url)
   const img = new Image()
   img.decoding = 'async'
+  img.onerror = () => prefetched.delete(url)
   img.src = url
 }
 
@@ -584,25 +608,20 @@ function CandidateGrid({ jobId, itemId, matches, onSelect, onZoom, t }) {
         return (
           <div
             key={`${match.id}-${language}`}
-            role="button"
-            tabIndex={0}
-            aria-label={t('scanner.compareCandidate')}
-            title={t('scanner.compareCandidate')}
-            // The tile opens the comparison, because deciding whether this
-            // is the card comes before adding it. Adding is the deliberate
-            // act and gets its own button, shown on hover.
-            onClick={() => onZoom(match, matchIndex)}
-            onKeyDown={e => {
-              if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onZoom(match, matchIndex) }
-            }}
             // Intent to look closely: pull the high-res now so the zoom
             // modal already has a fallback ready when the cache endpoint is
             // still warming up.
             onMouseEnter={() => prefetchImage(hdImage)}
             onTouchStart={() => prefetchImage(hdImage)}
-            className="group flex cursor-pointer flex-col transition-all duration-200 hover:rotate-1 hover:shadow-glow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red"
+            className="group relative flex flex-col transition-all duration-200 hover:rotate-1 hover:shadow-glow"
           >
-            <div className="relative aspect-[2.5/3.5] w-full overflow-hidden rounded-xl ring-1 ring-white/5 transition-all duration-200 group-hover:ring-2 group-hover:ring-brand-red/30">
+            <button
+              type="button"
+              onClick={() => onZoom(match, matchIndex)}
+              aria-label={t('scanner.compareCandidate')}
+              title={t('scanner.compareCandidate')}
+              className="relative aspect-[2.5/3.5] w-full overflow-hidden rounded-xl text-left ring-1 ring-white/5 transition-all duration-200 group-hover:ring-2 group-hover:ring-brand-red/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red"
+            >
               {match.image ? (
                 // CardImage, not a bare <img>: a candidate URL failing to load
                 // (not just being absent) needs the same "artwork unavailable,
@@ -627,36 +646,35 @@ function CandidateGrid({ jobId, itemId, matches, onSelect, onZoom, t }) {
                 <span
                   className="absolute left-1 top-1 rounded border border-amber-400 bg-amber-500/90 px-1 py-0.5 text-[8px] font-black leading-none text-black"
                   title={t('scanner.printedTotalMismatch')}
+                  aria-label={t('scanner.printedTotalMismatch')}
                 >
                   ⚠
                 </span>
               )}
-              <div className="absolute inset-0 flex items-center justify-center gap-2 rounded-xl bg-black/0 opacity-0 transition-all group-hover:bg-black/30 group-hover:opacity-100">
-                {/* stopPropagation: the tile behind this opens the
-                    comparison. Adding straight from the grid stays possible
-                    for a card you already recognise, without a look you did
-                    not ask for. */}
+            </button>
+
+            <div className="flex items-start gap-1 pt-1">
+              <div className="min-w-0 flex-1">
+                <p className="line-clamp-2 text-[10px] font-bold leading-tight text-white">{match.name}</p>
+                {(match.set_abbreviation || match.number) && (
+                  <p className="text-[9px] font-mono font-semibold text-brand-red/80">
+                    {`${(match.set_abbreviation || '').toUpperCase()} ${match.number || ''}`.trim()}
+                  </p>
+                )}
+                {match.rarity && <p className="truncate text-[9px] text-text-muted">{match.rarity}</p>}
+              </div>
+              {onSelect && (
                 <button
                   type="button"
-                  onClick={e => { e.stopPropagation(); onSelect(match) }}
+                  onClick={() => onSelect(match)}
                   title={t('scanner.addToCollection')}
                   aria-label={t('scanner.addToCollection')}
-                  className="flex h-8 w-8 items-center justify-center rounded-full transition-transform hover:scale-110"
+                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red"
                   style={{ background: '#e3000b', boxShadow: '0 0 12px rgba(227,0,11,0.5)' }}
                 >
                   <Plus size={15} className="text-white" />
                 </button>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-0.5 pt-1">
-              <p className="line-clamp-2 text-[10px] font-bold leading-tight text-white">{match.name}</p>
-              {(match.set_abbreviation || match.number) && (
-                <p className="text-[9px] font-mono font-semibold text-brand-red/80">
-                  {`${(match.set_abbreviation || '').toUpperCase()} ${match.number || ''}`.trim()}
-                </p>
               )}
-              {match.rarity && <p className="truncate text-[9px] text-text-muted">{match.rarity}</p>}
             </div>
           </div>
         )
@@ -794,16 +812,18 @@ export function ScanItemPanel({ jobId, item, onAdd, onRetry, onDismiss, onReview
               }`}>
                 {item.error || t(noMatches ? 'scanner.noMatches' : 'scanner.recognitionFailed')}
               </p>
-              <button type="button" onClick={() => onRetry(item)} disabled={!item.has_image}
-                className="btn-secondary justify-center">
+              {!item.resolved && (
+                <button type="button" onClick={() => onRetry(item)} disabled={!item.has_image}
+                  className="btn-secondary justify-center">
                 {/* Retrying always drops the item out of a composite grid onto
                     its own request — "individually" only describes something
                     actually changing when the item was composited to begin
                     with. An item that was already individual (the reviewer's
                     own choice, or the only option under a single-image-only
                     provider) just gets a plain retry. */}
-                <RefreshCw size={14} /> {item.batch_mode ? t('scanner.retryIndividually') : t('common.retry')}
-              </button>
+                  <RefreshCw size={14} /> {item.batch_mode ? t('scanner.retryIndividually') : t('common.retry')}
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -818,7 +838,7 @@ export function ScanItemPanel({ jobId, item, onAdd, onRetry, onDismiss, onReview
             jobId={jobId}
             itemId={item.id}
             matches={item.matches}
-            onSelect={match => onAdd(item, match)}
+            onSelect={item.resolved ? undefined : match => onAdd(item, match)}
             onZoom={(match, matchIndex) => onReview(item, matchIndex)}
             t={t}
           />
