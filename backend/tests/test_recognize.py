@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import ANY, AsyncMock, Mock, patch
 
 try:
     import httpx
@@ -31,7 +31,8 @@ try:
         select_search_candidates,
         _search_and_rank_candidates,
     )
-    from sqlalchemy import create_engine
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.exc import OperationalError
     from sqlalchemy.orm import sessionmaker
 
     from database import Base
@@ -75,6 +76,8 @@ class ProviderCapabilityRuntimeTests(unittest.IsolatedAsyncioTestCase):
         matcher = AsyncMock(return_value={"recognized": {}, "matches": []})
         with patch("api.recognize.get_provider", return_value=provider), patch(
             "api.recognize.require_scanner_capability_mode", return_value="degraded"
+        ), patch(
+            "api.recognize.resolve_scanner_request_timeout", return_value=30
         ), patch("api.recognize.match_card_info", new=matcher):
             await recognize_sanitized_card(
                 object(), 7, b"image-bytes", "image/jpeg"
@@ -90,6 +93,8 @@ class ProviderCapabilityRuntimeTests(unittest.IsolatedAsyncioTestCase):
                 status_code=409,
                 detail="Test and save the scanner configuration again.",
             ),
+        ), patch(
+            "api.recognize.resolve_scanner_request_timeout", return_value=30
         ), self.assertRaises(HTTPException) as caught:
             await recognize_sanitized_card(
                 object(), 7, b"image-bytes", "image/jpeg"
@@ -97,6 +102,27 @@ class ProviderCapabilityRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(caught.exception.status_code, 409)
         provider.generate_text.assert_not_awaited()
+
+    async def test_saved_timeout_reaches_extraction_and_visual_matching(self):
+        provider = self._provider()
+        matcher = AsyncMock(return_value={"recognized": {}, "matches": []})
+        observed = {}
+
+        async def generate(client, *_args, **_kwargs):
+            observed["timeout"] = client.timeout.read
+            return '{"name":"Pikachu","language":"en"}', None
+
+        provider.generate_text = AsyncMock(side_effect=generate)
+        with patch("api.recognize.get_provider", return_value=provider), patch(
+            "api.recognize.require_scanner_capability_mode", return_value="full"
+        ), patch(
+            "api.recognize.resolve_scanner_request_timeout", return_value=120
+        ) as resolver, patch("api.recognize.match_card_info", new=matcher):
+            await recognize_sanitized_card(object(), 7, b"image-bytes", "image/jpeg")
+
+        resolver.assert_called_once_with(ANY, 7, "openai")
+        self.assertEqual(observed["timeout"], 120)
+        self.assertEqual(matcher.await_args.kwargs["request_timeout_seconds"], 120)
 
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")
@@ -220,24 +246,33 @@ class RecognizeCardNumberTests(unittest.TestCase):
         self.assertEqual((legacy["number_local"], legacy["number_total"]), ("136", "182"))
         self.assertEqual(split["number"], "063/100")
 
-    def test_drops_a_pokedex_reference_still_carrying_its_no_prefix(self):
-        # Some models leave the printed "No." text in place instead of
-        # extracting a bare number. That text is never a real collector
-        # number, so it must not reach matching as one.
-        for raw in ("No. 0094", "no94", "NO.152"):
-            with self.subTest(raw=raw):
-                normalized = normalize_recognized_card_info({"number_local": raw})
+    def test_discards_explicit_pokedex_references_from_either_number_field(self):
+        for card_info in (
+            {"number_local": "No. 0094"},
+            {"number_local": "no94"},
+            {"number_local": "NO.152"},
+            {"number": "No. 0156"},
+        ):
+            with self.subTest(card_info=card_info):
+                normalized = normalize_recognized_card_info(card_info)
                 self.assertIsNone(normalized["number_local"])
+                self.assertIsNone(normalized["number"])
 
-    def test_keeps_a_bare_number_local_including_large_ones(self):
-        # A vintage card's Pokedex-number mixup is caught by the prompt and by
-        # the "No." pattern above, not by guessing from magnitude: real modern
-        # sets legitimately run past 200 (e.g. Scarlet & Violet base sets), so
-        # a large bare number must survive untouched here.
-        for raw in ("030", "094", "226"):
-            with self.subTest(raw=raw):
-                normalized = normalize_recognized_card_info({"number_local": raw})
-                self.assertEqual(normalized["number_local"], raw)
+    def test_preserves_bare_collector_numbers_regardless_of_magnitude(self):
+        for number in ("030", "094", "226"):
+            with self.subTest(number=number):
+                normalized = normalize_recognized_card_info({"number_local": number})
+                self.assertEqual(normalized["number_local"], number)
+                self.assertEqual(normalized["number"], number)
+
+    def test_invalid_split_number_does_not_hide_a_valid_legacy_number(self):
+        normalized = normalize_recognized_card_info({
+            "number_local": "No. 0156",
+            "number": "12/100",
+        })
+
+        self.assertEqual(normalized["number_local"], "12")
+        self.assertEqual(normalized["number"], "12/100")
 
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/SQLAlchemy are not installed")
@@ -293,20 +328,28 @@ class SearchAndRankCandidatesLocalDbTests(unittest.IsolatedAsyncioTestCase):
     async def test_number_match_beyond_query_cap_still_floats_to_top(self):
         cards = [
             Card(
-                id=f"baseline-{number}_en",
-                tcg_card_id=f"baseline-{number}",
+                id=f"aa-{number:03}_en",
+                tcg_card_id=f"aa-{number:03}",
                 name="Energy Test",
-                number=str(number),
+                number=str(1000 + number),
                 lang="en",
                 is_custom=False,
             )
-            for number in range(1, 9)
+            for number in range(60)
         ]
         cards.append(Card(
-            id="late-match_en",
-            tcg_card_id="late-match",
+            id="zz-63_en",
+            tcg_card_id="zz-63",
             name="Energy Test",
             number="63",
+            lang="en",
+            is_custom=False,
+        ))
+        cards.append(Card(
+            id="zz-tg1_en",
+            tcg_card_id="zz-tg1",
+            name="Energy Test",
+            number="TG1",
             lang="en",
             is_custom=False,
         ))
@@ -315,18 +358,168 @@ class SearchAndRankCandidatesLocalDbTests(unittest.IsolatedAsyncioTestCase):
 
         candidates, number_match_count = await _search_and_rank_candidates(
             self.db,
-            {"name": "Energy Test", "number_local": "63", "language": "en"},
+            {"name": "Energy Test", "number_local": "063", "language": "en"},
         )
 
         self.assertEqual(len(candidates), 9)
         self.assertEqual(number_match_count, 1)
         # The deterministic ranker sorts the agreeing number match first even
-        # though it fell outside select_search_candidates' baseline_limit=8.
-        self.assertEqual(candidates[0]["id"], "late-match_en")
+        # though it fell outside both the local query cap and
+        # select_search_candidates' baseline_limit=8.
+        self.assertEqual(candidates[0]["id"], "zz-63_en")
         self.assertEqual(
-            {card["id"] for card in candidates if card["id"] != "late-match_en"},
-            {f"baseline-{number}_en" for number in range(1, 9)},
+            {card["id"] for card in candidates if card["id"] != "zz-63_en"},
+            {f"aa-{number:03}_en" for number in range(8)},
         )
+
+        alphanumeric, alphanumeric_count = await _search_and_rank_candidates(
+            self.db,
+            {"name": "Energy Test", "number_local": "TG01", "language": "en"},
+        )
+        self.assertEqual(alphanumeric[0]["id"], "zz-tg1_en")
+        self.assertEqual(alphanumeric_count, 1)
+
+    async def test_legacy_null_custom_flag_remains_searchable(self):
+        row = Card(
+            id="base4-118_en",
+            tcg_card_id="base4-118",
+            name="Bill",
+            number="118",
+            lang="en",
+            is_custom=False,
+        )
+        self.db.add(row)
+        self.db.commit()
+        # SQLAlchemy applies the Python default on insert, so write the legacy
+        # state directly. Older upgraded databases can still contain NULL.
+        self.db.execute(
+            text("UPDATE cards SET is_custom = NULL WHERE id = :id"),
+            {"id": row.id},
+        )
+        self.db.commit()
+
+        with self._mock_tcgdex_client([]) as mock_client:
+            candidates, _ = await _search_and_rank_candidates(
+                self.db,
+                {"name": "Bill", "number_local": "118", "language": "en"},
+            )
+
+        mock_client.assert_not_called()
+        self.assertEqual([card["id"] for card in candidates], ["base4-118_en"])
+
+    async def test_local_rows_without_catalogue_id_are_excluded(self):
+        self.db.add(Card(
+            id="orphan_en",
+            tcg_card_id=None,
+            name="Bill",
+            number="118",
+            lang="en",
+            is_custom=False,
+        ))
+        self.db.commit()
+
+        with self._mock_tcgdex_client([]):
+            candidates, _ = await _search_and_rank_candidates(
+                self.db, {"name": "Bill", "language": "en"}
+            )
+
+        self.assertEqual(candidates, [])
+
+    async def test_substring_number_collision_uses_live_fallback(self):
+        # A local Mewtwo must not satisfy a scan for Mew merely because both
+        # happen to use the same collector number. Candidate ranking does not
+        # compare names, so admitting this row could auto-file the wrong card.
+        self.db.add(Card(
+            id="mewtwo-4_en",
+            tcg_card_id="mewtwo-4",
+            name="Mewtwo",
+            number="4",
+            lang="en",
+            is_custom=False,
+        ))
+        self.db.commit()
+        api_payload = [{"id": "mew-4", "name": "Mew", "localId": "4"}]
+
+        with self._mock_tcgdex_client(api_payload) as mock_client:
+            candidates, number_match_count = await _search_and_rank_candidates(
+                self.db,
+                {"name": "Mew", "number_local": "4", "language": "en"},
+            )
+
+        mock_client.assert_called()
+        self.assertEqual([card["id"] for card in candidates], ["mew-4_en"])
+        self.assertEqual(number_match_count, 1)
+
+    async def test_live_fallback_excludes_substring_number_collision(self):
+        # TCGdex name search is substring-based too: searching for Mew can
+        # return Mewtwo. The live path must apply the same complete-name guard
+        # as the local catalogue before metadata ranking can mark a match safe.
+        api_payload = [{"id": "mewtwo-4", "name": "Mewtwo", "localId": "4"}]
+
+        with self._mock_tcgdex_client(api_payload):
+            candidates, number_match_count = await _search_and_rank_candidates(
+                self.db,
+                {"name": "Mew", "number_local": "4", "language": "en"},
+            )
+
+        self.assertEqual(candidates, [])
+        self.assertEqual(number_match_count, 0)
+
+    async def test_substring_collision_without_number_uses_live_fallback(self):
+        self.db.add(Card(
+            id="energy-switch-1_en",
+            tcg_card_id="energy-switch-1",
+            name="Energy Switch",
+            number="1",
+            lang="en",
+            is_custom=False,
+        ))
+        self.db.commit()
+        api_payload = [{"id": "switch-2", "name": "Switch", "localId": "2"}]
+
+        with self._mock_tcgdex_client(api_payload) as mock_client:
+            candidates, _ = await _search_and_rank_candidates(
+                self.db, {"name": "Switch", "language": "en"}
+            )
+
+        mock_client.assert_called()
+        self.assertEqual([card["id"] for card in candidates], ["switch-2_en"])
+
+    async def test_suffix_only_rows_do_not_displace_exact_printed_name(self):
+        self.db.add_all([
+            Card(
+                id=f"aa-{index:03}_en",
+                tcg_card_id=f"aa-{index:03}",
+                name="Pikachu",
+                number=str(index),
+                lang="en",
+                is_custom=False,
+            )
+            for index in range(60)
+        ])
+        self.db.add(Card(
+            id="zz-pikachu-v_en",
+            tcg_card_id="zz-pikachu-v",
+            name="Pikachu V",
+            number="200",
+            lang="en",
+            is_custom=False,
+        ))
+        self.db.commit()
+
+        candidates, _ = await _search_and_rank_candidates(
+            self.db, {"name": "Pikachu V", "language": "en"}
+        )
+
+        self.assertEqual([card["id"] for card in candidates], ["zz-pikachu-v_en"])
+
+    async def test_local_database_errors_propagate(self):
+        database_error = OperationalError("SELECT cards", {}, Exception("offline"))
+        with patch.object(self.db, "query", side_effect=database_error):
+            with self.assertRaises(OperationalError):
+                await _search_and_rank_candidates(
+                    self.db, {"name": "Bill", "language": "en"}
+                )
 
     async def test_falls_back_to_english_when_detected_language_has_no_local_row(self):
         self.db.add(Card(
@@ -352,6 +545,173 @@ class SearchAndRankCandidatesLocalDbTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(candidates[0]["id"], "base4-118_en")
         self.assertEqual(candidates[0]["lang"], "en")
 
+    async def test_skips_ai_translation_fallback_when_native_results_are_sufficient(self):
+        self.db.add_all([
+            Card(
+                id=f"jp-{index}_ja",
+                tcg_card_id=f"jp-{index}",
+                name="マグマラシ",
+                number=str(index),
+                lang="ja",
+                is_custom=False,
+            )
+            for index in range(4)
+        ])
+        self.db.add(Card(
+            id="wrong-1_en",
+            tcg_card_id="wrong-1",
+            name="Magmar",
+            number="1",
+            lang="en",
+            is_custom=False,
+        ))
+        self.db.commit()
+
+        with self._mock_tcgdex_client([]) as mock_client:
+            candidates, _ = await _search_and_rank_candidates(
+                self.db,
+                {"name": "マグマラシ", "name_en": "Magmar", "language": "ja"},
+            )
+
+        mock_client.assert_not_called()
+        self.assertEqual(len(candidates), 4)
+        self.assertEqual({card["_lang"] for card in candidates}, {"ja"})
+
+    async def test_uses_ai_translation_fallback_when_native_results_are_thin(self):
+        self.db.add_all([
+            Card(
+                id="jp-1_ja",
+                tcg_card_id="jp-1",
+                name="フシギダネ",
+                number="1",
+                lang="ja",
+                is_custom=False,
+            ),
+            Card(
+                id="base-1_en",
+                tcg_card_id="base-1",
+                name="Bulbasaur",
+                number="1",
+                lang="en",
+                is_custom=False,
+            ),
+        ])
+        self.db.commit()
+
+        with self._mock_tcgdex_client([]) as mock_client:
+            candidates, _ = await _search_and_rank_candidates(
+                self.db,
+                {
+                    "name": "フシギダネ",
+                    "name_en": "Bulbasaur",
+                    "language": "ja",
+                },
+            )
+
+        mock_client.assert_not_called()
+        self.assertEqual({card["_lang"] for card in candidates}, {"ja", "en"})
+
+    async def test_caps_ai_translation_fallback_without_dropping_native_results(self):
+        self.db.add(Card(
+            id="jp-1_ja",
+            tcg_card_id="jp-1",
+            name="フシギダネ",
+            number="1",
+            lang="ja",
+            is_custom=False,
+        ))
+        self.db.add_all([
+            Card(
+                id=f"en-{index}_en",
+                tcg_card_id=f"en-{index}",
+                name="Bulbasaur",
+                number=str(index),
+                lang="en",
+                is_custom=False,
+            )
+            for index in range(10)
+        ])
+        self.db.commit()
+
+        with self._mock_tcgdex_client([]):
+            candidates, _ = await _search_and_rank_candidates(
+                self.db,
+                {
+                    "name": "フシギダネ",
+                    "name_en": "Bulbasaur",
+                    "language": "ja",
+                },
+            )
+
+        self.assertEqual(sum(card["_lang"] == "ja" for card in candidates), 1)
+        self.assertEqual(sum(card["_lang"] == "en" for card in candidates), 5)
+        self.assertEqual(len(candidates), 6)
+
+    async def test_translation_cap_preserves_a_late_exact_number_match(self):
+        self.db.add(Card(
+            id="jp-1_ja",
+            tcg_card_id="jp-1",
+            name="フシギダネ",
+            number="1",
+            lang="ja",
+            is_custom=False,
+        ))
+        self.db.add_all([
+            Card(
+                id=f"en-{index}_en",
+                tcg_card_id=f"en-{index}",
+                name="Bulbasaur",
+                number="999" if index == 9 else str(index),
+                lang="en",
+                is_custom=False,
+            )
+            for index in range(10)
+        ])
+        self.db.commit()
+
+        with self._mock_tcgdex_client([]):
+            candidates, number_match_count = await _search_and_rank_candidates(
+                self.db,
+                {
+                    "name": "フシギダネ",
+                    "name_en": "Bulbasaur",
+                    "number_local": "999",
+                    "language": "ja",
+                },
+            )
+
+        self.assertEqual(len(candidates), 6)
+        self.assertEqual(number_match_count, 1)
+        self.assertEqual(candidates[0]["id"], "en-9_en")
+
+    async def test_english_cards_do_not_search_the_ai_translation_name(self):
+        self.db.add_all([
+            Card(
+                id="bill-1_en",
+                tcg_card_id="bill-1",
+                name="Bill",
+                number="1",
+                lang="en",
+                is_custom=False,
+            ),
+            Card(
+                id="oak-1_en",
+                tcg_card_id="oak-1",
+                name="Professor Oak",
+                number="2",
+                lang="en",
+                is_custom=False,
+            ),
+        ])
+        self.db.commit()
+
+        candidates, _ = await _search_and_rank_candidates(
+            self.db,
+            {"name": "Bill", "name_en": "Professor Oak", "language": "en"},
+        )
+
+        self.assertEqual([card["name"] for card in candidates], ["Bill"])
+
     async def test_search_is_accent_insensitive_via_shared_text_search_helper(self):
         self.db.add(Card(
             id="sv1-1_en",
@@ -368,6 +728,25 @@ class SearchAndRankCandidatesLocalDbTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual([c["id"] for c in candidates], ["sv1-1_en"])
+
+    async def test_search_collapses_repeated_ocr_whitespace(self):
+        self.db.add(Card(
+            id="energy-switch_en",
+            tcg_card_id="energy-switch",
+            name="Energy Switch",
+            number="1",
+            lang="en",
+            is_custom=False,
+        ))
+        self.db.commit()
+
+        with self._mock_tcgdex_client([]) as mock_client:
+            candidates, _ = await _search_and_rank_candidates(
+                self.db, {"name": " Energy   Switch ", "language": "en"}
+            )
+
+        mock_client.assert_not_called()
+        self.assertEqual([card["id"] for card in candidates], ["energy-switch_en"])
 
     async def test_custom_cards_are_excluded(self):
         self.db.add(Card(
@@ -458,8 +837,8 @@ class SearchAndRankCandidatesLocalDbTests(unittest.IsolatedAsyncioTestCase):
         return patch("api.recognize.httpx.AsyncClient", mock_client_cls)
 
     async def test_local_hit_never_calls_the_live_api(self):
-        # The fallback only exists for the empty-local-result case; a card
-        # the sync already has must never pay for a network round trip.
+        # A name-compatible printing the sync already has must never pay for a
+        # network round trip.
         self.db.add(Card(
             id="base4-118_en", tcg_card_id="base4-118", name="Bill",
             number="118", lang="en", is_custom=False,
@@ -500,6 +879,34 @@ class SearchAndRankCandidatesLocalDbTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             candidate["image"], "https://assets.tcgdex.net/en/sv/sv99/1/low.webp"
         )
+
+    async def test_missing_number_match_falls_back_for_new_reprint(self):
+        # A new set can reuse an existing card name. Finding older local rows
+        # is not enough when none has the collector number printed on the card.
+        self.db.add(Card(
+            id="old-1_en",
+            tcg_card_id="old-1",
+            name="Pikachu",
+            number="1",
+            lang="en",
+            is_custom=False,
+        ))
+        self.db.commit()
+        api_payload = [{
+            "id": "new-999",
+            "name": "Pikachu",
+            "localId": "999",
+        }]
+
+        with self._mock_tcgdex_client(api_payload) as mock_client:
+            candidates, number_match_count = await _search_and_rank_candidates(
+                self.db,
+                {"name": "Pikachu", "number_local": "999", "language": "en"},
+            )
+
+        mock_client.assert_called()
+        self.assertEqual(candidates[0]["id"], "new-999_en")
+        self.assertEqual(number_match_count, 1)
 
     async def test_local_miss_and_api_failure_yields_no_candidates_not_an_error(self):
         # Best-effort: a network failure on the fallback must degrade to
@@ -542,101 +949,6 @@ class SearchAndRankCandidatesLocalDbTests(unittest.IsolatedAsyncioTestCase):
 
         for call in trace.record_tcgdex.call_args_list:
             self.assertNotIn("source", call.kwargs)
-
-    async def test_english_fallback_pair_is_skipped_once_native_search_has_enough(self):
-        # name_en is the model's own translation and can name a different
-        # species entirely — confirmed on real vintage Japanese cards, where
-        # correctly-read native text still got translated to an unrelated
-        # Pokemon. Latin-script "de" stands in for that here so this test
-        # isn't also exercising accent_insensitive_contains' own (separate,
-        # pre-existing) handling of non-Latin scripts. Once the reliable
-        # native-language pairs already found enough candidates, searching a
-        # possibly-wrong translation adds only noise, so it must not run.
-        for number in range(4):
-            self.db.add(Card(
-                id=f"de-{number}_de", tcg_card_id=f"de-{number}", name="Bisasam",
-                number=str(number), lang="de", is_custom=False,
-            ))
-        self.db.add(Card(
-            id="wrong-species_en", tcg_card_id="wrong-species", name="Charizard",
-            number="4", lang="en", is_custom=False,
-        ))
-        self.db.commit()
-
-        candidates, _ = await _search_and_rank_candidates(
-            self.db,
-            {"name": "Bisasam", "name_en": "Charizard", "language": "de"},
-        )
-
-        self.assertEqual(len(candidates), 4)
-        self.assertTrue(all(card["_lang"] == "de" for card in candidates))
-        self.assertNotIn("wrong-species_en", [card["id"] for card in candidates])
-
-    async def test_english_fallback_pair_still_runs_when_native_search_is_thin(self):
-        self.db.add(Card(
-            id="de-1_de", tcg_card_id="de-1", name="Bisasam",
-            number="1", lang="de", is_custom=False,
-        ))
-        self.db.add(Card(
-            id="en-1_en", tcg_card_id="en-1", name="Bulbasaur",
-            number="1", lang="en", is_custom=False,
-        ))
-        self.db.commit()
-
-        candidates, _ = await _search_and_rank_candidates(
-            self.db,
-            {"name": "Bisasam", "name_en": "Bulbasaur", "language": "de"},
-        )
-
-        self.assertEqual(
-            {card["id"] for card in candidates}, {"de-1_de", "en-1_en"}
-        )
-
-    async def test_english_fallback_stops_short_of_flooding_thin_native_results(self):
-        # Regression case: a real Japanese card (Magmar) where the native
-        # catalogue only had two genuine printings. Before this cap, the
-        # fallback filled all the way up to the shared 15-candidate budget,
-        # so the review grid showed two correct native cards buried under a
-        # wall of translated English ones -- read as "barely finds the
-        # right language" even though the native hits were still ranked
-        # first. Ten English matches here is deliberately far more than the
-        # cap, so this only passes if the fallback is actually bounded
-        # rather than merely coincidentally under the old 15-candidate cap.
-        self.db.add(Card(
-            id="de-1_de", tcg_card_id="de-1", name="Bisasam",
-            number="1", lang="de", is_custom=False,
-        ))
-        for number in range(10):
-            self.db.add(Card(
-                id=f"en-{number}_en", tcg_card_id=f"en-{number}", name="Bulbasaur",
-                number=str(number), lang="en", is_custom=False,
-            ))
-        self.db.commit()
-
-        candidates, _ = await _search_and_rank_candidates(
-            self.db,
-            {"name": "Bisasam", "name_en": "Bulbasaur", "language": "de"},
-        )
-
-        self.assertIn("de-1_de", [card["id"] for card in candidates])
-        self.assertLessEqual(len(candidates), 6)
-        self.assertLess(len(candidates), 11)
-
-    async def test_english_cards_never_reach_the_translation_fallback_path(self):
-        # language == "en" means the native pairs already searched the
-        # English name directly, so the fallback branch must never trigger
-        # regardless of how few results came back — nothing to be a fallback
-        # *for*. A spy on the pair-fetch helper pins this down directly.
-        with patch(
-            "api.recognize._fetch_candidates_for_pair", new=AsyncMock(return_value=[])
-        ) as spy:
-            await _search_and_rank_candidates(
-                self.db, {"name": "Bill", "name_en": "Bill", "language": "en"}
-            )
-
-        called_languages = {call.args[1] for call in spy.await_args_list}
-        self.assertEqual(called_languages, {"en"})
-        self.assertLessEqual(spy.await_count, 2)
 
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed")
@@ -858,6 +1170,54 @@ class PhashMatchingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["_identity_decision"], "gemini_visual")
         self.assertEqual(result["matches"][0]["id"], "second")
 
+    async def test_visual_timeout_does_not_extend_reference_download_timeout(self):
+        candidates = [
+            {"id": "first", "number": None, "image": "first.webp"},
+            {"id": "second", "number": None, "image": "second.webp"},
+        ]
+        provider = Mock()
+        provider.name = "openai"
+        provider.is_gemini = False
+        provider.requires_credential.return_value = False
+        provider.generate_text = AsyncMock(return_value=("2", None))
+        client_timeouts = []
+
+        class CapturingClient:
+            def __init__(self, *, timeout):
+                client_timeouts.append(timeout)
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return False
+
+        with patch(
+            "api.recognize._search_and_rank_candidates",
+            new=AsyncMock(return_value=(candidates, 0)),
+        ), patch(
+            "api.recognize._download_candidate_images",
+            new=AsyncMock(return_value={}),
+        ), patch(
+            "api.recognize._phash_best_match", return_value=None
+        ), patch(
+            "api.recognize.httpx.AsyncClient", CapturingClient
+        ):
+            result = await match_card_info(
+                object(),
+                {"name": "Pikachu"},
+                image_b64="cGhvdG8=",
+                mime_type="image/jpeg",
+                allow_visual_verification=True,
+                provider=provider,
+                request_timeout_seconds=180,
+            )
+
+        self.assertEqual(client_timeouts, [20, 180])
+        self.assertEqual(provider.generate_text.await_args.kwargs["max_attempts"], 2)
+        self.assertTrue(result["_identity_confident"])
+        self.assertEqual(result["matches"][0]["id"], "second")
+
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed")
 class DeterministicMatchingTests(unittest.IsolatedAsyncioTestCase):
@@ -990,47 +1350,103 @@ class DeterministicMatchingTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(confident)
         self.assertIsNone(decision)
 
-    def test_sole_candidate_resolves_a_trainer_card_with_no_hp_to_use(self):
-        # artist_hp can never fire for a Trainer/Energy card — it has no HP —
-        # so a real card was previously stuck unresolved even though the
-        # search only ever found this one candidate to begin with.
+    def test_exact_single_trainer_candidate_can_resolve_without_hp(self):
         recognized = normalize_recognized_card_info({
-            "name": "Pokemon Flute", "card_type": "Trainer", "language": "en",
+            "name": "Bill",
+            "card_type": "trainer",
+            "language": "en",
         })
-        candidates = [{"id": "only-match", "name": "Pokemon Flute"}]
+        candidates = [{
+            "id": "bill",
+            "name": "Bill",
+            "card_type": "Trainer",
+            "_lang": "en",
+        }]
 
         confident, decision = _metadata_decision(recognized, candidates)
 
         self.assertTrue(confident)
         self.assertEqual(decision, "sole_candidate")
 
-    def test_sole_candidate_does_not_override_a_contradiction(self):
-        # The existing contradiction guard runs first — this pins down that
-        # the new path only ever fills the gap it was added for and cannot
-        # reintroduce a wrong auto-match the old code correctly avoided.
+    def test_exact_single_energy_candidate_can_resolve_without_hp(self):
         recognized = normalize_recognized_card_info({
-            "number_local": "25", "number_total": "100",
+            "name": "Fire Energy",
+            "card_type": "energy",
+            "language": "en",
         })
-        candidates = [{"id": "only-candidate", "number": "25", "printed_total": 99}]
+        candidates = [{
+            "id": "fire-energy",
+            "name": "Fire Energy",
+            "card_type": "Energy",
+            "_lang": "en",
+        }]
+
+        confident, decision = _metadata_decision(recognized, candidates)
+
+        self.assertTrue(confident)
+        self.assertEqual(decision, "sole_candidate")
+
+    def test_single_pokemon_candidate_keeps_existing_confidence_requirements(self):
+        recognized = normalize_recognized_card_info({
+            "name": "Mew",
+            "card_type": "pokemon",
+            "language": "en",
+        })
+        candidates = [{"id": "mew", "name": "Mew", "_lang": "en"}]
 
         confident, decision = _metadata_decision(recognized, candidates)
 
         self.assertFalse(confident)
         self.assertIsNone(decision)
 
-    def test_sole_candidate_requires_there_to_really_be_only_one(self):
-        # The clear top pick here passes the uniqueness-of-rank and
-        # no-contradiction checks on its own (hp agrees, nothing disagrees),
-        # but only hp is confirmed — not artist too — so artist_hp cannot
-        # fire and this must fall through to the new path. It must not fire
-        # there either, because a second real candidate exists; this is what
-        # actually exercises `len(candidates) == 1` rather than being turned
-        # away earlier by the rank-key tie check.
-        recognized = normalize_recognized_card_info({"hp": "60"})
-        candidates = [
-            {"id": "top", "hp": "60"},
-            {"id": "other", "hp": None},
-        ]
+    def test_single_trainer_requires_exact_name_and_matching_language(self):
+        recognized = normalize_recognized_card_info({
+            "name": "Bill",
+            "card_type": "trainer",
+            "language": "en",
+        })
+
+        for candidate in (
+            {
+                "id": "wrong-name",
+                "name": "Bill's Transfer",
+                "card_type": "Trainer",
+                "_lang": "en",
+            },
+            {
+                "id": "wrong-language",
+                "name": "Bill",
+                "card_type": "Trainer",
+                "_lang": "de",
+            },
+            {"id": "unknown-language", "name": "Bill", "card_type": "Trainer"},
+            {
+                "id": "wrong-type",
+                "name": "Bill",
+                "card_type": "Pokemon",
+                "_lang": "en",
+            },
+            {"id": "unknown-type", "name": "Bill", "_lang": "en"},
+        ):
+            with self.subTest(candidate=candidate):
+                confident, decision = _metadata_decision(recognized, [candidate])
+                self.assertFalse(confident)
+                self.assertIsNone(decision)
+
+    def test_single_trainer_contradiction_still_prevents_confidence(self):
+        recognized = normalize_recognized_card_info({
+            "name": "Bill",
+            "card_type": "trainer",
+            "language": "en",
+            "number_local": "118",
+        })
+        candidates = [{
+            "id": "bill",
+            "name": "Bill",
+            "card_type": "Trainer",
+            "number": "119",
+            "_lang": "en",
+        }]
 
         confident, decision = _metadata_decision(recognized, candidates)
 

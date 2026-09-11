@@ -45,6 +45,15 @@ def _portable_unaccent_expr(column):
     return expr
 
 
+def _portable_unaccent_value(value: str) -> str:
+    """Mirror ``_portable_unaccent_expr`` without altering other scripts."""
+    normalized = unicodedata.normalize("NFC", str(value)).casefold()
+    for replacement, characters in _LATIN_REPLACEMENTS.items():
+        for character in characters.casefold():
+            normalized = normalized.replace(character, replacement)
+    return normalized
+
+
 def _postgres_unaccent_available(db: Session) -> bool:
     bind = db.get_bind()
     if bind.dialect.name != "postgresql":
@@ -74,7 +83,7 @@ def accent_insensitive_contains(db: Session, column, value: str | None):
         pattern = f"%{value}%"
         return func.unaccent(func.lower(column)).like(func.unaccent(func.lower(literal(pattern))))
 
-    normalized = strip_diacritics(value)
+    normalized = _portable_unaccent_value(value)
     if not normalized:
         return None
     return _portable_unaccent_expr(column).like(f"%{normalized}%")

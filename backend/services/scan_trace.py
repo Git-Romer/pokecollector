@@ -294,10 +294,9 @@ class ScanTrace:
             "status": status,
             "results": count,
             # "local" (the synced cards table) or "api_fallback" (live
-            # TCGdex, only reached when the local search for this exact
-            # pair came back empty) — lets offline trace analysis measure
-            # how often the fallback actually fires, e.g. after a new set
-            # releases and the next full sync hasn't reached it yet.
+            # TCGdex, reached when the pair has no name-compatible local rows
+            # or none matches a recognized collector number) — lets offline
+            # trace analysis measure incomplete-sync fallbacks.
             "source": source,
         }
         if error:
