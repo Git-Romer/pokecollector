@@ -4,7 +4,6 @@ import { AlertTriangle, Camera, Check, ChevronDown, ChevronLeft, ChevronRight, C
 import { fetchScanCandidateImage, fetchScanJobItemImage } from '../api/client'
 import CardImage from './CardImage'
 import { useDialogBehavior } from './ui/dialogBehavior'
-import { tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { formatRetryCountdown } from '../utils/retryCountdown'
 
 // Shared between the queue page (ScanQueue) and, previously, the capture
@@ -68,23 +67,22 @@ export function useScanItemPhoto(jobId, item) {
 //     sizing each image independently leaves the two cards misaligned —
 //     which defeats the point of showing them side by side.
 //
-// Below `md` the pair stacks instead of sitting side by side (see the
-// container below), so height is the scarce dimension there, not width —
-// two frames at the desktop 52vh would need ~104vh stacked, well past the
-// viewport, and silently overflowed above and below the screen with no way
-// to scroll to the cut-off half. 38vh keeps both frames plus their captions
-// within a typical phone viewport; width goes the other way, since a
-// stacked frame is no longer sharing horizontal space with a sibling.
+// Give both sides one real card-shaped viewport instead of two loose boxes.
+// The old max-width/max-height combination let a 3:4 phone photo and a
+// catalogue scan settle at different rendered heights. A 5:7 viewport keeps
+// their visible edges aligned; object-cover only trims the small amount of
+// background/crop variance outside that shared card ratio.
 //
-// dvh, not vh: a mobile browser's address bar makes the visible viewport
-// smaller than 100vh, since vh is pinned to the layout viewport with the
-// bar retracted. Sized against that larger, hypothetical viewport, the two
-// stacked frames plus header and accept bar can end up taller than what is
-// actually on screen with the bar showing — which reads as the top frame
-// getting cut off, not as something scrollable. dvh tracks the viewport
-// that's actually visible.
-const CARD_FRAME = 'h-[38dvh] md:h-[62dvh] w-[80vw] md:w-[30vw] max-w-[420px] flex items-center justify-center'
-const CARD_IMAGE = 'max-h-full max-w-full object-contain rounded-xl'
+// On phones the comparison stacks, but both figures still need to fit in
+// the visible modal without scrolling. Dynamic viewport height is therefore
+// the primary bound there; the result is still meaningfully larger than a
+// half-width side-by-side card. From the tablet breakpoint onward the same
+// figures sit side by side. A photo-only viewer can use considerably more
+// space because it has no comparison sibling.
+const COMPARISON_CARD_WIDTH = 'w-[min(76vw,24dvh,220px)] md:w-[min(30vw,44.286dvh,420px)]'
+const SOLO_CARD_WIDTH = 'w-[min(88vw,55dvh,560px)]'
+const CARD_FRAME = 'aspect-[5/7] w-full flex items-center justify-center rounded-xl'
+const CARD_IMAGE = 'h-full w-full object-cover rounded-xl'
 
 // Progressive load for one candidate scan.
 //
@@ -297,13 +295,21 @@ export function CardZoomModal({
     return () => node.removeEventListener('wheel', onWheel)
   }, [zoomAt])
 
-  // Drag to pan. Tracked from the pointer-down position so a click that
-  // never moved still counts as a click — the overlay closes on click, and a
-  // pan must not be mistaken for one.
+  // Drag to pan. Tracked from pointer-down so a stationary press remains a
+  // card click while real movement is not mistaken for the zoom toggle.
   const onPointerDown = e => {
     if (!zoomed) return
-    drag.current = { x: e.clientX, y: e.clientY, moved: false }
-    e.currentTarget.setPointerCapture?.(e.pointerId)
+    // Do not capture yet. Capturing an ordinary click retargets its click
+    // event from the card to this full comparison surface, where it bubbles
+    // to the backdrop and closes the viewer instead of resetting the zoom.
+    drag.current = {
+      x: e.clientX,
+      y: e.clientY,
+      distance: 0,
+      moved: false,
+      pointerId: e.pointerId,
+      captured: false,
+    }
   }
   const onPointerMove = e => {
     if (!drag.current) return
@@ -312,9 +318,21 @@ export function CardZoomModal({
     // so dividing by it made every drag about a third of the distance it
     // should be.
     const box = (frameRef.current || e.currentTarget).getBoundingClientRect()
-    const dx = (e.clientX - drag.current.x) / box.width
-    const dy = (e.clientY - drag.current.y) / box.height
-    if (Math.abs(dx) + Math.abs(dy) > 0.005) drag.current.moved = true
+    const deltaX = e.clientX - drag.current.x
+    const deltaY = e.clientY - drag.current.y
+    const dx = deltaX / box.width
+    const dy = deltaY / box.height
+    // Pointer events can arrive in many tiny increments. Measure the whole
+    // gesture rather than each event independently, otherwise a slow drag
+    // can pan visibly but still be mistaken for a click on pointer-up.
+    drag.current.distance += Math.hypot(deltaX, deltaY)
+    if (drag.current.distance / Math.min(box.width, box.height) > 0.005) {
+      drag.current.moved = true
+      if (!drag.current.captured) {
+        e.currentTarget.setPointerCapture?.(drag.current.pointerId)
+        drag.current.captured = true
+      }
+    }
     drag.current.x = e.clientX
     drag.current.y = e.clientY
     panBy(dx, dy)
@@ -334,19 +352,18 @@ export function CardZoomModal({
     }
   }
 
-  // Clicking a card zooms into the point clicked; clicking the backdrop
-  // closes. At full zoom a click resets, so there is always a way back
-  // without the keyboard — which is also why double-click-to-reset was
-  // dropped: a double click fires a single click first, so the two would
-  // have fought unless every click were delayed to watch for a second, and
-  // that delay is felt.
+  // A card click is a simple fit/zoom toggle: the first click gives a clear
+  // 2x close-up around that point and the next click returns to the complete
+  // card. Keeping this binary avoids later clicks merely shifting the focus
+  // (which reads as panning) and works the same in comparison and photo-only
+  // views. The backdrop remains the explicit close target.
   const onCardClick = e => {
     e.stopPropagation()
     if (draggedRef.current) return
-    if (zoom.scale >= MAX_ZOOM) return reset()
+    if (zoomed) return reset()
     const box = e.currentTarget.getBoundingClientRect()
     focusOn(
-      1.6,
+      2,
       clamp01((e.clientX - box.left) / box.width),
       clamp01((e.clientY - box.top) / box.height),
     )
@@ -381,13 +398,13 @@ export function CardZoomModal({
   const retrySrc = full || (card?.image && retryAttempt > 0
     ? `${card.image}${card.image.includes('?') ? '&' : '?'}retry=${retryAttempt}`
     : card?.image)
+  const cardWidth = photoUrl && card ? COMPARISON_CARD_WIDTH : SOLO_CARD_WIDTH
 
   if (!card && !photoUrl) return null
 
   return createPortal(
-    // Clicking anywhere closes, the image included — the whole overlay is
-    // the dismiss target, which is what a full-screen viewer is expected to
-    // do.
+    // The backdrop closes the viewer. Card clicks deliberately stop here so
+    // they can toggle zoom without dismissing the comparison.
     <div
       ref={dialogRef}
       role="dialog"
@@ -399,11 +416,11 @@ export function CardZoomModal({
       // browsers a fixed, full-screen overlay can render partly behind the
       // address bar rather than below it, and safe-area-inset-top is the
       // platform's own answer for "how much is currently covered up top."
-      className="fixed inset-0 z-[400] flex cursor-zoom-out flex-col bg-black/90 p-4 [padding-top:max(1rem,env(safe-area-inset-top))]"
+      className="fixed inset-0 z-[400] flex cursor-default flex-col bg-black/90 p-4 [padding-top:max(1rem,env(safe-area-inset-top))]"
       onClick={onClose}>
       <div className="flex flex-shrink-0 justify-end">
         <button type="button" onClick={onClose} aria-label={t('common.close')}
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 transition-colors hover:bg-white/20">
+          className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-white/10 transition-colors hover:bg-white/20">
           <X size={18} className="text-white" />
         </button>
       </div>
@@ -418,32 +435,31 @@ export function CardZoomModal({
         // browser's native selection, painting everything blue mid-pan.
         // There is nothing here worth selecting — it is a comparison, not a
         // document.
-        // overflow-y-auto is a safety net, not the primary fix: 38vh frames
-        // are sized to fit a typical phone viewport stacked, but a taller
-        // caption or a shorter viewport should be scrollable to reach rather
-        // than silently clipped the way a fixed-height overflow was before.
-        className="flex min-h-0 flex-1 select-none items-start justify-center overflow-y-auto py-3 md:items-center"
+        // overflow-y-auto is a safety net: the pair is sized to fit a typical
+        // phone viewport, but a taller translated caption or a very short
+        // screen should remain reachable instead of being silently clipped.
+        className="flex min-h-0 flex-1 select-none items-start justify-center overflow-y-auto py-2 md:items-center md:py-3"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
         onClickCapture={swallowClickAfterDrag}
         onDragStart={e => e.preventDefault()}
-        style={{ cursor: zoomed ? 'grab' : undefined, touchAction: zoomed ? 'none' : undefined }}
+        style={{ touchAction: zoomed ? 'none' : undefined }}
       >
-        <div className="flex flex-col items-start justify-center gap-4 md:flex-row md:gap-8">
+        <div className="flex flex-col items-start justify-center gap-2 md:flex-row md:gap-8">
           {photoUrl && (
-            <figure className="flex flex-col items-center">
+            <figure className={`${cardWidth} flex min-w-0 flex-col items-center`}>
               <div ref={frameRef} onClick={onCardClick}
                 className={`${CARD_FRAME} overflow-hidden ${zoomed ? 'cursor-grab' : 'cursor-zoom-in'}`}>
                 <img src={photoUrl} alt={t('scanner.yourPhoto')} className={CARD_IMAGE}
                   style={zoomStyle(zoom)} draggable={false} />
               </div>
-              <figcaption className="mt-2 text-[11px] text-text-muted">{t('scanner.yourPhoto')}</figcaption>
+              <figcaption className="mt-2 w-full text-center text-sm font-semibold text-white/85">{t('scanner.yourPhoto')}</figcaption>
             </figure>
           )}
           {card && (
-            <figure className="flex flex-col items-center">
+            <figure className={`${cardWidth} flex min-w-0 flex-col items-center`}>
               {/* Structurally identical to the photo above, deliberately.
                   The clipping box has to be the frame on both sides: when it
                   was the image's own box here and the frame there, zooming
@@ -505,12 +521,12 @@ export function CardZoomModal({
                   </div>
                 )}
               </div>
-              <figcaption className="mt-2 space-y-0.5 text-center">
-                <p className="text-sm font-bold text-white">{card?.name}</p>
-                <p className="text-[11px] font-mono text-brand-red/80">
+              <figcaption className="mt-2 w-full space-y-0.5 text-center">
+                <p className="text-base font-bold text-white">{card?.name}</p>
+                <p className="text-sm font-mono font-semibold text-brand-red">
                   {`${(card?.set_abbreviation || '').toUpperCase()} ${card?.number || ''}`.trim()}
                 </p>
-                <p className="text-[11px] text-text-muted">
+                <p className="text-sm leading-snug text-white/75">
                   {[card?.set, card?.rarity, (card?.lang || card?._lang || '').toUpperCase()]
                     .filter(Boolean).join(' · ')}
                 </p>
@@ -528,28 +544,28 @@ export function CardZoomModal({
           onClick={e => e.stopPropagation()}>
           {canNavigate && (
             <button type="button" onClick={() => step(-1)} aria-label={t('scanner.previousMatch')}
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 transition-colors hover:bg-white/20">
+              className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-white/10 transition-colors hover:bg-white/20">
               <ChevronLeft size={20} className="text-white" />
             </button>
           )}
           <button
             type="button"
             onClick={() => onAccept(card)}
-            className="flex items-center gap-2 rounded-xl px-6 py-3 font-black text-white transition-all"
+            className="flex cursor-pointer items-center gap-2 rounded-xl px-6 py-3 font-black text-white transition-all"
             style={{ background: '#e3000b', boxShadow: '0 0 16px rgba(227,0,11,0.35)' }}
           >
             <Check size={18} />{t('scanner.acceptMatch')}
           </button>
           {canNavigate && (
             <button type="button" onClick={() => step(1)} aria-label={t('scanner.nextMatch')}
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 transition-colors hover:bg-white/20">
+              className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-white/10 transition-colors hover:bg-white/20">
               <ChevronRight size={20} className="text-white" />
             </button>
           )}
         </div>
       )}
       {canNavigate && (
-        <p className="flex-shrink-0 pt-2 text-center text-[11px] text-text-muted">
+        <p className="flex-shrink-0 pt-2 text-center text-sm text-white/70">
           {index + 1} / {matches.length} · {t('scanner.arrowKeyHint')} · {t('scanner.zoomHint')}
         </p>
       )}
@@ -639,9 +655,6 @@ function CandidateGrid({ jobId, itemId, matches, onSelect, onZoom, t }) {
                   <span className="p-1 text-center text-[9px] text-text-muted">{match.name}</span>
                 </div>
               )}
-              <span className={`absolute right-1 top-1 rounded px-1 py-0.5 text-[8px] font-black leading-none ${tcgdexLanguageBadgeClass(language)}`}>
-                {tcgdexLanguageLabel(language)}
-              </span>
               {match.printed_total_mismatch && (
                 <span
                   className="absolute left-1 top-1 rounded border border-amber-400 bg-amber-500/90 px-1 py-0.5 text-[8px] font-black leading-none text-black"

@@ -13,17 +13,17 @@ const pixel = Buffer.from(
   'base64',
 )
 
-const match = (id, name, number) => ({
-  id: `${id}_en`,
+const match = (id, name, number, lang = 'en') => ({
+  id: `${id}_${lang}`,
   tcg_card_id: id,
   name,
   number,
   set: 'Base Set',
   set_abbreviation: 'BS',
   rarity: 'Common',
-  lang: 'en',
-  image: `https://assets.tcgdex.net/en/base/${id}/${number}/low.webp`,
-  image_hd: `https://assets.tcgdex.net/en/base/${id}/${number}/high.webp`,
+  lang,
+  image: `https://assets.tcgdex.net/${lang}/base/${id}/${number}/low.webp`,
+  image_hd: `https://assets.tcgdex.net/${lang}/base/${id}/${number}/high.webp`,
 })
 
 async function installScanReviewApi(page, { failAtomic = false } = {}) {
@@ -41,7 +41,7 @@ async function installScanReviewApi(page, { failAtomic = false } = {}) {
       resolved: false,
       has_image: true,
       recognized: { name: 'Bill', number: '74', language: 'en' },
-      matches: [match('base1-074', 'Bill', '74'), match('base1-075', 'Professor Oak', '75')],
+      matches: [match('base1-074', 'Bill', '74', 'ja'), match('base1-075', 'Professor Oak', '75')],
     },
     {
       id: 12,
@@ -73,6 +73,7 @@ async function installScanReviewApi(page, { failAtomic = false } = {}) {
     },
   ]
   const resolvedCards = []
+  const addedPayloads = []
 
   const job = () => ({
     id: 7,
@@ -128,6 +129,7 @@ async function installScanReviewApi(page, { failAtomic = false } = {}) {
       item.resolved = true
       item.has_image = false
       const payload = request.postDataJSON()
+      addedPayloads.push(payload)
       resolvedCards.push(payload.confirmed_card_id)
       return route.fulfill({ json: {
         item,
@@ -157,7 +159,7 @@ async function installScanReviewApi(page, { failAtomic = false } = {}) {
     return route.fulfill({ json: {} })
   })
 
-  return { items, resolvedCards }
+  return { items, resolvedCards, addedPayloads }
 }
 
 test('linked review is accessible, advances through a batch, and keeps resolved rows read-only', async ({ page }) => {
@@ -165,11 +167,58 @@ test('linked review is accessible, advances through a batch, and keeps resolved 
   await page.goto('/scans/7')
 
   await expect(page.getByText('Bill', { exact: true }).first()).toBeVisible()
+  const firstCandidate = page.getByRole('button', { name: 'Compare with your photo' }).first()
+  await expect(firstCandidate.locator('..').getByText('🇯🇵 JA', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Expand photo' }).first().click()
+  let dialog = page.getByRole('dialog', { name: 'Compare with your photo' })
+  const photoOnlyImage = dialog.getByAltText('Your photo')
+  const photoOnlyFrame = await photoOnlyImage.evaluate(node => {
+    const frame = node.parentElement.getBoundingClientRect()
+    return { width: frame.width, height: frame.height }
+  })
+  await photoOnlyImage.click()
+  await expect.poll(() => photoOnlyImage.evaluate(node => node.style.transform)).toContain('scale(2)')
+  await photoOnlyImage.click()
+  await expect(dialog).toBeVisible()
+  await expect.poll(() => photoOnlyImage.evaluate(node => node.style.transform)).toBe('')
+  await dialog.getByRole('button', { name: 'Close' }).click()
+  await expect(dialog).toHaveCount(0)
+
   await page.getByRole('button', { name: 'Compare with your photo' }).first().click()
 
-  const dialog = page.getByRole('dialog', { name: 'Compare with your photo' })
+  dialog = page.getByRole('dialog', { name: 'Compare with your photo' })
   await expect(dialog).toBeVisible()
   await expect(dialog.getByText('Bill', { exact: true })).toBeVisible()
+  await expect.poll(() => dialog.evaluate(node => getComputedStyle(node).cursor)).toBe('default')
+  await expect(dialog.locator('figure')).toHaveCount(2)
+  const frameSizes = await dialog.locator('figure').evaluateAll(figures => figures.map(figure => {
+    const frame = figure.firstElementChild.getBoundingClientRect()
+    return { x: frame.x, y: frame.y, width: frame.width, height: frame.height }
+  }))
+  const viewport = page.viewportSize()
+  if (viewport.width < 768) {
+    expect(Math.abs(frameSizes[0].x - frameSizes[1].x)).toBeLessThan(1)
+    expect(frameSizes[1].y).toBeGreaterThan(frameSizes[0].y)
+    expect(frameSizes[0].width).toBeGreaterThan(viewport.width * 0.45)
+    const surfaceSize = await dialog.locator('figure').first().evaluate(figure => {
+      const surface = figure.parentElement.parentElement
+      return { clientHeight: surface.clientHeight, scrollHeight: surface.scrollHeight }
+    })
+    expect(surfaceSize.scrollHeight).toBeLessThanOrEqual(surfaceSize.clientHeight + 1)
+  } else {
+    expect(frameSizes[1].x).toBeGreaterThan(frameSizes[0].x)
+    expect(Math.abs(frameSizes[0].y - frameSizes[1].y)).toBeLessThan(1)
+  }
+  expect(Math.abs(frameSizes[0].width - frameSizes[1].width)).toBeLessThan(1)
+  expect(Math.abs(frameSizes[0].height - frameSizes[1].height)).toBeLessThan(1)
+  expect(frameSizes[0].height / frameSizes[0].width).toBeCloseTo(7 / 5, 2)
+  expect(photoOnlyFrame.width).toBeGreaterThan(frameSizes[0].width)
+  await expect.poll(() => dialog.locator('figcaption').first().evaluate(
+    node => getComputedStyle(node).fontSize,
+  )).toBe('14px')
+  await expect.poll(() => dialog.getByText('Base Set · Common · JA').evaluate(
+    node => getComputedStyle(node).fontSize,
+  )).toBe('14px')
   await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe('hidden')
   await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('role'))).toBe('dialog')
 
@@ -178,9 +227,27 @@ test('linked review is accessible, advances through a batch, and keeps resolved 
   await page.keyboard.press('ArrowLeft')
 
   const candidateImage = dialog.getByAltText('Bill')
-  await candidateImage.click({ position: { x: 0, y: 0 } })
+  await expect.poll(() => candidateImage.evaluate(node => getComputedStyle(node.parentElement).cursor)).toBe('zoom-in')
+  await candidateImage.click()
   await expect.poll(() => candidateImage.evaluate(node => node.style.transform)).toContain('scale(')
-  await page.keyboard.press('Escape')
+  await expect.poll(() => candidateImage.evaluate(node => getComputedStyle(node.parentElement).cursor)).toBe('grab')
+  const photoImage = dialog.getByAltText('Your photo')
+  const originBeforeDrag = await candidateImage.evaluate(node => node.style.transformOrigin)
+  const cardBox = await candidateImage.boundingBox()
+  const startX = cardBox.x + cardBox.width / 2
+  const startY = cardBox.y + cardBox.height / 2
+  await page.mouse.move(startX, startY)
+  await page.mouse.down()
+  for (let offset = 1; offset <= 10; offset += 1) {
+    await page.mouse.move(startX + offset, startY)
+  }
+  await page.mouse.up()
+  await expect(dialog).toBeVisible()
+  await expect.poll(() => candidateImage.evaluate(node => node.style.transform)).toContain('scale(2)')
+  await expect.poll(() => candidateImage.evaluate(node => node.style.transformOrigin)).not.toBe(originBeforeDrag)
+  const originAfterDrag = await candidateImage.evaluate(node => node.style.transformOrigin)
+  await expect.poll(() => photoImage.evaluate(node => node.style.transformOrigin)).toBe(originAfterDrag)
+  await candidateImage.click()
   await expect(dialog).toBeVisible()
   await expect.poll(() => candidateImage.evaluate(node => node.style.transform)).toBe('')
   await page.keyboard.press('Escape')
@@ -200,6 +267,7 @@ test('linked review is accessible, advances through a batch, and keeps resolved 
 
   await expect(dialog.getByText('Machop', { exact: true })).toBeVisible()
   await expect.poll(() => api.resolvedCards).toEqual(['base1-074'])
+  await expect.poll(() => api.addedPayloads[0]?.lang).toBe('ja')
   await dialog.getByRole('button', { name: 'Close' }).click()
 
   const resolvedBill = page.getByRole('button', { name: /Bill/ })
