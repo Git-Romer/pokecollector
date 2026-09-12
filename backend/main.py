@@ -17,8 +17,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Rate limiter: uses client IP, default 60 requests/minute
-limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
+# Rate limiter: uses client IP, default 60 requests/minute.
+# Storage defaults to in-memory but can be pointed at a shared backend (e.g. Redis) via
+# RATELIMIT_STORAGE_URI so limits are enforced consistently across multiple instances.
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["60/minute"],
+    storage_uri=os.environ.get("RATELIMIT_STORAGE_URI", "memory://"),
+)
 
 
 def read_app_version() -> str:
