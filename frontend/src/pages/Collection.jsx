@@ -42,6 +42,38 @@ const VARIANT_COLORS = {
 
 const CARD_CATEGORY_OPTIONS = ['Pokémon', 'Trainer', 'Energy']
 const CARD_SUBTYPE_OPTIONS = ['Item', 'Supporter', 'Stadium', 'Pokémon Tool', 'EX', 'ex', 'GX', 'Stage 1', 'Stage 2', 'Basic']
+export const RULE_TEXT_DEBOUNCE_MS = 300
+
+export function buildCollectionQuery(ruleText) {
+  const params = ruleText ? { rule_text: ruleText } : {}
+  return {
+    params,
+    queryKey: ['collection', params],
+    placeholderData: (previousData) => previousData,
+  }
+}
+
+export function debounce(callback, delay) {
+  let timeoutId
+  const run = (value) => {
+    clearTimeout(timeoutId)
+    timeoutId = setTimeout(() => callback(value), delay)
+  }
+  run.cancel = () => clearTimeout(timeoutId)
+  return run
+}
+
+export function useDebouncedValue(value, delay) {
+  const [debouncedValue, setDebouncedValue] = useState(value)
+  const updateDebouncedValue = useMemo(() => debounce(setDebouncedValue, delay), [delay])
+
+  useEffect(() => {
+    updateDebouncedValue(value)
+    return updateDebouncedValue.cancel
+  }, [value, updateDebouncedValue])
+
+  return debouncedValue
+}
 
 const normalizeCardFilterValue = (value) => String(value || '')
   .normalize('NFD')
@@ -980,6 +1012,7 @@ export default function Collection() {
   const [filterMinPrice, setFilterMinPrice] = useState('')
   const [filterMaxPrice, setFilterMaxPrice] = useState('')
   const [filterDuplicates, setFilterDuplicates] = useState(false)
+  const [ruleText, setRuleText] = useState('')
   const [searchText, setSearchText] = useState('')
   const [showFilters, setShowFilters] = useState(false)
   const [showCsvImportModal, setShowCsvImportModal] = useState(false)
@@ -987,10 +1020,13 @@ export default function Collection() {
   const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
 
+  const debouncedRuleText = useDebouncedValue(ruleText, RULE_TEXT_DEBOUNCE_MS)
+  const collectionQuery = buildCollectionQuery(debouncedRuleText)
   const { data: items = [], isLoading, error } = useQuery({
-    queryKey: ['collection'],
-    queryFn: () => getCollection({}).then(r => r.data),
+    queryKey: collectionQuery.queryKey,
+    queryFn: () => getCollection(collectionQuery.params).then(r => r.data),
     refetchInterval: 60000,
+    placeholderData: collectionQuery.placeholderData,
   })
 
   const { data: wishlistItems = [] } = useQuery({
@@ -1126,7 +1162,7 @@ export default function Collection() {
     return sortCardFilterLabels(CARD_SUBTYPE_OPTIONS, all)
   }, [items])
 
-  const hasActiveFilters = filterRarity || filterCondition || filterVariant || filterSet || filterType || filterCategories.length > 0 || filterSubtypes.length > 0 || filterLegality || filterLang || filterMinPrice || filterMaxPrice || filterDuplicates || searchText
+  const hasActiveFilters = filterRarity || filterCondition || filterVariant || filterSet || filterType || filterCategories.length > 0 || filterSubtypes.length > 0 || filterLegality || filterLang || filterMinPrice || filterMaxPrice || filterDuplicates || ruleText || searchText
 
   const filtered = useMemo(() => {
     let result = items.filter(item => {
@@ -1203,7 +1239,7 @@ export default function Collection() {
   const resetFilters = () => {
     setFilterRarity(''); setFilterCondition(''); setFilterVariant('')
     setFilterSet(''); setFilterType(''); setFilterCategories([]); setFilterSubtypes([]); setFilterLegality(''); setFilterLang(''); setFilterMinPrice('')
-    setFilterMaxPrice(''); setFilterDuplicates(false); setSearchText('')
+    setFilterMaxPrice(''); setFilterDuplicates(false); setRuleText(''); setSearchText('')
   }
 
   if (isLoading) {
@@ -1349,6 +1385,10 @@ export default function Collection() {
                 <option value="">{t('collection.allEnergyTypes')}</option>
                 {types.map(tp => <option key={tp} value={tp}>{tp}</option>)}
               </select>
+            </div>
+            <div>
+              <label className="text-xs text-text-muted mb-1 block">{t('collection.ruleText')}</label>
+              <input type="text" value={ruleText} onChange={(e) => setRuleText(e.target.value)} className="input py-1.5 text-sm" />
             </div>
             <div className="col-span-2 sm:col-span-3 lg:col-span-2">
               <label className="text-xs text-text-muted mb-1 block">{t('collection.filterCardCategory')}</label>

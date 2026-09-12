@@ -116,6 +116,11 @@ function FilterForm({ filters, setFilter, allSeries, setsForSeries, toggleSortOr
             onChange={(e) => setFilter('artist', e.target.value)} className="input text-sm" />
         </div>
         <div>
+          <label className="text-xs text-text-muted mb-1 block">{t('cardSearch.ruleText')}</label>
+          <input type="text" placeholder={t('cardSearch.ruleText')} value={filters.rule_text}
+            onChange={(e) => setFilter('rule_text', e.target.value)} className="input text-sm" />
+        </div>
+        <div>
           <label className="text-xs text-text-muted mb-1 block">{t('cardSearch.hpMin')}</label>
           <input type="number" min="0" max="999" placeholder="0" value={filters.hp_min}
             onChange={(e) => setFilter('hp_min', e.target.value)} className="input text-sm" />
@@ -128,6 +133,26 @@ function FilterForm({ filters, setFilter, allSeries, setsForSeries, toggleSortOr
       </div>
     </div>
   )
+}
+
+export function buildCardSearchParams(filters, langFilter, page, pageSize) {
+  return {
+    name: filters.name || undefined,
+    category: filters.category || undefined,
+    type: filters.type || undefined,
+    subtype: filters.subtype || undefined,
+    rarity: filters.rarity || undefined,
+    set_id: filters.set_id || undefined,
+    artist: filters.artist || undefined,
+    rule_text: filters.rule_text.trim() ? filters.rule_text : undefined,
+    hp_min: filters.hp_min ? parseInt(filters.hp_min, 10) : undefined,
+    hp_max: filters.hp_max ? parseInt(filters.hp_max, 10) : undefined,
+    sort_by: filters.sort_by || undefined,
+    sort_order: filters.sort_order,
+    lang: langFilter,
+    page,
+    page_size: pageSize,
+  }
 }
 
 export default function CardSearch() {
@@ -177,7 +202,10 @@ export default function CardSearch() {
   // Search state is deliberately derived from the URL. This makes direct links,
   // refreshes, and browser history reproduce precisely the same search.
   const { filters, langFilter, page } = useMemo(() => {
-    const read = (key) => searchParams.get(key)?.trim() || ''
+    const read = (key) => {
+      const value = searchParams.get(key)
+      return key === 'rule_text' ? value || '' : value?.trim() || ''
+    }
     const enumValue = (key, values) => {
       const value = read(key)
       return values.includes(value) ? value : ''
@@ -205,6 +233,7 @@ export default function CardSearch() {
         series: selectedSeries,
         set_id: setIsValid ? selectedSet : '',
         artist: read('artist'),
+        rule_text: read('rule_text'),
         hp_min: hpValue('hp_min'),
         hp_max: hpValue('hp_max'),
         sort_by: enumValue('sort_by', ['name', 'number', 'rarity']),
@@ -229,24 +258,9 @@ export default function CardSearch() {
     )
   }, [location.pathname, location.search, navigate])
 
-  const queryParams = {
-    name: filters.name || undefined,
-    category: filters.category || undefined,
-    type: filters.type || undefined,
-    subtype: filters.subtype || undefined,
-    rarity: filters.rarity || undefined,
-    set_id: filters.set_id || undefined,
-    artist: filters.artist || undefined,
-    hp_min: filters.hp_min ? parseInt(filters.hp_min, 10) : undefined,
-    hp_max: filters.hp_max ? parseInt(filters.hp_max, 10) : undefined,
-    sort_by: filters.sort_by || undefined,
-    sort_order: filters.sort_order,
-    lang: langFilter,
-    page,
-    page_size: pageSize,
-  }
+  const queryParams = buildCardSearchParams(filters, langFilter, page, pageSize)
 
-  const hasQuery = filters.name || filters.category || filters.type || filters.subtype || filters.rarity || filters.set_id || filters.artist || filters.hp_min || filters.hp_max || filters.series
+  const hasQuery = filters.name || filters.category || filters.type || filters.subtype || filters.rarity || filters.set_id || filters.artist || filters.rule_text.trim() || filters.hp_min || filters.hp_max || filters.series
 
   const { data, isLoading, error, isFetching } = useQuery({
     queryKey: ['card-search', queryParams],
@@ -259,12 +273,12 @@ export default function CardSearch() {
   const hasUrlSearchState = Array.from(searchParams.keys()).length > 0
   const hasActiveFilters = Boolean(
     filters.category || filters.type || filters.subtype || filters.rarity ||
-    filters.set_id || filters.series || filters.artist || filters.hp_min ||
+    filters.set_id || filters.series || filters.artist || filters.rule_text.trim() || filters.hp_min ||
     filters.hp_max || filters.sort_by
   )
   const activeFilterCount = [
     filters.category, filters.type, filters.subtype, filters.rarity,
-    filters.set_id, filters.series, filters.artist, filters.hp_min,
+    filters.set_id, filters.series, filters.artist, filters.rule_text.trim(), filters.hp_min,
     filters.hp_max, filters.sort_by,
   ].filter(Boolean).length
   const isCodeNumberSearch = CODE_NUMBER_RE.test(searchInput.trim())
@@ -281,7 +295,7 @@ export default function CardSearch() {
       if (!setStillValid) updates.set_id = ''
     }
     // Text fields update URL state without creating one history entry per keystroke.
-    updateSearchParams(updates, { replace: ['artist', 'hp_min', 'hp_max'].includes(key) })
+    updateSearchParams(updates, { replace: ['artist', 'rule_text', 'hp_min', 'hp_max'].includes(key) })
   }
 
   const toggleSortOrder = () => updateSearchParams({ sort_order: filters.sort_order === 'asc' ? 'desc' : 'asc' })

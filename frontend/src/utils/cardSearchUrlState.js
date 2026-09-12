@@ -18,7 +18,8 @@ export function updateCardSearchParams(currentSearch, updates, { resetPage = tru
   const next = new URLSearchParams(currentSearch)
 
   Object.entries(updates).forEach(([key, rawValue]) => {
-    const value = String(rawValue ?? '').trim()
+    const raw = String(rawValue ?? '')
+    const value = key === 'rule_text' ? raw : raw.trim()
     if (!value || (key === 'sort_order' && value === 'asc')) next.delete(key)
     else next.set(key, value)
   })
