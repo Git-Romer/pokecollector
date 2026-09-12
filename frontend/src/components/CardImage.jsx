@@ -98,6 +98,7 @@ export default function CardImage({
   style,
   loading = 'lazy',
   onLoadingChange,
+  onStatusChange,
   compactError = false,
 }) {
   const { t } = useSettings()
@@ -145,6 +146,10 @@ export default function CardImage({
   useEffect(() => {
     onLoadingChange?.(!loaded)
   }, [loaded, onLoadingChange])
+
+  useEffect(() => {
+    onStatusChange?.({ loaded, failed })
+  }, [failed, loaded, onStatusChange])
 
   useEffect(() => {
     const image = imageRef.current
