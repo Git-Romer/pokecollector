@@ -276,6 +276,91 @@ class ScanQueueTests(unittest.TestCase):
         )
         generate.assert_not_awaited()
 
+    def test_cached_retry_still_requires_current_endpoint_proof(self):
+        user = self.users[0]
+        model = "vision-model"
+        first = {
+            "OPENAI_SCANNER_ENABLED": "true",
+            "OPENAI_MODEL": model,
+            "OPENAI_BASE_URL": "http://endpoint-a:11434/v1",
+            "OPENAI_API_KEY_REQUIRED": "false",
+        }
+        second = {**first, "OPENAI_BASE_URL": "http://endpoint-b:11434/v1"}
+        with patch.dict(os.environ, first):
+            proof = scanner_capability_proof("openai", model, "full")
+        self.db.add_all([
+            UserSetting(user_id=user.id, key="scanner_provider", value="openai"),
+            UserSetting(user_id=user.id, key="scanner_model_openai", value=model),
+            UserSetting(
+                user_id=user.id,
+                key="scanner_capability_openai",
+                value=proof,
+            ),
+        ])
+        self.db.commit()
+        matcher = AsyncMock()
+
+        with patch.dict(os.environ, second), patch(
+            "services.scan_queue._load_recognition_cache",
+            return_value={34: {"name": "Cached"}},
+        ) as load_cache, patch(
+            "api.recognize.match_card_info", new=matcher
+        ), self.assertRaises(HTTPException) as caught:
+            asyncio.run(
+                scan_queue.default_scan_processor(
+                    self.db,
+                    user.id,
+                    b"stored-card-photo",
+                    "image/jpeg",
+                    job_id=12,
+                    item_id=34,
+                    lease_token="lease",
+                    reuse_recognition_cache=True,
+                )
+            )
+
+        self.assertEqual(caught.exception.status_code, 409)
+        load_cache.assert_not_called()
+        matcher.assert_not_awaited()
+
+    def test_cached_retry_still_requires_current_credential(self):
+        user = self.users[0]
+        provider = MagicMock()
+        provider.name = "openai"
+        provider.model.return_value = "vision-model"
+        provider.credential.return_value = ""
+        provider.requires_credential.return_value = True
+        provider.missing_credential_message.return_value = "Missing scanner credential."
+        matcher = AsyncMock()
+
+        with patch(
+            "services.scan_providers.get_provider", return_value=provider
+        ), patch(
+            "services.scan_providers.require_scanner_capability_mode",
+            return_value="full",
+        ), patch(
+            "services.scan_queue._load_recognition_cache",
+            return_value={34: {"name": "Cached"}},
+        ) as load_cache, patch(
+            "api.recognize.match_card_info", new=matcher
+        ), self.assertRaises(HTTPException) as caught:
+            asyncio.run(
+                scan_queue.default_scan_processor(
+                    self.db,
+                    user.id,
+                    b"stored-card-photo",
+                    "image/jpeg",
+                    job_id=12,
+                    item_id=34,
+                    lease_token="lease",
+                    reuse_recognition_cache=True,
+                )
+            )
+
+        self.assertEqual(caught.exception.status_code, 400)
+        load_cache.assert_not_called()
+        matcher.assert_not_awaited()
+
     def test_disabled_selected_provider_blocks_already_queued_composite_photos(self):
         user = self.users[0]
         self._select_openai_then_disable_it(user)
@@ -301,6 +386,180 @@ class ScanQueueTests(unittest.TestCase):
             scan_queue.PermanentScanError,
         )
         generate.assert_not_awaited()
+
+    def test_catalogue_retry_reuses_individual_recognition(self):
+        from api.recognize import CatalogueUnavailableHTTPException
+
+        job = self._job(self.users[0])
+        job_dir = scan_storage.scan_upload_root() / str(job.id)
+        job_dir.mkdir()
+        (job_dir / "0.jpg").write_bytes(b"safe-jpeg")
+        claim = claim_next_scan_item(self.db)
+        fresh_recognition_calls = 0
+
+        async def recognize(*_args, on_recognized=None, **_kwargs):
+            nonlocal fresh_recognition_calls
+            fresh_recognition_calls += 1
+            card_info = {"name": "Sandshrew", "number_local": "27", "language": "en"}
+            on_recognized(card_info)
+            raise CatalogueUnavailableHTTPException()
+
+        matcher = AsyncMock(return_value={
+            "recognized": {"name": "Sandshrew", "number_local": "27", "language": "en"},
+            "matches": [],
+        })
+
+        provider = MagicMock()
+        provider.name = "gemini"
+        provider.model.return_value = "gemini-flash-latest"
+        provider.rate_limit_scope.return_value = MagicMock(
+            __enter__=MagicMock(return_value=None),
+            __exit__=MagicMock(return_value=False),
+        )
+        with patch("database.SessionLocal", self.Session), patch(
+            "services.scan_providers.get_provider", return_value=provider
+        ), patch(
+            "services.scan_trace.create_scan_trace", return_value=MagicMock()
+        ), patch(
+            "api.recognize.recognize_sanitized_card", new=AsyncMock(side_effect=recognize)
+        ) as recognize_mock, patch(
+            "api.recognize.match_card_info", new=matcher
+        ):
+            asyncio.run(scan_queue.process_claimed_scan_item(claim))
+
+            self.db.expire_all()
+            item = self.db.get(ScanJobItem, claim.item_id)
+            self.assertEqual(item.status, "retrying")
+            self.assertEqual(item.retry_reason, "catalogue_unavailable")
+            self.assertEqual(item.recognized["name"], "Sandshrew")
+            item.next_attempt_at = datetime.datetime.utcnow() - datetime.timedelta(seconds=1)
+            self.db.commit()
+
+            retry_claim = claim_next_scan_item(self.db)
+            self.assertEqual(
+                retry_claim.recognition_cache_item_ids,
+                (claim.item_id,),
+            )
+            asyncio.run(scan_queue.process_claimed_scan_item(retry_claim))
+
+        self.db.expire_all()
+        item = self.db.get(ScanJobItem, claim.item_id)
+        self.assertEqual(item.status, "done")
+        self.assertEqual(recognize_mock.await_count, 1)
+        self.assertEqual(fresh_recognition_calls, 1)
+        matcher.assert_awaited_once()
+        self.assertEqual(matcher.await_args.args[1]["name"], "Sandshrew")
+
+    def test_other_failure_discards_individual_recognition_cache(self):
+        job = self._job(self.users[0])
+        job_dir = scan_storage.scan_upload_root() / str(job.id)
+        job_dir.mkdir()
+        (job_dir / "0.jpg").write_bytes(b"safe-jpeg")
+        claim = claim_next_scan_item(self.db)
+        recognition_calls = 0
+
+        async def recognize(*_args, on_recognized=None, **_kwargs):
+            nonlocal recognition_calls
+            recognition_calls += 1
+            card_info = {"name": "Sandshrew", "number_local": "27", "language": "en"}
+            on_recognized(card_info)
+            if recognition_calls == 1:
+                raise HTTPException(status_code=500, detail="matching failed")
+            return {"recognized": card_info, "matches": []}
+
+        provider = MagicMock()
+        provider.name = "gemini"
+        provider.model.return_value = "gemini-flash-latest"
+        provider.rate_limit_scope.return_value = MagicMock(
+            __enter__=MagicMock(return_value=None),
+            __exit__=MagicMock(return_value=False),
+        )
+        with patch("database.SessionLocal", self.Session), patch(
+            "services.scan_providers.get_provider", return_value=provider
+        ), patch(
+            "services.scan_trace.create_scan_trace", return_value=MagicMock()
+        ), patch(
+            "api.recognize.recognize_sanitized_card", new=AsyncMock(side_effect=recognize)
+        ):
+            asyncio.run(scan_queue.process_claimed_scan_item(claim))
+
+            self.db.expire_all()
+            item = self.db.get(ScanJobItem, claim.item_id)
+            self.assertEqual(item.status, "retrying")
+            self.assertIsNone(item.recognized)
+            item.next_attempt_at = datetime.datetime.utcnow() - datetime.timedelta(seconds=1)
+            self.db.commit()
+
+            retry_claim = claim_next_scan_item(self.db)
+            asyncio.run(scan_queue.process_claimed_scan_item(retry_claim))
+
+        self.assertEqual(recognition_calls, 2)
+
+    def test_catalogue_retry_reuses_composite_recognition(self):
+        from api.recognize import CatalogueUnavailableHTTPException
+
+        job = self._job(self.users[0], positions=(0, 1))
+        items = self.db.query(ScanJobItem).order_by(ScanJobItem.position).all()
+        for item in items:
+            item.batch_mode = True
+        self.db.commit()
+        job_dir = scan_storage.scan_upload_root() / str(job.id)
+        job_dir.mkdir()
+        for position in range(2):
+            (job_dir / f"{position}.jpg").write_bytes(b"safe-jpeg")
+        claim = claim_next_scan_item(self.db)
+        recognized = {
+            0: {"name": "Sandshrew", "number_local": "27", "language": "en"},
+            1: {"name": "Pikachu", "number_local": "25", "language": "en"},
+        }
+        recognize = AsyncMock(return_value=recognized)
+        matcher = AsyncMock(side_effect=CatalogueUnavailableHTTPException())
+        provider = MagicMock()
+        provider.name = "gemini"
+        provider.model.return_value = "gemini-flash-latest"
+        provider.credential.return_value = "key"
+        provider.requires_credential.return_value = True
+        provider.rate_limit_scope.return_value = MagicMock(
+            __enter__=MagicMock(return_value=None),
+            __exit__=MagicMock(return_value=False),
+        )
+
+        with patch("database.SessionLocal", self.Session), patch(
+            "services.scan_providers.get_provider", return_value=provider
+        ), patch(
+            "services.scan_providers.require_scanner_capability_mode", return_value="full"
+        ), patch(
+            "services.scan_trace.create_scan_trace", return_value=MagicMock()
+        ), patch(
+            "services.card_composite.build_composite", return_value=b"composite"
+        ), patch(
+            "api.recognize.recognize_composite_card_info", new=recognize
+        ), patch(
+            "api.recognize.match_composite_card_info", new=matcher
+        ):
+            asyncio.run(scan_queue.process_claimed_scan_item(claim))
+
+            self.db.expire_all()
+            items = self.db.query(ScanJobItem).order_by(ScanJobItem.position).all()
+            self.assertEqual([item.status for item in items], ["retrying", "retrying"])
+            self.assertEqual([item.recognized["name"] for item in items], ["Sandshrew", "Pikachu"])
+            for item in items:
+                item.next_attempt_at = datetime.datetime.utcnow() - datetime.timedelta(seconds=1)
+            self.db.commit()
+
+            retry_claim = claim_next_scan_item(self.db)
+            matcher.side_effect = None
+            matcher.return_value = {
+                "recognized": {},
+                "matches": [{"id": "candidate"}],
+                "_identity_confident": True,
+            }
+            asyncio.run(scan_queue.process_claimed_scan_item(retry_claim))
+
+        self.assertEqual(recognize.await_count, 1)
+        self.db.expire_all()
+        items = self.db.query(ScanJobItem).order_by(ScanJobItem.position).all()
+        self.assertEqual([item.status for item in items], ["done", "done"])
 
     def test_unclear_composite_position_retries_without_confident_siblings(self):
         self._job(self.users[0], positions=(0, 1, 2, 3))
@@ -350,6 +609,7 @@ class ScanQueueTests(unittest.TestCase):
         self._job(self.users[0])
         claim = claim_next_scan_item(self.db)
         item = self.db.get(ScanJobItem, claim.item_id)
+        item.recognized = {"name": "Interrupted"}
         item.lease_expires_at = datetime.datetime.utcnow() - datetime.timedelta(seconds=1)
         self.db.commit()
 
@@ -357,6 +617,74 @@ class ScanQueueTests(unittest.TestCase):
         self.db.refresh(item)
         self.assertEqual(item.status, "retrying")
         self.assertIsNone(item.lease_token)
+        self.assertIsNone(item.recognized)
+
+    def test_expired_lease_cannot_read_write_or_clear_recognition_cache(self):
+        self._job(self.users[0])
+        claim = claim_next_scan_item(self.db)
+        item = self.db.get(ScanJobItem, claim.item_id)
+        item.recognized = {"name": "Original"}
+        item.lease_expires_at = datetime.datetime.utcnow() - datetime.timedelta(seconds=1)
+        self.db.commit()
+
+        self.assertEqual(
+            scan_queue._load_recognition_cache(
+                self.db,
+                [item.id],
+                claim.lease_token,
+            ),
+            {},
+        )
+        with patch("database.SessionLocal", self.Session):
+            with self.assertRaises(RuntimeError):
+                scan_queue._persist_recognition_cache(
+                    {item.id: {"name": "Stale write"}},
+                    claim.lease_token,
+                )
+            scan_queue._clear_recognition_cache(claim)
+
+        self.db.expire_all()
+        self.assertEqual(self.db.get(ScanJobItem, item.id).recognized["name"], "Original")
+
+    def test_expired_individual_lease_never_starts_processing(self):
+        self._job(self.users[0])
+        claim = claim_next_scan_item(self.db)
+        item = self.db.get(ScanJobItem, claim.item_id)
+        item.lease_expires_at = datetime.datetime.utcnow() - datetime.timedelta(seconds=1)
+        self.db.commit()
+        processor = AsyncMock()
+
+        with patch("database.SessionLocal", self.Session):
+            asyncio.run(
+                scan_queue.process_claimed_scan_item(
+                    claim,
+                    processor=processor,
+                )
+            )
+
+        processor.assert_not_awaited()
+
+    def test_expired_composite_lease_never_starts_processing(self):
+        self._job(self.users[0], positions=(0, 1))
+        items = self.db.query(ScanJobItem).order_by(ScanJobItem.position).all()
+        for queued_item in items:
+            queued_item.batch_mode = True
+        self.db.commit()
+        claim = claim_next_scan_item(self.db)
+        for item in items:
+            item.lease_expires_at = datetime.datetime.utcnow() - datetime.timedelta(seconds=1)
+        self.db.commit()
+        composite_processor = AsyncMock()
+
+        with patch("database.SessionLocal", self.Session):
+            asyncio.run(
+                scan_queue.process_claimed_scan_item(
+                    claim,
+                    composite_processor=composite_processor,
+                )
+            )
+
+        composite_processor.assert_not_awaited()
 
     def test_transient_failure_does_not_consume_recognition_attempts(self):
         self._job(self.users[0])
@@ -367,6 +695,19 @@ class ScanQueueTests(unittest.TestCase):
         self.assertEqual(item.status, "retrying")
         self.assertEqual(item.attempts, 0)
         self.assertEqual(item.transient_failures, 1)
+
+    def test_only_catalogue_retry_claims_are_allowed_to_reuse_recognition(self):
+        self._job(self.users[0])
+        item = self.db.query(ScanJobItem).one()
+        item.status = "retrying"
+        item.recognized = {"name": "Interrupted"}
+        item.retry_reason = None
+        item.next_attempt_at = datetime.datetime.utcnow()
+        self.db.commit()
+
+        claim = claim_next_scan_item(self.db)
+
+        self.assertEqual(claim.recognition_cache_item_ids, ())
 
     def test_provider_retry_delay_and_reason_are_persisted(self):
         self._job(self.users[0])
@@ -810,6 +1151,66 @@ class ScanProcessingConcurrencyTests(unittest.IsolatedAsyncioTestCase):
 
 @unittest.skipUnless(DEPS_AVAILABLE, "SQLAlchemy is not installed")
 class CompositeProcessorTests(unittest.IsolatedAsyncioTestCase):
+    async def test_partial_cache_skips_composite_and_only_requeues_missing_position(self):
+        user = User(id=7, username="owner", hashed_password="x", is_active=True)
+        db = MagicMock()
+        db.get.return_value = user
+        provider = MagicMock()
+        provider.name = "openai"
+        provider.model.return_value = "vision-model"
+        provider.credential.return_value = ""
+        provider.requires_credential.return_value = False
+        recognize = AsyncMock()
+        matcher = AsyncMock(side_effect=[
+            {
+                "recognized": {"name": "Pikachu"},
+                "matches": [{"id": "card-25"}],
+                "_identity_confident": True,
+            },
+            {
+                "recognized": {"name": "Eevee"},
+                "matches": [{"id": "card-133"}],
+                "_identity_confident": True,
+            },
+        ])
+        cached = {
+            10: {"name": "Pikachu", "number_local": "25", "language": "en"},
+            12: {"name": "Eevee", "number_local": "133", "language": "en"},
+        }
+
+        with patch(
+            "services.scan_providers.get_provider", return_value=provider
+        ), patch(
+            "services.scan_providers.require_scanner_capability_mode",
+            return_value="full",
+        ), patch(
+            "services.scan_providers.resolve_scanner_request_timeout",
+            return_value=30,
+        ), patch(
+            "services.scan_trace.create_scan_trace", return_value=MagicMock()
+        ), patch(
+            "services.scan_queue._load_recognition_cache", return_value=cached
+        ), patch(
+            "api.recognize.recognize_composite_card_info", new=recognize
+        ), patch(
+            "api.recognize.match_composite_card_info", new=matcher
+        ):
+            results = await scan_queue.default_composite_processor(
+                db,
+                user.id,
+                [b"first", b"second", b"third"],
+                ["image/jpeg"] * 3,
+                item_ids=[10, 11, 12],
+                lease_token="lease",
+                recognition_cache_item_ids=[10, 12],
+            )
+
+        recognize.assert_not_awaited()
+        self.assertEqual(results[0]["matches"][0]["id"], "card-25")
+        self.assertIsNone(results[1])
+        self.assertEqual(results[2]["matches"][0]["id"], "card-133")
+        self.assertEqual(matcher.await_count, 2)
+
     async def test_only_confident_metadata_matches_are_accepted_from_composite(self):
         from PIL import Image
         import io

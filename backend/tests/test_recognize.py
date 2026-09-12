@@ -126,6 +126,31 @@ class ProviderCapabilityRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(observed["timeout"], 120)
         self.assertEqual(matcher.await_args.kwargs["request_timeout_seconds"], 120)
 
+    async def test_queue_callback_receives_parsed_card_before_matching(self):
+        provider = self._provider()
+        saved = []
+
+        async def match(_db, card_info, **_kwargs):
+            self.assertEqual(saved, [card_info])
+            return {"recognized": card_info, "matches": []}
+
+        with patch("api.recognize.get_provider", return_value=provider), patch(
+            "api.recognize.require_scanner_capability_mode", return_value="full"
+        ), patch(
+            "api.recognize.resolve_scanner_request_timeout", return_value=30
+        ), patch(
+            "api.recognize.match_card_info", new=AsyncMock(side_effect=match)
+        ):
+            result = await recognize_sanitized_card(
+                object(),
+                7,
+                b"image-bytes",
+                "image/jpeg",
+                on_recognized=saved.append,
+            )
+
+        self.assertEqual(result["recognized"]["name"], "Pikachu")
+
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")
 class RecognizeCardNumberTests(unittest.TestCase):
@@ -870,16 +895,28 @@ class SearchAndRankCandidatesLocalDbTests(unittest.IsolatedAsyncioTestCase):
         )
 
     @staticmethod
-    def _mock_tcgdex_client(json_payload=None, *, status_code=200, raises=None):
+    def _mock_tcgdex_client(
+        json_payload=None,
+        *,
+        status_code=200,
+        raises=None,
+        json_raises=None,
+        get_side_effect=None,
+    ):
         """Patch context manager for `async with httpx.AsyncClient(...) as client`,
         matching this codebase's existing httpx-mocking convention (see
         test_community_supporters.py) adapted for a class with no client
         injection point to hand a MockTransport to directly."""
         mock_response = Mock()
         mock_response.status_code = status_code
-        mock_response.json = Mock(return_value=json_payload)
+        mock_response.json = Mock(
+            return_value=json_payload,
+            side_effect=json_raises,
+        )
         mock_client = AsyncMock()
-        if raises is not None:
+        if get_side_effect is not None:
+            mock_client.get = AsyncMock(side_effect=get_side_effect)
+        elif raises is not None:
             mock_client.get = AsyncMock(side_effect=raises)
         else:
             mock_client.get = AsyncMock(return_value=mock_response)
@@ -960,10 +997,104 @@ class SearchAndRankCandidatesLocalDbTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(candidates[0]["id"], "new-999_en")
         self.assertEqual(number_match_count, 1)
 
-    async def test_local_miss_and_api_failure_yields_no_candidates_not_an_error(self):
-        # Best-effort: a network failure on the fallback must degrade to
-        # "no candidates from this pair", not blow up the whole scan.
+    async def test_fallback_outage_preserves_usable_local_candidates(self):
+        self.db.add(Card(
+            id="old-1_en",
+            tcg_card_id="old-1",
+            name="Pikachu",
+            number="1",
+            lang="en",
+            is_custom=False,
+        ))
+        self.db.commit()
+
         with self._mock_tcgdex_client(raises=Exception("boom")):
+            candidates, number_match_count = await _search_and_rank_candidates(
+                self.db,
+                {"name": "Pikachu", "number_local": "999", "language": "en"},
+            )
+
+        self.assertEqual([candidate["id"] for candidate in candidates], ["old-1_en"])
+        self.assertEqual(number_match_count, 0)
+
+    async def test_one_reachable_fallback_prevents_full_outage_report(self):
+        reachable_response = Mock()
+        reachable_response.status_code = 200
+        reachable_response.json = Mock(return_value=[])
+
+        with self._mock_tcgdex_client(
+            get_side_effect=[reachable_response, Exception("boom")]
+        ):
+            candidates, number_match_count = await _search_and_rank_candidates(
+                self.db,
+                {
+                    "name": "Völlig unbekannt",
+                    "name_en": "Totally Unknown",
+                    "language": "de",
+                },
+            )
+
+        self.assertEqual(candidates, [])
+        self.assertEqual(number_match_count, 0)
+
+    async def test_local_miss_and_api_failure_reports_catalogue_outage(self):
+        with self._mock_tcgdex_client(raises=Exception("boom")):
+            with self.assertRaises(HTTPException) as raised:
+                await _search_and_rank_candidates(
+                    self.db, {"name": "Totally Unknown Card", "language": "en"}
+                )
+
+        self.assertEqual(raised.exception.status_code, 503)
+        self.assertEqual(raised.exception.retry_reason, "catalogue_unavailable")
+        self.assertIn("catalogue", raised.exception.detail.lower())
+
+    async def test_fallback_server_error_reports_catalogue_outage(self):
+        with self._mock_tcgdex_client([], status_code=503):
+            with self.assertRaises(HTTPException) as raised:
+                await _search_and_rank_candidates(
+                    self.db, {"name": "Totally Unknown Card", "language": "en"}
+                )
+
+        self.assertEqual(raised.exception.status_code, 503)
+
+    async def test_invalid_fallback_body_reports_catalogue_outage(self):
+        with self._mock_tcgdex_client(json_raises=ValueError("not json")):
+            with self.assertRaises(HTTPException) as raised:
+                await _search_and_rank_candidates(
+                    self.db, {"name": "Totally Unknown Card", "language": "en"}
+                )
+
+        self.assertEqual(raised.exception.status_code, 503)
+
+    async def test_fallback_rate_limit_reports_catalogue_outage(self):
+        with self._mock_tcgdex_client([], status_code=429):
+            with self.assertRaises(HTTPException) as raised:
+                await _search_and_rank_candidates(
+                    self.db, {"name": "Totally Unknown Card", "language": "en"}
+                )
+
+        self.assertEqual(raised.exception.status_code, 503)
+
+    async def test_fallback_request_timeout_reports_catalogue_outage(self):
+        with self._mock_tcgdex_client([], status_code=408):
+            with self.assertRaises(HTTPException) as raised:
+                await _search_and_rank_candidates(
+                    self.db, {"name": "Totally Unknown Card", "language": "en"}
+                )
+
+        self.assertEqual(raised.exception.status_code, 503)
+
+    async def test_fallback_empty_answer_still_means_no_matches(self):
+        with self._mock_tcgdex_client([]):
+            candidates, number_match_count = await _search_and_rank_candidates(
+                self.db, {"name": "Totally Unknown Card", "language": "en"}
+            )
+
+        self.assertEqual(candidates, [])
+        self.assertEqual(number_match_count, 0)
+
+    async def test_fallback_client_error_is_an_answer_not_an_outage(self):
+        with self._mock_tcgdex_client([], status_code=400):
             candidates, number_match_count = await _search_and_rank_candidates(
                 self.db, {"name": "Totally Unknown Card", "language": "en"}
             )

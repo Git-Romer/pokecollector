@@ -8,6 +8,7 @@ import os
 import json
 import re
 import warnings
+from collections.abc import Callable
 from email.utils import parsedate_to_datetime
 from functools import lru_cache
 from urllib.parse import urlparse
@@ -76,6 +77,21 @@ class GeminiRateLimitHTTPException(HTTPException):
             status_code=429,
             detail="Gemini Rate Limit erreicht – bitte nach der angegebenen Wartezeit erneut versuchen.",
             headers={"Retry-After": str(max(1, int(self.retry_after_seconds + 0.999)))},
+        )
+
+
+class CatalogueUnavailableHTTPException(HTTPException):
+    """A transient catalogue failure the scan queue can identify safely."""
+
+    retry_reason = "catalogue_unavailable"
+
+    def __init__(self):
+        super().__init__(
+            status_code=503,
+            detail=(
+                "The card catalogue could not be reached, so this photo has not "
+                "been matched. Please try again later."
+            ),
         )
 
 
@@ -880,7 +896,7 @@ async def _api_search_fallback(
     search_name: str,
     expected_name: str,
     trace: ScanTrace | None,
-) -> list[dict]:
+) -> tuple[list[dict], bool]:
     """Live TCGdex search for a compatible local miss or missing number.
 
     TCGdex name search is substring-based, so results must still match the
@@ -890,18 +906,34 @@ async def _api_search_fallback(
     that already has older local printings. Live TCGdex answers those cases
     the same way a plain catalogue lookup did before local-first search.
 
-    Best-effort and silent on failure: this runs only after the local search
-    could not supply the requested printing for this pair, so a network error
-    just means no fallback candidates, not a broken scan. Existing local rows
-    and results from other pairs remain available.
+    Return the mapped cards and whether TCGdex supplied a meaningful answer.
+    The caller can continue with candidates from other pairs, but it must not
+    turn an outage across every required fallback into a false "no matches".
     """
+    response_status = None
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             response = await client.get(
                 f"https://api.tcgdex.net/v2/{search_language}/cards",
                 params={"name": search_name},
             )
-        api_cards = response.json() if response.status_code == 200 else []
+        response_status = response.status_code
+        if response.status_code != 200:
+            reachable = (
+                400 <= response.status_code < 500
+                and response.status_code not in {408, 429}
+            )
+            if trace:
+                trace.record_tcgdex(
+                    language=search_language,
+                    query=search_name,
+                    status=response.status_code,
+                    count=0 if reachable else None,
+                    source="api_fallback",
+                )
+            return [], reachable
+
+        api_cards = response.json()
         if trace:
             trace.record_tcgdex(
                 language=search_language,
@@ -911,7 +943,7 @@ async def _api_search_fallback(
                 source="api_fallback",
             )
         if not isinstance(api_cards, list):
-            return []
+            return [], False
         return [
             {
                 # Composite id in the same "{tcg_id}_{lang}" shape the local
@@ -930,18 +962,18 @@ async def _api_search_fallback(
             for card in api_cards
             if card.get("id")
             and _scanner_names_compatible(expected_name, card.get("name"))
-        ]
+        ], True
     except Exception as exc:
         if trace:
             trace.record_tcgdex(
                 language=search_language,
                 query=search_name,
-                status=None,
+                status=response_status,
                 count=None,
                 error=type(exc).__name__,
                 source="api_fallback",
             )
-        return []
+        return [], False
 
 
 ENGLISH_FALLBACK_MIN_CANDIDATES = 3
@@ -978,6 +1010,8 @@ async def _search_and_rank_candidates(
     candidates = []
     candidate_keys = set()
     native_candidate_count = 0
+    fallback_attempts = 0
+    reachable_fallbacks = 0
     for search_language, search_name in search_pairs:
         if len(candidates) >= 15:
             break
@@ -1092,9 +1126,12 @@ async def _search_and_rank_candidates(
             for card in cards
         ))
         if not cards or (target_number and not local_has_number_match):
-            fallback_cards = await _api_search_fallback(
+            fallback_cards, fallback_reachable = await _api_search_fallback(
                 search_language, search_name, expected_name, trace
             )
+            fallback_attempts += 1
+            if fallback_reachable:
+                reachable_fallbacks += 1
             cards.extend(fallback_cards)
 
         selected_cards = select_search_candidates(
@@ -1140,6 +1177,9 @@ async def _search_and_rank_candidates(
             })
             if not is_english_fallback:
                 native_candidate_count += 1
+
+    if not candidates and fallback_attempts and not reachable_fallbacks:
+        raise CatalogueUnavailableHTTPException()
 
     candidate_set_ids = {
         tcg_card_id.rsplit("-", 1)[0]
@@ -1366,6 +1406,7 @@ async def recognize_sanitized_card(
     *,
     trace: ScanTrace | None = None,
     prewarm_candidates: bool = False,
+    on_recognized: Callable[[dict], None] | None = None,
 ) -> dict:
     """Recognize one already-sanitized image for direct and queued scans."""
     provider = get_provider(db, user_id)
@@ -1415,6 +1456,9 @@ async def recognize_sanitized_card(
         if trace:
             trace.record_error(f"Recognition parsing failed: {type(exc).__name__}")
         raise HTTPException(status_code=500, detail=f"Erkennung fehlgeschlagen: {exc}")
+
+    if on_recognized:
+        on_recognized(card_info)
 
     try:
         return await match_card_info(

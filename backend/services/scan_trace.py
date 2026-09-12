@@ -269,6 +269,13 @@ class ScanTrace:
         if usage is not None:
             section["usage"] = self._sanitize(usage)
 
+    def record_cached_extraction(self, parsed) -> None:
+        """Record reuse of a paid extraction from an earlier queue attempt."""
+        if not self.enabled:
+            return
+        self.record_extraction(parsed=parsed)
+        self.data["extraction"]["source"] = "queue_cache"
+
     def record_visual_verification(self, *, raw_response: str, selected: int | None) -> None:
         if self.enabled:
             self.data["visual_verification"] = {
