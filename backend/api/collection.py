@@ -11,6 +11,7 @@ from services.card_fallbacks import apply_cross_language_fallbacks, build_missin
 from services.card_numbers import card_number_matches
 from services.collection_photos import MAX_UPLOAD_BYTES, InvalidPhoto, normalize_photo
 from services.card_visibility import visible_any_card_filter, visible_card_filter
+from services.text_search import accent_insensitive_contains, json_array_text_matches
 from services.binder_allocations import collection_item_allocated_quantity
 from services.digital_sets import digital_sets_enabled
 from services.standard_legality import is_standard_legal_card, is_standard_regulation_mark
@@ -507,6 +508,7 @@ def get_collection(
     db: Session = Depends(get_db),
     sort_by: Optional[str] = "added_at",
     order: Optional[str] = "desc",
+    rule_text: Optional[str] = None,
 ):
     """Get all collection items."""
     query = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).options(
@@ -515,6 +517,13 @@ def get_collection(
         CollectionItem.user_id == current_user.id,
         visible_any_card_filter(db, current_user.id, "all"),
     )
+
+    if rule_text:
+        query = query.filter(or_(
+            accent_insensitive_contains(db, Card.card_effect, rule_text),
+            json_array_text_matches(db, Card.attacks, ("name", "effect"), rule_text),
+            json_array_text_matches(db, Card.abilities, ("name", "effect"), rule_text),
+        ))
 
     sort_col = {
         "added_at": CollectionItem.added_at,

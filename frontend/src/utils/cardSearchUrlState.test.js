@@ -44,6 +44,19 @@ describe('card search URL state', () => {
     expect(next.toString()).toBe('q=Pikachu&page=3')
   })
 
+  it('preserves Rule text spaces in URL state while typing', () => {
+    const next = updateCardSearchParams('page=2', { rule_text: 'draw 3 cards ' })
+
+    expect(next.get('rule_text')).toBe('draw 3 cards ')
+    expect(next.toString()).toBe('rule_text=draw+3+cards+')
+  })
+
+  it('removes Rule text from URL state when cleared', () => {
+    const next = updateCardSearchParams('rule_text=draw+3+cards', { rule_text: '' })
+
+    expect(next.has('rule_text')).toBe(false)
+  })
+
   it('resets filters without clearing the search term or language', () => {
     const next = resetCardSearchFilters(
       'q=Pikachu&lang=de&rarity=Rare&artist=Ken+Sugimori&sort_by=name&sort_order=desc&page=4',

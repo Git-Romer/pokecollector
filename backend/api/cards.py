@@ -33,7 +33,7 @@ from services.display_language import get_tcgdex_display_language
 from services.image_url_security import validate_public_https_image_url
 from services.card_numbers import card_number_matches
 from services.tcgdex_languages import english_fallback_languages, has_lang_suffix, is_supported_tcgdex_language, normalize_tcgdex_language
-from services.text_search import accent_insensitive_contains
+from services.text_search import accent_insensitive_contains, json_array_text_matches
 from services.card_state import card_state_summaries
 import datetime
 import re
@@ -561,6 +561,7 @@ def search_cards(
     subtype: Optional[str] = None,
     rarity: Optional[str] = None,
     artist: Optional[str] = None,
+    rule_text: Optional[str] = None,
     hp_min: Optional[int] = None,
     hp_max: Optional[int] = None,
     dex_id: Optional[int] = Query(None, ge=1, le=1025),
@@ -639,6 +640,13 @@ def search_cards(
 
         if artist:
             query = query.filter(accent_insensitive_contains(db, Card.artist, artist))
+
+        if rule_text:
+            query = query.filter(or_(
+                accent_insensitive_contains(db, Card.card_effect, rule_text),
+                json_array_text_matches(db, Card.attacks, ("name", "effect"), rule_text),
+                json_array_text_matches(db, Card.abilities, ("name", "effect"), rule_text),
+            ))
 
         if hp_min is not None:
             query = query.filter(cast(Card.hp, Integer) >= hp_min)

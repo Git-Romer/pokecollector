@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unicodedata
 
-from sqlalchemy import func, literal, text
+from sqlalchemy import case, func, literal, or_, select, text
 from sqlalchemy.orm import Session
 
 # Keep a small per-engine cache so PostgreSQL extension probing is cheap and so
@@ -87,3 +87,31 @@ def accent_insensitive_contains(db: Session, column, value: str | None):
     if not normalized:
         return None
     return _portable_unaccent_expr(column).like(f"%{normalized}%")
+
+
+def json_array_text_matches(db: Session, column, fields: tuple[str, ...], value: str):
+    """Build a dialect-aware predicate for text fields in a JSON array."""
+    dialect = db.get_bind().dialect.name
+    if dialect == "postgresql":
+        # json_array_elements rejects JSON null and scalar JSON values.
+        array_value = case(
+            (func.json_typeof(column) == "array", column),
+            else_=func.json_build_array(),
+        )
+        elements = func.json_array_elements(array_value).table_valued("value").alias("json_element")
+        text_fields = [elements.c.value.op("->>")(field) for field in fields]
+    elif dialect == "sqlite":
+        # json_each accepts JSON null, but guard it to mirror PostgreSQL semantics.
+        array_value = case(
+            (func.json_type(column) == "array", column),
+            else_=func.json_array(),
+        )
+        elements = func.json_each(array_value).table_valued("value").alias("json_element")
+        text_fields = [func.json_extract(elements.c.value, f"$.{field}") for field in fields]
+    else:
+        # Search uses SQLite and PostgreSQL; unsupported dialects simply yield no JSON matches.
+        return False
+
+    return select(1).select_from(elements).where(
+        or_(*(accent_insensitive_contains(db, field, value) for field in text_fields))
+    ).exists()
