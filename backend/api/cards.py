@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from typing import Optional, List
 from api.auth import get_current_user
 from database import get_db
-from models import Binder, BinderCard, Card, Set, PriceHistory, CustomCardMatch, CollectionItem, WishlistItem, User, ImageCache, ProductCard, ProductLedgerEntry, TradeItem
+from models import Binder, BinderCard, Card, Set, PriceHistory, CustomCardMatch, CollectionCardPhoto, CollectionItem, WishlistItem, User, ImageCache, ProductCard, ProductLedgerEntry, TradeItem
 from schemas import CardBase, CardWithSet, PriceHistoryResponse, CardCustomCreate, CustomCardUpdate, CardCustomImageUpdate
 from services import pokemon_api
 from services.card_fallbacks import (
@@ -903,12 +903,36 @@ def migrate_custom_card(
             binder_card.card_id = composite_api_card_id
     db.flush()
 
-    # 5. Update the match before deleting the old custom card so the FK no longer points at it
+    # 5. Preserve private photos when the manual card becomes an official card.
+    # If the owner already uploaded a photo for the official printing, keep
+    # that established target photo rather than replacing it implicitly.
+    custom_photos = db.query(CollectionCardPhoto).filter(
+        CollectionCardPhoto.card_id == custom_card_id
+    ).all()
+    source_photo_owner_ids = {photo.user_id for photo in custom_photos}
+    target_photo_owner_ids = set()
+    if source_photo_owner_ids:
+        target_photo_owner_ids = {
+            user_id
+            for (user_id,) in db.query(CollectionCardPhoto.user_id).filter(
+                CollectionCardPhoto.card_id == composite_api_card_id,
+                CollectionCardPhoto.user_id.in_(source_photo_owner_ids),
+            ).all()
+        }
+    for custom_photo in custom_photos:
+        if custom_photo.user_id in target_photo_owner_ids:
+            db.delete(custom_photo)
+        else:
+            custom_photo.card_id = composite_api_card_id
+            target_photo_owner_ids.add(custom_photo.user_id)
+    db.flush()
+
+    # 6. Update the match before deleting the old custom card so the FK no longer points at it
     match.custom_card_id = composite_api_card_id
     match.api_card_id = api_card_id
     match.status = "migrated"
 
-    # 6. Delete the old custom card
+    # 7. Delete the old custom card
     old_card = db.query(Card).filter(Card.id == custom_card_id).first()
     if old_card:
         db.delete(old_card)

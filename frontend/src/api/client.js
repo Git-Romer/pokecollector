@@ -171,9 +171,9 @@ export const getUserCollection = (userId, params = {}) => api.get(`/collection/u
 export const searchCollection = (params) => api.get('/collection/', { params })
 export const addToCollection = (data) => api.post('/collection/', data)
 
-// The owner's own photo of a card the catalogue has no scan of. A blob rather
-// than an <img src>: unlike /api/images this endpoint is authenticated, because
-// the photo belongs to the collector and not to the shared card catalogue.
+// The owner's own photo of a collected card. A blob rather than an <img src>:
+// unlike /api/images this endpoint is authenticated, because the photo belongs
+// to the collector and not to the shared card catalogue.
 // Returns the Blob — callers make and revoke their own object URLs, so the
 // bytes can be cached once and rendered in several places.
 export const fetchCollectionItemPhoto = (itemId) =>

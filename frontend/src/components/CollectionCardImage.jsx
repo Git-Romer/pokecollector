@@ -6,9 +6,9 @@
  * whatever makes their copy theirs. It is a fallback by default; the user can
  * choose to prefer private photos everywhere from Settings.
  *
- * The photo is always badged. A phone photo and a catalogue scan are not the
- * same kind of thing, and a collection is much less useful if you cannot tell
- * at a glance which you are looking at.
+ * Catalogue cards using a photo are badged. Manual cards retain their existing
+ * pencil-only marker in collection tiles, while the detail dialog identifies
+ * the selected image source directly.
  */
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -138,7 +138,7 @@ export default function CollectionCardImage({
   return (
     <div ref={viewportRef} className="relative w-full h-full">
       <CardImage src={photoUrl} alt={alt} className={className} showName={showName} />
-      {photoUrl && <OwnPhotoOverlayBadge t={t} />}
+      {photoUrl && !card?.is_custom && <OwnPhotoOverlayBadge t={t} />}
     </div>
   )
 }
@@ -147,9 +147,9 @@ export default function CollectionCardImage({
  * Own-photo image resolution, shared by every own-photo-aware card-system
  * wrapper below. Takes `item` (for the own-photo lookup) and the `card` to
  * fall back to, plus any explicit `image` override. Callers decide how to
- * present `isOwnPhoto` — an overlay badge on a full-size tile, a pill in a
- * compact row's badge list, etc. — rather than this hook picking one shape
- * for every context.
+ * present its badge — an overlay on a full-size tile, a pill in a compact
+ * row's badge list, etc. Manual cards retain their established pencil-only
+ * marker even when their displayed artwork is a private photo.
  */
 function useOwnPhotoDisplay(item, card, image, size) {
   const { settings } = useSettings()
@@ -157,7 +157,11 @@ function useOwnPhotoDisplay(item, card, image, size) {
   const { photoUrl, viewportRef } = useCollectionPhotoResource(item, { enabled: ownPhoto })
   const catalogueSrc = image ?? resolveCardImageUrl(card, size)
   const resolvedImage = ownPhoto ? (photoUrl || catalogueSrc) : catalogueSrc
-  return { resolvedImage, isOwnPhoto: ownPhoto && Boolean(photoUrl), viewportRef }
+  return {
+    resolvedImage,
+    showOwnPhotoBadge: ownPhoto && Boolean(photoUrl) && !card?.is_custom,
+    viewportRef,
+  }
 }
 
 /**
@@ -178,7 +182,7 @@ function useOwnPhotoDisplay(item, card, image, size) {
  */
 export function CollectionCardDisplay({ item, card = item?.card ?? item, image, overlay, size = 'small', ...displayProps }) {
   const { t } = useSettings()
-  const { resolvedImage, isOwnPhoto, viewportRef } = useOwnPhotoDisplay(item, card, image, size)
+  const { resolvedImage, showOwnPhotoBadge, viewportRef } = useOwnPhotoDisplay(item, card, image, size)
 
   return (
     <CardDisplay
@@ -189,7 +193,7 @@ export function CollectionCardDisplay({ item, card = item?.card ?? item, image, 
       overlay={(
         <>
           {overlay}
-          {isOwnPhoto && <OwnPhotoOverlayBadge t={t} />}
+          {showOwnPhotoBadge && <OwnPhotoOverlayBadge t={t} />}
         </>
       )}
     />
@@ -203,19 +207,19 @@ export function CollectionCardDisplay({ item, card = item?.card ?? item, image, 
  * marker rides as a badge pill in `details` instead.
  */
 export function CollectionCardIdentity({ item, card = item?.card ?? item, image, size = 'small', ...identityProps }) {
-  const { resolvedImage, isOwnPhoto, viewportRef } = useOwnPhotoDisplay(item, card, image, size)
-  return <CardIdentity card={card} image={resolvedImage} ownPhoto={isOwnPhoto} viewportRef={viewportRef} {...identityProps} />
+  const { resolvedImage, showOwnPhotoBadge, viewportRef } = useOwnPhotoDisplay(item, card, image, size)
+  return <CardIdentity card={card} image={resolvedImage} ownPhoto={showOwnPhotoBadge} viewportRef={viewportRef} {...identityProps} />
 }
 
 /** CollectionCardDisplay's counterpart for the full row layout — see it for the shape of `item`/`card`. */
 export function CollectionCardRow({ item, card = item?.card ?? item, image, size = 'small', badges = [], ...rowProps }) {
-  const { resolvedImage, isOwnPhoto, viewportRef } = useOwnPhotoDisplay(item, card, image, size)
+  const { resolvedImage, showOwnPhotoBadge, viewportRef } = useOwnPhotoDisplay(item, card, image, size)
   return (
     <CardRow
       card={card}
       image={resolvedImage}
       viewportRef={viewportRef}
-      badges={isOwnPhoto ? [...badges, { label: '📷', variant: 'gray' }] : badges}
+      badges={showOwnPhotoBadge ? [...badges, { label: '📷', variant: 'gray' }] : badges}
       {...rowProps}
     />
   )

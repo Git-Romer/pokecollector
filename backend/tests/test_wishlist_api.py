@@ -11,7 +11,7 @@ try:
     from api.cards import migrate_custom_card
     from api.wishlist import add_to_wishlist, update_wishlist_item
     from database import Base
-    from models import Binder, BinderCard, Card, CollectionItem, CustomCardMatch, User, WishlistItem
+    from models import Binder, BinderCard, Card, CollectionCardPhoto, CollectionItem, CustomCardMatch, User, WishlistItem
     from schemas import WishlistItemCreate, WishlistItemUpdate
     API_TEST_DEPS_AVAILABLE = True
 except ModuleNotFoundError:
@@ -176,6 +176,12 @@ class WishlistApiTests(unittest.TestCase):
             BinderCard(binder_id=binder.id, card_id=self.card.id, required_quantity=2),
             WishlistItem(card_id=custom_card.id, user_id=self.user.id, quantity=4, created_at=datetime.datetime.utcnow()),
             WishlistItem(card_id=self.card.id, user_id=self.user.id, quantity=2, created_at=datetime.datetime.utcnow()),
+            CollectionCardPhoto(
+                card_id=custom_card.id,
+                user_id=self.user.id,
+                data=b"manual-card-photo",
+                content_type="image/jpeg",
+            ),
         ])
         self.db.commit()
         self.db.refresh(match)
@@ -206,6 +212,64 @@ class WishlistApiTests(unittest.TestCase):
         ).all()
         self.assertEqual(len(binder_entries), 1)
         self.assertEqual(binder_entries[0].required_quantity, 5)
+        migrated_photo = self.db.query(CollectionCardPhoto).filter(
+            CollectionCardPhoto.card_id == self.card.id,
+            CollectionCardPhoto.user_id == self.user.id,
+        ).one()
+        self.assertEqual(migrated_photo.data, b"manual-card-photo")
+        self.assertIsNone(self.db.query(Card).filter(Card.id == custom_card.id).first())
+
+    def test_custom_card_migration_keeps_an_existing_official_card_photo(self):
+        custom_card = Card(
+            id="custom-photo-conflict",
+            name="Custom Sprigatito",
+            lang="en",
+            is_custom=True,
+            custom_owner_id=self.user.id,
+            variants_normal=True,
+        )
+        self.db.add(custom_card)
+        self.db.commit()
+        match = CustomCardMatch(custom_card_id=custom_card.id, api_card_id="sv1-1", status="pending")
+        self.db.add_all([
+            match,
+            CollectionCardPhoto(
+                card_id=custom_card.id,
+                user_id=self.user.id,
+                data=b"manual-card-photo",
+                content_type="image/jpeg",
+            ),
+            CollectionCardPhoto(
+                card_id=self.card.id,
+                user_id=self.user.id,
+                data=b"existing-official-photo",
+                content_type="image/jpeg",
+            ),
+        ])
+        self.db.commit()
+        self.db.refresh(match)
+
+        parsed_card = {
+            "id": self.card.id,
+            "tcg_card_id": "sv1-1",
+            "name": "Sprigatito",
+            "set_id": "sv1",
+            "number": "1",
+            "lang": "en",
+            "variants_normal": True,
+        }
+        with patch("api.cards.pokemon_api.get_card", return_value={"id": "sv1-1", "name": "Sprigatito"}), \
+             patch("api.cards.pokemon_api.parse_card_for_db", return_value=parsed_card), \
+             patch("api.cards.apply_cross_language_fallbacks", side_effect=lambda _db, parsed: parsed):
+            result = migrate_custom_card(match.id, db=self.db, current_user=self.user)
+
+        self.assertEqual(result["status"], "migrated")
+        photos = self.db.query(CollectionCardPhoto).filter(
+            CollectionCardPhoto.user_id == self.user.id
+        ).all()
+        self.assertEqual(len(photos), 1)
+        self.assertEqual(photos[0].card_id, self.card.id)
+        self.assertEqual(photos[0].data, b"existing-official-photo")
         self.assertIsNone(self.db.query(Card).filter(Card.id == custom_card.id).first())
 
 
