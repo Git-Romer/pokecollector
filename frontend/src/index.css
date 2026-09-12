@@ -67,10 +67,22 @@ input:-webkit-autofill:focus {
     font-size: 16px;
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
+    /* Opaque canvas. The root element's background always paints the whole
+       canvas, including overscroll and safe-area regions that a background
+       propagated up from body does not reliably cover (white bars in Firefox
+       on Android). Themed via [data-theme] on <html>, so use the variable. */
+    background-color: var(--color-bg);
   }
 
   html, body {
     width: 100%;
+    /* Nothing at the page root is meant to pan sideways — any horizontal
+       scroll here is itself a bug in some descendant's width/margin, and
+       once the root can scroll, the same rubber-band overscroll that the
+       vertical opaque-background fix above targets shows up on the right
+       edge too. Removing the ability to scroll removes the bounce region
+       entirely, rather than just painting over it. */
+    overflow-x: hidden;
   }
 
   body {
@@ -674,7 +686,10 @@ input:-webkit-autofill:focus {
 }
 
 body {
-  background: linear-gradient(-45deg, #06080f, #08060e, #060c0e, #080810);
+  /* Keep an opaque colour in the shorthand — without it the shorthand resets
+     background-color to transparent and the gradient image is the only thing
+     standing between the user and the default white canvas. */
+  background: linear-gradient(-45deg, #06080f, #08060e, #060c0e, #080810) var(--color-bg);
   background-size: 400% 400%;
   animation: bg-breathe 25s ease infinite;
 }
