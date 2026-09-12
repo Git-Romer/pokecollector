@@ -211,6 +211,24 @@ export const updateCollectionItem = (id, data) => api.put(`/collection/${id}`, d
 export const removeFromCollection = (id) => api.delete(`/collection/${id}`)
 export const getCollectionStats = (params = {}) => api.get('/collection/stats/summary', { params })
 
+// Decks
+export const getDecks = () => api.get('/decks/')
+export const getDeck = (id) => api.get(`/decks/${id}`)
+export const createDeck = (data) => api.post('/decks/', data)
+export const duplicateDeck = (id) => api.post(`/decks/${id}/duplicate`)
+export const compareDecks = (params) => api.get('/decks/compare', { params })
+export const updateDeck = (id, data) => api.patch(`/decks/${id}`, data)
+export const deleteDeck = (id) => api.delete(`/decks/${id}`)
+export const addDeckEntry = (deckId, data) => api.post(`/decks/${deckId}/entries`, data)
+export const updateDeckEntry = (deckId, entryId, data) => api.patch(`/decks/${deckId}/entries/${entryId}`, data)
+export const deleteDeckEntry = (deckId, entryId) => api.delete(`/decks/${deckId}/entries/${entryId}`)
+export const getDeckAssemblyProgress = (deckId) => api.get(`/decks/${deckId}/assembly-progress`)
+export const updateDeckAssemblyProgress = (deckId, data) => api.put(`/decks/${deckId}/assembly-progress`, data)
+export const resetDeckAssemblyProgress = (deckId) => api.delete(`/decks/${deckId}/assembly-progress`)
+export const getDeckProbability = (deckId, params = {}) => api.get(`/decks/${deckId}/probability`, { params })
+export const getDeckAllocation = (params = {}) => api.get('/decks/allocation', { params })
+export const exportDeckAllocationCsv = (mode) => api.get('/decks/allocation/export.csv', { params: { mode }, responseType: 'blob' })
+
 // Sets
 export const getSets = (params) => api.get('/sets/', { params })
 export const getSet = (id) => api.get(`/sets/${id}`)

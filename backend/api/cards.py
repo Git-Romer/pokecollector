@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from typing import Optional, List
 from api.auth import get_current_user
 from database import get_db
-from models import Binder, BinderCard, Card, Set, PriceHistory, CustomCardMatch, CollectionItem, WishlistItem, User, ImageCache, ProductCard, ProductLedgerEntry, TradeItem
+from models import Binder, BinderCard, Card, Set, PriceHistory, CustomCardMatch, CollectionItem, WishlistItem, User, ImageCache, ProductCard, ProductLedgerEntry, TradeItem, DeckEntry
 from schemas import CardBase, CardWithSet, PriceHistoryResponse, CardCustomCreate, CustomCardUpdate, CardCustomImageUpdate
 from services import pokemon_api
 from services.card_fallbacks import (
@@ -485,6 +485,7 @@ def delete_custom_card(
         db.query(CollectionItem).filter(CollectionItem.card_id == card_id).delete(synchronize_session=False)
         db.query(WishlistItem).filter(WishlistItem.card_id == card_id).delete(synchronize_session=False)
         db.query(BinderCard).filter(BinderCard.card_id == card_id).delete(synchronize_session=False)
+        db.query(DeckEntry).filter(DeckEntry.card_id == card_id).delete(synchronize_session=False)
         db.query(PriceHistory).filter(PriceHistory.card_id == card_id).delete(synchronize_session=False)
         db.query(CustomCardMatch).filter(CustomCardMatch.custom_card_id == card_id).delete(synchronize_session=False)
         db.query(ImageCache).filter(

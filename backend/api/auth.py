@@ -304,6 +304,8 @@ def delete_user(
     from models import (
         Binder,
         BinderCard,
+        Deck,
+        DeckEntry,
         Card,
         CollectionCardPhoto,
         CollectionItem,
@@ -329,6 +331,10 @@ def delete_user(
         BinderCard.binder_id.in_(db.query(Binder.id).filter(Binder.user_id == user_id))
     ).delete(synchronize_session=False)
     db.query(Binder).filter(Binder.user_id == user_id).delete()
+    db.query(DeckEntry).filter(
+        DeckEntry.deck_id.in_(db.query(Deck.id).filter(Deck.user_id == user_id))
+    ).delete(synchronize_session=False)
+    db.query(Deck).filter(Deck.user_id == user_id).delete()
     db.query(ProductLedgerEntry).filter(ProductLedgerEntry.user_id == user_id).delete()
     db.query(ProductCard).filter(ProductCard.user_id == user_id).delete()
     db.query(CollectionCardPhoto).filter(CollectionCardPhoto.user_id == user_id).delete()

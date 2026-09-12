@@ -2,6 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
+@media print {
+  body * { visibility: hidden; }
+  .deck-assembly, .deck-assembly * { visibility: visible; }
+  .deck-assembly { position: absolute; inset: 0; width: 100%; color: #000; }
+  .no-print { display: none !important; }
+}
+
 /* ─── CSS Custom Properties ──────────────────────────────────────────────── */
 :root {
   --color-bg:          #08080f;

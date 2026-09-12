@@ -70,11 +70,13 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - Optional consent-controlled scanner diagnostics for installations that enable `SCAN_TRACE_DIR`; disabled per user by default with a separate delete action
 - Card modal auto-preselects a likely variant from TCGdex variant flags
 
-### 🗂️ Sets, Binders & Wishlist
+### 🗂️ Sets, Binders, Decks & Wishlist
 - Set overview with completion progress and per-set checklist
 - National Pokédex #001–1025 with generation filters, species completion, locally cached sprites/artwork, and click-through card printings
 - Virtual binders for collection and checklist views
 - Exact-copy quantities in collection binders, with cross-binder allocation limits and total/unique counts
+- Persistent Deck Builder for 20-, 40-, and 60-card deck lists, with editable targets, ownership totals, and shortage warnings
+- Decks are planning lists: they identify localized card printings and aggregate all owned collection rows for that printing, without reserving or changing collection quantities
 - Wishlist with Telegram price alerts
 
 ### 📈 Prices, Portfolio & Analytics
@@ -90,6 +92,14 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - Force password change support on first login
 - Profile avatar and profile name editing
 - Cascade deletion of user-owned data
+
+### 🃏 Deck Builder
+
+Decks are private, user-owned planning lists. Create a deck with a target size of **20**, **40**, or **60** cards (60 is the default), then add cards from the collection browser. A deck entry stores the localized `Card.id` printing identity; ownership is calculated by summing every one of the user's collection rows for that same card ID, regardless of condition, variant, or purchase price.
+
+Decks never reserve, remove, or modify collection cards. A required quantity may exceed owned quantity, and the editor reports per-entry and deck-level shortages. The API is available at `/api/decks` with CRUD routes and nested `/entries` operations for deck entries.
+
+The database adds `decks` and `deck_entries` tables through the application's idempotent PostgreSQL schema-upgrade routine. `decks.target_size` is constrained to 20, 40, or 60; deck-entry quantities must be at least one; deck and entry foreign keys cascade on deletion.
 
 ### 🏆 Social & Community
 - Leaderboard, trainer comparison, and achievements in multi-user mode

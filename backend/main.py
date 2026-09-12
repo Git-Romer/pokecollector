@@ -148,7 +148,7 @@ async def debug_request_logging(request: Request, call_next):
     return response
 
 # Include routers
-from api import auth, cards, collection, sets, wishlist, binders, dashboard, analytics, sync, products, trades, export, backup, settings, images, social, pokedex, public, profile, scan_jobs, community
+from api import auth, cards, collection, sets, wishlist, binders, decks, dashboard, analytics, sync, products, trades, export, backup, settings, images, social, pokedex, public, profile, scan_jobs, community
 from api.github import router as github_router
 from api.recognize import router as recognize_router
 
@@ -187,6 +187,7 @@ app.include_router(collection.router, prefix="/api/collection", tags=["collectio
 app.include_router(sets.router, prefix="/api/sets", tags=["sets"])
 app.include_router(wishlist.router, prefix="/api/wishlist", tags=["wishlist"])
 app.include_router(binders.router, prefix="/api/binders", tags=["binders"])
+app.include_router(decks.router, prefix="/api/decks", tags=["decks"])
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])
 app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"])
 app.include_router(sync.router, prefix="/api/sync", tags=["sync"])
