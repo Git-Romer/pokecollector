@@ -148,8 +148,8 @@ export default function CardImage({
   }, [loaded, onLoadingChange])
 
   useEffect(() => {
-    onStatusChange?.({ loaded, failed })
-  }, [failed, loaded, onStatusChange])
+    onStatusChange?.({ loaded, failed, source: displaySrc })
+  }, [displaySrc, failed, loaded, onStatusChange])
 
   useEffect(() => {
     const image = imageRef.current

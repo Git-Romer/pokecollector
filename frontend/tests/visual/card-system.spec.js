@@ -225,10 +225,12 @@ test('failed dialog artwork keeps Retry valid and withholds zoom until recovery'
   await waitForGallery(page)
   const cardBackResponse = await page.request.get('/cardback.jpg')
   const cardBack = await cardBackResponse.body()
-  let imageShouldFail = true
-  await page.route('**/__card-system-dialog-image.jpg*', route => (imageShouldFail
-    ? route.abort()
-    : route.fulfill({ status: 200, contentType: 'image/jpeg', body: cardBack })))
+  await page.route('**/__card-system-dialog-image.jpg*', (route) => {
+    const requestUrl = new URL(route.request().url())
+    return requestUrl.searchParams.has('retry')
+      ? route.fulfill({ status: 200, contentType: 'image/jpeg', body: cardBack })
+      : route.abort()
+  })
   await page.getByTestId('open-card-dialog-error').evaluate(button => button.click())
 
   const cardDialog = page.getByRole('dialog', { name: 'Cinccino ex', exact: true })
@@ -236,9 +238,16 @@ test('failed dialog artwork keeps Retry valid and withholds zoom until recovery'
   await expect(retry).toBeVisible()
   await expect(cardDialog.getByRole('button', { name: /Zoom image/ })).toHaveCount(0)
 
-  imageShouldFail = false
   await retry.click()
-  await expect(cardDialog.getByRole('button', { name: /Zoom image/ })).toBeVisible()
+  const zoomTrigger = cardDialog.getByRole('button', { name: /Zoom image/ })
+  await expect(zoomTrigger).toBeVisible()
+  await zoomTrigger.click()
+
+  const zoomDialog = page.getByRole('dialog', { name: /Zoom image.*Cinccino ex/i })
+  const zoomedImage = zoomDialog.getByRole('img', { name: 'Cinccino ex' })
+  await expect(zoomedImage).toBeVisible()
+  await expect(zoomedImage).toHaveAttribute('src', /[?&]retry=1/)
+  await expect.poll(() => zoomedImage.evaluate(image => image.naturalWidth)).toBeGreaterThan(0)
 })
 
 test('shared card keyboard and touch paths activate the intended action', async ({ page }, testInfo) => {

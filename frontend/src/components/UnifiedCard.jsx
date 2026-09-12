@@ -248,12 +248,16 @@ export function UnifiedCardDialog({
   const dialogRef = useRef(null)
   const tabIdPrefix = useId().replace(/:/g, '')
   const [imageZoomOpen, setImageZoomOpen] = useState(false)
-  const [imageZoomReady, setImageZoomReady] = useState(false)
+  const [imageZoomSource, setImageZoomSource] = useState('')
   const imageZoomOpenRef = useRef(imageZoomOpen)
 
-  const handleImageStatusChange = useCallback(({ loaded, failed }) => {
-    setImageZoomReady(Boolean(image && loaded && !failed))
+  const handleImageStatusChange = useCallback(({ loaded, failed, source }) => {
+    const nextSource = image && loaded && !failed ? source : ''
+    setImageZoomSource(nextSource)
+    if (!nextSource) setImageZoomOpen(false)
   }, [image])
+
+  const imageZoomReady = Boolean(imageZoomSource)
 
   useEffect(() => {
     onCloseRef.current = onClose
@@ -448,8 +452,8 @@ export function UnifiedCardDialog({
   return (
     <>
       {createPortal(dialog, document.body)}
-      {imageZoomOpen && image && (
-        <ImageZoomOverlay src={image} alt={card.name} onClose={() => setImageZoomOpen(false)} />
+      {imageZoomOpen && imageZoomSource && (
+        <ImageZoomOverlay src={imageZoomSource} alt={card.name} onClose={() => setImageZoomOpen(false)} />
       )}
     </>
   )
