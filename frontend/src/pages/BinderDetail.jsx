@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Plus, Trash2, Package, Star, Download, Upload, X, Heart, Minus, HelpCircle, Check } from 'lucide-react'
 import { getBinderCards, removeCardFromBinder, removeBinderEntry, addCardToBinder, addCollectionItemToBinder, searchCards, getCollection, updateBinderEntry, getBinderEntryEquivalentPrints, getBinderPrintOptimization, applyBinderPrintOptimization, switchBinderEntryCard, addBinderEntryToWishlist, addBinderCardsToWishlist, convertWishlistBinderToCollection, convertCollectionBinderToWishlist, importBinderCsv, exportBinderCsv, getApiErrorMessage } from '../api/client'
@@ -17,11 +17,16 @@ import { binderPickerItemsWithQuantities, binderPickerQuantitiesAreValid, binder
 import { CardDialog, CardDisplay, CardLegend, withCollectionItemState } from '../components/card-system'
 import { CollectionCardDisplay, OwnPhotoOverlayBadge, showsOwnPhoto, useCollectionPhotoUrl } from '../components/CollectionCardImage'
 import Modal from '../components/ui/Modal'
+import { cloneFilterState, readFilterUrlState, writeFilterUrlState } from '../utils/filterUrlState'
 
 const SPRITE_BASE_URL = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated'
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
 const BINDER_CSV_IMPORT_HEADER = 'set_code,number,required_quantity,lang,variant,condition,collection_item_id'
 const BINDER_CSV_IMPORT_TEMPLATE = `${BINDER_CSV_IMPORT_HEADER}\nBLK,057,4,de,Holo,NM,\n`
+const BINDER_FILTER_DEFINITIONS = {
+  binderFilterSet: { param: 'binder_set', default: '' },
+  binderFilterStatus: { param: 'binder_status', default: '' },
+}
 
 const downloadBinderCsvTemplate = () => {
   const blob = new Blob([BINDER_CSV_IMPORT_TEMPLATE], { type: 'text/csv;charset=utf-8' })
@@ -226,10 +231,16 @@ export default function BinderDetail() {
   const [filterSet, setFilterSet] = useState('')
   const [filterVariant, setFilterVariant] = useState('')
   const [filterCondition, setFilterCondition] = useState('')
-  const [binderFilterSet, setBinderFilterSet] = useState('')
-  const [binderFilterStatus, setBinderFilterStatus] = useState('')
   const [binderFilterQuery, setBinderFilterQuery] = useState('')
   const [binderSortBy, setBinderSortBy] = useState('recent')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const filterUrlKey = searchParams.toString()
+  const appliedBinderFilters = useMemo(
+    () => readFilterUrlState(searchParams, BINDER_FILTER_DEFINITIONS),
+    [filterUrlKey],
+  )
+  const { binderFilterSet, binderFilterStatus } = appliedBinderFilters
+  const [draftBinderFilters, setDraftBinderFilters] = useState(() => cloneFilterState(appliedBinderFilters))
   const [badgeLegendOpen, setBadgeLegendOpen] = useState(false)
   const [selectedCard, setSelectedCard] = useState(null)
   const [selectedImageSource, setSelectedImageSource] = useState('catalogue')
@@ -612,6 +623,10 @@ export default function BinderDetail() {
     setSelectedPrintOptimizationIds((printOptimizationData.recommendations || []).map(item => item.binder_card_id))
   }, [showPrintOptimizer, printOptimizationData])
 
+  useEffect(() => {
+    setDraftBinderFilters(cloneFilterState(appliedBinderFilters))
+  }, [JSON.stringify(appliedBinderFilters)])
+
   const applyPrintOptimizationMutation = useMutation({
     mutationFn: (selectedIds) => applyBinderPrintOptimization(parseInt(binderId), selectedIds, { price_field: pricePrimaryField }),
     onSuccess: (result) => {
@@ -658,6 +673,19 @@ export default function BinderDetail() {
     if (binderFilterStatus === 'missing' && (card.missing_quantity || 0) === 0) return false
     return true
   }), binderSortBy, { isWishlist })
+
+  const applyBinderFilters = () => {
+    const nextParams = writeFilterUrlState(searchParams, BINDER_FILTER_DEFINITIONS, draftBinderFilters)
+    if (nextParams.toString() !== searchParams.toString()) setSearchParams(nextParams)
+  }
+
+  const cancelBinderFilters = () => {
+    setDraftBinderFilters(cloneFilterState(appliedBinderFilters))
+  }
+
+  const clearBinderFilters = () => {
+    setDraftBinderFilters(readFilterUrlState(new URLSearchParams(), BINDER_FILTER_DEFINITIONS))
+  }
 
   const changeRequiredQuantity = (card, delta) => {
     const maximum = isCollection ? (card.max_assignable_quantity || 1) : 99
@@ -1029,11 +1057,11 @@ export default function BinderDetail() {
             placeholder={t('binderTypes.filterBinderCards')}
             className="input text-sm py-2"
           />
-          <select className="select text-sm py-2" value={binderFilterSet} onChange={(e) => setBinderFilterSet(e.target.value)}>
+          <select aria-label={t('binderTypes.allSets')} className="select text-sm py-2" value={draftBinderFilters.binderFilterSet} onChange={(e) => setDraftBinderFilters(current => ({ ...current, binderFilterSet: e.target.value }))}>
             <option value="">{t('binderTypes.allSets')}</option>
             {binderSets.map(setName => <option key={setName} value={setName}>{setName}</option>)}
           </select>
-          <select className="select text-sm py-2" value={binderFilterStatus} onChange={(e) => setBinderFilterStatus(e.target.value)}>
+          <select aria-label={t('binderTypes.allStatuses')} className="select text-sm py-2" value={draftBinderFilters.binderFilterStatus} onChange={(e) => setDraftBinderFilters(current => ({ ...current, binderFilterStatus: e.target.value }))}>
             <option value="">{t('binderTypes.allStatuses')}</option>
             <option value="owned">{t('binderTypes.ownedComplete')}</option>
             <option value="missing">{t('binderTypes.missingCards')}</option>
@@ -1050,6 +1078,11 @@ export default function BinderDetail() {
                 <option key={option} value={option}>{t(`binderTypes.sort.${option}`)}</option>
               ))}
           </select>
+          <div className="flex flex-wrap items-center justify-end gap-2 sm:col-span-2 lg:col-span-4">
+            <button type="button" className="btn-ghost mr-auto" onClick={clearBinderFilters}>{t('common.clear')}</button>
+            <button type="button" className="btn-ghost" onClick={cancelBinderFilters}>{t('common.cancel')}</button>
+            <button type="button" className="btn-primary" onClick={applyBinderFilters}>{t('common.applyFilters')}</button>
+          </div>
         </div>
       )}
 

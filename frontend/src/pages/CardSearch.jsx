@@ -35,39 +35,10 @@ const CATEGORIES = ['Pokemon', 'Trainer', 'Energy']
 const SUBTYPES = ['Basic', 'Stage1', 'Stage2', 'Supporter', 'Item', 'Stadium', 'Tool', 'Technical Machine', 'Special']
 const RARITIES = ['Common', 'Uncommon', 'Rare', 'Rare Holo', 'Rare Ultra', 'Rare Secret', 'Illustration Rare', 'Special Illustration Rare', 'Hyper Rare', 'Double Rare', 'ACE SPEC Rare', 'Promo', 'Amazing Rare']
 
-function FilterForm({ filters, setFilter, allSeries, setsForSeries, toggleSortOrder, showAdvanced, setShowAdvanced, t }) {
+function FilterForm({ filters, setFilter, allSeries, setsForSeries, showAdvanced, setShowAdvanced, t }) {
   return (
     <div className="space-y-4">
       <h3 className="text-sm font-semibold text-text-primary">{t('common.normalFilters')}</h3>
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <SortAsc size={14} className="text-text-muted flex-shrink-0" />
-          <span className="text-xs text-text-muted">{t('cardSearch.sortBy')}:</span>
-          <select
-            id="card-search-sort-by"
-            aria-label={t('cardSearch.sortBy')}
-            className="select text-sm py-1.5 w-36"
-            value={filters.sort_by}
-            onChange={(e) => { setFilter('sort_by', e.target.value) }}
-          >
-            <option value="">—</option>
-            <option value="name">{t('cardSearch.sortName')}</option>
-            <option value="number">{t('cardSearch.sortNumber')}</option>
-            <option value="rarity">{t('cardSearch.sortRarity')}</option>
-          </select>
-          {filters.sort_by && (
-            <button
-              type="button"
-              onClick={toggleSortOrder}
-              className="btn-ghost py-1.5 px-2 text-sm"
-              aria-label={filters.sort_order === 'asc' ? t('common.sortDescending') : t('common.sortAscending')}
-            >
-              {filters.sort_order === 'asc' ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-            </button>
-          )}
-        </div>
-      </div>
-
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
         <div>
           <label htmlFor="card-search-category" className="text-xs text-text-muted mb-1 block">{t('cardSearch.cardCategory')}</label>
@@ -271,11 +242,12 @@ export default function CardSearch() {
   const updateSearchParams = useCallback((updates, { replace = false, resetPage = true } = {}) => {
     const next = updateCardSearchParams(location.search, updates, { resetPage })
     const search = next.toString()
+    if (search === searchParams.toString()) return
     navigate(
       { pathname: location.pathname, search: search ? `?${search}` : '' },
       { replace },
     )
-  }, [location.pathname, location.search, navigate])
+  }, [location.pathname, location.search, navigate, searchParams])
 
   const queryParams = buildCardSearchParams(filters, langFilter, page, pageSize)
 
@@ -293,12 +265,12 @@ export default function CardSearch() {
   const hasActiveFilters = Boolean(
     filters.category || filters.type || filters.subtype || filters.rarity ||
     filters.set_id || filters.series || filters.artist || filters.rule_text.trim() || filters.hp_min ||
-    filters.hp_max || filters.sort_by
+    filters.hp_max
   )
   const activeFilterCount = [
     filters.category, filters.type, filters.subtype, filters.rarity,
     filters.set_id, filters.series, filters.artist, filters.rule_text.trim(), filters.hp_min,
-    filters.hp_max, filters.sort_by,
+    filters.hp_max,
   ].filter(Boolean).length
   const isCodeNumberSearch = CODE_NUMBER_RE.test(searchInput.trim())
 
@@ -337,8 +309,6 @@ export default function CardSearch() {
       rule_text: draftFilters.rule_text,
       hp_min: draftFilters.hp_min,
       hp_max: draftFilters.hp_max,
-      sort_by: draftFilters.sort_by,
-      sort_order: draftFilters.sort_order,
     })
     setShowFilters(false)
   }
@@ -356,8 +326,6 @@ export default function CardSearch() {
       rule_text: '',
       hp_min: '',
       hp_max: '',
-      sort_by: '',
-      sort_order: 'asc',
     }))
     setShowAdvancedFilters(false)
   }
@@ -475,7 +443,6 @@ export default function CardSearch() {
     setFilter: setDraftFilter,
     allSeries,
     setsForSeries: draftSetsForSeries,
-    toggleSortOrder: () => setDraftFilter('sort_order', draftFilters.sort_order === 'asc' ? 'desc' : 'asc'),
     showAdvanced: showAdvancedFilters,
     setShowAdvanced: setShowAdvancedFilters,
     t,
@@ -623,6 +590,34 @@ export default function CardSearch() {
           onChange={(value) => updateSearchParams({ lang: value === defaultLangFilter ? '' : value })}
           className="select w-full sm:w-52 text-xs py-1.5"
         />
+        <div className="flex items-center gap-2 sm:ml-auto">
+          <SortAsc size={14} className="text-text-muted flex-shrink-0" />
+          <select
+            id="card-search-sort-by"
+            aria-label={t('cardSearch.sortBy')}
+            className="select text-sm py-1.5 w-36"
+            value={filters.sort_by}
+            onChange={(event) => updateSearchParams({
+              sort_by: event.target.value,
+              sort_order: event.target.value ? filters.sort_order : '',
+            })}
+          >
+            <option value="">—</option>
+            <option value="name">{t('cardSearch.sortName')}</option>
+            <option value="number">{t('cardSearch.sortNumber')}</option>
+            <option value="rarity">{t('cardSearch.sortRarity')}</option>
+          </select>
+          {filters.sort_by && (
+            <button
+              type="button"
+              onClick={() => updateSearchParams({ sort_order: filters.sort_order === 'asc' ? 'desc' : 'asc' })}
+              className="btn-ghost py-1.5 px-2 text-sm"
+              aria-label={filters.sort_order === 'asc' ? t('common.sortDescending') : t('common.sortAscending')}
+            >
+              {filters.sort_order === 'asc' ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ─── Search Bar + Filter Button ───────────────────────────── */}
@@ -686,22 +681,29 @@ export default function CardSearch() {
         <div className="p-4 space-y-4">
           {filterFormProps && <FilterForm {...filterFormProps} />}
 
-          {draftFilters && Object.entries(draftFilters).some(([key, value]) => key !== 'name' && key !== 'sort_order' && Boolean(String(value).trim())) && (
+          <div className="grid grid-cols-3 gap-2 border-t border-border pt-3">
             <button
               type="button"
               onClick={clearDraftFilters}
-              className="btn-ghost w-full justify-center"
+              className="btn-ghost justify-center"
             >
               <X size={14} /> {t('common.clear')}
             </button>
-          )}
-          <button
-            type="button"
-            onClick={applyFilters}
-            className="btn-primary w-full justify-center"
-          >
-            {t('common.applyFilters')}
-          </button>
+            <button
+              type="button"
+              onClick={() => setShowFilters(false)}
+              className="btn-ghost justify-center"
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={applyFilters}
+              className="btn-primary justify-center"
+            >
+              {t('common.applyFilters')}
+            </button>
+          </div>
         </div>
       </Sheet>
 
