@@ -12,6 +12,11 @@ describe('Collection Rule text query', () => {
     expect(buildCollectionQuery('').params).toEqual({})
   })
 
+  it('trims Rule text and omits whitespace-only values', () => {
+    expect(buildCollectionQuery('  Thunder Jab  ').params).toEqual({ rule_text: 'Thunder Jab' })
+    expect(buildCollectionQuery('   ').params).toEqual({})
+  })
+
   it('changes the collection query state when Rule text changes', () => {
     expect(buildCollectionQuery('Thunder Jab').queryKey).not.toEqual(buildCollectionQuery('Solar Engine').queryKey)
   })

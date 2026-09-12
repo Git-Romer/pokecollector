@@ -99,6 +99,14 @@ class CollectionRuleTextSearchTests(unittest.TestCase):
     def test_rule_text_omitted_preserves_all_current_user_items(self):
         self.assertEqual(len(self._collection()), 9)
 
+    def test_rule_text_is_trimmed_and_blank_input_is_ignored(self):
+        self.assertEqual(self._card_ids(rule_text="  prism orb  "), ["attack-effect_en"])
+        self.assertEqual(len(self._collection(rule_text="   ")), 9)
+
+    def test_rule_text_treats_like_wildcards_as_literal_text(self):
+        self.assertEqual(self._card_ids(rule_text="%"), [])
+        self.assertEqual(self._card_ids(rule_text="_"), [])
+
 
 if __name__ == "__main__":
     unittest.main()

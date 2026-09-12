@@ -28,6 +28,16 @@ _LATIN_REPLACEMENTS = {
 }
 
 
+def normalize_search_term(value: str | None) -> str:
+    """Normalize optional user input before building a substring search."""
+    return str(value or "").strip()
+
+
+def _escape_like(value: str) -> str:
+    """Treat LIKE metacharacters in user input as literal characters."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 def strip_diacritics(value: str | None) -> str:
     """Return a case-folded, accent-insensitive representation of text."""
     if value is None:
@@ -76,17 +86,21 @@ def _postgres_unaccent_available(db: Session) -> bool:
 
 def accent_insensitive_contains(db: Session, column, value: str | None):
     """Build a SQL predicate for accent-insensitive substring search."""
+    value = normalize_search_term(value)
     if not value:
         return None
 
     if _postgres_unaccent_available(db):
-        pattern = f"%{value}%"
-        return func.unaccent(func.lower(column)).like(func.unaccent(func.lower(literal(pattern))))
+        pattern = f"%{_escape_like(value)}%"
+        return func.unaccent(func.lower(column)).like(
+            func.unaccent(func.lower(literal(pattern))),
+            escape="\\",
+        )
 
     normalized = _portable_unaccent_value(value)
     if not normalized:
         return None
-    return _portable_unaccent_expr(column).like(f"%{normalized}%")
+    return _portable_unaccent_expr(column).like(f"%{_escape_like(normalized)}%", escape="\\")
 
 
 def json_array_text_matches(db: Session, column, fields: tuple[str, ...], value: str):

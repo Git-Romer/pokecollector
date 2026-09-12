@@ -11,7 +11,7 @@ from services.card_fallbacks import apply_cross_language_fallbacks, build_missin
 from services.card_numbers import card_number_matches
 from services.collection_photos import MAX_UPLOAD_BYTES, InvalidPhoto, normalize_photo
 from services.card_visibility import visible_any_card_filter, visible_card_filter
-from services.text_search import accent_insensitive_contains, json_array_text_matches
+from services.text_search import accent_insensitive_contains, json_array_text_matches, normalize_search_term
 from services.binder_allocations import collection_item_allocated_quantity
 from services.digital_sets import digital_sets_enabled
 from services.standard_legality import is_standard_legal_card, is_standard_regulation_mark
@@ -518,6 +518,7 @@ def get_collection(
         visible_any_card_filter(db, current_user.id, "all"),
     )
 
+    rule_text = normalize_search_term(rule_text)
     if rule_text:
         query = query.filter(or_(
             accent_insensitive_contains(db, Card.card_effect, rule_text),

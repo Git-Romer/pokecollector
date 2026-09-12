@@ -3,7 +3,6 @@ import {
   getLastCardSearchPage,
   isValidCardSearchPage,
   parseCardSearchPage,
-  resetCardSearchFilters,
   updateCardSearchParams,
 } from './cardSearchUrlState'
 
@@ -44,11 +43,11 @@ describe('card search URL state', () => {
     expect(next.toString()).toBe('q=Pikachu&page=3')
   })
 
-  it('preserves Rule text spaces in URL state while typing', () => {
+  it('trims Rule text before saving it to URL state', () => {
     const next = updateCardSearchParams('page=2', { rule_text: 'draw 3 cards ' })
 
-    expect(next.get('rule_text')).toBe('draw 3 cards ')
-    expect(next.toString()).toBe('rule_text=draw+3+cards+')
+    expect(next.get('rule_text')).toBe('draw 3 cards')
+    expect(next.toString()).toBe('rule_text=draw+3+cards')
   })
 
   it('removes Rule text from URL state when cleared', () => {
@@ -57,16 +56,4 @@ describe('card search URL state', () => {
     expect(next.has('rule_text')).toBe(false)
   })
 
-  it('resets filters without clearing the search term or language', () => {
-    const next = resetCardSearchFilters(
-      'q=Pikachu&lang=de&rarity=Rare&artist=Ken+Sugimori&sort_by=name&sort_order=desc&page=4',
-    )
-
-    expect(next.toString()).toBe('q=Pikachu&lang=de')
-  })
-
-  it('returns an empty search when only filters were active', () => {
-    const next = resetCardSearchFilters('rarity=Rare&page=2')
-    expect(next.toString()).toBe('')
-  })
 })

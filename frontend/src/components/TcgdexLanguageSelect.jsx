@@ -1,6 +1,8 @@
 import { TCGDEX_LANGUAGES, normalizeTcgdexLanguage, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 
 export default function TcgdexLanguageSelect({
+  id,
+  ariaLabel,
   value,
   onChange,
   includeAll = false,
@@ -16,6 +18,8 @@ export default function TcgdexLanguageSelect({
 
   return (
     <select
+      id={id}
+      aria-label={ariaLabel}
       value={normalizedValue}
       onChange={(event) => onChange(event.target.value)}
       className={className}

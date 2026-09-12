@@ -18,24 +18,11 @@ export function updateCardSearchParams(currentSearch, updates, { resetPage = tru
   const next = new URLSearchParams(currentSearch)
 
   Object.entries(updates).forEach(([key, rawValue]) => {
-    const raw = String(rawValue ?? '')
-    const value = key === 'rule_text' ? raw : raw.trim()
+    const value = String(rawValue ?? '').trim()
     if (!value || (key === 'sort_order' && value === 'asc')) next.delete(key)
     else next.set(key, value)
   })
 
   if (resetPage) next.delete('page')
-  return next
-}
-
-export function resetCardSearchFilters(currentSearch) {
-  const current = new URLSearchParams(currentSearch)
-  const next = new URLSearchParams()
-
-  for (const key of ['q', 'lang']) {
-    const value = current.get(key)?.trim()
-    if (value) next.set(key, value)
-  }
-
   return next
 }

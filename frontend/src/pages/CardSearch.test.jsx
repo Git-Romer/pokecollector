@@ -32,6 +32,10 @@ describe('CardSearch rule text request parameters', () => {
     expect(buildParams({ rule_text: 'draw 3 cards' }).rule_text).toBe('draw 3 cards')
   })
 
+  it('trims Rule text before sending the request', () => {
+    expect(buildParams({ rule_text: '  draw 3 cards  ' }).rule_text).toBe('draw 3 cards')
+  })
+
   it('omits whitespace-only Rule text from the request', () => {
     expect(buildParams({ rule_text: '   ' }).rule_text).toBeUndefined()
   })

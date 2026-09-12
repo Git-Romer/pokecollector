@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 try:
     from sqlalchemy import JSON, create_engine
@@ -6,7 +7,7 @@ try:
 
     from api.cards import search_cards
     from database import Base
-    from models import Card, Setting, User
+    from models import Card, Set, Setting, User
 
     API_TEST_DEPS_AVAILABLE = True
 except ModuleNotFoundError:
@@ -24,6 +25,7 @@ class CardRuleTextSearchTests(unittest.TestCase):
         self.db.add_all([
             self.user,
             Setting(key="tcgdex_sync_languages", value="en"),
+            Set(id="test_en", tcg_set_id="test", name="Test Set", abbreviation="TST", lang="en"),
             Card(id="attack-name_en", name="Attack Name", set_id="test", number="1", lang="en", is_custom=False,
                  attacks=[{"name": "Thunder Jab", "effect": "Normal attack effect"}]),
             Card(id="attack-effect_en", name="Attack Effect", set_id="test", number="2", lang="en", is_custom=False,
@@ -82,6 +84,23 @@ class CardRuleTextSearchTests(unittest.TestCase):
 
     def test_rule_text_matches_accents_insensitively(self):
         self.assertEqual(self._search_ids(rule_text="eclair burst"), ["accent_en"])
+
+    def test_rule_text_is_trimmed_and_blank_input_is_ignored(self):
+        self.assertEqual(self._search_ids(rule_text="  thunder jab  "), ["attack-name_en"])
+        self.assertEqual(len(self._search_ids(rule_text="   ")), 10)
+
+    def test_rule_text_treats_like_wildcards_as_literal_text(self):
+        self.assertEqual(self._search_ids(rule_text="%"), [])
+        self.assertEqual(self._search_ids(rule_text="_"), [])
+
+    def test_code_number_search_still_applies_rule_text(self):
+        self.assertEqual(self._search_ids(name="TST 001", rule_text="thunder jab"), ["attack-name_en"])
+        self.assertEqual(self._search_ids(name="TST 001", rule_text="moon bridge"), [])
+
+    def test_code_number_rule_text_miss_does_not_refresh_an_existing_card(self):
+        with patch("api.cards.pokemon_api.get_set_cards") as get_set_cards:
+            self.assertEqual(self._search_ids(name="TST 001", rule_text="moon bridge"), [])
+        get_set_cards.assert_not_called()
 
 
 if __name__ == "__main__":
