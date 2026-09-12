@@ -159,6 +159,7 @@ function HomeRankingExample() {
 
 export default function CardSystemGallery() {
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [dialogImage, setDialogImage] = useState(imageFor(FALLBACK_CARD))
   const [dialogTab, setDialogTab] = useState('overview')
   const [interactionResult, setInteractionResult] = useState('')
   const [compactRevision, setCompactRevision] = useState(0)
@@ -321,8 +322,16 @@ export default function CardSystemGallery() {
           </div>
         </section>
 
-        <button type="button" className="btn-primary" onClick={() => { setDialogTab('overview'); setDialogOpen(true) }} data-testid="open-card-dialog">
+        <button type="button" className="btn-primary" onClick={() => { setDialogImage(imageFor(FALLBACK_CARD)); setDialogTab('overview'); setDialogOpen(true) }} data-testid="open-card-dialog">
           Open shared card dialog
+        </button>
+        <button
+          type="button"
+          className="sr-only"
+          onClick={() => { setDialogImage('/__card-system-dialog-image.jpg'); setDialogTab('overview'); setDialogOpen(true) }}
+          data-testid="open-card-dialog-error"
+        >
+          Open shared card dialog with failed artwork
         </button>
         <button
           type="button"
@@ -364,7 +373,7 @@ export default function CardSystemGallery() {
       {dialogOpen && (
         <CardDialog
           card={FALLBACK_CARD}
-          image={imageFor(FALLBACK_CARD)}
+          image={dialogImage}
           tabs={[{ id: 'overview', label: 'Overview' }, { id: 'prices', label: 'Prices' }]}
           activeTab={dialogTab}
           onTabChange={setDialogTab}

@@ -7,6 +7,7 @@ import { useSettings } from '../contexts/SettingsContext'
 const MIN_SCALE = 1
 const MAX_SCALE = 4
 const CLICK_ZOOM_SCALE = 2.5
+const DRAG_THRESHOLD = 5
 
 function clampScale(scale) {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale))
@@ -34,6 +35,7 @@ export default function ImageZoomOverlay({ src, alt = '', onClose }) {
   const [scale, setScale] = useState(MIN_SCALE)
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [showHint, setShowHint] = useState(true)
+  const [isDragging, setIsDragging] = useState(false)
   const containerRef = useRef(null)
   const imgRef = useRef(null)
   const dragState = useRef(null)
@@ -70,44 +72,42 @@ export default function ImageZoomOverlay({ src, alt = '', onClose }) {
   }
 
   const handleWheel = (event) => {
+    if (event.target !== imgRef.current) return
     event.preventDefault()
     const delta = -event.deltaY * 0.0025
     applyScale(scale * (1 + delta), { x: event.clientX, y: event.clientY })
   }
 
   const handleMouseDown = (event) => {
-    if (scale <= MIN_SCALE) return
+    if (event.button !== 0 || event.target !== imgRef.current || scale <= MIN_SCALE) return
+    draggedRef.current = false
     dragState.current = { startX: event.clientX, startY: event.clientY, origin: position }
   }
 
   const handleMouseMove = (event) => {
     if (!dragState.current) return
+    const deltaX = event.clientX - dragState.current.startX
+    const deltaY = event.clientY - dragState.current.startY
+    if (!draggedRef.current && Math.hypot(deltaX, deltaY) < DRAG_THRESHOLD) return
     draggedRef.current = true
+    setIsDragging(true)
     const { startX, startY, origin } = dragState.current
     setPosition({ x: origin.x + (event.clientX - startX), y: origin.y + (event.clientY - startY) })
   }
 
   const endDrag = () => {
     dragState.current = null
+    setIsDragging(false)
   }
 
-  // The <img> itself has pointer-events: none (its own click can't be told
-  // apart from the pan surface behind it otherwise), so "clicked the image"
-  // vs "clicked the backdrop around it" is decided by comparing the click
-  // point against the image's actual rendered bounds instead of event.target.
-  // A single click on the image toggles zoom (matches the single-click
-  // "enlarge" pattern already used elsewhere in the app, e.g. the scan
-  // candidate compare view) — clicking the backdrop around it closes instead.
+  // A single click on the image toggles zoom (matching the scan candidate
+  // compare view); clicking the surrounding pan surface closes the overlay.
   const handleContainerClick = (event) => {
     if (draggedRef.current) {
       draggedRef.current = false
       return
     }
-    const imgRect = imgRef.current?.getBoundingClientRect()
-    const withinImage = imgRect
-      && event.clientX >= imgRect.left && event.clientX <= imgRect.right
-      && event.clientY >= imgRect.top && event.clientY <= imgRect.bottom
-    if (!withinImage) {
+    if (event.target !== imgRef.current) {
       onClose()
       return
     }
@@ -115,14 +115,17 @@ export default function ImageZoomOverlay({ src, alt = '', onClose }) {
   }
 
   const handleTouchStart = (event) => {
+    if (event.target !== imgRef.current) return
+    draggedRef.current = false
     if (event.touches.length === 2) {
       pinchState.current = {
         distance: distanceBetween(event.touches),
         scale,
-        origin: position,
         mid: midpoint(event.touches),
       }
       dragState.current = null
+      draggedRef.current = true
+      setIsDragging(true)
       return
     }
     if (event.touches.length === 1 && scale > MIN_SCALE) {
@@ -140,9 +143,13 @@ export default function ImageZoomOverlay({ src, alt = '', onClose }) {
       return
     }
     if (event.touches.length === 1 && dragState.current) {
+      const touch = event.touches[0]
+      const deltaX = touch.clientX - dragState.current.startX
+      const deltaY = touch.clientY - dragState.current.startY
+      if (!draggedRef.current && Math.hypot(deltaX, deltaY) < DRAG_THRESHOLD) return
       event.preventDefault()
       draggedRef.current = true
-      const touch = event.touches[0]
+      setIsDragging(true)
       const { startX, startY, origin } = dragState.current
       setPosition({ x: origin.x + (touch.clientX - startX), y: origin.y + (touch.clientY - startY) })
     }
@@ -150,7 +157,10 @@ export default function ImageZoomOverlay({ src, alt = '', onClose }) {
 
   const handleTouchEnd = (event) => {
     if (event.touches.length < 2) pinchState.current = null
-    if (event.touches.length === 0) dragState.current = null
+    if (event.touches.length === 0) {
+      dragState.current = null
+      setIsDragging(false)
+    }
   }
 
   const { dialogRef, onDialogKeyDown } = useDialogBehavior(true, onClose)
@@ -160,7 +170,7 @@ export default function ImageZoomOverlay({ src, alt = '', onClose }) {
       ref={dialogRef}
       role="dialog"
       aria-modal="true"
-      aria-label={alt}
+      aria-label={`${t('card.zoomImage')} — ${alt}`}
       tabIndex={-1}
       onKeyDown={onDialogKeyDown}
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm"
@@ -176,8 +186,8 @@ export default function ImageZoomOverlay({ src, alt = '', onClose }) {
 
       <div
         ref={containerRef}
-        className="relative h-full w-full touch-none overflow-hidden"
-        style={{ cursor: scale > MIN_SCALE ? 'grab' : 'zoom-in' }}
+        data-testid="image-zoom-surface"
+        className="relative h-full w-full cursor-default touch-none overflow-hidden"
         onClick={handleContainerClick}
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
@@ -193,11 +203,13 @@ export default function ImageZoomOverlay({ src, alt = '', onClose }) {
           src={src}
           alt={alt}
           draggable={false}
-          className="pointer-events-none absolute left-1/2 top-1/2 max-h-none max-w-none select-none"
+          className="absolute left-1/2 top-1/2 select-none object-contain"
           style={{
             width: 'min(80vw, 480px)',
+            maxHeight: 'calc(100dvh - 9rem)',
+            cursor: scale > MIN_SCALE ? (isDragging ? 'grabbing' : 'grab') : 'zoom-in',
             transform: `translate(-50%, -50%) translate(${position.x}px, ${position.y}px) scale(${scale})`,
-            transition: dragState.current || pinchState.current ? 'none' : 'transform 120ms ease-out',
+            transition: isDragging || pinchState.current ? 'none' : 'transform 120ms ease-out',
           }}
         />
 

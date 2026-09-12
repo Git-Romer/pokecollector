@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { Check, Plus, X, ZoomIn } from 'lucide-react'
-import { useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useSettings } from '../contexts/SettingsContext'
 import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
@@ -104,13 +104,16 @@ export function CardArtworkFrame({
   onAdd,
   selected = false,
   unavailableReason = '',
+  actionLabel,
   showStateIndicators = true,
   stateIndicatorProps = {},
   dimmed = false,
   thumbnail = false,
   onLoadingChange,
+  onImageStatusChange,
   overlay,
   className = '',
+  actionClassName = '',
   imageClassName = 'w-full h-full object-cover',
   loading = 'lazy',
   viewportRef,
@@ -118,7 +121,7 @@ export function CardArtworkFrame({
   const { t } = useSettings()
   const kinds = getCardFallbackKinds(card)
   const label = fallbackAriaLabel(t, kinds)
-  const actionLabel = [alt, label].filter(Boolean).join(' · ') || undefined
+  const resolvedActionLabel = actionLabel || [alt, label].filter(Boolean).join(' · ') || undefined
 
   return (
     <div
@@ -157,6 +160,7 @@ export function CardArtworkFrame({
             className={imageClassName}
             loading={loading}
             onLoadingChange={onLoadingChange}
+            onStatusChange={onImageStatusChange}
             compactError={thumbnail}
           />
           {dimmed && <span className="unified-card-missing-overlay" aria-hidden />}
@@ -168,11 +172,11 @@ export function CardArtworkFrame({
         {interactive && (
           <button
             type="button"
-            className="unified-card-primary-action"
+            className={clsx('unified-card-primary-action', actionClassName)}
             onClick={onClick || onSelect}
             disabled={Boolean(unavailableReason)}
             aria-disabled={unavailableReason ? true : undefined}
-            aria-label={actionLabel}
+            aria-label={resolvedActionLabel}
           />
         )}
         {onAdd && !unavailableReason && (
@@ -244,7 +248,16 @@ export function UnifiedCardDialog({
   const dialogRef = useRef(null)
   const tabIdPrefix = useId().replace(/:/g, '')
   const [imageZoomOpen, setImageZoomOpen] = useState(false)
+  const [imageZoomSource, setImageZoomSource] = useState('')
   const imageZoomOpenRef = useRef(imageZoomOpen)
+
+  const handleImageStatusChange = useCallback(({ loaded, failed, source }) => {
+    const nextSource = image && loaded && !failed ? source : ''
+    setImageZoomSource(nextSource)
+    if (!nextSource) setImageZoomOpen(false)
+  }, [image])
+
+  const imageZoomReady = Boolean(imageZoomSource)
 
   useEffect(() => {
     onCloseRef.current = onClose
@@ -317,7 +330,9 @@ export function UnifiedCardDialog({
       <div
         ref={dialogRef}
         role="dialog"
-        aria-modal="true"
+        aria-modal={imageZoomOpen ? undefined : 'true'}
+        aria-hidden={imageZoomOpen ? 'true' : undefined}
+        inert={imageZoomOpen ? '' : undefined}
         aria-label={card.name}
         className={clsx(
           'relative max-h-[calc(100dvh-1.5rem)] w-full max-w-6xl overflow-y-auto rounded-2xl border border-white/10 bg-bg-surface shadow-2xl sm:max-h-[calc(100dvh-3rem)]',
@@ -339,24 +354,21 @@ export function UnifiedCardDialog({
           <aside className="min-w-0 sm:border-r sm:border-white/8 sm:pr-6">
             <div className="flex items-start gap-4 sm:block">
               <div className="relative w-24 flex-shrink-0 sm:w-full">
-                <button
-                  type="button"
-                  className={clsx('block w-full rounded-xl text-left', image && 'cursor-zoom-in')}
-                  onClick={() => image && setImageZoomOpen(true)}
-                  disabled={!image}
-                  aria-label={image ? `${t('card.zoomImage')} — ${card.name}` : undefined}
-                >
-                  <CardArtworkFrame
-                    card={card}
-                    image={image}
-                    overlay={imageOverlay}
-                    alt={card.name}
-                    variantEffectSource={variantEffectSource}
-                    showStateIndicators={false}
-                    loading="eager"
-                  />
-                </button>
-                {image && (
+                <CardArtworkFrame
+                  card={card}
+                  image={image}
+                  overlay={imageOverlay}
+                  alt={card.name}
+                  variantEffectSource={variantEffectSource}
+                  showStateIndicators={false}
+                  loading="eager"
+                  interactive={imageZoomReady}
+                  onClick={() => setImageZoomOpen(true)}
+                  onImageStatusChange={handleImageStatusChange}
+                  actionLabel={`${t('card.zoomImage')} — ${card.name}`}
+                  actionClassName="cursor-zoom-in"
+                />
+                {imageZoomReady && (
                   <span
                     className="pointer-events-none absolute right-2 top-2 z-20 grid h-7 w-7 place-items-center rounded-full border border-white/15 bg-black/75 text-white shadow-lg"
                     aria-hidden="true"
@@ -440,8 +452,8 @@ export function UnifiedCardDialog({
   return (
     <>
       {createPortal(dialog, document.body)}
-      {imageZoomOpen && image && (
-        <ImageZoomOverlay src={image} alt={card.name} onClose={() => setImageZoomOpen(false)} />
+      {imageZoomOpen && imageZoomSource && (
+        <ImageZoomOverlay src={imageZoomSource} alt={card.name} onClose={() => setImageZoomOpen(false)} />
       )}
     </>
   )
