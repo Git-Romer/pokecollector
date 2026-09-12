@@ -856,7 +856,7 @@ def get_collection_item_photo(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Serve the owner's own photo of a card the catalogue has no scan of.
+    """Serve the owner's own photo of a collected card.
 
     Authenticated and scoped to the owner, unlike /api/images — a photograph of
     a card is also a photograph of whatever it was lying on, and it is not part
@@ -905,6 +905,11 @@ async def upload_collection_item_photo(
     is given, and the display rule that a catalogue scan wins lives in one place
     on the frontend. Uploading against a cached card simply has no visible
     effect, which is better than a confusing rejection.
+
+    Also available for custom cards: their only other artwork slot
+    (`image_url`) requires a public HTTPS URL, which isn't an option for
+    someone who just wants to attach their own photo of a physical card that
+    has no listing anywhere online.
     """
     entry = db.query(CollectionItem).filter(
         CollectionItem.id == item_id,
@@ -912,8 +917,6 @@ async def upload_collection_item_photo(
     ).first()
     if not entry:
         raise HTTPException(status_code=404, detail="Collection item not found")
-    if entry.card and entry.card.is_custom:
-        raise HTTPException(status_code=400, detail="Custom cards already have editable artwork")
 
     raw = await file.read(MAX_UPLOAD_BYTES + 1)
     await file.close()
@@ -941,7 +944,7 @@ def delete_collection_item_photo(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Drop the owner's photo, falling the card back to the catalogue placeholder.
+    """Drop the owner's photo, falling back to reference artwork or the standard card back.
 
     Present because the photo is the user's own: whatever ended up in frame, they
     can take it back out without deleting the collection entry itself.
