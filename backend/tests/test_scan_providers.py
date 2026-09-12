@@ -13,9 +13,11 @@ try:
     from models import User, UserSetting
     from services.scan_providers import (
         DEFAULT_OPENAI_BASE_URL,
+        DEFAULT_SCANNER_REQUEST_TIMEOUT_SECONDS,
         GEMINI,
         OPENAI,
         SCANNER_CUSTOM_MODEL_SETTINGS,
+        SCANNER_REQUEST_TIMEOUT_SETTINGS,
         ScanProvider,
         extract_openai_text,
         get_provider,
@@ -24,9 +26,11 @@ try:
         openai_chat_completions_url,
         openai_requires_key,
         openai_retry_after_seconds,
+        normalize_scanner_request_timeout,
         post_openai_chat,
         provider_label,
         resolve_provider_name,
+        resolve_scanner_request_timeout,
         text_part,
     )
     DEPS = True
@@ -144,6 +148,48 @@ class ProviderResolutionTests(_Fixture, unittest.TestCase):
         provider = get_provider(self.db, self.user.id)
         self.assertEqual(provider.name, OPENAI)
         self.assertEqual(provider.credential(self.db, self.user.id), "sk-openai-value")
+
+
+@unittest.skipUnless(DEPS, "FastAPI/SQLAlchemy are not installed in this environment")
+class RequestTimeoutResolutionTests(_Fixture, unittest.TestCase):
+
+    def test_legacy_users_and_missing_users_get_the_safe_default(self):
+        self.assertEqual(
+            resolve_scanner_request_timeout(self.db, self.user.id, GEMINI),
+            DEFAULT_SCANNER_REQUEST_TIMEOUT_SECONDS,
+        )
+        self.assertEqual(
+            resolve_scanner_request_timeout(self.db, None, OPENAI),
+            DEFAULT_SCANNER_REQUEST_TIMEOUT_SECONDS,
+        )
+
+    def test_supported_timeout_is_provider_specific(self):
+        self._set(SCANNER_REQUEST_TIMEOUT_SETTINGS[OPENAI], "180")
+        self.assertEqual(
+            resolve_scanner_request_timeout(self.db, self.user.id, OPENAI), 180
+        )
+        self.assertEqual(
+            resolve_scanner_request_timeout(self.db, self.user.id, GEMINI), 30
+        )
+
+    def test_corrupt_stored_timeout_falls_back_safely(self):
+        for value in ("", "45", "180.0", "not-a-number"):
+            with self.subTest(value=value):
+                self.db.query(UserSetting).delete()
+                self.db.commit()
+                self._set(SCANNER_REQUEST_TIMEOUT_SETTINGS[GEMINI], value)
+                self.assertEqual(
+                    resolve_scanner_request_timeout(self.db, self.user.id, GEMINI),
+                    DEFAULT_SCANNER_REQUEST_TIMEOUT_SECONDS,
+                )
+
+    def test_normalizer_accepts_only_the_exposed_choices(self):
+        for value in (30, "60", 120, " 180 "):
+            with self.subTest(value=value):
+                self.assertEqual(normalize_scanner_request_timeout(value), int(value))
+        for value in (None, True, 0, 29, 45, 181, "60.0"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                normalize_scanner_request_timeout(value)
 
 
 @unittest.skipUnless(DEPS, "FastAPI/SQLAlchemy are not installed in this environment")

@@ -16,6 +16,7 @@ from services.digital_sets import digital_sets_enabled
 from services.standard_legality import is_standard_legal_card, is_standard_regulation_mark
 from services.tcgdex_languages import SUPPORTED_TCGDEX_LANGUAGES, has_lang_suffix, is_supported_tcgdex_language, normalize_tcgdex_language
 from services.collection_csv import collection_import_key, is_valid_collection_purchase_price, merge_collection_import_item, normalize_collection_variant
+from services.card_values import effective_market_price, normalize_price_field
 import datetime
 import csv
 import io
@@ -194,6 +195,14 @@ def _normalize_request_lang(lang: Optional[str]) -> str:
     return normalized
 
 
+def _collection_item_language(card_id: str, requested_lang: Optional[str]) -> str:
+    """Resolve collection language, treating a composite card id as authoritative."""
+    _, detected_lang = pokemon_api.strip_lang_suffix(card_id)
+    return _normalize_request_lang(
+        detected_lang if has_lang_suffix(card_id) else (requested_lang or "en")
+    )
+
+
 def ensure_card_exists(
     db: Session,
     card_id: str,
@@ -251,10 +260,15 @@ def ensure_card_exists(
     return card
 
 
-def _add_collection_item(db: Session, current_user: User, item: CollectionItemCreate, commit: bool = True) -> str:
-    """Add one item and return "added" or "updated"."""
-    _, detected_lang = pokemon_api.strip_lang_suffix(item.card_id)
-    item_lang = _normalize_request_lang(item.lang or detected_lang or "en")
+def _upsert_collection_item(
+    db: Session,
+    current_user: User,
+    item: CollectionItemCreate,
+    *,
+    ensure_catalogue_card: bool = True,
+) -> tuple[str, CollectionItem]:
+    """Stage one collection add and return its action and database row."""
+    item_lang = _collection_item_language(item.card_id, item.lang)
     item_variant = _normalize_collection_variant(item.variant)
 
     if item.card_id.startswith("custom-"):
@@ -269,7 +283,10 @@ def _add_collection_item(db: Session, current_user: User, item: CollectionItemCr
     else:
         tcg_card_id, _ = pokemon_api.strip_lang_suffix(item.card_id)
         effective_card_id = f"{tcg_card_id}_{item_lang}"
-        ensure_card_exists(db, effective_card_id, lang=item_lang)
+        if ensure_catalogue_card:
+            ensure_card_exists(db, effective_card_id, lang=item_lang)
+        elif db.query(Card.id).filter(Card.id == effective_card_id).first() is None:
+            raise HTTPException(status_code=404, detail="Card is no longer available locally.")
 
     existing = db.query(CollectionItem).filter(
         CollectionItem.card_id == effective_card_id,
@@ -282,11 +299,9 @@ def _add_collection_item(db: Session, current_user: User, item: CollectionItemCr
 
     if existing:
         existing.quantity += item.quantity or 1
-        if commit:
-            db.commit()
-        return "updated"
+        return "updated", existing
 
-    db.add(CollectionItem(
+    created = CollectionItem(
         card_id=effective_card_id,
         quantity=item.quantity,
         condition=item.condition,
@@ -295,10 +310,17 @@ def _add_collection_item(db: Session, current_user: User, item: CollectionItemCr
         lang=item_lang,
         user_id=current_user.id,
         added_at=datetime.datetime.utcnow(),
-    ))
+    )
+    db.add(created)
+    return "added", created
+
+
+def _add_collection_item(db: Session, current_user: User, item: CollectionItemCreate, commit: bool = True) -> str:
+    """Add one item and return "added" or "updated"."""
+    status, _row = _upsert_collection_item(db, current_user, item)
     if commit:
         db.commit()
-    return "added"
+    return status
 
 
 def _get_api_sets_by_code(include_digital: bool = False) -> dict[str, List[dict]]:
@@ -516,57 +538,10 @@ def add_to_collection(
     db: Session = Depends(get_db),
 ):
     """Add a card to the collection. Cards with identical card_id+variant+lang+condition+purchase_price are grouped."""
-    _, detected_lang = pokemon_api.strip_lang_suffix(item.card_id)
-    item_lang = _normalize_request_lang(item.lang or detected_lang or "en")
-    item_variant = _normalize_collection_variant(item.variant)
-
-    # Resolve the correct language-variant card_id
-    if item.card_id.startswith("custom-"):
-        # Custom cards keep their original ID (no language suffix)
-        effective_card_id = item.card_id
-        # Always derive lang from the custom card record itself
-        custom_card = db.query(Card).filter(Card.id == item.card_id).first()
-        if not custom_card or custom_card.custom_owner_id != current_user.id:
-            if custom_card and custom_card.is_shared_template:
-                raise HTTPException(status_code=409, detail="Copy this shared template before adding it.")
-            raise HTTPException(status_code=404, detail="Custom card not found")
-        if custom_card and custom_card.lang:
-            item_lang = custom_card.lang
-    else:
-        tcg_card_id, _ = pokemon_api.strip_lang_suffix(item.card_id)
-        effective_card_id = f"{tcg_card_id}_{item_lang}"
-        ensure_card_exists(db, effective_card_id, lang=item_lang)
-
-    # Find existing entry for same card + variant + lang + condition + purchase_price combination
-    existing = db.query(CollectionItem).filter(
-        CollectionItem.card_id == effective_card_id,
-        CollectionItem.variant == item_variant,
-        CollectionItem.lang == item_lang,
-        CollectionItem.condition == item.condition,
-        CollectionItem.purchase_price == item.purchase_price,
-        CollectionItem.user_id == current_user.id,
-    ).first()
-
-    if existing:
-        existing.quantity += item.quantity or 1
-        db.commit()
-        db.refresh(existing)
-        return _annotate_collection_item(db, current_user, existing)
-    else:
-        db_item = CollectionItem(
-            card_id=effective_card_id,
-            quantity=item.quantity,
-            condition=item.condition,
-            variant=item_variant,
-            purchase_price=item.purchase_price,
-            lang=item_lang,
-            user_id=current_user.id,
-            added_at=datetime.datetime.utcnow(),
-        )
-        db.add(db_item)
-        db.commit()
-        db.refresh(db_item)
-        return _annotate_collection_item(db, current_user, db_item)
+    _status, db_item = _upsert_collection_item(db, current_user, item)
+    db.commit()
+    db.refresh(db_item)
+    return _annotate_collection_item(db, current_user, db_item)
 
 
 @router.post("/bulk-add", response_model=BulkCollectionAddResponse)
@@ -589,8 +564,7 @@ def bulk_add_to_collection(
 
     for item in request.items:
         try:
-            _, detected_lang = pokemon_api.strip_lang_suffix(item.card_id)
-            item_lang = _normalize_request_lang(item.lang or detected_lang or "en")
+            item_lang = _collection_item_language(item.card_id, item.lang)
             item_variant = _normalize_collection_variant(item.variant)
 
             if item.card_id.startswith("custom-"):

@@ -3,14 +3,26 @@
 import concurrent.futures
 import datetime
 import os
+import threading
 import unittest
 import uuid
+from unittest.mock import patch
 
 try:
+    from fastapi import HTTPException
     from sqlalchemy import inspect, text
 
+    from api.scan_jobs import ResolveAndAddScanItemRequest, resolve_and_add_scan_job_item
     from database import SessionLocal, init_db
-    from models import GeminiQuotaState, ScanJob, ScanJobItem, ScanQueueUserState, User
+    from models import (
+        Card,
+        CollectionItem,
+        GeminiQuotaState,
+        ScanJob,
+        ScanJobItem,
+        ScanQueueUserState,
+        User,
+    )
     from services import gemini_rate_limit
     from services.scan_queue import claim_next_scan_item
 
@@ -119,6 +131,137 @@ class ScanQueuePostgresTests(unittest.TestCase):
         self.assertTrue(all(claim.composite for claim in claims))
         self.assertTrue(all(len(claim.all_item_ids) == 4 for claim in claims))
         self.assertTrue(set(claims[0].all_item_ids).isdisjoint(claims[1].all_item_ids))
+
+
+@unittest.skipUnless(POSTGRES_TEST_ENABLED, "requires the isolated PostgreSQL queue test database")
+class AtomicScanResolvePostgresTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        init_db()
+
+    def setUp(self):
+        self.prefix = f"atomic-resolve-{uuid.uuid4().hex}"
+        db = SessionLocal()
+        try:
+            user = User(username=self.prefix, hashed_password="x", is_active=True)
+            db.add(user)
+            db.flush()
+            card_id = f"{self.prefix}-card"
+            db.add(Card(
+                id=f"{card_id}_en",
+                tcg_card_id=card_id,
+                name="Concurrency card",
+                number="1",
+                lang="en",
+                is_custom=False,
+            ))
+            now = datetime.datetime.utcnow()
+            job = ScanJob(
+                user_id=user.id,
+                status="done",
+                created_at=now,
+                updated_at=now,
+                finished_at=now,
+                expires_at=now + datetime.timedelta(days=14),
+            )
+            db.add(job)
+            db.flush()
+            item = ScanJobItem(
+                job_id=job.id,
+                user_id=user.id,
+                position=0,
+                image_path=None,
+                content_type="image/jpeg",
+                byte_size=0,
+                batch_mode=False,
+                status="done",
+                resolved=False,
+                attempts=1,
+                transient_failures=0,
+                matches=[{"id": f"{card_id}_en", "tcg_card_id": card_id}],
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(item)
+            db.commit()
+            self.user_id = user.id
+            self.job_id = job.id
+            self.item_id = item.id
+            self.card_id = card_id
+        finally:
+            db.close()
+
+    def tearDown(self):
+        db = SessionLocal()
+        try:
+            db.query(CollectionItem).filter(
+                CollectionItem.user_id == self.user_id
+            ).delete(synchronize_session=False)
+            db.query(User).filter(User.id == self.user_id).delete(
+                synchronize_session=False
+            )
+            db.query(Card).filter(Card.id == f"{self.card_id}_en").delete(
+                synchronize_session=False
+            )
+            db.commit()
+        finally:
+            db.close()
+
+    def test_concurrent_add_and_resolve_increments_collection_once(self):
+        from api import scan_jobs
+
+        request = ResolveAndAddScanItemRequest(
+            confirmed_card_id=self.card_id,
+            card_id=f"{self.card_id}_en",
+            quantity=1,
+            condition="NM",
+            variant="Normal",
+            lang="en",
+        )
+        barrier = threading.Barrier(2)
+        original_get = scan_jobs._get_own_item
+
+        def synchronized_get(*args, **kwargs):
+            row = original_get(*args, **kwargs)
+            if not kwargs.get("for_update", False):
+                barrier.wait(timeout=5)
+            return row
+
+        def resolve():
+            db = SessionLocal()
+            try:
+                user = db.get(User, self.user_id)
+                return resolve_and_add_scan_job_item(
+                    self.job_id,
+                    self.item_id,
+                    request,
+                    db,
+                    user,
+                )
+            except HTTPException as exc:
+                return exc.status_code
+            finally:
+                db.close()
+
+        with patch("api.scan_jobs._get_own_item", side_effect=synchronized_get), patch(
+            "services.scan_trace.record_ground_truth", return_value=0
+        ), concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(lambda _index: resolve(), range(2)))
+
+        self.assertEqual(sum(isinstance(result, dict) for result in results), 1)
+        self.assertEqual(results.count(409), 1)
+        db = SessionLocal()
+        try:
+            self.assertTrue(db.get(ScanJobItem, self.item_id).resolved)
+            self.assertEqual(
+                db.query(CollectionItem)
+                .filter(CollectionItem.user_id == self.user_id)
+                .one()
+                .quantity,
+                1,
+            )
+        finally:
+            db.close()
 
 
 @unittest.skipUnless(POSTGRES_TEST_ENABLED, "requires the isolated PostgreSQL queue test database")

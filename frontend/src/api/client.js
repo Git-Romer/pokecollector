@@ -1,5 +1,9 @@
 import axios from 'axios'
 import { isPublicSharePath } from '../utils/publicRoutes'
+import {
+  scannerRecognitionRequestTimeoutMs,
+  scannerTestRequestTimeoutMs,
+} from '../utils/scannerTimeout'
 
 const api = axios.create({
   baseURL: '/api',
@@ -110,11 +114,12 @@ export const getCustomCards = () => api.get('/cards/custom')
 export const cloneCustomCard = (cardId) => api.post(`/cards/custom/${cardId}/clone`).then(r => r.data)
 
 // Card recognition via Gemini Vision
-export const recognizeCard = (imageFile) => {
+export const recognizeCard = (imageFile, requestTimeoutSeconds) => {
   const formData = new FormData()
   formData.append('file', imageFile)
   return api.post('/cards/recognize', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: scannerRecognitionRequestTimeoutMs(requestTimeoutSeconds),
   }).then(r => r.data)
 }
 
@@ -133,6 +138,9 @@ export const resolveScanJobItem = (jobId, itemId, cardId = null) =>
   api.post(`/cards/recognize/jobs/${jobId}/items/${itemId}/resolve`, {
     card_id: cardId,
   }).then(r => r.data)
+export const resolveAndAddScanJobItem = (jobId, itemId, data) =>
+  api.post(`/cards/recognize/jobs/${jobId}/items/${itemId}/resolve-and-add`, data)
+    .then(r => r.data)
 export const retryScanJobItem = (jobId, itemId) =>
   api.post(`/cards/recognize/jobs/${jobId}/items/${itemId}/retry`).then(r => r.data)
 export const deleteScanJob = jobId =>
@@ -145,6 +153,12 @@ export const fetchScanJobItemImage = (jobId, itemId) =>
 export const fetchScanJobItemImageBlob = (jobId, itemId) =>
   api.get(`/cards/recognize/jobs/${jobId}/items/${itemId}/image`, { responseType: 'blob' })
     .then(r => r.data)
+// Candidate artwork is served from our own cache and, like the photo above,
+// needs the bearer token — an <img src> cannot carry one — so this is fetched
+// as a blob rather than pointed at directly.
+export const fetchScanCandidateImage = (jobId, itemId, index) =>
+  api.get(`/cards/recognize/jobs/${jobId}/items/${itemId}/candidates/${index}/image`, { responseType: 'blob' })
+    .then(r => URL.createObjectURL(r.data))
 
 // Custom card migration
 export const getCustomMatches = () => api.get('/cards/custom/matches')
@@ -372,7 +386,9 @@ export const getSetting = (key) => api.get(`/settings/${key}`).then(r => r.data)
 export const setSetting = (key, value) => api.post(`/settings/${key}`, { value }).then(r => r.data)
 export const getScannerConfiguration = () => api.get('/settings/scanner').then(r => r.data)
 export const updateScannerConfiguration = (data) => api.put('/settings/scanner', data).then(r => r.data)
-export const testScannerConfiguration = (data) => api.post('/settings/scanner/test', data).then(r => r.data)
+export const testScannerConfiguration = (data) => api.post('/settings/scanner/test', data, {
+  timeout: scannerTestRequestTimeoutMs(data?.request_timeout_seconds),
+}).then(r => r.data)
 export const getTelegramStatus = () => api.get('/settings/telegram_status').then(r => r.data)
 export const deleteScanDiagnostics = () => api.delete('/settings/scan-diagnostics').then(r => r.data)
 

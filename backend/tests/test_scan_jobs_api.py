@@ -16,7 +16,8 @@ try:
     from api.scan_jobs import router
     from api.auth import get_current_user
     from database import Base, get_db
-    from models import ScanJob, ScanJobItem, User, UserSetting
+    from models import Card, CollectionItem, ImageCache, ScanJob, ScanJobItem, User, UserSetting
+    from services.scan_candidate_images import cache_key_for
     from services.scan_providers import scanner_capability_proof
     from services.scan_storage import resolve_scan_path
 
@@ -159,6 +160,50 @@ class ScanJobsApiTests(unittest.TestCase):
         item = self.db.query(ScanJobItem).filter(ScanJobItem.job_id == created["id"]).one()
         self.assertFalse(item.batch_mode)
 
+    def test_degraded_capability_forces_every_photo_individual(self):
+        # A composite needs the same multi-image capability visual
+        # verification does. A provider proven only single-image-capable
+        # cannot read several cards out of one grid reliably either, so the
+        # server must not composite for it even when the client asks to.
+        model = "vision-model"
+        env = {
+            "OPENAI_SCANNER_ENABLED": "true",
+            "OPENAI_MODEL": model,
+            "OPENAI_BASE_URL": "http://endpoint:11434/v1",
+            "OPENAI_API_KEY_REQUIRED": "false",
+        }
+        with patch.dict(os.environ, env):
+            proof = scanner_capability_proof("openai", model, "degraded")
+        self.db.add_all([
+            UserSetting(user_id=self.user.id, key="scanner_provider", value="openai"),
+            UserSetting(user_id=self.user.id, key="scanner_model_openai", value=model),
+            UserSetting(
+                user_id=self.user.id,
+                key="scanner_capability_openai",
+                value=proof,
+            ),
+        ])
+        self.db.commit()
+
+        with patch.dict(os.environ, env), patch(
+            "api.scan_jobs.drain_scan_queue", new=AsyncMock(return_value=0)
+        ):
+            response = self.client.post(
+                "/api/cards/recognize/jobs",
+                # Client claims nothing is individual — the server must
+                # override this, not trust it.
+                data={"individual_positions": "[]"},
+                files=[
+                    ("files", ("first.jpg", _jpeg_bytes(), "image/jpeg")),
+                    ("files", ("second.jpg", _jpeg_bytes(), "image/jpeg")),
+                    ("files", ("third.jpg", _jpeg_bytes(), "image/jpeg")),
+                ],
+            )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        items = self.db.query(ScanJobItem).order_by(ScanJobItem.position).all()
+        self.assertEqual([item.batch_mode for item in items], [False, False, False])
+
     def test_endpoint_change_blocks_enqueue_before_upload_is_persisted(self):
         model = "vision-model"
         first = {
@@ -249,6 +294,67 @@ class ScanJobsApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         label.assert_called_once_with(self.user.id, created["id"], item.id, "card-1")
 
+    def test_resolve_rejects_an_already_handled_item(self):
+        created = self._enqueue()
+        item = self.db.query(ScanJobItem).filter(ScanJobItem.job_id == created["id"]).one()
+        item.status = "done"
+        item.resolved = True
+        item.matches = [{"id": "card-1_en", "tcg_card_id": "card-1"}]
+        self.db.commit()
+
+        with patch("services.scan_trace.record_ground_truth") as label:
+            response = self.client.post(
+                f"/api/cards/recognize/jobs/{created['id']}/items/{item.id}/resolve",
+                json={"card_id": "card-1"},
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("already", response.json()["detail"])
+        label.assert_not_called()
+
+    def test_atomic_add_and_resolve_cannot_increment_twice(self):
+        created = self._enqueue()
+        item = self.db.query(ScanJobItem).filter(ScanJobItem.job_id == created["id"]).one()
+        stored = resolve_scan_path(item.image_path)
+        item.status = "done"
+        item.matches = [{"id": "card-1_en", "tcg_card_id": "card-1"}]
+        self.db.add(Card(
+            id="card-1_en",
+            tcg_card_id="card-1",
+            name="Pikachu",
+            number="1",
+            lang="en",
+            is_custom=False,
+        ))
+        self.db.commit()
+        payload = {
+            "confirmed_card_id": "card-1",
+            "card_id": "card-1_en",
+            "quantity": 2,
+            "condition": "NM",
+            "variant": "Normal",
+            "lang": "en",
+            "purchase_price": None,
+        }
+
+        with patch("services.scan_trace.record_ground_truth", return_value=1) as label:
+            first = self.client.post(
+                f"/api/cards/recognize/jobs/{created['id']}/items/{item.id}/resolve-and-add",
+                json=payload,
+            )
+            duplicate = self.client.post(
+                f"/api/cards/recognize/jobs/{created['id']}/items/{item.id}/resolve-and-add",
+                json=payload,
+            )
+
+        self.assertEqual(first.status_code, 200, first.text)
+        self.assertEqual(first.json()["collection_item"]["quantity"], 2)
+        self.assertTrue(first.json()["item"]["resolved"])
+        self.assertEqual(duplicate.status_code, 409, duplicate.text)
+        self.assertEqual(self.db.query(CollectionItem).one().quantity, 2)
+        self.assertFalse(stored.exists())
+        label.assert_called_once_with(self.user.id, created["id"], item.id, "card-1")
+
     def test_resolve_rejects_ground_truth_outside_the_returned_candidates(self):
         created = self._enqueue()
         item = self.db.query(ScanJobItem).filter(ScanJobItem.job_id == created["id"]).one()
@@ -293,6 +399,91 @@ class ScanJobsApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(self.db.get(ScanJob, created["id"]))
         self.assertFalse(job_dir.exists())
+
+    def test_resolved_items_remain_in_detail_payload_for_the_collapsed_row(self):
+        # The review page collapses a resolved item to a compact row instead
+        # of it disappearing; that only works if the detail endpoint still
+        # returns it. The separate jobs *list* endpoint is unaffected and
+        # keeps filtering fully-resolved jobs out of the inbox.
+        created = self._enqueue()
+        item = self.db.query(ScanJobItem).filter(ScanJobItem.job_id == created["id"]).one()
+        item.status = "done"
+        item.matches = [{"id": "card-1_en", "tcg_card_id": "card-1"}]
+        self.db.commit()
+
+        self.client.post(f"/api/cards/recognize/jobs/{created['id']}/items/{item.id}/resolve")
+
+        detail = self.client.get(f"/api/cards/recognize/jobs/{created['id']}")
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual([row["id"] for row in detail.json()["items"]], [item.id])
+        self.assertTrue(detail.json()["items"][0]["resolved"])
+
+    def test_candidate_image_serves_from_cache_without_fetching(self):
+        created = self._enqueue()
+        item = self.db.query(ScanJobItem).filter(ScanJobItem.job_id == created["id"]).one()
+        item.matches = [{"id": "card-1_en", "tcg_card_id": "card-1", "image_hd": "https://assets.tcgdex.net/en/x/1/1/high.webp"}]
+        self.db.commit()
+        self.db.add(ImageCache(
+            image_key=cache_key_for("https://assets.tcgdex.net/en/x/1/1/high.webp"),
+            data=b"cached-bytes",
+            content_type="image/webp",
+        ))
+        self.db.commit()
+
+        # No network mocking here on purpose: a cache hit must resolve without
+        # ever reaching out over the network, so if this test needed an httpx
+        # mock to pass it would mean the endpoint fetched instead of reading
+        # the cache.
+        response = self.client.get(
+            f"/api/cards/recognize/jobs/{created['id']}/items/{item.id}/candidates/0/image"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"cached-bytes")
+        self.assertEqual(response.headers["content-type"], "image/webp")
+
+    def test_candidate_image_fetches_and_caches_on_a_cold_miss(self):
+        created = self._enqueue()
+        item = self.db.query(ScanJobItem).filter(ScanJobItem.job_id == created["id"]).one()
+        item.matches = [{"id": "card-1_en", "tcg_card_id": "card-1", "image": "https://assets.tcgdex.net/en/x/1/1/low.webp"}]
+        self.db.commit()
+
+        with patch(
+            "api.scan_jobs.fetch_and_cache_candidate_image",
+            new=AsyncMock(return_value=(b"fresh-bytes", "image/webp")),
+        ) as fetch:
+            response = self.client.get(
+                f"/api/cards/recognize/jobs/{created['id']}/items/{item.id}/candidates/0/image"
+            )
+            fetch.assert_awaited_once()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"fresh-bytes")
+
+    def test_candidate_image_out_of_range_index_is_404(self):
+        created = self._enqueue()
+        item = self.db.query(ScanJobItem).filter(ScanJobItem.job_id == created["id"]).one()
+        item.matches = [{"id": "card-1_en", "tcg_card_id": "card-1", "image": "https://assets.tcgdex.net/en/x/1/1/low.webp"}]
+        self.db.commit()
+
+        response = self.client.get(
+            f"/api/cards/recognize/jobs/{created['id']}/items/{item.id}/candidates/5/image"
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_other_user_cannot_fetch_candidate_image(self):
+        created = self._enqueue()
+        item = self.db.query(ScanJobItem).filter(ScanJobItem.job_id == created["id"]).one()
+        item.matches = [{"id": "card-1_en", "tcg_card_id": "card-1", "image": "https://assets.tcgdex.net/en/x/1/1/low.webp"}]
+        self.db.commit()
+        self.app.dependency_overrides[get_current_user] = lambda: self.other_user
+
+        self.assertEqual(
+            self.client.get(
+                f"/api/cards/recognize/jobs/{created['id']}/items/{item.id}/candidates/0/image"
+            ).status_code,
+            404,
+        )
 
 
 if __name__ == "__main__":

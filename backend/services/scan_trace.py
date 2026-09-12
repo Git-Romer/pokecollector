@@ -269,6 +269,13 @@ class ScanTrace:
         if usage is not None:
             section["usage"] = self._sanitize(usage)
 
+    def record_cached_extraction(self, parsed) -> None:
+        """Record reuse of a paid extraction from an earlier queue attempt."""
+        if not self.enabled:
+            return
+        self.record_extraction(parsed=parsed)
+        self.data["extraction"]["source"] = "queue_cache"
+
     def record_visual_verification(self, *, raw_response: str, selected: int | None) -> None:
         if self.enabled:
             self.data["visual_verification"] = {
@@ -284,6 +291,7 @@ class ScanTrace:
         status: int | None,
         count: int | None,
         error: str | None = None,
+        source: str = "local",
     ) -> None:
         if not self.enabled:
             return
@@ -292,6 +300,11 @@ class ScanTrace:
             "query": query,
             "status": status,
             "results": count,
+            # "local" (the synced cards table) or "api_fallback" (live
+            # TCGdex, reached when the pair has no name-compatible local rows
+            # or none matches a recognized collector number) — lets offline
+            # trace analysis measure incomplete-sync fallbacks.
+            "source": source,
         }
         if error:
             entry["error"] = error

@@ -137,6 +137,12 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
   const toggleAllIndividual = () => {
     setStagedFiles(current => current.map(item => ({ ...item, individual: !allIndividual })))
   }
+  // A composite asks the model to read several cards out of one image, which
+  // needs the same multi-image capability visual verification does — a
+  // provider that already failed that probe cannot do this reliably either.
+  // The server enforces this regardless of what these toggles say, so
+  // showing them here would just be an override with nothing to override.
+  const canComposite = scannerConfiguration?.visual_verification === 'automatic'
 
   const startScanning = async () => {
     if (!stagedFiles.length || submitting) return
@@ -236,7 +242,7 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
                       <X size={13} />
                     </button>
                   </div>
-                  {stagedFiles.length > 1 && (
+                  {stagedFiles.length > 1 && canComposite && (
                     <button
                       type="button"
                       onClick={() => toggleIndividual(item.id)}
@@ -321,7 +327,7 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
             </button>
           </div>
 
-          {stagedFiles.length > 1 && (
+          {stagedFiles.length > 1 && canComposite && (
             <button
               type="button"
               onClick={toggleAllIndividual}

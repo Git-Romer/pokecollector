@@ -18,6 +18,7 @@ false for an item with no photo, so a permanently-true flag can't hide here.
 import io
 import datetime
 import unittest
+from unittest.mock import patch
 
 try:
     from sqlalchemy import create_engine
@@ -183,6 +184,30 @@ class OwnPhotoPriorityTests(unittest.TestCase):
     # ── binders: equivalent prints ────────────────────────────────────────
 
     def test_equivalent_prints_flags_the_owned_photographed_variant(self):
+        # This test covers photo annotation, not gameplay-data hydration. Seed
+        # the fingerprint so the fixture is complete and any accidental TCGdex
+        # dependency is caught immediately instead of reaching the network.
+        self.photographed_card.playable_fingerprint = "jigglypuff-035"
+        unphotographed_print = Card(
+            id="pmcg2-035-alt_ja",
+            tcg_card_id="pmcg2-035-alt",
+            name=self.photographed_card.name,
+            set_id="pmcg2",
+            number="035b",
+            lang="ja",
+            playable_fingerprint="jigglypuff-035",
+        )
+        self.db.add(unphotographed_print)
+        self.db.commit()
+        unphotographed_item = CollectionItem(
+            card_id=unphotographed_print.id,
+            user_id=self.user.id,
+            quantity=1,
+            lang="ja",
+        )
+        self.db.add(unphotographed_item)
+        self.db.commit()
+
         binder = Binder(name="Ivy's", user_id=self.user.id, binder_type="collection")
         self.db.add(binder)
         self.db.commit()
@@ -192,10 +217,37 @@ class OwnPhotoPriorityTests(unittest.TestCase):
         self.db.commit()
         self.db.refresh(bc)
 
-        result = get_binder_entry_equivalent_prints(binder.id, bc.id, price_field="price_trend", current_user=self.user, db=self.db)
+        with (
+            patch(
+                "api.binders.pokemon_api.get_card",
+                side_effect=AssertionError("unexpected TCGdex card lookup"),
+            ) as get_card,
+            patch(
+                "api.binders.pokemon_api.search_cards",
+                side_effect=AssertionError("unexpected TCGdex search"),
+            ) as search_cards,
+        ):
+            result = get_binder_entry_equivalent_prints(
+                binder.id,
+                bc.id,
+                price_field="price_trend",
+                current_user=self.user,
+                db=self.db,
+            )
+
+        get_card.assert_not_called()
+        search_cards.assert_not_called()
         self.assertEqual(result["scope"], "collection")
+        self.assertEqual(len(result["equivalents"]), 2)
+        self.assertEqual(sum(entry["is_current"] for entry in result["equivalents"]), 1)
         current = next(e for e in result["equivalents"] if e["is_current"])
+        alternative = next(e for e in result["equivalents"] if e["id"] == unphotographed_print.id)
+        self.assertEqual(current["id"], self.photographed_card.id)
+        self.assertEqual(current["collection_item_id"], self.photographed_item.id)
         self.assertTrue(current["has_scan_photo"])
+        self.assertEqual(alternative["collection_item_id"], unphotographed_item.id)
+        self.assertFalse(alternative["is_current"])
+        self.assertFalse(alternative["has_scan_photo"])
 
     def test_wishlist_scope_equivalents_are_never_flagged(self):
         """Wishlist-scope equivalents have no collection_item behind them at
@@ -203,8 +255,8 @@ class OwnPhotoPriorityTests(unittest.TestCase):
         # A card with no fingerprint short-circuits to an empty equivalents
         # list ("no playable fingerprint available") before has_scan_photo
         # ever comes into it, which would make this test pass for the wrong
-        # reason. Setting it directly also avoids the endpoint reaching out
-        # to the real TCGdex API for gameplay data.
+        # reason. Setting it directly avoids the gameplay-data lookup; the
+        # separate same-name catalogue search is stubbed below.
         self.photographed_card.playable_fingerprint = "jigglypuff-035"
         self.db.commit()
         binder = Binder(name="Wanted", user_id=self.user.id, binder_type="wishlist")
@@ -216,7 +268,22 @@ class OwnPhotoPriorityTests(unittest.TestCase):
         self.db.commit()
         self.db.refresh(bc)
 
-        result = get_binder_entry_equivalent_prints(binder.id, bc.id, price_field="price_trend", current_user=self.user, db=self.db)
+        with (
+            patch(
+                "api.binders.pokemon_api.get_card",
+                side_effect=AssertionError("unexpected TCGdex card lookup"),
+            ) as get_card,
+            patch("api.binders.pokemon_api.search_cards", return_value={"data": []}),
+        ):
+            result = get_binder_entry_equivalent_prints(
+                binder.id,
+                bc.id,
+                price_field="price_trend",
+                current_user=self.user,
+                db=self.db,
+            )
+
+        get_card.assert_not_called()
         self.assertEqual(result["scope"], "wishlist")
         self.assertTrue(result["equivalents"])
         self.assertTrue(all(e["has_scan_photo"] is False for e in result["equivalents"]))
