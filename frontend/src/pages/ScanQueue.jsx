@@ -8,11 +8,12 @@ import {
   fetchScanJobItemImageBlob,
   getScanJob,
   getScanJobs,
+  resolveAndAddScanJobItem,
   resolveScanJobItem,
   retryScanJobItem,
 } from '../api/client'
 import { ScanAddModal } from '../components/CardScanner'
-import { ScanItemPanel } from '../components/ScanReview'
+import { CardZoomModal, ScanItemPanel, useScanItemPhoto } from '../components/ScanReview'
 import ConfirmDialog from '../components/ui/ConfirmDialog'
 import Modal from '../components/ui/Modal'
 import { useSettings } from '../contexts/SettingsContext'
@@ -86,11 +87,18 @@ function JobDetail({ jobId, onObscuredChange }) {
   const [addSelection, setAddSelection] = useState(null)
   const [confirmation, setConfirmation] = useState(null)
   const [itemModalOpen, setItemModalOpen] = useState(false)
+  // The full-screen review session: which photo is open and which of its
+  // candidates. Owned here rather than by a single ScanItemPanel because
+  // accepting a match from the zoom view walks on to the *next* unresolved
+  // photo in the job (see openNextReview below) — a per-item panel cannot
+  // see past its own item, so the page has to be the thing that remembers
+  // where the reviewer is in the batch.
+  const [review, setReview] = useState(null) // { itemId, matchIndex }
 
   useEffect(() => {
-    onObscuredChange(Boolean(addSelection || confirmation || itemModalOpen))
+    onObscuredChange(Boolean(addSelection || confirmation || itemModalOpen || review))
     return () => onObscuredChange(false)
-  }, [addSelection, confirmation, itemModalOpen, onObscuredChange])
+  }, [addSelection, confirmation, itemModalOpen, review, onObscuredChange])
 
   const { data: job, isLoading, isError } = useQuery({
     queryKey: ['scan-job', jobId],
@@ -107,7 +115,12 @@ function JobDetail({ jobId, onObscuredChange }) {
   const resolveMutation = useMutation({
     mutationFn: ({ item, cardId = null }) => resolveScanJobItem(jobId, item.id, cardId),
     onSuccess: (_data, { item }) => {
-      const remaining = (job?.items || []).filter(candidate => candidate.id !== item.id)
+      // Resolved items stay in job.items (collapsed, not removed — see
+      // get_scan_job in backend/api/scan_jobs.py), so "nothing left to do"
+      // means no *unresolved* item remains, not an empty list.
+      const remaining = (job?.items || []).filter(
+        candidate => candidate.id !== item.id && !candidate.resolved
+      )
       setConfirmation(null)
       invalidate()
       if (remaining.length === 0) navigate('/scans', { replace: true })
@@ -138,6 +151,26 @@ function JobDetail({ jobId, onObscuredChange }) {
   const confirmDestructiveAction = () => {
     if (confirmation?.type === 'dismiss') resolveMutation.mutate({ item: confirmation.item })
     else if (confirmation?.type === 'discard') deleteMutation.mutate()
+  }
+
+  const items = job?.items || []
+  const reviewItem = review ? items.find(candidate => candidate.id === review.itemId) : null
+  const reviewMatches = reviewItem?.matches || []
+  const reviewMatch = reviewMatches[review?.matchIndex] || null
+  // Called unconditionally and above the early returns below: hooks cannot
+  // sit behind a loading branch. It no-ops until a review is actually open.
+  const reviewPhoto = useScanItemPhoto(jobId, reviewItem)
+
+  // Walk to the next photo still worth looking at, so a batch can be cleared
+  // without going back to the list between cards. Anything already
+  // resolved, failed, or without candidates is skipped — there is nothing to
+  // decide there.
+  const openNextReview = fromItemId => {
+    const start = items.findIndex(candidate => candidate.id === fromItemId)
+    const ordered = [...items.slice(start + 1), ...items.slice(0, Math.max(0, start))]
+    const next = ordered.find(candidate =>
+      !candidate.resolved && candidate.status === 'done' && (candidate.matches || []).length)
+    setReview(next ? { itemId: next.id, matchIndex: 0 } : null)
   }
 
   if (isLoading) {
@@ -192,7 +225,7 @@ function JobDetail({ jobId, onObscuredChange }) {
       </div>
 
       <div className="space-y-3">
-        {(job.items || []).map(item => (
+        {items.map(item => (
           <ScanItemPanel
             key={item.id}
             jobId={job.id}
@@ -200,12 +233,30 @@ function JobDetail({ jobId, onObscuredChange }) {
             onAdd={(scanItem, match) => setAddSelection({ item: scanItem, match })}
             onRetry={itemToRetry => retryMutation.mutate(itemToRetry)}
             onDismiss={dismiss}
+            onReview={(scanItem, matchIndex) => setReview({ itemId: scanItem.id, matchIndex })}
             onModalChange={setItemModalOpen}
             retryNow={retryNow}
             t={t}
           />
         ))}
       </div>
+
+      {reviewItem && reviewMatch && !addSelection && (
+        <CardZoomModal
+          card={reviewMatch}
+          photoUrl={reviewPhoto}
+          jobId={jobId}
+          itemId={reviewItem.id}
+          matches={reviewMatches}
+          index={review.matchIndex}
+          onIndex={matchIndex => setReview(current => ({ ...current, matchIndex }))}
+          onAccept={reviewItem.resolved
+            ? undefined
+            : card => setAddSelection({ item: reviewItem, match: card, fromReview: true })}
+          onClose={() => setReview(null)}
+          t={t}
+        />
+      )}
 
       {addSelection && (
         <ScanAddModal
@@ -214,13 +265,35 @@ function JobDetail({ jobId, onObscuredChange }) {
           getPhoto={() => addSelection.item.has_image
             ? fetchScanJobItemImageBlob(job.id, addSelection.item.id)
             : Promise.resolve(null)}
+          preservePhotoBeforeAdd
+          addCard={async payload => {
+            const result = await resolveAndAddScanJobItem(
+              job.id,
+              addSelection.item.id,
+              {
+                ...payload,
+                confirmed_card_id: addSelection.match.tcg_card_id,
+              },
+            )
+            return result.collection_item
+          }}
+          // Cancelling returns to the comparison for the same photo rather
+          // than skipping it: backing out of the add form is not a decision
+          // about the card, and silently advancing would strand the user.
           onClose={() => setAddSelection(null)}
           onAdded={() => {
-            resolveMutation.mutate({
-              item: addSelection.item,
-              cardId: addSelection.match.tcg_card_id,
-            })
+            // The server has atomically added the card and resolved this item
+            // before this callback runs, so a failed or duplicated request
+            // can never advance the batch or increment quantity twice.
+            const cameFromReview = addSelection.fromReview
+            const finishedItemId = addSelection.item?.id
+            const remaining = items.filter(
+              candidate => candidate.id !== finishedItemId && !candidate.resolved
+            )
             setAddSelection(null)
+            invalidate()
+            if (remaining.length === 0) navigate('/scans', { replace: true })
+            else if (cameFromReview) openNextReview(finishedItemId)
           }}
         />
       )}

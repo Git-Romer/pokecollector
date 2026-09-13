@@ -17,11 +17,16 @@ import { binderPickerItemsWithQuantities, binderPickerQuantitiesAreValid, binder
 import { CardDialog, CardDisplay, CardLegend, withCollectionItemState } from '../components/card-system'
 import { CollectionCardDisplay, OwnPhotoOverlayBadge, showsOwnPhoto, useCollectionPhotoUrl } from '../components/CollectionCardImage'
 import Modal from '../components/ui/Modal'
+import { useDynamicFilterUrlState } from '../hooks/useDynamicFilterUrlState'
 
 const SPRITE_BASE_URL = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated'
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
 const BINDER_CSV_IMPORT_HEADER = 'set_code,number,required_quantity,lang,variant,condition,collection_item_id'
 const BINDER_CSV_IMPORT_TEMPLATE = `${BINDER_CSV_IMPORT_HEADER}\nBLK,057,4,de,Holo,NM,\n`
+const BINDER_FILTER_DEFINITIONS = {
+  binderFilterSet: { param: 'binder_set', default: '' },
+  binderFilterStatus: { param: 'binder_status', default: '' },
+}
 
 const downloadBinderCsvTemplate = () => {
   const blob = new Blob([BINDER_CSV_IMPORT_TEMPLATE], { type: 'text/csv;charset=utf-8' })
@@ -226,10 +231,14 @@ export default function BinderDetail() {
   const [filterSet, setFilterSet] = useState('')
   const [filterVariant, setFilterVariant] = useState('')
   const [filterCondition, setFilterCondition] = useState('')
-  const [binderFilterSet, setBinderFilterSet] = useState('')
-  const [binderFilterStatus, setBinderFilterStatus] = useState('')
   const [binderFilterQuery, setBinderFilterQuery] = useState('')
   const [binderSortBy, setBinderSortBy] = useState('recent')
+  const {
+    filters: binderFilters,
+    updateFilter: updateBinderFilter,
+    clearFilters: clearBinderFilters,
+  } = useDynamicFilterUrlState(BINDER_FILTER_DEFINITIONS)
+  const { binderFilterSet, binderFilterStatus } = binderFilters
   const [badgeLegendOpen, setBadgeLegendOpen] = useState(false)
   const [selectedCard, setSelectedCard] = useState(null)
   const [selectedImageSource, setSelectedImageSource] = useState('catalogue')
@@ -1029,11 +1038,11 @@ export default function BinderDetail() {
             placeholder={t('binderTypes.filterBinderCards')}
             className="input text-sm py-2"
           />
-          <select className="select text-sm py-2" value={binderFilterSet} onChange={(e) => setBinderFilterSet(e.target.value)}>
+          <select aria-label={t('binderTypes.allSets')} className="select text-sm py-2" value={binderFilterSet} onChange={(e) => updateBinderFilter('binderFilterSet', e.target.value)}>
             <option value="">{t('binderTypes.allSets')}</option>
             {binderSets.map(setName => <option key={setName} value={setName}>{setName}</option>)}
           </select>
-          <select className="select text-sm py-2" value={binderFilterStatus} onChange={(e) => setBinderFilterStatus(e.target.value)}>
+          <select aria-label={t('binderTypes.allStatuses')} className="select text-sm py-2" value={binderFilterStatus} onChange={(e) => updateBinderFilter('binderFilterStatus', e.target.value)}>
             <option value="">{t('binderTypes.allStatuses')}</option>
             <option value="owned">{t('binderTypes.ownedComplete')}</option>
             <option value="missing">{t('binderTypes.missingCards')}</option>
@@ -1050,6 +1059,9 @@ export default function BinderDetail() {
                 <option key={option} value={option}>{t(`binderTypes.sort.${option}`)}</option>
               ))}
           </select>
+          <div className="flex flex-wrap items-center sm:col-span-2 lg:col-span-4">
+            <button type="button" className="btn-ghost" onClick={clearBinderFilters}>{t('common.clear')}</button>
+          </div>
         </div>
       )}
 

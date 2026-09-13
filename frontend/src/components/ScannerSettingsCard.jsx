@@ -7,6 +7,10 @@ import {
   testScannerConfiguration,
   updateScannerConfiguration,
 } from '../api/client'
+import {
+  DEFAULT_SCANNER_REQUEST_TIMEOUT_SECONDS,
+  SCANNER_REQUEST_TIMEOUT_OPTIONS,
+} from '../utils/scannerTimeout'
 
 
 export default function ScannerSettingsCard({ t }) {
@@ -17,6 +21,7 @@ export default function ScannerSettingsCard({ t }) {
   })
   const [provider, setProvider] = useState('gemini')
   const [model, setModel] = useState('')
+  const [requestTimeoutSeconds, setRequestTimeoutSeconds] = useState(DEFAULT_SCANNER_REQUEST_TIMEOUT_SECONDS)
   const [apiKey, setApiKey] = useState('')
   const [clearApiKey, setClearApiKey] = useState(false)
   const [usingCustomModel, setUsingCustomModel] = useState(false)
@@ -36,6 +41,7 @@ export default function ScannerSettingsCard({ t }) {
     if (!data || dirty) return
     setProvider(data.provider)
     setModel(data.model)
+    setRequestTimeoutSeconds(data.request_timeout_seconds || DEFAULT_SCANNER_REQUEST_TIMEOUT_SECONDS)
     const active = data.providers.find(item => item.id === data.provider)
     setUsingCustomModel(Boolean(active?.custom_model && active.custom_model === data.model))
     setApiKey('')
@@ -48,6 +54,7 @@ export default function ScannerSettingsCard({ t }) {
     const next = data.providers.find(item => item.id === nextProvider)
     setProvider(nextProvider)
     setModel(next.selected_model || next.default_model)
+    setRequestTimeoutSeconds(next.request_timeout_seconds || DEFAULT_SCANNER_REQUEST_TIMEOUT_SECONDS)
     setUsingCustomModel(Boolean(next.custom_model && next.custom_model === next.selected_model))
     setApiKey('')
     setClearApiKey(false)
@@ -73,6 +80,7 @@ export default function ScannerSettingsCard({ t }) {
     custom_model: usingCustomModel,
     save_on_success: saveOnSuccess,
     accept_degraded_visual_verification: acceptDegraded,
+    request_timeout_seconds: requestTimeoutSeconds,
   })
 
   const persistDraft = async () => {
@@ -255,6 +263,25 @@ export default function ScannerSettingsCard({ t }) {
             </div>
           </details>
         )}
+
+        <details className="rounded-xl px-3 py-2.5" style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <summary className="cursor-pointer text-xs font-semibold text-text-primary">
+            {t('settings.scannerAdvancedRequests')}
+          </summary>
+          <label className="block pt-3">
+            <span className="text-xs font-semibold text-text-primary">{t('settings.scannerResponseTimeout')}</span>
+            <select
+              value={requestTimeoutSeconds}
+              onChange={event => changeDraft(() => setRequestTimeoutSeconds(Number(event.target.value)))}
+              className="select mt-1.5 w-full text-xs font-semibold"
+            >
+              {(data.request_timeout_options || SCANNER_REQUEST_TIMEOUT_OPTIONS).map(seconds => (
+                <option key={seconds} value={seconds}>{seconds} s</option>
+              ))}
+            </select>
+            <span className="block text-[11px] text-text-muted mt-1">{t('settings.scannerResponseTimeoutDesc')}</span>
+          </label>
+        </details>
 
         {selected.requires_api_key && (
           <div className="block">

@@ -304,5 +304,64 @@ class CollectionPhotoTests(unittest.TestCase):
         )
 
 
+@unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")
+class CustomCardPhotoTests(unittest.TestCase):
+    """A custom card's only other artwork slot (image_url) needs a public
+    HTTPS URL, which isn't an option for a physical card with no listing
+    anywhere online — this photo upload has to work for those too."""
+
+    def setUp(self):
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy.pool import StaticPool
+        from database import Base
+        from models import Card, CollectionItem, User
+
+        self.engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        Base.metadata.create_all(self.engine)
+        self.Session = sessionmaker(bind=self.engine)
+        self.db = self.Session()
+
+        self.owner = User(username="owner", hashed_password="x")
+        self.db.add(self.owner)
+        self.db.commit()
+        self.current_user = self.owner
+
+        self.card = Card(
+            id="custom-1",
+            name="Premium File Bayleef",
+            lang="ja",
+            is_custom=True,
+            custom_owner_id=self.owner.id,
+        )
+        self.db.add(self.card)
+        self.db.commit()
+
+        self.entry = CollectionItem(card_id=self.card.id, user_id=self.owner.id, quantity=1, lang="ja")
+        self.db.add(self.entry)
+        self.db.commit()
+
+        app = FastAPI()
+        app.include_router(collection_router, prefix="/api/collection")
+        app.dependency_overrides[get_current_user] = lambda: self.current_user
+        app.dependency_overrides[get_db] = lambda: self.db
+        self.client = TestClient(app)
+
+    def tearDown(self):
+        self.db.close()
+
+    def test_a_photo_can_be_attached_to_a_custom_card(self):
+        resp = self.client.post(
+            f"/api/collection/{self.entry.id}/photo",
+            files={"file": ("card.jpg", _fake_jpeg_bytes(), "image/jpeg")},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(self.client.get(f"/api/collection/{self.entry.id}/photo").status_code, 200)
+
+
 if __name__ == "__main__":
     unittest.main()

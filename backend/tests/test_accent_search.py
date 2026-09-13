@@ -23,7 +23,7 @@ class AccentInsensitiveSearchTests(unittest.TestCase):
         self.user = User(username="ash", hashed_password="x", role="trainer", is_active=True)
         self.db.add_all([
             self.user,
-            Setting(key="tcgdex_sync_languages", value="en,de"),
+            Setting(key="tcgdex_sync_languages", value="en,de,ja"),
             Card(
                 id="sv1-1_en",
                 tcg_card_id="sv1-1",
@@ -73,6 +73,15 @@ class AccentInsensitiveSearchTests(unittest.TestCase):
                 lang="fr",
                 is_custom=False,
             ),
+            Card(
+                id="jp-1_ja",
+                tcg_card_id="jp-1",
+                name="フシギダネ",
+                set_id="jp",
+                number="1",
+                lang="ja",
+                is_custom=False,
+            ),
         ])
         self.db.commit()
         self.db.refresh(self.user)
@@ -93,6 +102,9 @@ class AccentInsensitiveSearchTests(unittest.TestCase):
         self.assertEqual(self._search_names(name="pokegear"), ["Pokégear 3.0"])
         self.assertEqual(self._search_names(name="Pokégear"), ["Pokégear 3.0"])
         self.assertEqual(self._search_names(name="eclair"), ["Éclair Energy"])
+
+    def test_non_latin_search_preserves_script_specific_diacritics(self):
+        self.assertEqual(self._search_names(name="フシギダネ"), ["フシギダネ"])
 
     def test_artist_and_rarity_filters_match_without_diacritics(self):
         self.assertEqual(self._search_names(artist="Jose Garcia"), ["Pokégear 3.0"])

@@ -43,6 +43,13 @@ SCANNER_MODEL_SETTINGS = {
     GEMINI: "scanner_model_gemini",
     OPENAI: "scanner_model_openai",
 }
+SCANNER_REQUEST_TIMEOUT_SETTINGS = {
+    GEMINI: "scanner_request_timeout_gemini",
+    OPENAI: "scanner_request_timeout_openai",
+}
+SCANNER_REQUEST_TIMEOUT_OPTIONS = (30, 60, 120, 180)
+DEFAULT_SCANNER_REQUEST_TIMEOUT_SECONDS = SCANNER_REQUEST_TIMEOUT_OPTIONS[0]
+MAX_SCANNER_REQUEST_TIMEOUT_SECONDS = SCANNER_REQUEST_TIMEOUT_OPTIONS[-1]
 SCANNER_CUSTOM_MODEL_SETTINGS = {
     GEMINI: "scanner_custom_model_gemini",
     OPENAI: "scanner_custom_model_openai",
@@ -54,6 +61,11 @@ SCANNER_CAPABILITY_SETTINGS = {
 SCANNER_CAPABILITY_FULL = "full"
 SCANNER_CAPABILITY_DEGRADED = "degraded"
 SCANNER_CAPABILITY_VERSION = 1
+
+# Opt-in, off by default: retry with Gemini when the OpenAI-compatible
+# provider could not confidently identify a card on its own. Gemini-as-primary
+# has nothing to fall back to, so this only ever applies the other direction.
+SCANNER_GEMINI_FALLBACK_SETTING_KEY = "scanner_gemini_fallback"
 
 DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 # The OpenAI counterpart to DEFAULT_GEMINI_MODEL: what an installation uses when
@@ -271,6 +283,39 @@ def resolve_model(db: Session, user_id: int | None, provider: str) -> str:
     return models[0] if models else ""
 
 
+def normalize_scanner_request_timeout(value: object) -> int:
+    """Accept only the bounded timeout choices exposed by Scanner Settings."""
+    try:
+        timeout = int(str(value).strip())
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Choose a supported scanner response timeout.") from exc
+    if timeout not in SCANNER_REQUEST_TIMEOUT_OPTIONS:
+        raise ValueError("Choose a supported scanner response timeout.")
+    return timeout
+
+
+def resolve_scanner_request_timeout(
+    db: Session,
+    user_id: int | None,
+    provider: str,
+) -> int:
+    """Return a safe provider-specific timeout, defaulting legacy/bad rows."""
+    if user_id is None:
+        return DEFAULT_SCANNER_REQUEST_TIMEOUT_SECONDS
+    row = (
+        db.query(UserSetting)
+        .filter(
+            UserSetting.user_id == user_id,
+            UserSetting.key == SCANNER_REQUEST_TIMEOUT_SETTINGS[provider],
+        )
+        .first()
+    )
+    try:
+        return normalize_scanner_request_timeout(row.value if row else None)
+    except ValueError:
+        return DEFAULT_SCANNER_REQUEST_TIMEOUT_SECONDS
+
+
 def configured_provider_name(db: Session, user_id: int | None) -> str | None:
     """Return a recognized stored provider without applying availability fallback."""
     if user_id is None:
@@ -282,6 +327,22 @@ def configured_provider_name(db: Session, user_id: int | None) -> str | None:
     )
     value = ((row.value if row else "") or "").strip().lower()
     return value if value in {GEMINI, OPENAI} else None
+
+
+def gemini_fallback_enabled(db: Session, user_id: int | None) -> bool:
+    """Whether this user opted in to retrying an unconfident OpenAI-provider
+    scan with Gemini. Off by default; only meaningful for OPENAI as primary."""
+    if user_id is None:
+        return False
+    row = (
+        db.query(UserSetting)
+        .filter(
+            UserSetting.user_id == user_id,
+            UserSetting.key == SCANNER_GEMINI_FALLBACK_SETTING_KEY,
+        )
+        .first()
+    )
+    return (row.value if row else "") == "true"
 
 
 def resolve_provider_name(

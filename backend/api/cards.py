@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from typing import Optional, List
 from api.auth import get_current_user
 from database import get_db
-from models import Binder, BinderCard, Card, Set, PriceHistory, CustomCardMatch, CollectionItem, WishlistItem, User, ImageCache, ProductCard, ProductLedgerEntry, TradeItem, DeckEntry
+from models import Binder, BinderCard, Card, Set, PriceHistory, CustomCardMatch, CollectionCardPhoto, CollectionItem, WishlistItem, User, ImageCache, ProductCard, ProductLedgerEntry, TradeItem, DeckEntry
 from schemas import CardBase, CardWithSet, PriceHistoryResponse, CardCustomCreate, CustomCardUpdate, CardCustomImageUpdate
 from services import pokemon_api
 from services.card_fallbacks import (
@@ -33,7 +33,7 @@ from services.display_language import get_tcgdex_display_language
 from services.image_url_security import validate_public_https_image_url
 from services.card_numbers import card_number_matches
 from services.tcgdex_languages import english_fallback_languages, has_lang_suffix, is_supported_tcgdex_language, normalize_tcgdex_language
-from services.text_search import accent_insensitive_contains
+from services.text_search import accent_insensitive_contains, json_array_text_matches, normalize_search_term
 from services.card_state import card_state_summaries
 import datetime
 import re
@@ -188,6 +188,7 @@ def _search_by_code_number(
     page_size: int,
     lang: str = "all",
     background_tasks: BackgroundTasks | None = None,
+    rule_text: str | None = None,
 ) -> dict:
     """Search for a card by set abbreviation/id + card number (localId).
     Returns cards for ALL languages unless lang is specified.
@@ -245,17 +246,29 @@ def _search_by_code_number(
     # Collect unique TCGdex set IDs
     tcg_set_ids = list({s.tcg_set_id or s.id for s in set_objs})
 
-    def query_matching_cards() -> list[Card]:
+    normalized_rule_text = normalize_search_term(rule_text)
+
+    def query_matching_cards(*, apply_rule_text: bool = True) -> list[Card]:
         filters = [
             Card.set_id.in_(tcg_set_ids),
             visible_card_filter(db, current_user.id, lang),
         ]
-        candidates = db.query(Card).filter(*filters).order_by(Card.id.asc()).all()
+        query = db.query(Card).filter(*filters)
+        if apply_rule_text and normalized_rule_text:
+            query = query.filter(or_(
+                accent_insensitive_contains(db, Card.card_effect, normalized_rule_text),
+                json_array_text_matches(db, Card.attacks, ("name", "effect"), normalized_rule_text),
+                json_array_text_matches(db, Card.abilities, ("name", "effect"), normalized_rule_text),
+            ))
+        candidates = query.order_by(Card.id.asc()).all()
         return [card for card in candidates if card_number_matches(card.number, card_number)]
 
     # 2. Look for cards in DB matching any of those set IDs and the given number.
     # Numeric card numbers are compared without leading zeros so 44 and 044 match.
-    cards = query_matching_cards()
+    # Check whether the exact card is already local without applying the
+    # optional text predicate. A local card that simply does not match the
+    # rule text must not trigger an unnecessary live whole-set refresh.
+    cards = query_matching_cards(apply_rule_text=False)
 
     # 3. Card not in DB — fetch from TCGdex and cache. If the requested
     # language has only set metadata but no cards yet, create target-language
@@ -294,6 +307,9 @@ def _search_by_code_number(
                     except Exception:
                         db.rollback()
 
+        cards = query_matching_cards(apply_rule_text=False)
+
+    if cards and normalized_rule_text:
         cards = query_matching_cards()
 
     if not cards:
@@ -562,6 +578,7 @@ def search_cards(
     subtype: Optional[str] = None,
     rarity: Optional[str] = None,
     artist: Optional[str] = None,
+    rule_text: Optional[str] = None,
     hp_min: Optional[int] = None,
     hp_max: Optional[int] = None,
     dex_id: Optional[int] = Query(None, ge=1, le=1025),
@@ -599,6 +616,7 @@ def search_cards(
                     page_size,
                     lang=search_lang,
                     background_tasks=background_tasks,
+                    rule_text=rule_text,
                 )
 
         # ── Pure DB search ────────────────────────────────────────────────────
@@ -640,6 +658,14 @@ def search_cards(
 
         if artist:
             query = query.filter(accent_insensitive_contains(db, Card.artist, artist))
+
+        rule_text = normalize_search_term(rule_text)
+        if rule_text:
+            query = query.filter(or_(
+                accent_insensitive_contains(db, Card.card_effect, rule_text),
+                json_array_text_matches(db, Card.attacks, ("name", "effect"), rule_text),
+                json_array_text_matches(db, Card.abilities, ("name", "effect"), rule_text),
+            ))
 
         if hp_min is not None:
             query = query.filter(cast(Card.hp, Integer) >= hp_min)
@@ -904,12 +930,36 @@ def migrate_custom_card(
             binder_card.card_id = composite_api_card_id
     db.flush()
 
-    # 5. Update the match before deleting the old custom card so the FK no longer points at it
+    # 5. Preserve private photos when the manual card becomes an official card.
+    # If the owner already uploaded a photo for the official printing, keep
+    # that established target photo rather than replacing it implicitly.
+    custom_photos = db.query(CollectionCardPhoto).filter(
+        CollectionCardPhoto.card_id == custom_card_id
+    ).all()
+    source_photo_owner_ids = {photo.user_id for photo in custom_photos}
+    target_photo_owner_ids = set()
+    if source_photo_owner_ids:
+        target_photo_owner_ids = {
+            user_id
+            for (user_id,) in db.query(CollectionCardPhoto.user_id).filter(
+                CollectionCardPhoto.card_id == composite_api_card_id,
+                CollectionCardPhoto.user_id.in_(source_photo_owner_ids),
+            ).all()
+        }
+    for custom_photo in custom_photos:
+        if custom_photo.user_id in target_photo_owner_ids:
+            db.delete(custom_photo)
+        else:
+            custom_photo.card_id = composite_api_card_id
+            target_photo_owner_ids.add(custom_photo.user_id)
+    db.flush()
+
+    # 6. Update the match before deleting the old custom card so the FK no longer points at it
     match.custom_card_id = composite_api_card_id
     match.api_card_id = api_card_id
     match.status = "migrated"
 
-    # 6. Delete the old custom card
+    # 7. Delete the old custom card
     old_card = db.query(Card).filter(Card.id == custom_card_id).first()
     if old_card:
         db.delete(old_card)

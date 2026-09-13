@@ -20,8 +20,12 @@ describe('showsOwnPhoto', () => {
     expect(showsOwnPhoto({ id: 7, has_scan_photo: false }, { id: 'card-1' }, true)).toBe(false)
   })
 
-  it('leaves manually created card artwork and its pencil badge alone', () => {
-    expect(showsOwnPhoto(item, { id: 'custom-1', is_custom: true }, true)).toBe(false)
+  it('falls back to a private photo for a manually created card with no image_url set', () => {
+    expect(showsOwnPhoto(item, { id: 'custom-1', is_custom: true }, false)).toBe(true)
+  })
+
+  it('keeps a manually created card\'s own artwork primary once image_url is set', () => {
+    expect(showsOwnPhoto(item, { id: 'custom-1', is_custom: true, images_small: 'custom.jpg' }, false)).toBe(false)
   })
 
   it('treats a manually supplied catalogue fallback URL as reference artwork', () => {

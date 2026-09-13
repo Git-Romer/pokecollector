@@ -1,5 +1,4 @@
 import { useState, useMemo, useId, useRef, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Trash2, Check, X, Filter, SortAsc, Download, Upload, Loader2, ChevronUp, ChevronDown, Search, PenLine, Grid2X2, List, Library, BookOpen, Heart, Copy, ArrowLeft, Package } from 'lucide-react'
@@ -23,6 +22,8 @@ import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { invalidateCardState, invalidateCollectionPhotoState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import { formatMoneyInputValue, parseMoneyInputValue } from '../utils/moneyInput'
+import { useDynamicFilterUrlState } from '../hooks/useDynamicFilterUrlState'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
 const CONDITION_COLORS = {
@@ -42,6 +43,33 @@ const VARIANT_COLORS = {
 
 const CARD_CATEGORY_OPTIONS = ['Pokémon', 'Trainer', 'Energy']
 const CARD_SUBTYPE_OPTIONS = ['Item', 'Supporter', 'Stadium', 'Pokémon Tool', 'EX', 'ex', 'GX', 'Stage 1', 'Stage 2', 'Basic']
+const COLLECTION_FILTER_DEFINITIONS = {
+  filterRarity: { param: 'rarity', default: '' },
+  filterCondition: { param: 'condition', default: '' },
+  filterVariant: { param: 'variant', default: '' },
+  filterSet: { param: 'set', default: '' },
+  filterType: { param: 'energy_type', default: '' },
+  filterCategories: { param: 'category', default: [], type: 'list' },
+  filterSubtypes: { param: 'subtype', default: [], type: 'list' },
+  filterLegality: { param: 'legality', default: '' },
+  filterLang: { param: 'lang', default: '' },
+  filterMinPrice: { param: 'min_price', default: '' },
+  filterMaxPrice: { param: 'max_price', default: '' },
+  filterDuplicates: { param: 'duplicates', default: false, type: 'boolean' },
+  ruleText: { param: 'rule_text', default: '' },
+}
+
+export const RULE_TEXT_DEBOUNCE_MS = 300
+
+export function buildCollectionQuery(ruleText) {
+  const normalizedRuleText = String(ruleText || '').trim()
+  const params = normalizedRuleText ? { rule_text: normalizedRuleText } : {}
+  return {
+    params,
+    queryKey: ['collection', params],
+    placeholderData: (previousData) => previousData,
+  }
+}
 
 const normalizeCardFilterValue = (value) => String(value || '')
   .normalize('NFD')
@@ -362,9 +390,15 @@ function CollectionEditModal({ item, onClose }) {
     : null
   const ownPhotoUrl = useCollectionPhotoUrl(photoItem, { eager: true })
   const catalogueImage = customImageProxyUrl || resolveCardImageUrl(card, 'large')
-  const hasReferenceArtwork = Boolean(customImageProxyUrl) || hasApiImage || Boolean(card?.is_custom)
+  // hasApiImage already covers custom cards with an image_url set (the
+  // backend stores it in images_small/images_large same as a synced card),
+  // so it doesn't need an `is_custom` special case here -- one used to be
+  // here, and it meant a custom card with NO image_url was still treated as
+  // "has reference artwork", which permanently hid an uploaded own photo
+  // behind an actually-blank placeholder.
+  const hasReferenceArtwork = Boolean(customImageProxyUrl) || hasApiImage
   const preferOwnPhoto = settings.prefer_own_card_photos === 'true'
-  const defaultImageSource = hasOwnPhoto && !card?.is_custom && (preferOwnPhoto || !hasReferenceArtwork)
+  const defaultImageSource = hasOwnPhoto && (preferOwnPhoto || !hasReferenceArtwork)
     ? 'own'
     : 'catalogue'
   const cardImage = selectedImageSource === 'own' && ownPhotoUrl ? ownPhotoUrl : catalogueImage
@@ -526,7 +560,7 @@ function CollectionEditModal({ item, onClose }) {
     { id: 'binder', label: t('cardTabs.binder') },
   ]
 
-  const ownPhotoControls = !card?.is_custom ? (
+  const ownPhotoControls = (
     <div className="space-y-2">
       <div>
         <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
@@ -577,7 +611,7 @@ function CollectionEditModal({ item, onClose }) {
         )}
       </div>
     </div>
-  ) : null
+  )
 
   return (
     <CardDialog
@@ -968,29 +1002,42 @@ export default function Collection() {
   const [editCard, setEditCard] = useState(null)
   const [sortBy, setSortBy] = useState('added_at')
   const [sortOrder, setSortOrder] = useState('desc')
-  const [filterRarity, setFilterRarity] = useState('')
-  const [filterCondition, setFilterCondition] = useState('')
-  const [filterVariant, setFilterVariant] = useState('')
-  const [filterSet, setFilterSet] = useState('')
-  const [filterType, setFilterType] = useState('')
-  const [filterCategories, setFilterCategories] = useState([])
-  const [filterSubtypes, setFilterSubtypes] = useState([])
-  const [filterLegality, setFilterLegality] = useState('')
-  const [filterLang, setFilterLang] = useState('')
-  const [filterMinPrice, setFilterMinPrice] = useState('')
-  const [filterMaxPrice, setFilterMaxPrice] = useState('')
-  const [filterDuplicates, setFilterDuplicates] = useState(false)
   const [searchText, setSearchText] = useState('')
   const [showFilters, setShowFilters] = useState(false)
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
   const [showCsvImportModal, setShowCsvImportModal] = useState(false)
   const csvImportInputRef = useRef(null)
   const queryClient = useQueryClient()
-  const [searchParams, setSearchParams] = useSearchParams()
+  const {
+    filters,
+    updateFilter,
+    clearFilters,
+    searchParams,
+    setSearchParams,
+  } = useDynamicFilterUrlState(COLLECTION_FILTER_DEFINITIONS)
+  const {
+    filterRarity,
+    filterCondition,
+    filterVariant,
+    filterSet,
+    filterType,
+    filterCategories,
+    filterSubtypes,
+    filterLegality,
+    filterLang,
+    filterMinPrice,
+    filterMaxPrice,
+    filterDuplicates,
+    ruleText,
+  } = filters
 
+  const debouncedRuleText = useDebouncedValue(ruleText, RULE_TEXT_DEBOUNCE_MS)
+  const collectionQuery = buildCollectionQuery(debouncedRuleText)
   const { data: items = [], isLoading, error } = useQuery({
-    queryKey: ['collection'],
-    queryFn: () => getCollection({}).then(r => r.data),
+    queryKey: collectionQuery.queryKey,
+    queryFn: () => getCollection(collectionQuery.params).then(r => r.data),
     refetchInterval: 60000,
+    placeholderData: collectionQuery.placeholderData,
   })
 
   const { data: wishlistItems = [] } = useQuery({
@@ -1098,35 +1145,37 @@ export default function Collection() {
     return getEffectiveCardPrice(card, variant, primaryField)
   }
 
-  const rarities = useMemo(() => [...new Set(items.map(i => i.card?.rarity).filter(Boolean))].sort(), [items])
+  const facetItems = queryClient.getQueryData(['collection', {}]) || items
+  const rarities = useMemo(() => [...new Set(facetItems.map(i => i.card?.rarity).filter(Boolean))].sort(), [facetItems])
   const sets = useMemo(() => {
     const map = new Map()
-    items.forEach(i => {
+    facetItems.forEach(i => {
       const s = i.card?.set_ref
       if (s?.id) map.set(s.id, s.name)
     })
     return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]))
-  }, [items])
+  }, [facetItems])
   const types = useMemo(() => {
     const all = new Set()
-    items.forEach(i => (i.card?.types || []).forEach(tp => all.add(tp)))
+    facetItems.forEach(i => (i.card?.types || []).forEach(tp => all.add(tp)))
     return [...all].sort()
-  }, [items])
+  }, [facetItems])
   const cardCategories = useMemo(() => {
     const all = new Set(CARD_CATEGORY_OPTIONS)
-    items.forEach(i => {
+    facetItems.forEach(i => {
       const label = getCardCategoryLabel(i.card)
       if (label) all.add(label)
     })
     return sortCardFilterLabels(CARD_CATEGORY_OPTIONS, all)
-  }, [items])
+  }, [facetItems])
   const cardSubtypes = useMemo(() => {
     const all = new Set(CARD_SUBTYPE_OPTIONS)
-    items.forEach(i => getCardSubtypeLabels(i.card).forEach(label => all.add(label)))
+    facetItems.forEach(i => getCardSubtypeLabels(i.card).forEach(label => all.add(label)))
     return sortCardFilterLabels(CARD_SUBTYPE_OPTIONS, all)
-  }, [items])
+  }, [facetItems])
 
-  const hasActiveFilters = filterRarity || filterCondition || filterVariant || filterSet || filterType || filterCategories.length > 0 || filterSubtypes.length > 0 || filterLegality || filterLang || filterMinPrice || filterMaxPrice || filterDuplicates || searchText
+  const hasActiveFilters = filterRarity || filterCondition || filterVariant || filterSet || filterType || filterCategories.length > 0 || filterSubtypes.length > 0 || filterLegality || filterLang || filterMinPrice || filterMaxPrice || filterDuplicates || ruleText.trim()
+  const hasAdvancedFilters = filterCategories.length > 0 || filterSubtypes.length > 0 || filterLegality || filterLang || filterMinPrice || filterMaxPrice || filterDuplicates || ruleText.trim()
 
   const filtered = useMemo(() => {
     let result = items.filter(item => {
@@ -1200,10 +1249,16 @@ export default function Collection() {
   const totalCards = filtered.reduce((sum, item) => sum + item.quantity, 0)
   const exportParams = { price_field: pricePrimaryField, currency, exchange_rate: exchangeRate }
 
-  const resetFilters = () => {
-    setFilterRarity(''); setFilterCondition(''); setFilterVariant('')
-    setFilterSet(''); setFilterType(''); setFilterCategories([]); setFilterSubtypes([]); setFilterLegality(''); setFilterLang(''); setFilterMinPrice('')
-    setFilterMaxPrice(''); setFilterDuplicates(false); setSearchText('')
+  const setDynamicFilter = (key, value) => updateFilter(key, value)
+
+  const clearDynamicFilters = () => {
+    clearFilters()
+    setShowAdvancedFilters(false)
+  }
+
+  const toggleFilters = () => {
+    if (!showFilters) setShowAdvancedFilters(Boolean(hasAdvancedFilters))
+    setShowFilters(current => !current)
   }
 
   if (isLoading) {
@@ -1289,7 +1344,11 @@ export default function Collection() {
               <option value="set">{t('collection.sortSet')}</option>
               <option value="card_id">{t('collection.sortCardId')}</option>
             </select>
-            <button onClick={() => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')} className="btn-ghost py-1.5 px-2">
+            <button
+              onClick={() => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')}
+              className="btn-ghost py-1.5 px-2"
+              aria-label={sortOrder === 'asc' ? t('common.sortDescending') : t('common.sortAscending')}
+            >
               {sortOrder === 'asc' ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             </button>
           </div>
@@ -1300,127 +1359,157 @@ export default function Collection() {
               onChange={(e) => setSearchText(e.target.value)} className="input pl-8 text-sm py-1.5" />
           </div>
 
-          <button onClick={() => setShowFilters(f => !f)}
+          <button onClick={toggleFilters} aria-label={t('common.filter')}
             className={`btn-ghost text-sm py-1.5 ${showFilters || hasActiveFilters ? 'border-brand-red/30 text-brand-red' : ''}`}>
             <Filter size={14} /> {t('common.filter')}
             {hasActiveFilters && <span className="ml-1 bg-brand-red text-white text-xs rounded-full w-4 h-4 flex items-center justify-center leading-none">!</span>}
           </button>
 
-          {hasActiveFilters && (
-            <button onClick={resetFilters} className="btn-ghost text-sm py-1.5">
-              <X size={14} /> {t('collection.clearFilters')}
-            </button>
-          )}
         </div>
 
         {showFilters && (
-          <div className="pt-3 border-t border-border grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-9 gap-3">
+          <div className="pt-3 border-t border-border space-y-3">
+            <h3 className="text-sm font-semibold text-text-primary">{t('common.normalFilters')}</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             <div>
-              <label className="text-xs text-text-muted mb-1 block">{t('common.rarity')}</label>
-              <select className="select py-1.5 text-sm" value={filterRarity} onChange={(e) => setFilterRarity(e.target.value)}>
+              <label htmlFor="collection-filter-rarity" className="text-xs text-text-muted mb-1 block">{t('common.rarity')}</label>
+              <select id="collection-filter-rarity" className="select py-1.5 text-sm" value={filterRarity} onChange={(e) => setDynamicFilter('filterRarity', e.target.value)}>
                 <option value="">{t('common.allRarities')}</option>
                 {rarities.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-xs text-text-muted mb-1 block">{t('common.condition')}</label>
-              <select className="select py-1.5 text-sm" value={filterCondition} onChange={(e) => setFilterCondition(e.target.value)}>
+              <label htmlFor="collection-filter-condition" className="text-xs text-text-muted mb-1 block">{t('common.condition')}</label>
+              <select id="collection-filter-condition" className="select py-1.5 text-sm" value={filterCondition} onChange={(e) => setDynamicFilter('filterCondition', e.target.value)}>
                 <option value="">{t('common.allConditions')}</option>
                 {CONDITIONS.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-xs text-text-muted mb-1 block">✨ {t('variants.filterVariant')}</label>
-              <select className="select py-1.5 text-sm" value={filterVariant} onChange={(e) => setFilterVariant(e.target.value)}>
+              <label htmlFor="collection-filter-variant" className="text-xs text-text-muted mb-1 block">✨ {t('variants.filterVariant')}</label>
+              <select id="collection-filter-variant" className="select py-1.5 text-sm" value={filterVariant} onChange={(e) => setDynamicFilter('filterVariant', e.target.value)}>
                 <option value="">{t('variants.allVariants')}</option>
                 {CARD_VARIANTS.map(v => <option key={v} value={v}>{v}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-xs text-text-muted mb-1 block">{t('collection.filterSet')}</label>
-              <select className="select py-1.5 text-sm" value={filterSet} onChange={(e) => setFilterSet(e.target.value)}>
+              <label htmlFor="collection-filter-set" className="text-xs text-text-muted mb-1 block">{t('collection.filterSet')}</label>
+              <select id="collection-filter-set" className="select py-1.5 text-sm" value={filterSet} onChange={(e) => setDynamicFilter('filterSet', e.target.value)}>
                 <option value="">{t('collection.allSets')}</option>
                 {sets.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-xs text-text-muted mb-1 block">{t('collection.filterEnergyType')}</label>
-              <select className="select py-1.5 text-sm" value={filterType} onChange={(e) => setFilterType(e.target.value)}>
+              <label htmlFor="collection-filter-energy-type" className="text-xs text-text-muted mb-1 block">{t('collection.filterEnergyType')}</label>
+              <select id="collection-filter-energy-type" className="select py-1.5 text-sm" value={filterType} onChange={(e) => setDynamicFilter('filterType', e.target.value)}>
                 <option value="">{t('collection.allEnergyTypes')}</option>
                 {types.map(tp => <option key={tp} value={tp}>{tp}</option>)}
               </select>
             </div>
-            <div className="col-span-2 sm:col-span-3 lg:col-span-2">
-              <label className="text-xs text-text-muted mb-1 block">{t('collection.filterCardCategory')}</label>
+            </div>
+
+            <button
+              type="button"
+              className="btn-ghost w-full justify-between"
+              aria-expanded={showAdvancedFilters}
+              aria-controls="collection-advanced-filters"
+              onClick={() => setShowAdvancedFilters(value => !value)}
+            >
+              <span>{t('common.advancedFilters')}</span>
+              <ChevronDown size={16} className={`transition-transform ${showAdvancedFilters ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showAdvancedFilters && (
+            <div id="collection-advanced-filters" className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-9 gap-3 rounded-xl border border-border p-3">
+            <div>
+              <label htmlFor="collection-filter-rule-text" className="text-xs text-text-muted mb-1 block">{t('collection.ruleText')}</label>
+              <input id="collection-filter-rule-text" type="text" value={ruleText} onChange={(e) => setDynamicFilter('ruleText', e.target.value)} className="input py-1.5 text-sm" />
+            </div>
+            <fieldset className="col-span-2 sm:col-span-3 lg:col-span-2">
+              <legend className="text-xs text-text-muted mb-1 block">{t('collection.filterCardCategory')}</legend>
               <div className="min-h-[34px] rounded-lg border border-border bg-bg px-2 py-1.5 flex flex-wrap gap-x-3 gap-y-1.5">
                 {cardCategories.map(category => (
                   <label key={category} className="inline-flex items-center gap-1.5 text-xs text-text-secondary cursor-pointer whitespace-nowrap">
                     <input
                       type="checkbox"
                       checked={filterCategories.includes(category)}
-                      onChange={() => setFilterCategories(values => toggleFilterValue(values, category))}
+                      onChange={() => setDynamicFilter('filterCategories', toggleFilterValue(filterCategories, category))}
                       className="w-3.5 h-3.5 accent-brand-red"
                     />
                     <span>{category}</span>
                   </label>
                 ))}
               </div>
-            </div>
-            <div className="col-span-2 sm:col-span-3 lg:col-span-3">
-              <label className="text-xs text-text-muted mb-1 block">{t('collection.filterSubtype')}</label>
+            </fieldset>
+            <fieldset className="col-span-2 sm:col-span-3 lg:col-span-3">
+              <legend className="text-xs text-text-muted mb-1 block">{t('collection.filterSubtype')}</legend>
               <div className="min-h-[34px] rounded-lg border border-border bg-bg px-2 py-1.5 flex flex-wrap gap-x-3 gap-y-1.5">
                 {cardSubtypes.map(subtype => (
                   <label key={subtype} className="inline-flex items-center gap-1.5 text-xs text-text-secondary cursor-pointer whitespace-nowrap">
                     <input
                       type="checkbox"
                       checked={filterSubtypes.includes(subtype)}
-                      onChange={() => setFilterSubtypes(values => toggleFilterValue(values, subtype))}
+                      onChange={() => setDynamicFilter('filterSubtypes', toggleFilterValue(filterSubtypes, subtype))}
                       className="w-3.5 h-3.5 accent-brand-red"
                     />
                     <span>{subtype}</span>
                   </label>
                 ))}
               </div>
-            </div>
+            </fieldset>
             <div>
-              <label className="text-xs text-text-muted mb-1 block">{t('collection.filterLegality')}</label>
-              <select className="select py-1.5 text-sm" value={filterLegality} onChange={(e) => setFilterLegality(e.target.value)}>
+              <label htmlFor="collection-filter-legality" className="text-xs text-text-muted mb-1 block">{t('collection.filterLegality')}</label>
+              <select id="collection-filter-legality" className="select py-1.5 text-sm" value={filterLegality} onChange={(e) => setDynamicFilter('filterLegality', e.target.value)}>
                 <option value="">{t('collection.allLegalities')}</option>
                 <option value="standard">{t('collection.standardLegal')}</option>
               </select>
             </div>
             <div>
-              <label className="text-xs text-text-muted mb-1 block">{t('lang.filter')}</label>
+              <label htmlFor="collection-filter-language" className="text-xs text-text-muted mb-1 block">{t('lang.filter')}</label>
               <TcgdexLanguageSelect
+                id="collection-filter-language"
                 value={filterLang || 'all'}
                 includeAll
                 allLabel={t('lang.all')}
                 compact
                 languages={visibleLanguages}
-                onChange={(value) => setFilterLang(value === 'all' ? '' : value)}
+                onChange={(value) => setDynamicFilter('filterLang', value === 'all' ? '' : value)}
                 className="select py-1.5 text-sm"
               />
             </div>
             <div>
-              <label className="text-xs text-text-muted mb-1 block">{t('collection.filterMinPrice')}</label>
-              <input type="number" min="0" step="0.01" placeholder="0" value={filterMinPrice}
-                onChange={(e) => setFilterMinPrice(e.target.value)} className="input py-1.5 text-sm" />
+              <label htmlFor="collection-filter-min-price" className="text-xs text-text-muted mb-1 block">{t('collection.filterMinPrice')}</label>
+              <input id="collection-filter-min-price" type="number" min="0" step="0.01" placeholder="0" value={filterMinPrice}
+                onChange={(e) => setDynamicFilter('filterMinPrice', e.target.value)} className="input py-1.5 text-sm" />
             </div>
             <div>
-              <label className="text-xs text-text-muted mb-1 block">{t('collection.filterMaxPrice')}</label>
-              <input type="number" min="0" step="0.01" placeholder="∞" value={filterMaxPrice}
-                onChange={(e) => setFilterMaxPrice(e.target.value)} className="input py-1.5 text-sm" />
+              <label htmlFor="collection-filter-max-price" className="text-xs text-text-muted mb-1 block">{t('collection.filterMaxPrice')}</label>
+              <input id="collection-filter-max-price" type="number" min="0" step="0.01" placeholder="∞" value={filterMaxPrice}
+                onChange={(e) => setDynamicFilter('filterMaxPrice', e.target.value)} className="input py-1.5 text-sm" />
             </div>
             <div className="flex items-center gap-2 col-span-2 sm:col-span-1">
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={filterDuplicates} onChange={(e) => setFilterDuplicates(e.target.checked)}
+                <input type="checkbox" checked={filterDuplicates} onChange={(e) => setDynamicFilter('filterDuplicates', e.target.checked)}
                   className="w-4 h-4 accent-brand-red" />
                 <span className="text-xs text-text-secondary">{t('collection.filterDuplicates')}</span>
               </label>
             </div>
+            </div>
+            )}
+            <div className="flex justify-start border-t border-border pt-3">
+              <button type="button" className="btn-ghost" onClick={clearDynamicFilters}>
+                <X size={14} /> {t('common.clear')}
+              </button>
+            </div>
           </div>
         )}
       </div>
+
+      {error && (
+        <div role="alert" className="rounded-xl border border-brand-red/40 bg-brand-red/10 px-4 py-3 text-sm text-brand-red">
+          {t('collection.ruleTextSearchFailed')}
+        </div>
+      )}
 
       {items.length > 0 && (
         <CardLegend

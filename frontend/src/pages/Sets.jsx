@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { Search, Bell, BellOff, SortAsc, Filter, ChevronUp, ChevronDown, Eye, EyeOff, RotateCcw } from 'lucide-react'
 import { getSets, markSetsSeen } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
@@ -11,6 +11,11 @@ import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import { normalizeTcgdexLanguage, tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { setMatchesSearch } from '../utils/textSearch'
 import { getSavedListScrollPosition, isSavedPositionForLocation, useListScrollRestoration } from '../hooks/useListScrollRestoration'
+import {
+  hasFilterUrlState,
+  readFilterUrlState,
+  writeFilterUrlState,
+} from '../utils/filterUrlState'
 
 const DEFAULT_SET_FILTERS = {
   search: '',
@@ -60,6 +65,7 @@ const normalizeHiddenSetIds = (value) => {
 export default function Sets() {
   const navigate = useNavigate()
   const location = useLocation()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { t, settings, updateSettings, loaded: settingsLoaded } = useSettings()
   const visibleLanguages = useVisibleTcgdexLanguages()
   const [filtersHydrated, setFiltersHydrated] = useState(false)
@@ -130,12 +136,12 @@ export default function Sets() {
   const defaultLangFilter = visibleLanguageCodes.includes(preferredCatalogueLanguage)
     ? preferredCatalogueLanguage
     : DEFAULT_SET_FILTERS.langFilter
-
-  useEffect(() => {
-    if (!visibleLanguages.isLoading && langFilter !== 'all' && !visibleLanguageCodes.includes(langFilter)) {
-      setLangFilter(defaultLangFilter)
-    }
-  }, [defaultLangFilter, langFilter, visibleLanguageCodes, visibleLanguages.isLoading])
+  const filterDefinitions = useMemo(() => ({
+    series: { param: 'series', default: DEFAULT_SET_FILTERS.series },
+    progressFilter: { param: 'progress', default: DEFAULT_SET_FILTERS.progressFilter },
+    langFilter: { param: 'lang', default: defaultLangFilter },
+    showHiddenSets: { param: 'show_hidden', type: 'boolean', default: false },
+  }), [defaultLangFilter])
 
   useEffect(() => {
     if (!settingsLoaded) setFiltersHydrated(false)
@@ -151,19 +157,65 @@ export default function Sets() {
         : storedFilters,
       defaultLangFilter,
     )
+    const storedPanelFilters = {
+      series: activeFilters.series,
+      progressFilter: activeFilters.progressFilter,
+      langFilter: activeFilters.langFilter,
+      showHiddenSets: activeFilters.showHiddenSets,
+    }
+    const urlPanelFilters = hasFilterUrlState(searchParams, filterDefinitions)
+      ? readFilterUrlState(searchParams, filterDefinitions)
+      : storedPanelFilters
+    const activePanelFilters = {
+      ...urlPanelFilters,
+      progressFilter: SET_FILTER_OPTIONS.progressFilter.has(urlPanelFilters.progressFilter)
+        ? urlPanelFilters.progressFilter
+        : DEFAULT_SET_FILTERS.progressFilter,
+      langFilter: urlPanelFilters.langFilter === 'all' || visibleLanguageCodes.includes(urlPanelFilters.langFilter)
+        ? urlPanelFilters.langFilter
+        : defaultLangFilter,
+    }
     const savedHiddenIds = normalizeHiddenSetIds(settings.hidden_set_ids)
     setSearch(activeFilters.search)
-    setSeries(activeFilters.series)
+    setSeries(activePanelFilters.series)
     setSortBy(activeFilters.sortBy)
     setSortOrder(activeFilters.sortOrder)
-    setProgressFilter(activeFilters.progressFilter)
-    setLangFilter(activeFilters.langFilter)
-    setShowHiddenSets(activeFilters.showHiddenSets)
+    setProgressFilter(activePanelFilters.progressFilter)
+    setLangFilter(activePanelFilters.langFilter)
+    setShowHiddenSets(activePanelFilters.showHiddenSets)
     setHiddenSetIds(savedHiddenIds)
     savedFilterStateRef.current = JSON.stringify(storedFilters)
     savedHiddenSetIdsRef.current = JSON.stringify(savedHiddenIds)
+    const normalizedParams = writeFilterUrlState(searchParams, filterDefinitions, activePanelFilters)
+    if (normalizedParams.toString() !== searchParams.toString()) {
+      setSearchParams(normalizedParams, { replace: true })
+    }
     setFiltersHydrated(true)
-  }, [defaultLangFilter, filtersHydrated, location, settings, settingsLoaded, visibleLanguages.isLoading])
+  }, [defaultLangFilter, filterDefinitions, filtersHydrated, location, searchParams, setSearchParams, settings, settingsLoaded, visibleLanguageCodes, visibleLanguages.isLoading])
+
+  const filterUrlKey = searchParams.toString()
+  useEffect(() => {
+    if (!filtersHydrated || visibleLanguages.isLoading) return
+    const urlFilters = readFilterUrlState(searchParams, filterDefinitions)
+    const nextFilters = {
+      ...urlFilters,
+      progressFilter: SET_FILTER_OPTIONS.progressFilter.has(urlFilters.progressFilter)
+        ? urlFilters.progressFilter
+        : DEFAULT_SET_FILTERS.progressFilter,
+      langFilter: urlFilters.langFilter === 'all' || visibleLanguageCodes.includes(urlFilters.langFilter)
+        ? urlFilters.langFilter
+        : defaultLangFilter,
+    }
+    setSeries(nextFilters.series)
+    setProgressFilter(nextFilters.progressFilter)
+    setLangFilter(nextFilters.langFilter)
+    setShowHiddenSets(nextFilters.showHiddenSets)
+
+    const normalizedParams = writeFilterUrlState(searchParams, filterDefinitions, nextFilters)
+    if (normalizedParams.toString() !== searchParams.toString()) {
+      setSearchParams(normalizedParams, { replace: true })
+    }
+  }, [defaultLangFilter, filterDefinitions, filterUrlKey, filtersHydrated, searchParams, setSearchParams, visibleLanguageCodes, visibleLanguages.isLoading])
 
   useEffect(() => {
     if (!settingsLoaded || !filtersHydrated || savedFilterStateRef.current === serializedFilterState) return
@@ -229,14 +281,44 @@ export default function Sets() {
   }, [hiddenSetIdSet, progressFilter, search, series, sets, showHiddenSets, sortBy, sortOrder])
 
   const toggleOrder = () => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')
-  const resetFilters = () => {
-    setSearch(DEFAULT_SET_FILTERS.search)
-    setSeries(DEFAULT_SET_FILTERS.series)
-    setSortBy(DEFAULT_SET_FILTERS.sortBy)
-    setSortOrder(DEFAULT_SET_FILTERS.sortOrder)
-    setProgressFilter(DEFAULT_SET_FILTERS.progressFilter)
-    setLangFilter(DEFAULT_SET_FILTERS.langFilter)
-    setShowHiddenSets(DEFAULT_SET_FILTERS.showHiddenSets)
+  const appliedPanelFilters = useMemo(() => ({
+    series,
+    progressFilter,
+    langFilter,
+    showHiddenSets,
+  }), [langFilter, progressFilter, series, showHiddenSets])
+  const replacePanelFilters = (nextOrUpdater) => {
+    const requestedFilters = typeof nextOrUpdater === 'function'
+      ? nextOrUpdater(appliedPanelFilters)
+      : nextOrUpdater
+    const nextFilters = {
+      ...requestedFilters,
+      progressFilter: SET_FILTER_OPTIONS.progressFilter.has(requestedFilters.progressFilter)
+        ? requestedFilters.progressFilter
+        : DEFAULT_SET_FILTERS.progressFilter,
+      langFilter: requestedFilters.langFilter === 'all' || visibleLanguageCodes.includes(requestedFilters.langFilter)
+        ? requestedFilters.langFilter
+        : defaultLangFilter,
+    }
+    setSeries(nextFilters.series)
+    setProgressFilter(nextFilters.progressFilter)
+    setLangFilter(nextFilters.langFilter)
+    setShowHiddenSets(nextFilters.showHiddenSets)
+    const currentParams = new URLSearchParams(window.location.search)
+    const nextParams = writeFilterUrlState(currentParams, filterDefinitions, nextFilters)
+    if (nextParams.toString() !== currentParams.toString()) setSearchParams(nextParams, { replace: true })
+  }
+  const updatePanelFilter = (key, value) => {
+    replacePanelFilters(current => ({ ...current, [key]: value }))
+  }
+  const clearPanelFilters = () => {
+    const clearedFilters = {
+      series: DEFAULT_SET_FILTERS.series,
+      progressFilter: DEFAULT_SET_FILTERS.progressFilter,
+      langFilter: defaultLangFilter,
+      showHiddenSets: DEFAULT_SET_FILTERS.showHiddenSets,
+    }
+    replacePanelFilters(clearedFilters)
   }
   const toggleHiddenSet = (setId) => {
     const normalizedId = String(setId)
@@ -246,8 +328,6 @@ export default function Sets() {
         : [...current, normalizedId].sort()
     ))
   }
-  const hasActiveFilters = search || series || sortBy !== DEFAULT_SET_FILTERS.sortBy || sortOrder !== DEFAULT_SET_FILTERS.sortOrder || progressFilter !== DEFAULT_SET_FILTERS.progressFilter || langFilter !== DEFAULT_SET_FILTERS.langFilter || showHiddenSets !== DEFAULT_SET_FILTERS.showHiddenSets
-
   return (
     <div data-scroll-list="sets" className="space-y-4 pb-2">
 
@@ -290,14 +370,15 @@ export default function Sets() {
       <div className="card space-y-3">
         {/* Language filter */}
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs text-text-muted">{t('lang.filter')}:</span>
+          <label htmlFor="sets-filter-language" className="text-xs text-text-muted">{t('lang.filter')}:</label>
           <TcgdexLanguageSelect
+            id="sets-filter-language"
             value={langFilter}
             includeAll
             allLabel={t('lang.all')}
             compact
             languages={visibleLanguages}
-            onChange={setLangFilter}
+            onChange={(value) => updatePanelFilter('langFilter', value)}
             className="select w-full sm:w-52 text-xs py-1.5"
           />
         </div>
@@ -308,7 +389,7 @@ export default function Sets() {
             <input type="text" placeholder={t('sets.filterSets')} value={search}
               onChange={(e) => setSearch(e.target.value)} className="input pl-8 text-sm py-2" />
           </div>
-          <select className="select w-full sm:w-48 text-sm py-2" value={series} onChange={(e) => setSeries(e.target.value)}>
+          <select aria-label={t('common.allSeries')} className="select w-full sm:w-48 text-sm py-2" value={series} onChange={(e) => updatePanelFilter('series', e.target.value)}>
             <option value="">{t('common.allSeries')}</option>
             {allSeries.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
@@ -323,7 +404,7 @@ export default function Sets() {
               <option value="total">{t('sets.sortCardCount')}</option>
               <option value="progress">{t('sets.sortProgress')}</option>
             </select>
-            <button onClick={toggleOrder} className="btn-ghost py-1.5 px-2 text-sm font-medium flex-shrink-0">
+            <button onClick={toggleOrder} aria-label={sortOrder === 'asc' ? t('common.sortDescending') : t('common.sortAscending')} className="btn-ghost py-1.5 px-2 text-sm font-medium flex-shrink-0">
               {sortOrder === 'asc' ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             </button>
           </div>
@@ -335,7 +416,7 @@ export default function Sets() {
               { value: 'started', label: t('sets.filterStarted') },
               { value: 'complete', label: t('sets.filterComplete') },
             ].map(opt => (
-              <button key={opt.value} onClick={() => setProgressFilter(opt.value)}
+              <button key={opt.value} onClick={() => updatePanelFilter('progressFilter', opt.value)}
                 className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
                   progressFilter === opt.value
                     ? 'bg-brand-red text-white'
@@ -350,7 +431,7 @@ export default function Sets() {
             {hiddenSetCount > 0 && (
               <button
                 type="button"
-                onClick={() => setShowHiddenSets(value => !value)}
+                onClick={() => updatePanelFilter('showHiddenSets', !showHiddenSets)}
                 className={`btn-ghost py-1.5 px-2 text-xs font-medium ${
                   showHiddenSets ? 'text-brand-red border-brand-red/30 bg-brand-red/10' : ''
                 }`}
@@ -360,17 +441,16 @@ export default function Sets() {
                 <span className="rounded-full bg-bg-elevated px-1.5 py-0.5 text-[10px] text-text-secondary">{hiddenSetCount}</span>
               </button>
             )}
-            {hasActiveFilters && (
-              <button type="button" onClick={resetFilters} className="btn-ghost py-1.5 px-2 text-xs font-medium">
-                <RotateCcw size={14} />
-                {t('sets.resetFilters')}
-              </button>
-            )}
           </div>
 
           <span className="text-xs text-text-muted sm:ml-auto">
             {filtered.length} / {sets.length} {t('sets.setsTotal')}
           </span>
+        </div>
+        <div className="flex justify-start border-t border-border pt-3">
+          <button type="button" onClick={clearPanelFilters} className="btn-ghost text-sm">
+            <RotateCcw size={14} /> {t('common.clear')}
+          </button>
         </div>
       </div>
 

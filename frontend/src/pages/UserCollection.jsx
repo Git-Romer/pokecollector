@@ -11,6 +11,13 @@ import { getEffectiveCardPrice } from '../utils/prices'
 import { TCGDEX_LANGUAGES, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { textIncludes } from '../utils/textSearch'
 import { CardDisplay, CardLegend, withCollectionItemState } from '../components/card-system'
+import { useDynamicFilterUrlState } from '../hooks/useDynamicFilterUrlState'
+
+const USER_COLLECTION_FILTER_DEFINITIONS = {
+  filterRarity: { param: 'rarity', default: '' },
+  filterVariant: { param: 'variant', default: '' },
+  filterLang: { param: 'lang', default: '' },
+}
 
 export default function UserCollection() {
   const { userId } = useParams()
@@ -19,11 +26,15 @@ export default function UserCollection() {
   const [selectedCard, setSelectedCard] = useState(null)
   const [searchText, setSearchText] = useState('')
   const [showFilters, setShowFilters] = useState(false)
-  const [filterRarity, setFilterRarity] = useState('')
-  const [filterVariant, setFilterVariant] = useState('')
-  const [filterLang, setFilterLang] = useState('')
   const [sortBy, setSortBy] = useState('name')
   const [sortOrder, setSortOrder] = useState('asc')
+  const {
+    filters,
+    updateFilter,
+    replaceFilters,
+    clearFilters,
+  } = useDynamicFilterUrlState(USER_COLLECTION_FILTER_DEFINITIONS)
+  const { filterRarity, filterVariant, filterLang } = filters
 
   const { data: items = [], isLoading } = useQuery({
     queryKey: ['user-collection', userId, pricePrimaryField],
@@ -45,10 +56,13 @@ export default function UserCollection() {
   const hasMixedLanguages = visibleLanguageCodes.length > 1
 
   useEffect(() => {
-    if (filterLang && !visibleLanguageCodes.includes(filterLang)) {
-      setFilterLang('')
+    if (!isLoading && filterLang && !visibleLanguageCodes.includes(filterLang)) {
+      replaceFilters({
+        ...filters,
+        filterLang: '',
+      })
     }
-  }, [filterLang, visibleLanguageCodes])
+  }, [filterLang, filters, isLoading, replaceFilters, visibleLanguageCodes])
 
   const variants = useMemo(() => {
     const all = new Set()
@@ -56,7 +70,7 @@ export default function UserCollection() {
     return [...all].sort()
   }, [items])
 
-  const hasActiveFilters = searchText || filterRarity || filterVariant || filterLang
+  const hasActiveFilters = filterRarity || filterVariant || filterLang
 
   const filtered = useMemo(() => {
     let result = items.filter(item => {
@@ -90,10 +104,6 @@ export default function UserCollection() {
   const totalValue = filtered.reduce((sum, item) => sum + getEffectiveCardPrice(item.card, item.variant, pricePrimaryField) * item.quantity, 0)
   const totalCards = filtered.reduce((sum, item) => sum + item.quantity, 0)
 
-  const resetFilters = () => {
-    setSearchText(''); setFilterRarity(''); setFilterVariant(''); setFilterLang('')
-  }
-
   return (
     <div className="page-container">
       <div className="card">
@@ -122,7 +132,8 @@ export default function UserCollection() {
             />
           </div>
           <button
-            onClick={() => setShowFilters(!showFilters)}
+            onClick={() => setShowFilters(current => !current)}
+            aria-label={t('common.filter')}
             className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-colors ${
               hasActiveFilters
                 ? 'bg-brand-red/10 border-brand-red/50 text-brand-red'
@@ -131,39 +142,35 @@ export default function UserCollection() {
           >
             <SlidersHorizontal size={14} />
           </button>
-          {hasActiveFilters && (
-            <button onClick={resetFilters} className="btn-ghost text-xs">
-              <X size={14} />
-            </button>
-          )}
         </div>
 
         {/* Filters + Sort */}
         {showFilters && (
           <div className="mt-3 pt-3 border-t border-border grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
-              <label className="text-xs text-text-muted mb-1 block">{t('common.rarity')}</label>
-              <select className="select py-1.5 text-sm" value={filterRarity} onChange={e => setFilterRarity(e.target.value)}>
+              <label htmlFor="public-collection-filter-rarity" className="text-xs text-text-muted mb-1 block">{t('common.rarity')}</label>
+              <select id="public-collection-filter-rarity" className="select py-1.5 text-sm" value={filterRarity} onChange={e => updateFilter('filterRarity', e.target.value)}>
                 <option value="">{t('common.allRarities')}</option>
                 {rarities.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-xs text-text-muted mb-1 block">{t('card.variant')}</label>
-              <select className="select py-1.5 text-sm" value={filterVariant} onChange={e => setFilterVariant(e.target.value)}>
+              <label htmlFor="public-collection-filter-variant" className="text-xs text-text-muted mb-1 block">{t('card.variant')}</label>
+              <select id="public-collection-filter-variant" className="select py-1.5 text-sm" value={filterVariant} onChange={e => updateFilter('filterVariant', e.target.value)}>
                 <option value="">{t('variants.allVariants')}</option>
                 {variants.map(v => <option key={v} value={v}>{v}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-xs text-text-muted mb-1 block">{t('lang.filter')}</label>
+              <label htmlFor="public-collection-filter-language" className="text-xs text-text-muted mb-1 block">{t('lang.filter')}</label>
               <TcgdexLanguageSelect
+                id="public-collection-filter-language"
                 value={filterLang || 'all'}
                 includeAll
                 allLabel={t('lang.all')}
                 compact
                 languages={visibleLanguages}
-                onChange={(value) => setFilterLang(value === 'all' ? '' : value)}
+                onChange={(value) => updateFilter('filterLang', value === 'all' ? '' : value)}
                 className="select py-1.5 text-sm"
               />
             </div>
@@ -178,11 +185,17 @@ export default function UserCollection() {
                 </select>
                 <button
                   onClick={() => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')}
+                  aria-label={sortOrder === 'asc' ? t('common.sortDescending') : t('common.sortAscending')}
                   className="btn-ghost px-2 py-1.5 text-xs"
                 >
                   {sortOrder === 'asc' ? '↑' : '↓'}
                 </button>
               </div>
+            </div>
+            <div className="col-span-2 sm:col-span-4 flex justify-start border-t border-border pt-3">
+              <button type="button" className="btn-ghost" onClick={clearFilters}>
+                <X size={14} /> {t('common.clear')}
+              </button>
             </div>
           </div>
         )}
