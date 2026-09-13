@@ -103,8 +103,12 @@ async function installApi(page) {
   return requests
 }
 
-test('applies a complete Card Search filter draft only when saved', async ({ page }) => {
+test('updates Card Search filters and URL dynamically without reloading', async ({ page }) => {
   const requests = await installApi(page)
+  let documentRequests = 0
+  page.on('request', request => {
+    if (request.resourceType() === 'document') documentRequests += 1
+  })
   await page.goto('/search')
 
   await page.locator('#card-search-sort-by').selectOption('name')
@@ -119,35 +123,23 @@ test('applies a complete Card Search filter draft only when saved', async ({ pag
   await advanced.click()
   const ruleText = page.locator('#card-search-rule-text')
   await ruleText.pressSequentially('  draw 3 cards  ', { delay: 20 })
-  await page.getByLabel('Rarity').selectOption('Rare Holo')
-
   await expect(ruleText).toHaveValue('  draw 3 cards  ')
-  await expect(page).not.toHaveURL(/rule_text=/)
-  expect(requests.search).toEqual([])
-
-  await page.getByRole('button', { name: 'Apply filters' }).click()
+  await expect(ruleText).toBeFocused()
   await expect(page).toHaveURL(/rule_text=draw(?:\+|%20)3(?:\+|%20)cards/)
   await expect(page.getByRole('button', { name: 'Rule Text Result', exact: true })).toBeVisible()
   expect(requests.search).not.toHaveLength(0)
   expect(requests.search.every(value => value === 'draw 3 cards')).toBe(true)
+  await expect(page.getByRole('dialog')).toBeVisible()
+  expect(documentRequests).toBe(1)
 
-  await page.getByRole('button', { name: 'Filters' }).click()
-  await expect(page.getByRole('button', { name: 'Advanced filters' })).toHaveAttribute('aria-expanded', 'true')
-  await expect(page.locator('#card-search-rule-text')).toHaveValue('draw 3 cards')
-
-  await page.getByLabel('Rarity').selectOption('Common')
-  await page.getByRole('button', { name: 'Cancel', exact: true }).click()
-  await expect(page).toHaveURL(/sort_by=name/)
-  await page.getByRole('button', { name: 'Filters' }).click()
+  await page.getByLabel('Rarity').selectOption('Rare Holo')
+  await expect(page).toHaveURL(/rarity=Rare(?:\+|%20)Holo/)
   await expect(page.getByLabel('Rarity')).toHaveValue('Rare Holo')
 
-  await page.locator('#card-search-rule-text').fill('stale draft')
-  await page.goBack()
-  await expect(page.getByRole('dialog')).toHaveCount(0)
-  await expect(page).not.toHaveURL(/rule_text=/)
-  await page.goForward()
+  await page.reload()
   await page.getByRole('button', { name: 'Filters' }).click()
   await expect(page.locator('#card-search-rule-text')).toHaveValue('draw 3 cards')
+  await expect(page.getByLabel('Rarity')).toHaveValue('Rare Holo')
   const overflow = await page.locator('main').evaluate(main => Array.from(main.querySelectorAll('*'))
     .filter(element => {
       const rect = element.getBoundingClientRect()
@@ -158,7 +150,7 @@ test('applies a complete Card Search filter draft only when saved', async ({ pag
   expect(overflow).toEqual([])
 })
 
-test('keeps Collection advanced filters compact and ignores blank rule text', async ({ page }) => {
+test('keeps Collection filters dynamic, compact, and debounced', async ({ page }) => {
   const requests = await installApi(page)
   await page.goto('/collection')
   await expect(page.getByRole('button', { name: 'Rule Text Result', exact: true })).toBeVisible()
@@ -170,31 +162,27 @@ test('keeps Collection advanced filters compact and ignores blank rule text', as
   await expect(page.locator('#collection-filter-rule-text')).toHaveCount(0)
 
   await page.locator('#collection-filter-rarity').selectOption('Common')
-  await page.getByRole('button', { name: 'Cancel', exact: true }).click()
-  await expect(page).not.toHaveURL(/(?:\?|&)rarity=/)
-  await page.getByRole('button', { name: 'Filter', exact: true }).click()
-  await page.locator('#collection-filter-rarity').selectOption('Common')
+  await expect(page).toHaveURL(/rarity=Common/)
+  await expect(page.getByRole('button', { name: 'Rule Text Result', exact: true })).toHaveCount(0)
+  await page.locator('#collection-filter-rarity').selectOption('')
   await advanced.click()
   const initialRequests = requests.collection.length
   const ruleText = page.locator('#collection-filter-rule-text')
   await ruleText.fill('   ')
-  expect(requests.collection).toHaveLength(initialRequests)
-
-  await ruleText.pressSequentially('draw 3 cards', { delay: 20 })
+  await page.waitForTimeout(350)
   expect(requests.collection).toHaveLength(initialRequests)
   await expect(page).not.toHaveURL(/rule_text=/)
-  await expect(page.locator('#collection-filter-rarity')).toHaveValue('Common')
-  await page.locator('#collection-filter-rarity').selectOption('Rare Holo')
-  await page.getByRole('button', { name: 'Apply filters' }).click()
+
+  await ruleText.fill('draw 3 cards')
+  await expect(ruleText).toBeFocused()
   await expect(page).toHaveURL(/rule_text=draw(?:\+|%20)3(?:\+|%20)cards/)
   await expect.poll(() => requests.collection.at(-1)).toBe('draw 3 cards')
   await expect(page.getByRole('button', { name: 'Rule Text Result', exact: true })).toBeVisible()
   expect(requests.collection.filter(Boolean).every(value => value === 'draw 3 cards')).toBe(true)
 
-  await page.getByRole('button', { name: 'Filter', exact: true }).click()
   await ruleText.fill('fail request')
   await expect(page.getByRole('button', { name: 'Rule Text Result', exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Apply filters' }).click()
   await expect(page.getByRole('alert')).toContainText('Please try again')
+  await expect(page).toHaveURL(/rule_text=fail(?:\+|%20)request/)
   expect(await page.locator('main').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
 })

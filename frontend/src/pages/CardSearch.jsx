@@ -27,6 +27,8 @@ import {
   hasActiveScanJobs,
   scanAttentionCount,
 } from '../utils/scanJobs'
+import { useDynamicFilterUrlState } from '../hooks/useDynamicFilterUrlState'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
 const CODE_NUMBER_RE = /^([A-Za-z]+\d*)\s+(\d+)$/
 
@@ -34,6 +36,19 @@ const TYPES = ['Fire', 'Water', 'Grass', 'Lightning', 'Psychic', 'Fighting', 'Da
 const CATEGORIES = ['Pokemon', 'Trainer', 'Energy']
 const SUBTYPES = ['Basic', 'Stage1', 'Stage2', 'Supporter', 'Item', 'Stadium', 'Tool', 'Technical Machine', 'Special']
 const RARITIES = ['Common', 'Uncommon', 'Rare', 'Rare Holo', 'Rare Ultra', 'Rare Secret', 'Illustration Rare', 'Special Illustration Rare', 'Hyper Rare', 'Double Rare', 'ACE SPEC Rare', 'Promo', 'Amazing Rare']
+const CARD_SEARCH_FILTER_DEFINITIONS = {
+  category: { param: 'category', default: '' },
+  type: { param: 'type', default: '' },
+  subtype: { param: 'subtype', default: '' },
+  rarity: { param: 'rarity', default: '' },
+  series: { param: 'series', default: '' },
+  set_id: { param: 'set_id', default: '' },
+  artist: { param: 'artist', default: '' },
+  rule_text: { param: 'rule_text', default: '' },
+  hp_min: { param: 'hp_min', default: '' },
+  hp_max: { param: 'hp_max', default: '' },
+}
+const CARD_SEARCH_TEXT_DEBOUNCE_MS = 300
 
 function FilterForm({ filters, setFilter, allSeries, setsForSeries, showAdvanced, setShowAdvanced, t }) {
   return (
@@ -152,7 +167,6 @@ export default function CardSearch() {
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search])
   const [searchInput, setSearchInput] = useState('')
   const [showFilters, setShowFilters] = useState(false)
-  const [draftFilters, setDraftFilters] = useState(null)
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
   const [showCustomModal, setShowCustomModal] = useState(false)
   const [showScanner, setShowScanner] = useState(false)
@@ -234,10 +248,35 @@ export default function CardSearch() {
     }
   }, [allSets, defaultLangFilter, searchParams, visibleLanguageCodes])
 
-  const draftSetsForSeries = useMemo(() => {
-    if (!draftFilters?.series) return allSets
-    return allSets.filter(set => set.series === draftFilters.series)
-  }, [allSets, draftFilters?.series])
+  const normalizePanelFilters = useCallback((state) => {
+    const hpValue = (value) => /^\d+$/.test(value) && Number(value) <= 999 ? value : ''
+    const setIsValid = !state.set_id || !state.series || !allSets.length || allSets.some(
+      set => set.id === state.set_id && set.series === state.series,
+    )
+    return {
+      ...state,
+      category: CATEGORIES.includes(state.category) ? state.category : '',
+      type: TYPES.includes(state.type) ? state.type : '',
+      subtype: SUBTYPES.includes(state.subtype) ? state.subtype : '',
+      rarity: RARITIES.includes(state.rarity) ? state.rarity : '',
+      set_id: setIsValid ? state.set_id : '',
+      hp_min: state.hp_min ? hpValue(state.hp_min) : '',
+      hp_max: state.hp_max ? hpValue(state.hp_max) : '',
+    }
+  }, [allSets])
+  const {
+    filters: dynamicFilters,
+    updateFilter: updateDynamicFilter,
+    replaceFilters: replaceDynamicFilters,
+    clearFilters: clearDynamicFilters,
+  } = useDynamicFilterUrlState(CARD_SEARCH_FILTER_DEFINITIONS, {
+    normalizeState: normalizePanelFilters,
+    resetParams: ['page'],
+  })
+  const setsForSeries = useMemo(() => {
+    if (!dynamicFilters.series) return allSets
+    return allSets.filter(set => set.series === dynamicFilters.series)
+  }, [allSets, dynamicFilters.series])
 
   const updateSearchParams = useCallback((updates, { replace = false, resetPage = true } = {}) => {
     const next = updateCardSearchParams(location.search, updates, { resetPage })
@@ -249,9 +288,21 @@ export default function CardSearch() {
     )
   }, [location.pathname, location.search, navigate, searchParams])
 
-  const queryParams = buildCardSearchParams(filters, langFilter, page, pageSize)
+  const debouncedArtist = useDebouncedValue(dynamicFilters.artist, CARD_SEARCH_TEXT_DEBOUNCE_MS)
+  const debouncedRuleText = useDebouncedValue(dynamicFilters.rule_text, CARD_SEARCH_TEXT_DEBOUNCE_MS)
+  const debouncedHpMin = useDebouncedValue(dynamicFilters.hp_min, CARD_SEARCH_TEXT_DEBOUNCE_MS)
+  const debouncedHpMax = useDebouncedValue(dynamicFilters.hp_max, CARD_SEARCH_TEXT_DEBOUNCE_MS)
+  const queryFilters = {
+    ...filters,
+    ...dynamicFilters,
+    artist: debouncedArtist,
+    rule_text: debouncedRuleText,
+    hp_min: debouncedHpMin,
+    hp_max: debouncedHpMax,
+  }
+  const queryParams = buildCardSearchParams(queryFilters, langFilter, page, pageSize)
 
-  const hasQuery = filters.name || filters.category || filters.type || filters.subtype || filters.rarity || filters.set_id || filters.artist || filters.rule_text.trim() || filters.hp_min || filters.hp_max || filters.series
+  const hasQuery = filters.name || queryFilters.category || queryFilters.type || queryFilters.subtype || queryFilters.rarity || queryFilters.set_id || queryFilters.artist || queryFilters.rule_text.trim() || queryFilters.hp_min || queryFilters.hp_max || queryFilters.series
 
   const { data, isLoading, error, isFetching } = useQuery({
     queryKey: ['card-search', queryParams],
@@ -263,14 +314,14 @@ export default function CardSearch() {
   const totalPages = data ? getLastCardSearchPage(data.total_count, pageSize) : 0
   const hasUrlSearchState = Array.from(searchParams.keys()).length > 0
   const hasActiveFilters = Boolean(
-    filters.category || filters.type || filters.subtype || filters.rarity ||
-    filters.set_id || filters.series || filters.artist || filters.rule_text.trim() || filters.hp_min ||
-    filters.hp_max
+    dynamicFilters.category || dynamicFilters.type || dynamicFilters.subtype || dynamicFilters.rarity ||
+    dynamicFilters.set_id || dynamicFilters.series || dynamicFilters.artist || dynamicFilters.rule_text.trim() || dynamicFilters.hp_min ||
+    dynamicFilters.hp_max
   )
   const activeFilterCount = [
-    filters.category, filters.type, filters.subtype, filters.rarity,
-    filters.set_id, filters.series, filters.artist, filters.rule_text.trim(), filters.hp_min,
-    filters.hp_max,
+    dynamicFilters.category, dynamicFilters.type, dynamicFilters.subtype, dynamicFilters.rarity,
+    dynamicFilters.set_id, dynamicFilters.series, dynamicFilters.artist, dynamicFilters.rule_text.trim(), dynamicFilters.hp_min,
+    dynamicFilters.hp_max,
   ].filter(Boolean).length
   const isCodeNumberSearch = CODE_NUMBER_RE.test(searchInput.trim())
 
@@ -279,54 +330,26 @@ export default function CardSearch() {
     updateSearchParams({ q: searchInput })
   }
 
-  const setDraftFilter = (key, value) => {
-    setDraftFilters(current => {
-      const next = { ...current, [key]: value }
-      if (key === 'series') {
+  const setDynamicFilter = (key, value) => {
+    if (key === 'series') {
+      replaceDynamicFilters(current => {
+        const next = { ...current, [key]: value }
         const setStillValid = !value || allSets.some(set => set.id === current.set_id && set.series === value)
         if (!setStillValid) next.set_id = ''
-      }
-      return next
-    })
+        return next
+      })
+      return
+    }
+    updateDynamicFilter(key, value)
   }
 
   const openFilters = () => {
-    setDraftFilters({ ...filters })
-    setShowAdvancedFilters(Boolean(filters.subtype || filters.artist || filters.rule_text.trim() || filters.hp_min || filters.hp_max))
+    setShowAdvancedFilters(Boolean(dynamicFilters.subtype || dynamicFilters.artist || dynamicFilters.rule_text.trim() || dynamicFilters.hp_min || dynamicFilters.hp_max))
     setShowFilters(true)
   }
 
-  const applyFilters = () => {
-    if (!draftFilters) return
-    updateSearchParams({
-      category: draftFilters.category,
-      type: draftFilters.type,
-      subtype: draftFilters.subtype,
-      rarity: draftFilters.rarity,
-      series: draftFilters.series,
-      set_id: draftFilters.set_id,
-      artist: draftFilters.artist,
-      rule_text: draftFilters.rule_text,
-      hp_min: draftFilters.hp_min,
-      hp_max: draftFilters.hp_max,
-    })
-    setShowFilters(false)
-  }
-
-  const clearDraftFilters = () => {
-    setDraftFilters(current => ({
-      ...current,
-      category: '',
-      type: '',
-      subtype: '',
-      rarity: '',
-      series: '',
-      set_id: '',
-      artist: '',
-      rule_text: '',
-      hp_min: '',
-      hp_max: '',
-    }))
+  const clearFilters = () => {
+    clearDynamicFilters()
     setShowAdvancedFilters(false)
   }
 
@@ -337,13 +360,6 @@ export default function CardSearch() {
   useEffect(() => {
     setSearchInput(filters.name)
   }, [filters.name])
-
-  useEffect(() => {
-    // A browser-history navigation changes the applied filter entry. Close any
-    // open draft so it cannot overwrite the newly restored URL state.
-    setShowFilters(false)
-    setDraftFilters(null)
-  }, [location.search])
 
   useEffect(() => {
     // Browser history can move away and back before React commits the
@@ -438,15 +454,15 @@ export default function CardSearch() {
     })
   }, [allSets, filters.name, recentCustomCards])
 
-  const filterFormProps = draftFilters ? {
-    filters: draftFilters,
-    setFilter: setDraftFilter,
+  const filterFormProps = {
+    filters: dynamicFilters,
+    setFilter: setDynamicFilter,
     allSeries,
-    setsForSeries: draftSetsForSeries,
+    setsForSeries,
     showAdvanced: showAdvancedFilters,
     setShowAdvanced: setShowAdvancedFilters,
     t,
-  } : null
+  }
 
   const cardLang = (card) => card._lang || card.lang || (langFilter === 'all' ? 'en' : langFilter)
 
@@ -679,29 +695,15 @@ export default function CardSearch() {
       {/* ─── Filter Sheet ─────────────────────────────────────────── */}
       <Sheet isOpen={showFilters} onClose={() => setShowFilters(false)} title={t('cardSearch.filters')}>
         <div className="p-4 space-y-4">
-          {filterFormProps && <FilterForm {...filterFormProps} />}
+          <FilterForm {...filterFormProps} />
 
-          <div className="grid grid-cols-3 gap-2 border-t border-border pt-3">
+          <div className="flex justify-start border-t border-border pt-3">
             <button
               type="button"
-              onClick={clearDraftFilters}
+              onClick={clearFilters}
               className="btn-ghost justify-center"
             >
               <X size={14} /> {t('common.clear')}
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowFilters(false)}
-              className="btn-ghost justify-center"
-            >
-              {t('common.cancel')}
-            </button>
-            <button
-              type="button"
-              onClick={applyFilters}
-              className="btn-primary justify-center"
-            >
-              {t('common.applyFilters')}
             </button>
           </div>
         </div>

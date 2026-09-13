@@ -12,7 +12,6 @@ import { normalizeTcgdexLanguage, tcgdexLanguageBadgeClass, tcgdexLanguageLabel 
 import { setMatchesSearch } from '../utils/textSearch'
 import { getSavedListScrollPosition, isSavedPositionForLocation, useListScrollRestoration } from '../hooks/useListScrollRestoration'
 import {
-  cloneFilterState,
   hasFilterUrlState,
   readFilterUrlState,
   writeFilterUrlState,
@@ -77,12 +76,6 @@ export default function Sets() {
   const [progressFilter, setProgressFilter] = useState(DEFAULT_SET_FILTERS.progressFilter)
   const [langFilter, setLangFilter] = useState(DEFAULT_SET_FILTERS.langFilter)
   const [showHiddenSets, setShowHiddenSets] = useState(DEFAULT_SET_FILTERS.showHiddenSets)
-  const [draftFilters, setDraftFilters] = useState({
-    series: DEFAULT_SET_FILTERS.series,
-    progressFilter: DEFAULT_SET_FILTERS.progressFilter,
-    langFilter: DEFAULT_SET_FILTERS.langFilter,
-    showHiddenSets: DEFAULT_SET_FILTERS.showHiddenSets,
-  })
   const [hiddenSetIds, setHiddenSetIds] = useState([])
   const savedFilterStateRef = useRef('')
   const savedHiddenSetIdsRef = useRef('')
@@ -190,7 +183,6 @@ export default function Sets() {
     setProgressFilter(activePanelFilters.progressFilter)
     setLangFilter(activePanelFilters.langFilter)
     setShowHiddenSets(activePanelFilters.showHiddenSets)
-    setDraftFilters(cloneFilterState(activePanelFilters))
     setHiddenSetIds(savedHiddenIds)
     savedFilterStateRef.current = JSON.stringify(storedFilters)
     savedHiddenSetIdsRef.current = JSON.stringify(savedHiddenIds)
@@ -218,7 +210,6 @@ export default function Sets() {
     setProgressFilter(nextFilters.progressFilter)
     setLangFilter(nextFilters.langFilter)
     setShowHiddenSets(nextFilters.showHiddenSets)
-    setDraftFilters(cloneFilterState(nextFilters))
 
     const normalizedParams = writeFilterUrlState(searchParams, filterDefinitions, nextFilters)
     if (normalizedParams.toString() !== searchParams.toString()) {
@@ -296,38 +287,38 @@ export default function Sets() {
     langFilter,
     showHiddenSets,
   }), [langFilter, progressFilter, series, showHiddenSets])
-  const updateDraftFilter = (key, value) => {
-    setDraftFilters(current => ({ ...current, [key]: value }))
-  }
-  const applyFilters = () => {
+  const replacePanelFilters = (nextOrUpdater) => {
+    const requestedFilters = typeof nextOrUpdater === 'function'
+      ? nextOrUpdater(appliedPanelFilters)
+      : nextOrUpdater
     const nextFilters = {
-      ...draftFilters,
-      progressFilter: SET_FILTER_OPTIONS.progressFilter.has(draftFilters.progressFilter)
-        ? draftFilters.progressFilter
+      ...requestedFilters,
+      progressFilter: SET_FILTER_OPTIONS.progressFilter.has(requestedFilters.progressFilter)
+        ? requestedFilters.progressFilter
         : DEFAULT_SET_FILTERS.progressFilter,
-      langFilter: draftFilters.langFilter === 'all' || visibleLanguageCodes.includes(draftFilters.langFilter)
-        ? draftFilters.langFilter
+      langFilter: requestedFilters.langFilter === 'all' || visibleLanguageCodes.includes(requestedFilters.langFilter)
+        ? requestedFilters.langFilter
         : defaultLangFilter,
     }
     setSeries(nextFilters.series)
     setProgressFilter(nextFilters.progressFilter)
     setLangFilter(nextFilters.langFilter)
     setShowHiddenSets(nextFilters.showHiddenSets)
-    setDraftFilters(cloneFilterState(nextFilters))
-    const nextParams = writeFilterUrlState(searchParams, filterDefinitions, nextFilters)
-    if (nextParams.toString() !== searchParams.toString()) setSearchParams(nextParams)
+    const currentParams = new URLSearchParams(window.location.search)
+    const nextParams = writeFilterUrlState(currentParams, filterDefinitions, nextFilters)
+    if (nextParams.toString() !== currentParams.toString()) setSearchParams(nextParams, { replace: true })
   }
-  const cancelFilters = () => {
-    setDraftFilters(cloneFilterState(appliedPanelFilters))
+  const updatePanelFilter = (key, value) => {
+    replacePanelFilters(current => ({ ...current, [key]: value }))
   }
-  const clearDraftFilters = () => {
+  const clearPanelFilters = () => {
     const clearedFilters = {
       series: DEFAULT_SET_FILTERS.series,
       progressFilter: DEFAULT_SET_FILTERS.progressFilter,
       langFilter: defaultLangFilter,
       showHiddenSets: DEFAULT_SET_FILTERS.showHiddenSets,
     }
-    setDraftFilters(cloneFilterState(clearedFilters))
+    replacePanelFilters(clearedFilters)
   }
   const toggleHiddenSet = (setId) => {
     const normalizedId = String(setId)
@@ -382,12 +373,12 @@ export default function Sets() {
           <label htmlFor="sets-filter-language" className="text-xs text-text-muted">{t('lang.filter')}:</label>
           <TcgdexLanguageSelect
             id="sets-filter-language"
-            value={draftFilters.langFilter}
+            value={langFilter}
             includeAll
             allLabel={t('lang.all')}
             compact
             languages={visibleLanguages}
-            onChange={(value) => updateDraftFilter('langFilter', value)}
+            onChange={(value) => updatePanelFilter('langFilter', value)}
             className="select w-full sm:w-52 text-xs py-1.5"
           />
         </div>
@@ -398,7 +389,7 @@ export default function Sets() {
             <input type="text" placeholder={t('sets.filterSets')} value={search}
               onChange={(e) => setSearch(e.target.value)} className="input pl-8 text-sm py-2" />
           </div>
-          <select aria-label={t('common.allSeries')} className="select w-full sm:w-48 text-sm py-2" value={draftFilters.series} onChange={(e) => updateDraftFilter('series', e.target.value)}>
+          <select aria-label={t('common.allSeries')} className="select w-full sm:w-48 text-sm py-2" value={series} onChange={(e) => updatePanelFilter('series', e.target.value)}>
             <option value="">{t('common.allSeries')}</option>
             {allSeries.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
@@ -425,9 +416,9 @@ export default function Sets() {
               { value: 'started', label: t('sets.filterStarted') },
               { value: 'complete', label: t('sets.filterComplete') },
             ].map(opt => (
-              <button key={opt.value} onClick={() => updateDraftFilter('progressFilter', opt.value)}
+              <button key={opt.value} onClick={() => updatePanelFilter('progressFilter', opt.value)}
                 className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-                  draftFilters.progressFilter === opt.value
+                  progressFilter === opt.value
                     ? 'bg-brand-red text-white'
                     : 'bg-bg-card text-text-secondary hover:text-text-primary border border-border'
                 }`}>
@@ -440,13 +431,13 @@ export default function Sets() {
             {hiddenSetCount > 0 && (
               <button
                 type="button"
-                onClick={() => updateDraftFilter('showHiddenSets', !draftFilters.showHiddenSets)}
+                onClick={() => updatePanelFilter('showHiddenSets', !showHiddenSets)}
                 className={`btn-ghost py-1.5 px-2 text-xs font-medium ${
-                  draftFilters.showHiddenSets ? 'text-brand-red border-brand-red/30 bg-brand-red/10' : ''
+                  showHiddenSets ? 'text-brand-red border-brand-red/30 bg-brand-red/10' : ''
                 }`}
               >
-                {draftFilters.showHiddenSets ? <EyeOff size={14} /> : <Eye size={14} />}
-                {draftFilters.showHiddenSets ? t('sets.hideHiddenSets') : t('sets.showHiddenSets')}
+                {showHiddenSets ? <EyeOff size={14} /> : <Eye size={14} />}
+                {showHiddenSets ? t('sets.hideHiddenSets') : t('sets.showHiddenSets')}
                 <span className="rounded-full bg-bg-elevated px-1.5 py-0.5 text-[10px] text-text-secondary">{hiddenSetCount}</span>
               </button>
             )}
@@ -456,15 +447,9 @@ export default function Sets() {
             {filtered.length} / {sets.length} {t('sets.setsTotal')}
           </span>
         </div>
-        <div className="flex justify-end gap-2 border-t border-border pt-3">
-          <button type="button" onClick={clearDraftFilters} className="btn-ghost mr-auto text-sm">
+        <div className="flex justify-start border-t border-border pt-3">
+          <button type="button" onClick={clearPanelFilters} className="btn-ghost text-sm">
             <RotateCcw size={14} /> {t('common.clear')}
-          </button>
-          <button type="button" onClick={cancelFilters} className="btn-ghost text-sm">
-            {t('common.cancel')}
-          </button>
-          <button type="button" onClick={applyFilters} className="btn-primary text-sm">
-            {t('common.applyFilters')}
           </button>
         </div>
       </div>
