@@ -447,6 +447,10 @@ class ScanQueueTests(unittest.TestCase):
         self.assertEqual(item.status, "done")
         self.assertEqual(recognize_mock.await_count, 1)
         self.assertEqual(fresh_recognition_calls, 1)
+        self.assertEqual(
+            recognize_mock.await_args.kwargs["rate_limit_priority"],
+            "background",
+        )
         matcher.assert_awaited_once()
         self.assertEqual(matcher.await_args.args[1]["name"], "Sandshrew")
 
