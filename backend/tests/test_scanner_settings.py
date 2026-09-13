@@ -32,6 +32,7 @@ try:
         SCANNER_CAPABILITY_DEGRADED,
         SCANNER_CAPABILITY_FULL,
         ScanProvider,
+        gemini_fallback_enabled,
         get_provider,
         scanner_capability_mode,
     )
@@ -858,6 +859,29 @@ class ScannerConfigurationTests(unittest.TestCase):
         self.assertNotIn("openai_api_key", result)
         self.assertNotIn("gemini-secret", repr(result))
         self.assertNotIn("openai-secret", repr(result))
+
+    def test_gemini_fallback_is_opt_in_and_scoped_to_one_user(self):
+        other = User(
+            username="trainer",
+            hashed_password="x",
+            role="trainer",
+            is_active=True,
+        )
+        self.db.add(other)
+        self.db.commit()
+
+        self.assertFalse(gemini_fallback_enabled(self.db, self.user.id))
+        self.assertFalse(gemini_fallback_enabled(self.db, other.id))
+
+        result = update_settings(
+            {"scanner_gemini_fallback": True},
+            self.db,
+            self.user,
+        )
+
+        self.assertEqual(result["scanner_gemini_fallback"], "true")
+        self.assertTrue(gemini_fallback_enabled(self.db, self.user.id))
+        self.assertFalse(gemini_fallback_enabled(self.db, other.id))
 
     def test_legacy_bulk_update_cannot_bypass_atomic_validation(self):
         with self.assertRaises(HTTPException) as caught:

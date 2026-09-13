@@ -28,10 +28,12 @@ from services.scan_providers import (
     GEMINI,
     SCANNER_CAPABILITY_DEGRADED,
     ScanProvider,
+    gemini_fallback_enabled,
     get_provider,
     image_part,
     image_part_from_bytes,
     require_scanner_capability_mode,
+    resolve_model,
     resolve_scanner_request_timeout,
     text_part,
 )
@@ -1398,18 +1400,18 @@ async def match_card_info(
     }
 
 
-async def recognize_sanitized_card(
+async def _recognize_with_provider(
     db: Session,
     user_id: int,
     image_bytes: bytes,
     content_type: str,
+    provider: ScanProvider,
     *,
     trace: ScanTrace | None = None,
     prewarm_candidates: bool = False,
     on_recognized: Callable[[dict], None] | None = None,
 ) -> dict:
-    """Recognize one already-sanitized image for direct and queued scans."""
-    provider = get_provider(db, user_id)
+    """Recognize one already-sanitized image with an explicit provider."""
     request_timeout_seconds = resolve_scanner_request_timeout(
         db, user_id, provider.name
     )
@@ -1484,6 +1486,130 @@ async def recognize_sanitized_card(
         if trace:
             trace.record_error(f"Candidate matching failed: {type(exc).__name__}")
         raise
+
+
+async def recognize_sanitized_card(
+    db: Session,
+    user_id: int,
+    image_bytes: bytes,
+    content_type: str,
+    *,
+    trace: ScanTrace | None = None,
+    prewarm_candidates: bool = False,
+    on_recognized: Callable[[dict], None] | None = None,
+    rate_limit_priority: str = "interactive",
+) -> dict:
+    """Recognize one already-sanitized image for direct and queued scans.
+
+    Retries with Gemini when the user's configured provider is OpenAI-
+    compatible, opted in to the fallback setting, and could not confidently
+    identify the card on its own — see gemini_fallback_enabled(). Gemini's
+    own extraction runs from scratch rather than reusing the first attempt's
+    fields, so a weaker provider's misreadings never carry over into the
+    fallback attempt.
+    """
+    provider = get_provider(db, user_id)
+
+    def notify_recognized(card_info: dict, *, fallback_used: bool) -> None:
+        card_info["_gemini_fallback_used"] = fallback_used
+        if on_recognized:
+            on_recognized(card_info)
+
+    result = await _recognize_with_provider(
+        db,
+        user_id,
+        image_bytes,
+        content_type,
+        provider,
+        trace=trace,
+        prewarm_candidates=prewarm_candidates,
+        on_recognized=lambda card_info: notify_recognized(
+            card_info, fallback_used=False
+        ),
+    )
+    if result.get("recognized") is not None:
+        result["recognized"]["_gemini_fallback_used"] = False
+
+    if provider.is_gemini or result.get("_identity_confident"):
+        return result
+    fallback_trace = None
+
+    def restore_primary_recognition() -> None:
+        if not on_recognized or result.get("recognized") is None:
+            return
+        try:
+            on_recognized(result["recognized"])
+        except Exception as exc:
+            logger.warning(
+                "Could not restore the primary recognition cache: %s",
+                type(exc).__name__,
+            )
+
+    try:
+        if not gemini_fallback_enabled(db, user_id):
+            return result
+        if not get_gemini_key(db, user_id=user_id):
+            # Opted in but never configured a key: nothing to fall back to,
+            # and not this function's place to tell the user that mid-scan.
+            return result
+
+        fallback_model = resolve_model(db, user_id, GEMINI)
+        if not fallback_model:
+            return result
+        fallback_provider = ScanProvider(GEMINI, fallback_model)
+
+        if trace and trace.enabled:
+            fallback_trace = create_scan_trace(
+                db,
+                user_id,
+                mode=trace.data.get("mode") or "single",
+                job_id=trace.data.get("job_id"),
+                item_id=trace.data.get("item_id"),
+                filename=trace.data.get("filename"),
+                provider=fallback_provider.name,
+                model=fallback_provider.model(),
+            )
+            fallback_trace.data["fallback_for_trace_id"] = trace.trace_id
+            trace.data["fallback_trace_id"] = fallback_trace.trace_id
+            fallback_trace.set_image(image_bytes)
+
+        with fallback_provider.rate_limit_scope(rate_limit_priority):
+            fallback_result = await _recognize_with_provider(
+                db,
+                user_id,
+                image_bytes,
+                content_type,
+                fallback_provider,
+                trace=fallback_trace,
+                prewarm_candidates=prewarm_candidates,
+                on_recognized=lambda card_info: notify_recognized(
+                    card_info, fallback_used=True
+                ),
+            )
+        if fallback_result.get("recognized") is not None:
+            fallback_result["recognized"]["_gemini_fallback_used"] = True
+
+        if not fallback_result.get("_identity_confident"):
+            # A second uncertain opinion must not replace the original result.
+            # Restore the queue cache too, because the fallback extraction was
+            # persisted before matching in case the catalogue was unavailable.
+            restore_primary_recognition()
+            return result
+    except Exception as exc:
+        # Best-effort: the original (unconfident) result is still a real
+        # answer with real candidates. A failed fallback attempt — a rate
+        # limit, an expired key, a transient Gemini outage — must not turn
+        # that into a failed scan.
+        logger.warning(
+            "Gemini fallback recognition failed (non-blocking): %s",
+            type(exc).__name__,
+        )
+        restore_primary_recognition()
+        return result
+    finally:
+        if fallback_trace:
+            fallback_trace.save()
+    return fallback_result
 
 
 @router.post("/recognize")

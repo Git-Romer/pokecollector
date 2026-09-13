@@ -533,6 +533,7 @@ async def default_scan_processor(
                 content_type,
                 trace=trace,
                 prewarm_candidates=True,
+                rate_limit_priority="background",
                 on_recognized=(
                     lambda card_info: _persist_recognition_cache(
                         {item_id: card_info}, lease_token

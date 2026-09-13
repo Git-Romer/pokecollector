@@ -40,7 +40,12 @@ async function installScanReviewApi(page, { failAtomic = false } = {}) {
       status: 'done',
       resolved: false,
       has_image: true,
-      recognized: { name: 'Bill', number: '74', language: 'en' },
+      recognized: {
+        name: 'Bill',
+        number: '74',
+        language: 'en',
+        _gemini_fallback_used: true,
+      },
       matches: [match('base1-074', 'Bill', '74', 'ja'), match('base1-075', 'Professor Oak', '75')],
     },
     {
@@ -167,6 +172,11 @@ test('linked review is accessible, advances through a batch, and keeps resolved 
   await page.goto('/scans/7')
 
   await expect(page.getByText('Bill', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('Resolved via Gemini fallback', { exact: true })).toBeVisible()
+  await expect(
+    page.locator('article').filter({ hasText: 'Machop' })
+      .getByText('Resolved via Gemini fallback', { exact: true }),
+  ).toHaveCount(0)
   const firstCandidate = page.getByRole('button', { name: 'Compare with your photo' }).first()
   await expect(firstCandidate.locator('..').getByText('🇯🇵 JA', { exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: 'Expand photo' }).first().click()

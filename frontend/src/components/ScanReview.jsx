@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { AlertTriangle, Camera, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Loader2, Plus, RefreshCw, Trash2, X } from 'lucide-react'
+import { AlertTriangle, Camera, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Loader2, Plus, RefreshCw, Sparkles, Trash2, X } from 'lucide-react'
 import { fetchScanCandidateImage, fetchScanJobItemImage } from '../api/client'
 import CardImage from './CardImage'
 import { useDialogBehavior } from './ui/dialogBehavior'
@@ -788,6 +788,11 @@ export function ScanItemPanel({ jobId, item, onAdd, onRetry, onDismiss, onReview
               )}
               {item.recognized?.number && (
                 <p className="text-xs text-text-muted">Nr. {item.recognized.number}</p>
+              )}
+              {item.recognized?._gemini_fallback_used && (
+                <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-blue/30 bg-blue-subtle px-2 py-0.5 text-[10px] font-semibold text-blue">
+                  <Sparkles size={10} /> {t('scanner.geminiFallbackUsed')}
+                </span>
               )}
             </div>
             <div className="flex flex-shrink-0 items-center gap-1.5">

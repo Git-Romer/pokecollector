@@ -71,6 +71,13 @@ async function installApi(page, user = USER, initialConfiguration = scannerConfi
 
   let savedBody = null
   let testedBody = null
+  const settingsWrites = []
+  let genericSettings = {
+    language: 'en', currency: 'EUR', price_primary: 'trend',
+    price_display: '["trend"]', scan_diagnostics_available: 'false',
+    scan_diagnostics_deletion_available: 'false',
+    scanner_gemini_fallback: 'false',
+  }
   let currentConfiguration = structuredClone(initialConfiguration)
   await page.route('**/api/**', async route => {
     const request = route.request()
@@ -136,11 +143,13 @@ async function installApi(page, user = USER, initialConfiguration = scannerConfi
         visual_verification: true,
       } })
     }
-    if (path === '/api/settings/') return route.fulfill({ json: {
-      language: 'en', currency: 'EUR', price_primary: 'trend',
-      price_display: '["trend"]', scan_diagnostics_available: 'false',
-      scan_diagnostics_deletion_available: 'false',
-    } })
+    if (path === '/api/settings/' && request.method() === 'PUT') {
+      const body = request.postDataJSON()
+      settingsWrites.push(body)
+      genericSettings = { ...genericSettings, ...body }
+      return route.fulfill({ json: genericSettings })
+    }
+    if (path === '/api/settings/') return route.fulfill({ json: genericSettings })
     if (path === '/api/settings/exchange-rate') return route.fulfill({ json: { rate: 1 } })
     if (path === '/api/settings/tcgdex-filter-languages') return route.fulfill({ json: { languages: [{ code: 'en', name: 'English' }] } })
     if (path === '/api/sets/') return route.fulfill({ json: [] })
@@ -158,6 +167,7 @@ async function installApi(page, user = USER, initialConfiguration = scannerConfi
   return {
     savedBody: () => savedBody,
     testedBody: () => testedBody,
+    settingsWrites: () => settingsWrites,
   }
 }
 
@@ -256,6 +266,22 @@ test('guides provider selection and saves one guarded configuration', async ({ p
     request_timeout_seconds: 120,
   })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+})
+
+test('Gemini fallback is opt-in and persists through user settings', async ({ page }) => {
+  const api = await installApi(page)
+  await page.goto('/settings')
+
+  const fallback = page.getByRole('button', {
+    name: 'Fall back to Gemini when unsure',
+  })
+  await expect(fallback).toHaveAttribute('aria-pressed', 'false')
+  await fallback.click()
+
+  await expect(fallback).toHaveAttribute('aria-pressed', 'true')
+  await expect.poll(api.settingsWrites).toContainEqual({
+    scanner_gemini_fallback: 'true',
+  })
 })
 
 test('restores each provider timeout and saves an explicit advanced choice', async ({ page }) => {
