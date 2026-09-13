@@ -79,7 +79,17 @@ def download_backup(
 
     if "full" in groups:
         if "images" not in groups:
-            cmd.extend(["--exclude-table", "image_cache"])
+            # Exclude only the row data, not the table/sequence definitions. `pg_dump`
+            # does not treat a sequence owned by an excluded table as excluded too, so
+            # `--exclude-table` leaves an orphaned `DROP SEQUENCE ...id_seq` statement
+            # in the `--clean` output with no matching `DROP TABLE` to go with it. On
+            # restore, that stray `DROP SEQUENCE` fails (the live table's column
+            # default still depends on it) and, since it runs early in the script,
+            # every statement after it - all of the actual collection data - never
+            # executes. `--exclude-table-data` keeps the table/sequence statements
+            # paired correctly while still skipping the (potentially large) cached
+            # image blobs.
+            cmd.extend(["--exclude-table-data", "image_cache"])
     else:
         tables = []
         for group in groups:
@@ -150,6 +160,9 @@ async def restore_backup(
                 "-p", params["port"],
                 "-U", params["user"],
                 "-d", params["dbname"],
+                # Without this, psql keeps going after a failed statement and still
+                # exits 0, so a partially-failed restore is reported as a success.
+                "-v", "ON_ERROR_STOP=1",
                 "-f", restore_path,
             ],
             env=env,
