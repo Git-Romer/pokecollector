@@ -11,6 +11,15 @@ import { resolveCardImageUrl } from '../utils/imageUrl'
 import { getEffectiveCardPrice } from '../utils/prices'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
+import { useDynamicFilterUrlState } from '../hooks/useDynamicFilterUrlState'
+
+const WISHLIST_FILTER_DEFINITIONS = {
+  filterSet: { param: 'set', default: '' },
+  filterRarity: { param: 'rarity', default: '' },
+  filterMinPrice: { param: 'min_price', default: '' },
+  filterMaxPrice: { param: 'max_price', default: '' },
+  filterHasAlert: { param: 'has_alert', default: false, type: 'boolean' },
+}
 
 function WishlistItemEditor({ item, onDone }) {
   const [quantity, setQuantity] = useState(item.quantity || 1)
@@ -132,12 +141,13 @@ export default function Wishlist() {
   const [selectedItem, setSelectedItem] = useState(null)
   const [sortBy, setSortBy] = useState('created_at')
   const [sortOrder, setSortOrder] = useState('desc')
-  const [filterSet, setFilterSet] = useState('')
-  const [filterRarity, setFilterRarity] = useState('')
-  const [filterMinPrice, setFilterMinPrice] = useState('')
-  const [filterMaxPrice, setFilterMaxPrice] = useState('')
-  const [filterHasAlert, setFilterHasAlert] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
+  const {
+    filters,
+    updateFilter,
+    clearFilters,
+  } = useDynamicFilterUrlState(WISHLIST_FILTER_DEFINITIONS)
+  const { filterSet, filterRarity, filterMinPrice, filterMaxPrice, filterHasAlert } = filters
   const queryClient = useQueryClient()
 
   const { data: items = [], isLoading } = useQuery({
@@ -226,10 +236,6 @@ export default function Wishlist() {
     return result
   }, [items, filterSet, filterRarity, filterMinPrice, filterMaxPrice, filterHasAlert, sortBy, sortOrder, pricePrimaryField])
 
-  const resetFilters = () => {
-    setFilterSet(''); setFilterRarity(''); setFilterMinPrice(''); setFilterMaxPrice(''); setFilterHasAlert(false)
-  }
-
   return (
     <div className="space-y-4 pb-2">
       <TabNav tabs={COLLECTION_TABS} />
@@ -265,22 +271,16 @@ export default function Wishlist() {
                   <option value="price">{t('wishlist.sortPrice')}</option>
                   <option value="name">{t('wishlist.sortName')}</option>
                 </select>
-                <button onClick={() => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')} className="btn-ghost py-1.5 px-2">
+                <button onClick={() => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')} aria-label={sortOrder === 'asc' ? t('common.sortDescending') : t('common.sortAscending')} className="btn-ghost py-1.5 px-2">
                   {sortOrder === 'asc' ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                 </button>
               </div>
 
-              <button onClick={() => setShowFilters(f => !f)}
+              <button onClick={() => setShowFilters(current => !current)}
                 className={`btn-ghost text-sm py-1.5 ${showFilters || hasActiveFilters ? 'border-brand-red/30 text-brand-red' : ''}`}>
                 <Filter size={14} /> {t('common.filter')}
                 {hasActiveFilters && <span className="ml-1 bg-brand-red text-white text-xs rounded-full w-4 h-4 flex items-center justify-center leading-none">!</span>}
               </button>
-
-              {hasActiveFilters && (
-                <button onClick={resetFilters} className="btn-ghost text-sm py-1.5">
-                  <X size={14} /> {t('common.clear')}
-                </button>
-              )}
 
               <span className="text-xs text-text-muted ml-auto">{filtered.length} / {items.length} · {totalCopies} {t('wishlist.copies')}</span>
             </div>
@@ -288,35 +288,40 @@ export default function Wishlist() {
             {showFilters && (
               <div className="pt-3 border-t border-border grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                 <div>
-                  <label className="text-xs text-text-muted mb-1 block">{t('wishlist.filterSet')}</label>
-                  <select className="select text-sm py-1.5" value={filterSet} onChange={(e) => setFilterSet(e.target.value)}>
+                  <label htmlFor="wishlist-filter-set" className="text-xs text-text-muted mb-1 block">{t('wishlist.filterSet')}</label>
+                  <select id="wishlist-filter-set" className="select text-sm py-1.5" value={filterSet} onChange={(e) => updateFilter('filterSet', e.target.value)}>
                     <option value="">{t('wishlist.allSets')}</option>
                     {sets.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-text-muted mb-1 block">{t('wishlist.filterRarity')}</label>
-                  <select className="select text-sm py-1.5" value={filterRarity} onChange={(e) => setFilterRarity(e.target.value)}>
+                  <label htmlFor="wishlist-filter-rarity" className="text-xs text-text-muted mb-1 block">{t('wishlist.filterRarity')}</label>
+                  <select id="wishlist-filter-rarity" className="select text-sm py-1.5" value={filterRarity} onChange={(e) => updateFilter('filterRarity', e.target.value)}>
                     <option value="">{t('wishlist.allRarities')}</option>
                     {rarities.map(r => <option key={r} value={r}>{r}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-text-muted mb-1 block">{t('wishlist.filterMinPrice')}</label>
-                  <input type="number" min="0" step="0.01" placeholder="0" value={filterMinPrice}
-                    onChange={(e) => setFilterMinPrice(e.target.value)} className="input text-sm py-1.5" />
+                  <label htmlFor="wishlist-filter-min-price" className="text-xs text-text-muted mb-1 block">{t('wishlist.filterMinPrice')}</label>
+                  <input id="wishlist-filter-min-price" type="number" min="0" step="0.01" placeholder="0" value={filterMinPrice}
+                    onChange={(e) => updateFilter('filterMinPrice', e.target.value)} className="input text-sm py-1.5" />
                 </div>
                 <div>
-                  <label className="text-xs text-text-muted mb-1 block">{t('wishlist.filterMaxPrice')}</label>
-                  <input type="number" min="0" step="0.01" placeholder="∞" value={filterMaxPrice}
-                    onChange={(e) => setFilterMaxPrice(e.target.value)} className="input text-sm py-1.5" />
+                  <label htmlFor="wishlist-filter-max-price" className="text-xs text-text-muted mb-1 block">{t('wishlist.filterMaxPrice')}</label>
+                  <input id="wishlist-filter-max-price" type="number" min="0" step="0.01" placeholder="∞" value={filterMaxPrice}
+                    onChange={(e) => updateFilter('filterMaxPrice', e.target.value)} className="input text-sm py-1.5" />
                 </div>
                 <div className="flex items-center gap-2">
                   <label className="flex items-center gap-2 cursor-pointer mt-4">
-                    <input type="checkbox" checked={filterHasAlert} onChange={(e) => setFilterHasAlert(e.target.checked)}
+                    <input type="checkbox" checked={filterHasAlert} onChange={(e) => updateFilter('filterHasAlert', e.target.checked)}
                       className="w-4 h-4 accent-brand-red" />
                     <span className="text-xs text-text-secondary">{t('wishlist.filterHasAlert')}</span>
                   </label>
+                </div>
+                <div className="col-span-2 sm:col-span-3 lg:col-span-5 flex justify-start border-t border-border pt-3">
+                  <button type="button" className="btn-ghost" onClick={clearFilters}>
+                    <X size={14} /> {t('common.clear')}
+                  </button>
                 </div>
               </div>
             )}

@@ -27,8 +27,14 @@ import {
 } from '../utils/productCardPicker'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import { buildProductDisplayRows, summarizeProductBatch } from '../utils/productBatches'
+import { useDynamicFilterUrlState } from '../hooks/useDynamicFilterUrlState'
 
 const PRODUCT_TYPES = ['Booster Pack', 'Booster Box', 'Elite Trainer Box', 'Tin', 'Bundle', 'Collection Box', 'Blister', 'Other']
+const PRODUCT_FILTER_DEFINITIONS = {
+  filterType: { param: 'type', default: '' },
+  filterDateFrom: { param: 'date_from', default: '' },
+  filterDateTo: { param: 'date_to', default: '' },
+}
 
 function ProductForm({ initial = {}, onSubmit, onCancel, loading }) {
   const { t, formatPrice, exchangeRate, exchangeRateReady } = useSettings()
@@ -748,11 +754,14 @@ export default function Products() {
   const [period, setPeriod] = useState('total')
   const [sortBy, setSortBy] = useState('purchase_date')
   const [sortOrder, setSortOrder] = useState('desc')
-  const [filterType, setFilterType] = useState('')
-  const [filterDateFrom, setFilterDateFrom] = useState('')
-  const [filterDateTo, setFilterDateTo] = useState('')
   const [filterPnl, setFilterPnl] = useState('all')
   const [showFilters, setShowFilters] = useState(false)
+  const {
+    filters,
+    updateFilter,
+    clearFilters,
+  } = useDynamicFilterUrlState(PRODUCT_FILTER_DEFINITIONS)
+  const { filterType, filterDateFrom, filterDateTo } = filters
   const queryClient = useQueryClient()
   const { data: products = [], isLoading } = useQuery({
     queryKey: ['products', pricePrimaryField],
@@ -905,8 +914,6 @@ export default function Products() {
     })
   }
 
-  const resetFilters = () => { setFilterType(''); setFilterDateFrom(''); setFilterDateTo(''); setFilterPnl('all') }
-
   const monthlyChartData = summary?.monthly?.map(m => ({
     month: m.month, invested: m.invested, current: m.current, pnl: m.pnl,
   })) || []
@@ -1039,22 +1046,16 @@ export default function Products() {
                 <option value="product_name">{t('products.sortName')}</option>
                 <option value="pnl">{t('products.sortPnl')}</option>
               </select>
-              <button onClick={() => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')} className="btn-ghost py-1.5 px-2">
+              <button onClick={() => setSortOrder(o => o === 'asc' ? 'desc' : 'asc')} aria-label={sortOrder === 'asc' ? t('common.sortDescending') : t('common.sortAscending')} className="btn-ghost py-1.5 px-2">
                 {sortOrder === 'asc' ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
               </button>
             </div>
 
-            <button onClick={() => setShowFilters(f => !f)}
+            <button onClick={() => setShowFilters(current => !current)}
               className={`btn-ghost text-sm py-1.5 ${showFilters || hasActiveFilters ? 'border-brand-red/30 text-brand-red' : ''}`}>
               <Filter size={14} /> {t('common.filter')}
               {hasActiveFilters && <span className="ml-1 bg-brand-red text-white text-xs rounded-full w-4 h-4 flex items-center justify-center leading-none">!</span>}
             </button>
-
-            {hasActiveFilters && (
-              <button onClick={resetFilters} className="btn-ghost text-sm py-1.5">
-                <X size={14} /> {t('common.clear')}
-              </button>
-            )}
 
             <div className="flex items-center gap-1 ml-auto">
               {[
@@ -1079,22 +1080,27 @@ export default function Products() {
           {showFilters && (
             <div className="pt-3 border-t border-border grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div>
-                <label className="text-xs text-text-muted mb-1 block">{t('products.filterType')}</label>
-                <select className="select text-sm py-1.5" value={filterType} onChange={(e) => setFilterType(e.target.value)}>
+                <label htmlFor="products-filter-type" className="text-xs text-text-muted mb-1 block">{t('products.filterType')}</label>
+                <select id="products-filter-type" className="select text-sm py-1.5" value={filterType} onChange={(e) => updateFilter('filterType', e.target.value)}>
                   <option value="">{t('products.allTypes')}</option>
                   {PRODUCT_TYPES.map(tp => <option key={tp} value={tp}>{tp}</option>)}
                 </select>
               </div>
               <div>
-                <label className="text-xs text-text-muted mb-1 block">{t('products.filterDateFrom')}</label>
-                <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} className="input text-sm py-1.5" />
+                <label htmlFor="products-filter-date-from" className="text-xs text-text-muted mb-1 block">{t('products.filterDateFrom')}</label>
+                <input id="products-filter-date-from" type="date" value={filterDateFrom} onChange={(e) => updateFilter('filterDateFrom', e.target.value)} className="input text-sm py-1.5" />
               </div>
               <div>
-                <label className="text-xs text-text-muted mb-1 block">{t('products.filterDateTo')}</label>
-                <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} className="input text-sm py-1.5" />
+                <label htmlFor="products-filter-date-to" className="text-xs text-text-muted mb-1 block">{t('products.filterDateTo')}</label>
+                <input id="products-filter-date-to" type="date" value={filterDateTo} onChange={(e) => updateFilter('filterDateTo', e.target.value)} className="input text-sm py-1.5" />
               </div>
               <div className="flex items-end">
                 <span className="text-xs text-text-muted">{filteredAndSorted.length} / {products.length} {t('products.items')}</span>
+              </div>
+              <div className="col-span-2 sm:col-span-4 flex justify-start border-t border-border pt-3">
+                <button type="button" className="btn-ghost" onClick={clearFilters}>
+                  <X size={14} /> {t('common.clear')}
+                </button>
               </div>
             </div>
           )}

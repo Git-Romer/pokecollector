@@ -20,7 +20,6 @@ import {
   getLastCardSearchPage,
   isValidCardSearchPage,
   parseCardSearchPage,
-  resetCardSearchFilters,
   updateCardSearchParams,
 } from '../utils/cardSearchUrlState'
 import {
@@ -28,6 +27,8 @@ import {
   hasActiveScanJobs,
   scanAttentionCount,
 } from '../utils/scanJobs'
+import { useDynamicFilterUrlState } from '../hooks/useDynamicFilterUrlState'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
 const CODE_NUMBER_RE = /^([A-Za-z]+\d*)\s+(\d+)$/
 
@@ -35,99 +36,126 @@ const TYPES = ['Fire', 'Water', 'Grass', 'Lightning', 'Psychic', 'Fighting', 'Da
 const CATEGORIES = ['Pokemon', 'Trainer', 'Energy']
 const SUBTYPES = ['Basic', 'Stage1', 'Stage2', 'Supporter', 'Item', 'Stadium', 'Tool', 'Technical Machine', 'Special']
 const RARITIES = ['Common', 'Uncommon', 'Rare', 'Rare Holo', 'Rare Ultra', 'Rare Secret', 'Illustration Rare', 'Special Illustration Rare', 'Hyper Rare', 'Double Rare', 'ACE SPEC Rare', 'Promo', 'Amazing Rare']
+const CARD_SEARCH_FILTER_DEFINITIONS = {
+  category: { param: 'category', default: '' },
+  type: { param: 'type', default: '' },
+  subtype: { param: 'subtype', default: '' },
+  rarity: { param: 'rarity', default: '' },
+  series: { param: 'series', default: '' },
+  set_id: { param: 'set_id', default: '' },
+  artist: { param: 'artist', default: '' },
+  rule_text: { param: 'rule_text', default: '' },
+  hp_min: { param: 'hp_min', default: '' },
+  hp_max: { param: 'hp_max', default: '' },
+}
+const CARD_SEARCH_TEXT_DEBOUNCE_MS = 300
 
-function FilterForm({ filters, setFilter, allSeries, setsForSeries, toggleSortOrder, t }) {
+function FilterForm({ filters, setFilter, allSeries, setsForSeries, showAdvanced, setShowAdvanced, t }) {
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <SortAsc size={14} className="text-text-muted flex-shrink-0" />
-          <span className="text-xs text-text-muted">{t('cardSearch.sortBy')}:</span>
-          <select
-            className="select text-sm py-1.5 w-36"
-            value={filters.sort_by}
-            onChange={(e) => { setFilter('sort_by', e.target.value) }}
-          >
-            <option value="">—</option>
-            <option value="name">{t('cardSearch.sortName')}</option>
-            <option value="number">{t('cardSearch.sortNumber')}</option>
-            <option value="rarity">{t('cardSearch.sortRarity')}</option>
-          </select>
-          {filters.sort_by && (
-            <button
-              onClick={toggleSortOrder}
-              className="btn-ghost py-1.5 px-2 text-sm"
-            >
-              {filters.sort_order === 'asc' ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-            </button>
-          )}
-        </div>
-      </div>
-
+      <h3 className="text-sm font-semibold text-text-primary">{t('common.normalFilters')}</h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
         <div>
-          <label className="text-xs text-text-muted mb-1 block">{t('cardSearch.cardCategory')}</label>
-          <select className="select" value={filters.category} onChange={(e) => setFilter('category', e.target.value)}>
+          <label htmlFor="card-search-category" className="text-xs text-text-muted mb-1 block">{t('cardSearch.cardCategory')}</label>
+          <select id="card-search-category" className="select" value={filters.category} onChange={(e) => setFilter('category', e.target.value)}>
             <option value="">{t('cardSearch.allCategories')}</option>
             {CATEGORIES.map(category => <option key={category} value={category}>{category}</option>)}
           </select>
         </div>
         <div>
-          <label className="text-xs text-text-muted mb-1 block">{t('cardSearch.energyType')}</label>
-          <select className="select" value={filters.type} onChange={(e) => setFilter('type', e.target.value)}>
+          <label htmlFor="card-search-energy-type" className="text-xs text-text-muted mb-1 block">{t('cardSearch.energyType')}</label>
+          <select id="card-search-energy-type" className="select" value={filters.type} onChange={(e) => setFilter('type', e.target.value)}>
             <option value="">{t('cardSearch.allEnergyTypes')}</option>
             {TYPES.map(tp => <option key={tp} value={tp}>{tp}</option>)}
           </select>
         </div>
         <div>
-          <label className="text-xs text-text-muted mb-1 block">{t('cardSearch.subtype')}</label>
-          <select className="select" value={filters.subtype} onChange={(e) => setFilter('subtype', e.target.value)}>
-            <option value="">{t('cardSearch.allSubtypes')}</option>
-            {SUBTYPES.map(subtype => <option key={subtype} value={subtype}>{subtype}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="text-xs text-text-muted mb-1 block">{t('common.rarity')}</label>
-          <select className="select" value={filters.rarity} onChange={(e) => setFilter('rarity', e.target.value)}>
+          <label htmlFor="card-search-rarity" className="text-xs text-text-muted mb-1 block">{t('common.rarity')}</label>
+          <select id="card-search-rarity" className="select" value={filters.rarity} onChange={(e) => setFilter('rarity', e.target.value)}>
             <option value="">{t('common.allRarities')}</option>
             {RARITIES.map(r => <option key={r} value={r}>{r}</option>)}
           </select>
         </div>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
         <div>
-          <label className="text-xs text-text-muted mb-1 block">{t('cardSearch.series')}</label>
-          <select className="select" value={filters.series} onChange={(e) => setFilter('series', e.target.value)}>
+          <label htmlFor="card-search-series" className="text-xs text-text-muted mb-1 block">{t('cardSearch.series')}</label>
+          <select id="card-search-series" className="select" value={filters.series} onChange={(e) => setFilter('series', e.target.value)}>
             <option value="">{t('cardSearch.allSeries')}</option>
             {allSeries.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
         <div>
-          <label className="text-xs text-text-muted mb-1 block">{t('common.set')}</label>
-          <select className="select" value={filters.set_id} onChange={(e) => setFilter('set_id', e.target.value)}>
+          <label htmlFor="card-search-set" className="text-xs text-text-muted mb-1 block">{t('common.set')}</label>
+          <select id="card-search-set" className="select" value={filters.set_id} onChange={(e) => setFilter('set_id', e.target.value)}>
             <option value="">{t('common.set_id_hint')}</option>
             {setsForSeries.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </div>
-        <div>
-          <label className="text-xs text-text-muted mb-1 block">{t('cardSearch.artist')}</label>
-          <input type="text" placeholder={t('cardSearch.artist')} value={filters.artist}
-            onChange={(e) => setFilter('artist', e.target.value)} className="input text-sm" />
-        </div>
-        <div>
-          <label className="text-xs text-text-muted mb-1 block">{t('cardSearch.hpMin')}</label>
-          <input type="number" min="0" max="999" placeholder="0" value={filters.hp_min}
-            onChange={(e) => setFilter('hp_min', e.target.value)} className="input text-sm" />
-        </div>
-        <div>
-          <label className="text-xs text-text-muted mb-1 block">{t('cardSearch.hpMax')}</label>
-          <input type="number" min="0" max="999" placeholder="999" value={filters.hp_max}
-            onChange={(e) => setFilter('hp_max', e.target.value)} className="input text-sm" />
-        </div>
       </div>
+
+      <button
+        type="button"
+        className="btn-ghost w-full justify-between"
+        aria-expanded={showAdvanced}
+        aria-controls="card-search-advanced-filters"
+        onClick={() => setShowAdvanced(value => !value)}
+      >
+        <span>{t('common.advancedFilters')}</span>
+        <ChevronDown size={16} className={`transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
+      </button>
+
+      {showAdvanced && (
+        <div id="card-search-advanced-filters" className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-xl border border-border p-3">
+          <div>
+            <label htmlFor="card-search-subtype" className="text-xs text-text-muted mb-1 block">{t('cardSearch.subtype')}</label>
+            <select id="card-search-subtype" className="select" value={filters.subtype} onChange={(e) => setFilter('subtype', e.target.value)}>
+              <option value="">{t('cardSearch.allSubtypes')}</option>
+              {SUBTYPES.map(subtype => <option key={subtype} value={subtype}>{subtype}</option>)}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="card-search-artist" className="text-xs text-text-muted mb-1 block">{t('cardSearch.artist')}</label>
+            <input id="card-search-artist" type="text" value={filters.artist}
+              onChange={(e) => setFilter('artist', e.target.value)} className="input text-sm" />
+          </div>
+          <div className="sm:col-span-2">
+            <label htmlFor="card-search-rule-text" className="text-xs text-text-muted mb-1 block">{t('cardSearch.ruleText')}</label>
+            <input id="card-search-rule-text" type="text" value={filters.rule_text}
+              onChange={(e) => setFilter('rule_text', e.target.value)} className="input text-sm" />
+          </div>
+          <div>
+            <label htmlFor="card-search-hp-min" className="text-xs text-text-muted mb-1 block">{t('cardSearch.hpMin')}</label>
+            <input id="card-search-hp-min" type="number" min="0" max="999" placeholder="0" value={filters.hp_min}
+              onChange={(e) => setFilter('hp_min', e.target.value)} className="input text-sm" />
+          </div>
+          <div>
+            <label htmlFor="card-search-hp-max" className="text-xs text-text-muted mb-1 block">{t('cardSearch.hpMax')}</label>
+            <input id="card-search-hp-max" type="number" min="0" max="999" placeholder="999" value={filters.hp_max}
+              onChange={(e) => setFilter('hp_max', e.target.value)} className="input text-sm" />
+          </div>
+        </div>
+      )}
     </div>
   )
+}
+
+export function buildCardSearchParams(filters, langFilter, page, pageSize) {
+  return {
+    name: filters.name || undefined,
+    category: filters.category || undefined,
+    type: filters.type || undefined,
+    subtype: filters.subtype || undefined,
+    rarity: filters.rarity || undefined,
+    set_id: filters.set_id || undefined,
+    artist: filters.artist || undefined,
+    rule_text: filters.rule_text.trim() || undefined,
+    hp_min: filters.hp_min ? parseInt(filters.hp_min, 10) : undefined,
+    hp_max: filters.hp_max ? parseInt(filters.hp_max, 10) : undefined,
+    sort_by: filters.sort_by || undefined,
+    sort_order: filters.sort_order,
+    lang: langFilter,
+    page,
+    page_size: pageSize,
+  }
 }
 
 export default function CardSearch() {
@@ -139,6 +167,7 @@ export default function CardSearch() {
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search])
   const [searchInput, setSearchInput] = useState('')
   const [showFilters, setShowFilters] = useState(false)
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
   const [showCustomModal, setShowCustomModal] = useState(false)
   const [showScanner, setShowScanner] = useState(false)
   const [selectedCard, setSelectedCard] = useState(null)
@@ -177,7 +206,10 @@ export default function CardSearch() {
   // Search state is deliberately derived from the URL. This makes direct links,
   // refreshes, and browser history reproduce precisely the same search.
   const { filters, langFilter, page } = useMemo(() => {
-    const read = (key) => searchParams.get(key)?.trim() || ''
+    const read = (key) => {
+      const value = searchParams.get(key)
+      return key === 'rule_text' ? value || '' : value?.trim() || ''
+    }
     const enumValue = (key, values) => {
       const value = read(key)
       return values.includes(value) ? value : ''
@@ -205,6 +237,7 @@ export default function CardSearch() {
         series: selectedSeries,
         set_id: setIsValid ? selectedSet : '',
         artist: read('artist'),
+        rule_text: read('rule_text'),
         hp_min: hpValue('hp_min'),
         hp_max: hpValue('hp_max'),
         sort_by: enumValue('sort_by', ['name', 'number', 'rarity']),
@@ -215,38 +248,61 @@ export default function CardSearch() {
     }
   }, [allSets, defaultLangFilter, searchParams, visibleLanguageCodes])
 
+  const normalizePanelFilters = useCallback((state) => {
+    const hpValue = (value) => /^\d+$/.test(value) && Number(value) <= 999 ? value : ''
+    const setIsValid = !state.set_id || !state.series || !allSets.length || allSets.some(
+      set => set.id === state.set_id && set.series === state.series,
+    )
+    return {
+      ...state,
+      category: CATEGORIES.includes(state.category) ? state.category : '',
+      type: TYPES.includes(state.type) ? state.type : '',
+      subtype: SUBTYPES.includes(state.subtype) ? state.subtype : '',
+      rarity: RARITIES.includes(state.rarity) ? state.rarity : '',
+      set_id: setIsValid ? state.set_id : '',
+      hp_min: state.hp_min ? hpValue(state.hp_min) : '',
+      hp_max: state.hp_max ? hpValue(state.hp_max) : '',
+    }
+  }, [allSets])
+  const {
+    filters: dynamicFilters,
+    updateFilter: updateDynamicFilter,
+    replaceFilters: replaceDynamicFilters,
+    clearFilters: clearDynamicFilters,
+  } = useDynamicFilterUrlState(CARD_SEARCH_FILTER_DEFINITIONS, {
+    normalizeState: normalizePanelFilters,
+    resetParams: ['page'],
+  })
   const setsForSeries = useMemo(() => {
-    if (!filters.series) return allSets
-    return allSets.filter(s => s.series === filters.series)
-  }, [allSets, filters.series])
+    if (!dynamicFilters.series) return allSets
+    return allSets.filter(set => set.series === dynamicFilters.series)
+  }, [allSets, dynamicFilters.series])
 
   const updateSearchParams = useCallback((updates, { replace = false, resetPage = true } = {}) => {
     const next = updateCardSearchParams(location.search, updates, { resetPage })
     const search = next.toString()
+    if (search === searchParams.toString()) return
     navigate(
       { pathname: location.pathname, search: search ? `?${search}` : '' },
       { replace },
     )
-  }, [location.pathname, location.search, navigate])
+  }, [location.pathname, location.search, navigate, searchParams])
 
-  const queryParams = {
-    name: filters.name || undefined,
-    category: filters.category || undefined,
-    type: filters.type || undefined,
-    subtype: filters.subtype || undefined,
-    rarity: filters.rarity || undefined,
-    set_id: filters.set_id || undefined,
-    artist: filters.artist || undefined,
-    hp_min: filters.hp_min ? parseInt(filters.hp_min, 10) : undefined,
-    hp_max: filters.hp_max ? parseInt(filters.hp_max, 10) : undefined,
-    sort_by: filters.sort_by || undefined,
-    sort_order: filters.sort_order,
-    lang: langFilter,
-    page,
-    page_size: pageSize,
+  const debouncedArtist = useDebouncedValue(dynamicFilters.artist, CARD_SEARCH_TEXT_DEBOUNCE_MS)
+  const debouncedRuleText = useDebouncedValue(dynamicFilters.rule_text, CARD_SEARCH_TEXT_DEBOUNCE_MS)
+  const debouncedHpMin = useDebouncedValue(dynamicFilters.hp_min, CARD_SEARCH_TEXT_DEBOUNCE_MS)
+  const debouncedHpMax = useDebouncedValue(dynamicFilters.hp_max, CARD_SEARCH_TEXT_DEBOUNCE_MS)
+  const queryFilters = {
+    ...filters,
+    ...dynamicFilters,
+    artist: debouncedArtist,
+    rule_text: debouncedRuleText,
+    hp_min: debouncedHpMin,
+    hp_max: debouncedHpMax,
   }
+  const queryParams = buildCardSearchParams(queryFilters, langFilter, page, pageSize)
 
-  const hasQuery = filters.name || filters.category || filters.type || filters.subtype || filters.rarity || filters.set_id || filters.artist || filters.hp_min || filters.hp_max || filters.series
+  const hasQuery = filters.name || queryFilters.category || queryFilters.type || queryFilters.subtype || queryFilters.rarity || queryFilters.set_id || queryFilters.artist || queryFilters.rule_text.trim() || queryFilters.hp_min || queryFilters.hp_max || queryFilters.series
 
   const { data, isLoading, error, isFetching } = useQuery({
     queryKey: ['card-search', queryParams],
@@ -258,14 +314,14 @@ export default function CardSearch() {
   const totalPages = data ? getLastCardSearchPage(data.total_count, pageSize) : 0
   const hasUrlSearchState = Array.from(searchParams.keys()).length > 0
   const hasActiveFilters = Boolean(
-    filters.category || filters.type || filters.subtype || filters.rarity ||
-    filters.set_id || filters.series || filters.artist || filters.hp_min ||
-    filters.hp_max || filters.sort_by
+    dynamicFilters.category || dynamicFilters.type || dynamicFilters.subtype || dynamicFilters.rarity ||
+    dynamicFilters.set_id || dynamicFilters.series || dynamicFilters.artist || dynamicFilters.rule_text.trim() || dynamicFilters.hp_min ||
+    dynamicFilters.hp_max
   )
   const activeFilterCount = [
-    filters.category, filters.type, filters.subtype, filters.rarity,
-    filters.set_id, filters.series, filters.artist, filters.hp_min,
-    filters.hp_max, filters.sort_by,
+    dynamicFilters.category, dynamicFilters.type, dynamicFilters.subtype, dynamicFilters.rarity,
+    dynamicFilters.set_id, dynamicFilters.series, dynamicFilters.artist, dynamicFilters.rule_text.trim(), dynamicFilters.hp_min,
+    dynamicFilters.hp_max,
   ].filter(Boolean).length
   const isCodeNumberSearch = CODE_NUMBER_RE.test(searchInput.trim())
 
@@ -274,24 +330,30 @@ export default function CardSearch() {
     updateSearchParams({ q: searchInput })
   }
 
-  const setFilter = (key, value) => {
-    const updates = { [key]: value }
+  const setDynamicFilter = (key, value) => {
     if (key === 'series') {
-      const setStillValid = !value || allSets.some((set) => set.id === filters.set_id && set.series === value)
-      if (!setStillValid) updates.set_id = ''
+      replaceDynamicFilters(current => {
+        const next = { ...current, [key]: value }
+        const setStillValid = !value || allSets.some(set => set.id === current.set_id && set.series === value)
+        if (!setStillValid) next.set_id = ''
+        return next
+      })
+      return
     }
-    // Text fields update URL state without creating one history entry per keystroke.
-    updateSearchParams(updates, { replace: ['artist', 'hp_min', 'hp_max'].includes(key) })
+    updateDynamicFilter(key, value)
   }
 
-  const toggleSortOrder = () => updateSearchParams({ sort_order: filters.sort_order === 'asc' ? 'desc' : 'asc' })
+  const openFilters = () => {
+    setShowAdvancedFilters(Boolean(dynamicFilters.subtype || dynamicFilters.artist || dynamicFilters.rule_text.trim() || dynamicFilters.hp_min || dynamicFilters.hp_max))
+    setShowFilters(true)
+  }
+
+  const clearFilters = () => {
+    clearDynamicFilters()
+    setShowAdvancedFilters(false)
+  }
 
   const clearSearch = () => navigate({ pathname: location.pathname, search: '' })
-  const resetFilters = () => {
-    const next = resetCardSearchFilters(location.search)
-    const search = next.toString()
-    navigate({ pathname: location.pathname, search: search ? `?${search}` : '' })
-  }
 
   const hasOpenOverlay = Boolean(selectedCard || showFilters || showCustomModal || showScanner)
 
@@ -392,7 +454,15 @@ export default function CardSearch() {
     })
   }, [allSets, filters.name, recentCustomCards])
 
-  const filterFormProps = { filters, setFilter, allSeries, setsForSeries, toggleSortOrder, t }
+  const filterFormProps = {
+    filters: dynamicFilters,
+    setFilter: setDynamicFilter,
+    allSeries,
+    setsForSeries,
+    showAdvanced: showAdvancedFilters,
+    setShowAdvanced: setShowAdvancedFilters,
+    t,
+  }
 
   const cardLang = (card) => card._lang || card.lang || (langFilter === 'all' ? 'en' : langFilter)
 
@@ -476,7 +546,7 @@ export default function CardSearch() {
           <h1 className="text-xl font-bold text-text-primary">{t('cardSearch.title')}</h1>
           <p className="text-sm text-text-secondary mt-1">{t('cardSearch.subtitle')}</p>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
           <button
             onClick={() => setShowScanner(true)}
             className="w-10 h-10 rounded-xl flex items-center justify-center transition-colors"
@@ -536,6 +606,34 @@ export default function CardSearch() {
           onChange={(value) => updateSearchParams({ lang: value === defaultLangFilter ? '' : value })}
           className="select w-full sm:w-52 text-xs py-1.5"
         />
+        <div className="flex items-center gap-2 sm:ml-auto">
+          <SortAsc size={14} className="text-text-muted flex-shrink-0" />
+          <select
+            id="card-search-sort-by"
+            aria-label={t('cardSearch.sortBy')}
+            className="select text-sm py-1.5 w-36"
+            value={filters.sort_by}
+            onChange={(event) => updateSearchParams({
+              sort_by: event.target.value,
+              sort_order: event.target.value ? filters.sort_order : '',
+            })}
+          >
+            <option value="">—</option>
+            <option value="name">{t('cardSearch.sortName')}</option>
+            <option value="number">{t('cardSearch.sortNumber')}</option>
+            <option value="rarity">{t('cardSearch.sortRarity')}</option>
+          </select>
+          {filters.sort_by && (
+            <button
+              type="button"
+              onClick={() => updateSearchParams({ sort_order: filters.sort_order === 'asc' ? 'desc' : 'asc' })}
+              className="btn-ghost py-1.5 px-2 text-sm"
+              aria-label={filters.sort_order === 'asc' ? t('common.sortDescending') : t('common.sortAscending')}
+            >
+              {filters.sort_order === 'asc' ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ─── Search Bar + Filter Button ───────────────────────────── */}
@@ -566,7 +664,8 @@ export default function CardSearch() {
           {/* Filter button — shows active count */}
           <button
             type="button"
-            onClick={() => setShowFilters(true)}
+            onClick={openFilters}
+            aria-label={t('cardSearch.filters')}
             className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl border transition-colors text-sm font-medium
               ${hasActiveFilters
                 ? 'bg-brand-red/10 border-brand-red/50 text-brand-red'
@@ -598,20 +697,15 @@ export default function CardSearch() {
         <div className="p-4 space-y-4">
           <FilterForm {...filterFormProps} />
 
-          {hasActiveFilters && (
+          <div className="flex justify-start border-t border-border pt-3">
             <button
-              onClick={() => { resetFilters(); setShowFilters(false) }}
-              className="btn-ghost w-full justify-center"
+              type="button"
+              onClick={clearFilters}
+              className="btn-ghost justify-center"
             >
               <X size={14} /> {t('common.clear')}
             </button>
-          )}
-          <button
-            onClick={() => setShowFilters(false)}
-            className="btn-primary w-full justify-center"
-          >
-            {t('common.search')}
-          </button>
+          </div>
         </div>
       </Sheet>
 
