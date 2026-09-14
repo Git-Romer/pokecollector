@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List, Any, Literal
+from typing import Optional, List, Any, Literal, Dict
 from datetime import datetime, date
 
 
@@ -174,6 +174,8 @@ class CollectionItemResponse(BaseModel):
     id: int
     card_id: str
     quantity: int
+    allocated_quantity: int = 0
+    available_quantity: int = 0
     condition: str
     variant: str = "Normal"
     purchase_price: Optional[float] = None
@@ -233,20 +235,22 @@ class PriceHistoryResponse(BaseModel):
 
 
 class BinderCreate(BaseModel):
-    name: str
+    name: str = Field(min_length=1, max_length=255)
     description: Optional[str] = None
     color: str = "#EE1515"
     binder_type: str = "collection"
     format: Optional[str] = None
+    target_size: Optional[Literal[20, 40, 60]] = None
     icon_pokemon_id: Optional[int] = None
 
 
 class BinderUpdate(BaseModel):
-    name: Optional[str] = None
+    name: Optional[str] = Field(default=None, min_length=1, max_length=255)
     description: Optional[str] = None
     color: Optional[str] = None
     binder_type: Optional[str] = None
     format: Optional[str] = None
+    target_size: Optional[Literal[20, 40, 60]] = None
     icon_pokemon_id: Optional[int] = None
     is_public: Optional[bool] = None
 
@@ -271,14 +275,99 @@ class BinderResponse(BaseModel):
     color: str
     binder_type: str = "collection"
     format: Optional[str] = None
+    target_size: Optional[Literal[20, 40, 60]] = None
     icon_pokemon_id: Optional[int] = None
     created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     card_count: int = 0
     unique_card_count: int = 0
     is_public: bool = False
 
     class Config:
         from_attributes = True
+
+
+class DeckCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    binder_type: Literal["deck", "physical_deck"] = "deck"
+    target_size: Literal[20, 40, 60] = 60
+    description: Optional[str] = None
+    format: Literal["Standard", "Expanded", "Unlimited", "Casual"] = "Casual"
+
+
+class DeckUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    target_size: Optional[Literal[20, 40, 60]] = None
+    description: Optional[str] = None
+    format: Optional[Literal["Standard", "Expanded", "Unlimited", "Casual"]] = None
+
+
+class DeckEntryCreate(BaseModel):
+    card_id: str
+    required_quantity: int = Field(default=1, ge=1, le=99)
+
+
+class DeckEntryUpdate(BaseModel):
+    required_quantity: int = Field(ge=1, le=99)
+
+
+class DeckEntryResponse(BaseModel):
+    id: int
+    card_id: str
+    required_quantity: int
+    owned_quantity: int = 0
+    shortage: int = 0
+    reserved_elsewhere: int = 0
+    reserved_in_this_deck: int = 0
+    allocated_quantity: int = 0
+    available_quantity: int = 0
+    display_variant: Optional[Dict[str, Any]] = None
+    card: Optional[CardWithSet] = None
+
+
+class DeckCopyLimitWarning(BaseModel):
+    name: str
+    quantity: int
+
+
+class DeckValidationCheck(BaseModel):
+    code: str
+    status: Literal["pass", "fail", "unavailable"]
+    severity: Literal["error", "warning", "info"]
+    message: str
+    details: Dict[str, Any] = Field(default_factory=dict)
+
+
+class DeckValidationResponse(BaseModel):
+    valid: bool
+    errors: List[DeckValidationCheck] = Field(default_factory=list)
+    warnings: List[DeckValidationCheck] = Field(default_factory=list)
+    checks: List[DeckValidationCheck] = Field(default_factory=list)
+
+
+class DeckResponse(BaseModel):
+    id: int
+    name: str
+    binder_type: Literal["deck", "physical_deck"] = "deck"
+    color: str = "#EE1515"
+    icon_pokemon_id: Optional[int] = None
+    target_size: Literal[20, 40, 60]
+    description: Optional[str] = None
+    format: Literal["Standard", "Expanded", "Unlimited", "Casual"] = "Casual"
+    shared_conflict_count: int = 0
+    shared_missing_copy_count: int = 0
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    current_card_count: int = 0
+    remaining_to_target: int = 0
+    over_target_by: int = 0
+    missing_copy_count: int = 0
+    status: Literal["under", "complete", "over"] = "under"
+    composition_counts: Dict[str, int] = Field(default_factory=lambda: {"Pokemon": 0, "Trainer": 0, "Energy": 0, "Other": 0})
+    entries: List[DeckEntryResponse] = Field(default_factory=list)
+    copy_limit_warnings: List[DeckCopyLimitWarning] = Field(default_factory=list)
+    validation: Optional[DeckValidationResponse] = None
+    analysis: Optional[Dict[str, Any]] = None
 
 
 class ProductPurchaseCreate(BaseModel):

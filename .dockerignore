@@ -17,5 +17,9 @@ frontend/.vite
 backend/__pycache__
 backend/backups
 backend/debug
+frontend/test-results
+frontend/playwright-report
+frontend/node_modules
+frontend/dist
 
 /data

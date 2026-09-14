@@ -1,4 +1,5 @@
 export { default as CardDisplay } from './CardDisplay'
+export { default as CardRequirementProgress } from './CardRequirementProgress'
 export { default as CardRow, CardIdentity } from './CardRow'
 export { default as CardDialog } from './CardDialog'
 export { default as CardLegend } from './CardLegend'

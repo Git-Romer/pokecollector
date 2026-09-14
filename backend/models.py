@@ -253,14 +253,39 @@ class Binder(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     description = Column(Text)
     color = Column(String, default="#EE1515")
-    binder_type = Column(String, default="collection")  # "collection" or "wishlist"
+    binder_type = Column(String, default="collection")  # "collection", "wishlist", "deck" (planned), or "physical_deck"
     format = Column(String, nullable=True)  # "Standard", "Expanded", "Unlimited", "Casual"
+    target_size = Column(Integer, nullable=True)
     icon_pokemon_id = Column(Integer, nullable=True)
     is_public = Column(Boolean, default=False, nullable=False)
     auto_owned_set_id = Column(String, nullable=True)
+    # Set only when importing Decks created by the original standalone PR #386
+    # schema. Keeping the source id makes that data migration idempotent.
+    legacy_deck_id = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
     binder_cards = relationship("BinderCard", back_populates="binder", cascade="all, delete-orphan")
+
+    @property
+    def entries(self):
+        """Planned deck entries stored in the shared binder-card table."""
+        if (self.binder_type or "collection") in {"deck", "physical_deck"}:
+            return [entry for entry in self.binder_cards if entry.collection_item_id is None]
+        return list(self.binder_cards)
+
+    @property
+    def allocations(self):
+        """Exact owned copies assigned to this card list."""
+        return [entry for entry in self.binder_cards if entry.collection_item_id is not None]
+
+    __table_args__ = (
+        CheckConstraint(
+            "target_size IS NULL OR target_size IN (20, 40, 60)",
+            name="ck_binders_target_size",
+        ),
+        Index("ux_binders_legacy_deck_id", "legacy_deck_id", unique=True),
+    )
 
 
 class BinderCard(Base):
@@ -280,6 +305,14 @@ class BinderCard(Base):
     __table_args__ = (
         CheckConstraint("required_quantity >= 1 AND required_quantity <= 99", name="ck_binder_card_quantity_range"),
         UniqueConstraint("binder_id", "collection_item_id", name="uq_binder_collection_item"),
+        Index("ix_binder_cards_collection_item_id", "collection_item_id"),
+        Index(
+            "ix_binder_cards_plan_lookup",
+            "binder_id",
+            "card_id",
+            postgresql_where=collection_item_id.is_(None),
+            sqlite_where=collection_item_id.is_(None),
+        ),
     )
 
 

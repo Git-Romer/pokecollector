@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from api.auth import get_current_user
 from database import get_db
-from models import BinderCard, CollectionItem, CollectionCardPhoto, Card, ProductCard, ProductPurchase, Set, User
+from models import Binder, BinderCard, CollectionItem, CollectionCardPhoto, Card, ProductCard, ProductPurchase, Set, User
 from schemas import CollectionItemCreate, CollectionItemUpdate, CollectionItemResponse, BulkCollectionAddRequest, BulkCollectionAddResponse
 from services import pokemon_api
 from services.card_fallbacks import apply_cross_language_fallbacks, build_missing_language_card
@@ -12,7 +12,11 @@ from services.card_numbers import card_number_matches
 from services.collection_photos import MAX_UPLOAD_BYTES, InvalidPhoto, normalize_photo
 from services.card_visibility import visible_any_card_filter, visible_card_filter
 from services.text_search import accent_insensitive_contains, json_array_text_matches, normalize_search_term
-from services.binder_allocations import collection_item_allocated_quantity
+from services.binder_allocations import (
+    collection_binder_allocation_counts,
+    collection_item_allocated_quantity,
+    lock_user_card_allocations,
+)
 from services.digital_sets import digital_sets_enabled
 from services.standard_legality import is_standard_legal_card, is_standard_regulation_mark
 from services.tcgdex_languages import SUPPORTED_TCGDEX_LANGUAGES, has_lang_suffix, is_supported_tcgdex_language, normalize_tcgdex_language
@@ -144,6 +148,12 @@ def _annotate_scan_photos(db: Session, current_user: User, items: list[Collectio
 
 
 def _annotate_collection_items(db: Session, current_user: User, items: list[CollectionItem]) -> list[CollectionItem]:
+    item_ids = [item.id for item in items if item.id is not None]
+    allocated_by_item = collection_binder_allocation_counts(db, current_user.id, item_ids)
+    for item in items:
+        allocated = int(allocated_by_item.get(item.id, 0))
+        item.allocated_quantity = allocated
+        item.available_quantity = max(int(item.quantity or 0) - allocated, 0)
     _annotate_standard_legality(items, _collection_standard_legal_fingerprints(db))
     _annotate_scan_photos(db, current_user, items)
     return _annotate_product_sources(db, current_user, items)
@@ -740,7 +750,7 @@ def update_collection_item(
     item = db.query(CollectionItem).filter(
         CollectionItem.id == item_id,
         CollectionItem.user_id == current_user.id,
-    ).with_for_update(of=CollectionItem).first()
+    ).first()
     if not item:
         raise HTTPException(status_code=404, detail="Collection item not found")
 
@@ -749,18 +759,44 @@ def update_collection_item(
     update_data = update.model_dump(exclude_unset=True)
     if "variant" in update_data:
         update_data["variant"] = _normalize_collection_variant(update_data.get("variant"))
+    initial_card_id = item.card_id
+
+    # Cache a missing language variant before taking the final row lock because
+    # ensure_card_exists may commit. The item is then re-locked and revalidated.
+    new_lang = update_data.get("lang")
+    if new_lang and new_lang != item.lang:
+        card = db.query(Card).filter(Card.id == item.card_id).first()
+        if card and not card.is_custom:
+            tcg_id, _ = pokemon_api.strip_lang_suffix(item.card_id)
+            new_card_id = f"{tcg_id}_{new_lang}"
+            ensure_card_exists(db, new_card_id, lang=new_lang)
+            update_data["card_id"] = new_card_id
+
+    lock_user_card_allocations(db, current_user.id)
+    item = db.query(CollectionItem).filter(
+        CollectionItem.id == item_id,
+        CollectionItem.user_id == current_user.id,
+    ).populate_existing().with_for_update(of=CollectionItem).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Collection item not found")
+    if item.card_id != initial_card_id:
+        raise HTTPException(
+            status_code=409,
+            detail="Collection item changed while updating; please try again",
+        )
+
     active_linked_quantity = _active_product_link_quantity(db, current_user, item.id)
     allocated_quantity = collection_item_allocated_quantity(db, current_user.id, item.id)
     if "quantity" in update_data and update_data["quantity"] is not None:
         if update_data["quantity"] < active_linked_quantity:
             raise HTTPException(
                 status_code=409,
-                detail=f"Collection quantity cannot be lower than {active_linked_quantity} active product-linked copie(s). Sell or unlink those product cards first.",
+                detail=f"Collection quantity cannot be lower than {active_linked_quantity} active product-linked {'copy' if active_linked_quantity == 1 else 'copies'}. Sell or unlink {'that product card' if active_linked_quantity == 1 else 'those product cards'} first.",
             )
         if update_data["quantity"] < allocated_quantity:
             raise HTTPException(
                 status_code=409,
-                detail=f"Collection quantity cannot be lower than {allocated_quantity} copie(s) assigned to binders. Reduce the binder quantities first.",
+                detail=f"Collection quantity cannot be lower than {allocated_quantity} {'copy' if allocated_quantity == 1 else 'copies'} allocated to Card Lists. Release {'that copy' if allocated_quantity == 1 else 'those copies'} first.",
             )
 
     protected_changes = {
@@ -776,17 +812,19 @@ def update_collection_item(
 
     old_card_id = item.card_id
 
-    # If lang is being changed, also update card_id to the correct language variant
-    new_lang = update_data.get("lang")
-    if new_lang and new_lang != item.lang:
-        card = db.query(Card).filter(Card.id == item.card_id).first()
-        if card and not card.is_custom:
-            tcg_id, _ = pokemon_api.strip_lang_suffix(item.card_id)
-            new_card_id = f"{tcg_id}_{new_lang}"
-            ensure_card_exists(db, new_card_id, lang=new_lang)
-            update_data["card_id"] = new_card_id
-
     if "card_id" in update_data and update_data["card_id"] != item.card_id:
+        deck_allocation = db.query(BinderCard.id).join(
+            Binder, Binder.id == BinderCard.binder_id
+        ).filter(
+            BinderCard.collection_item_id == item.id,
+            Binder.user_id == current_user.id,
+            Binder.binder_type == "physical_deck",
+        ).first()
+        if deck_allocation:
+            raise HTTPException(
+                status_code=409,
+                detail="This exact collection row is allocated to a deck. Release it from the deck before changing its card or language.",
+            )
         db.query(BinderCard).filter(BinderCard.collection_item_id == item.id).update(
             {BinderCard.card_id: update_data["card_id"]},
             synchronize_session=False,
@@ -823,6 +861,7 @@ def remove_from_collection(
     db: Session = Depends(get_db),
 ):
     """Remove a card from collection."""
+    lock_user_card_allocations(db, current_user.id)
     item = db.query(CollectionItem).filter(
         CollectionItem.id == item_id,
         CollectionItem.user_id == current_user.id,
@@ -841,7 +880,7 @@ def remove_from_collection(
     if allocated_quantity > 0:
         raise HTTPException(
             status_code=409,
-            detail=f"This collection item has {allocated_quantity} copie(s) assigned to binders. Remove them from those binders first.",
+            detail=f"This collection item has {allocated_quantity} {'copy' if allocated_quantity == 1 else 'copies'} allocated to Card Lists. Release {'that copy' if allocated_quantity == 1 else 'those copies'} first.",
         )
 
     card_id = item.card_id
