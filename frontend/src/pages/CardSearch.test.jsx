@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildCardSearchParams } from './CardSearch'
+import { buildCardSearchParams, CARD_CODE_NUMBER_RE } from './CardSearch'
 
 const filters = {
   name: '',
@@ -22,6 +22,13 @@ const buildParams = (updates = {}) => buildCardSearchParams(
   1,
   20,
 )
+
+describe('CardSearch text request parameters', () => {
+  it('uses the public q parameter for the primary search text', () => {
+    expect(buildParams({ name: 'M2a 228' })).toMatchObject({ q: 'M2a 228' })
+    expect(buildParams({ name: 'M2a 228' }).name).toBeUndefined()
+  })
+})
 
 describe('CardSearch rule text request parameters', () => {
   it('sends a non-empty Rule text value as rule_text', () => {
@@ -54,5 +61,12 @@ describe('CardSearch rule text request parameters', () => {
   it('removes rule_text from the request after Rule text is cleared', () => {
     expect(buildParams({ rule_text: 'Thunder Jab' }).rule_text).toBe('Thunder Jab')
     expect(buildParams({ rule_text: '' }).rule_text).toBeUndefined()
+  })
+})
+
+describe('CardSearch set code and number detection', () => {
+  it('accepts mixed alphanumeric TCGdex set codes', () => {
+    expect(CARD_CODE_NUMBER_RE.test('M2a 228')).toBe(true)
+    expect(CARD_CODE_NUMBER_RE.test('sv08 032')).toBe(true)
   })
 })
