@@ -31,7 +31,7 @@ from services.card_visibility import (
 from services.digital_sets import digital_sets_enabled
 from services.display_language import get_tcgdex_display_language
 from services.image_url_security import validate_public_https_image_url
-from services.card_numbers import card_number_matches
+from services.card_numbers import card_number_filter
 from services.tcgdex_languages import english_fallback_languages, has_lang_suffix, is_supported_tcgdex_language, normalize_tcgdex_language
 from services.text_search import accent_insensitive_contains, json_array_text_matches, normalize_search_term
 from services.card_state import card_state_summaries
@@ -41,8 +41,9 @@ from uuid import uuid4
 
 router = APIRouter()
 
-# Pattern: one or more letters, whitespace, one or more digits (e.g. "MEP 022", "SSP 136", "sv08 032")
-_CODE_NUMBER_RE = re.compile(r'^([A-Za-z]+\d*)\s+(\d+)$')
+# Pattern: an alphanumeric set code beginning with a letter, then a numeric card
+# number (e.g. "MEP 022", "sv08 032", "M2a 228").
+_CODE_NUMBER_RE = re.compile(r'^([A-Za-z][A-Za-z0-9]*)\s+(\d+)$')
 
 
 def _card_to_dict(card: Card, current_user_id: int | None = None) -> dict:
@@ -252,6 +253,7 @@ def _search_by_code_number(
         filters = [
             Card.set_id.in_(tcg_set_ids),
             visible_card_filter(db, current_user.id, lang),
+            card_number_filter(Card.number, card_number),
         ]
         query = db.query(Card).filter(*filters)
         if apply_rule_text and normalized_rule_text:
@@ -260,8 +262,7 @@ def _search_by_code_number(
                 json_array_text_matches(db, Card.attacks, ("name", "effect"), normalized_rule_text),
                 json_array_text_matches(db, Card.abilities, ("name", "effect"), normalized_rule_text),
             ))
-        candidates = query.order_by(Card.id.asc()).all()
-        return [card for card in candidates if card_number_matches(card.number, card_number)]
+        return query.order_by(Card.id.asc()).all()
 
     # 2. Look for cards in DB matching any of those set IDs and the given number.
     # Numeric card numbers are compared without leading zeros so 44 and 044 match.
@@ -570,7 +571,9 @@ def clone_custom_card(
 
 @router.get("/search")
 def search_cards(
+    q: Optional[str] = None,
     name: Optional[str] = None,
+    number: Optional[str] = None,
     set_id: Optional[str] = None,
     type_filter: Optional[str] = Query(None, alias="type"),
     category: Optional[str] = None,
@@ -594,15 +597,18 @@ def search_cards(
 
     Special patterns supported:
     - "MEP 022" or "sv08 032" → set abbreviation/id + card number search
+    - q is the preferred free-text parameter; name remains a compatible alias
+    - number uses the same leading-zero and alphanumeric matching as exact lookup
     - lang: supported TCGdex language code or "all" for all languages
     """
     requested_lang = normalize_tcgdex_language(lang or get_tcgdex_display_language(db, current_user.id))
     search_lang = requested_lang if is_supported_tcgdex_language(requested_lang) else "all"
+    search_term = normalize_search_term(q) or normalize_search_term(name)
 
     try:
         # ── Code + number pattern: "MEP 022", "SSP 136", "sv08 032" ──────────
-        if name:
-            m = _CODE_NUMBER_RE.match(name.strip())
+        if search_term:
+            m = _CODE_NUMBER_RE.match(search_term)
             if m:
                 set_code = m.group(1)
                 card_number = m.group(2)
@@ -621,8 +627,8 @@ def search_cards(
         # ── Pure DB search ────────────────────────────────────────────────────
         query = db.query(Card).filter(Card.is_custom == False, visible_card_filter(db, current_user.id, search_lang))
 
-        if name:
-            query = query.filter(accent_insensitive_contains(db, Card.name, name))
+        if search_term:
+            query = query.filter(accent_insensitive_contains(db, Card.name, search_term))
 
         if set_id:
             # set_id may be composite DB key (sv1_en) or original tcg id (sv1)
@@ -636,6 +642,10 @@ def search_cards(
                 query = query.filter(False)
             else:
                 query = query.filter(Card.set_id == set_id)
+
+        normalized_number = normalize_search_term(number)
+        if normalized_number:
+            query = query.filter(card_number_filter(Card.number, normalized_number))
 
         if type_filter:
             query = query.filter(accent_insensitive_contains(db, cast(Card.types, String), type_filter))

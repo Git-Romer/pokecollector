@@ -45,6 +45,30 @@ def card_number_matches(stored_number: Optional[str], requested_number: object) 
     return normalize_card_number(stored) == normalize_card_number(requested)
 
 
+def card_number_filter(column, requested_number: object):
+    """Build a portable SQL predicate with the same normalization as Python matching.
+
+    SQLAlchemy is imported lazily so the pure card-number helpers remain usable in
+    lightweight environments that do not install the backend's database stack.
+    """
+    from sqlalchemy import case, func
+
+    normalized = normalize_card_number(requested_number)
+    if not normalized:
+        return False
+
+    trimmed = func.trim(column)
+    if normalized.isdigit():
+        without_leading_zeroes = func.ltrim(trimmed, "0")
+        normalized_column = case(
+            (without_leading_zeroes == "", "0"),
+            else_=without_leading_zeroes,
+        )
+    else:
+        normalized_column = func.lower(trimmed)
+    return normalized_column == normalized
+
+
 # --------------------------------------------------------------------------
 # Matching a printed or hand-typed number against TCGdex ids
 # --------------------------------------------------------------------------

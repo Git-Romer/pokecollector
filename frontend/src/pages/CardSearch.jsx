@@ -30,7 +30,7 @@ import {
 import { useDynamicFilterUrlState } from '../hooks/useDynamicFilterUrlState'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
-const CODE_NUMBER_RE = /^([A-Za-z]+\d*)\s+(\d+)$/
+export const CARD_CODE_NUMBER_RE = /^([A-Za-z][A-Za-z0-9]*)\s+(\d+)$/
 
 const TYPES = ['Fire', 'Water', 'Grass', 'Lightning', 'Psychic', 'Fighting', 'Darkness', 'Metal', 'Dragon', 'Colorless', 'Fairy', 'Stellar']
 const CATEGORIES = ['Pokemon', 'Trainer', 'Energy']
@@ -140,7 +140,7 @@ function FilterForm({ filters, setFilter, allSeries, setsForSeries, showAdvanced
 
 export function buildCardSearchParams(filters, langFilter, page, pageSize) {
   return {
-    name: filters.name || undefined,
+    q: filters.name || undefined,
     category: filters.category || undefined,
     type: filters.type || undefined,
     subtype: filters.subtype || undefined,
@@ -323,7 +323,7 @@ export default function CardSearch() {
     dynamicFilters.set_id, dynamicFilters.series, dynamicFilters.artist, dynamicFilters.rule_text.trim(), dynamicFilters.hp_min,
     dynamicFilters.hp_max,
   ].filter(Boolean).length
-  const isCodeNumberSearch = CODE_NUMBER_RE.test(searchInput.trim())
+  const isCodeNumberSearch = CARD_CODE_NUMBER_RE.test(searchInput.trim())
 
   const handleSearch = (e) => {
     e.preventDefault()
@@ -426,7 +426,7 @@ export default function CardSearch() {
     if (!searchTerm) return []
 
     const normalizedSearchTerm = normalizeSearchText(searchTerm)
-    const codeMatch = CODE_NUMBER_RE.exec(searchTerm)
+    const codeMatch = CARD_CODE_NUMBER_RE.exec(searchTerm)
 
     return recentCustomCards.filter((card) => {
       if (textIncludes(card.name, normalizedSearchTerm)) {
