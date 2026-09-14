@@ -174,6 +174,8 @@ class CollectionItemResponse(BaseModel):
     id: int
     card_id: str
     quantity: int
+    allocated_quantity: int = 0
+    available_quantity: int = 0
     condition: str
     variant: str = "Normal"
     purchase_price: Optional[float] = None
@@ -233,20 +235,22 @@ class PriceHistoryResponse(BaseModel):
 
 
 class BinderCreate(BaseModel):
-    name: str
+    name: str = Field(min_length=1, max_length=255)
     description: Optional[str] = None
     color: str = "#EE1515"
     binder_type: str = "collection"
     format: Optional[str] = None
+    target_size: Optional[Literal[20, 40, 60]] = None
     icon_pokemon_id: Optional[int] = None
 
 
 class BinderUpdate(BaseModel):
-    name: Optional[str] = None
+    name: Optional[str] = Field(default=None, min_length=1, max_length=255)
     description: Optional[str] = None
     color: Optional[str] = None
     binder_type: Optional[str] = None
     format: Optional[str] = None
+    target_size: Optional[Literal[20, 40, 60]] = None
     icon_pokemon_id: Optional[int] = None
     is_public: Optional[bool] = None
 
@@ -271,8 +275,10 @@ class BinderResponse(BaseModel):
     color: str
     binder_type: str = "collection"
     format: Optional[str] = None
+    target_size: Optional[Literal[20, 40, 60]] = None
     icon_pokemon_id: Optional[int] = None
     created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     card_count: int = 0
     unique_card_count: int = 0
     is_public: bool = False
@@ -283,6 +289,7 @@ class BinderResponse(BaseModel):
 
 class DeckCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
+    binder_type: Literal["deck", "physical_deck"] = "deck"
     target_size: Literal[20, 40, 60] = 60
     description: Optional[str] = None
     format: Literal["Standard", "Expanded", "Unlimited", "Casual"] = "Casual"
@@ -293,26 +300,15 @@ class DeckUpdate(BaseModel):
     target_size: Optional[Literal[20, 40, 60]] = None
     description: Optional[str] = None
     format: Optional[Literal["Standard", "Expanded", "Unlimited", "Casual"]] = None
-    inventory_state: Optional[Literal["planning", "reserved"]] = None
 
 
 class DeckEntryCreate(BaseModel):
     card_id: str
-    required_quantity: int = Field(default=1, ge=1)
+    required_quantity: int = Field(default=1, ge=1, le=99)
 
 
 class DeckEntryUpdate(BaseModel):
-    required_quantity: int = Field(ge=1)
-
-
-class DeckAssemblyProgressUpdate(BaseModel):
-    entry_id: int
-    pulled_quantity: int = Field(ge=0)
-
-
-class DeckAssemblyProgressResponse(BaseModel):
-    entry_id: int
-    pulled_quantity: int
+    required_quantity: int = Field(ge=1, le=99)
 
 
 class DeckEntryResponse(BaseModel):
@@ -323,6 +319,7 @@ class DeckEntryResponse(BaseModel):
     shortage: int = 0
     reserved_elsewhere: int = 0
     reserved_in_this_deck: int = 0
+    allocated_quantity: int = 0
     available_quantity: int = 0
     display_variant: Optional[Dict[str, Any]] = None
     card: Optional[CardWithSet] = None
@@ -351,10 +348,12 @@ class DeckValidationResponse(BaseModel):
 class DeckResponse(BaseModel):
     id: int
     name: str
+    binder_type: Literal["deck", "physical_deck"] = "deck"
+    color: str = "#EE1515"
+    icon_pokemon_id: Optional[int] = None
     target_size: Literal[20, 40, 60]
     description: Optional[str] = None
     format: Literal["Standard", "Expanded", "Unlimited", "Casual"] = "Casual"
-    inventory_state: Literal["planning", "reserved"] = "planning"
     shared_conflict_count: int = 0
     shared_missing_copy_count: int = 0
     created_at: Optional[datetime] = None

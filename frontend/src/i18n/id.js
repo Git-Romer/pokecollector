@@ -63,6 +63,7 @@ const id = {
     new: 'BARU',
     seen: 'Dilihat',
     all: 'Semua',
+    more: 'Muat lebih banyak',
     none: 'Tidak ada',
     quantity: 'Jumlah',
     condition: 'Kondisi',
@@ -998,7 +999,7 @@ const id = {
   // Binder types
   binderTypes: {
     collection: 'Binder Koleksi',
-    wishlist: 'Binder Wishlist',
+    wishlist: 'Binder Terencana',
     collectionIcon: '📦',
     wishlistIcon: '⭐',
     collectionDesc: 'Hanya kartu dari koleksi Anda',

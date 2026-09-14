@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useParams } from 'react-router-dom'
 import { Suspense, lazy, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import PokeBallLoader from './components/PokeBallLoader'
@@ -22,11 +22,8 @@ const SetDetail = lazy(() => import('./pages/SetDetail'))
 const Wishlist = lazy(() => import('./pages/Wishlist'))
 const Binders = lazy(() => import('./pages/Binders'))
 const BinderDetail = lazy(() => import('./pages/BinderDetail'))
-const Decks = lazy(() => import('./pages/Decks'))
 const DeckEditor = lazy(() => import('./pages/DeckEditor'))
 const DeckCompare = lazy(() => import('./pages/DeckCompare'))
-const DeckAssembly = lazy(() => import('./pages/DeckAssembly'))
-const DeckInventory = lazy(() => import('./pages/DeckInventory'))
 const Analytics = lazy(() => import('./pages/Analytics'))
 const Products = lazy(() => import('./pages/Products'))
 const Trades = lazy(() => import('./pages/Trades'))
@@ -40,6 +37,11 @@ const Achievements = lazy(() => import('./pages/Achievements'))
 const UserCollection = lazy(() => import('./pages/UserCollection'))
 const PublicProfile = lazy(() => import('./pages/PublicProfile'))
 const PublicBinderView = lazy(() => import('./pages/PublicBinderView'))
+
+function LegacyDeckBuildRedirect() {
+  const { deckId } = useParams()
+  return <Navigate to={`/decks/${deckId}`} replace />
+}
 const PublicDirectory = lazy(() => import('./pages/PublicDirectory'))
 const CardSystemGallery = import.meta.env.DEV
   ? lazy(() => import('./components/card-system/CardSystemGallery'))
@@ -171,11 +173,11 @@ function ProtectedRoutes() {
         <Route path="wishlist" element={lazyRoute(<Wishlist />)} />
         <Route path="binders" element={lazyRoute(<Binders />)} />
         <Route path="binders/:binderId" element={lazyRoute(<BinderDetail />)} />
-        <Route path="decks" element={lazyRoute(<Decks />)} />
-        <Route path="decks/inventory" element={lazyRoute(<DeckInventory />)} />
+        <Route path="decks" element={<Navigate to="/binders" replace />} />
+        <Route path="decks/inventory" element={<Navigate to="/binders" replace />} />
         <Route path="decks/compare" element={lazyRoute(<DeckCompare />)} />
         <Route path="decks/:deckId" element={lazyRoute(<DeckEditor />)} />
-        <Route path="decks/:deckId/build" element={lazyRoute(<DeckAssembly />)} />
+        <Route path="decks/:deckId/build" element={<LegacyDeckBuildRedirect />} />
         <Route path="analytics" element={lazyRoute(<Analytics />)} />
         <Route path="products" element={lazyRoute(<Products />)} />
         <Route path="trades" element={lazyRoute(<Trades />)} />

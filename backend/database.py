@@ -559,42 +559,92 @@ def _run_migrations(conn):
                     FOREIGN KEY (custom_owner_id) REFERENCES users(id) ON DELETE CASCADE;
             END IF;
         END$$""",
-        # v60: User-owned deck lists are planning-only and never reserve collection rows.
-        """CREATE TABLE IF NOT EXISTS decks (
-            id SERIAL PRIMARY KEY,
-            name VARCHAR NOT NULL,
-            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-            target_size INTEGER NOT NULL DEFAULT 60,
-            description TEXT,
-            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-            updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-            CONSTRAINT ck_decks_target_size CHECK (target_size IN (20, 40, 60))
+        # v60-v62: Decks share the binder/card-list model instead of creating a
+        # parallel ownership and allocation system.
+        "ALTER TABLE binders ADD COLUMN IF NOT EXISTS target_size INTEGER",
+        "ALTER TABLE binders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()",
+        # Preserve Decks created by preview installations of the original PR
+        # before Decks moved into the shared Card List tables. The source id is
+        # retained only as an idempotency key; migrated Decks are always plans.
+        "ALTER TABLE binders ADD COLUMN IF NOT EXISTS legacy_deck_id INTEGER",
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_binders_legacy_deck_id ON binders(legacy_deck_id)",
+        """CREATE TABLE IF NOT EXISTS card_list_legacy_deck_migrations (
+            legacy_deck_id INTEGER PRIMARY KEY,
+            binder_id INTEGER NOT NULL,
+            migrated_at TIMESTAMP NOT NULL DEFAULT NOW()
         )""",
-        """CREATE TABLE IF NOT EXISTS deck_entries (
-            id SERIAL PRIMARY KEY,
-            deck_id INTEGER NOT NULL REFERENCES decks(id) ON DELETE CASCADE,
-            card_id VARCHAR NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
-            required_quantity INTEGER NOT NULL DEFAULT 1,
-            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-            CONSTRAINT ck_deck_entries_required_quantity CHECK (required_quantity >= 1),
-            CONSTRAINT uq_deck_entries_deck_card UNIQUE (deck_id, card_id)
-        )""",
-        "CREATE INDEX IF NOT EXISTS ix_decks_user_id ON decks(user_id)",
-        "CREATE INDEX IF NOT EXISTS ix_decks_user_updated_at ON decks(user_id, updated_at)",
-        "CREATE INDEX IF NOT EXISTS ix_deck_entries_deck_id ON deck_entries(deck_id)",
-        "CREATE INDEX IF NOT EXISTS ix_deck_entries_card_id ON deck_entries(card_id)",
-        # v61: Physical deck assembly is separate from deck composition and collection ownership.
-        """CREATE TABLE IF NOT EXISTS deck_assembly_progress (
-            id SERIAL PRIMARY KEY,
-            deck_entry_id INTEGER NOT NULL UNIQUE REFERENCES deck_entries(id) ON DELETE CASCADE,
-            pulled_quantity INTEGER NOT NULL DEFAULT 0,
-            updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-            CONSTRAINT ck_deck_assembly_progress_pulled_quantity CHECK (pulled_quantity >= 0)
-        )""",
-        "CREATE INDEX IF NOT EXISTS ix_deck_assembly_progress_deck_entry_id ON deck_assembly_progress(deck_entry_id)",
-        # v62: Deck format is validation metadata; legacy decks remain casual.
-        "ALTER TABLE decks ADD COLUMN IF NOT EXISTS format VARCHAR NOT NULL DEFAULT 'Casual'",
-        "ALTER TABLE decks ADD COLUMN IF NOT EXISTS inventory_state VARCHAR NOT NULL DEFAULT 'planning'",
+        # Existing binders retain their type. Format used to be optional
+        # metadata, so it is not reliable evidence that a Planned Binder was
+        # intended to become a Deck.
+        "CREATE INDEX IF NOT EXISTS ix_binder_cards_collection_item_id ON binder_cards(collection_item_id)",
+        """CREATE INDEX IF NOT EXISTS ix_binder_cards_plan_lookup
+           ON binder_cards(binder_id, card_id)
+           WHERE collection_item_id IS NULL""",
+        """DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'ck_binders_target_size'
+            ) THEN
+                ALTER TABLE binders
+                    ADD CONSTRAINT ck_binders_target_size
+                    CHECK (target_size IS NULL OR target_size IN (20, 40, 60));
+            END IF;
+        END$$""",
+        """DO $$
+        BEGIN
+            IF to_regclass('public.decks') IS NOT NULL
+               AND to_regclass('public.deck_entries') IS NOT NULL THEN
+                ALTER TABLE decks ADD COLUMN IF NOT EXISTS format VARCHAR NOT NULL DEFAULT 'Casual';
+
+                INSERT INTO binders (
+                    name, user_id, description, color, binder_type, format,
+                    target_size, is_public, created_at, updated_at, legacy_deck_id
+                )
+                SELECT
+                    d.name, d.user_id, d.description, '#EE1515', 'deck',
+                    COALESCE(NULLIF(d.format, ''), 'Casual'), d.target_size,
+                    FALSE, d.created_at, d.updated_at, d.id
+                FROM decks d
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM card_list_legacy_deck_migrations m
+                    WHERE m.legacy_deck_id = d.id
+                )
+                  AND NOT EXISTS (
+                    SELECT 1 FROM binders b WHERE b.legacy_deck_id = d.id
+                );
+
+                INSERT INTO binder_cards (
+                    binder_id, card_id, required_quantity, added_at
+                )
+                SELECT
+                    b.id, de.card_id,
+                    LEAST(GREATEST(de.required_quantity, 1), 99),
+                    de.created_at
+                FROM deck_entries de
+                JOIN binders b ON b.legacy_deck_id = de.deck_id
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM card_list_legacy_deck_migrations m
+                    WHERE m.legacy_deck_id = de.deck_id
+                )
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM binder_cards bc
+                    WHERE bc.binder_id = b.id
+                      AND bc.card_id = de.card_id
+                      AND bc.collection_item_id IS NULL
+                );
+
+                INSERT INTO card_list_legacy_deck_migrations (legacy_deck_id, binder_id)
+                SELECT d.id, b.id
+                FROM decks d
+                JOIN binders b ON b.legacy_deck_id = d.id
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM card_list_legacy_deck_migrations m
+                    WHERE m.legacy_deck_id = d.id
+                );
+            END IF;
+        END$$""",
     ]
     for stmt in migrations:
         try:

@@ -6,10 +6,11 @@ try:
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 
-    from api.decks import add_deck_entry, compare_owned_decks, create_deck, delete_deck, delete_deck_entry, duplicate_deck, get_deck, get_deck_assembly_progress, get_decks, reset_deck_assembly_progress, update_deck, update_deck_assembly_progress, update_deck_entry
+    from api.binders import add_binder_cards_to_wishlist, create_binder, switch_binder_entry_card, update_binder
+    from api.decks import add_deck_entry, compare_owned_decks, convert_deck_to_planned, convert_deck_to_real, create_deck, delete_deck, delete_deck_entry, duplicate_deck, get_deck, get_decks, update_deck, update_deck_entry
     from database import Base
-    from models import Card, CollectionItem, Deck, DeckAssemblyProgress, DeckEntry, User
-    from schemas import DeckAssemblyProgressUpdate, DeckCreate, DeckEntryCreate, DeckEntryUpdate, DeckUpdate
+    from models import Binder, BinderCard, Card, CollectionItem, User, WishlistItem
+    from schemas import BinderCardSwitch, BinderCreate, BinderUpdate, DeckCreate, DeckEntryCreate, DeckEntryUpdate, DeckUpdate
     API_TEST_DEPS_AVAILABLE = True
 except ModuleNotFoundError:
     HTTPException = Exception
@@ -44,8 +45,8 @@ class DeckApiTests(unittest.TestCase):
         self.db.commit()
         return item
 
-    def _create(self, target_size=60):
-        return create_deck(DeckCreate(name="Practice", target_size=target_size), current_user=self.user, db=self.db)
+    def _create(self, target_size=60, binder_type="deck"):
+        return create_deck(DeckCreate(name="Practice", target_size=target_size, binder_type=binder_type), current_user=self.user, db=self.db)
 
     def test_creates_20_40_and_60_card_decks(self):
         for target_size in (20, 40, 60):
@@ -57,6 +58,59 @@ class DeckApiTests(unittest.TestCase):
     def test_invalid_target_size_is_rejected(self):
         with self.assertRaises(ValidationError):
             DeckCreate(name="Invalid", target_size=30)
+
+    def test_legacy_deck_adapter_normalizes_names(self):
+        deck = create_deck(
+            DeckCreate(name="  Practice Deck  ", target_size=40),
+            current_user=self.user,
+            db=self.db,
+        )
+        self.assertEqual(deck.name, "Practice Deck")
+
+        updated = update_deck(
+            deck.id,
+            DeckUpdate(name="  Tournament Deck  "),
+            current_user=self.user,
+            db=self.db,
+        )
+        self.assertEqual(updated.name, "Tournament Deck")
+
+        with self.assertRaises(HTTPException) as context:
+            update_deck(
+                deck.id,
+                DeckUpdate(name="   "),
+                current_user=self.user,
+                db=self.db,
+            )
+        self.assertEqual(context.exception.status_code, 422)
+
+    def test_card_list_adapter_normalizes_and_validates_deck_names(self):
+        deck = create_binder(
+            BinderCreate(name="  Practice Deck  ", binder_type="deck", target_size=40),
+            current_user=self.user,
+            db=self.db,
+        )
+        self.assertEqual(deck.name, "Practice Deck")
+
+        with self.assertRaises(HTTPException) as context:
+            create_binder(
+                BinderCreate(name="   ", binder_type="deck", target_size=40),
+                current_user=self.user,
+                db=self.db,
+            )
+        self.assertEqual(context.exception.status_code, 422)
+
+        with self.assertRaises(ValidationError):
+            BinderCreate(name="x" * 256, binder_type="deck", target_size=40)
+
+        with self.assertRaises(HTTPException) as context:
+            update_binder(
+                deck.id,
+                BinderUpdate(name="   "),
+                current_user=self.user,
+                db=self.db,
+            )
+        self.assertEqual(context.exception.status_code, 422)
 
     def test_rename_and_change_target_size_preserves_entries(self):
         self._own(self.card.id, 2)
@@ -87,16 +141,47 @@ class DeckApiTests(unittest.TestCase):
         self.assertEqual(result.entries[0].required_quantity, 7)
         self.assertEqual(result.entries[0].shortage, 6)
 
+    def test_unowned_catalog_card_can_be_planned(self):
+        deck = self._create()
+        result = add_deck_entry(deck.id, DeckEntryCreate(card_id=self.card.id, required_quantity=4), current_user=self.user, db=self.db)
+        self.assertEqual(result.entries[0].required_quantity, 4)
+        self.assertEqual(result.entries[0].owned_quantity, 0)
+        self.assertEqual(result.entries[0].shortage, 4)
+
+    def test_planned_deck_converts_atomically_to_real_and_back(self):
+        self._own(self.card.id, 2)
+        deck = self._create()
+        add_deck_entry(deck.id, DeckEntryCreate(card_id=self.card.id, required_quantity=2), current_user=self.user, db=self.db)
+
+        real = convert_deck_to_real(deck.id, current_user=self.user, db=self.db)
+        self.assertEqual(real.binder_type, "physical_deck")
+        self.assertEqual(real.entries[0].allocated_quantity, 2)
+
+        planned = convert_deck_to_planned(deck.id, current_user=self.user, db=self.db)
+        self.assertEqual(planned.binder_type, "deck")
+        self.assertEqual(self.db.query(BinderCard).filter(BinderCard.binder_id == deck.id, BinderCard.collection_item_id.isnot(None)).count(), 0)
+
+    def test_planned_deck_conversion_fails_without_changing_type_when_copies_are_missing(self):
+        self._own(self.card.id, 1)
+        deck = self._create()
+        add_deck_entry(deck.id, DeckEntryCreate(card_id=self.card.id, required_quantity=2), current_user=self.user, db=self.db)
+
+        with self.assertRaises(HTTPException) as conversion:
+            convert_deck_to_real(deck.id, current_user=self.user, db=self.db)
+        self.assertEqual(conversion.exception.status_code, 409)
+        self.assertEqual(self.db.get(Binder, deck.id).binder_type, "deck")
+        self.assertEqual(self.db.query(BinderCard).filter(BinderCard.binder_id == deck.id, BinderCard.collection_item_id.isnot(None)).count(), 0)
+
     def test_remove_entry_and_delete_deck_cascade_entries(self):
         self._own(self.card.id, 2)
         deck = self._create()
         result = add_deck_entry(deck.id, DeckEntryCreate(card_id=self.card.id, required_quantity=2), current_user=self.user, db=self.db)
         delete_deck_entry(deck.id, result.entries[0].id, current_user=self.user, db=self.db)
-        self.assertEqual(self.db.query(DeckEntry).count(), 0)
+        self.assertEqual(self.db.query(BinderCard).filter(BinderCard.binder_id == deck.id).count(), 0)
         add_deck_entry(deck.id, DeckEntryCreate(card_id=self.card.id), current_user=self.user, db=self.db)
         delete_deck(deck.id, current_user=self.user, db=self.db)
-        self.assertEqual(self.db.query(Deck).count(), 0)
-        self.assertEqual(self.db.query(DeckEntry).count(), 0)
+        self.assertEqual(self.db.query(Binder).filter(Binder.binder_type == "deck").count(), 0)
+        self.assertEqual(self.db.query(BinderCard).filter(BinderCard.binder_id == deck.id).count(), 0)
 
     def test_other_user_cannot_access_deck_or_entry(self):
         self._own(self.card.id, 1)
@@ -109,15 +194,20 @@ class DeckApiTests(unittest.TestCase):
             update_deck_entry(deck.id, result.entries[0].id, DeckEntryUpdate(required_quantity=2), current_user=self.other_user, db=self.db)
         self.assertEqual(entry_access.exception.status_code, 404)
 
-    def test_duplicate_copies_entries_but_not_assembly_progress(self):
+    def test_duplicate_of_real_deck_becomes_unallocated_plan(self):
         self._own(self.card.id, 4)
-        deck = self._create(40)
+        deck = self._create(40, "physical_deck")
+        source = self.db.get(Binder, deck.id)
+        source.color = "#3b82f6"
+        source.icon_pokemon_id = 25
+        self.db.commit()
         original = add_deck_entry(deck.id, DeckEntryCreate(card_id=self.card.id, required_quantity=4), current_user=self.user, db=self.db)
-        update_deck_assembly_progress(deck.id, DeckAssemblyProgressUpdate(entry_id=original.entries[0].id, pulled_quantity=2), current_user=self.user, db=self.db)
         copied = duplicate_deck(deck.id, current_user=self.user, db=self.db)
         self.assertNotEqual(copied.id, deck.id)
+        self.assertEqual(copied.binder_type, "deck")
+        self.assertEqual((copied.color, copied.icon_pokemon_id), ("#3b82f6", 25))
         self.assertEqual((copied.target_size, copied.format, copied.entries[0].required_quantity), (40, deck.format or "Casual", 4))
-        self.assertEqual(get_deck_assembly_progress(copied.id, current_user=self.user, db=self.db), [])
+        self.assertEqual(self.db.query(BinderCard).filter(BinderCard.binder_id == copied.id, BinderCard.collection_item_id.isnot(None)).count(), 0)
         update_deck_entry(copied.id, copied.entries[0].id, DeckEntryUpdate(required_quantity=3), current_user=self.user, db=self.db)
         self.assertEqual(get_deck(deck.id, current_user=self.user, db=self.db).entries[0].required_quantity, 4)
 
@@ -175,33 +265,81 @@ class DeckApiTests(unittest.TestCase):
         listed = get_decks(current_user=self.user, db=self.db)[0]
         self.assertEqual(listed.composition_counts, {"Pokemon": 8, "Trainer": 10, "Energy": 6, "Other": 0})
         self.assertEqual(listed.entries, [])
+        self.assertIsNone(listed.validation)
+        self.assertIsNone(listed.analysis)
+        self.assertEqual(listed.copy_limit_warnings, [])
 
-    def test_assembly_progress_is_clamped_to_owned_copies_and_resets_without_changing_deck(self):
+    def test_real_deck_assigns_owned_copies_automatically(self):
         self._own(self.card.id, 3)
-        deck = self._create()
-        result = add_deck_entry(deck.id, DeckEntryCreate(card_id=self.card.id, required_quantity=4), current_user=self.user, db=self.db)
-        entry = result.entries[0]
-        saved = update_deck_assembly_progress(deck.id, DeckAssemblyProgressUpdate(entry_id=entry.id, pulled_quantity=9), current_user=self.user, db=self.db)
-        self.assertEqual(saved.pulled_quantity, 3)
-        saved = update_deck_assembly_progress(deck.id, DeckAssemblyProgressUpdate(entry_id=entry.id, pulled_quantity=0), current_user=self.user, db=self.db)
-        self.assertEqual(saved.pulled_quantity, 0)
-        self.assertEqual(get_deck_assembly_progress(deck.id, current_user=self.user, db=self.db)[0].pulled_quantity, 0)
-        reset_deck_assembly_progress(deck.id, current_user=self.user, db=self.db)
-        self.assertEqual(self.db.query(DeckAssemblyProgress).count(), 0)
-        self.assertEqual(get_deck(deck.id, current_user=self.user, db=self.db).entries[0].required_quantity, 4)
+        deck = self._create(binder_type="physical_deck")
+        result = add_deck_entry(deck.id, DeckEntryCreate(card_id=self.card.id, required_quantity=3), current_user=self.user, db=self.db)
+        self.assertEqual(result.entries[0].allocated_quantity, 3)
         self.assertEqual(self.db.query(CollectionItem).filter(CollectionItem.card_id == self.card.id).first().quantity, 3)
 
-    def test_other_user_cannot_read_or_update_assembly_progress(self):
-        self._own(self.card.id, 1)
+    def test_deck_and_collection_binder_share_exact_copy_allocations(self):
+        item = self._own(self.card.id, 2)
+        physical_binder = Binder(name="Trade binder", user_id=self.user.id, binder_type="collection")
+        self.db.add(physical_binder)
+        self.db.flush()
+        self.db.add(BinderCard(binder_id=physical_binder.id, card_id=self.card.id, collection_item_id=item.id, required_quantity=1))
+        self.db.commit()
+
+        deck = self._create(binder_type="physical_deck")
+        with self.assertRaises(HTTPException) as shortage:
+            add_deck_entry(deck.id, DeckEntryCreate(card_id=self.card.id, required_quantity=2), current_user=self.user, db=self.db)
+        self.assertEqual(shortage.exception.status_code, 409)
+        result = add_deck_entry(deck.id, DeckEntryCreate(card_id=self.card.id, required_quantity=1), current_user=self.user, db=self.db)
+        self.assertEqual(result.entries[0].allocated_quantity, 1)
+
+        other = self._create(binder_type="physical_deck")
+        with self.assertRaises(HTTPException) as unavailable:
+            add_deck_entry(other.id, DeckEntryCreate(card_id=self.card.id), current_user=self.user, db=self.db)
+        self.assertEqual(unavailable.exception.status_code, 409)
+
+    def test_add_missing_to_wishlist_counts_copies_allocated_to_current_deck(self):
+        item = self._own(self.card.id, 3)
+        physical_binder = Binder(name="Display", user_id=self.user.id, binder_type="collection")
+        self.db.add(physical_binder)
+        self.db.flush()
+        self.db.add(BinderCard(binder_id=physical_binder.id, card_id=self.card.id, collection_item_id=item.id, required_quantity=1))
+        self.db.commit()
+
+        deck = self._create()
+        add_deck_entry(deck.id, DeckEntryCreate(card_id=self.card.id, required_quantity=4), current_user=self.user, db=self.db)
+        result = add_binder_cards_to_wishlist(deck.id, current_user=self.user, db=self.db)
+        self.assertEqual(result["added_copies"], 2)
+        self.assertEqual(self.db.query(WishlistItem).filter(WishlistItem.user_id == self.user.id, WishlistItem.card_id == self.card.id).one().quantity, 2)
+
+    def test_switching_a_planned_deck_print_does_not_allocate(self):
+        self.card.playable_fingerprint = "pikachu-ex"
+        alternate = Card(
+            id="sv2-1_en",
+            tcg_card_id="sv2-1",
+            name=self.card.name,
+            set_id="sv2",
+            number="1",
+            lang="en",
+            supertype="Pokemon",
+            variants_normal=True,
+            playable_fingerprint="pikachu-ex",
+        )
+        self.db.add(alternate)
+        self.db.commit()
         deck = self._create()
         entry = add_deck_entry(deck.id, DeckEntryCreate(card_id=self.card.id), current_user=self.user, db=self.db).entries[0]
-        with self.assertRaises(HTTPException) as access:
-            get_deck_assembly_progress(deck.id, current_user=self.other_user, db=self.db)
-        self.assertEqual(access.exception.status_code, 404)
-        with self.assertRaises(HTTPException) as update_access:
-            update_deck_assembly_progress(deck.id, DeckAssemblyProgressUpdate(entry_id=entry.id, pulled_quantity=1), current_user=self.other_user, db=self.db)
-        self.assertEqual(update_access.exception.status_code, 404)
 
+        result = switch_binder_entry_card(
+            deck.id,
+            entry.id,
+            BinderCardSwitch(card_id=alternate.id),
+            current_user=self.user,
+            db=self.db,
+        )
+
+        self.assertFalse(result["allocations_released"])
+        self.assertEqual(self.db.query(BinderCard).filter(BinderCard.binder_id == deck.id, BinderCard.collection_item_id.isnot(None)).count(), 0)
+        switched = self.db.query(BinderCard).filter(BinderCard.id == entry.id).one()
+        self.assertEqual(switched.card_id, alternate.id)
 
 if __name__ == "__main__":
     unittest.main()

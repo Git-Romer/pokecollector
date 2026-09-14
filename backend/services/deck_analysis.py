@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from statistics import median
 import re
+import unicodedata
 
 from services.deck_validation import is_basic_energy
 from services.deck_effects import analyze_deck_effects
@@ -12,6 +13,28 @@ from services.deck_effects import analyze_deck_effects
 
 def _normalized(value) -> str:
     return str(value or "").strip().casefold()
+
+
+_POKEMON_TYPE_ALIASES = {
+    "grass": "Grass", "pflanze": "Grass", "plante": "Grass", "planta": "Grass", "erba": "Grass", "grama": "Grass", "gras": "Grass",
+    "fire": "Fire", "feuer": "Fire", "feu": "Fire", "fuego": "Fire", "fuoco": "Fire", "fogo": "Fire", "vuur": "Fire",
+    "water": "Water", "wasser": "Water", "eau": "Water", "agua": "Water", "acqua": "Water",
+    "lightning": "Lightning", "electric": "Lightning", "elektro": "Lightning", "electrique": "Lightning", "electrico": "Lightning", "elettrico": "Lightning", "eletrico": "Lightning", "bliksem": "Lightning",
+    "psychic": "Psychic", "psycho": "Psychic", "psy": "Psychic", "psiquico": "Psychic", "psichico": "Psychic", "psychisch": "Psychic",
+    "fighting": "Fighting", "kampf": "Fighting", "combat": "Fighting", "lucha": "Fighting", "lotta": "Fighting", "luta": "Fighting", "vechten": "Fighting",
+    "darkness": "Darkness", "dark": "Darkness", "finsternis": "Darkness", "unlicht": "Darkness", "obscurite": "Darkness", "oscuridad": "Darkness", "oscurita": "Darkness", "escuridao": "Darkness", "duisternis": "Darkness",
+    "metal": "Metal", "metall": "Metal", "metallo": "Metal", "metaal": "Metal", "steel": "Metal",
+    "dragon": "Dragon", "drache": "Dragon", "drago": "Dragon", "dragao": "Dragon", "draak": "Dragon",
+    "colorless": "Colorless", "colourless": "Colorless", "farblos": "Colorless", "incolore": "Colorless", "incoloro": "Colorless", "incolor": "Colorless", "kleurloos": "Colorless", "normal": "Colorless",
+    "fairy": "Fairy", "fee": "Fairy", "hada": "Fairy", "fata": "Fairy", "fada": "Fairy",
+}
+
+
+def _pokemon_type(value) -> str:
+    """Return one stable TCG type key across localized TCGdex payloads."""
+    raw = str(value or "").strip()
+    key = "".join(character for character in unicodedata.normalize("NFKD", raw.casefold()) if not unicodedata.combining(character))
+    return _POKEMON_TYPE_ALIASES.get(key, raw or "other_unknown")
 
 
 def _category(card) -> str:
@@ -84,7 +107,7 @@ def analyze_deck(deck) -> dict:
             stages[_stage(card)] += quantity
             for card_type in card.types or []:
                 if str(card_type).strip():
-                    pokemon_types[str(card_type)] += quantity
+                    pokemon_types[_pokemon_type(card_type)] += quantity
             hp = _numeric_hp(card.hp)
             if hp is None:
                 missing_hp += quantity
@@ -123,7 +146,7 @@ def analyze_deck(deck) -> dict:
                 energy["other_unknown"] += quantity
             for card_type in card.types or []:
                 if str(card_type).strip():
-                    energy_types[str(card_type)] += quantity
+                    energy_types[_pokemon_type(card_type)] += quantity
 
     total = sum(composition.values())
     retreat_distribution = Counter({"0": 0, "1": 0, "2": 0, "3+": 0})

@@ -37,38 +37,39 @@ def classify_effects(card) -> set[str]:
         return set()
     tags = set()
     pokemon = r"pok[eé]mon"
-    search = bool(re.search(r"search your deck for|durchsuche dein deck nach", text))
+    search_action = r"(?:search your deck for|durchsuche dein deck nach)"
+    search = bool(re.search(search_action, text))
     if re.search(r"\bdraw (?:up to )?\d+ cards?\b|\bziehe (?:bis zu )?\d+ karten\b", text):
         tags.add("draw")
     if search:
-        if re.search(rf"(?:search your deck for|durchsuche dein deck nach).*{pokemon}", text):
+        if re.search(rf"{search_action}.*{pokemon}", text):
             tags.add("pokemon_search")
-        elif re.search(r"(?:search your deck for|durchsuche dein deck nach).*energy", text):
+        elif re.search(rf"{search_action}.*(?:energy|energie)", text):
             tags.add("energy_search")
-        elif re.search(r"(?:search your deck for|durchsuche dein deck nach).*trainer", text):
+        elif re.search(rf"{search_action}.*trainer", text):
             tags.add("trainer_search")
         else:
             tags.add("general_search")
     if re.search(r"(?:put|return|trade).*energy.*from your discard pile|(?:lege|nimm).*energie.*aus deinem ablagestapel", text):
         tags.add("energy_recovery")
-    if re.search(rf"(?:put|return).*{pokemon}.*from your discard pile", text):
+    if re.search(rf"(?:put|return).*{pokemon}.*from your discard pile|(?:lege|nimm).*{pokemon}.*aus deinem ablagestapel", text):
         tags.add("pokemon_recovery")
-    if re.search(r"(?:put|return).*trainer.*from your discard pile", text):
+    if re.search(r"(?:put|return).*trainer.*from your discard pile|(?:lege|nimm).*trainer.*aus deinem ablagestapel", text):
         tags.add("trainer_recovery")
-    if "from your discard pile" in text and re.search(r"\b(?:put|return)\b", text):
+    if re.search(r"from your discard pile.*|aus deinem ablagestapel", text) and re.search(r"\b(?:put|return|lege|nimm)\b", text):
         tags.add("general_recovery")
-    if re.search(r"attach.*energy.*to (?:one of )?your pok[eé]mon", text):
+    if re.search(r"attach.*energy.*to (?:one of )?your pok[eé]mon|lege.*energie.*an (?:eines deiner |dein )?pok[eé]mon", text):
         tags.add("energy_acceleration")
-    if "switch" in text:
-        if re.search(r"opponent.*(?:benched|active)|opponent's benched", text):
+    if re.search(r"\bswitch\b|\bwechsle\b", text):
+        if re.search(r"opponent.*(?:benched|active)|opponent's benched|gegner.*(?:bank|aktive)", text):
             tags.add("gust")
-        elif re.search(r"your (?:benched|active)|one of your pok[eé]mon", text):
+        elif re.search(r"your (?:benched|active)|one of your pok[eé]mon|dein(?:e[msnr]?)? (?:bank|aktive|pok[eé]mon)", text):
             tags.add("switching")
-    if re.search(r"heal .*damage|remove .*damage counters? from your pok[eé]mon", text):
+    if re.search(r"heal .*damage|remove .*damage counters? from your pok[eé]mon|heile .*schadenspunkte|entferne .*schadensmarken", text):
         tags.add("healing")
-    if re.search(r"\bdiscard (?!pile\b)(?:\d+|a|an|your|all|up to)\b", text):
+    if re.search(r"\bdiscard (?!pile\b)(?:\d+|a|an|your|all|up to)\b|\blege (?:\d+|eine?|deine?|alle|bis zu).* auf deinen ablagestapel", text):
         tags.add("discard")
-    if re.search(r"opponent.*hand.*(?:shuffle|discard)|each player.*(?:hand.*(?:shuffle|discard)|(?:shuffle|discard).*hand)", text):
+    if re.search(r"opponent.*hand.*(?:shuffle|discard)|each player.*(?:hand.*(?:shuffle|discard)|(?:shuffle|discard).*hand)|gegner.*hand.*(?:misch|ableg)|jeder spieler.*hand.*(?:misch|ableg)", text):
         tags.add("hand_disruption")
     if re.search(r"attacks do .* more damage", text):
         tags.add("damage_boost")
@@ -76,13 +77,13 @@ def classify_effects(card) -> set[str]:
         tags.add("damage_reduction")
     if re.search(r"damage counters? on .*benched pok[eé]mon", text):
         tags.add("bench_damage")
-    if re.search(r"burned|confused|asleep|paralyzed|poisoned", text):
+    if re.search(r"burned|confused|asleep|paralyzed|poisoned|verbrannt|verwirrt|schlafend|paralysiert|vergiftet", text):
         tags.add("status_condition")
-    if re.search(r"evolve.*your pok[eé]mon|evolve 1 of your pok[eé]mon", text):
+    if re.search(r"evolve.*your pok[eé]mon|evolve 1 of your pok[eé]mon|entwickle .*dein(?:e[msnr]?)? pok[eé]mon", text):
         tags.add("evolution_acceleration")
-    if "prize card" in text or "prize cards" in text:
+    if "prize card" in text or "prize cards" in text or "preiskarte" in text:
         tags.add("prize_manipulation")
-    if re.search(r"retreat cost|retreat .*without paying", text):
+    if re.search(r"retreat cost|retreat .*without paying|rückzugskosten|ziehe .*zurück.*ohne", text):
         tags.add("retreat_support")
     return tags
 

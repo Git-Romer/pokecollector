@@ -2,13 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-@media print {
-  body * { visibility: hidden; }
-  .deck-assembly, .deck-assembly * { visibility: visible; }
-  .deck-assembly { position: absolute; inset: 0; width: 100%; color: #000; }
-  .no-print { display: none !important; }
-}
-
 /* ─── CSS Custom Properties ──────────────────────────────────────────────── */
 :root {
   --color-bg:          #08080f;
@@ -175,6 +168,23 @@ input:-webkit-autofill:focus {
   }
   .btn-primary-sm {
     @apply btn-primary px-3 py-1.5 text-xs;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2
+           text-text-secondary hover:text-text-primary
+           px-4 py-2.5 rounded-lg border border-border font-medium text-sm
+           transition-all duration-200
+           disabled:opacity-50 disabled:cursor-not-allowed
+           select-none;
+    background: rgba(26, 26, 46, 0.72);
+  }
+  .btn-secondary:hover {
+    background: rgba(35, 35, 58, 0.9);
+    border-color: rgba(255,255,255,0.14);
+  }
+  .btn-secondary-sm {
+    @apply btn-secondary px-3 py-1.5 text-xs;
   }
 
   .btn-ghost {

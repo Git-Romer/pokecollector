@@ -14,11 +14,13 @@ from services.card_fallbacks import apply_cross_language_fallbacks
 from services.card_upsert import upsert_card
 from services.card_values import effective_market_price, normalize_price_field
 from services.card_visibility import visible_any_card_filter, visible_set_filter
+from services.card_list_names import normalize_card_list_name
 from services.collection_csv import normalize_collection_variant
 from services.binder_csv import BINDER_CSV_DUPLICATE_QUANTITY_ERROR, combine_binder_required_quantity
 from services.binder_allocations import (
     collection_binder_allocated_card_counts,
     collection_binder_allocation_counts,
+    lock_user_card_allocations,
     stored_binder_quantity,
 )
 from services.wishlist_missing import plan_missing_wishlist_additions
@@ -38,6 +40,9 @@ BINDER_CSV_PHYSICAL_COLUMNS = [*BINDER_CSV_LEGACY_COLUMNS, "variant", "condition
 BINDER_CSV_COLUMNS = [*BINDER_CSV_PHYSICAL_COLUMNS, "collection_item_id"]
 BINDER_CSV_MAX_BYTES = 256 * 1024
 BINDER_CSV_MAX_ROWS = 1000
+DECK_TYPES = {"deck", "physical_deck"}
+PLANNING_TYPES = {"wishlist", *DECK_TYPES}
+ALLOWED_BINDER_TYPES = {"collection", *PLANNING_TYPES}
 
 
 def _require_owned_custom_card(card: Card | None, user_id: int) -> None:
@@ -83,6 +88,8 @@ def _binder_counts(db: Session, binder: Binder) -> tuple[int, int]:
         BinderCard.binder_id == binder.id,
         visible_any_card_filter(db, binder.user_id, "all"),
     )
+    if (binder.binder_type or "collection") in DECK_TYPES:
+        base_query = base_query.filter(BinderCard.collection_item_id.is_(None))
     unique_count = base_query.with_entities(func.count(func.distinct(BinderCard.card_id))).scalar() or 0
     total_count = base_query.with_entities(
         func.coalesce(func.sum(func.coalesce(BinderCard.required_quantity, 1)), 0)
@@ -98,8 +105,10 @@ def _binder_response(binder: Binder, card_count: int = 0, unique_card_count: int
         color=binder.color,
         binder_type=binder.binder_type or "collection",
         format=binder.format,
+        target_size=binder.target_size,
         icon_pokemon_id=binder.icon_pokemon_id,
         created_at=binder.created_at,
+        updated_at=binder.updated_at,
         card_count=card_count,
         unique_card_count=unique_card_count,
         is_public=binder.is_public or False,
@@ -128,8 +137,13 @@ def _available_collection_card_quantities(
     current_user: User,
     card_ids: list[str] | None = None,
     owned_quantities: dict[str, int] | None = None,
+    include_binder_id: int | None = None,
 ) -> dict[str, int]:
-    """Return owned copies not currently allocated to collection binders."""
+    """Return owned copies available to a planned list or deck.
+
+    Exact copies already allocated to the current deck still satisfy that
+    deck's requirements, so callers may add those allocations back.
+    """
     if owned_quantities is None:
         owned_quantities = _user_collection_quantities(db, current_user, card_ids)
     allocated_quantities = collection_binder_allocated_card_counts(
@@ -137,8 +151,26 @@ def _available_collection_card_quantities(
         current_user.id,
         list(owned_quantities),
     )
+    current_allocations: dict[str, int] = {}
+    if include_binder_id is not None:
+        current_allocations = {
+            str(card_id): int(quantity or 0)
+            for card_id, quantity in db.query(
+                BinderCard.card_id,
+                func.coalesce(func.sum(BinderCard.required_quantity), 0),
+            ).filter(
+                BinderCard.binder_id == include_binder_id,
+                BinderCard.collection_item_id.isnot(None),
+                BinderCard.card_id.in_(list(owned_quantities)),
+            ).group_by(BinderCard.card_id).all()
+        } if owned_quantities else {}
     return {
-        card_id: max(int(quantity or 0) - int(allocated_quantities.get(card_id, 0) or 0), 0)
+        card_id: max(
+            int(quantity or 0)
+            - int(allocated_quantities.get(card_id, 0) or 0)
+            + int(current_allocations.get(card_id, 0) or 0),
+            0,
+        )
         for card_id, quantity in owned_quantities.items()
     }
 
@@ -189,6 +221,42 @@ def _apply_wishlist_additions(db: Session, current_user: User, additions) -> tup
         touched += 1
         added_copies += actual_added
     return touched, added_copies
+
+
+def _deck_plan_query(query, binder_type: str):
+    """Keep exact owned-copy allocations out of shared Deck plan operations."""
+    if binder_type in DECK_TYPES:
+        return query.filter(BinderCard.collection_item_id.is_(None))
+    return query
+
+
+def _trim_deck_allocations(
+    db: Session,
+    binder_id: int,
+    card_id: str,
+    required_quantity: int,
+) -> None:
+    """Keep exact Deck allocations at or below the matching plan quantity."""
+    allocations = db.query(BinderCard).filter(
+        BinderCard.binder_id == binder_id,
+        BinderCard.card_id == card_id,
+        BinderCard.collection_item_id.isnot(None),
+    ).order_by(BinderCard.id.asc()).with_for_update(of=BinderCard).all()
+    remaining = max(
+        sum(_safe_required_quantity(row.required_quantity) for row in allocations)
+        - max(int(required_quantity or 0), 0),
+        0,
+    )
+    for row in reversed(allocations):
+        if remaining == 0:
+            break
+        quantity = _safe_required_quantity(row.required_quantity)
+        removed = min(quantity, remaining)
+        if removed == quantity:
+            db.delete(row)
+        else:
+            row.required_quantity = quantity - removed
+        remaining -= removed
 
 
 def _ensure_card_gameplay_data(db: Session, card: Card | None) -> Card | None:
@@ -416,16 +484,17 @@ def _collection_optimizer_candidates(
 def _build_print_optimization_preview(db: Session, binder: Binder, current_user: User, price_field: str | None = "price_trend") -> dict:
     price_field = normalize_price_field(price_field)
     binder_type = binder.binder_type or "collection"
-    if binder_type not in {"collection", "wishlist"}:
-        raise HTTPException(status_code=400, detail="Print optimization is available for collection and wishlist binders")
+    if binder_type not in ALLOWED_BINDER_TYPES:
+        raise HTTPException(status_code=400, detail="Print optimization is available for binders, planned binders, and decks")
 
-    binder_cards = db.query(BinderCard).join(Card, Card.id == BinderCard.card_id).options(
+    binder_cards_query = db.query(BinderCard).join(Card, Card.id == BinderCard.card_id).options(
         joinedload(BinderCard.card).joinedload(Card.set_ref),
         joinedload(BinderCard.collection_item),
     ).filter(
         BinderCard.binder_id == binder.id,
         visible_any_card_filter(db, current_user.id, "all"),
-    ).order_by(BinderCard.added_at.desc()).all()
+    )
+    binder_cards = _deck_plan_query(binder_cards_query, binder_type).order_by(BinderCard.added_at.desc()).all()
 
     recommendations = []
     owned_photo_card_ids = {
@@ -560,15 +629,21 @@ def create_binder(
     db: Session = Depends(get_db),
 ):
     """Create a new binder."""
+    binder_type = (binder.binder_type or "collection").strip().lower()
+    if binder_type not in ALLOWED_BINDER_TYPES:
+        raise HTTPException(status_code=422, detail="Card list type must be binder, planned binder, or deck")
+    target_size = binder.target_size if binder_type in DECK_TYPES else None
     db_binder = Binder(
-        name=binder.name,
+        name=normalize_card_list_name(binder.name),
         description=binder.description,
         color=binder.color,
-        binder_type=binder.binder_type,
-        format=_clean_binder_format(binder.format),
+        binder_type=binder_type,
+        format=_clean_binder_format(binder.format) if binder_type in DECK_TYPES else None,
+        target_size=target_size or (60 if binder_type in DECK_TYPES else None),
         icon_pokemon_id=binder.icon_pokemon_id,
         user_id=current_user.id,
         created_at=datetime.datetime.utcnow(),
+        updated_at=datetime.datetime.utcnow(),
     )
     db.add(db_binder)
     db.commit()
@@ -597,11 +672,21 @@ def update_binder(
         if update.binder_type is not None
         else current_type
     )
+    requested_type = requested_type.strip().lower()
+    if requested_type not in ALLOWED_BINDER_TYPES:
+        raise HTTPException(status_code=422, detail="Card list type must be binder, planned binder, or deck")
     type_changed = requested_type != current_type
     if type_changed:
         has_cards = db.query(BinderCard.id).filter(BinderCard.binder_id == binder_id).first() is not None
-        if has_cards:
-            raise HTTPException(status_code=400, detail="Binder type cannot be changed after cards are added")
+        has_exact_cards = db.query(BinderCard.id).filter(
+            BinderCard.binder_id == binder_id,
+            BinderCard.collection_item_id.isnot(None),
+        ).first() is not None
+        planning_conversion = {current_type, requested_type} == {"wishlist", "deck"}
+        if has_cards and not planning_conversion:
+            raise HTTPException(status_code=400, detail="Card list type cannot be changed after cards are added")
+        if requested_type == "wishlist" and has_exact_cards:
+            raise HTTPException(status_code=409, detail="Remove allocated deck copies before converting to a planned binder")
 
     if "is_public" in update.model_fields_set:
         if not public_profiles_enabled(db):
@@ -612,7 +697,7 @@ def update_binder(
             raise HTTPException(status_code=422, detail="Only collection binders can be shared publicly")
 
     if update.name is not None:
-        binder.name = update.name
+        binder.name = normalize_card_list_name(update.name)
     if update.description is not None:
         binder.description = update.description
     if update.color is not None:
@@ -625,11 +710,20 @@ def update_binder(
             if requested_type != "collection":
                 binder.auto_owned_set_id = None
     if "format" in update.model_fields_set:
-        binder.format = _clean_binder_format(update.format)
+        binder.format = _clean_binder_format(update.format) if requested_type in DECK_TYPES else None
+    if "target_size" in update.model_fields_set:
+        binder.target_size = update.target_size if requested_type in DECK_TYPES else None
     if "icon_pokemon_id" in update.model_fields_set:
         binder.icon_pokemon_id = update.icon_pokemon_id
     if "is_public" in update.model_fields_set:
         binder.is_public = update.is_public
+    if requested_type in DECK_TYPES:
+        binder.target_size = binder.target_size or 60
+        binder.format = binder.format or "Casual"
+    elif type_changed:
+        binder.target_size = None
+        binder.format = None
+    binder.updated_at = datetime.datetime.utcnow()
 
     db.commit()
     db.refresh(binder)
@@ -643,7 +737,8 @@ def convert_wishlist_binder_to_collection(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Atomically replace a complete wishlist with exact owned allocations."""
+    """Atomically replace a complete planned binder with exact owned allocations."""
+    lock_user_card_allocations(db, current_user.id)
     binder = db.query(Binder).filter(
         Binder.id == binder_id,
         Binder.user_id == current_user.id,
@@ -651,15 +746,15 @@ def convert_wishlist_binder_to_collection(
     if not binder:
         raise HTTPException(status_code=404, detail="Binder not found")
     if (binder.binder_type or "collection") != "wishlist":
-        raise HTTPException(status_code=400, detail="Only wishlist binders can be converted")
+        raise HTTPException(status_code=400, detail="Only planned binders can be converted")
 
     entries = db.query(BinderCard).options(joinedload(BinderCard.card)).filter(
         BinderCard.binder_id == binder.id,
     ).order_by(BinderCard.id.asc()).with_for_update(of=BinderCard).all()
     if not entries:
-        raise HTTPException(status_code=400, detail="An empty wishlist binder cannot be converted")
+        raise HTTPException(status_code=400, detail="An empty planned binder cannot be converted")
     if any(entry.collection_item_id is not None for entry in entries):
-        raise HTTPException(status_code=409, detail="This wishlist contains invalid exact-copy links and cannot be converted safely")
+        raise HTTPException(status_code=409, detail="This planned binder contains invalid exact-copy links and cannot be converted safely")
 
     card_ids = sorted({entry.card_id for entry in entries if entry.card_id})
     owned_items = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).filter(
@@ -712,7 +807,7 @@ def convert_wishlist_binder_to_collection(
             displayed_shortages.append(f"and {len(shortages) - len(displayed_shortages)} more card(s)")
         raise HTTPException(
             status_code=409,
-            detail="Wishlist is not complete with unallocated copies. " + "; ".join(displayed_shortages),
+            detail="Planned binder is not complete with unallocated copies. " + "; ".join(displayed_shortages),
         )
 
     allocated_copies = 0
@@ -742,7 +837,7 @@ def convert_wishlist_binder_to_collection(
     db.refresh(binder)
     total_count, unique_count = _binder_counts(db, binder)
     return {
-        "message": "Wishlist binder converted to a collection binder",
+        "message": "Planned binder converted to a binder",
         "binder": _binder_response(binder, total_count, unique_count),
         "allocated_copies": allocated_copies,
     }
@@ -754,7 +849,8 @@ def convert_collection_binder_to_wishlist(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Release exact allocations and turn a collection binder into a wishlist."""
+    """Release exact allocations and turn a binder into a planned binder."""
+    lock_user_card_allocations(db, current_user.id)
     binder = db.query(Binder).filter(
         Binder.id == binder_id,
         Binder.user_id == current_user.id,
@@ -803,7 +899,7 @@ def convert_collection_binder_to_wishlist(
     db.refresh(binder)
     total_count, unique_count = _binder_counts(db, binder)
     return {
-        "message": "Collection binder converted to a wishlist binder",
+        "message": "Binder converted to a planned binder",
         "binder": _binder_response(binder, total_count, unique_count),
         "released_copies": released_copies,
     }
@@ -816,6 +912,7 @@ def delete_binder(
     db: Session = Depends(get_db),
 ):
     """Delete a binder."""
+    lock_user_card_allocations(db, current_user.id)
     binder = db.query(Binder).filter(
         Binder.id == binder_id,
         Binder.user_id == current_user.id,
@@ -838,7 +935,7 @@ def get_binder_cards(
     """Get all cards in a binder.
     
     - collection binder: only returns cards that are in the collection
-    - wishlist binder: returns all cards with an `owned` flag
+    - planned binder or deck: returns planned cards with ownership progress
     """
     binder = db.query(Binder).filter(
         Binder.id == binder_id,
@@ -850,13 +947,14 @@ def get_binder_cards(
     binder_type = binder.binder_type or "collection"
     price_field = normalize_price_field(price_field)
 
-    binder_cards = db.query(BinderCard).join(Card, Card.id == BinderCard.card_id).options(
+    binder_cards_query = db.query(BinderCard).join(Card, Card.id == BinderCard.card_id).options(
         joinedload(BinderCard.card).joinedload(Card.set_ref),
         joinedload(BinderCard.collection_item),
     ).filter(
         BinderCard.binder_id == binder_id,
         visible_any_card_filter(db, current_user.id, "all"),
-    ).order_by(BinderCard.added_at.desc()).all()
+    )
+    binder_cards = _deck_plan_query(binder_cards_query, binder_type).order_by(BinderCard.added_at.desc()).all()
     _annotate_scan_photos(
         db,
         current_user,
@@ -877,8 +975,9 @@ def get_binder_cards(
             current_user,
             list(collection_quantities),
             owned_quantities=collection_quantities,
+            include_binder_id=binder.id if binder_type == "physical_deck" else None,
         )
-        if binder_type == "wishlist"
+        if binder_type in PLANNING_TYPES
         else collection_quantities
     )
     remaining_available_by_card = dict(available_collection_quantities)
@@ -927,7 +1026,7 @@ def get_binder_cards(
         if bc.collection_item_id:
             exact_col_item = bc.collection_item if bc.collection_item and bc.collection_item.user_id == current_user.id else None
         col_item = exact_col_item
-        if not col_item and binder_type != "wishlist":
+        if not col_item and binder_type == "collection":
             col_item = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).filter(
                 CollectionItem.card_id == bc.card_id,
                 CollectionItem.user_id == current_user.id,
@@ -935,7 +1034,7 @@ def get_binder_cards(
             ).first()
         in_collection = (
             int(collection_quantities.get(bc.card_id, 0) or 0) > 0
-            if binder_type == "wishlist"
+            if binder_type in PLANNING_TYPES
             else col_item is not None
         )
 
@@ -946,12 +1045,12 @@ def get_binder_cards(
         required_quantity = _safe_required_quantity(bc.required_quantity)
         collection_quantity = (
             int(collection_quantities.get(bc.card_id, 0) or 0)
-            if binder_type == "wishlist"
+            if binder_type in PLANNING_TYPES
             else int(col_item.quantity or 0) if col_item else 0
         )
         if binder_type == "collection" and col_item:
             owned_quantity = required_quantity
-        elif binder_type == "wishlist":
+        elif binder_type in PLANNING_TYPES:
             available_quantity = int(remaining_available_by_card.get(bc.card_id, 0) or 0)
             owned_quantity = min(required_quantity, available_quantity)
             remaining_available_by_card[bc.card_id] = max(available_quantity - owned_quantity, 0)
@@ -966,7 +1065,7 @@ def get_binder_cards(
         missing_count += missing_quantity
         binder_value += price * required_quantity
         current_value += price * fulfilled_quantity
-        if binder_type == "wishlist":
+        if binder_type in PLANNING_TYPES:
             cost_to_complete += price * missing_quantity
 
         card_dict = {
@@ -1017,6 +1116,7 @@ def get_binder_cards(
             "color": binder.color,
             "binder_type": binder_type,
             "format": binder.format,
+            "target_size": binder.target_size,
             "icon_pokemon_id": binder.icon_pokemon_id,
         },
         "cards": cards,
@@ -1059,6 +1159,7 @@ def apply_binder_print_optimization(
     db: Session = Depends(get_db),
 ):
     """Apply cheapest playable-equivalent print replacements after preview."""
+    lock_user_card_allocations(db, current_user.id)
     binder = db.query(Binder).filter(
         Binder.id == binder_id,
         Binder.user_id == current_user.id,
@@ -1067,6 +1168,8 @@ def apply_binder_print_optimization(
         raise HTTPException(status_code=404, detail="Binder not found")
 
     binder_type = binder.binder_type or "collection"
+    if binder_type == "physical_deck":
+        raise HTTPException(status_code=409, detail="Convert this Real Deck to a Planned Deck before optimizing prints")
     preview = _build_print_optimization_preview(db, binder, current_user, price_field)
     binder = _relock_binder_for_write(
         db, binder_id, current_user.id, binder_type
@@ -1160,11 +1263,23 @@ def apply_binder_print_optimization(
                 skipped += 1
                 continue
             existing.required_quantity = combined_quantity
+            if binder_type == "physical_deck":
+                db.query(BinderCard).filter(
+                    BinderCard.binder_id == binder_id,
+                    BinderCard.card_id == bc.card_id,
+                    BinderCard.collection_item_id.isnot(None),
+                ).delete(synchronize_session=False)
             db.delete(bc)
             applied += 1
             applied_total_savings += recommendation["total_savings"]
             continue
 
+        if binder_type == "physical_deck":
+            db.query(BinderCard).filter(
+                BinderCard.binder_id == binder_id,
+                BinderCard.card_id == bc.card_id,
+                BinderCard.collection_item_id.isnot(None),
+            ).delete(synchronize_session=False)
         bc.card_id = target_card_id
         applied += 1
         applied_total_savings += recommendation["total_savings"]
@@ -1197,6 +1312,8 @@ def add_card_to_binder(
         raise HTTPException(status_code=400, detail="Collection binders require an exact owned collection item")
 
     binder_type = binder.binder_type or "collection"
+    if binder_type == "physical_deck":
+        raise HTTPException(status_code=400, detail="Use the Deck editor to add cards to a Real Deck")
     ensured_card = ensure_card_exists(db, card_id)
     _require_owned_custom_card(ensured_card, current_user.id)
     binder = _relock_binder_for_write(
@@ -1235,6 +1352,7 @@ def add_collection_item_to_binder(
     db: Session = Depends(get_db),
 ):
     """Add an exact collection item to a binder, preserving variant/condition."""
+    lock_user_card_allocations(db, current_user.id)
     binder = db.query(Binder).filter(
         Binder.id == binder_id,
         Binder.user_id == current_user.id,
@@ -1266,7 +1384,10 @@ def add_collection_item_to_binder(
     usage_count = _collection_binder_usage_counts(db, current_user).get(collection_item_id, 0)
     if usage_count + quantity > int(item.quantity or 0):
         available = max(int(item.quantity or 0) - usage_count, 0)
-        raise HTTPException(status_code=409, detail=f"Only {available} unallocated copie(s) remain for this collection item")
+        raise HTTPException(
+            status_code=409,
+            detail=f"Only {available} unallocated {'copy' if available == 1 else 'copies'} remain for this collection item",
+        )
 
     if existing:
         next_quantity = stored_binder_quantity(existing.required_quantity) + quantity
@@ -1378,7 +1499,7 @@ def add_owned_set_to_auto_binder(
 ):
     """Atomically create or reuse the set's auto-named collection binder."""
     # Serialize auto-binder creation for this user across tabs/devices.
-    db.query(User.id).filter(User.id == current_user.id).with_for_update().one()
+    lock_user_card_allocations(db, current_user.id)
     set_obj = _resolve_owned_set(db, current_user, set_id)
     binder_name = f"{set_obj.name or set_id} (owned)"
     binder = db.query(Binder).filter(
@@ -1418,6 +1539,7 @@ def add_owned_set_to_binder(
     that single entry. Skips items already in this binder, and items whose copies
     are all allocated across collection binders.
     """
+    lock_user_card_allocations(db, current_user.id)
     binder = db.query(Binder).filter(
         Binder.id == binder_id,
         Binder.user_id == current_user.id,
@@ -1442,6 +1564,7 @@ def update_binder_entry(
     db: Session = Depends(get_db),
 ):
     """Update one exact binder entry."""
+    lock_user_card_allocations(db, current_user.id)
     binder = db.query(Binder).filter(
         Binder.id == binder_id,
         Binder.user_id == current_user.id,
@@ -1449,15 +1572,17 @@ def update_binder_entry(
     if not binder:
         raise HTTPException(status_code=404, detail="Binder not found")
 
-    bc = db.query(BinderCard).join(Card, Card.id == BinderCard.card_id).filter(
+    binder_type = binder.binder_type or "collection"
+    entry_query = db.query(BinderCard).join(Card, Card.id == BinderCard.card_id).filter(
         BinderCard.id == binder_card_id,
         BinderCard.binder_id == binder_id,
         visible_any_card_filter(db, current_user.id, "all"),
-    ).first()
+    )
+    bc = _deck_plan_query(entry_query, binder_type).first()
     if not bc:
         raise HTTPException(status_code=404, detail="Binder entry not found")
     next_quantity = _safe_required_quantity(update.required_quantity)
-    if (binder.binder_type or "collection") == "collection":
+    if binder_type == "collection":
         if not bc.collection_item_id:
             raise HTTPException(status_code=409, detail="This legacy binder entry is not linked to an exact collection item")
         item = db.query(CollectionItem).filter(
@@ -1472,7 +1597,13 @@ def update_binder_entry(
         allocated_elsewhere = _collection_binder_usage_counts(db, current_user).get(item.id, 0) - stored_binder_quantity(bc.required_quantity)
         if allocated_elsewhere + next_quantity > int(item.quantity or 0):
             maximum = max(int(item.quantity or 0) - allocated_elsewhere, 0)
-            raise HTTPException(status_code=409, detail=f"At most {maximum} copie(s) can be assigned to this binder")
+            raise HTTPException(
+                status_code=409,
+                detail=f"At most {maximum} {'copy' if maximum == 1 else 'copies'} can be assigned to this Card List",
+            )
+
+    if binder_type in DECK_TYPES:
+        _trim_deck_allocations(db, binder.id, bc.card_id, next_quantity)
 
     bc.required_quantity = next_quantity
     db.commit()
@@ -1497,11 +1628,12 @@ def get_binder_entry_equivalent_prints(
     binder_type = binder.binder_type or "collection"
     price_field = normalize_price_field(price_field)
 
-    bc = db.query(BinderCard).join(Card, Card.id == BinderCard.card_id).options(joinedload(BinderCard.card)).filter(
+    entry_query = db.query(BinderCard).join(Card, Card.id == BinderCard.card_id).options(joinedload(BinderCard.card)).filter(
         BinderCard.id == binder_card_id,
         BinderCard.binder_id == binder_id,
         visible_any_card_filter(db, current_user.id, "all"),
-    ).first()
+    )
+    bc = _deck_plan_query(entry_query, binder_type).first()
     if not bc or not bc.card:
         raise HTTPException(status_code=404, detail="Binder entry not found")
 
@@ -1555,8 +1687,8 @@ def get_binder_entry_equivalent_prints(
         ))
         return {"source_card_id": bc.card_id, "scope": "collection", "equivalents": summaries}
 
-    if binder_type != "wishlist":
-        raise HTTPException(status_code=400, detail="Equivalent prints are available for collection and wishlist binders")
+    if binder_type not in PLANNING_TYPES:
+        raise HTTPException(status_code=400, detail="Equivalent prints are available for binders, planned binders, and decks")
 
     collection_quantities = _available_collection_card_quantities(
         db,
@@ -1594,7 +1726,7 @@ def get_binder_entry_equivalent_prints(
         item["number"] or "",
     ))
 
-    return {"source_card_id": bc.card_id, "scope": "wishlist", "equivalents": summaries}
+    return {"source_card_id": bc.card_id, "scope": "deck" if binder_type in DECK_TYPES else "wishlist", "equivalents": summaries}
 
 
 @router.put("/{binder_id}/entries/{binder_card_id}/card")
@@ -1605,7 +1737,8 @@ def switch_binder_entry_card(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Manually switch a wishlist binder entry to a playable-equivalent print."""
+    """Manually switch a card-list entry to a playable-equivalent print."""
+    lock_user_card_allocations(db, current_user.id)
     binder = db.query(Binder).filter(
         Binder.id == binder_id,
         Binder.user_id == current_user.id,
@@ -1613,14 +1746,17 @@ def switch_binder_entry_card(
     if not binder:
         raise HTTPException(status_code=404, detail="Binder not found")
     binder_type = binder.binder_type or "collection"
-    if binder_type not in {"collection", "wishlist"}:
-        raise HTTPException(status_code=400, detail="Equivalent print switching is available for collection and wishlist binders")
+    if binder_type not in ALLOWED_BINDER_TYPES:
+        raise HTTPException(status_code=400, detail="Equivalent print switching is available for binders, planned binders, and decks")
+    if binder_type == "physical_deck":
+        raise HTTPException(status_code=409, detail="Convert this Real Deck to a Planned Deck before switching prints")
 
-    bc = db.query(BinderCard).join(Card, Card.id == BinderCard.card_id).options(joinedload(BinderCard.card)).filter(
+    entry_query = db.query(BinderCard).join(Card, Card.id == BinderCard.card_id).options(joinedload(BinderCard.card)).filter(
         BinderCard.id == binder_card_id,
         BinderCard.binder_id == binder_id,
         visible_any_card_filter(db, current_user.id, "all"),
-    ).first()
+    )
+    bc = _deck_plan_query(entry_query, binder_type).first()
     if not bc or not bc.card:
         raise HTTPException(status_code=404, detail="Binder entry not found")
 
@@ -1751,13 +1887,35 @@ def switch_binder_entry_card(
         if combined_quantity > 99:
             raise HTTPException(status_code=400, detail="Switching would exceed the maximum required quantity of 99")
         existing.required_quantity = combined_quantity
+        if binder_type == "physical_deck":
+            db.query(BinderCard).filter(
+                BinderCard.binder_id == binder_id,
+                BinderCard.card_id == bc.card_id,
+                BinderCard.collection_item_id.isnot(None),
+            ).delete(synchronize_session=False)
         db.delete(bc)
         db.commit()
-        return {"message": "Binder entries merged", "binder_card_id": existing.id, "merged": True}
+        return {
+            "message": "Card-list entries merged",
+            "binder_card_id": existing.id,
+            "merged": True,
+            "allocations_released": binder_type == "physical_deck",
+        }
 
+    if binder_type == "physical_deck":
+        db.query(BinderCard).filter(
+            BinderCard.binder_id == binder_id,
+            BinderCard.card_id == bc.card_id,
+            BinderCard.collection_item_id.isnot(None),
+        ).delete(synchronize_session=False)
     bc.card_id = target_card.id
     db.commit()
-    return {"message": "Binder entry switched", "binder_card_id": bc.id, "merged": False}
+    return {
+        "message": "Card-list entry switched",
+        "binder_card_id": bc.id,
+        "merged": False,
+        "allocations_released": binder_type == "physical_deck",
+    }
 
 
 @router.post("/{binder_id}/entries/{binder_card_id}/wishlist")
@@ -1769,6 +1927,7 @@ def add_binder_entry_to_wishlist(
     db: Session = Depends(get_db),
 ):
     """Add a binder card to the user's global wishlist if the user still needs copies."""
+    lock_user_card_allocations(db, current_user.id)
     binder = db.query(Binder).filter(
         Binder.id == binder_id,
         Binder.user_id == current_user.id,
@@ -1776,18 +1935,25 @@ def add_binder_entry_to_wishlist(
     if not binder:
         raise HTTPException(status_code=404, detail="Binder not found")
 
-    bc = db.query(BinderCard).join(Card, Card.id == BinderCard.card_id).filter(
+    binder_type = binder.binder_type or "collection"
+    entry_query = db.query(BinderCard).join(Card, Card.id == BinderCard.card_id).filter(
         BinderCard.id == binder_card_id,
         BinderCard.binder_id == binder_id,
         visible_any_card_filter(db, current_user.id, "all"),
-    ).first()
+    )
+    bc = _deck_plan_query(entry_query, binder_type).first()
     if not bc:
         raise HTTPException(status_code=404, detail="Binder entry not found")
 
     plan = None
-    if (binder.binder_type or "collection") == "wishlist":
+    if binder_type in PLANNING_TYPES and bc.collection_item_id is None:
         required_quantity = _safe_required_quantity(bc.required_quantity)
-        owned_quantities = _available_collection_card_quantities(db, current_user, [bc.card_id])
+        owned_quantities = _available_collection_card_quantities(
+            db,
+            current_user,
+            [bc.card_id],
+            include_binder_id=binder.id if binder.binder_type == "physical_deck" else None,
+        )
         wishlist_quantities = _user_wishlist_quantities(db, current_user, [bc.card_id])
         plan = plan_missing_wishlist_additions(
             [(bc.card_id, required_quantity)],
@@ -1887,20 +2053,22 @@ def add_binder_cards_to_wishlist(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Add only missing cards from a wishlist binder to the user's global wishlist."""
+    """Add only missing cards from a planned binder or deck to the global wishlist."""
+    lock_user_card_allocations(db, current_user.id)
     binder = db.query(Binder).filter(
         Binder.id == binder_id,
         Binder.user_id == current_user.id,
     ).first()
     if not binder:
         raise HTTPException(status_code=404, detail="Binder not found")
-    if (binder.binder_type or "collection") != "wishlist":
-        raise HTTPException(status_code=400, detail="Bulk wishlist add is only available for wishlist binders")
+    if (binder.binder_type or "collection") not in PLANNING_TYPES:
+        raise HTTPException(status_code=400, detail="Missing-card wishlist add is only available for planned binders and decks")
 
     binder_cards = db.query(BinderCard.card_id, BinderCard.required_quantity).join(
         Card, Card.id == BinderCard.card_id
     ).filter(
         BinderCard.binder_id == binder_id,
+        BinderCard.collection_item_id.is_(None),
         visible_any_card_filter(db, current_user.id, "all"),
     ).all()
     entries = []
@@ -1917,7 +2085,12 @@ def add_binder_cards_to_wishlist(
     if not card_ids:
         return {"added": 0, "added_copies": 0, "skipped": 0, "skipped_complete": 0, "skipped_existing": 0, "missing_copies": 0, "wishlist_copies": 0, "checked": 0}
 
-    owned_quantities = _available_collection_card_quantities(db, current_user, card_ids)
+    owned_quantities = _available_collection_card_quantities(
+        db,
+        current_user,
+        card_ids,
+        include_binder_id=binder.id if binder.binder_type == "physical_deck" else None,
+    )
     wishlist_quantities = _user_wishlist_quantities(db, current_user, card_ids)
     plan = plan_missing_wishlist_additions(entries, owned_quantities, wishlist_quantities)
 
@@ -1956,14 +2129,15 @@ def export_binder_csv(
     if not binder:
         raise HTTPException(status_code=404, detail="Binder not found")
 
-    rows = db.query(BinderCard).join(Card, Card.id == BinderCard.card_id).options(
+    rows_query = db.query(BinderCard).join(Card, Card.id == BinderCard.card_id).options(
         joinedload(BinderCard.card).joinedload(Card.set_ref),
         joinedload(BinderCard.collection_item),
     ).filter(
         BinderCard.binder_id == binder_id,
         visible_any_card_filter(db, current_user.id, "all"),
-    ).order_by(BinderCard.added_at.asc()).all()
+    )
     binder_type = binder.binder_type or "collection"
+    rows = _deck_plan_query(rows_query, binder_type).order_by(BinderCard.added_at.asc()).all()
 
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=BINDER_CSV_COLUMNS)
@@ -2019,10 +2193,12 @@ async def import_binder_csv(
     if not binder:
         raise HTTPException(status_code=404, detail="Binder not found")
     binder_type = binder.binder_type or "collection"
+    if binder_type == "physical_deck":
+        raise HTTPException(status_code=409, detail="Convert this Real Deck to a Planned Deck before importing a CSV")
     if binder_type == "collection":
         # Keep the same User -> Binder -> CollectionItem lock order used by
         # multi-item collection writes elsewhere.
-        db.query(User.id).filter(User.id == current_user.id).with_for_update().one()
+        lock_user_card_allocations(db, current_user.id)
     binder = _relock_binder_for_write(
         db, binder_id, current_user.id, binder_type
     )
@@ -2231,7 +2407,7 @@ async def import_binder_csv(
     # transaction, then lock and revalidate every write in one stable order.
     db.rollback()
     if binder_type == "collection":
-        db.query(User.id).filter(User.id == current_user.id).with_for_update().one()
+        lock_user_card_allocations(db, current_user.id)
     binder = _relock_binder_for_write(
         db, binder_id, current_user.id, binder_type
     )
@@ -2347,6 +2523,7 @@ def remove_binder_entry(
     db: Session = Depends(get_db),
 ):
     """Remove one exact binder entry."""
+    lock_user_card_allocations(db, current_user.id)
     binder = db.query(Binder).filter(
         Binder.id == binder_id,
         Binder.user_id == current_user.id,
@@ -2354,13 +2531,25 @@ def remove_binder_entry(
     if not binder:
         raise HTTPException(status_code=404, detail="Binder not found")
 
-    bc = db.query(BinderCard).filter(
+    entry_query = db.query(BinderCard).filter(
         BinderCard.id == binder_card_id,
         BinderCard.binder_id == binder_id,
-    ).first()
+    )
+    bc = _deck_plan_query(entry_query, binder.binder_type or "collection").first()
     if not bc:
         raise HTTPException(status_code=404, detail="Binder entry not found")
 
+    if (binder.binder_type or "collection") == "physical_deck":
+        remaining_required = sum(
+            _safe_required_quantity(quantity)
+            for quantity, in db.query(BinderCard.required_quantity).filter(
+                BinderCard.binder_id == binder.id,
+                BinderCard.card_id == bc.card_id,
+                BinderCard.collection_item_id.is_(None),
+                BinderCard.id != bc.id,
+            ).all()
+        )
+        _trim_deck_allocations(db, binder.id, bc.card_id, remaining_required)
     db.delete(bc)
     db.commit()
     return {"message": "Card removed from binder"}
@@ -2374,6 +2563,7 @@ def remove_card_from_binder(
     db: Session = Depends(get_db),
 ):
     """Remove a card from a binder."""
+    lock_user_card_allocations(db, current_user.id)
     binder = db.query(Binder).filter(
         Binder.id == binder_id,
         Binder.user_id == current_user.id,
@@ -2381,14 +2571,23 @@ def remove_card_from_binder(
     if not binder:
         raise HTTPException(status_code=404, detail="Binder not found")
 
-    bc = db.query(BinderCard).filter(
+    card_query = db.query(BinderCard).filter(
         BinderCard.binder_id == binder_id,
         BinderCard.card_id == card_id,
-    ).first()
+    )
+    binder_type = binder.binder_type or "collection"
+    if binder_type in DECK_TYPES:
+        plan_rows = _deck_plan_query(card_query, binder_type).all()
+    else:
+        first_row = card_query.first()
+        plan_rows = [first_row] if first_row else []
 
-    if not bc:
+    if not plan_rows:
         raise HTTPException(status_code=404, detail="Card not in binder")
 
-    db.delete(bc)
+    if binder_type == "physical_deck":
+        _trim_deck_allocations(db, binder.id, card_id, 0)
+    for bc in plan_rows:
+        db.delete(bc)
     db.commit()
     return {"message": "Card removed from binder"}

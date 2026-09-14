@@ -66,6 +66,16 @@ class DeckEffectsTests(unittest.TestCase):
         self.assertEqual(result["unclassified_cards"], {"cards": 4, "unique_sources": 1})
         self.assertEqual(normalize_effect_text(" Draw\n 2  cards. "), "draw 2 cards.")
 
+    def test_german_search_recovery_switching_and_status_text_is_classified(self):
+        energy_search = card("Energiesuche", "Durchsuche dein Deck nach einer Energie-Karte und zeige sie deinem Gegner.")
+        recovery = card("Energie-Zurückgewinnung", "Nimm 2 Basis-Energiekarten aus deinem Ablagestapel auf deine Hand.")
+        switching = card("Tausch", "Wechsle dein Aktives Pokémon gegen 1 Pokémon auf deiner Bank aus.")
+        poison = card("Gift", attacks=[{"effect": "Das Aktive Pokémon deines Gegners ist jetzt vergiftet."}])
+        self.assertEqual(classify_effects(energy_search), {"energy_search"})
+        self.assertEqual(classify_effects(recovery), {"energy_recovery", "general_recovery"})
+        self.assertEqual(classify_effects(switching), {"switching"})
+        self.assertEqual(classify_effects(poison), {"status_condition"})
+
     def test_opponent_drawing_does_not_count_as_draw_support(self):
         self.assertNotIn("draw", classify_effects(card("Watcher", "If your opponent draws 2 cards, do 30 damage.")))
 

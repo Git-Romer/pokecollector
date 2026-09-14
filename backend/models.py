@@ -134,7 +134,6 @@ class Card(Base):
     wishlist_items = relationship("WishlistItem", back_populates="card", lazy="dynamic")
     price_history = relationship("PriceHistory", back_populates="card", lazy="dynamic")
     binder_cards = relationship("BinderCard", back_populates="card", lazy="dynamic")
-    deck_entries = relationship("DeckEntry", back_populates="card", lazy="dynamic")
     custom_owner = relationship("User", foreign_keys=[custom_owner_id])
 
 
@@ -254,14 +253,39 @@ class Binder(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     description = Column(Text)
     color = Column(String, default="#EE1515")
-    binder_type = Column(String, default="collection")  # "collection" or "wishlist"
+    binder_type = Column(String, default="collection")  # "collection", "wishlist", "deck" (planned), or "physical_deck"
     format = Column(String, nullable=True)  # "Standard", "Expanded", "Unlimited", "Casual"
+    target_size = Column(Integer, nullable=True)
     icon_pokemon_id = Column(Integer, nullable=True)
     is_public = Column(Boolean, default=False, nullable=False)
     auto_owned_set_id = Column(String, nullable=True)
+    # Set only when importing Decks created by the original standalone PR #386
+    # schema. Keeping the source id makes that data migration idempotent.
+    legacy_deck_id = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
     binder_cards = relationship("BinderCard", back_populates="binder", cascade="all, delete-orphan")
+
+    @property
+    def entries(self):
+        """Planned deck entries stored in the shared binder-card table."""
+        if (self.binder_type or "collection") in {"deck", "physical_deck"}:
+            return [entry for entry in self.binder_cards if entry.collection_item_id is None]
+        return list(self.binder_cards)
+
+    @property
+    def allocations(self):
+        """Exact owned copies assigned to this card list."""
+        return [entry for entry in self.binder_cards if entry.collection_item_id is not None]
+
+    __table_args__ = (
+        CheckConstraint(
+            "target_size IS NULL OR target_size IN (20, 40, 60)",
+            name="ck_binders_target_size",
+        ),
+        Index("ux_binders_legacy_deck_id", "legacy_deck_id", unique=True),
+    )
 
 
 class BinderCard(Base):
@@ -281,62 +305,14 @@ class BinderCard(Base):
     __table_args__ = (
         CheckConstraint("required_quantity >= 1 AND required_quantity <= 99", name="ck_binder_card_quantity_range"),
         UniqueConstraint("binder_id", "collection_item_id", name="uq_binder_collection_item"),
-    )
-
-
-class Deck(Base):
-    __tablename__ = "decks"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String, nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    target_size = Column(Integer, nullable=False, default=60)
-    description = Column(Text, nullable=True)
-    format = Column(String, nullable=False, default="Casual", server_default="Casual")
-    inventory_state = Column(String, nullable=False, default="planning", server_default="planning")
-    created_at = Column(DateTime, default=func.now(), nullable=False)
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
-
-    entries = relationship("DeckEntry", back_populates="deck", cascade="all, delete-orphan")
-
-    __table_args__ = (
-        CheckConstraint("target_size IN (20, 40, 60)", name="ck_decks_target_size"),
-        CheckConstraint("inventory_state IN ('planning', 'reserved')", name="ck_decks_inventory_state"),
-        Index("ix_decks_user_updated_at", "user_id", "updated_at"),
-    )
-
-
-class DeckEntry(Base):
-    __tablename__ = "deck_entries"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    deck_id = Column(Integer, ForeignKey("decks.id", ondelete="CASCADE"), nullable=False, index=True)
-    card_id = Column(String, ForeignKey("cards.id", ondelete="CASCADE"), nullable=False, index=True)
-    required_quantity = Column(Integer, nullable=False, default=1)
-    created_at = Column(DateTime, default=func.now(), nullable=False)
-
-    deck = relationship("Deck", back_populates="entries")
-    card = relationship("Card", back_populates="deck_entries")
-    assembly_progress = relationship("DeckAssemblyProgress", back_populates="deck_entry", cascade="all, delete-orphan", uselist=False)
-
-    __table_args__ = (
-        CheckConstraint("required_quantity >= 1", name="ck_deck_entries_required_quantity"),
-        UniqueConstraint("deck_id", "card_id", name="uq_deck_entries_deck_card"),
-    )
-
-
-class DeckAssemblyProgress(Base):
-    __tablename__ = "deck_assembly_progress"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    deck_entry_id = Column(Integer, ForeignKey("deck_entries.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
-    pulled_quantity = Column(Integer, nullable=False, default=0)
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
-
-    deck_entry = relationship("DeckEntry", back_populates="assembly_progress")
-
-    __table_args__ = (
-        CheckConstraint("pulled_quantity >= 0", name="ck_deck_assembly_progress_pulled_quantity"),
+        Index("ix_binder_cards_collection_item_id", "collection_item_id"),
+        Index(
+            "ix_binder_cards_plan_lookup",
+            "binder_id",
+            "card_id",
+            postgresql_where=collection_item_id.is_(None),
+            sqlite_where=collection_item_id.is_(None),
+        ),
     )
 
 

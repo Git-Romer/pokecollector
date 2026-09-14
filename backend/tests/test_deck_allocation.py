@@ -1,27 +1,39 @@
 import unittest
 from types import SimpleNamespace
 
-from services.deck_allocation import allocation_for_decks
+from services.deck_allocation import allocation_for_decks, allocations_for_decks
 
 
-def deck(deck_id, state, quantity):
-    return SimpleNamespace(id=deck_id, name=f"Deck {deck_id}", inventory_state=state, entries=[SimpleNamespace(card_id="ultra", required_quantity=quantity)])
+def card_list(list_id, binder_type, card_id, quantity):
+    allocation = SimpleNamespace(card_id=card_id, collection_item_id=list_id, required_quantity=quantity)
+    return SimpleNamespace(id=list_id, name=f"List {list_id}", binder_type=binder_type, allocations=[allocation])
 
 
 class DeckAllocationTests(unittest.TestCase):
-    def test_reserved_decks_share_card_id_pool_without_self_subtraction(self):
-        a, b = deck(1, "reserved", 3), deck(2, "reserved", 4)
+    def test_multiple_deck_views_are_computed_together(self):
+        a = card_list(1, "physical_deck", "ultra", 4)
+        b = card_list(2, "physical_deck", "ultra", 3)
+        result = allocations_for_decks([a, b], {"ultra": 8}, (1, 2))
+        self.assertEqual(result[1]["ultra"]["available_to_this_deck"], 5)
+        self.assertEqual(result[2]["ultra"]["available_to_this_deck"], 4)
+
+    def test_exact_deck_allocations_share_inventory_without_self_subtraction(self):
+        a, b = card_list(1, "physical_deck", "ultra", 3), card_list(2, "physical_deck", "ultra", 4)
         self.assertEqual(allocation_for_decks([a, b], {"ultra": 6}, 1)["ultra"]["available_to_this_deck"], 2)
         self.assertEqual(allocation_for_decks([a, b], {"ultra": 6}, 2)["ultra"]["available_to_this_deck"], 3)
 
-    def test_planning_decks_do_not_reserve(self):
-        a, b, c = deck(1, "reserved", 3), deck(2, "reserved", 4), deck(3, "planning", 4)
+    def test_planned_binders_do_not_allocate(self):
+        a = card_list(1, "deck", "ultra", 3)
+        b = card_list(2, "collection", "ultra", 4)
+        c = card_list(3, "wishlist", "ultra", 4)
         result = allocation_for_decks([a, b, c], {"ultra": 6}, 1)["ultra"]
-        self.assertEqual((result["reserved_total"], result["conflict"]), (7, 1))
+        self.assertEqual((result["reserved_total"], result["conflict"]), (4, 0))
 
-    def test_unreserved_owned_cards_remain_free(self):
-        a, b, c, d = deck(1, "reserved", 4), deck(2, "reserved", 4), deck(3, "planning", 6), deck(4, "reserved", 6)
-        a.entries[0].card_id, b.entries[0].card_id, c.entries[0].card_id, d.entries[0].card_id = "partial", "full", "ignored", "over"
+    def test_unallocated_owned_cards_remain_free(self):
+        a = card_list(1, "physical_deck", "partial", 4)
+        b = card_list(2, "collection", "full", 4)
+        c = card_list(3, "wishlist", "ignored", 6)
+        d = card_list(4, "physical_deck", "over", 6)
         result = allocation_for_decks([a, b, c, d], {"unused": 4, "partial": 6, "full": 4, "over": 4})
         self.assertEqual(result["unused"]["available_to_this_deck"], 4)
         self.assertEqual(result["partial"]["available_to_this_deck"], 2)

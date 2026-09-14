@@ -1,18 +1,29 @@
 import { cardNumberMatches } from './cardNumbers'
 import { normalizeSearchText, textIncludes } from './textSearch'
 
-export function aggregateDeckCollectionItems(items = []) {
+export function aggregateCollectionItems(items = [], maximumQuantityField) {
   return Object.values(items.reduce((cards, item) => {
     const card = item.card || item
     if (!card?.id) return cards
+    const quantity = Number(item.quantity || 0)
+    const maximum = maximumQuantityField ? Number(item[maximumQuantityField] || 0) : undefined
     cards[card.id] = cards[card.id]
-      ? { ...cards[card.id], quantity: cards[card.id].quantity + Number(item.quantity || 0) }
-      : { ...item, card, quantity: Number(item.quantity || 0) }
+      ? {
+          ...cards[card.id],
+          quantity: cards[card.id].quantity + quantity,
+          ...(maximumQuantityField ? { maxQuantity: cards[card.id].maxQuantity + maximum } : {}),
+        }
+      : {
+          ...item,
+          card,
+          quantity,
+          ...(maximumQuantityField ? { maxQuantity: maximum } : {}),
+        }
     return cards
   }, {})).filter(item => item.quantity > 0)
 }
 
-export function filterDeckCollectionCards(items = [], { search = '', type = '', set = '', language = '' } = {}) {
+export function filterCollectionCards(items = [], { search = '', type = '', set = '', language = '' } = {}) {
   return items.filter(item => {
     const card = item.card || item
     const setId = card.set_ref?.id || card.set_id || ''
@@ -27,7 +38,7 @@ export function filterDeckCollectionCards(items = [], { search = '', type = '', 
   })
 }
 
-export function deckPickerOptions(items = []) {
+export function cardListPickerOptions(items = []) {
   const sets = new Map()
   const languages = new Set()
   items.forEach(item => {

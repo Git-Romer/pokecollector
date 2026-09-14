@@ -1,7 +1,18 @@
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
-from models import Binder, BinderCard, CollectionItem
+from models import Binder, BinderCard, CollectionItem, User
+
+
+def lock_user_card_allocations(db: Session, user_id: int) -> None:
+    """Serialize physical-card allocation changes for one user.
+
+    Every workflow that reserves or releases exact collection copies must take
+    this lock before locking a Card List or collection row. PostgreSQL can then
+    never deadlock two overlapping multi-card operations simply because their
+    lists happen to store cards in a different order.
+    """
+    db.query(User.id).filter(User.id == user_id).with_for_update().one()
 
 
 def stored_binder_quantity(value: int | None) -> int:
@@ -18,13 +29,13 @@ def collection_binder_allocation_counts(
     collection_item_ids: list[int] | set[int] | tuple[int, ...] | None = None,
     exclude_binder_card_id: int | None = None,
 ) -> dict[int, int]:
-    """Sum exact-copy allocations across every collection binder owned by a user."""
+    """Sum exact-copy allocations across physical binders and Real Decks."""
     query = db.query(
         BinderCard.collection_item_id,
         func.coalesce(func.sum(func.coalesce(BinderCard.required_quantity, 1)), 0),
     ).join(Binder, Binder.id == BinderCard.binder_id).filter(
         Binder.user_id == user_id,
-        or_(Binder.binder_type == "collection", Binder.binder_type.is_(None)),
+        or_(Binder.binder_type.in_(("collection", "physical_deck")), Binder.binder_type.is_(None)),
         BinderCard.collection_item_id.isnot(None),
     )
     if collection_item_ids is not None:
@@ -45,7 +56,7 @@ def collection_binder_allocated_card_counts(
     user_id: int,
     card_ids: list[str] | set[str] | tuple[str, ...] | None = None,
 ) -> dict[str, int]:
-    """Sum exact-copy allocations by card across collection binders only."""
+    """Sum exact-copy allocations by card across physical binders and Real Decks."""
     query = db.query(
         CollectionItem.card_id,
         func.coalesce(func.sum(func.coalesce(BinderCard.required_quantity, 1)), 0),
@@ -54,7 +65,7 @@ def collection_binder_allocated_card_counts(
     ).filter(
         Binder.user_id == user_id,
         CollectionItem.user_id == user_id,
-        or_(Binder.binder_type == "collection", Binder.binder_type.is_(None)),
+        or_(Binder.binder_type.in_(("collection", "physical_deck")), Binder.binder_type.is_(None)),
         BinderCard.collection_item_id.isnot(None),
     )
     if card_ids is not None:

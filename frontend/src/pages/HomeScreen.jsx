@@ -239,7 +239,7 @@ export default function HomeScreen() {
     },
     { to: '/sets',       icon: Grid2X2,    label: t('nav.sets'),        color: '#81c784' },
     { to: '/pokedex',    icon: ListOrdered, label: t('nav.pokedex'),    color: '#ffb74d' },
-    { to: '/decks',      icon: Layers3,     label: t('nav.decks'),      color: '#7986cb' },
+    { to: '/binders',    icon: Layers3,     label: t('nav.binders'),    color: '#7986cb' },
     { to: '/analytics',  icon: BarChart3,  label: t('nav.analytics'),   color: '#f5c842' },
     { to: '/trades',     icon: ArrowRightLeft, label: t('nav.trades'),   color: '#ff8a65' },
     ...(multiUser ? [{ to: '/leaderboard', icon: Trophy, label: t('nav.leaderboard'), color: '#ffd54f' }] : []),

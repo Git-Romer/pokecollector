@@ -106,6 +106,34 @@ const deckSummaries = [
   { ...deckSummary, id: 4, name: 'Large Over Deck', current_card_count: 55, remaining_to_target: 0, over_target_by: 15, status: 'over', composition_counts: { Pokemon: 26, Trainer: 15, Energy: 14, Other: 0 } },
 ]
 
+const plannedBinder = {
+  id: 10,
+  name: 'Visual Planned Binder',
+  description: 'A planned collection fixture',
+  color: '#eab308',
+  binder_type: 'wishlist',
+  card_count: 0,
+  unique_card_count: 0,
+  is_public: false,
+  created_at: '2026-08-27T12:00:00',
+  updated_at: '2026-08-27T12:00:00',
+}
+
+const cardLists = deckSummaries.map(item => ({
+  id: item.id,
+  name: item.name,
+  description: item.description,
+  color: '#8b5cf6',
+  binder_type: 'deck',
+  format: item.format,
+  target_size: item.target_size,
+  card_count: item.current_card_count,
+  unique_card_count: 3,
+  is_public: false,
+  created_at: '2026-08-27T12:00:00',
+  updated_at: '2026-08-27T12:00:00',
+})).concat(plannedBinder)
+
 const trades = [{
   id: 7,
   partner_name: 'Misty',
@@ -156,8 +184,6 @@ const trades = [{
 async function installApiFixtures(page) {
   const cardBackResponse = await page.request.get('/cardback.jpg')
   const cardBack = await cardBackResponse.body()
-  let assemblyProgress = []
-
   await page.addInitScript(user => {
     localStorage.setItem('token', 'visual-test-token')
     localStorage.setItem('user', JSON.stringify(user))
@@ -177,17 +203,6 @@ async function installApiFixtures(page) {
 
     if (path.startsWith('/api/images/card/')) {
       await route.fulfill({ status: 200, contentType: 'image/jpeg', body: cardBack })
-      return
-    }
-
-    if (path === '/api/decks/1/assembly-progress') {
-      if (route.request().method() === 'PUT') {
-        const next = route.request().postDataJSON()
-        assemblyProgress = assemblyProgress.filter(item => item.entry_id !== next.entry_id).concat(next)
-      } else if (route.request().method() === 'DELETE') {
-        assemblyProgress = []
-      }
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(route.request().method() === 'DELETE' ? { message: 'reset' } : route.request().method() === 'PUT' ? assemblyProgress.at(-1) : assemblyProgress) })
       return
     }
 
@@ -219,18 +234,6 @@ async function installApiFixtures(page) {
       return
     }
 
-    if (path === '/api/decks/allocation/export.csv') {
-      const mode = url.searchParams.get('mode') || 'all'
-      const filename = mode === 'free' ? 'pokecollector-free-inventory-2026-08-27.csv' : mode === 'conflicts' ? 'pokecollector-inventory-conflicts-2026-08-27.csv' : 'pokecollector-inventory-2026-08-27.csv'
-      await route.fulfill({ status: 200, contentType: 'text/csv; charset=utf-8', headers: { 'Content-Disposition': `attachment; filename="${filename}"` }, body: 'card_id,name\nvisual-card-1,"Pikachu, Pokémon"\n' })
-      return
-    }
-
-    if (path === '/api/decks/allocation') {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ summary: { reserved_decks: 1, conflicting_cards: 1, missing_copies: 1 }, items: [{ card_id: 'visual-card-1', name: 'Visual card 1', owned: 3, reserved: 4, free: 0, shortage: 1, decks: [{ deck_id: 1, name: 'Visual Practice Deck', quantity: 4 }] }] }) })
-      return
-    }
-
     if (path === '/api/decks/1/duplicate') {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...deck, id: 99, name: 'Visual Practice Deck (Copy)' }) })
       return
@@ -247,6 +250,7 @@ async function installApiFixtures(page) {
         currency: 'EUR',
       },
       '/api/settings/tcgdex-filter-languages': ['en', 'de'],
+      '/api/profile/': { feature_enabled: false, is_profile_public: false },
       '/api/collection/': collection,
       '/api/wishlist/': [],
       '/api/sets/': [],
@@ -258,6 +262,9 @@ async function installApiFixtures(page) {
       '/api/analytics/new-sets': [],
       '/api/products/': [],
       '/api/trades/': trades,
+      '/api/binders/': cardLists,
+      '/api/binders/1/cards': { binder: cardLists[0], cards: [] },
+      '/api/binders/10/cards': { binder: plannedBinder, cards: [], available_collection_item_quantities: {} },
       '/api/decks/': deckSummaries,
       '/api/decks/1': deck,
       '/api/decks/99': { ...deck, id: 99, name: 'Visual Practice Deck (Copy)' },
@@ -269,6 +276,11 @@ async function installApiFixtures(page) {
       body: JSON.stringify(responses[path] ?? {}),
     })
   })
+}
+
+async function expandDeckPicker(page) {
+  const expand = page.getByRole('button', { name: 'Add cards' })
+  if (await expand.getAttribute('aria-expanded') !== 'true') await expand.click()
 }
 
 async function expectVisibleArtwork(page) {
@@ -284,18 +296,27 @@ test.beforeEach(async ({ page }) => {
   await installApiFixtures(page)
 })
 
-test('deck assembly supports desktop and mobile pulled-copy workflow', async ({ page }) => {
+test('legacy physical-deck workflow redirects to the unified Deck editor', async ({ page }) => {
   await page.goto('/decks/1/build')
-  await expect(page.getByRole('heading', { name: 'Build Deck: Visual Practice Deck' })).toBeVisible()
-  await expect(page.getByText('2 validation errors')).toBeVisible()
-  await expect(page.getByText('Missing Cards')).toBeVisible()
-  await page.getByRole('button', { name: 'Add pulled copy' }).first().click()
-  await expect(page.getByRole('progressbar', { name: 'Pulled progress' })).toHaveAttribute('aria-valuenow', '1')
+  await page.waitForURL('**/decks/1')
+  await expect(page.getByRole('heading', { name: 'Visual Practice Deck' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Make Real Deck' })).toBeVisible()
+})
 
-  await page.setViewportSize({ width: 390, height: 844 })
-  await expect(page.getByRole('button', { name: 'Add pulled copy' }).first()).toBeVisible()
-  await page.getByRole('button', { name: 'Mark all owned copies pulled' }).first().click()
-  await expect(page.getByRole('button', { name: 'Remove pulled copy' }).first()).toBeVisible()
+test('Real Deck uses the unified editor without a manual assignment step', async ({ page }) => {
+  const realDeck = {
+    ...deck,
+    binder_type: 'physical_deck',
+    missing_copy_count: 0,
+    shared_missing_copy_count: 0,
+    entries: deck.entries.map(entry => ({ ...entry, shortage: 0, allocated_quantity: entry.required_quantity })),
+  }
+  await page.route('**/api/decks/1', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(realDeck) }))
+  await page.goto('/decks/1')
+  await expect(page.getByText('Real Deck', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Make Planned Deck' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Physical deck (optional)' })).toHaveCount(0)
+  await expect(page.locator('header').getByRole('button', { name: 'Add missing to wishlist' })).toHaveCount(0)
 })
 
 test('deck editor expands structured validation details', async ({ page }) => {
@@ -305,26 +326,65 @@ test('deck editor expands structured validation details', async ({ page }) => {
   await expect(page.getByText('Visual card 2: 1 Missing')).toBeVisible()
 })
 
+test('deck gallery uses the same progress and price captions as a Planned Binder', async ({ page }) => {
+  await page.goto('/decks/1')
+  await expect(page.getByLabel('Progress: 8/8')).toBeVisible()
+  await expect(page.getByLabel('Progress: 8/8').locator('.lucide-check')).toBeVisible()
+  await expect(page.getByLabel('Progress: 9/10')).toHaveText('9/10')
+  await expect(page.getByText('€5.00', { exact: true })).toBeVisible()
+})
+
+test('deck editor dims a card when no required copy is owned', async ({ page }) => {
+  const missingDeck = JSON.parse(JSON.stringify(deck))
+  missingDeck.entries[1].owned_quantity = 0
+  missingDeck.entries[1].shortage = missingDeck.entries[1].required_quantity
+  await page.route('**/api/decks/1', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(missingDeck) }))
+  await page.goto('/decks/1')
+  const missingCard = page.locator('.unified-card-frame').filter({ has: page.getByRole('button', { name: /Open Pikachu with a deliberately long aligned card name/ }) })
+  await expect(missingCard.locator('.unified-card-missing-overlay')).toBeVisible()
+})
+
 test('deck editor renders quantity-weighted analytics on desktop and mobile', async ({ page }) => {
+  const localizedTypesDeck = JSON.parse(JSON.stringify(deck))
+  localizedTypesDeck.analysis.pokemon.types = { water: 3, Wasser: 5 }
+  await page.route('**/api/decks/1', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(localizedTypesDeck) }))
   await page.goto('/decks/1')
   await page.getByRole('tab', { name: 'Analytics' }).click()
   await expect(page.getByText('Card diversity')).toBeVisible()
-  await expect(page.getByText('24')).toBeVisible()
+  await expect(page.getByRole('img', { name: 'Deck composition' })).toBeVisible()
+  await expect(page.getByRole('img', { name: 'Deck composition' }).getByText('24', { exact: true })).toBeVisible()
+  await expect(page.locator('.recharts-tooltip-wrapper')).toHaveCount(0)
   await page.getByRole('tab', { name: 'Pokemon' }).click()
-  await expect(page.getByText('Lightning')).toBeVisible()
+  await expect(page.getByText('Water')).toBeVisible()
+  await expect(page.locator('[data-analytics-row="Water"] [data-analytics-color="#3b82f6"]')).toBeVisible()
+  await expect(page.locator('[data-analytics-row="Water"] strong')).toHaveText('8')
+  await expect(page.getByText('other_unknown', { exact: true })).toHaveCount(0)
   await page.setViewportSize({ width: 390, height: 844 })
   await page.getByRole('tab', { name: 'Attacks' }).click()
   await expect(page.getByText('Fixed-damage attacks')).toBeVisible()
+  await expect(page.getByText(/Shows the attacks available/)).toBeVisible()
 })
 
 test('deck analytics consistency shows non-zero effects and expandable sources', async ({ page }) => {
   await page.goto('/decks/1')
   await page.getByRole('tab', { name: 'Analytics' }).click()
   await page.getByRole('tab', { name: 'Consistency' }).click()
-  await expect(page.getByText('Functional Coverage')).toBeVisible()
+  await expect(page.getByText('What is shown here?')).toBeVisible()
+  await expect(page.getByText('Key consistency tools')).toBeVisible()
+  await expect(page.getByText(/not probabilities or a quality score/)).toBeVisible()
   await expect(page.getByText('Switching', { exact: true })).toHaveCount(0)
-  await page.getByRole('button', { name: /Pokemon Search.*7 cards.*2 sources/ }).first().click()
+  await page.getByRole('button', { name: /Pokemon Search.*7 copies.*2 different cards/ }).first().click()
   await expect(page.getByText('Ultra Ball')).toBeVisible()
+})
+
+test('deck analytics explains an empty consistency result', async ({ page }) => {
+  const noEffectsDeck = JSON.parse(JSON.stringify(deck))
+  noEffectsDeck.analysis.effects = { coverage: {}, outs: {}, unclassified_cards: { cards: 1, unique_sources: 1 } }
+  await page.route('**/api/decks/1', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(noEffectsDeck) }))
+  await page.goto('/decks/1')
+  await page.getByRole('tab', { name: 'Analytics' }).click()
+  await page.getByRole('tab', { name: 'Consistency' }).click()
+  await expect(page.getByText(/No recognized consistency effects were found/)).toBeVisible()
 })
 
 test('deck analytics probability calculates opening, outs, key-card, and prize views', async ({ page }) => {
@@ -334,40 +394,49 @@ test('deck analytics probability calculates opening, outs, key-card, and prize v
   await expect(page.getByText('Basic Pokemon')).toBeVisible()
   await expect(page.getByText('95.0%')).toBeVisible()
   await page.getByLabel('Key card').selectOption({ label: 'Visual card 1' })
-  await expect(page.getByText('Prize risk')).toBeVisible()
+  await expect(page.getByText('Key card among the Prize cards')).toBeVisible()
   await page.getByLabel('Extra draws').fill('2')
-  await expect(page.getByText('Cards seen').first()).toBeVisible()
+  await expect(page.getByText('Chance after all selected draws')).toBeVisible()
 })
 
 test('deck comparison presents card deltas and compact mobile-safe sections', async ({ page }) => {
   await page.goto('/decks/compare?left=1&right=2')
+  await expect(page.getByTestId('deck-comparison-hero')).toBeVisible()
+  await expect(page.locator('[data-comparison-deck]')).toHaveCount(2)
   await expect(page.getByText('Card Changes')).toBeVisible()
   await expect(page.locator('section').filter({ hasText: 'Card Changes' }).locator('span').filter({ hasText: 'Visual card 1' })).toBeVisible()
-  await expect(page.getByText('Composition')).toBeVisible()
-  await expect(page.getByText('Ownership & Validation')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Composition' })).toBeVisible()
+  const compositionSection = page.getByRole('heading', { name: 'Composition' }).locator('xpath=ancestor::section[1]')
+  await expect(compositionSection.locator('[data-comparison-metric="Pokemon"]')).toBeVisible()
+  await expect(compositionSection.locator('[data-comparison-metric="Trainer"]')).toBeVisible()
+  await expect(compositionSection.locator('[data-deck-pair="left"]').first()).toBeVisible()
+  await expect(compositionSection.locator('[data-deck-pair="right"]').first()).toBeVisible()
+  await expect(page.getByText('Collection & Deck checks')).toBeVisible()
+  const ownershipSection = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Collection & Deck checks' }) })
+  await expect(ownershipSection.locator('[data-deck-pair="left"]').first()).toBeVisible()
+  await expect(ownershipSection.locator('[data-deck-pair="right"]').first()).toBeVisible()
   await page.getByLabel('Show unchanged').check()
   await page.getByLabel('Key card').selectOption('Visual card 1')
-  await expect(page.getByText('Copies: 2 → 4; Opening 7: 22.0% → 40.0%')).toBeVisible()
+  const keyCardRow = page.locator('[data-comparison-metric="key-card"]')
+  await expect(keyCardRow).toContainText('Opening 7')
+  await expect(keyCardRow).toContainText('22.0%')
+  await expect(keyCardRow).toContainText('40.0%')
+  await page.getByRole('button', { name: 'Swap decks' }).click()
+  await expect(page.getByLabel('Deck A')).toHaveValue('2')
+  await expect(page.getByLabel('Deck B')).toHaveValue('1')
 })
 
 test('deck editor duplicates a deck into an independent editor route', async ({ page }) => {
   await page.goto('/decks/1')
-  await page.getByRole('button', { name: 'Duplicate' }).click()
+  await page.locator('header').getByRole('button', { name: 'Duplicate' }).click()
   await page.waitForURL('**/decks/99')
-  await expect(page.locator('input[name="name"]')).toHaveValue('Visual Practice Deck (Copy)')
+  await expect(page.getByRole('heading', { name: 'Visual Practice Deck (Copy)' })).toBeVisible()
 })
 
-test('deck inventory export menu downloads server-named CSV files', async ({ page }) => {
-  await page.goto('/decks')
-  await page.getByRole('button', { name: 'Export Inventory CSV' }).click()
-  const download = page.waitForEvent('download')
-  await page.getByRole('menuitem', { name: 'All inventory' }).click()
-  await expect((await download).suggestedFilename()).toBe('pokecollector-inventory-2026-08-27.csv')
+test('legacy deck inventory route returns to Card Lists', async ({ page }) => {
   await page.goto('/decks/inventory')
-  await page.getByRole('button', { name: 'Export Inventory CSV' }).click()
-  const conflicts = page.waitForEvent('download')
-  await page.getByRole('menuitem', { name: 'Conflicts only' }).click()
-  await expect((await conflicts).suggestedFilename()).toBe('pokecollector-inventory-conflicts-2026-08-27.csv')
+  await page.waitForURL('**/binders')
+  await expect(page.getByRole('heading', { name: 'Card Lists' })).toBeVisible()
 })
 
 test('real Collection list keeps shared artwork, identity, and fallback treatment', async ({ page }) => {
@@ -431,12 +500,20 @@ test('Deck editor presents a segmented gallery and keyboard-navigable viewer', a
   await expect(page.getByText('Trainer 10')).toBeVisible()
   await expect(page.getByText('Energy 6')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Open Visual card 1' })).toHaveCount(1)
-  await expect(page.getByText('Missing: 1')).toBeVisible()
-  await expect(page.getByText('Ultra Ball: 5 copies may exceed the normal 4-copy limit.', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Increase Visual card 1 quantity' })).toHaveCount(0)
+  await expect(page.getByLabel('Progress: 9/10')).toHaveText('9/10')
+  await page.getByRole('button', { name: /Deck Validation/ }).click()
+  await expect(page.getByText('One or more cards exceed the four-copy limit.', { exact: true })).toBeVisible()
+  await expect(page.getByText('Visual card 1: 8', { exact: true })).toBeVisible()
   await expect(page.getByText('svgUltra Ball', { exact: true })).toHaveCount(0)
 
   await page.getByRole('button', { name: 'Open Visual card 1' }).click()
-  await expect(page.getByRole('dialog', { name: 'Visual card 1' })).toBeVisible()
+  const cardDialog = page.getByRole('dialog', { name: 'Visual card 1' })
+  await expect(cardDialog).toBeVisible()
+  await expect(cardDialog.locator('.unified-card-art')).toBeVisible()
+  await expect(cardDialog.getByRole('tab', { name: 'Deck' })).toBeVisible()
+  await expect(cardDialog.getByRole('tab', { name: 'Equivalent prints' })).toBeVisible()
+  await expect(cardDialog.getByRole('button', { name: 'Increase Visual card 1 quantity' })).toBeVisible()
   await page.getByRole('button', { name: 'Next card' }).click()
   await expect(page.getByRole('dialog', { name: 'Pikachu with a deliberately long aligned card name' })).toBeVisible()
   await page.keyboard.press('ArrowLeft')
@@ -445,22 +522,90 @@ test('Deck editor presents a segmented gallery and keyboard-navigable viewer', a
   await expect(page.getByRole('dialog')).toBeHidden()
 })
 
-test('Deck list uses the shared segmented composition summary', async ({ page }) => {
-  await page.goto('/decks')
+test('Card Lists overview includes deck metadata without technical inventory controls', async ({ page }) => {
+  await page.goto('/binders')
+  await expect(page.getByRole('heading', { name: 'Card Lists' })).toBeVisible()
   await expect(page.getByText('Visual Practice Deck')).toBeVisible()
-  await expect(page.getByLabel('Deck composition').first()).toBeVisible()
-  await expect(page.getByText('Pokemon 8')).toBeVisible()
-  await expect(page.getByText('Trainer 10')).toBeVisible()
-  await expect(page.getByText('Energy 6')).toBeVisible()
-  await expect(page.getByText('16 remaining')).toBeVisible()
-  await expect(page.getByText('2 validation errors').first()).toBeVisible()
-  await expect(page.getByText('Valid deck')).toBeVisible()
-  await expect(page.getByText('40/40')).toBeVisible()
-  await expect(page.getByText('41/40')).toBeVisible()
-  await expect(page.getByText('55/40')).toBeVisible()
-  await expect(page.getByText('15 over target')).toBeVisible()
-  await expect(page.getByText('Pokemon 26')).toBeVisible()
-  await expect(page.getByLabel('Deck composition')).toHaveCount(4)
+  await expect(page.getByText('Planned Deck', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('Casual · 40 cards').first()).toBeVisible()
+  await expect(page.getByText('24 cards')).toBeVisible()
+  const deckCard = page.locator('.card').filter({ hasText: 'Visual Practice Deck' }).first()
+  const titleBox = await deckCard.getByRole('heading', { name: 'Visual Practice Deck' }).boundingBox()
+  const typeBox = await deckCard.getByText('Planned Deck', { exact: true }).boundingBox()
+  expect(typeBox.y).toBeGreaterThan(titleBox.y)
+  await expect(page.getByRole('button', { name: 'Export Inventory CSV' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'More' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Compare Decks' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'New Card List' }).click()
+  await expect(page.getByRole('button', { name: 'Planned Binder', exact: true })).toBeVisible()
+})
+
+test('Deck comparison starts from the current Deck Analytics tab', async ({ page }) => {
+  await page.goto('/decks/1')
+  await page.getByRole('tab', { name: 'Analytics' }).click()
+  await page.getByRole('tab', { name: 'Compare Decks' }).click()
+  await expect(page.getByLabel('Deck A')).toHaveText('Visual Practice Deck')
+  await page.getByLabel('Deck B').selectOption('2')
+  await page.getByRole('button', { name: 'Compare Decks' }).click()
+  await expect(page).toHaveURL(/\/decks\/compare\?left=1&right=2$/)
+})
+
+test('Planned Binder uses the advanced shared card picker controls', async ({ page }) => {
+  await page.goto('/binders/10')
+  await expect(page.getByText('Deck-style binder')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Add cards' }).click()
+  await expect(page.getByRole('tab', { name: 'My collection' })).toBeVisible()
+  await expect(page.getByRole('tab', { name: 'All cards' })).toBeVisible()
+  await expect(page.getByLabel('Filter by card type')).toBeVisible()
+  await expect(page.getByLabel('Filter by language')).toBeVisible()
+  await expect(page.getByText('Visual card 1', { exact: true })).toBeVisible()
+  await page.getByLabel('Filter by card type').selectOption('Trainer')
+  await expect(page.getByText('Pikachu with a deliberately long aligned card name', { exact: true })).toBeVisible()
+  await expect(page.getByText('Visual card 1', { exact: true })).toHaveCount(0)
+})
+
+test('Deck CSV import explains the format before choosing a file', async ({ page }) => {
+  await page.goto('/decks/1')
+  await page.locator('header').getByRole('button', { name: 'Import deck list (CSV)' }).click()
+  await expect(page.getByRole('heading', { name: 'Card List CSV import' })).toBeVisible()
+  await expect(page.getByText('Import cards and required quantities into this deck from a CSV file.')).toBeVisible()
+  await expect(page.getByText('set_code,number,required_quantity,lang,variant,condition,collection_item_id')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Choose CSV file' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Download template' })).toBeVisible()
+})
+
+test('Deck and Card List controls are translated in German', async ({ page }) => {
+  await page.route('**/api/settings/', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      language: 'de',
+      price_primary: 'trend',
+      price_display: '["trend","avg","avg1","avg7","avg30","low"]',
+      tcgdex_sync_languages: 'en,de',
+      currency: 'EUR',
+    }),
+  }))
+  await page.goto('/decks/1')
+  await expect(page.getByRole('button', { name: 'In echtes Deck umwandeln' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Karten hinzufügen' })).toBeVisible()
+  await page.getByRole('button', { name: /Deckprüfung/ }).click()
+  await expect(page.getByText('Das Deck enthält 24 von 40 Karten.')).toBeVisible()
+  await expect(page.getByText('One or more cards exceed the 4-copy limit.')).toHaveCount(0)
+  await page.getByRole('tab', { name: 'Analyse' }).click()
+  await page.getByRole('tab', { name: 'Pokémon' }).click()
+  await expect(page.getByText('Elektro', { exact: true })).toBeVisible()
+  await page.getByRole('tab', { name: 'Zuverlässigkeit' }).click()
+  await expect(page.getByText('Was wird hier gezeigt?')).toBeVisible()
+  await page.locator('header').getByRole('button', { name: 'Deckliste importieren (CSV)' }).click()
+  await expect(page.getByRole('heading', { name: 'Kartenliste aus CSV importieren' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'CSV-Datei auswählen' })).toBeVisible()
+})
+
+test('legacy Binder URL for a Deck redirects to the Deck editor', async ({ page }) => {
+  await page.goto('/binders/1')
+  await page.waitForURL('**/decks/1')
+  await expect(page.getByRole('heading', { name: 'Visual Practice Deck' })).toBeVisible()
 })
 
 test('Deck editor refetches after a failed quantity mutation', async ({ page }) => {
@@ -470,6 +615,7 @@ test('Deck editor refetches after a failed quantity mutation', async ({ page }) 
     body: JSON.stringify({ detail: 'Quantity update rejected' }),
   }))
   await page.goto('/decks/1')
+  await page.getByRole('button', { name: 'Open Visual card 1' }).click()
   await page.getByRole('button', { name: 'Increase Visual card 1 quantity' }).click()
   await expect(page.getByText('Quantity update rejected')).toBeVisible()
   await expect(page.getByLabel('Deck composition')).toBeVisible()
@@ -495,17 +641,18 @@ test('Deck editor batches rapid quantity changes and ignores stale responses', a
   })
 
   await page.goto('/decks/1')
+  await page.getByRole('button', { name: 'Open Visual card 1' }).click()
   const increase = page.getByRole('button', { name: 'Increase Visual card 1 quantity' })
   await increase.evaluate(button => { for (let count = 0; count < 5; count += 1) button.click() })
   await expect.poll(() => requests).toEqual([55])
   await increase.evaluate(button => { for (let count = 0; count < 5; count += 1) button.click() })
-  await expect(page.getByText('x60', { exact: true })).toBeVisible()
+  await expect(page.getByRole('dialog').locator('[aria-live="polite"]')).toHaveText('60')
   await expect.poll(() => requests).toEqual([55, 60])
-  await expect(page.getByText('x60', { exact: true })).toBeVisible()
+  await expect(page.getByRole('dialog').locator('[aria-live="polite"]')).toHaveText('60')
 
   const decrease = page.getByRole('button', { name: 'Decrease Visual card 1 quantity' })
   await decrease.evaluate(button => { for (let count = 0; count < 15; count += 1) button.click() })
-  await expect(page.getByText('x45', { exact: true })).toBeVisible()
+  await expect(page.getByRole('dialog').locator('[aria-live="polite"]')).toHaveText('45')
   await expect.poll(() => requests).toEqual([55, 60, 45])
 })
 
@@ -529,18 +676,19 @@ test('Deck editor preserves rapid quantity changes above a 60-card target', asyn
   })
 
   await page.goto('/decks/1')
+  await page.getByRole('button', { name: 'Open Visual card 1' }).click()
   const increase = page.getByRole('button', { name: 'Increase Visual card 1 quantity' })
   await increase.evaluate(button => { for (let count = 0; count < 20; count += 1) button.click() })
-  await expect(page.getByText('x70', { exact: true })).toBeVisible()
+  await expect(page.getByRole('dialog').locator('[aria-live="polite"]')).toHaveText('70')
   await expect.poll(() => requests).toEqual([70])
 
   const decrease = page.getByRole('button', { name: 'Decrease Visual card 1 quantity' })
   await decrease.evaluate(button => { for (let count = 0; count < 15; count += 1) button.click() })
-  await expect(page.getByText('x55', { exact: true })).toBeVisible()
+  await expect(page.getByRole('dialog').locator('[aria-live="polite"]')).toHaveText('55')
   await expect.poll(() => requests).toEqual([70, 55])
 })
 
-test('Deck picker batches rapid adds without detail refetches', async ({ page }) => {
+test('Deck picker adds a selected card with its chosen quantity without detail refetches', async ({ page }) => {
   const updatedDeck = JSON.parse(JSON.stringify(deck))
   const requests = []
   let detailGets = 0
@@ -557,9 +705,12 @@ test('Deck picker batches rapid adds without detail refetches', async ({ page })
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(updatedDeck) })
   })
   await page.goto('/decks/1')
-  const add = page.getByRole('button', { name: 'Add Visual card 4' })
-  await add.evaluate(button => { for (let count = 0; count < 30; count += 1) button.click() })
-  await expect(page.getByText('In deck: 30', { exact: true })).toBeVisible()
+  await expandDeckPicker(page)
+  await page.getByRole('button', { name: 'Select Visual card 4' }).click()
+  await page.getByRole('button', { name: 'Add (1)' }).click()
+  await page.getByLabel('Quantity: Visual card 4').fill('30')
+  await page.getByRole('dialog').getByRole('button', { name: 'Add' }).click()
+  await expect(page.getByLabel('Progress: 2/30')).toBeVisible()
   await expect.poll(() => requests).toEqual([30])
   expect(detailGets).toBe(1)
 })
@@ -567,31 +718,139 @@ test('Deck picker batches rapid adds without detail refetches', async ({ page })
 test('Deck picker reports a rate-limit response and remains usable', async ({ page }) => {
   await page.route('**/api/decks/1/entries', route => route.fulfill({ status: 429, contentType: 'application/json', body: JSON.stringify({ error: 'Rate limit exceeded: 60 per 1 minute' }) }))
   await page.goto('/decks/1')
-  await page.getByRole('button', { name: 'Add Visual card 4' }).click()
+  await expandDeckPicker(page)
+  await page.getByRole('button', { name: 'Select Visual card 4' }).click()
+  await page.getByRole('button', { name: 'Add (1)' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Add' }).click()
   await expect(page.getByText('Too many requests. Please wait a moment and try again.')).toBeVisible()
   await expect(page.getByLabel('Deck composition')).toBeVisible()
 })
 
 test('Deck editor filters the owned-card browser and requires an explicit add action', async ({ page }) => {
+  const updatedDeck = JSON.parse(JSON.stringify(deck))
+  await page.route('**/api/decks/1/entries', async route => {
+    const payload = route.request().postDataJSON()
+    updatedDeck.entries.push({ id: 4, card_id: payload.card_id, required_quantity: payload.required_quantity, owned_quantity: 1, shortage: 0, card: collection[3].card })
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(updatedDeck) })
+  })
   await page.goto('/decks/1')
+  await expandDeckPicker(page)
 
-  await page.getByLabel('Filter by type').selectOption('Trainer')
-  await expect(page.getByRole('button', { name: 'Preview Pikachu with a deliberately long aligned card name' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Preview Visual card 1' })).toHaveCount(0)
+  await page.getByLabel('Filter by card type').selectOption('Trainer')
+  await expect(page.getByRole('button', { name: 'Select Pikachu with a deliberately long aligned card name' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Select Pikachu with a deliberately long aligned card name' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Select Visual card 1' })).toHaveCount(0)
 
-  await page.getByRole('button', { name: 'Preview Pikachu with a deliberately long aligned card name' }).click()
-  await expect(page.getByRole('button', { name: 'Add to deck' })).toBeVisible()
-  const addRequest = page.waitForRequest(request => request.method() === 'PATCH' && request.url().endsWith('/api/decks/1/entries/2'))
-  await page.getByRole('button', { name: 'Add to deck' }).click()
-  expect((await addRequest).postDataJSON()).toEqual({ required_quantity: 11 })
+  await page.getByLabel('Filter by card type').selectOption('Pokemon')
+  await page.getByRole('button', { name: 'Select Visual card 4' }).click()
+  await expect(page.getByRole('button', { name: 'Add (1)' })).toBeVisible()
+  const addRequest = page.waitForRequest(request => request.method() === 'POST' && request.url().endsWith('/api/decks/1/entries'))
+  await page.getByRole('button', { name: 'Add (1)' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Add' }).click()
+  expect((await addRequest).postDataJSON()).toEqual({ card_id: 'visual-card-4', required_quantity: 1 })
 })
 
-test('Deck editor opens a selected card preview in a mobile sheet', async ({ page }) => {
+test('Deck picker preserves card proportions for a large scrollable collection', async ({ page }) => {
+  const largeCollection = Array.from({ length: 80 }, (_, index) => ({
+    ...collection[index % collection.length],
+    id: 1000 + index,
+    card_id: `bulk-card-${index + 1}`,
+    card: card(index + 1, { id: `bulk-card-${index + 1}`, card_id: `bulk-card-${index + 1}`, name: `Bulk card ${index + 1}` }),
+  }))
+  await page.route('**/api/collection/', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(largeCollection),
+  }))
+  await page.goto('/decks/1')
+  await expandDeckPicker(page)
+  const firstArtwork = page.getByRole('button', { name: 'Select Bulk card 1', exact: true }).locator('..').locator('.unified-card-art')
+  const laterArtwork = page.getByRole('button', { name: 'Select Bulk card 25', exact: true }).locator('..').locator('.unified-card-art')
+  await expect(firstArtwork).toBeVisible()
+  await expect(laterArtwork).toHaveCount(0)
+  await page.getByRole('button', { name: 'Load more' }).click()
+  await expect(laterArtwork).toBeVisible()
+  for (const artwork of [firstArtwork, laterArtwork]) {
+    const box = await artwork.boundingBox()
+    expect(box.height / box.width).toBeGreaterThan(1.3)
+  }
+})
+
+
+test('Deck editor supports multi-select and quantity entry on mobile', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/decks/1')
+  await expandDeckPicker(page)
 
   await expect(page.getByRole('dialog')).toHaveCount(0)
-  await page.getByRole('button', { name: 'Preview Visual card 1' }).click()
-  await expect(page.getByRole('dialog', { name: 'Visual card 1' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Add to deck' })).toBeVisible()
+  await page.getByRole('button', { name: 'Select Visual card 4' }).click()
+  await page.getByRole('button', { name: 'Select Visual card 5' }).click()
+  await expect(page.getByLabel('Selected')).toHaveCount(2)
+  await page.getByRole('button', { name: 'Add (2)' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Add · Quantity' })
+  await expect(dialog.getByLabel('Quantity: Visual card 4')).toBeVisible()
+  await expect(dialog.getByLabel('Quantity: Visual card 5')).toBeVisible()
+})
+
+test('shared Card List picker preserves failed Deck selections after a partial batch', async ({ page }) => {
+  const updatedDeck = JSON.parse(JSON.stringify(deck))
+  await page.route('**/api/decks/1/entries', async route => {
+    const payload = route.request().postDataJSON()
+    if (payload.card_id === 'visual-card-5') {
+      await route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ detail: 'Card is unavailable' }) })
+      return
+    }
+    updatedDeck.entries.push({ id: 4, card_id: payload.card_id, required_quantity: payload.required_quantity, owned_quantity: 1, shortage: 0, card: collection[3].card })
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(updatedDeck) })
+  })
+
+  await page.goto('/decks/1')
+  await expandDeckPicker(page)
+  await page.getByRole('button', { name: 'Select Visual card 4' }).click()
+  await page.getByRole('button', { name: 'Select Visual card 5' }).click()
+  await page.getByRole('button', { name: 'Add (2)' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Add' }).click()
+
+  await expect(page.getByRole('button', { name: 'Add (1)' })).toBeVisible()
+  await expect(page.getByLabel('Selected')).toHaveCount(1)
+})
+
+test('Planned Binder and Deck share the same 24-card incremental picker', async ({ page }) => {
+  const largeCollection = Array.from({ length: 80 }, (_, index) => ({
+    ...collection[index % collection.length],
+    id: 2000 + index,
+    card_id: `shared-card-${index + 1}`,
+    card: card(index + 1, { id: `shared-card-${index + 1}`, card_id: `shared-card-${index + 1}`, name: `Shared card ${index + 1}` }),
+  }))
+  await page.route('**/api/collection/', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(largeCollection) }))
+
+  await page.goto('/binders/10')
+  await page.getByRole('button', { name: 'Add cards' }).click()
+  await expect(page.getByTestId('card-list-picker-grid').locator('.unified-card-frame')).toHaveCount(24)
+  await expect(page.getByRole('button', { name: 'Select Shared card 25' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Load more' }).click()
+  await expect(page.getByRole('button', { name: 'Select Shared card 25' })).toBeVisible()
+})
+
+test('shared picker keeps exact physical Binder copies independently selectable', async ({ page }) => {
+  const secondCopy = { ...collection[0], id: 99, quantity: 2, variant: 'Reverse Holo' }
+  const physicalBinder = { ...plannedBinder, id: 11, name: 'Physical Binder', binder_type: 'collection' }
+  await page.route('**/api/collection/', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([collection[0], secondCopy]) }))
+  await page.route('**/api/binders/11/cards**', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      binder: physicalBinder,
+      cards: [{ ...collection[0].card, binder_card_id: 110, collection_item_id: 1, required_quantity: 1, quantity: 1, owned_quantity: 1 }],
+      available_collection_item_quantities: { 1: 0, 99: 2 },
+      unavailable_collection_item_ids: [1],
+    }),
+  }))
+
+  await page.goto('/binders/11')
+  await page.getByRole('button', { name: 'Add cards' }).click()
+  const copies = page.getByRole('button', { name: 'Select Visual card 1' })
+  await expect(copies).toHaveCount(2)
+  await expect(copies.nth(0)).toBeDisabled()
+  await expect(copies.nth(1)).toBeEnabled()
 })

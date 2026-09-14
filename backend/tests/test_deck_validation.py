@@ -36,6 +36,12 @@ class DeckValidationTests(unittest.TestCase):
         result = validate_deck(deck(20, [entry(1, "trainer", 20, card("Ultra Ball"))]))
         self.assertIn("basic_pokemon", [check["code"] for check in result["errors"]])
 
+    def test_german_basic_metadata_is_recognized(self):
+        basic = entry(1, "basic-de", 1, card("Pikachu", "Pokémon", ["Basis"], stage="Basis"))
+        energy = entry(2, "energy-de", 19, card("Basis-Energie", "Energy", ["Basis"], energy_type="Basis"))
+        result = validate_deck(deck(20, [basic, energy]), {"basic-de": 1, "energy-de": 19})
+        self.assertTrue(result["valid"])
+
     def test_copy_limits_aggregate_printings_and_exempt_basic_energy(self):
         basic = entry(1, "basic", 1, card("Pikachu", "Pokemon", ["Basic"]))
         first = entry(2, "ball-a", 2, card("Ultra Ball"))

@@ -1,7 +1,7 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import { CARD_DISPLAY_VARIANTS, CardDisplay, CardIdentity, CardLegend, CardRow, CardStack } from './index'
+import { CARD_DISPLAY_VARIANTS, CardDisplay, CardIdentity, CardLegend, CardRequirementProgress, CardRow, CardStack } from './index'
 
 vi.mock('../../contexts/SettingsContext', () => ({
   useSettings: () => ({ t: key => key }),
@@ -38,5 +38,30 @@ describe('public card-system API', () => {
     expect(identity).toContain('unified-card-compact-artwork')
     expect(legend).toContain('Normal')
     expect(stack.match(/unified-card-frame/g)).toHaveLength(3)
+  })
+})
+
+describe('CardRequirementProgress', () => {
+  it('shows the same owned/required amount used by planned Card Lists', () => {
+    const markup = renderToStaticMarkup(createElement(CardRequirementProgress, {
+      ownedQuantity: 2,
+      requiredQuantity: 4,
+      progressLabel: 'Progress: 2/4',
+    }))
+
+    expect(markup).toContain('2/4')
+    expect(markup).toContain('aria-label="Progress: 2/4"')
+    expect(markup).not.toContain('lucide-check')
+  })
+
+  it('uses the shared green check when the requirement is complete', () => {
+    const markup = renderToStaticMarkup(createElement(CardRequirementProgress, {
+      ownedQuantity: 4,
+      requiredQuantity: 4,
+      progressLabel: 'Progress: 4/4',
+    }))
+
+    expect(markup).toContain('lucide-check')
+    expect(markup).not.toContain('&gt;4/4&lt;')
   })
 })

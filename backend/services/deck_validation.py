@@ -13,8 +13,10 @@ def _normalized(value) -> str:
 
 def is_basic_pokemon(card) -> bool:
     return _normalized(getattr(card, "supertype", None)) in {"pokemon", "pokémon"} and (
-        _normalized(getattr(card, "stage", None)) == "basic"
-        or "basic" in {_normalized(subtype) for subtype in (getattr(card, "subtypes", None) or [])}
+        _normalized(getattr(card, "stage", None)) in {"basic", "basis"}
+        or bool({"basic", "basis"}.intersection(
+            {_normalized(subtype) for subtype in (getattr(card, "subtypes", None) or [])}
+        ))
     )
 
 
@@ -26,7 +28,9 @@ def is_basic_energy(card) -> bool:
     energy_type = _normalized(getattr(card, "energy_type", None))
     if "special" in subtypes or energy_type == "special":
         return False
-    return "basic" in subtypes or _normalized(getattr(card, "stage", None)) == "basic" or energy_type == "normal"
+    return bool({"basic", "basis"}.intersection(subtypes)) or _normalized(
+        getattr(card, "stage", None)
+    ) in {"basic", "basis"} or energy_type in {"normal", "basis"}
 
 
 def _check(code, status, severity, message, details=None):

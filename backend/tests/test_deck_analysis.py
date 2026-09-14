@@ -41,6 +41,15 @@ class DeckAnalysisTests(unittest.TestCase):
         self.assertEqual(result["pokemon"]["hp"]["missing_hp"], 3)
         self.assertEqual(result["pokemon"]["retreat"]["missing_retreat"], 3)
 
+    def test_localized_and_lowercase_tcg_types_are_merged(self):
+        result = analyze_deck(deck([
+            entry(1, 2, card("A", "Pokemon", types=["water"])),
+            entry(2, 3, card("B", "Pokemon", types=["Wasser"])),
+            entry(3, 1, card("C", "Pokemon", types=["Électrique"])),
+        ]))
+
+        self.assertEqual(result["pokemon"]["types"], {"Lightning": 1, "Water": 5})
+
     def test_attack_damage_and_costs_keep_variable_damage_out_of_fixed_stats(self):
         attacker = card("Attacker", "Pokemon", attacks=[
             {"cost": [], "damage": "20"}, {"cost": ["Colorless"], "damage": "30+"}, {"cost": ["Colorless", "Colorless"], "damage": "20x"}, {"cost": ["Colorless", "Colorless", "Colorless"], "damage": ""}, {"cost": ["Colorless"] * 4, "damage": "?"}, {"damage": "100"},

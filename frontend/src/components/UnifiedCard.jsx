@@ -102,9 +102,9 @@ export function CardArtworkFrame({
   onClick,
   onSelect,
   onAdd,
+  actionLabel,
   selected = false,
   unavailableReason = '',
-  actionLabel,
   showStateIndicators = true,
   stateIndicatorProps = {},
   dimmed = false,
@@ -505,6 +505,7 @@ export default function UnifiedCard({
   onClick,
   onSelect,
   onAdd,
+  actionLabel,
   interactive = Boolean(onClick || onSelect),
   selected = false,
   unavailableReason = '',
@@ -530,6 +531,7 @@ export default function UnifiedCard({
         onClick={onClick}
         onSelect={onSelect}
         onAdd={onAdd}
+        actionLabel={actionLabel}
         selected={selected}
         unavailableReason={unavailableReason}
         showStateIndicators={showStateIndicators}
