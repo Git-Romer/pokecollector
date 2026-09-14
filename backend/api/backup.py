@@ -1,18 +1,23 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Query
-from fastapi.responses import FileResponse, StreamingResponse
+import datetime
+import logging
+import os
+import subprocess
+import tempfile
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse
+
 from api.auth import get_current_user
 from models import User
-import subprocess
-import os
-import datetime
-import io
-import logging
+from services.postgres_cli import parse_database_url
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 BACKUP_DIR = "/app/backups"
 DATABASE_URL = os.getenv("DATABASE_URL", "")
+RESTORE_CHUNK_SIZE = 1024 * 1024
 BACKUP_GROUPS = {
     "collection": ["collection", "wishlist", "binders", "binder_cards"],
     "users": ["users", "user_settings", "settings"],
@@ -25,21 +30,7 @@ BACKUP_GROUPS = {
 
 def get_db_params():
     """Parse DATABASE_URL into pg params."""
-    url = DATABASE_URL
-    # postgresql://user:pass@host:port/dbname
-    try:
-        url = url.replace("postgresql://", "")
-        userpass, rest = url.split("@", 1)
-        user, password = userpass.split(":", 1)
-        hostport, dbname = rest.split("/", 1)
-        if ":" in hostport:
-            host, port = hostport.split(":", 1)
-        else:
-            host, port = hostport, "5432"
-        return {"user": user, "password": password, "host": host, "port": port, "dbname": dbname}
-    except Exception as e:
-        logger.error(f"Failed to parse DATABASE_URL: {e}")
-        return None
+    return parse_database_url(DATABASE_URL)
 
 
 @router.get("/download")
@@ -79,7 +70,8 @@ def download_backup(
 
     if "full" in groups:
         if "images" not in groups:
-            cmd.extend(["--exclude-table", "image_cache"])
+            # Keep the cache schema and its owned sequence, but omit the large cache rows.
+            cmd.extend(["--exclude-table-data", "image_cache"])
     else:
         tables = []
         for group in groups:
@@ -128,21 +120,29 @@ async def restore_backup(
     if not params:
         raise HTTPException(status_code=500, detail="Database URL not configured")
 
-    if not file.filename.endswith(".sql"):
+    if not (file.filename or "").lower().endswith(".sql"):
         raise HTTPException(status_code=400, detail="Only .sql files are accepted")
 
-    os.makedirs(BACKUP_DIR, exist_ok=True)
-    restore_path = os.path.join(BACKUP_DIR, f"restore_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.sql")
-
-    # Save uploaded file
-    content = await file.read()
-    with open(restore_path, "wb") as f:
-        f.write(content)
-
-    env = os.environ.copy()
-    env["PGPASSWORD"] = params["password"]
-
+    restore_path: Path | None = None
     try:
+        restore_dir = Path(BACKUP_DIR)
+        restore_dir.mkdir(parents=True, exist_ok=True)
+        restore_fd, raw_restore_path = tempfile.mkstemp(
+            prefix="restore_",
+            suffix=".sql",
+            dir=restore_dir,
+        )
+        restore_path = Path(raw_restore_path)
+        uploaded_bytes = 0
+        with os.fdopen(restore_fd, "wb") as destination:
+            while chunk := await file.read(RESTORE_CHUNK_SIZE):
+                destination.write(chunk)
+                uploaded_bytes += len(chunk)
+        if uploaded_bytes == 0:
+            raise HTTPException(status_code=400, detail="Backup file is empty")
+
+        env = os.environ.copy()
+        env["PGPASSWORD"] = params["password"]
         result = subprocess.run(
             [
                 "psql",
@@ -150,15 +150,16 @@ async def restore_backup(
                 "-p", params["port"],
                 "-U", params["user"],
                 "-d", params["dbname"],
-                "-f", restore_path,
+                "--no-psqlrc",
+                "-v", "ON_ERROR_STOP=1",
+                "--single-transaction",
+                "-f", str(restore_path),
             ],
             env=env,
             capture_output=True,
             text=True,
             timeout=120,
         )
-
-        os.unlink(restore_path)
 
         if result.returncode != 0:
             raise HTTPException(status_code=500, detail=f"Restore failed: {result.stderr}")
@@ -169,6 +170,12 @@ async def restore_backup(
         raise HTTPException(status_code=500, detail="Restore timed out")
     except FileNotFoundError:
         raise HTTPException(status_code=500, detail="psql not found")
+    finally:
+        if restore_path is not None:
+            try:
+                restore_path.unlink(missing_ok=True)
+            except OSError:
+                logger.warning("Could not remove temporary restore file %s", restore_path, exc_info=True)
 
 
 @router.post("/clear-image-cache")

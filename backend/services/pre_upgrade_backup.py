@@ -12,9 +12,10 @@ import os
 import re
 import subprocess
 from pathlib import Path
-from urllib.parse import unquote, urlparse
 
 from sqlalchemy import text
+
+from services.postgres_cli import parse_database_url
 
 logger = logging.getLogger(__name__)
 
@@ -46,22 +47,6 @@ def _env_int(name: str, default: int, minimum: int = 0) -> int:
 def _safe_slug(value: str | None) -> str:
     value = (value or "unknown").strip() or "unknown"
     return re.sub(r"[^A-Za-z0-9._-]+", "_", value)[:80]
-
-
-def _parse_database_url(database_url: str) -> dict[str, str] | None:
-    parsed = urlparse(database_url)
-    scheme = parsed.scheme.split("+", 1)[0]
-    if scheme not in {"postgresql", "postgres"}:
-        return None
-    if not parsed.hostname or not parsed.path or parsed.path == "/":
-        return None
-    return {
-        "user": unquote(parsed.username or ""),
-        "password": unquote(parsed.password or ""),
-        "host": parsed.hostname,
-        "port": str(parsed.port or 5432),
-        "dbname": unquote(parsed.path.lstrip("/")),
-    }
 
 
 def _settings_table_exists(conn) -> bool:
@@ -111,7 +96,7 @@ def _backup_already_exists(current_version: str, previous_version: str | None) -
 
 
 def _create_pg_dump(database_url: str, current_version: str, previous_version: str | None) -> Path:
-    params = _parse_database_url(database_url)
+    params = parse_database_url(database_url)
     if not params:
         raise RuntimeError("DATABASE_URL is not a valid PostgreSQL URL")
 
