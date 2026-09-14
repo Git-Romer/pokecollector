@@ -41,6 +41,9 @@ const collection = Array.from({ length: 8 }, (_, offset) => {
     card_id: `visual-card-${index}`,
     quantity: index % 3 + 1,
     variant,
+    printing_details: index === 1
+      ? [{ id: 11, name: 'Cosmos Holo', usage_count: 3 }]
+      : [],
     condition: index % 2 ? 'NM' : 'Mint',
     lang: index % 4 === 0 ? 'de' : 'en',
     purchase_price: 2 + index / 2,
@@ -271,6 +274,10 @@ async function installApiFixtures(page) {
       '/api/settings/tcgdex-filter-languages': ['en', 'de'],
       '/api/profile/': { feature_enabled: false, is_profile_public: false },
       '/api/collection/': collection,
+      '/api/collection/printing-detail-tags': [
+        { id: 11, name: 'Cosmos Holo', usage_count: 3 },
+        { id: 12, name: 'Expansion Stamp', usage_count: 1 },
+      ],
       '/api/wishlist/': [],
       '/api/sets/': [],
       '/api/analytics/duplicates': duplicates,
@@ -486,6 +493,20 @@ test('Collection price tabs reuse the complete shared card price details', async
   await expect(dialog.getByText('Price History')).toBeVisible()
 })
 
+test('Collection displays and reuses printing-detail tags in the owned-card editor', async ({ page }) => {
+  await page.goto('/collection')
+  await expect(page.getByText('Cosmos Holo', { exact: true }).first()).toBeVisible()
+  await page.getByRole('button', { name: /Visual card 1/ }).click()
+
+  const dialog = page.getByRole('dialog')
+  await dialog.getByRole('tab', { name: 'Overview' }).click()
+  await expect(dialog.getByText('Cosmos Holo', { exact: true })).toBeVisible()
+  await dialog.getByRole('tab', { name: 'Manage copies' }).click()
+  const tagSearch = dialog.getByPlaceholder('Search or create a printing detail').first()
+  await tagSearch.fill('Expansion')
+  await expect(dialog.getByText('Expansion Stamp', { exact: true })).toBeVisible()
+})
+
 test('Wishlist price tabs reuse the complete shared card price details', async ({ page }) => {
   await page.route('**/api/wishlist/', route => route.fulfill({
     status: 200,
@@ -632,7 +653,7 @@ test('Deck CSV import explains the format before choosing a file', async ({ page
   await page.locator('header').getByRole('button', { name: 'Import deck list (CSV)' }).click()
   await expect(page.getByRole('heading', { name: 'Card List CSV import' })).toBeVisible()
   await expect(page.getByText('Import cards and required quantities into this deck from a CSV file.')).toBeVisible()
-  await expect(page.getByText('set_code,number,required_quantity,lang,variant,condition,collection_item_id')).toBeVisible()
+  await expect(page.getByText('set_code,number,required_quantity,lang,variant,condition,printing_details,collection_item_id')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Choose CSV file' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Download template' })).toBeVisible()
 })

@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
-import { Search, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, SortAsc, Hash, PenLine, SlidersHorizontal, Camera, CheckSquare, Plus, ScanLine } from 'lucide-react'
+import { Search, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, SortAsc, Hash, PenLine, SlidersHorizontal, Camera, CheckSquare, Plus, ScanLine, Tags } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { searchCards, getSets, getCustomCards, bulkAddToCollection, getScanJobs } from '../api/client'
 import { CardItem, CustomCardModal, CardModal } from '../components/CardItem'
@@ -29,6 +29,7 @@ import {
 } from '../utils/scanJobs'
 import { useDynamicFilterUrlState } from '../hooks/useDynamicFilterUrlState'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
+import PrintingDetailSelector from '../components/PrintingDetailSelector'
 
 export const CARD_CODE_NUMBER_RE = /^([A-Za-z][A-Za-z0-9]*)\s+(\d+)$/
 
@@ -174,6 +175,8 @@ export default function CardSearch() {
   const [selectedCardTab, setSelectedCardTab] = useState('add')
   const [selectMode, setSelectMode] = useState(false)
   const [selectedItems, setSelectedItems] = useState(new Map()) // card.id -> { card_id, lang }
+  const [bulkPrintingDetails, setBulkPrintingDetails] = useState([])
+  const [showBulkPrintingDetails, setShowBulkPrintingDetails] = useState(false)
   const pageSize = 20
 
   const { data: recentCustomCards = [] } = useQuery({
@@ -490,6 +493,8 @@ export default function CardSearch() {
   const exitSelectMode = () => {
     setSelectMode(false)
     setSelectedItems(new Map())
+    setBulkPrintingDetails([])
+    setShowBulkPrintingDetails(false)
   }
 
   const selectAllMatchingMutation = useMutation({
@@ -520,6 +525,7 @@ export default function CardSearch() {
         variant,
         purchase_price: null,
         lang,
+        printing_details: bulkPrintingDetails,
       }))
       return bulkAddToCollection(items)
     },
@@ -789,6 +795,14 @@ export default function CardSearch() {
                 <X size={14} /> {t('cardSearch.clearSelection')}
               </button>
               <button
+                type="button"
+                onClick={() => setShowBulkPrintingDetails(true)}
+                className="btn-ghost px-3 text-sm"
+                title={t('printingDetails.label')}
+              >
+                <Tags size={14} /> {bulkPrintingDetails.length || ''}
+              </button>
+              <button
                 onClick={() => bulkAddMutation.mutate()}
                 disabled={selectedItems.size === 0 || bulkAddMutation.isPending}
                 className="btn-primary text-sm disabled:opacity-50"
@@ -803,6 +817,14 @@ export default function CardSearch() {
               <span className="min-w-0 flex-1 text-sm font-semibold text-brand-red">
                 {selectedItems.size} {t('cardSearch.selected')}
               </span>
+              <button
+                type="button"
+                onClick={() => setShowBulkPrintingDetails(true)}
+                className="btn-ghost px-3"
+                aria-label={t('printingDetails.label')}
+              >
+                <Tags size={15} />{bulkPrintingDetails.length > 0 && <span>{bulkPrintingDetails.length}</span>}
+              </button>
               <button
                 type="button"
                 onClick={clearSelection}
@@ -901,6 +923,14 @@ export default function CardSearch() {
           initialTab={selectedCardTab}
         />
       )}
+
+      <Sheet isOpen={showBulkPrintingDetails} onClose={() => setShowBulkPrintingDetails(false)} title={t('printingDetails.label')}>
+        <div className="space-y-4 p-4">
+          <p className="text-sm text-text-secondary">{t('printingDetails.bulkHelp')}</p>
+          <PrintingDetailSelector value={bulkPrintingDetails} onChange={setBulkPrintingDetails} />
+          <button type="button" className="btn-primary w-full justify-center" onClick={() => setShowBulkPrintingDetails(false)}>{t('common.close')}</button>
+        </div>
+      </Sheet>
 
       <CardScanner
         isOpen={showScanner}

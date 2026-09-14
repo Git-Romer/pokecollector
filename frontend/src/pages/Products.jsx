@@ -28,6 +28,7 @@ import {
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import { buildProductDisplayRows, summarizeProductBatch } from '../utils/productBatches'
 import { useDynamicFilterUrlState } from '../hooks/useDynamicFilterUrlState'
+import PrintingDetailBadges from '../components/PrintingDetailBadges'
 
 const PRODUCT_TYPES = ['Booster Pack', 'Booster Box', 'Elite Trainer Box', 'Tin', 'Bundle', 'Collection Box', 'Blister', 'Other']
 const PRODUCT_FILTER_DEFINITIONS = {
@@ -440,6 +441,7 @@ function ProductCardPicker({ isOpen, onClose, product, candidates, formatPrice, 
                   <p className="truncate text-xs text-text-muted">
                     {card.set_ref?.name || card.set_id || '-'} #{card.number || '?'} · {item.variant || 'Normal'} · {item.condition || 'NM'} · {item.lang || 'en'}
                   </p>
+                  <PrintingDetailBadges details={item.printing_details} limit={2} className="mt-1" />
                   <p className="mt-1 text-xs text-text-secondary">
                     {t('products.availableCopies').replace('{count}', available)}
                     {item.purchase_price != null ? ` · ${t('products.paidPerCard').replace('{price}', formatPrice(item.purchase_price))}` : ''}
@@ -624,6 +626,7 @@ function ProductLedgerPanel({
                     <p className="text-xs text-text-muted">
                       {entry.card?.set_ref?.name || entry.card?.set_id || '-'} #{entry.card?.number || '?'} · {entry.variant} · {entry.condition} · {entry.lang}
                     </p>
+                    <PrintingDetailBadges details={entry.printing_details} limit={2} className="mt-1" />
                     <p className="text-xs text-text-secondary mt-1">
                       {t('products.active')}: {entry.active_quantity} · {t('common.sold')}: {entry.sold_quantity} · {t('products.live')}: {formatPrice(entry.live_value || 0)} · {t('products.realized')}: {formatPrice(entry.realized_gains || 0)}
                     </p>
@@ -648,9 +651,10 @@ function ProductLedgerPanel({
                 {(entry.ledger_entries || []).length > 0 && (
                   <div className="pt-2 border-t border-border/70 space-y-1">
                     {(entry.ledger_entries || []).map(ledger => (
-                      <p key={ledger.id} className="text-xs text-text-muted flex items-center gap-1">
+                      <div key={ledger.id} className="flex flex-wrap items-center gap-1 text-xs text-text-muted">
                         <History size={12} /> {ledger.event_date}: {ledger.quantity} × {ledger.entry_type === 'trade_out' ? `${t('products.tradeOut')} - ${ledger.card_name || entry.card?.name || entry.card_id}` : (entry.card?.name || entry.card_id)} · {formatPrice(ledger.amount)}{ledger.notes ? ` · ${ledger.notes}` : ''}
-                      </p>
+                        <PrintingDetailBadges details={ledger.printing_details} limit={2} />
+                      </div>
                     ))}
                   </div>
                 )}

@@ -80,22 +80,15 @@ export const getOwnedVariants = (rows = []) => {
     const quantity = Number(row?.quantity)
     if (!Number.isFinite(quantity) || quantity <= 0) continue
     const variant = row?.variant || 'Normal'
+    if (!CARD_VARIANTS.includes(variant)) continue
     totals.set(variant, (totals.get(variant) || 0) + quantity)
   }
 
   // Test the summed positive quantity, not key presence: malformed, zero, or
   // negative rows must not produce a pill claiming ownership.
-  const ordered = CARD_VARIANTS
+  return CARD_VARIANTS
     .filter(variant => totals.get(variant) > 0)
     .map(variant => ({ variant, quantity: totals.get(variant) }))
-
-  // Anything outside the four canonical prints (a hand-edited CSV import, say) still
-  // gets a pill rather than vanishing.
-  const unknown = [...totals.keys()]
-    .filter(variant => !CARD_VARIANTS.includes(variant) && totals.get(variant) > 0)
-    .map(variant => ({ variant, quantity: totals.get(variant) }))
-
-  return [...ordered, ...unknown]
 }
 
 // Tile payloads use owned_variants while collection/action payloads expose

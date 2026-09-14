@@ -19,6 +19,8 @@ import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/q
 import { parseMoneyInputValue } from '../utils/moneyInput'
 import UnifiedCard, { UnifiedCardDialog } from './UnifiedCard'
 import CardPriceDetails from './card-system/CardPriceDetails'
+import PrintingDetailBadges from './PrintingDetailBadges'
+import PrintingDetailSelector from './PrintingDetailSelector'
 
 const RARITY_COLORS = {
   'Common': 'text-text-secondary',
@@ -52,6 +54,7 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
   const [quantity, setQuantity] = useState(1)
   const [condition, setCondition] = useState('NM')
   const [variant, setVariant] = useState('Normal')
+  const [printingDetails, setPrintingDetails] = useState([])
   const [purchasePrice, setPurchasePrice] = useState('')
   const queryClient = useQueryClient()
 
@@ -166,6 +169,7 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
       quantity,
       condition,
       variant,
+      printing_details: printingDetails,
       purchase_price: parseMoneyInputValue(purchasePrice, exchangeRate),
       lang: createdCard.lang || 'en',
     })
@@ -356,6 +360,10 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
                 </select>
               </div>
               <div>
+                <label className="text-xs text-text-muted mb-1 block">{t('printingDetails.label')}</label>
+                <PrintingDetailSelector value={printingDetails} onChange={setPrintingDetails} />
+              </div>
+              <div>
                 <label className="text-xs text-text-muted mb-1 block">{t('card.purchasePrice')}</label>
                 <MoneyInput
                   placeholder={t('card.purchasePricePlaceholder')}
@@ -497,6 +505,7 @@ function OwnedVersionRow({ item, onQuantityChange, onRemove, isUpdating, isRemov
         <p className="text-sm text-text-primary font-medium truncate">
           {[item.variant || 'Normal', item.condition].filter(Boolean).join(' · ')}
         </p>
+        <PrintingDetailBadges details={item.printing_details} limit={2} className="mt-1" />
       </div>
       <input
         type="number"
@@ -533,6 +542,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
   const [quantity, setQuantity] = useState(1)
   const [condition, setCondition] = useState('NM')
   const [variant, setVariant] = useState(() => getDefaultVariant(card))
+  const [printingDetails, setPrintingDetails] = useState([])
   const [collectionLang, setCollectionLang] = useState(card.lang || defaultLang || 'en')
   const [purchasePrice, setPurchasePrice] = useState('')
   const [resolvedCardId, setResolvedCardId] = useState(card.id)
@@ -858,6 +868,10 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
                   </p>
                 )}
               </div>
+              <div>
+                <label className="text-xs text-text-muted mb-1 block font-medium">{t('printingDetails.label')}</label>
+                <PrintingDetailSelector value={printingDetails} onChange={setPrintingDetails} />
+              </div>
               {card.rarity && (
                 <div>
                   <label className="text-xs text-text-muted mb-1 block font-medium">💎 {t('card.rarity')}</label>
@@ -883,6 +897,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
                 <button className="btn-primary flex-1" onClick={() => addMutation.mutate({
                   card_id: resolvedCardId, quantity, condition,
                   variant,
+                  printing_details: printingDetails,
                   purchase_price: parseMoneyInputValue(purchasePrice, exchangeRate),
                   lang: collectionLang,
                 })} disabled={addMutation.isPending || !exchangeRateReady}>

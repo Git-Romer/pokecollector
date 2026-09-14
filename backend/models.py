@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, String, Integer, Float, DateTime, Date, Boolean,
-    CheckConstraint, ForeignKey, Text, JSON, UniqueConstraint, LargeBinary, Index
+    CheckConstraint, ForeignKey, Text, JSON, UniqueConstraint, LargeBinary, Index, Table
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -9,6 +9,7 @@ from database import Base
 
 POKEDEX_JSON = JSON(none_as_null=True).with_variant(JSONB(none_as_null=True), "postgresql")
 PORTFOLIO_CALCULATION_VERSION = 2
+COLLECTION_VARIANT_CHECK = "variant IN ('Normal', 'Holo', 'Reverse Holo', 'First Edition')"
 
 
 class Set(Base):
@@ -156,6 +157,82 @@ class User(Base):
     created_at = Column(DateTime, default=func.now())
 
 
+collection_printing_detail_tags = Table(
+    "collection_printing_detail_tags",
+    Base.metadata,
+    Column(
+        "collection_item_id",
+        Integer,
+        ForeignKey("collection.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "printing_detail_tag_id",
+        Integer,
+        ForeignKey("printing_detail_tags.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Index("ix_collection_printing_detail_tag", "printing_detail_tag_id"),
+)
+
+product_card_printing_detail_tags = Table(
+    "product_card_printing_detail_tags",
+    Base.metadata,
+    Column("product_card_id", Integer, ForeignKey("product_cards.id", ondelete="CASCADE"), primary_key=True),
+    Column("printing_detail_tag_id", Integer, ForeignKey("printing_detail_tags.id", ondelete="CASCADE"), primary_key=True),
+    Index("ix_product_card_printing_detail_tag", "printing_detail_tag_id"),
+)
+
+product_ledger_printing_detail_tags = Table(
+    "product_ledger_printing_detail_tags",
+    Base.metadata,
+    Column("product_ledger_entry_id", Integer, ForeignKey("product_ledger_entries.id", ondelete="CASCADE"), primary_key=True),
+    Column("printing_detail_tag_id", Integer, ForeignKey("printing_detail_tags.id", ondelete="CASCADE"), primary_key=True),
+    Index("ix_product_ledger_printing_detail_tag", "printing_detail_tag_id"),
+)
+
+trade_item_printing_detail_tags = Table(
+    "trade_item_printing_detail_tags",
+    Base.metadata,
+    Column("trade_item_id", Integer, ForeignKey("trade_items.id", ondelete="CASCADE"), primary_key=True),
+    Column("printing_detail_tag_id", Integer, ForeignKey("printing_detail_tags.id", ondelete="CASCADE"), primary_key=True),
+    Index("ix_trade_item_printing_detail_tag", "printing_detail_tag_id"),
+)
+
+
+class PrintingDetailTag(Base):
+    """Reusable, user-scoped descriptive metadata for a physical card copy."""
+
+    __tablename__ = "printing_detail_tags"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(80), nullable=False)
+    # NFKD/case-fold normalization can expand an 80-character display name
+    # (for example, ligatures), so it is not indexed directly. The fixed-size
+    # digest is the user-scoped uniqueness key and avoids PostgreSQL index-size
+    # failures for valid Unicode names.
+    normalized_name = Column(String(1440), nullable=False)
+    normalized_key = Column(String(64), nullable=False)
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+
+    collection_items = relationship(
+        "CollectionItem",
+        secondary=collection_printing_detail_tags,
+        back_populates="printing_detail_tags",
+    )
+    product_cards = relationship("ProductCard", secondary=product_card_printing_detail_tags, back_populates="printing_detail_tags")
+    product_ledger_entries = relationship("ProductLedgerEntry", secondary=product_ledger_printing_detail_tags, back_populates="printing_detail_tags")
+    trade_items = relationship("TradeItem", secondary=trade_item_printing_detail_tags, back_populates="printing_detail_tags")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "normalized_key", name="uq_printing_detail_tag_user_key"),
+        CheckConstraint("length(name) BETWEEN 1 AND 80", name="ck_printing_detail_tag_name_length"),
+        CheckConstraint("length(normalized_name) BETWEEN 1 AND 1440", name="ck_printing_detail_tag_normalized_length"),
+        CheckConstraint("length(normalized_key) = 64", name="ck_printing_detail_tag_key_length"),
+    )
+
+
 class CollectionItem(Base):
     __tablename__ = "collection"
 
@@ -170,6 +247,21 @@ class CollectionItem(Base):
     added_at = Column(DateTime, default=func.now())
 
     card = relationship("Card", back_populates="collection_items")
+    printing_detail_tags = relationship(
+        "PrintingDetailTag",
+        secondary=collection_printing_detail_tags,
+        back_populates="collection_items",
+        lazy="selectin",
+        order_by="PrintingDetailTag.name",
+    )
+
+    __table_args__ = (
+        CheckConstraint(COLLECTION_VARIANT_CHECK, name="ck_collection_variant"),
+    )
+
+    @property
+    def printing_details(self):
+        return self.printing_detail_tags
 
 
 class CollectionCardPhoto(Base):
@@ -371,12 +463,24 @@ class ProductCard(Base):
         back_populates="product_card",
         order_by="ProductLedgerEntry.event_date.asc(), ProductLedgerEntry.id.asc()",
     )
+    printing_detail_tags = relationship(
+        "PrintingDetailTag",
+        secondary=product_card_printing_detail_tags,
+        back_populates="product_cards",
+        lazy="selectin",
+        order_by="PrintingDetailTag.name",
+    )
+
+    @property
+    def printing_details(self):
+        return [tag.name for tag in self.printing_detail_tags]
 
     __table_args__ = (
         CheckConstraint("initial_quantity >= 1", name="ck_product_cards_initial_quantity_positive"),
         CheckConstraint("active_quantity >= 0", name="ck_product_cards_active_quantity_non_negative"),
         CheckConstraint("sold_quantity >= 0", name="ck_product_cards_sold_quantity_non_negative"),
         CheckConstraint("active_quantity + sold_quantity <= initial_quantity", name="ck_product_cards_quantities_within_initial"),
+        CheckConstraint(COLLECTION_VARIANT_CHECK, name="ck_product_cards_variant"),
     )
 
 
@@ -407,11 +511,26 @@ class ProductLedgerEntry(Base):
     product_card = relationship("ProductCard", back_populates="ledger_entries")
     product = relationship("ProductPurchase")
     card = relationship("Card")
+    printing_detail_tags = relationship(
+        "PrintingDetailTag",
+        secondary=product_ledger_printing_detail_tags,
+        back_populates="product_ledger_entries",
+        lazy="selectin",
+        order_by="PrintingDetailTag.name",
+    )
+
+    @property
+    def printing_details(self):
+        return [tag.name for tag in self.printing_detail_tags]
 
     __table_args__ = (
         CheckConstraint("quantity >= 1", name="ck_product_ledger_quantity_positive"),
         CheckConstraint("amount >= 0", name="ck_product_ledger_amount_non_negative"),
         CheckConstraint("entry_type IN ('card_sale', 'flat_gain', 'adjustment', 'trade_out')", name="ck_product_ledger_entry_type"),
+        CheckConstraint(
+            "variant IS NULL OR " + COLLECTION_VARIANT_CHECK,
+            name="ck_product_ledger_variant",
+        ),
     )
 
 
@@ -470,6 +589,17 @@ class TradeItem(Base):
 
     trade = relationship("Trade", back_populates="items")
     card = relationship("Card")
+    printing_detail_tags = relationship(
+        "PrintingDetailTag",
+        secondary=trade_item_printing_detail_tags,
+        back_populates="trade_items",
+        lazy="selectin",
+        order_by="PrintingDetailTag.name",
+    )
+
+    @property
+    def printing_details(self):
+        return [tag.name for tag in self.printing_detail_tags]
 
     __table_args__ = (
         CheckConstraint("direction IN ('outgoing', 'incoming')", name="ck_trade_items_direction"),
@@ -478,6 +608,10 @@ class TradeItem(Base):
         CheckConstraint("value_total >= 0", name="ck_trade_items_value_total_non_negative"),
         CheckConstraint("purchase_price IS NULL OR purchase_price >= 0", name="ck_trade_items_purchase_price_non_negative"),
         CheckConstraint("snapshot_version >= 0", name="ck_trade_items_snapshot_version_non_negative"),
+        CheckConstraint(
+            "variant IS NULL OR " + COLLECTION_VARIANT_CHECK,
+            name="ck_trade_items_variant",
+        ),
     )
 
 

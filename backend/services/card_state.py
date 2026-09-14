@@ -1,8 +1,7 @@
 """Compact, collector-scoped state summaries for card tiles."""
 from collections import defaultdict
 from models import CollectionItem, WishlistItem
-
-CANONICAL_VARIANTS = ("Normal", "Holo", "Reverse Holo", "First Edition")
+from services.collection_variants import CANONICAL_VARIANTS
 
 
 def card_state_summaries(db, user_id, card_ids, collection_items=None):
@@ -46,13 +45,6 @@ def card_state_summaries(db, user_id, card_ids, collection_items=None):
             for variant in CANONICAL_VARIANTS
             if by_variant.get(variant, 0) > 0
         ]
-        # Dict insertion order preserves the stable order in which custom variants
-        # were encountered after canonical variants.
-        ordered_variants.extend(
-            variant
-            for variant in by_variant
-            if variant not in CANONICAL_VARIANTS and by_variant[variant] > 0
-        )
         summaries[card_id].update(
             owned=True,
             owned_quantity=total,

@@ -1,7 +1,7 @@
 import { useState, useMemo, useId, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Trash2, Check, X, Filter, SortAsc, Download, Upload, Loader2, ChevronUp, ChevronDown, Search, PenLine, Grid2X2, List, Library, BookOpen, Heart, Copy, ArrowLeft, Package } from 'lucide-react'
+import { Trash2, Check, X, Filter, SortAsc, Download, Upload, Loader2, ChevronUp, ChevronDown, Search, PenLine, Grid2X2, List, Library, BookOpen, Heart, Copy, ArrowLeft, Package, Tags } from 'lucide-react'
 import { getCollection, updateCollectionItem, updateCardCustomImage, removeFromCollection, importCollectionCsv, exportCSV, exportPDF, getSets, addToCollection, getBinders, addCollectionItemToBinder, getWishlist, getApiErrorMessage, uploadCollectionItemPhoto, deleteCollectionItemPhoto } from '../api/client'
 import { CustomCardModal } from '../components/CardItem'
 import { useSettings } from '../contexts/SettingsContext'
@@ -24,6 +24,11 @@ import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import { formatMoneyInputValue, parseMoneyInputValue } from '../utils/moneyInput'
 import { useDynamicFilterUrlState } from '../hooks/useDynamicFilterUrlState'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
+import PrintingDetailBadges from '../components/PrintingDetailBadges'
+import PrintingDetailSelector from '../components/PrintingDetailSelector'
+import PrintingDetailTagManager from '../components/PrintingDetailTagManager'
+import { normalizePrintingDetailName, printingDetailNames } from '../utils/printingDetails'
+import { CARD_VARIANTS } from '../utils/cardVariants'
 
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
 const CONDITION_COLORS = {
@@ -33,7 +38,6 @@ const CONDITION_COLORS = {
   MP: 'badge-red',
   HP: 'badge-red',
 }
-const CARD_VARIANTS = ['Normal', 'Holo', 'Reverse Holo', 'First Edition']
 const VARIANT_COLORS = {
   'Holo': 'badge-purple',
   'Reverse Holo': 'badge-blue',
@@ -47,6 +51,7 @@ const COLLECTION_FILTER_DEFINITIONS = {
   filterRarity: { param: 'rarity', default: '' },
   filterCondition: { param: 'condition', default: '' },
   filterVariant: { param: 'variant', default: '' },
+  filterPrintingDetail: { param: 'printing_detail', default: '' },
   filterSet: { param: 'set', default: '' },
   filterType: { param: 'energy_type', default: '' },
   filterCategories: { param: 'category', default: [], type: 'list' },
@@ -170,8 +175,8 @@ function ProductSourceBadge({ item, t, compact = false, className = '' }) {
 }
 
 
-const CSV_IMPORT_HEADER = 'set_code,number,quantity,condition,variant,lang,purchase_price'
-const CSV_IMPORT_TEMPLATE = `${CSV_IMPORT_HEADER}\nASC,152,1,NM,Normal,en,\n`
+const CSV_IMPORT_HEADER = 'set_code,number,quantity,condition,variant,lang,purchase_price,printing_details'
+const CSV_IMPORT_TEMPLATE = `${CSV_IMPORT_HEADER}\nASC,152,1,NM,Holo,en,,Cosmos Holo|Play! Pokémon\n`
 
 const naturalCardNumberKey = (number) => String(number || '').trim().split(/(\d+)/).map(part => /^\d+$/.test(part) ? part.padStart(8, '0') : part.toLowerCase()).join('')
 
@@ -270,6 +275,7 @@ function CsvImportModal({ t, onClose, onChooseFile, onDownloadTemplate, isImport
                 </div>
               </div>
               <p>{t('collection.csvImportBlankOptionalHint')}</p>
+              <p>{t('printingDetails.csvHelp')}</p>
             </div>
           </div>
 
@@ -296,12 +302,14 @@ function CollectionEditModal({ item, onClose }) {
   const [quantity, setQuantity] = useState(item.quantity)
   const [condition, setCondition] = useState(item.condition || 'NM')
   const [variant, setVariant] = useState(item.variant || 'Normal')
+  const [printingDetails, setPrintingDetails] = useState(() => printingDetailNames(item.printing_details))
   const [lang, setLang] = useState(item.lang || 'en')
   const [price, setPrice] = useState(itemPriceInput)
   const [showAddVersionForm, setShowAddVersionForm] = useState(false)
   const [newVersionQuantity, setNewVersionQuantity] = useState(1)
   const [newVersionCondition, setNewVersionCondition] = useState(item.condition || 'NM')
   const [newVersionVariant, setNewVersionVariant] = useState(item.variant || 'Normal')
+  const [newVersionPrintingDetails, setNewVersionPrintingDetails] = useState([])
   const [newVersionLang, setNewVersionLang] = useState(item.lang || 'en')
   const [newVersionPrice, setNewVersionPrice] = useState('')
   const [customImageUrl, setCustomImageUrl] = useState(card?.custom_image_url || '')
@@ -325,6 +333,7 @@ function CollectionEditModal({ item, onClose }) {
     quantity: item.quantity,
     condition: item.condition || 'NM',
     variant: item.variant || 'Normal',
+    printingDetails: printingDetailNames(item.printing_details),
     lang: item.lang || 'en',
     price: itemPriceInput,
     customImageUrl: card?.custom_image_url || '',
@@ -336,6 +345,7 @@ function CollectionEditModal({ item, onClose }) {
       quantity: item.quantity,
       condition: item.condition || 'NM',
       variant: item.variant || 'Normal',
+      printingDetails: printingDetailNames(item.printing_details),
       lang: item.lang || 'en',
       price: itemPriceInput,
       customImageUrl: card?.custom_image_url || '',
@@ -348,6 +358,7 @@ function CollectionEditModal({ item, onClose }) {
       setQuantity(nextItem.quantity)
       setCondition(nextItem.condition)
       setVariant(nextItem.variant)
+      setPrintingDetails(nextItem.printingDetails)
       setLang(nextItem.lang)
       setPrice(nextItem.price)
       setCustomImageUrl(nextItem.customImageUrl)
@@ -362,6 +373,12 @@ function CollectionEditModal({ item, onClose }) {
       if (variant === prevItem.variant && nextItem.variant !== prevItem.variant) {
         setVariant(nextItem.variant)
       }
+      if (
+        printingDetails.join('|') === prevItem.printingDetails.join('|')
+        && nextItem.printingDetails.join('|') !== prevItem.printingDetails.join('|')
+      ) {
+        setPrintingDetails(nextItem.printingDetails)
+      }
       if (lang === prevItem.lang && nextItem.lang !== prevItem.lang) {
         setLang(nextItem.lang)
       }
@@ -375,7 +392,7 @@ function CollectionEditModal({ item, onClose }) {
     }
 
     prevItemRef.current = nextItem
-  }, [item.id, item.quantity, item.condition, item.variant, item.lang, item.purchase_price, itemPriceInput, card?.custom_image_url])
+  }, [item.id, item.quantity, item.condition, item.variant, item.lang, item.purchase_price, item.printing_details, itemPriceInput, card?.custom_image_url])
 
   const { data: binders = [] } = useQuery({
     queryKey: ['binders'],
@@ -412,6 +429,7 @@ function CollectionEditModal({ item, onClose }) {
       quantity,
       condition,
       variant,
+      printing_details: printingDetails,
       lang,
       purchase_price: parseMoneyInputValue(price, exchangeRate, null),
     }),
@@ -441,6 +459,7 @@ function CollectionEditModal({ item, onClose }) {
       quantity: Math.max(1, parseInt(newVersionQuantity, 10) || 1),
       condition: newVersionCondition,
       variant: newVersionVariant,
+      printing_details: newVersionPrintingDetails,
       lang: newVersionLang,
       purchase_price: parseMoneyInputValue(newVersionPrice, exchangeRate),
     }),
@@ -526,6 +545,7 @@ function CollectionEditModal({ item, onClose }) {
     setNewVersionQuantity(1)
     setNewVersionCondition(condition)
     setNewVersionVariant(variant)
+    setNewVersionPrintingDetails(printingDetails)
     setNewVersionLang(lang)
     setNewVersionPrice('')
     setShowAddVersionForm(true)
@@ -659,6 +679,7 @@ function CollectionEditModal({ item, onClose }) {
       onClose={onClose}
     >
       {activeTab === 'overview' && (
+        <div className="space-y-3">
         <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
           {[
             [t('card.rarity'), card?.rarity],
@@ -673,6 +694,8 @@ function CollectionEditModal({ item, onClose }) {
               <p className="mt-1 break-words text-sm font-bold text-text-primary">{value}</p>
             </div>
           ))}
+        </div>
+        <PrintingDetailBadges details={item.printing_details} />
         </div>
       )}
 
@@ -707,6 +730,7 @@ function CollectionEditModal({ item, onClose }) {
               <p className="mt-1 text-xs text-text-muted">
                 {[item.condition || 'NM', tcgdexLanguageLabel(item.lang || 'en')].join(' · ')}
               </p>
+              <PrintingDetailBadges details={item.printing_details} className="mt-2" />
             </div>
             <span className="inline-flex min-w-12 items-center justify-center rounded-lg border border-brand-red/35 bg-brand-red/15 px-3 py-2 text-sm font-black text-brand-red">
               ×{item.quantity}
@@ -805,6 +829,11 @@ function CollectionEditModal({ item, onClose }) {
                 <select value={variant} onChange={e => setVariant(e.target.value)} className="select">
                   {CARD_VARIANTS.map(v => <option key={v} value={v}>{v}</option>)}
                 </select>
+              </div>
+
+              <div>
+                <label className="text-xs text-text-muted mb-1 block">{t('printingDetails.label')}</label>
+                <PrintingDetailSelector value={printingDetails} onChange={setPrintingDetails} />
               </div>
 
               <div>
@@ -961,6 +990,11 @@ function CollectionEditModal({ item, onClose }) {
               </div>
 
               <div>
+                <label className="text-xs text-text-muted mb-1 block">{t('printingDetails.label')}</label>
+                <PrintingDetailSelector value={newVersionPrintingDetails} onChange={setNewVersionPrintingDetails} />
+              </div>
+
+              <div>
                 <label className="text-xs text-text-muted mb-1.5 block">🌐 {t('lang.selectLabel')}</label>
                 <TcgdexLanguageSelect value={newVersionLang} onChange={setNewVersionLang} className="select w-full" />
               </div>
@@ -1012,6 +1046,7 @@ export default function Collection() {
   const [showFilters, setShowFilters] = useState(false)
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
   const [showCsvImportModal, setShowCsvImportModal] = useState(false)
+  const [showPrintingDetailManager, setShowPrintingDetailManager] = useState(false)
   const csvImportInputRef = useRef(null)
   const queryClient = useQueryClient()
   const {
@@ -1025,6 +1060,7 @@ export default function Collection() {
     filterRarity,
     filterCondition,
     filterVariant,
+    filterPrintingDetail,
     filterSet,
     filterType,
     filterCategories,
@@ -1180,7 +1216,11 @@ export default function Collection() {
     return sortCardFilterLabels(CARD_SUBTYPE_OPTIONS, all)
   }, [facetItems])
 
-  const hasActiveFilters = filterRarity || filterCondition || filterVariant || filterSet || filterType || filterCategories.length > 0 || filterSubtypes.length > 0 || filterLegality || filterLang || filterMinPrice || filterMaxPrice || filterDuplicates || ruleText.trim()
+  const printingDetailOptions = useMemo(() => [...new Set(
+    facetItems.flatMap(item => printingDetailNames(item.printing_details))
+  )].sort((left, right) => left.localeCompare(right)), [facetItems])
+
+  const hasActiveFilters = filterRarity || filterCondition || filterVariant || filterPrintingDetail || filterSet || filterType || filterCategories.length > 0 || filterSubtypes.length > 0 || filterLegality || filterLang || filterMinPrice || filterMaxPrice || filterDuplicates || ruleText.trim()
   const hasAdvancedFilters = filterCategories.length > 0 || filterSubtypes.length > 0 || filterLegality || filterLang || filterMinPrice || filterMaxPrice || filterDuplicates || ruleText.trim()
 
   const filtered = useMemo(() => {
@@ -1190,6 +1230,12 @@ export default function Collection() {
       if (filterRarity && card?.rarity !== filterRarity) return false
       if (filterCondition && item.condition !== filterCondition) return false
       if (filterVariant && item.variant !== filterVariant) return false
+      if (
+        filterPrintingDetail
+        && !printingDetailNames(item.printing_details).some(
+          name => normalizePrintingDetailName(name) === normalizePrintingDetailName(filterPrintingDetail)
+        )
+      ) return false
       if (filterSet) {
         if (item.card?.set_ref?.id !== filterSet) return false
       }
@@ -1249,7 +1295,7 @@ export default function Collection() {
     })
 
     return result
-  }, [items, filterRarity, filterCondition, filterVariant, filterSet, filterType, filterCategories, filterSubtypes, filterLegality, filterLang, filterMinPrice, filterMaxPrice, filterDuplicates, searchText, sortBy, sortOrder, pricePrimaryField])
+  }, [items, filterRarity, filterCondition, filterVariant, filterPrintingDetail, filterSet, filterType, filterCategories, filterSubtypes, filterLegality, filterLang, filterMinPrice, filterMaxPrice, filterDuplicates, searchText, sortBy, sortOrder, pricePrimaryField])
 
   const totalValue = filtered.reduce((sum, item) => sum + (getEffectivePrice(item.card, item.variant) * item.quantity), 0)
   const totalCards = filtered.reduce((sum, item) => sum + item.quantity, 0)
@@ -1314,6 +1360,15 @@ export default function Collection() {
             className="btn-ghost text-sm py-1.5 border-yellow/30 text-yellow hover:bg-yellow/10">
             <PenLine size={14} /> {t('collection.addCustomCard')}
           </button>
+          <button
+            type="button"
+            onClick={() => setShowPrintingDetailManager(true)}
+            className="btn-ghost px-2 py-1.5 text-sm"
+            title={t('printingDetails.manage')}
+            aria-label={t('printingDetails.manage')}
+          >
+            <Tags size={14} />
+          </button>
           <input
             ref={csvImportInputRef}
             type="file"
@@ -1334,6 +1389,11 @@ export default function Collection() {
           <button onClick={() => exportPDF(exportParams)} className="btn-ghost text-sm py-1.5"><Download size={14} />PDF</button>
         </div>
       </div>
+
+      <PrintingDetailTagManager
+        isOpen={showPrintingDetailManager}
+        onClose={() => setShowPrintingDetailManager(false)}
+      />
 
       {/* ─── Filter & Sort Bar ────────────────────────────────────── */}
       <div className="card space-y-3">
@@ -1396,6 +1456,13 @@ export default function Collection() {
               <select id="collection-filter-variant" className="select py-1.5 text-sm" value={filterVariant} onChange={(e) => setDynamicFilter('filterVariant', e.target.value)}>
                 <option value="">{t('variants.allVariants')}</option>
                 {CARD_VARIANTS.map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="collection-filter-printing-detail" className="text-xs text-text-muted mb-1 block">{t('printingDetails.label')}</label>
+              <select id="collection-filter-printing-detail" className="select py-1.5 text-sm" value={filterPrintingDetail} onChange={(e) => setDynamicFilter('filterPrintingDetail', e.target.value)}>
+                <option value="">{t('printingDetails.all')}</option>
+                {printingDetailOptions.map(name => <option key={name} value={name}>{name}</option>)}
               </select>
             </div>
             <div>
@@ -1556,7 +1623,10 @@ export default function Collection() {
                       stateIndicatorProps={{ card: cardState, alwaysShowQuantity: true }}
                       onClick={() => setEditingCollectionItem(item)}
                       overlay={(
-                        <ProductSourceBadge item={item} t={t} compact className="absolute bottom-2 left-2 z-20 h-6 w-6" />
+                        <>
+                          <ProductSourceBadge item={item} t={t} compact className="absolute bottom-2 left-2 z-20 h-6 w-6" />
+                          <PrintingDetailBadges details={item.printing_details} limit={1} className="absolute left-2 top-2 z-20 max-w-[calc(100%-1rem)]" />
+                        </>
                       )}
                     />
                   )
@@ -1621,8 +1691,9 @@ export default function Collection() {
                               languageLabel={item.lang ? tcgdexLanguageLabel(item.lang) : null}
                               variantEffectSource={item.variant}
                               details={(
-                                <div className="mt-0.5 flex min-w-0 items-center gap-1">
+                                <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1">
                                   <ProductSourceBadge item={item} t={t} className="max-w-[180px]" />
+                                  <PrintingDetailBadges details={item.printing_details} limit={2} />
                                 </div>
                               )}
                             />
@@ -1696,6 +1767,7 @@ export default function Collection() {
                     label: `${item.condition} ×${item.quantity || 1}`,
                     variant: item.condition === 'Mint' ? 'green' : item.condition === 'NM' ? 'blue' : 'yellow',
                   })
+                  printingDetailNames(item.printing_details).slice(0, 2).forEach(name => badges.push({ label: name, variant: 'blue' }))
                   const sourceSummary = getProductSourceSummary(item)
                   if (sourceSummary) badges.push({ label: `${t('collection.foundIn')}: ${sourceSummary.label}`, variant: 'gold' })
                   return (

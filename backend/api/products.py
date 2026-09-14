@@ -235,6 +235,7 @@ def _ledger_entry_response(entry: ProductLedgerEntry) -> ProductLedgerEntryRespo
         set_id=entry.set_id,
         card_number=entry.card_number,
         variant=entry.variant,
+        printing_details=list(entry.printing_details or []),
         condition=entry.condition,
         lang=entry.lang,
         notes=entry.notes,
@@ -254,6 +255,7 @@ def _product_card_response(entry: ProductCard, price_field: str) -> ProductCardR
         sold_quantity=entry.sold_quantity,
         condition=entry.condition,
         variant=entry.variant,
+        printing_details=list(entry.printing_details or []),
         lang=entry.lang,
         purchase_price=entry.purchase_price,
         linked_at=entry.linked_at,
@@ -385,7 +387,7 @@ def _link_collection_items(
             existing.initial_quantity += link.quantity
             existing.active_quantity += link.quantity
             continue
-        db.add(ProductCard(
+        product_card = ProductCard(
             product_id=product.id,
             user_id=current_user.id,
             card_id=collection_item.card_id,
@@ -398,7 +400,9 @@ def _link_collection_items(
             lang=collection_item.lang,
             purchase_price=collection_item.purchase_price,
             linked_at=linked_at,
-        ))
+        )
+        product_card.printing_detail_tags = list(collection_item.printing_detail_tags)
+        db.add(product_card)
 
     product.lifecycle_status = "opened"
 
@@ -906,7 +910,7 @@ def sell_product_card(
 
     product_card.active_quantity -= sale.quantity
     product_card.sold_quantity += sale.quantity
-    db.add(ProductLedgerEntry(
+    ledger_entry = ProductLedgerEntry(
         product_card_id=product_card.id,
         product_id=product.id,
         user_id=current_user.id,
@@ -925,7 +929,9 @@ def sell_product_card(
         lang=product_card.lang,
         notes=sale.notes,
         created_at=datetime.datetime.utcnow(),
-    ))
+    )
+    ledger_entry.printing_detail_tags = list(product_card.printing_detail_tags)
+    db.add(ledger_entry)
 
     db.commit()
     db.refresh(product)

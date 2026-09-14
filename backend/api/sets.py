@@ -295,6 +295,7 @@ def get_set_checklist(
                     "quantity": item.quantity,
                     "condition": item.condition,
                     "variant": item.variant,
+                    "printing_details": [tag.name for tag in item.printing_detail_tags],
                     "lang": item.lang,
                     "purchase_price": item.purchase_price,
                 }

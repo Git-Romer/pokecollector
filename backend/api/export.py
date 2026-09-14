@@ -5,10 +5,12 @@ from api.auth import get_current_user
 from database import get_db
 from services.card_values import effective_market_price, normalize_price_field
 from services.card_visibility import visible_any_card_filter
+from services.printing_details import format_printing_details_csv
 from models import CollectionItem, Card, User
 import io
 import csv
 import datetime
+from xml.sax.saxutils import escape
 
 router = APIRouter()
 
@@ -56,7 +58,8 @@ def export_csv(
     # Header
     writer.writerow([
         "Card ID", "Name", "Set", "Number", "Rarity",
-        "Quantity", "Condition", f"Purchase Price ({currency})",
+        "Quantity", "Condition", "Variant", "Language", "Printing Details",
+        f"Purchase Price ({currency})",
         f"Current Price ({currency})", f"Total Value ({currency})",
         "Added At"
     ])
@@ -80,6 +83,9 @@ def export_csv(
             card.rarity or "",
             item.quantity,
             item.condition,
+            item.variant,
+            item.lang,
+            format_printing_details_csv(item.printing_detail_tags),
             display_purchase_price or "",
             display_current_price or "",
             total_value,
@@ -149,8 +155,14 @@ def export_pdf(
         story.append(Spacer(1, 10*mm))
 
         # Table
-        headers = ["Name", "Set", "No.", "Rarity", "Qty", "Condition", f"Buy {currency}", f"Current {currency}", f"Value {currency}"]
+        headers = ["Name", "Set", "No.", "Rarity", "Qty", "Condition", "Variant", "Lang", "Printing Details", f"Buy {currency}", f"Current {currency}", f"Value {currency}"]
         data = [headers]
+        detail_style = ParagraphStyle(
+            "PrintingDetails",
+            parent=styles["Normal"],
+            fontSize=7,
+            leading=8,
+        )
 
         total_value = 0
         for item in items:
@@ -170,20 +182,27 @@ def export_pdf(
                 (card.rarity or "-")[:15],
                 str(item.quantity),
                 item.condition,
+                item.variant,
+                item.lang,
+                Paragraph(
+                    escape(format_printing_details_csv(item.printing_detail_tags) or "-"),
+                    detail_style,
+                ),
                 _format_money(purchase_price, symbol) if purchase_price else "-",
                 _format_money(current_price, symbol) if current_price else "-",
                 _format_money(val, symbol),
             ])
 
         # Summary row
-        data.append(["", "", "", "", "", "", "", "TOTAL:", _format_money(total_value, symbol)])
+        data.append(["", "", "", "", "", "", "", "", "", "", "TOTAL:", _format_money(total_value, symbol)])
 
-        col_widths = [100, 80, 30, 80, 25, 50, 45, 55, 55]
+        col_widths = [72, 55, 25, 50, 24, 44, 55, 27, 92, 45, 52, 52]
         table = Table(data, colWidths=col_widths)
         table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EE1515")),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
             ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
             ("FONTSIZE", (0, 0), (-1, 0), 9),
             ("FONTSIZE", (0, 1), (-1, -1), 8),

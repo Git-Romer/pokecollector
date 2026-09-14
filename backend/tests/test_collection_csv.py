@@ -25,7 +25,7 @@ class CollectionCsvTests(unittest.TestCase):
 
     def test_import_key_uses_exact_collection_attributes(self):
         key = collection_import_key('swshp-SWSH057_de', '', 'de', 'NM', None)
-        self.assertEqual(key, ('swshp-SWSH057_de', 'Normal', 'de', 'NM', None))
+        self.assertEqual(key, ('swshp-SWSH057_de', 'Normal', 'de', 'NM', None, ()))
 
     def test_different_collection_attributes_stay_separate(self):
         normal_key = collection_import_key('swshp-SWSH057_de', 'Normal', 'de', 'NM', None)
@@ -34,6 +34,23 @@ class CollectionCsvTests(unittest.TestCase):
 
         self.assertNotEqual(normal_key, holo_key)
         self.assertNotEqual(normal_key, priced_key)
+
+    def test_printing_details_are_normalized_as_part_of_the_import_identity(self):
+        accented = collection_import_key(
+            'swshp-SWSH057_de', 'Holo', 'de', 'NM', None,
+            ['Poké Ball', 'Play! Pokémon'],
+        )
+        equivalent = collection_import_key(
+            'swshp-SWSH057_de', 'Holo', 'de', 'NM', None,
+            ['play pokemon', 'Poke-Ball'],
+        )
+        different = collection_import_key(
+            'swshp-SWSH057_de', 'Holo', 'de', 'NM', None,
+            ['Master Ball'],
+        )
+
+        self.assertEqual(accented, equivalent)
+        self.assertNotEqual(accented, different)
 
     def test_duplicate_rows_are_merged_before_writing(self):
         planned = {}

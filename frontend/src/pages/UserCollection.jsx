@@ -12,6 +12,7 @@ import { TCGDEX_LANGUAGES, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { textIncludes } from '../utils/textSearch'
 import { CardDisplay, CardLegend, withCollectionItemState } from '../components/card-system'
 import { useDynamicFilterUrlState } from '../hooks/useDynamicFilterUrlState'
+import PrintingDetailBadges from '../components/PrintingDetailBadges'
 
 const USER_COLLECTION_FILTER_DEFINITIONS = {
   filterRarity: { param: 'rarity', default: '' },
@@ -231,6 +232,7 @@ export default function UserCollection() {
                 languageLabel={hasMixedLanguages && (item.lang || card.lang)
                   ? tcgdexLanguageLabel(item.lang || card.lang)
                   : null}
+                captionAccessory={<PrintingDetailBadges details={item.printing_details} limit={1} />}
                 variantEffectSource={item.variant}
                 stateIndicatorProps={{
                   card: withCollectionItemState(card, item),

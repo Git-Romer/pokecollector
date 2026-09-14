@@ -17,6 +17,7 @@ import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { isSupportedScannerImage, SCANNER_IMAGE_ACCEPT } from '../utils/scannerImages'
 import { hasCatalogueImage } from '../utils/imageUrl'
 import { useDialogBehavior } from './ui/dialogBehavior'
+import PrintingDetailSelector from './PrintingDetailSelector'
 
 export async function attachScanFallbackPhoto({ created, match, getPhoto, uploadPhoto = uploadCollectionItemPhoto }) {
   const createdCard = created?.card
@@ -53,6 +54,7 @@ export function ScanAddModal({
   const [quantity, setQuantity] = useState(1)
   const [condition, setCondition] = useState('NM')
   const [variant, setVariant] = useState(() => getDefaultVariant(match))
+  const [printingDetails, setPrintingDetails] = useState([])
   const [lang, setLang] = useState(match.lang || defaultLang || 'en')
   const [purchasePrice, setPurchasePrice] = useState('')
   const [adding, setAdding] = useState(false)
@@ -74,6 +76,7 @@ export function ScanAddModal({
         quantity,
         condition,
         variant,
+        printing_details: printingDetails,
         lang,
         purchase_price: parseMoneyInputValue(purchasePrice, exchangeRate),
       }
@@ -175,6 +178,11 @@ export function ScanAddModal({
               <select value={variant} onChange={e => setVariant(e.target.value)} className="select">
                 {CARD_VARIANTS.map(v => <option key={v} value={v}>{v}</option>)}
               </select>
+            </div>
+
+            <div>
+              <label className="text-xs text-text-muted mb-1 block">{t('printingDetails.label')}</label>
+              <PrintingDetailSelector value={printingDetails} onChange={setPrintingDetails} />
             </div>
 
 

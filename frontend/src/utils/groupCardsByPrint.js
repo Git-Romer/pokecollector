@@ -26,6 +26,7 @@ export function groupCardsByPrint(cards) {
     }
     tile.prints.push({
       variant: c.variant,
+      printing_details: c.printing_details || [],
       quantity: c.quantity,
       market_value: c.market_value,
     })

@@ -16,6 +16,7 @@ import { collectionItemTargetUrl } from '../utils/navigation'
 import AnalyticsSectionNav from '../components/AnalyticsSectionNav'
 import { CardLegend, withCollectionItemState } from '../components/card-system'
 import { CollectionCardDisplay } from '../components/CollectionCardImage'
+import PrintingDetailBadges from '../components/PrintingDetailBadges'
 import { mapPortfolioChartData, portfolioApiPeriod, PORTFOLIO_PERIODS } from '../utils/portfolioChart'
 
 const CustomTooltip = ({ active, payload, label }) => {
@@ -169,6 +170,7 @@ export default function Dashboard() {
                   card={card}
                   alt={card.name}
                   variantEffectSource={card.variant}
+                  overlay={<PrintingDetailBadges details={card.printing_details} limit={1} className="absolute bottom-1 left-1 right-1 z-20" />}
                   stateIndicatorProps={{ card: withCollectionItemState(card, card), alwaysShowQuantity: true }}
                 />
                 {card.price_market > 0 && (
@@ -219,6 +221,7 @@ export default function Dashboard() {
                     card={card}
                     alt={card.name}
                     variantEffectSource={card.variant}
+                    overlay={<PrintingDetailBadges details={card.printing_details} limit={1} className="absolute bottom-1 right-1 z-20 max-w-[calc(100%-2rem)]" />}
                     stateIndicatorProps={{ card: withCollectionItemState(card, card), alwaysShowQuantity: true }}
                   />
                   <span className="absolute bottom-1 left-1 z-20 bg-black/80 text-gold text-[9px] font-black rounded px-1 leading-4">

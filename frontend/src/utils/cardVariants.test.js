@@ -40,12 +40,12 @@ describe('getOwnedVariants', () => {
     expect(getOwnedVariants([row({ variant: null })])).toEqual([{ variant: 'Normal', quantity: 1 }])
   })
 
-  it('passes through a non-canonical variant, after the canonical ones', () => {
+  it('ignores non-canonical variants defensively', () => {
     const result = getOwnedVariants([
       row({ id: 1, variant: 'Full Art' }),
       row({ id: 2, variant: 'Normal' }),
     ])
-    expect(result.map(entry => entry.variant)).toEqual(['Normal', 'Full Art'])
+    expect(result.map(entry => entry.variant)).toEqual(['Normal'])
   })
 
   it('omits a variant whose total quantity is zero', () => {

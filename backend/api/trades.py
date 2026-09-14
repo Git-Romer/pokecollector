@@ -19,6 +19,11 @@ from services.binder_allocations import (
     collection_item_allocated_quantity,
 )
 from services.collection_csv import normalize_collection_variant
+from services.printing_details import normalize_printing_details
+from services.printing_detail_tags import (
+    get_or_create_printing_detail_tags,
+    printing_detail_keys,
+)
 from services.product_ledger import finite_non_negative, positive_quantity
 from services.tcgdex_languages import is_supported_tcgdex_language, normalize_tcgdex_language
 
@@ -97,6 +102,14 @@ def _prepare_incoming_card(db: Session, incoming, price_field: str, user_id: int
     if condition not in ALLOWED_CONDITIONS:
         raise HTTPException(status_code=422, detail="condition is not supported")
     variant = normalize_collection_variant(incoming.variant)
+    try:
+        printing_details = [
+            name for name, _normalized_name in normalize_printing_details(
+                getattr(incoming, "printing_details", None)
+            )
+        ]
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     lang = _normalize_lang(incoming.lang)
     purchase_price_override = getattr(incoming, "purchase_price", None)
     if purchase_price_override is not None:
@@ -112,6 +125,7 @@ def _prepare_incoming_card(db: Session, incoming, price_field: str, user_id: int
         "card": card,
         "condition": condition,
         "variant": variant,
+        "printing_details": printing_details,
         "lang": item_lang,
         "value_per_card": value_per_card,
         "purchase_price": purchase_price,
@@ -127,15 +141,22 @@ def _merge_or_create_collection_item(
     variant: str,
     lang: str,
     purchase_price,
+    printing_details=None,
 ) -> CollectionItem:
-    existing = db.query(CollectionItem).filter(
+    tags = get_or_create_printing_detail_tags(db, current_user.id, printing_details)
+    requested_keys = printing_detail_keys(tags)
+    candidates = db.query(CollectionItem).filter(
         CollectionItem.card_id == card.id,
         CollectionItem.variant == variant,
         CollectionItem.lang == lang,
         CollectionItem.condition == condition,
         CollectionItem.purchase_price == purchase_price,
         CollectionItem.user_id == current_user.id,
-    ).first()
+    ).all()
+    existing = next(
+        (item for item in candidates if printing_detail_keys(item.printing_detail_tags) == requested_keys),
+        None,
+    )
 
     if existing:
         existing.quantity += quantity
@@ -151,6 +172,7 @@ def _merge_or_create_collection_item(
         lang=lang,
         added_at=datetime.datetime.utcnow(),
     )
+    item.printing_detail_tags = tags
     db.add(item)
     db.flush()
     return item
@@ -188,7 +210,7 @@ def _record_linked_trade_out(
         if trade_item.product_card_id is None:
             trade_item.product_card_id = product_card.id
 
-        db.add(ProductLedgerEntry(
+        ledger_entry = ProductLedgerEntry(
             product_card_id=product_card.id,
             product_id=product.id,
             user_id=current_user.id,
@@ -208,7 +230,9 @@ def _record_linked_trade_out(
             lang=collection_item.lang,
             notes=trade_item.notes,
             created_at=datetime.datetime.utcnow(),
-        ))
+        )
+        ledger_entry.printing_detail_tags = list(collection_item.printing_detail_tags)
+        db.add(ledger_entry)
         remaining -= allocated
 
 
@@ -242,13 +266,19 @@ def _same_inventory_identity(
     condition: str | None,
     lang: str | None,
     purchase_price,
+    printing_details=None,
 ) -> bool:
+    requested_keys = frozenset(
+        normalized_name
+        for _name, normalized_name in normalize_printing_details(printing_details)
+    )
     return (
         collection_item.card_id == card_id
         and collection_item.variant == (variant or "Normal")
         and collection_item.condition == (condition or "NM")
         and collection_item.lang == (lang or "en")
         and _same_purchase_price(collection_item.purchase_price, purchase_price)
+        and printing_detail_keys(collection_item.printing_detail_tags) == requested_keys
     )
 
 
@@ -300,6 +330,7 @@ def _matching_collection_items(
     condition: str | None,
     lang: str | None,
     purchase_price,
+    printing_details=None,
 ) -> list[CollectionItem]:
     return [
         item for item in collection_items
@@ -310,6 +341,7 @@ def _matching_collection_items(
             condition=condition,
             lang=lang,
             purchase_price=purchase_price,
+            printing_details=printing_details,
         )
     ]
 
@@ -325,6 +357,7 @@ def _merge_locked_collection_item(
     variant: str,
     lang: str,
     purchase_price,
+    printing_details=None,
 ) -> CollectionItem:
     matches = _matching_collection_items(
         collection_items,
@@ -333,6 +366,7 @@ def _merge_locked_collection_item(
         condition=condition,
         lang=lang,
         purchase_price=purchase_price,
+        printing_details=printing_details,
     )
     if matches:
         matches[0].quantity = int(matches[0].quantity or 0) + quantity
@@ -347,6 +381,9 @@ def _merge_locked_collection_item(
         purchase_price=purchase_price,
         lang=lang,
         added_at=datetime.datetime.utcnow(),
+    )
+    item.printing_detail_tags = get_or_create_printing_detail_tags(
+        db, current_user.id, printing_details
     )
     item.card = card
     db.add(item)
@@ -381,6 +418,7 @@ def _remove_matching_collection_quantity(
     quantity: int,
     protect_product_links: bool,
     preferred_item_id: int | None = None,
+    printing_details=None,
 ) -> list[tuple[CollectionItem, int]]:
     matches = _matching_collection_items(
         collection_items,
@@ -389,6 +427,7 @@ def _remove_matching_collection_quantity(
         condition=condition,
         lang=lang,
         purchase_price=purchase_price,
+        printing_details=printing_details,
     )
     matches.sort(key=lambda item: (item.id != preferred_item_id, item.id or 0))
     product_active = _product_active_quantities(product_cards)
@@ -496,19 +535,20 @@ def _reverse_product_trade_out(
 
 
 def _update_linked_ledger_snapshots(db: Session, trade: Trade, trade_item: TradeItem) -> None:
-    db.query(ProductLedgerEntry).filter(
+    entries = db.query(ProductLedgerEntry).filter(
         ProductLedgerEntry.trade_item_id == trade_item.id,
         ProductLedgerEntry.entry_type == "trade_out",
-    ).update({
-        ProductLedgerEntry.event_date: trade.trade_date,
-        ProductLedgerEntry.card_name: trade_item.card_name,
-        ProductLedgerEntry.set_id: trade_item.set_id,
-        ProductLedgerEntry.card_number: trade_item.card_number,
-        ProductLedgerEntry.variant: trade_item.variant,
-        ProductLedgerEntry.condition: trade_item.condition,
-        ProductLedgerEntry.lang: trade_item.lang,
-        ProductLedgerEntry.notes: trade_item.notes,
-    }, synchronize_session=False)
+    ).all()
+    for entry in entries:
+        entry.event_date = trade.trade_date
+        entry.card_name = trade_item.card_name
+        entry.set_id = trade_item.set_id
+        entry.card_number = trade_item.card_number
+        entry.variant = trade_item.variant
+        entry.printing_detail_tags = list(trade_item.printing_detail_tags)
+        entry.condition = trade_item.condition
+        entry.lang = trade_item.lang
+        entry.notes = trade_item.notes
 
 
 def _recalculate_trade_totals(db: Session, trade: Trade) -> None:
@@ -733,6 +773,7 @@ def create_trade(
                 snapshot_version=1,
                 **_card_snapshot(collection_item.card),
             )
+            trade_item.printing_detail_tags = list(collection_item.printing_detail_tags)
             db.add(trade_item)
             db.flush()
 
@@ -787,9 +828,10 @@ def create_trade(
                 variant,
                 item_lang,
                 purchase_price,
+                prepared["printing_details"],
             )
 
-            db.add(TradeItem(
+            trade_item = TradeItem(
                 trade_id=db_trade.id,
                 user_id=current_user.id,
                 direction="incoming",
@@ -806,7 +848,9 @@ def create_trade(
                 purchase_price=purchase_price,
                 snapshot_version=1,
                 **_card_snapshot(card),
-            ))
+            )
+            trade_item.printing_detail_tags = list(collection_item.printing_detail_tags)
+            db.add(trade_item)
 
         db_trade.outgoing_value = round(outgoing_total, 2)
         db_trade.incoming_value = round(incoming_total, 2)
@@ -1010,6 +1054,7 @@ def update_trade(
                         quantity=reduction,
                         condition=new_condition,
                         variant=trade_item.variant or "Normal",
+                        printing_details=trade_item.printing_details,
                         lang=trade_item.lang or trade_item.card.lang or "en",
                         purchase_price=purchase_price,
                     )
@@ -1024,6 +1069,7 @@ def update_trade(
                         product_cards,
                         card_id=trade_item.card_id,
                         variant=trade_item.variant,
+                        printing_details=trade_item.printing_details,
                         condition=new_condition,
                         lang=trade_item.lang,
                         purchase_price=purchase_price,
@@ -1078,6 +1124,7 @@ def update_trade(
                 created_at=datetime.datetime.utcnow(),
                 **_card_snapshot(collection_item.card),
             )
+            trade_item.printing_detail_tags = list(collection_item.printing_detail_tags)
             db.add(trade_item)
             db.flush()
             _record_linked_trade_out(
@@ -1098,9 +1145,21 @@ def update_trade(
             old_quantity = int(trade_item.quantity or 0)
             old_condition = trade_item.condition or "NM"
             old_variant = trade_item.variant or "Normal"
+            old_printing_details = [
+                name for name, _normalized_name in normalize_printing_details(
+                    trade_item.printing_details or []
+                )
+            ]
             old_lang = trade_item.lang or "en"
             new_condition = (requested.condition or "NM") if requested else old_condition
             new_variant = normalize_collection_variant(requested.variant) if requested else old_variant
+            new_printing_details = [
+                name for name, _normalized_name in normalize_printing_details(
+                    requested.printing_details
+                    if requested and requested.printing_details is not None
+                    else old_printing_details
+                )
+            ]
             new_lang = _normalize_lang(requested.lang) if requested else old_lang
             if requested and new_condition not in ALLOWED_CONDITIONS:
                 raise HTTPException(status_code=422, detail="condition is not supported")
@@ -1110,6 +1169,7 @@ def update_trade(
             identity_changed = (
                 new_condition != old_condition
                 or new_variant != old_variant
+                or printing_detail_keys(new_printing_details) != printing_detail_keys(old_printing_details)
                 or new_lang != old_lang
             )
             if new_quantity != old_quantity or identity_changed:
@@ -1125,6 +1185,7 @@ def update_trade(
                         product_cards,
                         card_id=trade_item.card_id,
                         variant=trade_item.variant,
+                        printing_details=old_printing_details,
                         condition=trade_item.condition,
                         lang=trade_item.lang,
                         purchase_price=purchase_price,
@@ -1143,6 +1204,7 @@ def update_trade(
                             quantity=new_quantity,
                             condition=new_condition or "NM",
                             variant=new_variant or "Normal",
+                            printing_details=new_printing_details,
                             lang=new_lang or "en",
                             purchase_price=purchase_price,
                         )
@@ -1155,6 +1217,7 @@ def update_trade(
                         product_cards,
                         card_id=trade_item.card_id,
                         variant=trade_item.variant,
+                        printing_details=old_printing_details,
                         condition=trade_item.condition,
                         lang=trade_item.lang,
                         purchase_price=purchase_price,
@@ -1173,6 +1236,7 @@ def update_trade(
                         quantity=new_quantity - old_quantity,
                         condition=trade_item.condition or "NM",
                         variant=trade_item.variant or "Normal",
+                        printing_details=old_printing_details,
                         lang=trade_item.lang or "en",
                         purchase_price=purchase_price,
                     )
@@ -1185,6 +1249,9 @@ def update_trade(
             trade_item.value_total = round(float(trade_item.value_per_card or 0) * new_quantity, 2)
             trade_item.condition = new_condition
             trade_item.variant = new_variant
+            trade_item.printing_detail_tags = get_or_create_printing_detail_tags(
+                db, current_user.id, new_printing_details
+            )
             trade_item.lang = new_lang
             trade_item.notes = requested.notes
 
@@ -1201,11 +1268,12 @@ def update_trade(
                 quantity=requested.quantity,
                 condition=prepared["condition"],
                 variant=prepared["variant"],
+                printing_details=prepared["printing_details"],
                 lang=prepared["lang"],
                 purchase_price=prepared["purchase_price"],
             )
             value_per_card = prepared["value_per_card"]
-            db.add(TradeItem(
+            trade_item = TradeItem(
                 trade_id=db_trade.id,
                 user_id=current_user.id,
                 direction="incoming",
@@ -1222,7 +1290,9 @@ def update_trade(
                 snapshot_version=1,
                 created_at=datetime.datetime.utcnow(),
                 **_card_snapshot(card),
-            ))
+            )
+            trade_item.printing_detail_tags = list(collection_item.printing_detail_tags)
+            db.add(trade_item)
 
         for collection_item in collection_items:
             if int(collection_item.quantity or 0) == 0:

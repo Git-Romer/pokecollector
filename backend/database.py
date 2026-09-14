@@ -100,10 +100,11 @@ def _run_migrations(conn):
         # broad DB constraint would block valid separate collection rows.
         "ALTER TABLE collection DROP CONSTRAINT IF EXISTS uq_collection_card_variant",
         "ALTER TABLE collection DROP CONSTRAINT IF EXISTS uq_collection_card_variant_lang",
-        # v48: Normalize missing/base prints and trim existing variant labels.
-        "UPDATE collection SET variant = COALESCE(NULLIF(btrim(variant), ''), 'Normal')",
+        # v48: Existing values are audited by harden_collection_variant_constraints
+        # before either table is made strict. Ambiguous legacy data must not be
+        # silently reclassified into a pricing category.
         "ALTER TABLE collection ALTER COLUMN variant SET DEFAULT 'Normal'",
-        "ALTER TABLE collection ALTER COLUMN variant SET NOT NULL",
+        "ALTER TABLE product_cards ALTER COLUMN variant SET DEFAULT 'Normal'",
         # v32: Add grade column to collection table (PSA/BGS/CGC grade)
         "ALTER TABLE collection ADD COLUMN IF NOT EXISTS grade VARCHAR DEFAULT 'raw'",
         # v32: Add ebay_app_id to settings table
@@ -654,56 +655,103 @@ def _run_migrations(conn):
             conn.rollback()
 
 
-def migrate_collection_variants():
-    """Move rarity-like values out of collection.variant into explicit physical variants."""
-    rarity_values = (
-        "Double Rare", "Full Art", "Alt Art", "Gold", "Rainbow",
-        "Illustration Rare", "Special Illustration Rare", "Crown Rare",
-        "Promo", "Art Rare", "Ultra Rare", "Secret Rare", "Shiny",
-    )
-    placeholders = ",".join([f":v{i}" for i in range(len(rarity_values))])
-    params = {f"v{i}": value for i, value in enumerate(rarity_values)}
+def harden_collection_variant_constraints(target_engine=None):
+    """Reject unsupported stored variants and enforce the canonical contract.
 
-    db = SessionLocal()
-    try:
-        rows = db.execute(text(f"""
-            SELECT
-                c.id,
-                c.card_id,
-                c.lang,
-                c.variant,
-                cards.variants_holo,
-                cards.variants_normal,
-                cards.variants_reverse
-            FROM collection c
-            LEFT JOIN cards ON cards.id = c.card_id
-            WHERE c.variant IN ({placeholders})
-            ORDER BY c.id
-        """), params).fetchall()
+    Anything outside the four physical variants is ambiguous and must be
+    corrected deliberately instead of being silently coerced to a potentially
+    wrong price category. PostgreSQL receives CHECK/NOT NULL constraints;
+    existing SQLite databases receive equivalent insert/update triggers because
+    SQLite cannot add those constraints to an existing table in place.
+    """
+    target_engine = target_engine or engine
+    allowed_sql = "('Normal', 'Holo', 'Reverse Holo', 'First Edition')"
+    with target_engine.begin() as conn:
+        invalid = conn.execute(text(f"""
+            SELECT source_table, row_id, variant
+            FROM (
+                SELECT 'collection' AS source_table, id AS row_id, variant, 0 AS nullable FROM collection
+                UNION ALL
+                SELECT 'product_cards', id, variant, 0 FROM product_cards
+                UNION ALL
+                SELECT 'product_ledger_entries', id, variant, 1 FROM product_ledger_entries
+                UNION ALL
+                SELECT 'trade_items', id, variant, 1 FROM trade_items
+            ) stored_variants
+            WHERE (variant IS NULL AND nullable = 0)
+               OR (variant IS NOT NULL AND variant NOT IN {allowed_sql})
+            ORDER BY source_table, row_id
+            LIMIT 20
+        """)).fetchall()
+        if invalid:
+            sample = ", ".join(
+                f"{row.source_table}#{row.row_id}={row.variant!r}" for row in invalid
+            )
+            raise RuntimeError(
+                "Unsupported stored collection variants must be corrected before startup: " + sample
+            )
 
-        if not rows:
+        if target_engine.dialect.name == "sqlite":
+            constraints = (
+                ("collection", False),
+                ("product_cards", False),
+                ("product_ledger_entries", True),
+                ("trade_items", True),
+            )
+            for table_name, nullable in constraints:
+                invalid_when = f"NEW.variant NOT IN {allowed_sql}"
+                if nullable:
+                    invalid_when = f"NEW.variant IS NOT NULL AND {invalid_when}"
+                else:
+                    invalid_when = f"NEW.variant IS NULL OR {invalid_when}"
+                for action in ("INSERT", "UPDATE OF variant"):
+                    suffix = "insert" if action == "INSERT" else "update"
+                    conn.execute(text(f"""
+                        CREATE TRIGGER IF NOT EXISTS ck_{table_name}_variant_{suffix}
+                        BEFORE {action} ON {table_name}
+                        WHEN {invalid_when}
+                        BEGIN
+                            SELECT RAISE(ABORT, 'unsupported collection variant');
+                        END
+                    """))
             return
 
-        migrated = 0
-
-        for row in rows:
-            target_variant = "Normal"
-            if row.variants_holo and not row.variants_normal:
-                target_variant = "Holo"
-
-            db.execute(
-                text("UPDATE collection SET variant = :variant WHERE id = :id"),
-                {"id": row.id, "variant": target_variant},
+        if target_engine.dialect.name != "postgresql":
+            raise RuntimeError(
+                f"Variant constraint hardening is not implemented for {target_engine.dialect.name}"
             )
-            migrated += 1
 
-        db.commit()
-        logger.info("migrate_collection_variants: migrated %s row(s)", migrated)
-    except Exception as e:
-        db.rollback()
-        logger.warning("migrate_collection_variants: migration aborted: %s", e)
-    finally:
-        db.close()
+        # Existing installations may predate the ORM-level nullability contract.
+        # Apply it only after the audit above proves that no row would be
+        # reclassified or discarded by doing so.
+        conn.execute(text("ALTER TABLE collection ALTER COLUMN variant SET DEFAULT 'Normal'"))
+        conn.execute(text("ALTER TABLE collection ALTER COLUMN variant SET NOT NULL"))
+        conn.execute(text("ALTER TABLE product_cards ALTER COLUMN variant SET DEFAULT 'Normal'"))
+        conn.execute(text("ALTER TABLE product_cards ALTER COLUMN variant SET NOT NULL"))
+
+        constraints = (
+            ("collection", "ck_collection_variant", False),
+            ("product_cards", "ck_product_cards_variant", False),
+            ("product_ledger_entries", "ck_product_ledger_variant", True),
+            ("trade_items", "ck_trade_items_variant", True),
+        )
+        for table_name, constraint_name, nullable in constraints:
+            expression = f"variant IN {allowed_sql}"
+            if nullable:
+                expression = f"variant IS NULL OR {expression}"
+            conn.execute(text(f"""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint
+                        WHERE conname = '{constraint_name}'
+                          AND conrelid = '{table_name}'::regclass
+                    ) THEN
+                        ALTER TABLE {table_name}
+                            ADD CONSTRAINT {constraint_name} CHECK ({expression});
+                    END IF;
+                END$$
+            """))
 
 
 def migrate_legacy_collection_binder_entries():
@@ -1024,11 +1072,10 @@ def init_db():
     except Exception:
         pass  # Non-blocking
 
-    # Migrate old rarity-like variant values to physical variants (idempotent)
-    try:
-        migrate_collection_variants()
-    except Exception:
-        pass  # Non-blocking
+    # Unlike historical cleanup migrations, this is a data-integrity boundary:
+    # ambiguous stored variants must stop startup rather than silently changing
+    # their pricing meaning or leaving the database unconstrained.
+    harden_collection_variant_constraints()
 
     # Link old card-level collection binder rows to exact owned rows.
     try:

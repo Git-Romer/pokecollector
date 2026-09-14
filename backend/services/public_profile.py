@@ -258,6 +258,10 @@ def _serialize_card(bc: BinderCard, show_values: bool) -> dict:
         "is_custom": bool(card.is_custom),
         "lang": card.lang,
         "variant": variant,
+        "printing_details": (
+            [tag.name for tag in bc.collection_item.printing_detail_tags]
+            if bc.collection_item else []
+        ),
         "data_source_lang": card.data_source_lang,
         "price_source_lang": card.price_source_lang,
         "image_source_lang": card.image_source_lang,
