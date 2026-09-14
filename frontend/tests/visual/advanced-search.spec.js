@@ -20,6 +20,16 @@ const SEARCH_CARD = {
   supertype: 'Pokemon',
   types: ['Lightning'],
   attacks: [{ name: 'Helpful Draw', effect: 'Draw 3 cards.' }],
+  price_market: 20.43,
+  price_trend: 16.23,
+  price_avg1: 16.67,
+  price_avg7: 16.52,
+  price_avg30: 19.41,
+  price_low: 7.5,
+  price_tcg_normal_market: 9.5,
+  price_tcg_reverse_market: 11.25,
+  price_tcg_holo_market: 14,
+  cardmarket_products: [{ product_id: 12345, variant: 'Normal' }],
   variants_normal: true,
 }
 
@@ -60,6 +70,12 @@ async function installApi(page) {
 
     if (path.startsWith('/api/images/card/')) {
       return route.fulfill({ status: 404, json: { detail: 'No test artwork' } })
+    }
+    if (path.endsWith('/price-history')) {
+      return route.fulfill({ json: [
+        { date: '2026-09-01', price_market: 18, price_trend: 15, price_low: 7 },
+        { date: '2026-09-14', price_market: 20.43, price_trend: 16.23, price_low: 7.5 },
+      ] })
     }
     if (path === '/api/cards/search') {
       const ruleText = url.searchParams.get('rule_text')
@@ -185,4 +201,21 @@ test('keeps Collection filters dynamic, compact, and debounced', async ({ page }
   await expect(page.getByRole('alert')).toContainText('Please try again')
   await expect(page).toHaveURL(/rule_text=fail(?:\+|%20)request/)
   expect(await page.locator('main').evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+})
+
+test('generic card dialogs reuse the complete shared price details', async ({ page }) => {
+  await installApi(page)
+  await page.goto('/search?rule_text=draw%203%20cards')
+
+  const result = page.getByRole('button', { name: 'Rule Text Result', exact: true })
+  await result.focus()
+  await result.press('Enter')
+  const dialog = page.getByRole('dialog')
+  await dialog.getByRole('tab', { name: 'Prices' }).click()
+
+  await expect(dialog.getByText(/Cardmarket Prices/)).toBeVisible()
+  await expect(dialog.getByText('1-Day Avg')).toBeVisible()
+  await expect(dialog.getByText('Buy on Cardmarket')).toBeVisible()
+  await expect(dialog.getByText('TCGPlayer')).toBeVisible()
+  await expect(dialog.getByText('Price History')).toBeVisible()
 })

@@ -21,6 +21,13 @@ const card = (index, overrides = {}) => ({
   types: ['Lightning'],
   price_market: 4 + index,
   price_trend: 4 + index,
+  price_avg1: 3.8 + index,
+  price_avg7: 3.6 + index,
+  price_avg30: 3.4 + index,
+  price_low: 3 + index,
+  price_tcg_normal_market: 5 + index,
+  price_tcg_reverse_market: 6 + index,
+  price_tcg_holo_market: 7 + index,
   variants_normal: true,
   variants_reverse: true,
   ...overrides,
@@ -203,6 +210,18 @@ async function installApiFixtures(page) {
 
     if (path.startsWith('/api/images/card/')) {
       await route.fulfill({ status: 200, contentType: 'image/jpeg', body: cardBack })
+      return
+    }
+
+    if (path.endsWith('/price-history')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          { date: '2026-09-01', price_market: 4, price_trend: 4, price_low: 3 },
+          { date: '2026-09-14', price_market: 5, price_trend: 5, price_low: 4 },
+        ]),
+      })
       return
     }
 
@@ -448,6 +467,50 @@ test('real Collection list keeps shared artwork, identity, and fallback treatmen
     '.unified-card-frame[style*="--pc-card-border-image"]:visible',
   ).first()).toBeVisible()
   await expect(page.locator('main')).toHaveScreenshot('collection-list.png')
+})
+
+test('Collection price tabs reuse the complete shared card price details', async ({ page }) => {
+  await page.goto('/collection')
+  await page.getByRole('button', { name: /Visual card 1/ }).click()
+
+  const dialog = page.getByRole('dialog')
+  await dialog.getByRole('tab', { name: 'Prices' }).click()
+
+  await expect(dialog.getByText('Market', { exact: true })).toBeVisible()
+  await expect(dialog.getByText('Buy', { exact: true })).toBeVisible()
+  await expect(dialog.getByText('Value', { exact: true })).toBeVisible()
+  await expect(dialog.getByText(/Cardmarket Prices/)).toBeVisible()
+  await expect(dialog.getByText('1-Day Avg')).toBeVisible()
+  await expect(dialog.getByText('Buy on Cardmarket')).toBeVisible()
+  await expect(dialog.getByText('TCGPlayer')).toBeVisible()
+  await expect(dialog.getByText('Price History')).toBeVisible()
+})
+
+test('Wishlist price tabs reuse the complete shared card price details', async ({ page }) => {
+  await page.route('**/api/wishlist/', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify([{
+      id: 91,
+      card_id: collection[0].card_id,
+      quantity: 2,
+      price_alert_above: null,
+      price_alert_below: null,
+      created_at: '2026-09-14T12:00:00',
+      card: collection[0].card,
+    }]),
+  }))
+  await page.goto('/wishlist')
+  await page.getByRole('button', { name: /Visual card 1/ }).click()
+
+  const dialog = page.getByRole('dialog')
+  await dialog.getByRole('tab', { name: 'Prices' }).click()
+
+  await expect(dialog.getByText(/Cardmarket Prices/)).toBeVisible()
+  await expect(dialog.getByText('1-Day Avg')).toBeVisible()
+  await expect(dialog.getByText('Buy on Cardmarket')).toBeVisible()
+  await expect(dialog.getByText('TCGPlayer')).toBeVisible()
+  await expect(dialog.getByText('Price History')).toBeVisible()
 })
 
 test('real Analytics duplicate list stays visually aligned with Collection', async ({ page }) => {

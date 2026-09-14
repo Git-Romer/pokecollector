@@ -2,9 +2,8 @@ import { useState, useEffect, useId, memo } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
-import { Plus, Heart, X, PenLine, Pencil, Trash2, ExternalLink } from 'lucide-react'
-import { addToCollection, addToWishlist, cloneCustomCard, createCustomCard, updateCustomCard, updateCardCustomImage, deleteCustomCard, getSets, getPriceHistory, updateCollectionItem, removeFromCollection } from '../api/client'
+import { Plus, Heart, X, PenLine, Pencil, Trash2 } from 'lucide-react'
+import { addToCollection, addToWishlist, cloneCustomCard, createCustomCard, updateCustomCard, updateCardCustomImage, deleteCustomCard, getSets, updateCollectionItem, removeFromCollection } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { useSettings } from '../contexts/SettingsContext'
 import { useConfirmDialog } from '../contexts/ConfirmDialogContext'
@@ -13,13 +12,13 @@ import clsx from 'clsx'
 import { cardImageUrl, resolveCardImageUrl } from '../utils/imageUrl'
 import { CARD_VARIANTS, getAvailableVariants, getDefaultVariant } from '../utils/cardVariants'
 import MoneyInput from './MoneyInput'
-import { getEffectiveCardPrice } from '../utils/prices'
+import { getCardPriceValue, getEffectiveCardPrice, getPrimaryCardPrice } from '../utils/prices'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import TcgdexLanguageSelect from './TcgdexLanguageSelect'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import { parseMoneyInputValue } from '../utils/moneyInput'
-import { cardmarketLinks } from '../utils/cardmarket'
 import UnifiedCard, { UnifiedCardDialog } from './UnifiedCard'
+import CardPriceDetails from './card-system/CardPriceDetails'
 
 const RARITY_COLORS = {
   'Common': 'text-text-secondary',
@@ -31,24 +30,6 @@ const RARITY_COLORS = {
   'Illustration Rare': 'text-pink-400',
   'Special Illustration Rare': 'text-pink-500',
   'Hyper Rare': 'text-yellow',
-}
-
-const PRICE_FIELD_MAP = {
-  avg: 'price_market',
-  market: 'price_market',
-  low: 'price_low',
-  trend: 'price_trend',
-  avg1: 'price_avg1',
-  avg7: 'price_avg7',
-  avg30: 'price_avg30',
-}
-
-function getPriceValue(card, priceKey) {
-  const field = PRICE_FIELD_MAP[priceKey] || priceKey
-  return card[field]
-    ?? card.cardmarket?.prices?.[priceKey]
-    ?? card.pricing?.cardmarket?.[priceKey]
-    ?? null
 }
 
 const POKEMON_TYPES = ['Fire', 'Water', 'Grass', 'Lightning', 'Psychic', 'Fighting', 'Darkness', 'Metal', 'Dragon', 'Colorless', 'Fairy', 'Stellar']
@@ -435,7 +416,7 @@ export const CardItem = memo(function CardItem({ card, showActions = true, onAdd
   const selectedPrice = getEffectiveCardPrice(card, null, pricePrimaryField)
   const price = selectedPrice > 0
     ? selectedPrice
-    : (getPriceValue(card, pricePrimary)
+    : (getCardPriceValue(card, pricePrimary)
       ?? card.cardmarket?.prices?.trendPrice
       ?? card.price_market
       ?? card.price_trend)
@@ -560,7 +541,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
   const [customImageVersion, setCustomImageVersion] = useState(0)
   const [localOwnedItems, setLocalOwnedItems] = useState(() => ownedItems || card.owned_items || [])
   const customImageInputId = useId()
-  const { t, formatPrice, formatUsdPrice, pricePrimary, pricePrimaryField, exchangeRate, exchangeRateReady } = useSettings()
+  const { t, formatPrice, pricePrimary, pricePrimaryField, exchangeRate, exchangeRateReady } = useSettings()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
 
@@ -571,16 +552,6 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
   useEffect(() => {
     setResolvedCardId(card.id)
   }, [card.id])
-
-  // Price history chart
-  const cardIdForHistory = card?.card_id || (typeof card?.id === 'string' ? card.id : null)
-  const { data: priceHistory = [] } = useQuery({
-    queryKey: ['price-history', cardIdForHistory],
-    queryFn: () => getPriceHistory(cardIdForHistory).then(r => r.data),
-    enabled: typeof cardIdForHistory === 'string' && cardIdForHistory.length > 0,
-    staleTime: 5 * 60 * 1000,
-    retry: false,
-  })
 
   useEffect(() => {
     const nextUrl = card.custom_image_url || ''
@@ -596,7 +567,6 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
     setLocalOwnedItems(ownedItems || card.owned_items || [])
   }, [card.id, card.owned_items, ownedItems])
 
-  const safePriceHistory = Array.isArray(priceHistory) ? priceHistory : []
   const hasApiImage = Boolean(card?.images?.large || card?.images_large || card?.images?.small || card?.images_small || card?.image)
   const customImageCardId = card?.card_id || card?.id
   const canEditCustomImage = !card.is_custom && !hasApiImage && typeof customImageCardId === 'string'
@@ -628,7 +598,6 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
   const availableVariants = getAvailableVariants(card)
   const selectableVariants = availableVariants.length > 0 ? availableVariants : CARD_VARIANTS
   const availableVariantKey = availableVariants.join('|')
-  const marketLinks = cardmarketLinks(card, variant)
 
   useEffect(() => {
     if (availableVariants.length > 0 && !availableVariants.includes(variant)) {
@@ -701,50 +670,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
     },
   })
 
-  const ALL_PRICE_KEYS = ['trend', 'avg', 'avg1', 'avg7', 'avg30', 'low']
-  const ALL_HOLO_PRICE_KEYS = ['trend-holo', 'avg-holo', 'avg1-holo', 'avg7-holo', 'avg30-holo', 'low-holo']
-
-  const HOLO_PRICE_FIELD_MAP = {
-    'trend-holo': 'price_trend_holo',
-    'avg-holo': 'price_market_holo',
-    'avg1-holo': 'price_avg1_holo',
-    'avg7-holo': 'price_avg7_holo',
-    'avg30-holo': 'price_avg30_holo',
-    'low-holo': 'price_low_holo',
-  }
-
-  const displayedPrices = ALL_PRICE_KEYS
-    .map(key => {
-      const val = getPriceValue(card, key)
-      return val != null ? { key, val } : null
-    })
-    .filter(Boolean)
-
-  const displayedHoloPrices = ALL_HOLO_PRICE_KEYS
-    .map(key => {
-      const field = HOLO_PRICE_FIELD_MAP[key]
-      const val = card[field]
-      const displayKey = key.replace('-holo', '')
-      return val != null ? { key, displayKey, val } : null
-    })
-    .filter(Boolean)
-
-  const isReverseHolo = variant === 'Reverse Holo'
-  const selectedPriceBreakdown = isReverseHolo && displayedHoloPrices.length > 0
-    ? displayedHoloPrices
-    : displayedPrices.map(({ key, val }) => ({ key, displayKey: key, val }))
-
-  const tcgPrices = [
-    card.price_tcg_normal_market != null ? { key: 'tcg-normal', val: card.price_tcg_normal_market, label: 'Normal' } : null,
-    card.price_tcg_reverse_market != null ? { key: 'tcg-reverse', val: card.price_tcg_reverse_market, label: 'Reverse' } : null,
-    card.price_tcg_holo_market != null ? { key: 'tcg-holo', val: card.price_tcg_holo_market, label: 'Holo' } : null,
-  ].filter(Boolean)
-
-  const effectivePrimaryPrice = getEffectiveCardPrice(card, variant, pricePrimaryField)
-  const selectedPrimaryPrice = effectivePrimaryPrice > 0 ? effectivePrimaryPrice : getPriceValue(card, pricePrimary)
-  const historyPriceField = ['price_market', 'price_trend', 'price_low'].includes(pricePrimaryField) ? pricePrimaryField : 'price_market'
-  const historyDataKey = historyPriceField
-  const historyPriceLabel = pricePrimaryField === historyPriceField ? t(`prices.${pricePrimary}`) : t('prices.avg')
+  const selectedPrimaryPrice = getPrimaryCardPrice(card, variant, pricePrimary, pricePrimaryField)
   const modalTabs = [
     { id: 'overview', label: t('cardTabs.overview') },
     { id: 'prices', label: t('cardTabs.prices') },
@@ -837,70 +763,8 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
               )}
             </div>}
 
-            {activeTab === 'prices' && selectedPriceBreakdown.length > 0 && (
-              <div className="bg-bg-card rounded-xl p-3 space-y-3">
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <p className="text-xs text-text-muted font-medium uppercase tracking-wide">
-                    {t('prices.cardmarketTitle')} · {variant}
-                  </p>
-                </div>
-                {selectedPrimaryPrice != null && (
-                  <p className="text-2xl font-bold text-green">{formatPrice(selectedPrimaryPrice)}</p>
-                )}
-                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 text-xs border-t border-border pt-2">
-                  {selectedPriceBreakdown.map(({ key, displayKey, val }) => (
-                    <div key={key}>
-                      <span className="text-text-muted">{t(`prices.${displayKey}`)}</span>
-                      <p className={displayKey === 'trend' ? 'text-green font-bold' : 'text-text-primary font-bold'}>
-                        {formatPrice(val)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'prices' && !card.is_custom && marketLinks.length > 0 && (
-              <div className="bg-bg-card rounded-xl p-3 space-y-2 border border-border">
-                <p className="text-xs text-text-muted font-medium uppercase tracking-wide">
-                  {t('cardmarket.buy')}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {marketLinks.map((link) => (
-                    <a
-                      key={link.productId || link.url}
-                      href={link.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn-ghost text-xs inline-flex items-center gap-1.5"
-                    >
-                      <ExternalLink size={14} />
-                      {link.fallback
-                        ? t('cardmarket.search')
-                        : link.label || t('cardmarket.openProduct')}
-                    </a>
-                  ))}
-                </div>
-                {marketLinks.some((link) => link.fallback) && (
-                  <p className="text-[10px] text-text-muted">{t('cardmarket.searchFallback')}</p>
-                )}
-              </div>
-            )}
-
-            {activeTab === 'prices' && tcgPrices.length > 0 && (
-              <div className="bg-bg-card rounded-xl p-3 space-y-2">
-                <p className="text-xs text-text-muted font-medium uppercase tracking-wide">
-                  TCGPlayer
-                </p>
-                <div className="grid grid-cols-3 gap-2 text-xs">
-                  {tcgPrices.map(({ key, val, label }) => (
-                    <div key={key}>
-                      <span className="text-text-muted block">{label}</span>
-                      <span className="font-bold text-blue-400">{formatUsdPrice(val)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+            {activeTab === 'prices' && (
+              <CardPriceDetails card={card} variant={variant} />
             )}
 
             {activeTab === 'overview' && canEditCustomImage && (
@@ -946,76 +810,6 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
                     </button>
                   )}
                 </div>
-              </div>
-            )}
-
-
-            {/* Price History Chart */}
-            {activeTab === 'prices' && safePriceHistory && safePriceHistory.length > 0 && (
-              <div className="bg-bg-card rounded-xl p-3 space-y-2">
-                <p className="text-xs text-text-muted font-medium uppercase tracking-wide">
-                  {t('prices.history')}
-                </p>
-                <div className="h-[140px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={safePriceHistory} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                      <defs>
-                        <linearGradient id="priceGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#22c55e" stopOpacity={0.3} />
-                          <stop offset="100%" stopColor="#22c55e" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <XAxis
-                        dataKey="date"
-                        tick={{ fontSize: 10, fill: '#606078' }}
-                        tickFormatter={(d) => { try { return new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }) } catch { return '' } }}
-                        axisLine={false}
-                        tickLine={false}
-                        minTickGap={30}
-                      />
-                      <YAxis
-                        tick={{ fontSize: 10, fill: '#606078' }}
-                        tickFormatter={(v) => { try { return formatPrice(Number(v)) } catch { return '' } }}
-                        axisLine={false}
-                        tickLine={false}
-                        width={40}
-                        domain={['auto', 'auto']}
-                      />
-                      <Tooltip
-                        contentStyle={{
-                          background: 'rgba(20,20,34,0.95)',
-                          border: '1px solid rgba(255,255,255,0.1)',
-                          borderRadius: '0.75rem',
-                          fontSize: '0.75rem',
-                        }}
-                        labelFormatter={(d) => new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: 'short', year: 'numeric' })}
-                        formatter={(val) => { try { return [formatPrice(Number(val)), historyPriceLabel] } catch { return ['', ''] } }}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey={historyDataKey}
-                        stroke="#22c55e"
-                        fill="url(#priceGrad)"
-                        strokeWidth={2}
-                        dot={false}
-                        activeDot={{ r: 3, fill: '#22c55e', stroke: 'none' }}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-                {(() => {
-                  const first = safePriceHistory[0]?.[historyDataKey]
-                  const last = safePriceHistory[safePriceHistory.length - 1]?.[historyDataKey]
-                  if (first && last && first > 0) {
-                    const change = ((last - first) / first) * 100
-                    return (
-                      <p className={`text-xs font-semibold ${change >= 0 ? 'text-green' : 'text-brand-red'}`}>
-                        {change >= 0 ? '↑' : '↓'} {Math.abs(change).toFixed(1)}% {t('prices.sinceTracking')}
-                      </p>
-                    )
-                  }
-                  return null
-                })()}
               </div>
             )}
             <div className="space-y-3">

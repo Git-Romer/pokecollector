@@ -23,6 +23,14 @@ export function priceFieldFromPrimary(pricePrimary) {
   return PRICE_PRIMARY_TO_FIELD[pricePrimary] || 'price_trend'
 }
 
+export function getCardPriceValue(card, priceKey) {
+  const field = PRICE_PRIMARY_TO_FIELD[priceKey] || priceKey
+  return card?.[field]
+    ?? card?.cardmarket?.prices?.[priceKey]
+    ?? card?.pricing?.cardmarket?.[priceKey]
+    ?? null
+}
+
 function positivePrice(value) {
   if (value == null) return null
   const price = Number(value)
@@ -51,4 +59,10 @@ export function getEffectiveCardPrice(card, variant, priceField = 'price_trend')
     if (price != null) return price
   }
   return 0
+}
+
+export function getPrimaryCardPrice(card, variant, pricePrimary = 'trend', priceField = priceFieldFromPrimary(pricePrimary)) {
+  const effectivePrice = getEffectiveCardPrice(card, variant, priceField)
+  if (effectivePrice > 0) return effectivePrice
+  return getCardPriceValue(card, pricePrimary)
 }
