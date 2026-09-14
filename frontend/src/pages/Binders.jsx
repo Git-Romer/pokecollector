@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Trash2, Edit2, BookOpen, Star, Package, Check, X, Library, Heart, Globe, Lock, Copy } from 'lucide-react'
+import { Plus, Trash2, Edit2, BookOpen, Star, Package, PackageCheck, Check, X, Library, Heart, Globe, Lock, Copy, Layers3 } from 'lucide-react'
 import { getBinders, createBinder, updateBinder, deleteBinder, getWishlist, getProfile } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import { useConfirmDialog } from '../contexts/ConfirmDialogContext'
@@ -26,49 +26,80 @@ function BinderForm({ initial = {}, onSubmit, onCancel, loading }) {
   const [color, setColor] = useState(initial.color || '#EF1515')
   const [binderType, setBinderType] = useState(initial.binder_type || 'collection')
   const [format, setFormat] = useState(initial.format || '')
+  const [targetSize, setTargetSize] = useState(initial.target_size || 60)
   const [iconPokemonId, setIconPokemonId] = useState(initial.icon_pokemon_id || null)
   const [showIconPicker, setShowIconPicker] = useState(false)
 
   return (
     <div className="space-y-3">
-      <input type="text" placeholder={t('binders.binderName')} value={name}
+      <input type="text" maxLength={255} placeholder={t('binders.cardListName')} value={name}
         onChange={(e) => setName(e.target.value)} className="input" autoFocus />
       <input type="text" placeholder={t('binders.description')} value={desc}
         onChange={(e) => setDesc(e.target.value)} className="input" />
 
-      {!isEditing && <div>
+      {(!isEditing || initial.binder_type !== 'collection') && <div>
         <label className="text-xs text-text-muted mb-2 block">{t('binderTypes.typeLabel')}</label>
-        <div className="flex gap-2">
-          <button type="button" onClick={() => setBinderType('collection')}
+        <div className={`grid gap-2 ${isEditing ? 'sm:grid-cols-2' : 'sm:grid-cols-2 lg:grid-cols-4'}`}>
+          {!isEditing && <button type="button" onClick={() => setBinderType('collection')}
             className={`flex-1 py-2.5 px-3 rounded-lg border text-sm font-medium transition-all flex items-center justify-center gap-2 ${
               binderType === 'collection'
                 ? 'bg-blue/20 border-blue text-blue'
                 : 'bg-bg-card border-border text-text-muted hover:border-text-muted'
             }`}>
-            <Package size={16} /> {t('binderTypes.collectionIcon')} {t('binderTypes.collection')}
-          </button>
+            <Package size={16} /> {t('binderTypes.collection')}
+          </button>}
           <button type="button" onClick={() => setBinderType('wishlist')}
             className={`flex-1 py-2.5 px-3 rounded-lg border text-sm font-medium transition-all flex items-center justify-center gap-2 ${
               binderType === 'wishlist'
                 ? 'bg-yellow/20 border-yellow text-yellow'
                 : 'bg-bg-card border-border text-text-muted hover:border-text-muted'
             }`}>
-            <Star size={16} /> {t('binderTypes.wishlistIcon')} {t('binderTypes.wishlist')}
+            <Star size={16} /> {t('binderTypes.planned')}
           </button>
+          <button type="button" onClick={() => setBinderType('deck')}
+            className={`flex-1 py-2.5 px-3 rounded-lg border text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+              binderType === 'deck'
+                ? 'bg-purple-500/20 border-purple-400 text-purple-300'
+                : 'bg-bg-card border-border text-text-muted hover:border-text-muted'
+            }`}>
+            <Layers3 size={16} /> {t('binderTypes.plannedDeck')}
+          </button>
+          {!isEditing && <button type="button" onClick={() => setBinderType('physical_deck')}
+            className={`flex-1 py-2.5 px-3 rounded-lg border text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+              binderType === 'physical_deck'
+                ? 'bg-green/20 border-green text-green'
+                : 'bg-bg-card border-border text-text-muted hover:border-text-muted'
+            }`}>
+            <PackageCheck size={16} /> {t('binderTypes.realDeck')}
+          </button>}
         </div>
         <p className="text-xs text-text-muted mt-1.5">
-          {binderType === 'collection' ? t('binderTypes.collectionDesc') : t('binderTypes.wishlistDesc')}
+          {binderType === 'collection'
+            ? t('binderTypes.collectionDesc')
+            : binderType === 'deck'
+              ? t('binderTypes.plannedDeckDesc')
+              : binderType === 'physical_deck'
+                ? t('binderTypes.realDeckDesc')
+              : t('binderTypes.plannedDesc')}
         </p>
       </div>}
 
-      <div>
-        <label className="text-xs text-text-muted mb-2 block">{t('binderTypes.format')}</label>
-        <select value={format} onChange={(e) => setFormat(e.target.value)} className="select">
-          <option value="">{t('binderTypes.noFormat')}</option>
-          {FORMAT_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
-        </select>
-        <p className="text-xs text-text-muted mt-1.5">{t('binderTypes.formatHint')}</p>
-      </div>
+      {['deck', 'physical_deck'].includes(binderType) && <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label className="text-xs text-text-muted mb-2 block">{t('binderTypes.format')}</label>
+          <select value={format || 'Casual'} onChange={(e) => setFormat(e.target.value)} className="select">
+            {FORMAT_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
+          </select>
+          <p className="text-xs text-text-muted mt-1.5">{t('binderTypes.deckFormatHint')}</p>
+        </div>
+        <div>
+          <label className="text-xs text-text-muted mb-2 block">{t('decks.target')}</label>
+          <select value={targetSize} onChange={(e) => setTargetSize(Number(e.target.value))} className="select">
+            {[20, 40, 60].map(size => <option key={size} value={size}>{size}</option>)}
+          </select>
+          <p className="text-xs text-text-muted mt-1.5">{t('binderTypes.deckSizeHint')}</p>
+        </div>
+      </div>}
 
       <div>
         <label className="text-xs text-text-muted mb-2 block">{t('binders.color')}</label>
@@ -115,14 +146,15 @@ function BinderForm({ initial = {}, onSubmit, onCancel, loading }) {
       </div>
       <div className="flex gap-2">
         <button onClick={() => onSubmit({
-          name,
+          name: name.trim(),
           description: desc,
           color,
-          ...(!isEditing && { binder_type: binderType }),
-          format: format || null,
+          ...((!isEditing || initial.binder_type !== 'collection') && { binder_type: binderType }),
+          format: ['deck', 'physical_deck'].includes(binderType) ? (format || 'Casual') : null,
+          target_size: ['deck', 'physical_deck'].includes(binderType) ? targetSize : null,
           icon_pokemon_id: iconPokemonId,
         })}
-          disabled={!name || loading} className="btn-primary flex-1">
+          disabled={!name.trim() || loading} className="btn-primary flex-1">
           <Check size={14} /> {loading ? t('common.saving') : t('common.save')}
         </button>
         <button onClick={onCancel} className="btn-ghost">
@@ -147,7 +179,7 @@ export default function Binders() {
   const queryClient = useQueryClient()
   const [creating, setCreating] = useState(false)
   const [editingId, setEditingId] = useState(null)
-  const { data: binders = [], isLoading } = useQuery({
+  const { data: binderData = [], isLoading } = useQuery({
     queryKey: ['binders'],
     queryFn: () => getBinders().then(r => r.data),
   })
@@ -166,6 +198,7 @@ export default function Binders() {
   const profileIsPublic = !!profileData?.is_profile_public
   const publicHandle = profileData?.public_handle
   const publicProfilesEnabled = !!profileData?.feature_enabled
+  const binders = Array.isArray(binderData) ? binderData : []
 
   const COLLECTION_TABS = [
     { to: '/collection', label: t('nav.collection'), icon: Library },
@@ -178,6 +211,7 @@ export default function Binders() {
     onSuccess: () => {
       toast.success(t('binders.created'))
       queryClient.invalidateQueries({ queryKey: ['binders'] })
+      queryClient.invalidateQueries({ queryKey: ['decks'] })
       invalidateTcgdexFilterLanguages(queryClient)
       setCreating(false)
     },
@@ -189,6 +223,7 @@ export default function Binders() {
     onSuccess: () => {
       toast.success(t('binders.updated'))
       queryClient.invalidateQueries({ queryKey: ['binders'] })
+      queryClient.invalidateQueries({ queryKey: ['decks'] })
       invalidateTcgdexFilterLanguages(queryClient)
       setEditingId(null)
     },
@@ -200,6 +235,7 @@ export default function Binders() {
     onSuccess: () => {
       toast.success(t('binders.deleted'))
       queryClient.invalidateQueries({ queryKey: ['binders'] })
+      queryClient.invalidateQueries({ queryKey: ['decks'] })
       invalidateTcgdexFilterLanguages(queryClient)
     },
   })
@@ -232,13 +268,13 @@ export default function Binders() {
           <p className="text-sm text-text-secondary mt-1">{t('binders.subtitle')}</p>
         </div>
         <button onClick={() => setCreating(true)} className="btn-primary">
-          <Plus size={16} /> {t('binders.newBinder')}
+          <Plus size={16} /> {t('binders.newCardList')}
         </button>
       </div>
 
       {creating && (
         <div className="card border-brand-red/30">
-          <h3 className="text-base font-semibold text-text-primary mb-4">{t('binders.createBinder')}</h3>
+          <h3 className="text-base font-semibold text-text-primary mb-4">{t('binders.createCardList')}</h3>
           <BinderForm onSubmit={(data) => createMutation.mutate(data)} onCancel={() => setCreating(false)} loading={createMutation.isPending} />
         </div>
       )}
@@ -260,6 +296,10 @@ export default function Binders() {
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {binders.map((binder) => {
             const isWishlist = binder.binder_type === 'wishlist'
+            const isPlannedDeck = binder.binder_type === 'deck'
+            const isRealDeck = binder.binder_type === 'physical_deck'
+            const isDeck = isPlannedDeck || isRealDeck
+            const TypeIcon = isRealDeck ? PackageCheck : isPlannedDeck ? Layers3 : isWishlist ? Star : BookOpen
             const totalCount = binder.card_count || 0
             const uniqueCount = binder.unique_card_count || 0
             const showUniqueCount = uniqueCount > 0 && uniqueCount !== totalCount
@@ -274,32 +314,27 @@ export default function Binders() {
                 ) : (
                   <div className="card cursor-pointer hover:border-opacity-50 group relative"
                     style={{ borderColor: `${binder.color}30` }}
-                    onClick={() => navigate(`/binders/${binder.id}`)}>
+                    onClick={() => navigate(isDeck ? `/decks/${binder.id}` : `/binders/${binder.id}`)}>
                     <div className="absolute top-0 left-0 right-0 h-1 rounded-t-xl" style={{ backgroundColor: binder.color }} />
                     <div className="pt-2">
                       {binder.icon_pokemon_id ? (
                         <img src={`${SPRITE_BASE_URL}/${binder.icon_pokemon_id}.gif`} alt="" className="max-h-10 max-w-10 object-contain mb-2 pixelated" loading="lazy" />
-                      ) : isWishlist ? (
-                        <Star size={32} className="mb-3" style={{ color: binder.color }} />
                       ) : (
-                        <BookOpen size={32} className="mb-3" style={{ color: binder.color }} />
+                        <TypeIcon size={32} className="mb-3" style={{ color: binder.color }} />
                       )}
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="text-sm font-medium text-text-primary">{binder.name}</h3>
-                        <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
-                          isWishlist ? 'bg-yellow/20 text-yellow' : 'bg-blue/20 text-blue'
+                      <h3 className="mb-1 truncate pr-10 text-sm font-semibold text-text-primary">{binder.name}</h3>
+                      <div className="mt-1.5">
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                          isRealDeck ? 'bg-green/20 text-green' : isPlannedDeck ? 'bg-purple-500/20 text-purple-300' : isWishlist ? 'bg-yellow/20 text-yellow' : 'bg-blue/20 text-blue'
                         }`}>
-                          {isWishlist ? '⭐' : '📦'}
+                          <TypeIcon size={11} /> {isRealDeck ? t('binderTypes.realDeck') : isPlannedDeck ? t('binderTypes.plannedDeck') : isWishlist ? t('binderTypes.planned') : t('binderTypes.collection')}
                         </span>
                       </div>
                       {binder.description && (
                         <p className="text-xs text-text-muted mt-1 line-clamp-2">{binder.description}</p>
                       )}
-                      <p className="text-xs text-text-muted mt-1">
-                        {isWishlist ? t('binderTypes.wishlist') : t('binderTypes.collection')}
-                      </p>
-                      {binder.format && (
-                        <p className="text-xs text-yellow mt-1">{binder.format}</p>
+                      {isDeck && (
+                        <p className="text-xs text-yellow mt-1">{t(`decks.format${binder.format || 'Casual'}`)} · {binder.target_size || 60} {t('binders.cards')}</p>
                       )}
                       <p className="text-sm text-text-secondary mt-2">
                         {totalCount} {totalCount === 1 ? t('binders.card') : t('binders.cards')}
@@ -309,7 +344,7 @@ export default function Binders() {
                           {uniqueCount} {uniqueCount === 1 ? t('binders.uniqueCard') : t('binders.uniqueCards')}
                         </p>
                       )}
-                      {!isWishlist && publicProfilesEnabled && (
+                      {!isWishlist && !isDeck && publicProfilesEnabled && (
                         <div className="mt-2 pt-2 border-t border-border/50" onClick={(e) => e.stopPropagation()}>
                           {profileIsPublic ? (
                             <div className="flex items-center justify-between gap-2">

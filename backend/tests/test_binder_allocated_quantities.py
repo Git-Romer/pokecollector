@@ -19,11 +19,14 @@ try:
         export_binder_csv,
         get_binder_cards,
         import_binder_csv,
+        preview_binder_print_optimization,
+        remove_binder_entry,
+        remove_card_from_binder,
         switch_binder_entry_card,
         update_binder,
         update_binder_entry,
     )
-    from api.collection import remove_from_collection, update_collection_item
+    from api.collection import get_collection, remove_from_collection, update_collection_item
     import database
     from database import Base, migrate_legacy_collection_binder_entries
     from models import Binder, BinderCard, Card, CollectionItem, Set, User, WishlistItem
@@ -172,6 +175,17 @@ class BinderAllocatedQuantityTests(unittest.TestCase):
             WishlistItem.card_id == self.card.id,
         ).one()
         self.assertEqual(global_wishlist.quantity, 1)
+
+    def test_collection_response_exposes_shared_physical_availability(self):
+        add_collection_item_to_binder(
+            self.first.id, self.item.id, quantity=3, current_user=self.user, db=self.db
+        )
+
+        item = next(row for row in get_collection(current_user=self.user, db=self.db) if row.id == self.item.id)
+
+        self.assertEqual(item.quantity, 4)
+        self.assertEqual(item.allocated_quantity, 3)
+        self.assertEqual(item.available_quantity, 1)
 
     def test_allocation_progress_uses_the_exact_collection_item_card(self):
         wishlist = Binder(name="Wishlist", user_id=self.user.id, binder_type="wishlist")
@@ -624,6 +638,150 @@ class BinderAllocatedQuantityTests(unittest.TestCase):
         with self.assertRaises(HTTPException) as delete_context:
             remove_from_collection(self.item.id, current_user=self.user, db=self.db)
         self.assertEqual(delete_context.exception.status_code, 409)
+
+    def test_deck_shared_routes_keep_plan_rows_separate_from_allocations(self):
+        deck = Binder(name="Deck", user_id=self.user.id, binder_type="physical_deck", target_size=60)
+        self.db.add(deck)
+        self.db.flush()
+        plan = BinderCard(binder_id=deck.id, card_id=self.card.id, required_quantity=4)
+        allocation = BinderCard(
+            binder_id=deck.id,
+            card_id=self.card.id,
+            collection_item_id=self.item.id,
+            required_quantity=2,
+        )
+        self.db.add_all([plan, allocation])
+        self.db.commit()
+
+        detail = get_binder_cards(deck.id, current_user=self.user, db=self.db)
+        self.assertEqual([(row["binder_card_id"], row["required_quantity"]) for row in detail["cards"]], [(plan.id, 4)])
+
+        with self.assertRaises(HTTPException) as update_context:
+            update_binder_entry(
+                deck.id,
+                allocation.id,
+                BinderCardUpdate(required_quantity=99),
+                current_user=self.user,
+                db=self.db,
+            )
+        self.assertEqual(update_context.exception.status_code, 404)
+
+        with self.assertRaises(HTTPException) as remove_context:
+            remove_binder_entry(deck.id, allocation.id, current_user=self.user, db=self.db)
+        self.assertEqual(remove_context.exception.status_code, 404)
+
+        update_binder_entry(
+            deck.id,
+            plan.id,
+            BinderCardUpdate(required_quantity=1),
+            current_user=self.user,
+            db=self.db,
+        )
+        self.assertEqual(self.db.get(BinderCard, allocation.id).required_quantity, 1)
+
+        remove_binder_entry(deck.id, plan.id, current_user=self.user, db=self.db)
+        self.assertIsNone(self.db.get(BinderCard, plan.id))
+        self.assertIsNone(self.db.get(BinderCard, allocation.id))
+
+        plan = BinderCard(binder_id=deck.id, card_id=self.card.id, required_quantity=4)
+        allocation = BinderCard(
+            binder_id=deck.id,
+            card_id=self.card.id,
+            collection_item_id=self.item.id,
+            required_quantity=2,
+        )
+        self.db.add_all([plan, allocation])
+        self.db.commit()
+        remove_card_from_binder(deck.id, self.card.id, current_user=self.user, db=self.db)
+        self.assertIsNone(self.db.get(BinderCard, plan.id))
+        self.assertIsNone(self.db.get(BinderCard, allocation.id))
+
+    def test_deck_csv_roundtrip_exports_only_planned_quantities(self):
+        deck = Binder(name="Deck", user_id=self.user.id, binder_type="deck", target_size=60)
+        imported = Binder(name="Imported", user_id=self.user.id, binder_type="deck", target_size=60)
+        self.db.add_all([deck, imported])
+        self.db.flush()
+        self.db.add_all([
+            BinderCard(binder_id=deck.id, card_id=self.card.id, required_quantity=4),
+            BinderCard(binder_id=deck.id, card_id=self.card.id, collection_item_id=self.item.id, required_quantity=2),
+        ])
+        self.db.commit()
+
+        response = export_binder_csv(deck.id, current_user=self.user, db=self.db)
+
+        async def read_body():
+            chunks = []
+            async for chunk in response.body_iterator:
+                chunks.append(chunk.encode() if isinstance(chunk, str) else chunk)
+            return b"".join(chunks)
+
+        exported = asyncio.run(read_body())
+        self.assertEqual(exported.decode().count("\n"), 2)
+        self.assertIn("SV1,25,4,en", exported.decode())
+        result = asyncio.run(import_binder_csv(
+            imported.id,
+            UploadFile(filename="deck.csv", file=io.BytesIO(exported)),
+            current_user=self.user,
+            db=self.db,
+        ))
+        self.assertEqual(result["added"], 1)
+        imported_row = self.db.query(BinderCard).filter(BinderCard.binder_id == imported.id).one()
+        self.assertEqual(imported_row.required_quantity, 4)
+
+    def test_deck_print_optimizer_ignores_exact_allocation_rows(self):
+        deck = Binder(name="Deck", user_id=self.user.id, binder_type="physical_deck", target_size=60)
+        self.db.add(deck)
+        self.db.flush()
+        plan = BinderCard(binder_id=deck.id, card_id=self.card.id, required_quantity=4)
+        allocation = BinderCard(
+            binder_id=deck.id,
+            card_id=self.card.id,
+            collection_item_id=self.item.id,
+            required_quantity=2,
+        )
+        self.db.add_all([plan, allocation])
+        self.db.commit()
+
+        result = preview_binder_print_optimization(
+            deck.id,
+            current_user=self.user,
+            db=self.db,
+        )
+
+        self.assertEqual([row["binder_card_id"] for row in result["recommendations"]], [plan.id])
+
+    def test_collection_language_change_is_blocked_while_allocated_to_deck(self):
+        deck = Binder(name="Deck", user_id=self.user.id, binder_type="physical_deck", target_size=60)
+        self.db.add(deck)
+        self.db.flush()
+        self.db.add_all([
+            BinderCard(binder_id=deck.id, card_id=self.card.id, required_quantity=1),
+            BinderCard(binder_id=deck.id, card_id=self.card.id, collection_item_id=self.item.id, required_quantity=1),
+        ])
+        german = Card(
+            id="sv1-25_de",
+            tcg_card_id="sv1-25",
+            name="Pikachu",
+            set_id="sv1",
+            number="25",
+            lang="de",
+        )
+        self.db.add(german)
+        self.db.commit()
+
+        with patch("api.collection.ensure_card_exists", return_value=german):
+            with self.assertRaises(HTTPException) as context:
+                update_collection_item(
+                    self.item.id,
+                    CollectionItemUpdate(lang="de"),
+                    current_user=self.user,
+                    db=self.db,
+                )
+
+        self.assertEqual(context.exception.status_code, 409)
+        self.assertIn("Release it from the deck", context.exception.detail)
+        self.db.refresh(self.item)
+        self.assertEqual(self.item.card_id, self.card.id)
 
     def test_database_rejects_zero_binder_quantity(self):
         self.db.add(BinderCard(

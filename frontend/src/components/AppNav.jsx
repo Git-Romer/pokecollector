@@ -11,6 +11,7 @@ const PAGE_TITLE_KEYS = {
   '/sets':       'nav.sets',
   '/analytics':  'nav.analytics',
   '/binders':    'nav.binders',
+  '/decks':      'nav.binders',
   '/wishlist':   'nav.wishlist',
   '/products':   'nav.products',
   '/trades':     'nav.trades',

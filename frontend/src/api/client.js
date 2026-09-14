@@ -211,6 +211,21 @@ export const updateCollectionItem = (id, data) => api.put(`/collection/${id}`, d
 export const removeFromCollection = (id) => api.delete(`/collection/${id}`)
 export const getCollectionStats = (params = {}) => api.get('/collection/stats/summary', { params })
 
+// Decks
+export const getDecks = () => api.get('/decks/')
+export const getDeck = (id) => api.get(`/decks/${id}`)
+export const createDeck = (data) => api.post('/decks/', data)
+export const duplicateDeck = (id) => api.post(`/decks/${id}/duplicate`)
+export const convertDeckToReal = (id) => api.post(`/decks/${id}/convert-to-real`)
+export const convertDeckToPlanned = (id) => api.post(`/decks/${id}/convert-to-planned`)
+export const compareDecks = (params) => api.get('/decks/compare', { params })
+export const updateDeck = (id, data) => api.patch(`/decks/${id}`, data)
+export const deleteDeck = (id) => api.delete(`/decks/${id}`)
+export const addDeckEntry = (deckId, data) => api.post(`/decks/${deckId}/entries`, data)
+export const updateDeckEntry = (deckId, entryId, data) => api.patch(`/decks/${deckId}/entries/${entryId}`, data)
+export const deleteDeckEntry = (deckId, entryId) => api.delete(`/decks/${deckId}/entries/${entryId}`)
+export const getDeckProbability = (deckId, params = {}) => api.get(`/decks/${deckId}/probability`, { params })
+
 // Sets
 export const getSets = (params) => api.get('/sets/', { params })
 export const getSet = (id) => api.get(`/sets/${id}`)

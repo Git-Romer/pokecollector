@@ -18,9 +18,9 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - 👤 **Creator:** [Gilles Romer](https://romerg.de/)
 - ✉️ **Contact:** [info@romerg.de](mailto:info@romerg.de)
 
-![Version](https://img.shields.io/badge/version-v1.46.0-e3000b?style=flat-square) ![Dark Theme](https://img.shields.io/badge/theme-dark-1a1a2e?style=flat-square) ![TCGdex](https://img.shields.io/badge/card%20data-TCGdex-e3000b?style=flat-square) ![Docker](https://img.shields.io/badge/deploy-Docker-2496ed?style=flat-square) ![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square) ![React](https://img.shields.io/badge/frontend-React%2018-61dafb?style=flat-square) [![Support animal rescue](https://img.shields.io/badge/support-animal%20rescue-e3000b?style=flat-square)](https://pokecollector.romerg.de/#support)
+![Version](https://img.shields.io/badge/version-v1.47.0-e3000b?style=flat-square) ![Dark Theme](https://img.shields.io/badge/theme-dark-1a1a2e?style=flat-square) ![TCGdex](https://img.shields.io/badge/card%20data-TCGdex-e3000b?style=flat-square) ![Docker](https://img.shields.io/badge/deploy-Docker-2496ed?style=flat-square) ![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square) ![React](https://img.shields.io/badge/frontend-React%2018-61dafb?style=flat-square) [![Support animal rescue](https://img.shields.io/badge/support-animal%20rescue-e3000b?style=flat-square)](https://pokecollector.romerg.de/#support)
 
-**Current version:** `v1.46.0` · Releases are tracked on the [GitHub Releases page](https://github.com/Git-Romer/pokecollector/releases).
+**Current version:** `v1.47.0` · Releases are tracked on the [GitHub Releases page](https://github.com/Git-Romer/pokecollector/releases).
 
 ![WebApp Preview](preview-homescreen.png)
 
@@ -70,11 +70,14 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - Optional consent-controlled scanner diagnostics for installations that enable `SCAN_TRACE_DIR`; disabled per user by default with a separate delete action
 - Card modal auto-preselects a likely variant from TCGdex variant flags
 
-### 🗂️ Sets, Binders & Wishlist
+### 🗂️ Sets, Card Lists & Wishlist
 - Set overview with completion progress and per-set checklist
 - National Pokédex #001–1025 with generation filters, species completion, locally cached sprites/artwork, and click-through card printings
-- Virtual binders for collection and checklist views
-- Exact-copy quantities in collection binders, with cross-binder allocation limits and total/unique counts
+- Unified Card Lists for physical Binders, Planned Binders, and playable Decks
+- Exact owned-copy allocation across physical Binders and Real Decks, with shared capacity limits and total/unique counts
+- Planned Binders track future collection projects without allocating owned copies
+- Persistent Deck Builder for 20-, 40-, and 60-card lists, with editable targets, ownership totals, shortage warnings, validation, analytics, and probabilities
+- Explicit actions send missing Planned Binder or Deck copies to the global Wishlist
 - Wishlist with Telegram price alerts
 
 ### 📈 Prices, Portfolio & Analytics
@@ -90,6 +93,14 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - Force password change support on first login
 - Profile avatar and profile name editing
 - Cascade deletion of user-owned data
+
+### 🃏 Deck Builder
+
+Decks are private, user-owned Card Lists with a target size of **20**, **40**, or **60** cards (60 is the default). A **Planned Deck** may contain owned or unowned catalogue cards, shows shortages against the available collection, and can add missing copies to the global Wishlist. Required quantities may exceed current ownership, so the list can be completed before every physical card has been acquired.
+
+A **Real Deck** represents cards that have actually been set aside. It accepts only free copies from the collection and reserves those exact copies automatically, using the same shared allocation limits as a physical Binder. A Planned Deck can become a Real Deck once every required copy is available; converting it back releases all reserved copies without changing the planned card quantities.
+
+Binders, Planned Binders, Planned Decks, and Real Decks share the existing `binders` and `binder_cards` tables and common Card List components. Planned rows store the localized `Card.id` printing identity, while Real Deck allocations link to exact collection rows. The compatibility API remains available at `/api/decks` with CRUD routes and nested `/entries` operations.
 
 ### 🏆 Social & Community
 - Leaderboard, trainer comparison, and achievements in multi-user mode

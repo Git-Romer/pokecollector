@@ -180,7 +180,7 @@ function useOwnPhotoDisplay(item, card, image, size) {
  * (dashboard summaries) flatten the card fields onto the item itself instead
  * of nesting them, so `card` can be passed explicitly to override that.
  */
-export function CollectionCardDisplay({ item, card = item?.card ?? item, image, overlay, size = 'small', ...displayProps }) {
+export function CollectionCardDisplay({ item, card = item?.card ?? item, image, overlay, size = 'small', variantEffectSource = item, ...displayProps }) {
   const { t } = useSettings()
   const { resolvedImage, showOwnPhotoBadge, viewportRef } = useOwnPhotoDisplay(item, card, image, size)
 
@@ -188,6 +188,7 @@ export function CollectionCardDisplay({ item, card = item?.card ?? item, image, 
     <CardDisplay
       card={card}
       image={resolvedImage}
+      variantEffectSource={variantEffectSource}
       viewportRef={viewportRef}
       {...displayProps}
       overlay={(
