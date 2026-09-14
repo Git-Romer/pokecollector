@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List, Any, Literal, Dict
 from datetime import datetime, date
+from services.collection_variants import CollectionVariant
 
 
 class SetBase(BaseModel):
@@ -131,11 +132,30 @@ class CardWithSet(CardBase):
     set_ref: Optional[SetBase] = None
 
 
+class PrintingDetailTagCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+
+
+class PrintingDetailTagUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+
+
+class PrintingDetailTagResponse(BaseModel):
+    id: int
+    name: str
+    usage_count: int = 0
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
 class CollectionItemCreate(BaseModel):
     card_id: str
     quantity: int = Field(default=1, ge=1, le=999)
     condition: str = "NM"
-    variant: Optional[str] = "Normal"
+    variant: CollectionVariant = CollectionVariant.NORMAL
+    printing_details: List[str] = Field(default_factory=list, max_length=10)
     purchase_price: Optional[float] = None
     lang: str = "en"  # fixed TCGdex language of this card item
 
@@ -143,7 +163,8 @@ class CollectionItemCreate(BaseModel):
 class CollectionItemUpdate(BaseModel):
     quantity: Optional[int] = Field(default=None, ge=1, le=999)
     condition: Optional[str] = None
-    variant: Optional[str] = None
+    variant: Optional[CollectionVariant] = None
+    printing_details: Optional[List[str]] = Field(default=None, max_length=10)
     purchase_price: Optional[float] = None
     lang: Optional[str] = None
 
@@ -177,7 +198,8 @@ class CollectionItemResponse(BaseModel):
     allocated_quantity: int = 0
     available_quantity: int = 0
     condition: str
-    variant: str = "Normal"
+    variant: CollectionVariant = CollectionVariant.NORMAL
+    printing_details: List[PrintingDetailTagResponse] = Field(default_factory=list)
     purchase_price: Optional[float] = None
     lang: str = "en"
     added_at: Optional[datetime] = None
@@ -311,6 +333,15 @@ class DeckEntryUpdate(BaseModel):
     required_quantity: int = Field(ge=1, le=99)
 
 
+class DeckAllocatedPrintResponse(BaseModel):
+    collection_item_id: int
+    quantity: int
+    condition: str
+    variant: CollectionVariant
+    lang: str
+    printing_details: List[PrintingDetailTagResponse] = Field(default_factory=list)
+
+
 class DeckEntryResponse(BaseModel):
     id: int
     card_id: str
@@ -322,6 +353,7 @@ class DeckEntryResponse(BaseModel):
     allocated_quantity: int = 0
     available_quantity: int = 0
     display_variant: Optional[Dict[str, Any]] = None
+    allocated_prints: List[DeckAllocatedPrintResponse] = Field(default_factory=list)
     card: Optional[CardWithSet] = None
 
 
@@ -445,7 +477,8 @@ class ProductLedgerEntryResponse(BaseModel):
     card_name: Optional[str] = None
     set_id: Optional[str] = None
     card_number: Optional[str] = None
-    variant: Optional[str] = None
+    variant: Optional[CollectionVariant] = None
+    printing_details: List[str] = Field(default_factory=list)
     condition: Optional[str] = None
     lang: Optional[str] = None
     notes: Optional[str] = None
@@ -465,7 +498,8 @@ class ProductCardResponse(BaseModel):
     active_quantity: int
     sold_quantity: int
     condition: Optional[str] = None
-    variant: str = "Normal"
+    variant: CollectionVariant = CollectionVariant.NORMAL
+    printing_details: List[str] = Field(default_factory=list)
     lang: str = "en"
     purchase_price: Optional[float] = None
     linked_at: Optional[datetime] = None
@@ -521,7 +555,8 @@ class TradeIncomingItemCreate(BaseModel):
     card_id: str
     quantity: int = Field(default=1, ge=1, le=999)
     condition: str = "NM"
-    variant: Optional[str] = "Normal"
+    variant: CollectionVariant = CollectionVariant.NORMAL
+    printing_details: List[str] = Field(default_factory=list, max_length=10)
     lang: str = "en"
     value_per_card: Optional[float] = Field(default=None, ge=0)
     purchase_price: Optional[float] = Field(default=None, ge=0)
@@ -541,7 +576,8 @@ class TradeIncomingItemUpdate(BaseModel):
     card_id: Optional[str] = None
     quantity: int = Field(default=1, ge=1, le=999)
     condition: str = "NM"
-    variant: Optional[str] = "Normal"
+    variant: CollectionVariant = CollectionVariant.NORMAL
+    printing_details: Optional[List[str]] = Field(default=None, max_length=10)
     lang: str = "en"
     notes: Optional[str] = None
 
@@ -582,7 +618,8 @@ class TradeItemResponse(BaseModel):
     card_name: Optional[str] = None
     set_id: Optional[str] = None
     card_number: Optional[str] = None
-    variant: Optional[str] = None
+    variant: Optional[CollectionVariant] = None
+    printing_details: List[str] = Field(default_factory=list)
     condition: Optional[str] = None
     lang: Optional[str] = None
     notes: Optional[str] = None
@@ -610,7 +647,7 @@ class TradeResponse(BaseModel):
 
 class TradeValuationItem(BaseModel):
     card_id: str
-    variant: Optional[str] = "Normal"
+    variant: CollectionVariant = CollectionVariant.NORMAL
     quantity: int = Field(default=1, ge=1, le=999)
 
 

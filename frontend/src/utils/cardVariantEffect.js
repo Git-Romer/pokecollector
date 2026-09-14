@@ -1,14 +1,12 @@
 const EFFECT_CLASS = {
   holo: 'card-variant-effect card-variant-holo',
   reverse: 'card-variant-effect card-variant-reverse',
-  special: 'card-variant-effect card-variant-special',
   firstEdition: 'card-variant-effect card-variant-first-edition',
-  generic: 'card-variant-effect card-variant-generic',
 }
 
 // Grouped tiles can represent several prints but must never stack animations.
 // Pick one stable representative effect while badges retain the full breakdown.
-const EFFECT_PRIORITY = ['firstEdition', 'special', 'reverse', 'holo', 'generic']
+const EFFECT_PRIORITY = ['firstEdition', 'reverse', 'holo']
 
 const normalizeVariant = (variant) => String(variant || '')
   .normalize('NFD')
@@ -23,17 +21,10 @@ const getVariantName = (value) => (
 
 const getVariantEffect = (variant) => {
   const normalized = normalizeVariant(variant)
-  if (!normalized || normalized === 'normal') return null
-  if (normalized.includes('first edition') || normalized.includes('1st edition')) return 'firstEdition'
-  if (normalized.includes('reverse')) return 'reverse'
-  if (
-    normalized.includes('alt art')
-    || normalized.includes('illustration rare')
-    || normalized.includes('special illustration')
-    || normalized.includes('shiny')
-  ) return 'special'
-  if (normalized.includes('holo')) return 'holo'
-  return 'generic'
+  if (normalized === 'first edition') return 'firstEdition'
+  if (normalized === 'reverse holo') return 'reverse'
+  if (normalized === 'holo') return 'holo'
+  return null
 }
 
 const getVariants = (source) => {

@@ -8,6 +8,7 @@ export function invalidateTcgdexFilterLanguages(queryClient) {
 /** Refresh every cached card-tile view affected by a collection/wishlist mutation. */
 export function invalidateCardState(queryClient, { setId } = {}) {
   queryClient.invalidateQueries({ queryKey: ['collection'] })
+  queryClient.invalidateQueries({ queryKey: ['printing-detail-tags'] })
   queryClient.invalidateQueries({ queryKey: ['wishlist'] })
   queryClient.invalidateQueries({ queryKey: ['dashboard'] })
   queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'card-search' })

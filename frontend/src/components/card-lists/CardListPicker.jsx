@@ -6,6 +6,7 @@ import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { resolveCardImageUrl } from '../../utils/imageUrl'
 import { cardNumberMatches } from '../../utils/cardNumbers'
 import { normalizeSearchText, textIncludes } from '../../utils/textSearch'
+import { printingDetailNames } from '../../utils/printingDetails'
 import {
   binderPickerItemsWithQuantities,
   binderPickerQuantitiesAreValid,
@@ -43,6 +44,7 @@ function filterExactCollectionItems(items, filters) {
 
     return textIncludes(card.name, query)
       || textIncludes(card.set_ref?.name || card.set_name, query)
+      || printingDetailNames(item.printing_details).some(name => textIncludes(name, query))
       || cardNumberMatches(card.number, query)
       || shortcodeMatches
   })
@@ -61,7 +63,13 @@ function pickerItem(item, selectionMode, maxQuantityById) {
     sourceItem: item,
     name: card.name,
     subtitle: selectionMode === 'collection-item'
-      ? [card.set_ref?.name || card.set_name, card.number, item.variant || 'Normal', item.condition].filter(Boolean).join(' · ')
+      ? [
+          card.set_ref?.name || card.set_name,
+          card.number,
+          item.variant || 'Normal',
+          item.condition,
+          ...printingDetailNames(item.printing_details),
+        ].filter(Boolean).join(' · ')
       : [card.set_ref?.name || card.set_name, card.number].filter(Boolean).join(' · '),
     image: resolveCardImageUrl(card),
     ...(maxQuantity === undefined ? {} : { maxQuantity }),
@@ -226,7 +234,7 @@ export default function CardListPicker({
         onClick={() => toggleSelection(item)}
         overlay={exactCopyMode ? (
           <div className="absolute bottom-2 left-2 right-2 z-20 truncate rounded-full bg-black/80 px-2 py-1 text-center text-[9px] text-white">
-            {[item.variant || 'Normal', item.condition].filter(Boolean).join(' · ')}
+            {[item.variant || 'Normal', item.condition, ...printingDetailNames(item.printing_details)].filter(Boolean).join(' · ')}
           </div>
         ) : undefined}
       />

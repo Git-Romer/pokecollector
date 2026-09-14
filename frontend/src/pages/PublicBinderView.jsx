@@ -8,6 +8,7 @@ import { groupCardsByPrint } from '../utils/groupCardsByPrint'
 import { formatBinderCountSummary } from '../utils/binderCounts'
 import { useSettings } from '../contexts/SettingsContext'
 import { CardLegend, CardStack } from '../components/card-system'
+import PrintingDetailBadges from '../components/PrintingDetailBadges'
 
 export default function PublicBinderView() {
   const { handle, binderId } = useParams()
@@ -96,6 +97,7 @@ export default function PublicBinderView() {
               />
               <div className="mt-1 text-sm font-medium truncate">{tile.name}</div>
               <div className="text-xs text-text-secondary">{tile.set_name} · #{tile.number}</div>
+              <PrintingDetailBadges details={tile.prints.flatMap(print => print.printing_details || [])} limit={2} className="mt-1" />
               {tile.total_value != null && (
                 <div className="text-xs font-semibold">{formatEur(tile.total_value)}</div>
               )}

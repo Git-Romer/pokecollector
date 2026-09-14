@@ -9,7 +9,7 @@ try:
     from api.binders import add_binder_cards_to_wishlist, create_binder, switch_binder_entry_card, update_binder
     from api.decks import add_deck_entry, compare_owned_decks, convert_deck_to_planned, convert_deck_to_real, create_deck, delete_deck, delete_deck_entry, duplicate_deck, get_deck, get_decks, update_deck, update_deck_entry
     from database import Base
-    from models import Binder, BinderCard, Card, CollectionItem, User, WishlistItem
+    from models import Binder, BinderCard, Card, CollectionItem, PrintingDetailTag, User, WishlistItem
     from schemas import BinderCardSwitch, BinderCreate, BinderUpdate, DeckCreate, DeckEntryCreate, DeckEntryUpdate, DeckUpdate
     API_TEST_DEPS_AVAILABLE = True
 except ModuleNotFoundError:
@@ -149,13 +149,26 @@ class DeckApiTests(unittest.TestCase):
         self.assertEqual(result.entries[0].shortage, 4)
 
     def test_planned_deck_converts_atomically_to_real_and_back(self):
-        self._own(self.card.id, 2)
+        owned = self._own(self.card.id, 2, variant="Holo")
+        tag = PrintingDetailTag(
+            user_id=self.user.id,
+            name="Cosmos Holo",
+            normalized_name="cosmos holo",
+            normalized_key="86b35671851767e3c81394da06fc4a64f8fda84ed3da783aaf88135c47ad4f3b",
+        )
+        owned.printing_detail_tags = [tag]
+        self.db.add(tag)
+        self.db.commit()
         deck = self._create()
         add_deck_entry(deck.id, DeckEntryCreate(card_id=self.card.id, required_quantity=2), current_user=self.user, db=self.db)
 
         real = convert_deck_to_real(deck.id, current_user=self.user, db=self.db)
         self.assertEqual(real.binder_type, "physical_deck")
         self.assertEqual(real.entries[0].allocated_quantity, 2)
+        self.assertEqual(len(real.entries[0].allocated_prints), 1)
+        allocated = real.entries[0].allocated_prints[0]
+        self.assertEqual((allocated.quantity, allocated.variant), (2, "Holo"))
+        self.assertEqual([detail.name for detail in allocated.printing_details], ["Cosmos Holo"])
 
         planned = convert_deck_to_planned(deck.id, current_user=self.user, db=self.db)
         self.assertEqual(planned.binder_type, "deck")

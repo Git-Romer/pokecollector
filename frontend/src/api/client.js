@@ -210,6 +210,10 @@ export const importCollectionCsv = (file) => {
 export const updateCollectionItem = (id, data) => api.put(`/collection/${id}`, data)
 export const removeFromCollection = (id) => api.delete(`/collection/${id}`)
 export const getCollectionStats = (params = {}) => api.get('/collection/stats/summary', { params })
+export const getPrintingDetailTags = () => api.get('/collection/printing-detail-tags').then(r => r.data)
+export const createPrintingDetailTag = (name) => api.post('/collection/printing-detail-tags', { name }).then(r => r.data)
+export const updatePrintingDetailTag = (id, name) => api.put(`/collection/printing-detail-tags/${id}`, { name }).then(r => r.data)
+export const deletePrintingDetailTag = (id, confirm = false) => api.delete(`/collection/printing-detail-tags/${id}`, { params: { confirm } }).then(r => r.data)
 
 // Decks
 export const getDecks = () => api.get('/decks/')

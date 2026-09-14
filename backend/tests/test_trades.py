@@ -17,7 +17,7 @@ try:
     from api.products import unlink_product_card
     from api.trades import create_trade, get_trades, update_trade, value_trade
     from database import Base
-    from models import Binder, BinderCard, Card, CollectionItem, ProductCard, ProductLedgerEntry, ProductPurchase, Trade, TradeItem, User
+    from models import Binder, BinderCard, Card, CollectionItem, PrintingDetailTag, ProductCard, ProductLedgerEntry, ProductPurchase, Trade, TradeItem, User
     from schemas import (
         TradeCreate,
         TradeIncomingItemCreate,
@@ -101,6 +101,15 @@ class TradeApiTests(unittest.TestCase):
 
     def test_create_trade_moves_outgoing_and_incoming_cards_with_snapshots(self):
         outgoing = self.add_collection_item(quantity=2)
+        outgoing_tag = PrintingDetailTag(
+            user_id=self.user.id,
+            name="Cosmos Holo",
+            normalized_name="cosmos holo",
+            normalized_key="86b35671851767e3c81394da06fc4a64f8fda84ed3da783aaf88135c47ad4f3b",
+        )
+        outgoing.printing_detail_tags = [outgoing_tag]
+        self.db.add(outgoing_tag)
+        self.db.commit()
 
         response = create_trade(
             TradeCreate(
@@ -113,6 +122,7 @@ class TradeApiTests(unittest.TestCase):
                         quantity=2,
                         condition="LP",
                         variant="Normal",
+                        printing_details=["Expansion Stamp"],
                         lang="en",
                         value_per_card=12,
                     )
@@ -137,7 +147,11 @@ class TradeApiTests(unittest.TestCase):
         self.assertEqual({item.direction for item in trade_items}, {"outgoing", "incoming"})
         self.assertEqual({item.snapshot_version for item in trade_items}, {1})
         outgoing_snapshot = next(item for item in trade_items if item.direction == "outgoing")
+        incoming_snapshot = next(item for item in trade_items if item.direction == "incoming")
         self.assertEqual(outgoing_snapshot.purchase_price, 2)
+        self.assertEqual(outgoing_snapshot.printing_details, ["Cosmos Holo"])
+        self.assertEqual(incoming_snapshot.printing_details, ["Expansion Stamp"])
+        self.assertEqual(incoming_item.printing_details[0].name, "Expansion Stamp")
         self.assertEqual(self.db.query(ProductLedgerEntry).count(), 0)
 
     def test_trade_cannot_reduce_owned_quantity_below_binder_allocation(self):
@@ -495,6 +509,7 @@ class TradeApiTests(unittest.TestCase):
                     quantity=1,
                     condition="NM",
                     variant="Normal",
+                    printing_details=["Cosmos Holo"],
                     lang="en",
                     value_per_card=12,
                     purchase_price=4,
@@ -522,6 +537,7 @@ class TradeApiTests(unittest.TestCase):
                         quantity=1,
                         condition="NM",
                         variant="Normal",
+                        printing_details=["cosmos-holo"],
                         lang="en",
                     ),
                     TradeIncomingItemUpdate(
@@ -545,6 +561,8 @@ class TradeApiTests(unittest.TestCase):
         self.assertEqual(len([item for item in updated.items if item.direction == "incoming"]), 2)
         retained = next(item for item in updated.items if item.id == outgoing_trade_item.id)
         self.assertEqual(retained.value_per_card, 9)
+        retained_incoming = next(item for item in updated.items if item.id == incoming_trade_item.id)
+        self.assertEqual(retained_incoming.printing_details, ["Cosmos Holo"])
         added_outgoing = next(item for item in updated.items if item.direction == "outgoing" and item.id != outgoing_trade_item.id)
         self.assertEqual(added_outgoing.value_per_card, 10)
         self.assertEqual(self.db.query(CollectionItem).filter(CollectionItem.id == outgoing.id).one().quantity, 1)

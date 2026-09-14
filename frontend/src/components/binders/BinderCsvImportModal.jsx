@@ -1,7 +1,7 @@
 import { Download, Upload, X } from 'lucide-react'
 
-export const BINDER_CSV_IMPORT_HEADER = 'set_code,number,required_quantity,lang,variant,condition,collection_item_id'
-const BINDER_CSV_IMPORT_TEMPLATE = `${BINDER_CSV_IMPORT_HEADER}\nBLK,057,4,de,Holo,NM,\n`
+export const BINDER_CSV_IMPORT_HEADER = 'set_code,number,required_quantity,lang,variant,condition,printing_details,collection_item_id'
+const BINDER_CSV_IMPORT_TEMPLATE = `${BINDER_CSV_IMPORT_HEADER}\nBLK,057,4,de,Holo,NM,Cosmos Holo|Play! Pokémon,\n`
 
 export const downloadBinderCsvTemplate = () => {
   const blob = new Blob([BINDER_CSV_IMPORT_TEMPLATE], { type: 'text/csv;charset=utf-8' })
@@ -74,6 +74,7 @@ export default function BinderCsvImportModal({ t, listType = 'collection', onClo
                 </div>
               </div>
               <p>{t(behaviorKey)}</p>
+              {isCollection && <p>{t('printingDetails.csvHelp')}</p>}
             </div>
           </div>
           <p className="rounded-lg bg-yellow/10 px-3 py-2 text-[11px] text-yellow/90">{t('binderTypes.csvImportErrorBehavior')}</p>

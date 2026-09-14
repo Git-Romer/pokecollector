@@ -21,6 +21,7 @@ import CardSelectionQuantityModal from '../components/card-system/CardSelectionQ
 import CardListPicker from '../components/card-lists/CardListPicker'
 import CardListGallery from '../components/card-lists/CardListGallery'
 import { useDynamicFilterUrlState } from '../hooks/useDynamicFilterUrlState'
+import PrintingDetailBadges from '../components/PrintingDetailBadges'
 
 const SPRITE_BASE_URL = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated'
 const BINDER_FILTER_DEFINITIONS = {
@@ -905,6 +906,7 @@ export default function BinderDetail() {
                     )}
                   </p>
                   {(selectedCard.variant || selectedCard.condition) && <p className="text-xs text-text-muted">{[selectedCard.variant, selectedCard.condition].filter(Boolean).join(' · ')}</p>}
+                  <PrintingDetailBadges details={selectedCard.printing_details} />
                 </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -961,6 +963,7 @@ export default function BinderDetail() {
                                 <span>{print.price_market > 0 ? formatPrice(print.price_market) : t('binderTypes.noPriceDataShort')}</span>
                                 {print.variant && <span>{print.variant}</span>}
                                 {print.condition && <span>{print.condition}</span>}
+                                <PrintingDetailBadges details={print.printing_details} limit={2} />
                                 {print.owned && <span className="text-green font-semibold">{t('binderTypes.owned')} {print.owned_quantity}x</span>}
                                 {isCollection && !print.is_current && print.available_quantity < (selectedCard.required_quantity || 1) && <span className="text-yellow font-semibold">{t('binderTypes.alreadyUsed')}</span>}
                                 {print.is_current && <span className="text-yellow font-semibold">{t('binderTypes.currentPrint')}</span>}

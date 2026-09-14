@@ -56,7 +56,9 @@ def _deck_or_404(db: Session, deck_id: int, user_id: int, with_entries: bool = F
             joinedload(Binder.binder_cards)
             .joinedload(BinderCard.card)
             .joinedload(Card.set_ref),
-            joinedload(Binder.binder_cards).joinedload(BinderCard.collection_item),
+            joinedload(Binder.binder_cards)
+            .joinedload(BinderCard.collection_item)
+            .joinedload(CollectionItem.printing_detail_tags),
         )
     deck = query.first()
     if not deck:
@@ -165,6 +167,20 @@ def _deck_response(
         None,
     )
     copy_limit_warnings = (copy_limit_check or {}).get("details", {}).get("violations", [])
+    allocated_prints = {}
+    if include_entries:
+        for allocated_entry in deck.allocations:
+            item = allocated_entry.collection_item
+            if not item:
+                continue
+            allocated_prints.setdefault(allocated_entry.card_id, []).append({
+                "collection_item_id": item.id,
+                "quantity": int(allocated_entry.required_quantity or 0),
+                "condition": item.condition,
+                "variant": item.variant,
+                "lang": item.lang,
+                "printing_details": item.printing_detail_tags,
+            })
 
     return DeckResponse(
         id=deck.id,
@@ -202,6 +218,7 @@ def _deck_response(
                 "allocated_quantity": allocation.get(entry.card_id, {}).get("reserved_in_this_deck", 0),
                 "available_quantity": available_quantities.get(entry.card_id, 0),
                 "display_variant": display_variants.get(entry.card_id),
+                "allocated_prints": allocated_prints.get(entry.card_id, []),
                 "card": entry.card,
             }
             for entry in entries
@@ -409,10 +426,14 @@ def get_deck(deck_id: int, current_user: User = Depends(get_current_user), db: S
     card_ids.extend(entry.card_id for entry in deck.entries)
     owned = _owned_quantities(db, current_user.id, card_ids)
     allocation = allocation_for_decks(allocating_lists, owned, deck.id)
-    rows = db.query(CollectionItem).filter(
-        CollectionItem.user_id == current_user.id,
-        CollectionItem.card_id.in_([entry.card_id for entry in deck.entries]),
-    ).all() if deck.entries else []
+    rows = (
+        [entry.collection_item for entry in deck.allocations if entry.collection_item]
+        if deck.binder_type == PHYSICAL_DECK_TYPE
+        else db.query(CollectionItem).filter(
+            CollectionItem.user_id == current_user.id,
+            CollectionItem.card_id.in_([entry.card_id for entry in deck.entries]),
+        ).all()
+    ) if deck.entries else []
     return _deck_response(
         deck,
         owned,

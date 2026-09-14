@@ -79,6 +79,54 @@ class BackupCommandTests(unittest.TestCase):
         self.assertNotIn("--exclude-table-data", command)
         self.assertNotIn("--exclude-table", command)
 
+    def test_collection_backup_includes_printing_detail_tags_and_links(self):
+        completed = subprocess.CompletedProcess([], 0, "", "")
+        with patch.object(backup_api, "BACKUP_DIR", self.temp_dir.name), \
+             patch.object(backup_api, "get_db_params", return_value=self.params), \
+             patch.object(backup_api.subprocess, "run", return_value=completed) as run:
+            backup_api.download_backup(include="collection", current_user=self.admin)
+
+        command = run.call_args.args[0]
+        selected_tables = [
+            command[index + 1]
+            for index, argument in enumerate(command)
+            if argument == "-t"
+        ]
+        self.assertIn("printing_detail_tags", selected_tables)
+        self.assertIn("collection_printing_detail_tags", selected_tables)
+
+    def test_product_backup_includes_printing_detail_tags_and_links(self):
+        completed = subprocess.CompletedProcess([], 0, "", "")
+        with patch.object(backup_api, "BACKUP_DIR", self.temp_dir.name), \
+             patch.object(backup_api, "get_db_params", return_value=self.params), \
+             patch.object(backup_api.subprocess, "run", return_value=completed) as run:
+            backup_api.download_backup(include="products", current_user=self.admin)
+
+        command = run.call_args.args[0]
+        selected_tables = [
+            command[index + 1]
+            for index, argument in enumerate(command)
+            if argument == "-t"
+        ]
+        self.assertIn("printing_detail_tags", selected_tables)
+        self.assertIn("product_card_printing_detail_tags", selected_tables)
+        self.assertIn("product_ledger_printing_detail_tags", selected_tables)
+
+    def test_combined_partial_backup_deduplicates_shared_printing_detail_table(self):
+        completed = subprocess.CompletedProcess([], 0, "", "")
+        with patch.object(backup_api, "BACKUP_DIR", self.temp_dir.name), \
+             patch.object(backup_api, "get_db_params", return_value=self.params), \
+             patch.object(backup_api.subprocess, "run", return_value=completed) as run:
+            backup_api.download_backup(include="collection,products", current_user=self.admin)
+
+        command = run.call_args.args[0]
+        selected_tables = [
+            command[index + 1]
+            for index, argument in enumerate(command)
+            if argument == "-t"
+        ]
+        self.assertEqual(selected_tables.count("printing_detail_tags"), 1)
+
 
 @unittest.skipUnless(DEPS_AVAILABLE, "FastAPI dependencies are not installed")
 class RestoreBackupTests(unittest.IsolatedAsyncioTestCase):

@@ -19,10 +19,25 @@ BACKUP_DIR = "/app/backups"
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 RESTORE_CHUNK_SIZE = 1024 * 1024
 BACKUP_GROUPS = {
-    "collection": ["collection", "wishlist", "binders", "binder_cards"],
-    "users": ["users", "user_settings", "settings"],
+    "collection": [
+        "collection",
+        "wishlist",
+        "binders",
+        "binder_cards",
+        "printing_detail_tags",
+        "collection_printing_detail_tags",
+    ],
+    "users": ["users", "user_settings", "settings", "printing_detail_tags"],
     "cards": ["cards", "sets", "price_history", "custom_card_matches"],
-    "products": ["product_purchases", "product_cards", "product_ledger_entries", "portfolio_snapshots"],
+    "products": [
+        "product_purchases",
+        "product_cards",
+        "product_ledger_entries",
+        "portfolio_snapshots",
+        "printing_detail_tags",
+        "product_card_printing_detail_tags",
+        "product_ledger_printing_detail_tags",
+    ],
     "system": ["sync_log"],
     "images": ["image_cache"],
 }

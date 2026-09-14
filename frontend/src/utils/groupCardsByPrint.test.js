@@ -17,8 +17,20 @@ describe('groupCardsByPrint', () => {
     expect(out[0]).toMatchObject({ rarity: 'Rare', lang: 'en' })
     expect(out[0].variantCount).toBe(2)
     expect(out[0].prints).toEqual([
-      { variant: 'Normal', quantity: 2, market_value: null },
-      { variant: 'Reverse Holo', quantity: 1, market_value: null },
+      { variant: 'Normal', printing_details: [], quantity: 2, market_value: null },
+      { variant: 'Reverse Holo', printing_details: [], quantity: 1, market_value: null },
+    ])
+  })
+
+  it('preserves printing details for every grouped physical print', () => {
+    const out = groupCardsByPrint([
+      card({ variant: 'Holo', printing_details: ['Cosmos Holo'] }),
+      card({ variant: 'Normal', printing_details: ['Jumbo', 'Expansion Stamp'] }),
+    ])
+
+    expect(out[0].prints.map(print => print.printing_details)).toEqual([
+      ['Cosmos Holo'],
+      ['Jumbo', 'Expansion Stamp'],
     ])
   })
 

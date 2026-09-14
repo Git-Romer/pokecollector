@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Trash2, Edit2, Check, X, Heart, Filter, SortAsc, ChevronUp, ChevronDown, Library, BookOpen, Minus, Plus } from 'lucide-react'
-import { getWishlist, removeFromWishlist, updateWishlistItem, addToCollection } from '../api/client'
+import { getWishlist, removeFromWishlist, updateWishlistItem } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import { useConfirmDialog } from '../contexts/ConfirmDialogContext'
 import { CardDialog, CardIdentity, CardPriceDetails, CardRow, getCardSetNumber } from '../components/card-system'
@@ -12,6 +12,7 @@ import { getEffectiveCardPrice } from '../utils/prices'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { useDynamicFilterUrlState } from '../hooks/useDynamicFilterUrlState'
+import { CardModal } from '../components/CardItem'
 
 const WISHLIST_FILTER_DEFINITIONS = {
   filterSet: { param: 'set', default: '' },
@@ -118,7 +119,7 @@ function WishlistCardModal({ item, onClose, onAddToCollection, onRemove }) {
             <WishlistItemEditor item={item} onDone={onClose} />
           </div>
           <div className="grid gap-2 sm:grid-cols-2">
-            <button type="button" className="btn-primary justify-center" onClick={() => onAddToCollection(item.card_id)}>
+            <button type="button" className="btn-primary justify-center" onClick={() => onAddToCollection(item)}>
               <Check size={14} /> {t('wishlist.addToCollection')}
             </button>
             <button type="button" className="btn-ghost justify-center text-brand-red" onClick={() => onRemove(item)}>
@@ -136,6 +137,7 @@ export default function Wishlist() {
   const confirmDialog = useConfirmDialog()
   const [editingId, setEditingId] = useState(null)
   const [selectedItem, setSelectedItem] = useState(null)
+  const [addCard, setAddCard] = useState(null)
   const [sortBy, setSortBy] = useState('created_at')
   const [sortOrder, setSortOrder] = useState('desc')
   const [showFilters, setShowFilters] = useState(false)
@@ -162,15 +164,6 @@ export default function Wishlist() {
     mutationFn: (id) => removeFromWishlist(id),
     onSuccess: () => {
       toast.success(t('wishlist.removed'))
-      invalidateCardState(queryClient)
-      invalidateTcgdexFilterLanguages(queryClient)
-    },
-  })
-
-  const addToColMutation = useMutation({
-    mutationFn: (cardId) => addToCollection({ card_id: cardId, quantity: 1, condition: 'NM' }),
-    onSuccess: () => {
-      toast.success(t('wishlist.addedToCollection'))
       invalidateCardState(queryClient)
       invalidateTcgdexFilterLanguages(queryClient)
     },
@@ -414,7 +407,7 @@ export default function Wishlist() {
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-1 justify-end">
-                              <button onClick={() => addToColMutation.mutate(item.card_id)}
+                              <button onClick={() => setAddCard(item.card)}
                                 className="text-text-muted hover:text-green transition-colors p-1" title={t('wishlist.addToCollection')}>
                                 <Check size={14} />
                               </button>
@@ -479,7 +472,7 @@ export default function Wishlist() {
                             className="text-text-muted hover:text-text-primary transition-colors p-1">
                             <Edit2 size={12} />
                           </button>
-                          <button onClick={(e) => { e.stopPropagation(); addToColMutation.mutate(item.card_id) }}
+                          <button onClick={(e) => { e.stopPropagation(); setAddCard(item.card) }}
                             className="text-text-muted hover:text-green transition-colors p-1" title={t('wishlist.addToCollection')}>
                             <Check size={12} />
                           </button>
@@ -509,7 +502,10 @@ export default function Wishlist() {
         <WishlistCardModal
           item={selectedItem}
           onClose={() => setSelectedItem(null)}
-          onAddToCollection={(cardId) => addToColMutation.mutate(cardId)}
+          onAddToCollection={(item) => {
+            setSelectedItem(null)
+            setAddCard(item.card)
+          }}
           onRemove={async (item) => {
             const confirmed = await confirmDialog({
               title: t('common.remove'),
@@ -522,6 +518,13 @@ export default function Wishlist() {
               setSelectedItem(null)
             }
           }}
+        />
+      )}
+      {addCard && (
+        <CardModal
+          card={addCard}
+          initialTab="add"
+          onClose={() => setAddCard(null)}
         />
       )}
     </div>

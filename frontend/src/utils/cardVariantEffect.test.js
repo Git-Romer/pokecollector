@@ -6,16 +6,16 @@ describe('getCardVariantEffectType', () => {
     ['Normal', null],
     [null, null],
     ['Holo', 'holo'],
-    ['Holo Rare', 'holo'],
     ['Reverse Holo', 'reverse'],
     ['First Edition', 'firstEdition'],
-    ['1st Edition', 'firstEdition'],
-    ['First Edition Holo', 'firstEdition'],
-    ['Alt Art', 'special'],
-    ['Illustration Rare', 'special'],
-    ['Special Illustration Rare', 'special'],
-    ['Shiny', 'special'],
-    ['Unknown Foil', 'generic'],
+    ['Holo Rare', null],
+    ['1st Edition', null],
+    ['First Edition Holo', null],
+    ['Alt Art', null],
+    ['Illustration Rare', null],
+    ['Special Illustration Rare', null],
+    ['Shiny', null],
+    ['Unknown Foil', null],
   ])('maps %s to %s', (variant, expected) => {
     expect(getCardVariantEffectType(variant)).toBe(expected)
   })
@@ -30,11 +30,11 @@ describe('getCardVariantEffectType', () => {
 
   it.each([
     [[{ variant: 'First Edition' }, { variant: 'Special Illustration Rare' }], 'firstEdition'],
-    [[{ variant: 'Special Illustration Rare' }, { variant: 'Reverse Holo' }], 'special'],
+    [[{ variant: 'Special Illustration Rare' }, { variant: 'Reverse Holo' }], 'reverse'],
     [[{ variant: 'Reverse Holo' }, { variant: 'Holo' }], 'reverse'],
     [[{ variant: 'Holo' }, { variant: 'Unknown Foil' }], 'holo'],
     [[{ variant: 'First Edition' }, { variant: 'Unknown Foil' }], 'firstEdition'],
-    [[{ variant: 'Unknown Foil' }, { variant: 'Normal' }], 'generic'],
+    [[{ variant: 'Unknown Foil' }, { variant: 'Normal' }], null],
   ])('applies grouped priority to %j', (variants, expected) => {
     expect(getCardVariantEffectType(variants)).toBe(expected)
   })

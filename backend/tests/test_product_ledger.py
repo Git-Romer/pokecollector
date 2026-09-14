@@ -26,7 +26,7 @@ try:
     from api.cards import delete_custom_card
     from api.collection import get_collection, update_collection_item
     from database import Base
-    from models import Binder, BinderCard, Card, CollectionItem, ImageCache, ProductCard, ProductLedgerEntry, ProductPurchase, User
+    from models import Binder, BinderCard, Card, CollectionItem, ImageCache, PrintingDetailTag, ProductCard, ProductLedgerEntry, ProductPurchase, User
     from services.product_images import product_image_cache_key, product_image_token
     from schemas import (
         CollectionItemUpdate,
@@ -782,6 +782,15 @@ class ProductLedgerApiTests(unittest.TestCase):
     def test_selling_one_linked_copy_reduces_collection_and_keeps_history(self):
         product = self.add_product()
         item = self.add_collection_item(quantity=3)
+        tag = PrintingDetailTag(
+            user_id=self.user.id,
+            name="Cosmos Holo",
+            normalized_name="cosmos holo",
+            normalized_key="86b35671851767e3c81394da06fc4a64f8fda84ed3da783aaf88135c47ad4f3b",
+        )
+        item.printing_detail_tags = [tag]
+        self.db.add(tag)
+        self.db.commit()
         link_collection_item_to_product(
             product.id,
             ProductCardLinkCreate(collection_item_id=item.id, quantity=2),
@@ -804,6 +813,7 @@ class ProductLedgerApiTests(unittest.TestCase):
         self.assertEqual(item.quantity, 2)
         self.assertEqual(product_card.active_quantity, 1)
         self.assertEqual(product_card.sold_quantity, 1)
+        self.assertEqual(product_card.printing_details, ["Cosmos Holo"])
         self.assertEqual(ledger_entry.card_id, self.card.id)
         self.assertEqual(ledger_entry.original_collection_item_id, item.id)
         self.assertEqual(ledger_entry.amount, 25)
@@ -811,6 +821,7 @@ class ProductLedgerApiTests(unittest.TestCase):
         self.assertEqual(ledger_entry.card_name, "Sprigatito")
         self.assertEqual(ledger_entry.set_id, "sv1")
         self.assertEqual(ledger_entry.card_number, "1")
+        self.assertEqual(ledger_entry.printing_details, ["Cosmos Holo"])
         self.assertEqual(response.linked_live_value, 10)
         self.assertEqual(response.realized_gains, 25)
         self.assertEqual(response.computed_current_value, 35)

@@ -83,7 +83,7 @@ class HandleValidationTests(unittest.TestCase):
 
 try:
     from services import public_profile as pp
-    from models import BinderCard, Card, Set
+    from models import BinderCard, Card, PrintingDetailTag, Set
     PP_DEPS = True
 except ModuleNotFoundError:
     PP_DEPS = False
@@ -196,6 +196,12 @@ class SerializationTests(unittest.TestCase):
         # Link the binder card to a collection item carrying a variant.
         item = CollectionItem(card_id="sv1-1_en", user_id=1, quantity=2,
                               variant="Reverse Holo", condition="NM")
+        item.printing_detail_tags = [PrintingDetailTag(
+            user_id=1,
+            name="Poké Ball Holo",
+            normalized_name="poke ball holo",
+            normalized_key="6f90b59791feb602c69b4ae49387f5878a65a9297448fd21d7d867f47f7bbfb9",
+        )]
         db.add(item)
         db.commit()
         bc = db.query(BinderCard).filter(BinderCard.binder_id == binder.id).first()
@@ -203,6 +209,7 @@ class SerializationTests(unittest.TestCase):
         db.commit()
         detail = pp.serialize_binder_detail(db, binder, show_values=False)
         self.assertEqual(detail["cards"][0]["variant"], "Reverse Holo")
+        self.assertEqual(detail["cards"][0]["printing_details"], ["Poké Ball Holo"])
         self.assertEqual(detail["cards"][0]["lang"], "en")
 
     def test_serialized_card_variant_defaults_none_without_collection_item(self):

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List
 
 from database import get_db
@@ -28,6 +28,7 @@ class PublicCard(BaseModel):
     is_custom: bool = False
     lang: Optional[str] = None
     variant: Optional[str] = None
+    printing_details: List[str] = Field(default_factory=list)
     data_source_lang: Optional[str] = None
     price_source_lang: Optional[str] = None
     image_source_lang: Optional[str] = None

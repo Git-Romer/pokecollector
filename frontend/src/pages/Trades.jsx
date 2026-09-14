@@ -25,6 +25,8 @@ import { getEffectiveCardPrice, priceFieldFromPrimary } from '../utils/prices'
 import { formatMoneyInputValue, parseMoneyInputValue } from '../utils/moneyInput'
 import { invalidateCardState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 import { buildTradeUpdatePayload, findNewTradeDraftItem, isCashTradeItem, snapshotTradeCard, tradeToDraft } from '../utils/tradeDraft'
+import PrintingDetailBadges from '../components/PrintingDetailBadges'
+import PrintingDetailSelector from '../components/PrintingDetailSelector'
 
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
 
@@ -180,6 +182,7 @@ function DraftItem({ item, side, onUpdate, onRemove, t, formatPrice, exchangeRat
         </div>
       </div>
       {side === 'incoming' && (
+        <div className="space-y-2">
         <div className="grid grid-cols-2 gap-2">
           <select className="select" value={item.condition} onChange={(event) => onUpdate({ condition: event.target.value })}>
             {CONDITIONS.map(condition => <option key={condition} value={condition}>{condition}</option>)}
@@ -188,7 +191,13 @@ function DraftItem({ item, side, onUpdate, onRemove, t, formatPrice, exchangeRat
             {CARD_VARIANTS.map(variant => <option key={variant} value={variant}>{variant}</option>)}
           </select>
         </div>
+        <PrintingDetailSelector
+          value={item.printing_details || []}
+          onChange={printingDetails => onUpdate({ printing_details: printingDetails })}
+        />
+        </div>
       )}
+      <PrintingDetailBadges details={item.printing_details || item.collectionItem?.printing_details} limit={2} />
       {side === 'outgoing' && item.trade_item_id && (
         <select
           className="select"
@@ -344,6 +353,7 @@ export default function Trades() {
         variant: collectionItem.variant,
         condition: collectionItem.condition,
         lang: collectionItem.lang,
+        printing_details: collectionItem.printing_details || [],
       }]
     })
   }
@@ -380,6 +390,7 @@ export default function Trades() {
         condition,
         variant,
         lang,
+        printing_details: [],
         value_per_card: formatMoneyInputValue(price, exchangeRate),
       }]
     })
@@ -455,6 +466,7 @@ export default function Trades() {
           quantity: Number(item.quantity) || 1,
           condition: item.condition,
           variant: item.variant,
+          printing_details: item.printing_details || [],
           lang: item.lang || item.card.lang || 'en',
           value_per_card: value,
           purchase_price: value,
@@ -764,6 +776,7 @@ export default function Trades() {
                           card={snapshotTradeCard(item)}
                           variant={item.variant}
                           meta={`${item.quantity} - ${item.variant || 'Normal'} - ${item.condition || 'NM'}${item.notes ? ` · ${item.notes}` : ''}`}
+                          rightAction={<PrintingDetailBadges details={item.printing_details} limit={2} />}
                           value={formatPrice(item.value_total)}
                         />
                       )

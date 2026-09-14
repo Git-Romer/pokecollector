@@ -1,22 +1,25 @@
 import math
 
-
-def normalize_collection_variant(variant: str | None) -> str:
-    value = (variant or "").strip()
-    return value or "Normal"
+from services.collection_variants import normalize_collection_variant
+from services.printing_details import normalize_printing_details
 
 
 def is_valid_collection_purchase_price(purchase_price: float) -> bool:
     return math.isfinite(purchase_price) and purchase_price >= 0
 
 
-def collection_import_key(card_id, variant, lang, condition, purchase_price):
+def collection_import_key(card_id, variant, lang, condition, purchase_price, printing_details=None):
+    normalized_details = tuple(sorted(
+        normalized_name
+        for _display_name, normalized_name in normalize_printing_details(printing_details)
+    ))
     return (
         card_id,
         normalize_collection_variant(variant),
         lang or "en",
         condition,
         purchase_price,
+        normalized_details,
     )
 
 

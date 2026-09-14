@@ -16,6 +16,8 @@ from services.card_values import effective_market_price, normalize_price_field
 from services.card_visibility import visible_any_card_filter, visible_set_filter
 from services.card_list_names import normalize_card_list_name
 from services.collection_csv import normalize_collection_variant
+from services.printing_detail_tags import printing_detail_keys
+from services.printing_details import normalize_printing_details, parse_printing_details_csv
 from services.binder_csv import BINDER_CSV_DUPLICATE_QUANTITY_ERROR, combine_binder_required_quantity
 from services.binder_allocations import (
     collection_binder_allocated_card_counts,
@@ -36,7 +38,16 @@ logger = logging.getLogger(__name__)
 
 ALLOWED_BINDER_FORMATS = {"Standard", "Expanded", "Unlimited", "Casual"}
 BINDER_CSV_LEGACY_COLUMNS = ["set_code", "number", "required_quantity", "lang"]
-BINDER_CSV_PHYSICAL_COLUMNS = [*BINDER_CSV_LEGACY_COLUMNS, "variant", "condition"]
+BINDER_CSV_PHYSICAL_COLUMNS_V1 = [
+    *BINDER_CSV_LEGACY_COLUMNS,
+    "variant",
+    "condition",
+]
+BINDER_CSV_PHYSICAL_COLUMNS = [
+    *BINDER_CSV_PHYSICAL_COLUMNS_V1,
+    "printing_details",
+]
+BINDER_CSV_COLUMNS_V1 = [*BINDER_CSV_PHYSICAL_COLUMNS_V1, "collection_item_id"]
 BINDER_CSV_COLUMNS = [*BINDER_CSV_PHYSICAL_COLUMNS, "collection_item_id"]
 BINDER_CSV_MAX_BYTES = 256 * 1024
 BINDER_CSV_MAX_ROWS = 1000
@@ -396,6 +407,7 @@ def _binder_card_summary(
         summary.update({
             "collection_item_id": collection_item.id,
             "variant": collection_item.variant,
+            "printing_details": [tag.name for tag in collection_item.printing_detail_tags],
             "condition": collection_item.condition,
         })
     return summary
@@ -1085,6 +1097,10 @@ def get_binder_cards(
             "required_quantity": required_quantity,
             "missing_quantity": missing_quantity,
             "variant": col_item.variant if col_item else None,
+            "printing_details": (
+                [tag.name for tag in col_item.printing_detail_tags]
+                if col_item else []
+            ),
             "condition": col_item.condition if col_item else None,
             "lang": col_item.lang if col_item else (bc.card.lang or "en"),
             "collection_item_id": exact_col_item.id if exact_col_item else None,
@@ -1535,9 +1551,10 @@ def add_owned_set_to_binder(
 ):
     """Bulk-add every owned collection item from a set into a collection binder.
 
-    One entry per owned collection item (variant); copies of a variant stack into
-    that single entry. Skips items already in this binder, and items whose copies
-    are all allocated across collection binders.
+    One entry per exact owned collection item; copies sharing the same variant,
+    condition, language, price, and printing-detail tags stack in that entry.
+    Skips items already in this binder, and items whose copies are all allocated
+    across collection binders.
     """
     lock_user_card_allocations(db, current_user.id)
     binder = db.query(Binder).filter(
@@ -2167,6 +2184,10 @@ def export_binder_csv(
             "lang": card.lang or "en",
             "variant": entry.collection_item.variant if entry.collection_item else "",
             "condition": entry.collection_item.condition if entry.collection_item else "",
+            "printing_details": (
+                "|".join(tag.name for tag in entry.collection_item.printing_detail_tags)
+                if entry.collection_item else ""
+            ),
             "collection_item_id": entry.collection_item_id or "",
         })
 
@@ -2214,13 +2235,21 @@ async def import_binder_csv(
         raise HTTPException(status_code=422, detail="CSV file must be UTF-8 encoded") from exc
 
     reader = csv.DictReader(io.StringIO(text), delimiter=",")
-    if reader.fieldnames not in (BINDER_CSV_COLUMNS, BINDER_CSV_PHYSICAL_COLUMNS, BINDER_CSV_LEGACY_COLUMNS):
+    if reader.fieldnames not in (
+        BINDER_CSV_COLUMNS,
+        BINDER_CSV_COLUMNS_V1,
+        BINDER_CSV_PHYSICAL_COLUMNS,
+        BINDER_CSV_PHYSICAL_COLUMNS_V1,
+        BINDER_CSV_LEGACY_COLUMNS,
+    ):
         raise HTTPException(
             status_code=422,
             detail=(
                 "CSV header must be one of: "
                 f"{','.join(BINDER_CSV_COLUMNS)}; "
+                f"{','.join(BINDER_CSV_COLUMNS_V1)}; "
                 f"{','.join(BINDER_CSV_PHYSICAL_COLUMNS)}; or "
+                f"{','.join(BINDER_CSV_PHYSICAL_COLUMNS_V1)}; or "
                 f"{','.join(BINDER_CSV_LEGACY_COLUMNS)}"
             ),
         )
@@ -2278,6 +2307,10 @@ async def import_binder_csv(
                 )
                 requested_variant = (row.get("variant") or "").strip()
                 requested_condition = (row.get("condition") or "").strip()
+                requested_printing_details = (
+                    parse_printing_details_csv(row.get("printing_details"))
+                    if "printing_details" in row else None
+                )
                 requested_item_id = (row.get("collection_item_id") or "").strip()
                 if requested_item_id:
                     try:
@@ -2298,6 +2331,18 @@ async def import_binder_csv(
                 if requested_condition:
                     owned_query = owned_query.filter(CollectionItem.condition == requested_condition)
                 owned_items = owned_query.order_by(CollectionItem.id.asc()).all()
+                if requested_printing_details is not None:
+                    requested_detail_keys = {
+                        normalized
+                        for _name, normalized in normalize_printing_details(
+                            requested_printing_details
+                        )
+                    }
+                    owned_items = [
+                        item for item in owned_items
+                        if printing_detail_keys(item.printing_detail_tags)
+                        == requested_detail_keys
+                    ]
                 if not owned_items:
                     skipped += 1
                     continue
@@ -2393,6 +2438,9 @@ async def import_binder_csv(
                 }
             planned_card_rows[card.id] = planned_row
             validated_rows.append(planned_row)
+        except ValueError as exc:
+            failed += 1
+            errors.append(f"row {row_number}: {exc}")
         except Exception:
             db.rollback()
             failed += 1

@@ -1,11 +1,18 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Response
 from sqlalchemy import func, or_
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 from typing import List, Optional
 from api.auth import get_current_user
 from database import get_db
-from models import Binder, BinderCard, CollectionItem, CollectionCardPhoto, Card, ProductCard, ProductPurchase, Set, User
-from schemas import CollectionItemCreate, CollectionItemUpdate, CollectionItemResponse, BulkCollectionAddRequest, BulkCollectionAddResponse
+from models import (
+    Binder, BinderCard, CollectionItem, CollectionCardPhoto, Card,
+    PrintingDetailTag, ProductCard, ProductPurchase, Set, User,
+)
+from schemas import (
+    CollectionItemCreate, CollectionItemUpdate, CollectionItemResponse,
+    BulkCollectionAddRequest, BulkCollectionAddResponse,
+    PrintingDetailTagCreate, PrintingDetailTagUpdate, PrintingDetailTagResponse,
+)
 from services import pokemon_api
 from services.card_fallbacks import apply_cross_language_fallbacks, build_missing_language_card
 from services.card_numbers import card_number_matches
@@ -20,7 +27,14 @@ from services.binder_allocations import (
 from services.digital_sets import digital_sets_enabled
 from services.standard_legality import is_standard_legal_card, is_standard_regulation_mark
 from services.tcgdex_languages import SUPPORTED_TCGDEX_LANGUAGES, has_lang_suffix, is_supported_tcgdex_language, normalize_tcgdex_language
-from services.collection_csv import collection_import_key, is_valid_collection_purchase_price, merge_collection_import_item, normalize_collection_variant
+from services.collection_csv import collection_import_key, is_valid_collection_purchase_price, merge_collection_import_item
+from services.collection_variants import CANONICAL_VARIANTS, normalize_collection_variant
+from services.printing_details import normalize_printing_details, parse_printing_details_csv
+from services.printing_details import printing_detail_normalized_key
+from services.printing_detail_tags import (
+    get_or_create_printing_detail_tags,
+    printing_detail_keys,
+)
 from services.card_values import effective_market_price, normalize_price_field
 import datetime
 import csv
@@ -30,16 +44,31 @@ import logging
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-CSV_IMPORT_COLUMNS = ["set_code", "number", "quantity", "condition", "variant", "lang", "purchase_price"]
+CSV_IMPORT_LEGACY_COLUMNS = ["set_code", "number", "quantity", "condition", "variant", "lang", "purchase_price"]
+CSV_IMPORT_COLUMNS = [*CSV_IMPORT_LEGACY_COLUMNS, "printing_details"]
 CSV_IMPORT_MAX_BYTES = 256 * 1024
 CSV_IMPORT_MAX_ROWS = 1000
 ALLOWED_CONDITIONS = {"Mint", "NM", "LP", "MP", "HP"}
-ALLOWED_VARIANTS = {"Normal", "Holo", "Reverse Holo", "First Edition"}
+ALLOWED_VARIANTS = set(CANONICAL_VARIANTS)
 ALLOWED_LANGS = set(SUPPORTED_TCGDEX_LANGUAGES)
 
 
 def _normalize_collection_variant(variant: Optional[str]) -> str:
     return normalize_collection_variant(variant)
+
+
+def _printing_detail_pairs_or_422(values) -> list[tuple[str, str]]:
+    try:
+        return normalize_printing_details(values)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+def _resolve_printing_detail_tags(db: Session, current_user: User, values) -> list[PrintingDetailTag]:
+    pairs = _printing_detail_pairs_or_422(values)
+    return get_or_create_printing_detail_tags(
+        db, current_user.id, [display_name for display_name, _normalized_name in pairs]
+    )
 
 _SET_CODE_API_CACHE: Optional[dict[str, dict[str, List[dict]]]] = None
 
@@ -281,6 +310,8 @@ def _upsert_collection_item(
     """Stage one collection add and return its action and database row."""
     item_lang = _collection_item_language(item.card_id, item.lang)
     item_variant = _normalize_collection_variant(item.variant)
+    requested_tags = _resolve_printing_detail_tags(db, current_user, item.printing_details)
+    requested_tag_keys = printing_detail_keys(requested_tags)
 
     if item.card_id.startswith("custom-"):
         effective_card_id = item.card_id
@@ -299,14 +330,24 @@ def _upsert_collection_item(
         elif db.query(Card.id).filter(Card.id == effective_card_id).first() is None:
             raise HTTPException(status_code=404, detail="Card is no longer available locally.")
 
-    existing = db.query(CollectionItem).filter(
+    candidates_query = db.query(CollectionItem).filter(
         CollectionItem.card_id == effective_card_id,
         CollectionItem.variant == item_variant,
         CollectionItem.lang == item_lang,
         CollectionItem.condition == item.condition,
         CollectionItem.purchase_price == item.purchase_price,
         CollectionItem.user_id == current_user.id,
-    ).first()
+    )
+    if requested_tag_keys:
+        candidates = candidates_query.all()
+        existing = next(
+            (candidate for candidate in candidates if printing_detail_keys(candidate.printing_detail_tags) == requested_tag_keys),
+            None,
+        )
+    else:
+        existing = candidates_query.filter(
+            ~CollectionItem.printing_detail_tags.any()
+        ).first()
 
     if existing:
         existing.quantity += item.quantity or 1
@@ -322,6 +363,7 @@ def _upsert_collection_item(
         user_id=current_user.id,
         added_at=datetime.datetime.utcnow(),
     )
+    created.printing_detail_tags = requested_tags
     db.add(created)
     return "added", created
 
@@ -480,6 +522,8 @@ def _parse_import_row(row: dict, row_number: int) -> CollectionItemCreate:
         if not is_valid_collection_purchase_price(purchase_price):
             raise ValueError("purchase_price must be a finite, non-negative number")
 
+    printing_details = parse_printing_details_csv(row.get("printing_details"))
+
     return CollectionItemCreate(
         card_id=f"{set_code} {number}",
         quantity=quantity,
@@ -487,6 +531,7 @@ def _parse_import_row(row: dict, row_number: int) -> CollectionItemCreate:
         variant=variant,
         purchase_price=purchase_price,
         lang=lang,
+        printing_details=printing_details,
     )
 
 
@@ -557,7 +602,7 @@ def add_to_collection(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Add a card to the collection. Cards with identical card_id+variant+lang+condition+purchase_price are grouped."""
+    """Add a card to the collection, grouping only identical physical-copy details."""
     _status, db_item = _upsert_collection_item(db, current_user, item)
     db.commit()
     db.refresh(db_item)
@@ -575,7 +620,7 @@ def bulk_add_to_collection(
     Each item is committed independently so one invalid card does not roll back
     the whole batch. Existing rows are matched by card, normalized variant,
     language, condition, purchase price, and current user, then quantity is
-    incremented.
+    incremented. Printing-detail tag sets are part of that exact identity.
     """
     added = 0
     updated = 0
@@ -584,49 +629,12 @@ def bulk_add_to_collection(
 
     for item in request.items:
         try:
-            item_lang = _collection_item_language(item.card_id, item.lang)
-            item_variant = _normalize_collection_variant(item.variant)
-
-            if item.card_id.startswith("custom-"):
-                effective_card_id = item.card_id
-                custom_card = db.query(Card).filter(Card.id == item.card_id).first()
-                if not custom_card or custom_card.custom_owner_id != current_user.id:
-                    if custom_card and custom_card.is_shared_template:
-                        raise HTTPException(status_code=409, detail="Copy this shared template before adding it.")
-                    raise HTTPException(status_code=404, detail="Custom card not found")
-                if custom_card and custom_card.lang:
-                    item_lang = custom_card.lang
-            else:
-                tcg_card_id, _ = pokemon_api.strip_lang_suffix(item.card_id)
-                effective_card_id = f"{tcg_card_id}_{item_lang}"
-                ensure_card_exists(db, effective_card_id, lang=item_lang)
-
-            existing = db.query(CollectionItem).filter(
-                CollectionItem.card_id == effective_card_id,
-                CollectionItem.variant == item_variant,
-                CollectionItem.lang == item_lang,
-                CollectionItem.condition == item.condition,
-                CollectionItem.purchase_price == item.purchase_price,
-                CollectionItem.user_id == current_user.id,
-            ).first()
-
-            if existing:
-                existing.quantity += item.quantity or 1
-                db.commit()
-                updated += 1
-            else:
-                db.add(CollectionItem(
-                    card_id=effective_card_id,
-                    quantity=item.quantity,
-                    condition=item.condition,
-                    variant=item_variant,
-                    purchase_price=item.purchase_price,
-                    lang=item_lang,
-                    user_id=current_user.id,
-                    added_at=datetime.datetime.utcnow(),
-                ))
-                db.commit()
+            status, _row = _upsert_collection_item(db, current_user, item)
+            db.commit()
+            if status == "added":
                 added += 1
+            else:
+                updated += 1
         except HTTPException as exc:
             db.rollback()
             failed += 1
@@ -647,8 +655,11 @@ async def import_collection_csv(
 ):
     """Import collection rows from a strict CSV format.
 
-    Required header, in this exact order:
-    set_code,number,quantity,condition,variant,lang,purchase_price
+    Preferred header, in this exact order:
+    set_code,number,quantity,condition,variant,lang,purchase_price,printing_details
+
+    The legacy seven-column header remains accepted; it imports with no
+    printing-detail tags.
     """
     if not file.filename or not file.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=422, detail="Please upload a .csv file")
@@ -663,7 +674,7 @@ async def import_collection_csv(
         raise HTTPException(status_code=422, detail="CSV file must be UTF-8 encoded") from exc
 
     reader = csv.DictReader(io.StringIO(text), delimiter=",")
-    if reader.fieldnames != CSV_IMPORT_COLUMNS:
+    if reader.fieldnames not in (CSV_IMPORT_LEGACY_COLUMNS, CSV_IMPORT_COLUMNS):
         raise HTTPException(
             status_code=422,
             detail=f"CSV header must exactly be: {','.join(CSV_IMPORT_COLUMNS)}",
@@ -698,6 +709,7 @@ async def import_collection_csv(
                 validated_item.lang,
                 validated_item.condition,
                 validated_item.purchase_price,
+                validated_item.printing_details,
             )
             merge_collection_import_item(validated_items, item_key, validated_item)
         except ValueError as exc:
@@ -739,6 +751,113 @@ async def import_collection_csv(
     db.commit()
     return BulkCollectionAddResponse(added=added, updated=updated, failed=failed, errors=errors)
 
+
+def _printing_detail_tag_response(tag: PrintingDetailTag, usage_count: int = 0) -> PrintingDetailTagResponse:
+    return PrintingDetailTagResponse(
+        id=tag.id,
+        name=tag.name,
+        usage_count=int(usage_count or 0),
+        created_at=tag.created_at,
+    )
+
+
+def _printing_detail_tag_usage_count(tag: PrintingDetailTag) -> int:
+    return sum(
+        len(records)
+        for records in (
+            tag.collection_items,
+            tag.product_cards,
+            tag.product_ledger_entries,
+            tag.trade_items,
+        )
+    )
+
+
+@router.get("/printing-detail-tags", response_model=List[PrintingDetailTagResponse])
+def get_printing_detail_tags(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    tags = db.query(PrintingDetailTag).filter(
+        PrintingDetailTag.user_id == current_user.id,
+    ).options(
+        selectinload(PrintingDetailTag.collection_items),
+        selectinload(PrintingDetailTag.product_cards),
+        selectinload(PrintingDetailTag.product_ledger_entries),
+        selectinload(PrintingDetailTag.trade_items),
+    ).order_by(func.lower(PrintingDetailTag.name), PrintingDetailTag.id).all()
+    return [_printing_detail_tag_response(tag, _printing_detail_tag_usage_count(tag)) for tag in tags]
+
+
+@router.post("/printing-detail-tags", response_model=PrintingDetailTagResponse)
+def create_printing_detail_tag(
+    payload: PrintingDetailTagCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    pairs = _printing_detail_pairs_or_422([payload.name])
+    display_name, _normalized_name = pairs[0]
+    tag = get_or_create_printing_detail_tags(db, current_user.id, [display_name])[0]
+    db.commit()
+    db.refresh(tag)
+    return _printing_detail_tag_response(tag, _printing_detail_tag_usage_count(tag))
+
+
+@router.put("/printing-detail-tags/{tag_id}", response_model=PrintingDetailTagResponse)
+def update_printing_detail_tag(
+    tag_id: int,
+    payload: PrintingDetailTagUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    db.query(User.id).filter(User.id == current_user.id).with_for_update().one()
+    tag = db.query(PrintingDetailTag).filter(
+        PrintingDetailTag.id == tag_id,
+        PrintingDetailTag.user_id == current_user.id,
+    ).first()
+    if not tag:
+        raise HTTPException(status_code=404, detail="Printing detail tag not found")
+    display_name, normalized_name = _printing_detail_pairs_or_422([payload.name])[0]
+    normalized_key = printing_detail_normalized_key(normalized_name)
+    collision = db.query(PrintingDetailTag.id).filter(
+        PrintingDetailTag.user_id == current_user.id,
+        PrintingDetailTag.normalized_key == normalized_key,
+        PrintingDetailTag.id != tag.id,
+    ).first()
+    if collision:
+        raise HTTPException(status_code=409, detail="A matching printing detail tag already exists")
+    tag.name = display_name
+    tag.normalized_name = normalized_name
+    tag.normalized_key = normalized_key
+    db.commit()
+    db.refresh(tag)
+    return _printing_detail_tag_response(tag, _printing_detail_tag_usage_count(tag))
+
+
+@router.delete("/printing-detail-tags/{tag_id}")
+def delete_printing_detail_tag(
+    tag_id: int,
+    confirm: bool = Query(default=False),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    db.query(User.id).filter(User.id == current_user.id).with_for_update().one()
+    tag = db.query(PrintingDetailTag).filter(
+        PrintingDetailTag.id == tag_id,
+        PrintingDetailTag.user_id == current_user.id,
+    ).first()
+    if not tag:
+        raise HTTPException(status_code=404, detail="Printing detail tag not found")
+    usage_count = _printing_detail_tag_usage_count(tag)
+    if usage_count and not confirm:
+        raise HTTPException(
+            status_code=409,
+            detail=f"This printing detail is used by {usage_count} record(s). Confirm deletion to remove it everywhere.",
+        )
+    db.delete(tag)
+    db.commit()
+    return {"message": "Printing detail tag deleted", "detached_from": usage_count}
+
 @router.put("/{item_id}", response_model=CollectionItemResponse)
 def update_collection_item(
     item_id: int,
@@ -755,10 +874,20 @@ def update_collection_item(
         raise HTTPException(status_code=404, detail="Collection item not found")
 
     # Use exclude_unset so only fields explicitly sent in the request are updated.
-    # Null/blank variants are normalized to Normal; purchase_price may still be cleared with null.
+    # Explicit null variants are rejected; purchase_price may still be cleared with null.
     update_data = update.model_dump(exclude_unset=True)
     if "variant" in update_data:
+        if update_data["variant"] is None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"variant must be one of: {', '.join(CANONICAL_VARIANTS)}",
+            )
         update_data["variant"] = _normalize_collection_variant(update_data.get("variant"))
+    printing_details_marker = object()
+    requested_printing_details = update_data.pop("printing_details", printing_details_marker)
+    requested_tag_pairs = None
+    if requested_printing_details is not printing_details_marker:
+        requested_tag_pairs = _printing_detail_pairs_or_422(requested_printing_details)
     initial_card_id = item.card_id
 
     # Cache a missing language variant before taking the final row lock because
@@ -804,10 +933,14 @@ def update_collection_item(
         for field in ("condition", "variant", "lang", "purchase_price")
         if field in update_data and update_data[field] != getattr(item, field)
     }
+    if requested_tag_pairs is not None:
+        requested_keys = frozenset(normalized for _name, normalized in requested_tag_pairs)
+        if requested_keys != printing_detail_keys(item.printing_detail_tags):
+            protected_changes["printing_details"] = requested_keys
     if active_linked_quantity > 0 and protected_changes:
         raise HTTPException(
             status_code=409,
-            detail="This exact collection row is linked to a product. Unlink or sell the product-linked copies before changing variant, condition, language, or purchase price.",
+            detail="This exact collection row is linked to a product. Unlink or sell the product-linked copies before changing variant, printing details, condition, language, or purchase price.",
         )
 
     old_card_id = item.card_id
@@ -832,6 +965,12 @@ def update_collection_item(
 
     for field, value in update_data.items():
         setattr(item, field, value)
+    if requested_tag_pairs is not None:
+        item.printing_detail_tags = get_or_create_printing_detail_tags(
+            db,
+            current_user.id,
+            [display_name for display_name, _normalized_name in requested_tag_pairs],
+        )
 
     if item.card_id != old_card_id:
         # A physical photo belongs to the old printing and must not silently

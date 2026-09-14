@@ -42,6 +42,7 @@ export function tradeToDraft(trade, exchangeRate) {
         id: item.original_collection_item_id,
         card: snapshotTradeCard(item),
         quantity: 999,
+        printing_details: item.printing_details || [],
         product_sources: item.product_card_id ? [{}] : [],
       },
       maxQuantity: 999,
@@ -50,6 +51,7 @@ export function tradeToDraft(trade, exchangeRate) {
       variant: item.variant || 'Normal',
       condition: item.condition || 'NM',
       lang: item.lang || item.card?.lang || 'en',
+      printing_details: item.printing_details || [],
       notes: item.notes || '',
     })),
     incoming: cardItems.filter(item => item.direction === 'incoming').map(item => ({
@@ -61,6 +63,7 @@ export function tradeToDraft(trade, exchangeRate) {
       variant: item.variant || 'Normal',
       condition: item.condition || 'NM',
       lang: item.lang || item.card?.lang || 'en',
+      printing_details: item.printing_details || [],
       notes: item.notes || '',
     })),
   }
@@ -96,6 +99,7 @@ export function buildTradeUpdatePayload({
       quantity: Number(item.quantity) || 1,
       condition: item.condition,
       variant: item.variant,
+      printing_details: item.printing_details || [],
       lang: item.lang || item.card.lang || 'en',
       notes: item.notes || null,
     })),

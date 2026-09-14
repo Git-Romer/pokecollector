@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ChevronLeft, ChevronRight, Minus, Plus, Trash2 } from 'lucide-react'
 import { CardDialog } from '../card-system'
 import { CollectionCardDisplay } from '../CollectionCardImage'
+import PrintingDetailBadges from '../PrintingDetailBadges'
 import { resolveCardImageUrl } from '../../utils/imageUrl'
 
 export default function DeckCardViewer({ entries, activeIndex, onClose, onPrevious, onNext, onQuantityChange, onRemove, pendingEntryIds, isRemoving, t, label, equivalentPrints = [], equivalentPrintsLoading = false, onSwitchPrint, isSwitchingPrint = false, isRealDeck = false }) {
@@ -78,6 +79,22 @@ export default function DeckCardViewer({ entries, activeIndex, onClose, onPrevio
               </div>
             ))}
           </div>
+          {isRealDeck && entry.allocated_prints?.length > 0 && (
+            <div className="rounded-xl border border-border bg-bg-card p-3">
+              <p className="mb-2 text-xs font-medium text-text-muted">{t('printingDetails.label')}</p>
+              <div className="space-y-2">
+                {entry.allocated_prints.map(print => (
+                  <div key={print.collection_item_id} className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
+                    <span className="font-semibold text-text-primary">{print.quantity}×</span>
+                    <span>{print.variant}</span>
+                    <span>{print.condition}</span>
+                    <span>{print.lang}</span>
+                    <PrintingDetailBadges details={print.printing_details} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {entry.shortage > 0 && <p className="rounded-xl border border-brand-red/25 bg-brand-red/10 px-3 py-2 text-sm font-medium text-brand-red">{label('decks.shortage', { count: entry.shortage })}</p>}
         </div>
       )}
