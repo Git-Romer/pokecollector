@@ -8,12 +8,23 @@ on:
       - VERSION
   workflow_dispatch:
 
-permissions:
-  contents: write
+concurrency:
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions: {}
 
 jobs:
-  release:
+  prepare:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      complete: ${{ steps.release_state.outputs.complete }}
+      release_exists: ${{ steps.release_state.outputs.release_exists }}
+      current: ${{ steps.current_version.outputs.current }}
     steps:
       - name: Checkout repository
         shell: bash
@@ -35,25 +46,307 @@ jobs:
         shell: bash
         run: |
           version="$(tr -d '[:space:]' < VERSION)"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
 
-      - name: Stop if tag already exists
-        id: existing_tag
+      - name: Check current repository version
+        id: current_version
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
-          if git rev-parse --verify --quiet "refs/tags/${{ steps.version.outputs.tag }}" >/dev/null; then
+          repository_version="$(
+            gh api "repos/${GITHUB_REPOSITORY}/contents/VERSION" --jq '.content' \
+              | tr -d '\n' \
+              | base64 --decode \
+              | tr -d '[:space:]'
+          )"
+
+          if [[ "${repository_version}" == "${RELEASE_VERSION}" ]]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "current=false" >> "$GITHUB_OUTPUT"
+            echo "Recovering ${RELEASE_VERSION}; the default branch is already at ${repository_version}. Mutable latest pointers will not be changed."
+          fi
+
+      - name: Inspect release state
+        id: release_state
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          release_exists=false
+          complete=false
+
+          if gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            release_exists=true
+            is_draft="$(gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --json isDraft --jq '.isDraft')"
+            is_immutable="$(gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --json isImmutable --jq '.isImmutable')"
+            assets_complete="$(gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --json assets --jq \
+              '[.assets[].name] | (index("docker-compose.yml") != null and index("pokecollector.env.example") != null)')"
+
+            if [[ "${is_draft}" == "false" && "${assets_complete}" == "true" ]]; then
+              complete=true
+            elif [[ "${is_draft}" == "false" && "${is_immutable}" == "true" ]]; then
+              echo >&2 "Published release ${RELEASE_TAG} is immutable but its deployment assets are incomplete. Repair the assets manually or create a replacement release."
+              exit 1
+            elif [[ "${is_draft}" == "true" ]]; then
+              target_commit="$(gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --json targetCommitish --jq '.targetCommitish')"
+              if [[ -n "${target_commit}" && "${target_commit}" != "${GITHUB_SHA}" ]]; then
+                echo >&2 "Draft ${RELEASE_TAG} targets ${target_commit}, not ${GITHUB_SHA}. Rerun the original workflow or resolve the draft manually."
+                exit 1
+              fi
+            fi
+          fi
+
+          if [[ "${complete}" != "true" ]] && git rev-parse --verify --quiet "refs/tags/${RELEASE_TAG}" >/dev/null; then
+            tag_commit="$(git rev-list -n 1 "refs/tags/${RELEASE_TAG}")"
+            if [[ "${tag_commit}" != "${GITHUB_SHA}" ]]; then
+              echo >&2 "Tag ${RELEASE_TAG} points to ${tag_commit}, not ${GITHUB_SHA}. Refusing to overwrite an immutable release."
+              exit 1
+            fi
+          fi
+
+          echo "release_exists=${release_exists}" >> "$GITHUB_OUTPUT"
+          echo "complete=${complete}" >> "$GITHUB_OUTPUT"
+
+  ensure-release:
+    needs: prepare
+    if: needs.prepare.outputs.complete != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create recoverable draft release
+        if: needs.prepare.outputs.release_exists != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ needs.prepare.outputs.tag }}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --draft \
+            --title "${{ needs.prepare.outputs.tag }}" \
+            --target "${{ github.sha }}" \
+            --generate-notes
+
+  publish-images:
+    needs:
+      - prepare
+      - ensure-release
+    if: needs.prepare.outputs.complete != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: backend
+            dockerfile: backend/Dockerfile
+            description: PokéCollector FastAPI backend
+          - image: frontend
+            dockerfile: frontend/Dockerfile
+            description: PokéCollector web frontend
+    steps:
+      - name: Checkout repository
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git init .
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          auth_header="$(printf 'x-access-token:%s' "${GH_TOKEN}" | base64 -w0)"
+          echo "::add-mask::${auth_header}"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: Basic ${auth_header}" fetch --force origin "${GITHUB_SHA}"
+          git checkout --detach FETCH_HEAD
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@594f3bf4285d9ea8dc53c9a0c9c4092420091003 # v4
+
+      - name: Inspect existing version image
+        id: existing_image
+        shell: bash
+        env:
+          IMAGE_REF: ghcr.io/git-romer/pokecollector-${{ matrix.image }}:${{ needs.prepare.outputs.version }}
+          EXPECTED_REVISION: ${{ github.sha }}
+        run: |
+          manifest="$(docker buildx imagetools inspect "${IMAGE_REF}" --format '{{json .Manifest}}' 2>/dev/null || true)"
+          image_repository="${IMAGE_REF%:*}"
+          reusable=true
+
+          for architecture in amd64 arm64; do
+            digest="$(jq -r --arg architecture "${architecture}" \
+              'first(.manifests[]? | select(.platform.os == "linux" and .platform.architecture == $architecture) | .digest) // empty' \
+              <<< "${manifest}")"
+
+            if [[ -z "${digest}" ]]; then
+              reusable=false
+              continue
+            fi
+
+            labels="$(docker buildx imagetools inspect "${image_repository}@${digest}" --format '{{json .Image.Config.Labels}}' 2>/dev/null || true)"
+            revision="$(jq -r '."org.opencontainers.image.revision" // empty' <<< "${labels:-null}")"
+            if [[ "${revision}" != "${EXPECTED_REVISION}" ]]; then
+              reusable=false
+            fi
+          done
+
+          if [[ "${reusable}" == "true" ]]; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Create GitHub release
-        if: steps.existing_tag.outputs.exists == 'false'
+      - name: Build and publish ${{ matrix.image }} image
+        if: steps.existing_image.outputs.exists != 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/git-romer/pokecollector-${{ matrix.image }}:${{ needs.prepare.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.description=${{ matrix.description }}
+            org.opencontainers.image.licenses=AGPL-3.0-only
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  verify-public-images:
+    needs:
+      - prepare
+      - publish-images
+    if: needs.prepare.outputs.complete != 'true'
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@594f3bf4285d9ea8dc53c9a0c9c4092420091003 # v4
+
+      - name: Verify anonymous multi-platform access
+        shell: bash
+        run: |
+          for image in backend frontend; do
+            image_ref="ghcr.io/git-romer/pokecollector-${image}:${{ needs.prepare.outputs.version }}"
+            if ! inspection="$(docker buildx imagetools inspect "${image_ref}" 2>/dev/null)"; then
+              echo >&2 "${image_ref} is not publicly readable. For the first release, change the GHCR package visibility to public and rerun this workflow."
+              exit 1
+            fi
+            grep -q 'linux/amd64' <<< "${inspection}"
+            grep -q 'linux/arm64' <<< "${inspection}"
+          done
+
+  promote-latest:
+    needs:
+      - prepare
+      - verify-public-images
+    if: needs.prepare.outputs.complete != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Log in to GitHub Container Registry
+        if: needs.prepare.outputs.current == 'true'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Set up Docker Buildx
+        if: needs.prepare.outputs.current == 'true'
+        uses: docker/setup-buildx-action@594f3bf4285d9ea8dc53c9a0c9c4092420091003 # v4
+
+      - name: Promote release images to latest
+        if: needs.prepare.outputs.current == 'true'
+        shell: bash
+        run: |
+          for image in backend frontend; do
+            docker buildx imagetools create \
+              --tag "ghcr.io/git-romer/pokecollector-${image}:latest" \
+              "ghcr.io/git-romer/pokecollector-${image}:${{ needs.prepare.outputs.version }}"
+          done
+
+  release:
+    needs:
+      - prepare
+      - ensure-release
+      - publish-images
+      - verify-public-images
+      - promote-latest
+    if: needs.prepare.outputs.complete != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ steps.version.outputs.tag }}" \
-            --title "${{ steps.version.outputs.tag }}" \
-            --target "${{ github.sha }}" \
-            --generate-notes
+          git init .
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          auth_header="$(printf 'x-access-token:%s' "${GH_TOKEN}" | base64 -w0)"
+          echo "::add-mask::${auth_header}"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: Basic ${auth_header}" fetch --force origin "${GITHUB_SHA}"
+          git checkout --detach FETCH_HEAD
+
+      - name: Prepare deployment assets
+        shell: bash
+        run: |
+          mkdir release-assets
+          cp docker-compose.yml release-assets/docker-compose.yml
+          cp .env.example release-assets/pokecollector.env.example
+
+      - name: Upload deployment assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ needs.prepare.outputs.tag }}" \
+            release-assets/docker-compose.yml \
+            release-assets/pokecollector.env.example \
+            --repo "${GITHUB_REPOSITORY}" \
+            --clobber
+
+      - name: Verify and publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          assets_complete="$(gh release view "${{ needs.prepare.outputs.tag }}" --repo "${GITHUB_REPOSITORY}" --json assets --jq \
+            '[.assets[].name] | (index("docker-compose.yml") != null and index("pokecollector.env.example") != null)')"
+          if [[ "${assets_complete}" != "true" ]]; then
+            echo >&2 "Release assets are incomplete; leaving the release recoverable for a rerun."
+            exit 1
+          fi
+
+          is_draft="$(gh release view "${{ needs.prepare.outputs.tag }}" --repo "${GITHUB_REPOSITORY}" --json isDraft --jq '.isDraft')"
+          release_flags=()
+          if [[ "${is_draft}" == "true" ]]; then
+            release_flags+=(--draft=false)
+          fi
+          if [[ "${{ needs.prepare.outputs.current }}" == "true" ]]; then
+            release_flags+=(--latest)
+          else
+            release_flags+=(--latest=false)
+          fi
+
+          gh release edit "${{ needs.prepare.outputs.tag }}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            "${release_flags[@]}"

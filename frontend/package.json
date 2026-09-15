@@ -1,14 +1,14 @@
 {
   "name": "pokemon-tcg-collection",
   "private": true,
-  "version": "1.48.0",
+  "version": "1.49.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "check:translations": "node scripts/check-translations.mjs",
     "preview": "vite preview",
-    "test": "npm run check:translations && vitest run src",
+    "test": "npm run check:translations && node --test scripts/configure-public-mode.test.mjs && vitest run src",
     "test:visual": "playwright test",
     "test:visual:webkit": "playwright test --config=playwright.webkit.config.js",
     "test:visual:update": "playwright test --update-snapshots",

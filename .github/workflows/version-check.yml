@@ -8,6 +8,7 @@ on:
       - frontend/package.json
       - frontend/package-lock.json
       - docker-compose.yml
+      - docker-compose.build.yml
       - scripts/check-version.mjs
       - scripts/check-compose-ports.mjs
       - scripts/check-compose-ports.test.mjs
@@ -22,6 +23,7 @@ on:
       - frontend/package.json
       - frontend/package-lock.json
       - docker-compose.yml
+      - docker-compose.build.yml
       - scripts/check-version.mjs
       - scripts/check-compose-ports.mjs
       - scripts/check-compose-ports.test.mjs
