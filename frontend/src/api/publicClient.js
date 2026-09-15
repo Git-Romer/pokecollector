@@ -16,3 +16,12 @@ export const getPublicProfiles = () =>
 
 export const getPublicBinder = (handle, binderId) =>
   publicApi.get(`/profiles/${encodeURIComponent(handle)}/binders/${binderId}`).then(r => r.data)
+
+export const getPublicWishlist = (handle, params = {}) =>
+  publicApi.get(`/profiles/${encodeURIComponent(handle)}/wishlist`, { params }).then(r => r.data)
+
+export const getPublicDeck = (handle, deckId) =>
+  publicApi.get(`/profiles/${encodeURIComponent(handle)}/decks/${deckId}`).then(r => r.data)
+
+export const getPublicDeckProbability = (handle, deckId, params = {}) =>
+  publicApi.get(`/profiles/${encodeURIComponent(handle)}/decks/${deckId}/probability`, { params }).then(r => r.data)

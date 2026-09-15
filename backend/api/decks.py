@@ -11,6 +11,7 @@ from schemas import (
     DeckCreate,
     DeckEntryCreate,
     DeckEntryUpdate,
+    DeckProbabilityResponse,
     DeckResponse,
     DeckUpdate,
 )
@@ -25,6 +26,8 @@ from services.deck_comparison import compare_decks
 from services.deck_display_variants import representative_display_variants
 from services.deck_probability import analyze_deck_probability
 from services.deck_validation import validate_deck
+from services.public_profile_feature import public_profiles_enabled
+from services.public_profile import deck_has_private_custom_cards, public_deck_accepts_card
 from services.standard_legality import is_standard_regulation_mark
 
 router = APIRouter()
@@ -191,6 +194,7 @@ def _deck_response(
         target_size=target_size,
         description=deck.description,
         format=deck.format or "Casual",
+        is_public=bool(deck.is_public),
         shared_conflict_count=sum(
             1 for entry in entries if allocation.get(entry.card_id, {}).get("conflict", 0)
         ),
@@ -443,7 +447,7 @@ def get_deck(deck_id: int, current_user: User = Depends(get_current_user), db: S
     )
 
 
-@router.get("/{deck_id}/probability")
+@router.get("/{deck_id}/probability", response_model=DeckProbabilityResponse)
 def get_deck_probability(
     deck_id: int,
     hand: int = Query(7, ge=0, le=250),
@@ -538,6 +542,15 @@ def update_deck(
         deck.description = payload.description
     if "format" in fields_set:
         deck.format = payload.format
+    if "is_public" in fields_set:
+        if payload.is_public is None:
+            raise HTTPException(status_code=422, detail="Public sharing must be true or false")
+        if payload.is_public and not public_profiles_enabled(db):
+            raise HTTPException(status_code=403, detail="Public profiles are disabled by the administrator")
+        if payload.is_public:
+            if deck_has_private_custom_cards(db, deck.id):
+                raise HTTPException(status_code=422, detail="Decks with private custom cards cannot be shared publicly")
+        deck.is_public = bool(payload.is_public)
     deck.updated_at = datetime.datetime.utcnow()
     db.commit()
     return get_deck(deck_id, current_user, db)
@@ -576,6 +589,8 @@ def add_deck_entry(
         card = db.query(Card).filter(Card.id == payload.card_id).first()
         if not card or (card.is_custom and card.custom_owner_id != current_user.id):
             raise HTTPException(status_code=404, detail="Card not found")
+        if not public_deck_accepts_card(deck, card):
+            raise HTTPException(status_code=422, detail="Private custom cards cannot be added to a public deck")
         entry = BinderCard(
             binder_id=deck.id,
             card_id=card.id,

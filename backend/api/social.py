@@ -468,14 +468,20 @@ def compare_users(
             visible_card_filter(db, current_user.id, "all"),
         ).all()
     }
-    user_b_wishlist = {
-        row.card_id
-        for row in db.query(WishlistItem.card_id).join(Card, Card.id == WishlistItem.card_id).filter(
-            WishlistItem.user_id == user_id,
-            Card.is_custom == False,
-            visible_card_filter(db, user_id, "all"),
-        ).all()
-    }
+    user_b_wishlist = set()
+    if (
+        public_profiles_enabled(db)
+        and other_user.is_profile_public
+        and (other_user.wishlist_visibility or "private") in {"trade_matches", "public"}
+    ):
+        user_b_wishlist = {
+            row.card_id
+            for row in db.query(WishlistItem.card_id).join(Card, Card.id == WishlistItem.card_id).filter(
+                WishlistItem.user_id == user_id,
+                Card.is_custom == False,
+                visible_card_filter(db, user_id, "all"),
+            ).all()
+        }
 
     overlap = len(set(user_a_cards) & set(user_b_cards))
     only_a = len(set(user_a_cards) - set(user_b_cards))

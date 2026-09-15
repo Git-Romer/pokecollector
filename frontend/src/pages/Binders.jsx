@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Trash2, Edit2, BookOpen, Star, Package, PackageCheck, Check, X, Library, Heart, Globe, Lock, Copy, Layers3 } from 'lucide-react'
-import { getBinders, createBinder, updateBinder, deleteBinder, getWishlist, getProfile } from '../api/client'
+import { getBinders, createBinder, updateBinder, updateDeck, deleteBinder, getWishlist, getProfile } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import { useConfirmDialog } from '../contexts/ConfirmDialogContext'
 import TabNav from '../components/TabNav'
@@ -241,7 +241,9 @@ export default function Binders() {
   })
 
   const publicToggleMutation = useMutation({
-    mutationFn: ({ id, is_public }) => updateBinder(id, { is_public }),
+    mutationFn: ({ id, is_public, isDeck }) => isDeck
+      ? updateDeck(id, { is_public })
+      : updateBinder(id, { is_public }),
     onSuccess: () => {
       toast.success(t('binders.publicUpdated'))
       queryClient.invalidateQueries({ queryKey: ['binders'] })
@@ -249,8 +251,8 @@ export default function Binders() {
     onError: (error) => toast.error(error.response?.data?.detail || t('binders.updateFailed')),
   })
 
-  const copyPublicBinderLink = async (binderId) => {
-    const url = `${window.location.origin}/u/${publicHandle}/binder/${binderId}`
+  const copyPublicBinderLink = async (binderId, isDeck = false) => {
+    const url = `${window.location.origin}/u/${publicHandle}/${isDeck ? 'deck' : 'binder'}/${binderId}`
     try {
       await navigator.clipboard.writeText(url)
       toast.success(t('settings.linkCopied'))
@@ -344,7 +346,7 @@ export default function Binders() {
                           {uniqueCount} {uniqueCount === 1 ? t('binders.uniqueCard') : t('binders.uniqueCards')}
                         </p>
                       )}
-                      {!isWishlist && !isDeck && publicProfilesEnabled && (
+                      {!isWishlist && publicProfilesEnabled && (
                         <div className="mt-2 pt-2 border-t border-border/50" onClick={(e) => e.stopPropagation()}>
                           {profileIsPublic ? (
                             <div className="flex items-center justify-between gap-2">
@@ -354,7 +356,7 @@ export default function Binders() {
                               </span>
                               <button
                                 type="button"
-                                onClick={() => publicToggleMutation.mutate({ id: binder.id, is_public: !binder.is_public })}
+                                onClick={() => publicToggleMutation.mutate({ id: binder.id, is_public: !binder.is_public, isDeck })}
                                 disabled={publicToggleMutation.isPending}
                                 aria-label={t('binders.sharePublicly')}
                                 aria-pressed={!!binder.is_public}
@@ -377,7 +379,7 @@ export default function Binders() {
                           {binder.is_public && profileIsPublic && publicHandle && (
                             <button
                               type="button"
-                              onClick={() => copyPublicBinderLink(binder.id)}
+                              onClick={() => copyPublicBinderLink(binder.id, isDeck)}
                               className="mt-1 flex items-center gap-1 text-[10px] text-text-muted hover:text-text-primary transition-colors"
                             >
                               <Copy size={10} /> {t('binders.copyPublicLink')}

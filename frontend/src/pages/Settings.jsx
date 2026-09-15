@@ -454,6 +454,7 @@ export default function Settings() {
   // Public profile
   const [profilePublic, setProfilePublic] = useState(false)
   const [publicShowValues, setPublicShowValues] = useState(false)
+  const [wishlistVisibility, setWishlistVisibility] = useState('private')
   const [profileDirty, setProfileDirty] = useState(false)
   const [publicFeatureSaving, setPublicFeatureSaving] = useState(false)
 
@@ -466,6 +467,7 @@ export default function Settings() {
     if (profileData && !profileDirty) {
       setProfilePublic(!!profileData.is_profile_public)
       setPublicShowValues(!!profileData.public_show_values)
+      setWishlistVisibility(profileData.wishlist_visibility || 'private')
     }
   }, [profileData, profileDirty])
 
@@ -570,6 +572,7 @@ export default function Settings() {
       queryClient.invalidateQueries({ queryKey: ['leaderboard'] })
       setProfilePublic(!!data.is_profile_public)
       setPublicShowValues(!!data.public_show_values)
+      setWishlistVisibility(data.wishlist_visibility || 'private')
       setProfileDirty(false)
       toast.success(t('settings.saved'))
     },
@@ -580,6 +583,7 @@ export default function Settings() {
     profileMutation.mutate({
       is_profile_public: profilePublic,
       public_show_values: publicShowValues,
+      wishlist_visibility: wishlistVisibility,
     })
   }
 
@@ -990,6 +994,17 @@ export default function Settings() {
                   value={profilePublic}
                   onChange={(val) => { setProfilePublic(val); setProfileDirty(true) }}
                   label={t('settings.publicProfileToggle')}
+                />
+              </SettingsRow>}
+              {publicProfilesEnabled && <SettingsRow label={t('settings.wishlistVisibility')} description={t('settings.wishlistVisibilityDesc')}>
+                <SelectControl
+                  value={wishlistVisibility}
+                  options={[
+                    { value: 'private', label: t('settings.wishlistVisibilityPrivate') },
+                    { value: 'trade_matches', label: t('settings.wishlistVisibilityMatches') },
+                    { value: 'public', label: t('settings.wishlistVisibilityPublic') },
+                  ]}
+                  onChange={(value) => { setWishlistVisibility(value); setProfileDirty(true) }}
                 />
               </SettingsRow>}
               {publicProfilesEnabled && <SettingsRow label={t('settings.publicShowValues')} description={t('settings.publicShowValuesDesc')} last={!(profilePublic && publicHandle)}>

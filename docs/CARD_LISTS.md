@@ -50,10 +50,25 @@ Binders support:
   a set; and
 - CSV import/export.
 
-A collection Binder may be shared publicly only when the administrator enables
-public profiles, its owner publishes a public profile, and that individual
-Binder has `is_public=true`. Planned lists and Decks are never anonymous public
-inventory views.
+A collection Binder or Deck may be shared publicly only when the administrator
+enables public profiles, its owner publishes a public profile, and that
+individual list has `is_public=true`. Existing Decks and every newly created
+list are private by default. A Deck containing a private custom card cannot be
+shared, and a private custom card cannot be added while the Deck is public.
+
+The global Wishlist has a separate profile-wide visibility setting:
+
+- **Private** (default) never shares Wishlist data.
+- **Trade matches** lets authenticated comparisons use only relevant matches;
+  it never returns the complete Wishlist.
+- **Public wishlist** exposes a paginated, searchable and filterable catalogue
+  projection at `/u/:handle/wishlist`.
+
+Public Wishlist responses contain card identity, artwork, set, number, rarity,
+language, requested quantity, and date added. Alert thresholds, notification
+history, internal row IDs, owner photos, and private custom cards are excluded.
+Market values and price sorting follow the profile's separate public-values
+preference.
 
 ## Deck workflows
 
@@ -84,6 +99,12 @@ all lists are managed. `/decks/:deckId` opens the Deck editor and
 `/decks/compare` opens comparison. The `/api/decks` compatibility API provides
 Deck-specific CRUD, conversion, validation, allocation, comparison, and
 probability responses.
+
+Shared Planned and Real Decks appear under `/u/:handle/decks`; their details are
+available at `/u/:handle/deck/:deckId`. The public projection reuses Deck
+composition, rules validation, analytics, and probability calculations, but
+omits collection ownership, shortages, exact allocations, conditions, purchase
+prices, and collection-row IDs.
 
 ## Printing identity and details
 

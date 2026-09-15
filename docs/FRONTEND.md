@@ -39,7 +39,10 @@ Routes are defined in `frontend/src/App.jsx`.
 | `/migration` | `pages/CardMigration.jsx` | Custom card migration queue |
 | `/u` | `pages/PublicDirectory.jsx` | Anonymous public trainer directory |
 | `/u/:handle` | `pages/PublicProfile.jsx` | Anonymous public trainer profile |
+| `/u/:handle/decks` | `pages/PublicProfile.jsx` | Anonymous shared Deck directory for one trainer |
 | `/u/:handle/binder/:binderId` | `pages/PublicBinderView.jsx` | Anonymous shared collection Binder |
+| `/u/:handle/wishlist` | `pages/PublicWishlistView.jsx` | Anonymous searchable, filterable public Wishlist |
+| `/u/:handle/deck/:deckId` | `pages/PublicDeckView.jsx` | Anonymous read-only Deck cards, validation, analytics, and probabilities |
 | `/__card-system` | `pages/CardSystemGallery.jsx` | Development-only shared component gallery |
 
 ## Auth Flow
@@ -230,10 +233,17 @@ incoming/outgoing card and cash changes while keeping the collection in sync.
 
 The `/u` route tree is intentionally outside `ProtectedRoutes`. It consumes
 only `/api/public/*` serializers, not authenticated collection responses. The
-admin master switch and trainer opt-in gate the public profile. Each shared
-Binder additionally requires its own opt-in, while the separate value-visibility
-preference controls only whether prices are returned. Reverse-proxy installations
-must also allow the narrow route set in
+admin master switch and trainer opt-in gate the public profile. Collection
+Binders and Decks require individual opt-ins, while the Wishlist uses a
+profile-wide Private, Trade matches, or Public choice. The separate
+value-visibility preference controls whether prices are returned.
+
+`PublicProfileShell` and `TabNav` provide one Binders/Wishlist/Decks profile
+layout. Public card grids use `CardListGallery` in catalogue-only public mode;
+public Decks reuse `DeckCompositionBar`, `DeckValidationPanel`, and
+`DeckAnalyticsPanel`. The public mode never invokes owner-photo or authenticated
+collection-card presentation, and Deck comparison is omitted because it depends
+on private user-owned lists. Reverse-proxy installations must also allow the narrow route set in
 [`REVERSE_PROXY_AUTH.md`](REVERSE_PROXY_AUTH.md).
 
 ## Card UI

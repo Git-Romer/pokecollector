@@ -126,7 +126,7 @@ responses.
 | POST | `/api/decks/{deck_id}/convert-to-planned` | Release allocations and retain the planned quantities |
 | GET | `/api/decks/{deck_id}` | Deck detail with validation, composition, shortages, and allocations |
 | GET | `/api/decks/{deck_id}/probability` | Opening hand/draw/prize probability analysis |
-| PATCH | `/api/decks/{deck_id}` | Update Deck metadata |
+| PATCH | `/api/decks/{deck_id}` | Update Deck metadata or its individual public-sharing opt-in |
 | DELETE | `/api/decks/{deck_id}` | Delete Deck and release allocations |
 | POST | `/api/decks/{deck_id}/entries` | Add/increment a planned card entry |
 | PATCH | `/api/decks/{deck_id}/entries/{entry_id}` | Update required quantity |
@@ -157,11 +157,14 @@ responses.
 | GET | `/api/pokedex` | Species completion overview with generation/status/search filters |
 | GET | `/api/pokedex/{dex_id}` | One species with ownership and printing summary |
 | GET | `/api/pokedex/images/{kind}/{dex_id}.png` | Cached `sprites` or `artwork` image |
-| GET | `/api/profile/` | Current user's public-profile preferences and handle |
-| PUT | `/api/profile/` | Publish/unpublish profile and optionally expose values |
+| GET | `/api/profile/` | Current user's public-profile, value, and Wishlist-visibility preferences and handle |
+| PUT | `/api/profile/` | Publish/unpublish profile, control values, and select Private, Trade matches, or Public Wishlist visibility |
 | GET | `/api/public/profiles` | Anonymous directory of published profiles |
 | GET | `/api/public/profiles/{handle}` | Anonymous published profile summary |
 | GET | `/api/public/profiles/{handle}/binders/{binder_id}` | Anonymous shared collection Binder |
+| GET | `/api/public/profiles/{handle}/wishlist` | Anonymous safe Wishlist projection with search, filters, sorting, and pagination |
+| GET | `/api/public/profiles/{handle}/decks/{deck_id}` | Anonymous safe Planned or Real Deck projection |
+| GET | `/api/public/profiles/{handle}/decks/{deck_id}/probability` | Anonymous probability analysis for a shared Deck |
 
 ### Products, Export, Backup, Sync, Settings
 
@@ -259,9 +262,21 @@ responses.
 - Planned rows store `card_id + required_quantity`; physical rows add an exact
   `collection_item_id`
 - `target_size`, when present, is 20, 40, or 60
-- `is_public` applies to collection Binders exposed through public profiles
+- `is_public` applies to collection Binders and Decks exposed through public profiles
 - Allocation services enforce one shared owned-copy capacity across physical
   Binders and Real Decks
+
+### Public sharing boundary
+
+- `User.wishlist_visibility` is constrained to `private`, `trade_matches`, or
+  `public`; migrations normalize every existing row to `private`
+- anonymous serializers query catalogue cards directly and exclude Wishlist
+  alert state, notification history, collection ownership, physical allocation,
+  purchase, condition, private-photo, and internal-row data
+- private custom cards are excluded from public Wishlists and block Deck sharing
+- every successful anonymous response requires the global feature, a live public
+  owner profile, and the relevant Wishlist or Card List opt-in; responses require
+  cache revalidation so revocation takes effect immediately
 
 ### Products and trades
 

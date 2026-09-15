@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { isPublicSharePath } from './publicRoutes'
 
 describe('isPublicSharePath', () => {
-  it('recognizes public profile and binder routes', () => {
+  it('recognizes public profile, binder, wishlist, and deck routes', () => {
     expect(isPublicSharePath('/u')).toBe(true)
     expect(isPublicSharePath('/u/ash')).toBe(true)
     expect(isPublicSharePath('/u/ash/binder/12')).toBe(true)
+    expect(isPublicSharePath('/u/ash/wishlist')).toBe(true)
+    expect(isPublicSharePath('/u/ash/decks')).toBe(true)
+    expect(isPublicSharePath('/u/ash/deck/12')).toBe(true)
   })
 
   it('does not classify protected or login routes as public', () => {

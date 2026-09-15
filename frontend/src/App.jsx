@@ -37,6 +37,8 @@ const Achievements = lazy(() => import('./pages/Achievements'))
 const UserCollection = lazy(() => import('./pages/UserCollection'))
 const PublicProfile = lazy(() => import('./pages/PublicProfile'))
 const PublicBinderView = lazy(() => import('./pages/PublicBinderView'))
+const PublicWishlistView = lazy(() => import('./pages/PublicWishlistView'))
+const PublicDeckView = lazy(() => import('./pages/PublicDeckView'))
 
 function LegacyDeckBuildRedirect() {
   const { deckId } = useParams()
@@ -206,7 +208,10 @@ export default function App() {
               <Route path="/u" element={<PublicRoutes />}>
                 <Route index element={lazyRoute(<PublicDirectory />)} />
                 <Route path=":handle" element={lazyRoute(<PublicProfile />)} />
+                <Route path=":handle/decks" element={lazyRoute(<PublicProfile />)} />
                 <Route path=":handle/binder/:binderId" element={lazyRoute(<PublicBinderView />)} />
+                <Route path=":handle/wishlist" element={lazyRoute(<PublicWishlistView />)} />
+                <Route path=":handle/deck/:deckId" element={lazyRoute(<PublicDeckView />)} />
               </Route>
               <Route path="/*" element={<ProtectedRoutes />} />
             </Routes>

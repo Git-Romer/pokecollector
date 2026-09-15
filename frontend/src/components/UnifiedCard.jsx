@@ -466,6 +466,7 @@ export function CardCaption({
   price,
   languageLabel,
   captionAccessory,
+  captionDetail,
   loading = false,
   className = '',
 }) {
@@ -489,6 +490,11 @@ export function CardCaption({
               {price && <span className="shrink-0 text-xs font-extrabold text-green">{price}</span>}
             </div>
           )}
+          {captionDetail && (
+            <div className="mt-1 truncate text-[10px] text-text-muted" title={captionDetail}>
+              {captionDetail}
+            </div>
+          )}
         </>
       )}
     </div>
@@ -501,6 +507,7 @@ export default function UnifiedCard({
   price,
   languageLabel,
   captionAccessory,
+  captionDetail,
   variantEffectSource = card,
   onClick,
   onSelect,
@@ -547,6 +554,7 @@ export default function UnifiedCard({
           price={price}
           languageLabel={languageLabel}
           captionAccessory={captionAccessory}
+          captionDetail={captionDetail}
           loading={artworkLoading}
         />
       )}
