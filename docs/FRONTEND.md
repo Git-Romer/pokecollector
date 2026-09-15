@@ -16,8 +16,8 @@ Routes are defined in `frontend/src/App.jsx`.
 | `/scans/:jobId` | `pages/ScanQueue.jsx` | Review one queued scan job |
 | `/collection` | `pages/Collection.jsx` | User collection |
 | `/collection/user/:userId` | `pages/UserCollection.jsx` | Read-only view of another user's collection |
-| `/pokedex` | `pages/Pokedex.jsx` | National Pokédex completion overview |
-| `/pokedex/:dexId` | `pages/PokedexSpecies.jsx` | Species detail and matching card printings |
+| `/pokedex` | `pages/Pokedex.jsx` | Grouped or exact-form National Pokédex completion overview |
+| `/pokedex/:dexId` | `pages/PokedexSpecies.jsx` | Species/form detail, related forms, and exact matching card printings |
 | `/sets` | `pages/Sets.jsx` | Set browser |
 | `/sets/:setId` | `pages/SetDetail.jsx` | Set checklist |
 | `/wishlist` | `pages/Wishlist.jsx` | Wishlist and alerts |
@@ -216,13 +216,14 @@ planned/real conversion tools. See [`CARD_LISTS.md`](CARD_LISTS.md).
 `pages/CardSearch.jsx` keeps free text and advanced filters in the URL. Filters
 cover number, set, category, type, subtype, rarity, HP range, artist, rule text,
 language, sort, and pagination. Text matching is accent-insensitive; card-code
-queries such as `PFL 001` use the same route. The Pokédex species screen applies
-the API's `dex_id` filter when it loads matching printings.
+queries such as `PFL 001` use the same route. The Pokédex detail screen applies
+the compatible `dex_id` filter in Grouped mode and `pokedex_entry_id` in
+Separate forms mode when it loads matching printings.
 
-`pages/Pokedex.jsx` derives owned/missing species from collection data and
+`pages/Pokedex.jsx` derives owned/missing species or form entries from collection data and
 supports search, generation/region, and status filters. It uses German species
 metadata when the app language is German and English metadata otherwise.
-`pages/PokedexSpecies.jsx` reuses the card grid for matching printings.
+`pages/PokedexSpecies.jsx` reuses the card grid for grouped or exact-form printings and related-form navigation.
 
 `pages/Products.jsx` covers sealed/opened product lifecycle, batch entry,
 images and Cardmarket links, linked pulls, sales/flat gains, and realized versus

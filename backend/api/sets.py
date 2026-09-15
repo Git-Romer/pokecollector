@@ -314,6 +314,7 @@ def get_set_checklist(
             "price_avg7_holo": card.price_avg7_holo,
             "price_avg30_holo": card.price_avg30_holo,
             "dex_ids": getattr(card, "dex_ids", None),
+            "pokedex_entry_ids": getattr(card, "pokedex_entry_ids", None),
             "cardmarket_products": getattr(card, "cardmarket_products", None),
             "variants_normal": card.variants_normal,
             "variants_reverse": card.variants_reverse,

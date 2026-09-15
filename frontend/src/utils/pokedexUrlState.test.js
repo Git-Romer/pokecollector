@@ -3,6 +3,10 @@ import {
   getPokedexGeneration,
   normalizePokedexSearchParams,
   setPokedexGeneration,
+  getPokedexMode,
+  getPokedexFormFamily,
+  setPokedexMode,
+  setPokedexFormFamily,
 } from './pokedexUrlState'
 
 describe('Pokédex URL state', () => {
@@ -41,5 +45,26 @@ describe('Pokédex URL state', () => {
     const national = setPokedexGeneration(johto, null)
     expect(national.toString()).toBe('status=owned&search=pika')
     expect(getPokedexGeneration(national)).toBeNull()
+  })
+})
+
+describe('Pokédex form URL state', () => {
+  it('defaults safely and removes a form filter in grouped mode', () => {
+    expect(getPokedexMode(new URLSearchParams())).toBe('grouped')
+    expect(getPokedexFormFamily(new URLSearchParams('form=mega'))).toBe('all')
+    expect(normalizePokedexSearchParams(new URLSearchParams('mode=bad&form=mega')).toString()).toBe('')
+  })
+
+  it('round-trips separate mode and a supported form family', () => {
+    const forms = setPokedexMode(new URLSearchParams('generation=1'), 'forms')
+    const mega = setPokedexFormFamily(forms, 'mega')
+    expect(getPokedexMode(mega)).toBe('forms')
+    expect(getPokedexFormFamily(mega)).toBe('mega')
+    expect(mega.toString()).toBe('generation=1&mode=forms&form=mega')
+  })
+
+  it('clears the form family when returning to grouped mode', () => {
+    const grouped = setPokedexMode(new URLSearchParams('mode=forms&form=hisui'), 'grouped')
+    expect(grouped.toString()).toBe('')
   })
 })

@@ -10,6 +10,7 @@ from pathlib import Path
 import httpx
 
 MAX_DEX_ID = 1025
+MAX_IMAGE_ID = 20000  # PokeAPI form IDs currently use the 10000 range.
 CACHE_ROOT = Path(os.environ.get("POKEDEX_IMAGE_CACHE_DIR", "/app/data/pokedex-images"))
 URLS = {
     "sprites": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{dex_id}.png",
@@ -26,8 +27,8 @@ def validate_kind(kind: str) -> str:
 
 def validate_dex_id(dex_id: int) -> int:
     dex_id = int(dex_id)
-    if not 1 <= dex_id <= MAX_DEX_ID:
-        raise ValueError(f"Pokédex number must be between 1 and {MAX_DEX_ID}")
+    if not 1 <= dex_id <= MAX_IMAGE_ID:
+        raise ValueError(f"PokéAPI image ID must be between 1 and {MAX_IMAGE_ID}")
     return dex_id
 
 

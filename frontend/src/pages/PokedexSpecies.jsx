@@ -62,11 +62,12 @@ function compareCardPrice(a, b, priceField, direction = 'asc') {
 
 export default function PokedexSpecies() {
   const { dexId } = useParams()
-  const dexNumber = Number(dexId)
+  const entryId = String(dexId || '')
   const location = useLocation()
   const goBack = useDetailBackNavigation('pokedex', '/pokedex')
   useScrollToTopOnPush()
   const [searchParams] = useSearchParams()
+  const isFormMode = searchParams.get('mode') === 'forms' || entryId.includes(':')
   const { t, settings, pricePrimary, pricePrimaryField } = useSettings()
   const language = settings.language === 'de' ? 'de' : 'en'
   const [cardLanguage, setCardLanguage] = useState('all')
@@ -84,15 +85,19 @@ export default function PokedexSpecies() {
   )], [visibleLanguages])
 
   const speciesQuery = useQuery({
-    queryKey: ['pokedex', 'species', dexNumber, language],
-    queryFn: () => getPokedexSpecies(dexNumber, { lang: language }),
-    enabled: Number.isInteger(dexNumber),
+    queryKey: ['pokedex', 'species', entryId, isFormMode, language],
+    queryFn: () => getPokedexSpecies(entryId, { lang: language, mode: isFormMode ? 'forms' : 'grouped' }),
+    enabled: Boolean(entryId),
   })
 
   const cardsQuery = useQuery({
-    queryKey: ['pokedex', 'cards', dexNumber, cardLanguage],
-    queryFn: () => searchCards({ dex_id: dexNumber, lang: cardLanguage, page_size: 2000 }).then(r => r.data),
-    enabled: Number.isInteger(dexNumber),
+    queryKey: ['pokedex', 'cards', entryId, isFormMode, cardLanguage],
+    queryFn: () => searchCards({
+      ...(isFormMode ? { pokedex_entry_id: entryId } : { dex_id: Number(entryId) }),
+      lang: cardLanguage,
+      page_size: 2000,
+    }).then(r => r.data),
+    enabled: Boolean(entryId),
     staleTime: 60_000,
   })
 
@@ -125,8 +130,8 @@ export default function PokedexSpecies() {
   const species = speciesQuery.data
   const name = language === 'de' ? species.name_de : species.name_en
   const secondaryName = language === 'de' ? species.name_en : species.name_de
-  const generationQuery = searchParams.get('generation')
-  const suffix = generationQuery ? `?generation=${generationQuery}` : ''
+  const queryString = searchParams.toString()
+  const suffix = queryString ? `?${queryString}` : ''
   const detailNavigationState = getNextDetailNavigationState(location.state, 'pokedex')
 
   return (
@@ -141,7 +146,7 @@ export default function PokedexSpecies() {
             <SpeciesArtwork species={species} name={name} />
           </div>
           <div>
-            <p className="text-sm font-black tracking-[0.2em] text-brand-red">#{String(species.dex_id).padStart(3, '0')}</p>
+            <p className="text-sm font-black tracking-[0.2em] text-brand-red">{species.display_number}</p>
             <h1 className="mt-1 text-4xl font-black text-text-primary">{name}</h1>
             {secondaryName && secondaryName !== name && <p className="text-lg text-text-secondary">{secondaryName}</p>}
             <p className="mt-2 text-sm text-text-muted">Gen {species.generation} · {species.region}</p>
@@ -156,15 +161,31 @@ export default function PokedexSpecies() {
                 {species.available_printings} {t('pokedex.printings')}
               </span>
             </div>
+            {isFormMode && (species.related_forms || []).length > 1 && (
+              <div className="mt-5">
+                <p className="mb-2 text-xs font-bold text-text-muted">{t('pokedex.relatedForms')}</p>
+                <div className="flex flex-wrap gap-2">
+                  {species.related_forms.map((related) => (
+                    <Link
+                      key={related.entry_id}
+                      to={`/pokedex/${encodeURIComponent(related.entry_id)}${suffix}`}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-bold ${related.entry_id === species.entry_id ? 'border-brand-red bg-brand-red/15 text-brand-red' : 'border-border text-text-secondary hover:border-text-muted'}`}
+                    >
+                      {language === 'de' ? related.name_de : related.name_en}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
         <div className="mt-6 grid grid-cols-2 gap-3 border-t border-border pt-5">
-          {species.previous_dex_id ? (
-            <Link to={`/pokedex/${species.previous_dex_id}${suffix}`} state={detailNavigationState} className="btn-ghost justify-start gap-2"><ChevronLeft size={17} /> {t('pokedex.previous')}</Link>
+          {species.previous_entry_id ? (
+            <Link to={`/pokedex/${species.previous_entry_id}${suffix}`} state={detailNavigationState} className="btn-ghost justify-start gap-2"><ChevronLeft size={17} /> {t('pokedex.previous')}</Link>
           ) : <span />}
-          {species.next_dex_id ? (
-            <Link to={`/pokedex/${species.next_dex_id}${suffix}`} state={detailNavigationState} className="btn-ghost justify-end gap-2">{t('pokedex.next')} <ChevronRight size={17} /></Link>
+          {species.next_entry_id ? (
+            <Link to={`/pokedex/${species.next_entry_id}${suffix}`} state={detailNavigationState} className="btn-ghost justify-end gap-2">{t('pokedex.next')} <ChevronRight size={17} /></Link>
           ) : <span />}
         </div>
       </section>

@@ -48,6 +48,7 @@ class CardBase(BaseModel):
     weaknesses: Optional[List[Any]] = None
     resistances: Optional[List[Any]] = None
     dex_ids: Optional[List[int]] = None
+    pokedex_entry_ids: Optional[List[str]] = None
     cardmarket_products: Optional[List[Any]] = None
     retreat: Optional[int] = None
     playable_fingerprint: Optional[str] = None

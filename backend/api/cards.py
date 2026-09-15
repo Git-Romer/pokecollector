@@ -86,6 +86,7 @@ def _card_to_dict(card: Card, current_user_id: int | None = None) -> dict:
         "weaknesses": getattr(card, "weaknesses", None),
         "resistances": getattr(card, "resistances", None),
         "dex_ids": getattr(card, "dex_ids", None),
+        "pokedex_entry_ids": getattr(card, "pokedex_entry_ids", None),
         "cardmarket_products": getattr(card, "cardmarket_products", None),
         "retreat": getattr(card, "retreat", None),
         "playable_fingerprint": getattr(card, "playable_fingerprint", None),
@@ -585,6 +586,7 @@ def search_cards(
     hp_min: Optional[int] = None,
     hp_max: Optional[int] = None,
     dex_id: Optional[int] = Query(None, ge=1, le=1025),
+    pokedex_entry_id: Optional[str] = Query(None, pattern=r"^[1-9]\d{0,3}(?::[a-z]+(?:-[xyz])?)?$"),
     sort_by: Optional[str] = None,
     sort_order: Optional[str] = "asc",
     page: int = 1,
@@ -685,6 +687,12 @@ def search_cards(
 
         if isinstance(dex_id, int):
             query = query.filter(Card.dex_ids.op("@>")(cast([dex_id], JSONB)))
+
+        if isinstance(pokedex_entry_id, str) and pokedex_entry_id:
+            if db.bind and db.bind.dialect.name == "postgresql":
+                query = query.filter(Card.pokedex_entry_ids.op("@>")(cast([pokedex_entry_id], JSONB)))
+            else:
+                query = query.filter(cast(Card.pokedex_entry_ids, String).like(f'%"{pokedex_entry_id}"%'))
 
         if sort_by == "name":
             col = Card.name

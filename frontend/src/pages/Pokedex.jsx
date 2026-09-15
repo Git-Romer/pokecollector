@@ -9,9 +9,14 @@ import PokeBallLoader from '../components/PokeBallLoader'
 import PokedexGenerationFilter, { POKEDEX_GENERATIONS } from '../components/PokedexGenerationFilter'
 import { getSavedListScrollPosition, isSavedPositionForLocation, useListScrollRestoration } from '../hooks/useListScrollRestoration'
 import {
+  POKEDEX_FORM_FAMILIES,
+  getPokedexFormFamily,
   getPokedexGeneration,
+  getPokedexMode,
   normalizePokedexSearchParams,
+  setPokedexFormFamily,
   setPokedexGeneration,
+  setPokedexMode,
 } from '../utils/pokedexUrlState'
 
 function SpeciesImage({ entry, name }) {
@@ -47,8 +52,8 @@ function PokemonTile({ entry, onClick, language, t }) {
   return (
     <button
       type="button"
-      id={`pokemon-${entry.dex_id}`}
-      data-scroll-anchor={`pokemon-${entry.dex_id}`}
+      id={`pokemon-${entry.entry_id}`}
+      data-scroll-anchor={`pokemon-${entry.entry_id}`}
       onClick={onClick}
       className={clsx(
         'group relative rounded-2xl border p-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-brand-red',
@@ -56,7 +61,7 @@ function PokemonTile({ entry, onClick, language, t }) {
           ? 'border-green/30 bg-gradient-to-b from-green/10 to-bg-card'
           : 'border-border bg-bg-card hover:border-text-muted'
       )}
-      aria-label={`#${String(entry.dex_id).padStart(3, '0')} ${name}, ${entry.owned ? t('pokedex.owned') : t('pokedex.missing')}`}
+      aria-label={`${entry.display_number} ${name}, ${entry.owned ? t('pokedex.owned') : t('pokedex.missing')}`}
     >
       {entry.owned && (
         <span className="absolute right-2 top-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-green text-black shadow">
@@ -67,7 +72,7 @@ function PokemonTile({ entry, onClick, language, t }) {
         <SpeciesImage entry={entry} name={name} />
       </div>
       <p className="text-[10px] font-black tracking-[0.15em] text-text-muted">
-        #{String(entry.dex_id).padStart(3, '0')}
+        {entry.display_number}
       </p>
       <h3 className="mt-0.5 truncate text-sm font-bold text-text-primary">{name}</h3>
       {secondaryName && secondaryName !== name && (
@@ -97,6 +102,8 @@ export default function Pokedex() {
   // Keep the URL as the source of truth so browser Back/Forward updates both
   // the active filter and the query without requiring the page to remount.
   const generation = getPokedexGeneration(searchParams)
+  const mode = getPokedexMode(searchParams)
+  const formFamily = getPokedexFormFamily(searchParams)
   const searchParamsKey = searchParams.toString()
   useEffect(() => {
     const normalized = normalizePokedexSearchParams(new URLSearchParams(searchParamsKey))
@@ -120,12 +127,14 @@ export default function Pokedex() {
   const language = settings.language === 'de' ? 'de' : 'en'
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['pokedex', generation, status, search, language],
+    queryKey: ['pokedex', generation, mode, formFamily, status, search, language],
     queryFn: () => getPokedex({
       generation: generation || undefined,
       status,
       search: search.trim() || undefined,
       lang: language,
+      mode,
+      form_family: formFamily,
     }),
     staleTime: 60_000,
   })
@@ -150,6 +159,8 @@ export default function Pokedex() {
   const selectGeneration = (value) => {
     setSearchParams(setPokedexGeneration(searchParams, value))
   }
+  const selectMode = (value) => setSearchParams(setPokedexMode(searchParams, value))
+  const selectFormFamily = (value) => setSearchParams(setPokedexFormFamily(searchParams, value))
 
   return (
     <div data-scroll-list="pokedex" className="mx-auto w-full max-w-7xl space-y-5 px-4 pb-28 pt-2 sm:px-6 lg:px-8">
@@ -192,6 +203,40 @@ export default function Pokedex() {
           t={t}
         />
 
+        <div className="space-y-2">
+          <p className="text-xs font-bold text-text-muted">{t('pokedex.completionMode')}</p>
+          <div className="flex flex-wrap gap-2" role="group" aria-label={t('pokedex.completionMode')}>
+            {['grouped', 'forms'].map((value) => (
+              <button
+                type="button"
+                key={value}
+                onClick={() => selectMode(value)}
+                className={clsx('rounded-xl border px-3 py-1.5 text-xs font-bold', mode === value ? 'border-brand-red/40 bg-brand-red/15 text-brand-red' : 'border-border text-text-secondary')}
+              >
+                {t(`pokedex.${value}`)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {mode === 'forms' && (
+          <div className="space-y-2">
+            <p className="text-xs font-bold text-text-muted">{t('pokedex.formFilter')}</p>
+            <div className="flex max-w-full gap-2 overflow-x-auto pb-1" role="group" aria-label={t('pokedex.formFilter')}>
+              {POKEDEX_FORM_FAMILIES.map((value) => (
+                <button
+                  type="button"
+                  key={value}
+                  onClick={() => selectFormFamily(value)}
+                  className={clsx('whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-bold', formFamily === value ? 'border-green/40 bg-green/15 text-green' : 'border-border text-text-secondary')}
+                >
+                  {t(`pokedex.form_${value}`)}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="flex gap-2" role="group" aria-label="Ownership filter">
           {['all', 'owned', 'missing'].map((value) => (
             <button
@@ -225,14 +270,19 @@ export default function Pokedex() {
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
               {group.entries.map((entry) => (
                 <PokemonTile
-                  key={entry.dex_id}
+                  key={entry.entry_id}
                   entry={entry}
                   language={language}
                   t={t}
                   onClick={() => {
-                    const anchorId = `pokemon-${entry.dex_id}`
+                    const anchorId = `pokemon-${entry.entry_id}`
                     saveScrollPosition(anchorId, listState)
-                    navigate(`/pokedex/${entry.dex_id}${generation ? `?generation=${generation}` : ''}`, {
+                    const detailParams = new URLSearchParams()
+                    if (generation) detailParams.set('generation', String(generation))
+                    if (mode === 'forms') detailParams.set('mode', 'forms')
+                    if (mode === 'forms' && formFamily !== 'all') detailParams.set('form', formFamily)
+                    const query = detailParams.toString()
+                    navigate(`/pokedex/${encodeURIComponent(entry.entry_id)}${query ? `?${query}` : ''}`, {
                       state: createDetailNavigationState(anchorId),
                     })
                   }}

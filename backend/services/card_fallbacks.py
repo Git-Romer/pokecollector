@@ -57,6 +57,7 @@ CARD_COPY_FIELDS = (
     "weaknesses",
     "resistances",
     "dex_ids",
+    "pokedex_entry_ids",
     "cardmarket_products",
     "retreat",
     "playable_fingerprint",

@@ -13,6 +13,12 @@ from models import Card, CollectionItem, Setting, User
 
 from services.pokemon_api import extract_cardmarket_products, extract_dex_ids, infer_dex_ids_from_name, parse_card_for_db
 from services.pokedex import aggregate_pokedex, load_pokedex, normalize_dex_ids
+from services.pokedex_forms import (
+    classify_pokedex_entries,
+    form_catalogue_by_key,
+    get_entry,
+    split_entry_key,
+)
 from services.pokedex_backfill import (
     COMPLETED_SETTING_KEY,
     CURRENT_BACKFILL_REVISION,
@@ -151,6 +157,42 @@ class PokedexMetadataTests(unittest.TestCase):
         self.assertIsNone(parsed["dex_ids"])
         self.assertIsNone(parsed["cardmarket_products"])
 
+    def test_form_catalogue_has_stable_keys_and_specific_artwork(self):
+        charizard_x = form_catalogue_by_key()["6:mega-x"]
+        self.assertEqual(charizard_x["display_number"], "#006-MX")
+        self.assertEqual(charizard_x["image_id"], 10034)
+        self.assertEqual(split_entry_key("6:mega-x"), (6, "mega-x"))
+        self.assertIsNone(get_entry("6:gigantamax"))
+
+    def test_classifier_separates_base_regional_and_mixed_cards(self):
+        self.assertEqual(classify_pokedex_entries("Charizard", [6]), ["6"])
+        self.assertEqual(classify_pokedex_entries("Alolan Raichu", [26]), ["26:alola"])
+        self.assertEqual(
+            classify_pokedex_entries("Raichu & Alolan Raichu GX", [26]),
+            ["26", "26:alola"],
+        )
+        self.assertEqual(
+            classify_pokedex_entries("Rowlet & Alolan Exeggutor GX", [722, 103]),
+            ["722", "103:alola"],
+        )
+
+    def test_classifier_uses_legacy_mega_artwork_overrides(self):
+        self.assertEqual(
+            classify_pokedex_entries("M Charizard EX", [6], tcg_card_id="xy2-69"),
+            ["6:mega-x"],
+        )
+        self.assertEqual(
+            classify_pokedex_entries("M Charizard EX", [6], tcg_card_id="xy2-13"),
+            ["6:mega-y"],
+        )
+
+    def test_parse_full_card_derives_form_entries(self):
+        parsed = parse_card_for_db({
+            "id": "me02.5-022", "name": "Mega Charizard Y ex",
+            "localId": "022", "category": "Pokemon", "dexId": [6],
+        }, lang="en")
+        self.assertEqual(parsed["pokedex_entry_ids"], ["6:mega-y"])
+
 
 class PokedexAggregationTests(unittest.TestCase):
     def setUp(self):
@@ -172,6 +214,9 @@ class PokedexAggregationTests(unittest.TestCase):
 
     def _entry(self, result, dex_id):
         return next(entry for entry in result["entries"] if entry["dex_id"] == dex_id)
+
+    def _entry_id(self, result, entry_id):
+        return next(entry for entry in result["entries"] if entry["entry_id"] == entry_id)
 
     def test_ownership_is_derived_from_collection_and_updates_after_removal(self):
         gengar = Card(
@@ -225,6 +270,38 @@ class PokedexAggregationTests(unittest.TestCase):
         unpadded = aggregate_pokedex(self.db, self.user.id, search="94")
         self.assertEqual([row["dex_id"] for row in padded["entries"]], [94])
         self.assertEqual([row["dex_id"] for row in unpadded["entries"]], [94])
+
+    def test_separate_forms_do_not_credit_the_base_species(self):
+        mega = Card(
+            id="mega-y_en", tcg_card_id="mega-y", name="Mega Charizard Y ex",
+            lang="en", is_custom=False, supertype="Pokemon", dex_ids=[6],
+            pokedex_entry_ids=["6:mega-y"],
+        )
+        self.db.add(mega)
+        self.db.commit()
+        self.db.add(CollectionItem(card_id=mega.id, user_id=self.user.id, quantity=1, lang="en"))
+        self.db.commit()
+
+        grouped = aggregate_pokedex(self.db, self.user.id, mode="grouped", generation=1)
+        separate = aggregate_pokedex(self.db, self.user.id, mode="forms", generation=1)
+        self.assertTrue(self._entry(grouped, 6)["owned"])
+        self.assertFalse(self._entry_id(separate, "6")["owned"])
+        self.assertTrue(self._entry_id(separate, "6:mega-y")["owned"])
+
+    def test_mixed_form_card_credits_each_exact_entry(self):
+        mixed = Card(
+            id="mixed_en", tcg_card_id="mixed", name="Raichu & Alolan Raichu GX",
+            lang="en", is_custom=False, supertype="Pokemon", dex_ids=[26],
+            pokedex_entry_ids=["26", "26:alola"],
+        )
+        self.db.add(mixed)
+        self.db.commit()
+        self.db.add(CollectionItem(card_id=mixed.id, user_id=self.user.id, quantity=2, lang="en"))
+        self.db.commit()
+
+        result = aggregate_pokedex(self.db, self.user.id, mode="forms", generation=1)
+        self.assertEqual(self._entry_id(result, "26")["owned_cards"], 2)
+        self.assertEqual(self._entry_id(result, "26:alola")["owned_cards"], 2)
 
 
 class PokedexBackfillTests(unittest.TestCase):
@@ -311,6 +388,28 @@ class PokedexBackfillTests(unittest.TestCase):
         revision = self.db.query(Setting).filter(Setting.key == REVISION_SETTING_KEY).one()
         self.assertEqual(revision.value, CURRENT_BACKFILL_REVISION)
 
+    def test_name_fallback_revision_upgrades_forms_without_refetching(self):
+        card = Card(
+            id="base-26_en", tcg_card_id="base-26", name="Alolan Raichu",
+            lang="en", is_custom=False, supertype="Pokemon", dex_ids=[26],
+            cardmarket_products=[], pokedex_entry_ids=None,
+        )
+        self.db.add_all([
+            Setting(key=COMPLETED_SETTING_KEY, value="true"),
+            Setting(key=REVISION_SETTING_KEY, value="name-fallback-v1"),
+            card,
+        ])
+        self.db.commit()
+
+        with patch("services.pokedex_backfill.enrich_cards_metadata") as enrich:
+            result = run_pokedex_metadata_backfill(self.db)
+
+        enrich.assert_not_called()
+        self.db.refresh(card)
+        self.assertTrue(result["forms_only_upgrade"])
+        self.assertEqual(card.pokedex_entry_ids, ["26:alola"])
+        self.assertTrue(pokedex_metadata_backfill_completed(self.db))
+
     def test_missing_rows_are_attempted_once_without_looping_forever(self):
         self.db.add(Card(
             id="missing-25_en",
@@ -353,6 +452,26 @@ class PokedexBackfillTests(unittest.TestCase):
         ))
         self.db.commit()
         self.assertEqual(missing_pokedex_metadata_count(self.db), 1)
+
+    def test_form_only_backfill_is_detected_and_does_not_call_tcgdex(self):
+        card = Card(
+            id="me02.5-022_en", tcg_card_id="me02.5-022",
+            name="Mega Charizard Y ex", lang="en", is_custom=False,
+            supertype="Pokemon", dex_ids=[6], cardmarket_products=[],
+            pokedex_entry_ids=None,
+        )
+        self.db.add(card)
+        self.db.commit()
+        self.assertEqual(missing_pokedex_metadata_count(self.db), 1)
+
+        with patch("services.pokedex_backfill.enrich_cards_metadata") as enrich:
+            result = run_pokedex_metadata_backfill(self.db)
+
+        enrich.assert_not_called()
+        self.db.refresh(card)
+        self.assertEqual(card.pokedex_entry_ids, ["6:mega-y"])
+        self.assertEqual(result["form_entries_updated"], 1)
+        self.assertEqual(missing_pokedex_metadata_count(self.db), 0)
 
     def test_real_backfill_refreshes_recent_attempt_and_marks_complete(self):
         card = Card(
