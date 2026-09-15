@@ -68,6 +68,7 @@ class Card(Base):
     weaknesses = Column(JSON)
     resistances = Column(JSON)
     dex_ids = Column(POKEDEX_JSON)
+    pokedex_entry_ids = Column(POKEDEX_JSON)
     cardmarket_products = Column(POKEDEX_JSON)
     retreat = Column(Integer)
     playable_fingerprint = Column(String)

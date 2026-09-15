@@ -1,6 +1,6 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func, cast, Integer, String, or_
+from sqlalchemy import and_, func, cast, Integer, String, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.dialects.postgresql import JSONB
 from typing import Optional, List
@@ -31,6 +31,8 @@ from services.card_visibility import (
 from services.digital_sets import digital_sets_enabled
 from services.display_language import get_tcgdex_display_language
 from services.image_url_security import validate_public_https_image_url
+from services.pokedex import card_pokedex_entry_ids
+from services.pokedex_forms import get_entry as get_pokedex_entry
 from services.card_numbers import card_number_filter
 from services.tcgdex_languages import english_fallback_languages, has_lang_suffix, is_supported_tcgdex_language, normalize_tcgdex_language
 from services.text_search import accent_insensitive_contains, json_array_text_matches, normalize_search_term
@@ -86,6 +88,7 @@ def _card_to_dict(card: Card, current_user_id: int | None = None) -> dict:
         "weaknesses": getattr(card, "weaknesses", None),
         "resistances": getattr(card, "resistances", None),
         "dex_ids": getattr(card, "dex_ids", None),
+        "pokedex_entry_ids": getattr(card, "pokedex_entry_ids", None),
         "cardmarket_products": getattr(card, "cardmarket_products", None),
         "retreat": getattr(card, "retreat", None),
         "playable_fingerprint": getattr(card, "playable_fingerprint", None),
@@ -585,6 +588,7 @@ def search_cards(
     hp_min: Optional[int] = None,
     hp_max: Optional[int] = None,
     dex_id: Optional[int] = Query(None, ge=1, le=1025),
+    pokedex_entry_id: Optional[str] = Query(None, pattern=r"^[1-9]\d{0,3}(?::[a-z]+(?:-[xyz])?)?$"),
     sort_by: Optional[str] = None,
     sort_order: Optional[str] = "asc",
     page: int = 1,
@@ -686,6 +690,25 @@ def search_cards(
         if isinstance(dex_id, int):
             query = query.filter(Card.dex_ids.op("@>")(cast([dex_id], JSONB)))
 
+        exact_pokedex_entry_id = None
+        if isinstance(pokedex_entry_id, str) and pokedex_entry_id:
+            pokedex_entry = get_pokedex_entry(pokedex_entry_id)
+            if not pokedex_entry:
+                query = query.filter(False)
+            else:
+                exact_pokedex_entry_id = pokedex_entry["entry_id"]
+                if db.bind and db.bind.dialect.name == "postgresql":
+                    stored_match = Card.pokedex_entry_ids.op("@>")(cast([exact_pokedex_entry_id], JSONB))
+                    fallback_match = and_(
+                        Card.pokedex_entry_ids.is_(None),
+                        Card.dex_ids.op("@>")(cast([int(pokedex_entry["dex_id"])], JSONB)),
+                    )
+                    query = query.filter(or_(stored_match, fallback_match))
+                # SQLite is used by tests and small local tools. Its JSON type
+                # can persist Python None as JSON ``null`` rather than SQL
+                # NULL, so let the shared classifier post-filter the visible
+                # rows instead of relying on dialect-specific JSON matching.
+
         if sort_by == "name":
             col = Card.name
         elif sort_by == "number":
@@ -704,8 +727,23 @@ def search_cards(
         else:
             query = query.order_by(col.asc())
 
-        total_count = query.count()
-        cards = query.offset((page - 1) * page_size).limit(page_size).all()
+        if exact_pokedex_entry_id:
+            matching_cards = [
+                card for card in query.all()
+                if exact_pokedex_entry_id in card_pokedex_entry_ids(
+                    name=card.name,
+                    dex_ids=card.dex_ids,
+                    stored_entry_ids=card.pokedex_entry_ids,
+                    supertype=card.supertype,
+                    tcg_card_id=card.tcg_card_id,
+                )
+            ]
+            total_count = len(matching_cards)
+            start = (page - 1) * page_size
+            cards = matching_cards[start:start + page_size]
+        else:
+            total_count = query.count()
+            cards = query.offset((page - 1) * page_size).limit(page_size).all()
         _schedule_search_page_metadata_enrichment(background_tasks, cards)
         card_dicts = _with_collection_summary(
             db,

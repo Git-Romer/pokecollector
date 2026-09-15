@@ -5,11 +5,13 @@ from __future__ import annotations
 import os
 import tempfile
 import time
+from collections.abc import Iterable
 from pathlib import Path
 
 import httpx
 
 MAX_DEX_ID = 1025
+MAX_IMAGE_ID = 20000  # PokeAPI form IDs currently use the 10000 range.
 CACHE_ROOT = Path(os.environ.get("POKEDEX_IMAGE_CACHE_DIR", "/app/data/pokedex-images"))
 URLS = {
     "sprites": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{dex_id}.png",
@@ -26,8 +28,8 @@ def validate_kind(kind: str) -> str:
 
 def validate_dex_id(dex_id: int) -> int:
     dex_id = int(dex_id)
-    if not 1 <= dex_id <= MAX_DEX_ID:
-        raise ValueError(f"Pokédex number must be between 1 and {MAX_DEX_ID}")
+    if not 1 <= dex_id <= MAX_IMAGE_ID:
+        raise ValueError(f"PokéAPI image ID must be between 1 and {MAX_IMAGE_ID}")
     return dex_id
 
 
@@ -78,9 +80,23 @@ def populate_cache(
     maximum = validate_dex_id(maximum)
     if minimum > maximum:
         raise ValueError("minimum cannot be greater than maximum")
+    return populate_image_ids(
+        range(minimum, maximum + 1),
+        refresh=refresh,
+        delay=delay,
+    )
+
+
+def populate_image_ids(
+    image_ids: Iterable[int],
+    *,
+    refresh: bool = False,
+    delay: float = 0.05,
+) -> dict:
+    image_ids = tuple(dict.fromkeys(validate_dex_id(value) for value in image_ids))
     result = {"cached": 0, "downloaded": 0, "missing": [], "failed": []}
     with httpx.Client(timeout=30.0, headers={"User-Agent": USER_AGENT}, follow_redirects=True) as client:
-        for dex_id in range(minimum, maximum + 1):
+        for dex_id in image_ids:
             for kind in ("sprites", "artwork"):
                 path = cache_path(kind, dex_id)
                 if path.is_file() and not refresh:

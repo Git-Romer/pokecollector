@@ -240,6 +240,11 @@ def _run_migrations(conn):
         "UPDATE cards SET dex_ids = NULL WHERE dex_ids = 'null'::jsonb",
         "UPDATE cards SET cardmarket_products = NULL WHERE cardmarket_products = 'null'::jsonb",
         "CREATE INDEX IF NOT EXISTS idx_cards_dex_ids ON cards USING GIN (dex_ids)",
+        # v59: Derived form-aware Pokédex entry mappings.
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS pokedex_entry_ids JSONB",
+        "ALTER TABLE cards ALTER COLUMN pokedex_entry_ids TYPE JSONB USING pokedex_entry_ids::jsonb",
+        "UPDATE cards SET pokedex_entry_ids = NULL WHERE pokedex_entry_ids = 'null'::jsonb",
+        "CREATE INDEX IF NOT EXISTS idx_cards_pokedex_entry_ids ON cards USING GIN (pokedex_entry_ids)",
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS retreat INTEGER",
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS playable_fingerprint VARCHAR",
         "CREATE INDEX IF NOT EXISTS idx_cards_playable_fingerprint ON cards(playable_fingerprint)",

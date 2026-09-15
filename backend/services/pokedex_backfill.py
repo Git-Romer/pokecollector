@@ -6,7 +6,7 @@ import logging
 import os
 import time
 
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from models import Card, Setting
@@ -15,13 +15,14 @@ from services.card_metadata import (
     _json_value_missing,
     enrich_cards_metadata,
 )
+from services.pokedex_forms import classify_pokedex_entries
 
 logger = logging.getLogger(__name__)
 
 COMPLETED_SETTING_KEY = "pokedex_metadata_backfill_completed"
 REVISION_SETTING_KEY = "pokedex_metadata_backfill_revision"
 STATUS_SETTING_KEY = "pokedex_metadata_backfill_status"
-CURRENT_BACKFILL_REVISION = "name-fallback-v1"
+CURRENT_BACKFILL_REVISION = "form-entries-v1"
 DEFAULT_BATCH_LIMIT = 5000
 DEFAULT_BATCH_DELAY_SECONDS = 0.5
 
@@ -66,7 +67,55 @@ def pokedex_metadata_backfill_completed(db: Session) -> bool:
 
 
 def missing_pokedex_metadata_count(db: Session) -> int:
-    return int(pokedex_backfill_query(db).count())
+    metadata_missing = or_(
+        _json_value_missing(Card.dex_ids),
+        _json_array_empty(Card.dex_ids),
+        _json_value_missing(Card.cardmarket_products),
+    )
+    form_mapping_missing = and_(
+        Card.dex_ids.isnot(None),
+        _json_value_missing(Card.pokedex_entry_ids),
+        func.lower(Card.supertype).in_(POKEMON_SUPERTYPE_VALUES),
+    )
+    return int(
+        db.query(Card)
+        .filter(Card.is_custom.is_(False), Card.tcg_card_id.isnot(None))
+        .filter(
+            or_(
+                and_(
+                    metadata_missing,
+                    or_(Card.supertype.is_(None), func.lower(Card.supertype).in_(POKEMON_SUPERTYPE_VALUES)),
+                ),
+                form_mapping_missing,
+            )
+        )
+        .count()
+    )
+
+
+def backfill_pokedex_entry_ids(db: Session, cards: list[Card] | None = None) -> int:
+    """Derive form entries locally; this never calls TCGdex or changes ownership."""
+    query = db.query(Card).filter(
+        Card.is_custom.is_(False),
+        Card.dex_ids.isnot(None),
+    )
+    rows = cards if cards is not None else query.all()
+    updated = 0
+    for card in rows:
+        category = str(card.supertype or "").strip().casefold()
+        value = classify_pokedex_entries(
+            card.name,
+            card.dex_ids,
+            tcg_card_id=card.tcg_card_id,
+            is_pokemon=category in POKEMON_SUPERTYPE_VALUES or not category,
+        )
+        if card.pokedex_entry_ids != value:
+            card.pokedex_entry_ids = value
+            db.add(card)
+            updated += 1
+    if updated:
+        db.commit()
+    return updated
 
 
 def mark_pokedex_metadata_backfill_incomplete(db: Session, *, reason: str) -> None:
@@ -106,9 +155,20 @@ def run_pokedex_metadata_backfill(
             "deferred": 0,
         }
 
+    completed_setting = _setting(db, COMPLETED_SETTING_KEY)
+    revision_setting = _setting(db, REVISION_SETTING_KEY)
+    forms_only_upgrade = bool(
+        completed_setting
+        and completed_setting.value == "true"
+        and revision_setting
+        and revision_setting.value == "name-fallback-v1"
+    )
+
     batch_limit = max(int(batch_limit or DEFAULT_BATCH_LIMIT), 1)
     batch_delay_seconds = max(float(batch_delay_seconds or 0), 0)
-    card_ids = [card_id for (card_id,) in pokedex_backfill_query(db).with_entities(Card.id).all()]
+    card_ids = [] if forms_only_upgrade else [
+        card_id for (card_id,) in pokedex_backfill_query(db).with_entities(Card.id).all()
+    ]
     result = {
         "skipped": False,
         "attempted": 0,
@@ -119,6 +179,8 @@ def run_pokedex_metadata_backfill(
         "batches": 0,
         "completed": False,
         "selected": len(card_ids),
+        "form_entries_updated": backfill_pokedex_entry_ids(db),
+        "forms_only_upgrade": forms_only_upgrade,
     }
     _set_setting(
         db,
@@ -144,6 +206,7 @@ def run_pokedex_metadata_backfill(
             force=True,
             ignore_cooldown=True,
         )
+        result["form_entries_updated"] += backfill_pokedex_entry_ids(db, cards)
         result["batches"] += 1
         result["attempted"] += batch["attempted"]
         result["updated"] += batch["updated"]

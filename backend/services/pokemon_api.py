@@ -5,6 +5,7 @@ from functools import lru_cache
 from typing import Optional, Dict, Any, List
 from services.card_gameplay import playable_fingerprint
 from services.pokedex import load_pokedex
+from services.pokedex_forms import classify_pokedex_entries
 from services.text_search import strip_diacritics
 from services.tcgdex_languages import (
     DEFAULT_TCGDEX_SYNC_LANGUAGES,
@@ -568,6 +569,15 @@ def parse_card_for_db(card_data: Dict, default_set_id: Optional[str] = None, lan
     # means a full TCGdex card response was checked and no mapping exists.
     if is_full_detail and dex_ids is None:
         dex_ids = []
+    pokedex_entry_ids = None
+    if is_full_detail:
+        category = str(card_data.get("category") or "").strip().casefold()
+        pokedex_entry_ids = classify_pokedex_entries(
+            card_data.get("name"),
+            dex_ids,
+            tcg_card_id=tcgdex_id,
+            is_pokemon=category in _POKEMON_CATEGORY_VALUES,
+        )
     if is_full_detail and cardmarket_products is None:
         cardmarket_products = []
     retreat_raw = card_data.get("retreat")
@@ -619,6 +629,7 @@ def parse_card_for_db(card_data: Dict, default_set_id: Optional[str] = None, lan
         "weaknesses": card_data.get("weaknesses"),
         "resistances": card_data.get("resistances"),
         "dex_ids": dex_ids,
+        "pokedex_entry_ids": pokedex_entry_ids,
         "cardmarket_products": cardmarket_products,
         "retreat": retreat,
         "playable_fingerprint": playable_fingerprint(card_data),

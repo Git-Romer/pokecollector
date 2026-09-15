@@ -154,9 +154,9 @@ responses.
 
 | Method | Path | Notes |
 |--------|------|-------|
-| GET | `/api/pokedex` | Species completion overview with generation/status/search filters |
-| GET | `/api/pokedex/{dex_id}` | One species with ownership and printing summary |
-| GET | `/api/pokedex/images/{kind}/{dex_id}.png` | Cached `sprites` or `artwork` image |
+| GET | `/api/pokedex` | Grouped or exact-form completion overview with generation/status/search/form filters |
+| GET | `/api/pokedex/{entry_id}` | One species/form with ownership, related forms, and printing summary |
+| GET | `/api/pokedex/images/{kind}/{entry_id}.png` | Cached `sprites` or `artwork` image, including form artwork |
 | GET | `/api/profile/` | Current user's public-profile, value, and Wishlist-visibility preferences and handle |
 | PUT | `/api/profile/` | Publish/unpublish profile, control values, and select Private, Trade matches, or Public Wishlist visibility |
 | GET | `/api/public/profiles` | Anonymous directory of published profiles |

@@ -17,7 +17,7 @@ Registry:
 Both images support `linux/amd64` and `linux/arm64`. PostgreSQL continues to use
 the official `postgres:18-alpine` image.
 
-Every application release has a stable version tag such as `1.50.0`. The
+Every application release has a stable version tag such as `1.51.0`. The
 Compose file downloaded from that release defaults both application services to
 that exact version. A `latest` alias is also published for discovery, but it is
 not the default: two separate repository tags cannot be promoted atomically, so
@@ -28,7 +28,7 @@ Set `POKECOLLECTOR_VERSION` in `.env` to pin or override both application
 images together:
 
 ```env
-POKECOLLECTOR_VERSION=1.50.0
+POKECOLLECTOR_VERSION=1.51.0
 ```
 
 ## Install without cloning the repository
