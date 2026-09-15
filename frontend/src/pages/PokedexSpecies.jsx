@@ -169,6 +169,7 @@ export default function PokedexSpecies() {
                     <Link
                       key={related.entry_id}
                       to={`/pokedex/${encodeURIComponent(related.entry_id)}${suffix}`}
+                      state={detailNavigationState}
                       className={`rounded-full border px-3 py-1.5 text-xs font-bold ${related.entry_id === species.entry_id ? 'border-brand-red bg-brand-red/15 text-brand-red' : 'border-border text-text-secondary hover:border-text-muted'}`}
                     >
                       {language === 'de' ? related.name_de : related.name_en}

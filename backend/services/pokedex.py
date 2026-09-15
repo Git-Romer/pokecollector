@@ -77,7 +77,7 @@ def _matches_search(entry: dict, search: str | None) -> bool:
     )
 
 
-def _card_entry_ids(
+def card_pokedex_entry_ids(
     *,
     name: str | None,
     dex_ids,
@@ -97,6 +97,41 @@ def _card_entry_ids(
         tcg_card_id=tcg_card_id,
         is_pokemon=category in {"pokemon", "pokémon"} or not category,
     )
+
+
+def available_pokedex_printings(
+    db: Session,
+    user_id: int,
+    *,
+    language: str = "en",
+    mode: str = "grouped",
+) -> dict[str, set[str]]:
+    """Return visible printing identities by grouped or exact Pokédex entry."""
+    mode = "forms" if mode == "forms" else "grouped"
+    rows = (
+        db.query(
+            Card.tcg_card_id, Card.id, Card.name, Card.dex_ids,
+            Card.pokedex_entry_ids, Card.supertype,
+        )
+        .filter(
+            Card.is_custom.is_(False),
+            Card.dex_ids.isnot(None),
+            visible_card_filter(db, user_id, language),
+        )
+        .yield_per(1000)
+    )
+    available: dict[str, set[str]] = {}
+    for tcg_card_id, card_id, name, dex_ids, stored_entry_ids, supertype in rows:
+        keys = [str(value) for value in normalize_dex_ids(dex_ids)] if mode == "grouped" else card_pokedex_entry_ids(
+            name=name,
+            dex_ids=dex_ids,
+            stored_entry_ids=stored_entry_ids,
+            supertype=supertype,
+            tcg_card_id=tcg_card_id,
+        )
+        for key in keys:
+            available.setdefault(key, set()).add(tcg_card_id or card_id)
+    return available
 
 
 def _catalogue_for_mode(mode: str, available: dict[str, set[str]]) -> list[dict]:
@@ -121,25 +156,16 @@ def aggregate_pokedex(
     search: str | None = None,
     mode: str = "grouped",
     form_family: str = "all",
+    _include_available_entry_ids: bool = False,
 ) -> dict:
     """Return grouped species or exact form entries with bulk ownership counts."""
     mode = "forms" if mode == "forms" else "grouped"
-    available_rows = (
-        db.query(
-            Card.tcg_card_id, Card.id, Card.name, Card.dex_ids,
-            Card.pokedex_entry_ids, Card.supertype,
-        )
-        .filter(Card.is_custom.is_(False), Card.dex_ids.isnot(None), visible_card_filter(db, user_id, language))
-        .yield_per(1000)
+    available = available_pokedex_printings(
+        db,
+        user_id,
+        language=language,
+        mode=mode,
     )
-    available: dict[str, set[str]] = {}
-    for tcg_card_id, card_id, name, dex_ids, stored_entry_ids, supertype in available_rows:
-        keys = [str(value) for value in normalize_dex_ids(dex_ids)] if mode == "grouped" else _card_entry_ids(
-            name=name, dex_ids=dex_ids, stored_entry_ids=stored_entry_ids,
-            supertype=supertype, tcg_card_id=tcg_card_id,
-        )
-        for key in keys:
-            available.setdefault(key, set()).add(tcg_card_id or card_id)
 
     owned_rows = (
         db.query(
@@ -156,7 +182,7 @@ def aggregate_pokedex(
     )
     owned: dict[str, int] = {}
     for quantity, name, dex_ids, stored_entry_ids, supertype, tcg_card_id in owned_rows:
-        keys = [str(value) for value in normalize_dex_ids(dex_ids)] if mode == "grouped" else _card_entry_ids(
+        keys = [str(value) for value in normalize_dex_ids(dex_ids)] if mode == "grouped" else card_pokedex_entry_ids(
             name=name, dex_ids=dex_ids, stored_entry_ids=stored_entry_ids,
             supertype=supertype, tcg_card_id=tcg_card_id,
         )
@@ -198,7 +224,7 @@ def aggregate_pokedex(
         )
         entries.append(row)
 
-    return {
+    result = {
         "summary": {
             "generation": generation, "region": region, "mode": mode,
             "form_family": form_family, "total": scope_total, "owned": scope_owned,
@@ -206,6 +232,9 @@ def aggregate_pokedex(
         },
         "entries": entries,
     }
+    if _include_available_entry_ids:
+        result["_available_entry_ids"] = set(available)
+    return result
 
 
 def species_detail(
@@ -225,7 +254,14 @@ def species_detail(
     mode = mode if mode in {"grouped", "forms"} else (
         "grouped" if entry["form"] == "base" and ":" not in str(entry_id) else "forms"
     )
-    aggregate = aggregate_pokedex(db, user_id, language=language, mode=mode, search=key)
+    aggregate = aggregate_pokedex(
+        db,
+        user_id,
+        language=language,
+        mode=mode,
+        search=key,
+        _include_available_entry_ids=True,
+    )
     current = next((row for row in aggregate["entries"] if row["entry_id"] == key), None)
     if not current:
         current = {
@@ -240,11 +276,7 @@ def species_detail(
     current["previous_dex_id"] = dex_id - 1 if dex_id > 1 else None
     current["next_dex_id"] = dex_id + 1 if dex_id < MAX_DEX_ID else None
     related = [base_entry(dex_id), *forms_by_dex_id().get(dex_id, ())]
-    available_keys = set()
-    for (stored_entry_ids,) in db.query(Card.pokedex_entry_ids).filter(
-        Card.is_custom.is_(False), Card.pokedex_entry_ids.isnot(None)
-    ).all():
-        available_keys.update(normalize_entry_ids(stored_entry_ids))
+    available_keys = aggregate["_available_entry_ids"]
     current["related_forms"] = [
         {
             "entry_id": row["entry_id"], "form": row["form"],

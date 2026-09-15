@@ -7,7 +7,7 @@ from database import get_db
 from models import User
 from services.display_language import get_tcgdex_display_language
 from services.pokedex import aggregate_pokedex, species_detail
-from services.pokedex_forms import get_entry
+from services.pokedex_forms import FORM_FAMILY_PATTERN, get_entry
 from services.pokedex_images import cache_path, fetch_image
 from services.tcgdex_languages import is_supported_tcgdex_language, normalize_tcgdex_language
 
@@ -26,7 +26,7 @@ def get_pokedex(
     status: str = Query("all", pattern="^(all|owned|missing)$"),
     search: str | None = None,
     mode: str = Query("grouped", pattern="^(grouped|forms)$"),
-    form_family: str = Query("all", pattern="^(all|base|mega|alola|galar|hisui|paldea)$"),
+    form_family: str = Query("all", pattern=FORM_FAMILY_PATTERN),
     lang: str | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),

@@ -73,7 +73,8 @@ The Compose bind mount is:
 - ./data/pokedex-images:/app/data/pokedex-images
 ```
 
-Images are cached lazily on first request. To populate the complete cache ahead of time:
+Images are cached lazily on first request. To populate the complete species and
+supported form cache ahead of time:
 
 ```bash
 docker compose exec backend \
@@ -87,6 +88,9 @@ python -m scripts.cache_pokedex_images --min 152 --max 386
 python -m scripts.cache_pokedex_images --refresh
 python -m scripts.cache_pokedex_images --delay 0.1
 ```
+
+The default command includes all curated form artwork IDs. Supplying `--min`
+or `--max` limits the command to that National Pokédex species range.
 
 The fetcher writes temporary files and atomically renames them, continues after individual failures, and reports missing/failed entries at the end.
 

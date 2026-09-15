@@ -211,6 +211,7 @@ export default function Pokedex() {
                 type="button"
                 key={value}
                 onClick={() => selectMode(value)}
+                aria-pressed={mode === value}
                 className={clsx('rounded-xl border px-3 py-1.5 text-xs font-bold', mode === value ? 'border-brand-red/40 bg-brand-red/15 text-brand-red' : 'border-border text-text-secondary')}
               >
                 {t(`pokedex.${value}`)}
@@ -228,6 +229,7 @@ export default function Pokedex() {
                   type="button"
                   key={value}
                   onClick={() => selectFormFamily(value)}
+                  aria-pressed={formFamily === value}
                   className={clsx('whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-bold', formFamily === value ? 'border-green/40 bg-green/15 text-green' : 'border-border text-text-secondary')}
                 >
                   {t(`pokedex.form_${value}`)}

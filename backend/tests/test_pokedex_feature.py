@@ -11,8 +11,9 @@ from sqlalchemy.orm import sessionmaker
 from database import Base
 from models import Card, CollectionItem, Setting, User
 
+from api.cards import search_cards
 from services.pokemon_api import extract_cardmarket_products, extract_dex_ids, infer_dex_ids_from_name, parse_card_for_db
-from services.pokedex import aggregate_pokedex, load_pokedex, normalize_dex_ids
+from services.pokedex import aggregate_pokedex, load_pokedex, normalize_dex_ids, species_detail
 from services.pokedex_forms import (
     classify_pokedex_entries,
     form_catalogue_by_key,
@@ -29,6 +30,7 @@ from services.pokedex_backfill import (
     run_pokedex_metadata_backfill,
 )
 from services import pokedex_images
+from scripts import cache_pokedex_images
 
 
 class PokedexMetadataTests(unittest.TestCase):
@@ -176,6 +178,33 @@ class PokedexMetadataTests(unittest.TestCase):
             ["722", "103:alola"],
         )
 
+    def test_classifier_splits_localized_mixed_card_conjunctions(self):
+        names = (
+            "Raichu y Raichu de Alola GX",
+            "Raichu e Raichu di Alola GX",
+            "Raichu e Raichu de Alola GX",
+            "Raichu en Alola Raichu GX",
+        )
+        for name in names:
+            with self.subTest(name=name):
+                self.assertEqual(
+                    classify_pokedex_entries(name, [26]),
+                    ["26", "26:alola"],
+                )
+
+    def test_classifier_preserves_non_latin_form_markers_and_mixed_order(self):
+        self.assertEqual(classify_pokedex_entries("アローラサンド", [27]), ["27:alola"])
+        self.assertEqual(classify_pokedex_entries("阿羅拉 六尾V", [37]), ["37:alola"])
+        self.assertEqual(
+            classify_pokedex_entries("モクロー&アローラナッシーGX", [722, 103]),
+            ["722", "103:alola"],
+        )
+        self.assertEqual(
+            classify_pokedex_entries("ライチュウ&アローラライチュウGX", [26]),
+            ["26", "26:alola"],
+        )
+        self.assertEqual(classify_pokedex_entries("超級噴火龍Y ex", [6]), ["6:mega-y"])
+
     def test_classifier_uses_legacy_mega_artwork_overrides(self):
         self.assertEqual(
             classify_pokedex_entries("M Charizard EX", [6], tcg_card_id="xy2-69"),
@@ -302,6 +331,42 @@ class PokedexAggregationTests(unittest.TestCase):
         result = aggregate_pokedex(self.db, self.user.id, mode="forms", generation=1)
         self.assertEqual(self._entry_id(result, "26")["owned_cards"], 2)
         self.assertEqual(self._entry_id(result, "26:alola")["owned_cards"], 2)
+
+    def test_null_mapping_fallback_is_shared_by_overview_detail_and_search(self):
+        card = Card(
+            id="mega-y-pending_en", tcg_card_id="mega-y-pending",
+            name="Mega Charizard Y ex", lang="en", is_custom=False,
+            supertype="Pokemon", dex_ids=[6], pokedex_entry_ids=None,
+        )
+        self.db.add(card)
+        self.db.commit()
+
+        overview = aggregate_pokedex(self.db, self.user.id, language="en", mode="forms")
+        self.assertEqual(self._entry_id(overview, "6:mega-y")["available_printings"], 1)
+
+        detail = species_detail(self.db, self.user.id, "6:mega-y", language="en", mode="forms")
+        self.assertIn("6:mega-y", {row["entry_id"] for row in detail["related_forms"]})
+
+        result = search_cards(
+            pokedex_entry_id="6:mega-y", type_filter=None,
+            lang="en", page=1, page_size=20,
+            db=self.db, current_user=self.user, background_tasks=None,
+        )
+        self.assertEqual(result["total_count"], 1)
+        self.assertEqual(result["data"][0]["id"], card.id)
+
+    def test_related_forms_use_the_same_language_visibility_as_overview(self):
+        self.db.add(Card(
+            id="mega-x-fr", tcg_card_id="mega-x-fr", name="Méga-Dracaufeu X-ex",
+            lang="fr", is_custom=False, supertype="Pokémon", dex_ids=[6],
+            pokedex_entry_ids=["6:mega-x"],
+        ))
+        self.db.commit()
+
+        overview = aggregate_pokedex(self.db, self.user.id, language="en", mode="forms")
+        self.assertNotIn("6:mega-x", {row["entry_id"] for row in overview["entries"]})
+        detail = species_detail(self.db, self.user.id, "6", language="en", mode="forms")
+        self.assertNotIn("6:mega-x", {row["entry_id"] for row in detail["related_forms"]})
 
 
 class PokedexBackfillTests(unittest.TestCase):
@@ -630,6 +695,17 @@ class PokedexImageCacheTests(unittest.TestCase):
         path = pokedex_images.fetch_image("artwork", 94, client=client)
         self.assertEqual(path.read_bytes(), b"image-data")
         self.assertFalse(any(path.parent.glob("*.tmp")))
+
+    def test_default_prewarm_includes_species_and_curated_form_images(self):
+        completed = {"cached": 0, "downloaded": 0, "missing": [], "failed": []}
+        with patch.object(sys, "argv", ["cache_pokedex_images.py"]), \
+             patch.object(cache_pokedex_images, "populate_image_ids", return_value=completed) as populate:
+            self.assertEqual(cache_pokedex_images.main(), 0)
+
+        image_ids = list(populate.call_args.args[0])
+        self.assertIn(1, image_ids)
+        self.assertIn(1025, image_ids)
+        self.assertIn(10034, image_ids)
 
 
 if __name__ == "__main__":

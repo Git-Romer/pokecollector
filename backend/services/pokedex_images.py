@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import tempfile
 import time
+from collections.abc import Iterable
 from pathlib import Path
 
 import httpx
@@ -79,9 +80,23 @@ def populate_cache(
     maximum = validate_dex_id(maximum)
     if minimum > maximum:
         raise ValueError("minimum cannot be greater than maximum")
+    return populate_image_ids(
+        range(minimum, maximum + 1),
+        refresh=refresh,
+        delay=delay,
+    )
+
+
+def populate_image_ids(
+    image_ids: Iterable[int],
+    *,
+    refresh: bool = False,
+    delay: float = 0.05,
+) -> dict:
+    image_ids = tuple(dict.fromkeys(validate_dex_id(value) for value in image_ids))
     result = {"cached": 0, "downloaded": 0, "missing": [], "failed": []}
     with httpx.Client(timeout=30.0, headers={"User-Agent": USER_AGENT}, follow_redirects=True) as client:
-        for dex_id in range(minimum, maximum + 1):
+        for dex_id in image_ids:
             for kind in ("sprites", "artwork"):
                 path = cache_path(kind, dex_id)
                 if path.is_file() and not refresh:

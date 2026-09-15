@@ -24,7 +24,7 @@ const en = {
 
   pokedex: {
     title: 'National Pokédex',
-    subtitle: 'Own any matching card to complete a species.',
+    subtitle: 'Track species together or supported forms separately.',
     searchPlaceholder: 'Name or Pokédex number',
     national: 'National',
     generationFilter: 'Pokédex region',
@@ -47,7 +47,7 @@ const en = {
     collected: 'collected',
     cardsOwned: 'owned cards',
     printings: 'printings',
-    noPrintings: 'No card printings cached yet',
+    noPrintings: 'No synchronized card printings yet',
     availableCards: 'Available card printings',
     previous: 'Previous Pokémon',
     next: 'Next Pokémon',

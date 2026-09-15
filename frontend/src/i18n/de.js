@@ -23,7 +23,7 @@ const de = {
 
   pokedex: {
     title: 'Nationaler Pokédex',
-    subtitle: 'Eine beliebige passende Karte vervollständigt das Pokémon.',
+    subtitle: 'Pokémon-Arten gemeinsam oder unterstützte Formen getrennt sammeln.',
     searchPlaceholder: 'Name oder Pokédex-Nummer',
     national: 'National',
     generationFilter: 'Pokédex-Region',

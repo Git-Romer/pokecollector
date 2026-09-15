@@ -15,6 +15,7 @@ from services.pokedex import load_pokedex, pokedex_by_id
 from services.text_search import strip_diacritics
 
 FORM_FAMILIES = ("base", "mega", "alola", "galar", "hisui", "paldea")
+FORM_FAMILY_PATTERN = "^(all|" + "|".join(FORM_FAMILIES) + ")$"
 
 # (National Dex number, form slug, PokéAPI image id).  A form is only exposed
 # by the overview after at least one locally synced printing maps to it.
@@ -93,11 +94,12 @@ _ENTRY_SUFFIX = {
     "alola": "A", "galar": "G", "hisui": "H", "paldea": "P",
 }
 _REGION_MARKERS = {
-    "alola": ("alola", "alolan"),
-    "galar": ("galar", "galarian"),
-    "hisui": ("hisui", "hisuian"),
-    "paldea": ("paldea", "paldean"),
+    "alola": ("alola", "alolan", "アローラ", "阿羅拉", "阿罗拉", "알로라", "อโลลา", "алола", "алоль"),
+    "galar": ("galar", "galarian", "ガラル", "伽勒爾", "伽勒尔", "가라르", "กาลาร์", "галар"),
+    "hisui": ("hisui", "hisuian", "ヒスイ", "洗翠", "히스이", "ฮิซุย", "хису"),
+    "paldea": ("paldea", "paldean", "パルデア", "帕底亞", "帕底亚", "팔데아", "พัลเดีย", "палде"),
 }
+_MEGA_MARKERS = ("mega", "メガ", "超級", "超级", "메가", "เมก้า", "мега")
 
 # Legacy M-Pokémon names do not say which Charizard/Mewtwo form the artwork
 # depicts. These stable TCGdex IDs are language independent.
@@ -197,7 +199,7 @@ def get_entry(value: str | int) -> dict | None:
 
 def _normalize(value: str | None) -> str:
     value = strip_diacritics(value).replace("♀", " f ").replace("♂", " m ")
-    return " ".join(re.sub(r"[^a-z0-9]+", " ", value).split())
+    return " ".join(re.sub(r"[\W_]+", " ", value, flags=re.UNICODE).split())
 
 
 @lru_cache(maxsize=1)
@@ -209,15 +211,49 @@ def _aliases_by_dex() -> dict[int, tuple[str, ...]]:
     return aliases
 
 
-def _segments_for_dex(name: str, dex_id: int, *, allow_unmatched: bool = False) -> list[str]:
+def _segments_for_dex(
+    name: str,
+    dex_id: int,
+    *,
+    allow_unmatched: bool = False,
+    fallback_index: int | None = None,
+    fallback_count: int | None = None,
+) -> list[str]:
     # Split before punctuation normalization. Do not treat the standalone X/Y/Z
     # tokens as conjunctions because they identify specific Mega forms.
-    segments = [
-        _normalize(segment)
-        for segment in re.split(r"\s+(?:and|und|et)\s+|\s*&\s*|\s*\+\s*|\s*/\s*", str(name or ""), flags=re.IGNORECASE)
-    ]
-    matched = [segment for segment in segments if any(alias in segment for alias in _aliases_by_dex()[dex_id])]
-    return matched or (segments if allow_unmatched else ([segments[0]] if len(segments) == 1 else []))
+    # TCGdex returns localized card names, so include the conjunctions used by
+    # supported catalogue languages that can name a mixed card. Short words
+    # such as Spanish ``y`` are only separators when the same species name is
+    # present on both sides; this preserves the Y in ``Mega Charizard Y ex``.
+    aliases = _aliases_by_dex()[dex_id]
+    segments: list[str] = []
+    for segment in re.split(
+        r"\s+(?:and|und|et|och|dan)\s+|\s*&\s*|\s*\+\s*|\s*/\s*",
+        str(name or ""),
+        flags=re.IGNORECASE,
+    ):
+        localized_parts = re.split(r"\s+(?:y|e|en|i)\s+", segment, flags=re.IGNORECASE)
+        matching_parts = [
+            part for part in localized_parts
+            if any(alias in _normalize(part) for alias in aliases)
+        ]
+        segments.extend(localized_parts if len(matching_parts) >= 2 else [segment])
+    segments = [_normalize(segment) for segment in segments]
+    matched = [segment for segment in segments if any(alias in segment for alias in aliases)]
+    if matched:
+        return matched
+    if allow_unmatched:
+        return segments
+    # Non-Latin card names cannot be matched against the bundled English and
+    # German aliases. TCGdex keeps dex IDs in depicted-name order, so use the
+    # corresponding segment when the two lists align.
+    if fallback_count == len(segments) and fallback_index is not None:
+        return [segments[fallback_index]]
+    return [segments[0]] if len(segments) == 1 else []
+
+
+def _contains_marker(segment: str, marker: str) -> bool:
+    return marker in segment if not marker.isascii() else bool(re.search(rf"\b{re.escape(marker)}\b", segment))
 
 
 def _detect_form(segment: str, dex_id: int, tcg_card_id: str | None) -> str | None:
@@ -226,9 +262,9 @@ def _detect_form(segment: str, dex_id: int, tcg_card_id: str | None) -> str | No
         return override
     available = {row["form"] for row in forms_by_dex_id().get(dex_id, ())}
     for family, markers in _REGION_MARKERS.items():
-        if family in available and any(re.search(rf"\b{marker}\b", segment) for marker in markers):
+        if family in available and any(_contains_marker(segment, marker) for marker in markers):
             return family
-    is_mega = bool(re.search(r"\bmega\b", segment) or re.match(r"^m\s+", segment))
+    is_mega = bool(any(_contains_marker(segment, marker) for marker in _MEGA_MARKERS) or re.match(r"^m\s+", segment))
     if not is_mega:
         return "base"
     mega_forms = {form for form in available if form.startswith("mega")}
@@ -236,7 +272,10 @@ def _detect_form(segment: str, dex_id: int, tcg_card_id: str | None) -> str | No
         return "base"
     for suffix in ("x", "y", "z"):
         candidate = f"mega-{suffix}"
-        if candidate in mega_forms and re.search(rf"\b{suffix}\b", segment):
+        if candidate in mega_forms and re.search(
+            rf"(?<![a-z0-9]){suffix}(?:\s*(?:ex|gx|v|vmax|vstar))?$",
+            segment,
+        ):
             return candidate
     return "mega" if "mega" in mega_forms else None
 
@@ -252,15 +291,24 @@ def classify_pokedex_entries(
     if not is_pokemon or not isinstance(dex_ids, list):
         return []
     normalized_name = _normalize(name)
-    result: list[str] = []
+    valid_dex_ids: list[int] = []
     for raw_dex_id in dex_ids:
         try:
             dex_id = int(raw_dex_id)
         except (TypeError, ValueError):
             continue
-        if dex_id not in pokedex_by_id():
-            continue
-        segments = _segments_for_dex(str(name or ""), dex_id, allow_unmatched=len(dex_ids) == 1)
+        if dex_id in pokedex_by_id() and dex_id not in valid_dex_ids:
+            valid_dex_ids.append(dex_id)
+
+    result: list[str] = []
+    for index, dex_id in enumerate(valid_dex_ids):
+        segments = _segments_for_dex(
+            str(name or ""),
+            dex_id,
+            allow_unmatched=len(valid_dex_ids) == 1,
+            fallback_index=index,
+            fallback_count=len(valid_dex_ids),
+        )
         if not segments:
             segments = [normalized_name]
         for segment in segments:
