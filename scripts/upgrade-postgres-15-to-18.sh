@@ -225,7 +225,7 @@ It will:
   5. Remove the original old data volume so PostgreSQL ${TARGET_MAJOR} can initialize a fresh one
   6. Start PostgreSQL ${TARGET_MAJOR} with the Docker volume mounted at /var/lib/postgresql
   7. Restore the SQL dump
-  8. Rebuild/start the full stack
+  8. Pull and start the full stack
 
 The old data is preserved in the rollback volume until you delete it manually.
 EOF
@@ -320,8 +320,9 @@ log "Restoring SQL dump into PostgreSQL ${TARGET_MAJOR}"
   -v ON_ERROR_STOP=1 \
   < "${DUMP_PATH}"
 
-log "Rebuilding and starting the full stack"
-"${COMPOSE[@]}" up -d --build
+log "Pulling release images and starting the full stack"
+"${COMPOSE[@]}" pull backend frontend
+"${COMPOSE[@]}" up -d
 
 log "Verifying restored database"
 "${COMPOSE[@]}" exec -T "${DB_SERVICE}" psql -U "${DB_USER}" -d "${DB_NAME}" -Atc "SELECT 'postgres_' || current_setting('server_version'), count(*) FROM information_schema.tables WHERE table_schema = 'public';"

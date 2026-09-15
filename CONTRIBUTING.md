@@ -20,6 +20,26 @@ npm run build
 
 The frontend test command also validates literal translation keys. Add new user-facing keys to `src/i18n/en.js`; other language bundles can fall back to English until a translation is contributed. Missing keys fail with the source file and line instead of appearing as raw labels in the app.
 
+To build and run the container images from your checkout instead of pulling the
+published release images:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+```
+
+The build override reuses the production service configuration while tagging
+the locally built frontend and backend images with local-only names. Keep both
+`-f` arguments on later lifecycle commands too, for example:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.build.yml pull postgres
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.build.yml down
+```
+
+A plain `docker compose up` uses the published GHCR images instead of the local
+build override.
+
 ## Card interfaces
 
 The public card system in `src/components/card-system` is the normal starting point for card interfaces. It provides established frames, rows, badges, dialogs, and loading/error states so contributors can focus on the feature itself.

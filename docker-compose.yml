@@ -32,9 +32,7 @@ services:
       retries: 5
 
   backend:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
+    image: ghcr.io/git-romer/pokecollector-backend:${POKECOLLECTOR_VERSION:-1.49.0}
     container_name: pokemon-backend
     restart: unless-stopped
     environment:
@@ -80,15 +78,13 @@ services:
       - "${BACKEND_PORT:-8000}:8000"
 
   frontend:
-    build:
-      context: .
-      dockerfile: frontend/Dockerfile
-      args:
-        PUBLIC_MODE: ${PUBLIC_MODE:-false}
+    image: ghcr.io/git-romer/pokecollector-frontend:${POKECOLLECTOR_VERSION:-1.49.0}
     container_name: pokemon-frontend
     restart: unless-stopped
     depends_on:
       - backend
+    environment:
+      PUBLIC_MODE: ${PUBLIC_MODE:-false}
     ports:
       - "${FRONTEND_PORT:-3000}:80"
 

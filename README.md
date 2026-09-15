@@ -18,9 +18,9 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - 👤 **Creator:** [Gilles Romer](https://romerg.de/)
 - ✉️ **Contact:** [info@romerg.de](mailto:info@romerg.de)
 
-![Version](https://img.shields.io/badge/version-v1.48.0-e3000b?style=flat-square) ![Dark Theme](https://img.shields.io/badge/theme-dark-1a1a2e?style=flat-square) ![TCGdex](https://img.shields.io/badge/card%20data-TCGdex-e3000b?style=flat-square) ![Docker](https://img.shields.io/badge/deploy-Docker-2496ed?style=flat-square) ![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square) ![React](https://img.shields.io/badge/frontend-React%2018-61dafb?style=flat-square) [![Support animal rescue](https://img.shields.io/badge/support-animal%20rescue-e3000b?style=flat-square)](https://pokecollector.romerg.de/#support)
+![Version](https://img.shields.io/badge/version-v1.49.0-e3000b?style=flat-square) ![Dark Theme](https://img.shields.io/badge/theme-dark-1a1a2e?style=flat-square) ![TCGdex](https://img.shields.io/badge/card%20data-TCGdex-e3000b?style=flat-square) ![Docker](https://img.shields.io/badge/deploy-Docker-2496ed?style=flat-square) ![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square) ![React](https://img.shields.io/badge/frontend-React%2018-61dafb?style=flat-square) [![Support animal rescue](https://img.shields.io/badge/support-animal%20rescue-e3000b?style=flat-square)](https://pokecollector.romerg.de/#support)
 
-**Current version:** `v1.48.0` · Releases are tracked on the [GitHub Releases page](https://github.com/Git-Romer/pokecollector/releases).
+**Current version:** `v1.49.0` · Releases are tracked on the [GitHub Releases page](https://github.com/Git-Romer/pokecollector/releases).
 
 ![WebApp Preview](preview-homescreen.png)
 
@@ -159,14 +159,19 @@ If any row contains a wrong value or an unknown card code, the import does not a
 - [Docker](https://docs.docker.com/get-docker/)
 - [Docker Compose](https://docs.docker.com/compose/)
 
-### 1. Clone & Configure
+### 1. Download & Configure
 
 ```bash
-git clone https://github.com/Git-Romer/pokecollector.git
+mkdir pokecollector
 cd pokecollector
+curl -fsSL -o docker-compose.yml.new https://github.com/Git-Romer/pokecollector/releases/latest/download/docker-compose.yml
+mv docker-compose.yml.new docker-compose.yml
+curl -fsSL -o .env.new https://github.com/Git-Romer/pokecollector/releases/latest/download/pokecollector.env.example
+mv .env.new .env
 ```
 
-Create a `.env` file in the project root:
+Edit `.env` and set secure values for at least `POSTGRES_PASSWORD` and
+`JWT_SECRET_KEY`:
 
 ```env
 POSTGRES_PASSWORD=your_secure_password
@@ -186,6 +191,12 @@ CORS_ORIGINS=https://yourdomain.com
 BACKEND_PORT=8000
 FRONTEND_PORT=3000
 ```
+
+The release Compose file pulls the published `amd64` or `arm64` frontend and
+backend images from GitHub Container Registry automatically. Source code is not
+required for a normal installation. Contributors who want to build locally can
+clone the repository and use the build override documented in
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ### 2. Start
 
@@ -315,7 +326,8 @@ If you are already locked out of multi-user mode, set `USER_MODE=single` in the 
 | `TCGDEX_SYNC_LANGUAGES` | Initial admin default for TCGdex set/card sync languages on first launch only. After bootstrap, the DB setting in Settings is authoritative. Comma-separated TCGdex language codes, or `all` to enable every supported TCGdex language. Empty or invalid values safely fall back to `en,de`. Extra languages increase sync time, API calls, and database size. | `en,de` |
 | `ADMIN_BOOTSTRAP_LOG` | Whether bootstrap credentials may be logged on first start | `true` |
 | `USER_MODE` | Pin the mode from the environment, overriding the stored setting and disabling the in-app toggle. `single` forces single-user (no login screen) and is the recovery hatch after a multi-user lockout; `multi` forces multi-user. Because `single` disables authentication, use it only on a local/LAN install and unset it once recovered. Unset means the in-app setting controls the mode. | *(unset)* |
-| `PUBLIC_MODE` | Enable SEO meta tags, Open Graph, and allow search engine indexing. Default blocks all crawlers. Requires rebuild. | `false` |
+| `PUBLIC_MODE` | Enable SEO meta tags, Open Graph, and allow search engine indexing. Default blocks all crawlers. Recreate the frontend container after changing it. | `false` |
+| `POKECOLLECTOR_VERSION` | Optional frontend and backend image-tag override for controlled deployments and rollbacks. Leave unset to use the exact release bundled with `docker-compose.yml`; `latest` is available only when deliberately requested. | Bundled release version |
 | `CORS_ORIGINS` | Comma-separated list of allowed origins for CORS. If empty, allows all origins. Set to your domain for production (e.g. `https://pokecollector.romerg.de`). | *(all)* |
 | `POKEDEX_METADATA_BACKFILL_ON_STARTUP` | Run the one-time Pokédex metadata backfill automatically after startup when existing card rows are missing `dex_ids` or Cardmarket product metadata | `true` |
 | `POKEDEX_METADATA_BACKFILL_BATCH_LIMIT` | Number of cards selected per automatic Pokédex metadata backfill batch | `5000` |
@@ -325,6 +337,10 @@ If you are already locked out of multi-user mode, set `USER_MODE=single` in the 
 | `PRE_UPGRADE_BACKUP_KEEP` | Number of automatic pre-upgrade backups to retain in `/app/backups`; minimum `1` | `10` |
 | `BACKEND_PORT` | Host port the backend is published on. Change it if another stack on the same host already uses `8000`. The container port is unaffected. | `8000` |
 | `FRONTEND_PORT` | Host port the frontend is published on. Change it if another stack on the same host already uses `3000`. The container port is unaffected. | `3000` |
+
+The bundled exact version is the safe default. The separate frontend and
+backend `latest` aliases cannot be updated as one atomic registry operation, so
+using them deliberately may briefly mix releases if a promotion is interrupted.
 
 The scanner provider variables are explained with copy-paste examples, user instructions, compatibility requirements, privacy notes, and troubleshooting in [docs/scanner-providers.md](docs/scanner-providers.md).
 Administrators can also test an administrator-only custom model in Scanner Settings. A model that passes the multi-image capability check uses automatic visual verification. If it can inspect one image but cannot compare multiple images, an administrator may explicitly acknowledge and save a limited mode with visual verification disabled; the scanner displays a persistent warning while that mode is active.
@@ -432,7 +448,7 @@ PokéCollector is self-hosted, but it can call these external sources depending 
 | Betterplace | `www.betterplace.org` | Direct animal-rescue donation campaign | Browser opens the outbound campaign link only; self-hosted instances do not call the Betterplace API |
 | Cardmarket | `www.cardmarket.com` | Product/search links for cards | Browser opens outbound links only; PokéCollector does not call a Cardmarket API |
 
-Build and dependency installation also contact package/distribution registries such as npm and the PostgreSQL apt repository when Docker images are built.
+Published installations pull frontend and backend images from `ghcr.io` and PostgreSQL from Docker Hub. Building images locally, or in the release workflow, also contacts package/distribution registries such as npm and the PostgreSQL apt repository.
 
 ---
 
@@ -502,14 +518,14 @@ Create or verify a manual backup first while your current PostgreSQL 15 stack is
 docker compose exec postgres pg_dump -U pokemon pokemon_tcg > backup_$(date +%Y%m%d).sql
 ```
 
-Then pull the updated project files, but do not run the normal `docker compose up -d --build` command yet. Also do not run `docker compose down -v` or remove Docker volumes before the upgrade script finishes; that deletes the old database volume and leaves only your manual backup as the recovery path.
+Then pull the updated project files, but do not run the normal image update commands yet. Also do not run `docker compose down -v` or remove Docker volumes before the upgrade script finishes; that deletes the old database volume and leaves only your manual backup as the recovery path.
 
 ```bash
 git pull
 ./scripts/upgrade-postgres-15-to-18.sh
 ```
 
-The script stops the app services to prevent writes during the dump, creates a SQL dump from PostgreSQL 15, keeps a rollback copy of the old PostgreSQL 15 Docker volume, initializes a fresh PostgreSQL 18 volume using the PostgreSQL 18 Docker image layout, restores the dump, and rebuilds/starts the stack again. It asks for confirmation before changing volumes.
+The script stops the app services to prevent writes during the dump, creates a SQL dump from PostgreSQL 15, keeps a rollback copy of the old PostgreSQL 15 Docker volume, initializes a fresh PostgreSQL 18 volume using the PostgreSQL 18 Docker image layout, restores the dump, and pulls/starts the stack again. It asks for confirmation before changing volumes.
 
 After the script restores PostgreSQL 18 and starts the app, the existing automatic pre-upgrade backup still runs before app startup migrations when the app version changes. That automatic backup is an extra safety net; the PostgreSQL 15 dump created by the script is the database major-version upgrade backup.
 
@@ -535,12 +551,30 @@ By default, startup stops if this safety backup fails. This protects existing ca
 docker compose exec postgres pg_dump -U pokemon pokemon_tcg > backup_$(date +%Y%m%d).sql
 ```
 
-Then update:
+Then update the deployment definition. For an installation created with the
+Quick Start instructions:
+
+```bash
+curl -fsSL -o docker-compose.yml.new https://github.com/Git-Romer/pokecollector/releases/latest/download/docker-compose.yml
+mv docker-compose.yml.new docker-compose.yml
+```
+
+For an existing Git checkout instead, update the checkout:
 
 ```bash
 git pull
-docker compose up -d --build
 ```
+
+Finally, pull and start the release images:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+Set `POKECOLLECTOR_VERSION` in `.env` to an exact published version when you
+need a controlled deployment. Remove the override to follow the version bundled
+with the downloaded Compose file during normal updates.
 
 Database migrations run automatically on startup after the pre-upgrade backup succeeds. If you need to roll back, stop the app, switch back to the previous app version, and restore the matching SQL backup.
 
