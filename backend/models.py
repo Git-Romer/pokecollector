@@ -142,6 +142,10 @@ class User(Base):
     __tablename__ = "users"
     __table_args__ = (
         Index("ix_users_public_handle", "public_handle", unique=True),
+        CheckConstraint(
+            "wishlist_visibility IN ('private', 'trade_matches', 'public')",
+            name="ck_users_wishlist_visibility",
+        ),
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -153,6 +157,7 @@ class User(Base):
     public_handle = Column(String, nullable=True)
     is_profile_public = Column(Boolean, default=False, nullable=False)
     public_show_values = Column(Boolean, default=False, nullable=False)
+    wishlist_visibility = Column(String, default="private", nullable=False)
     must_change_password = Column(Boolean, default=False)
     created_at = Column(DateTime, default=func.now())
 

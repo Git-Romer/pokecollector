@@ -265,8 +265,9 @@ Current frontend state layers:
 - `TabNav.jsx` is the shared section tab component used across major screens
 - Card Lists are discovered at `/binders`; legacy `/decks` entry paths redirect
   there, while `/decks/:deckId` and `/decks/compare` remain dedicated tools
-- Anonymous public routes live under `/u`; all other feature routes are wrapped
-  by the protected layout
+- Anonymous public routes live under `/u` and share one profile shell for
+  Binders, Wishlists, and Decks; all other feature routes are wrapped by the
+  protected layout
 
 ## Feature-domain flows
 
@@ -294,9 +295,13 @@ details, and value even if the original collection row later changes.
 
 Public data is separately serialized by `api/public.py`; anonymous requests do
 not reuse authenticated collection responses. Publication requires the global
-admin switch, the trainer's profile opt-in, and per-Binder sharing. Market
-values require an additional trainer opt-in. Reverse proxies must explicitly
-allow only the routes in [`REVERSE_PROXY_AUTH.md`](REVERSE_PROXY_AUTH.md).
+admin switch and trainer profile opt-in. Collection Binders and Decks then use
+per-list sharing; the global Wishlist uses a constrained profile-wide
+visibility mode. Public Deck calculations reuse the same validation, analytics,
+and probability services as the private editor, while response models omit
+ownership and allocation state. Market values require an additional trainer
+opt-in. Reverse proxies must explicitly allow only the routes in
+[`REVERSE_PROXY_AUTH.md`](REVERSE_PROXY_AUTH.md).
 
 ## Integrations
 

@@ -29,6 +29,7 @@ class PublicBindersModelTests(unittest.TestCase):
         self.assertIsNone(user.public_handle)
         self.assertFalse(user.is_profile_public)
         self.assertFalse(user.public_show_values)
+        self.assertEqual(user.wishlist_visibility, "private")
         self.assertFalse(binder.is_public)
 
 
@@ -304,6 +305,8 @@ class PublicApiTests(unittest.TestCase):
             "trainer_name": "ash",
             "avatar_id": None,
             "binder_count": 1,
+            "deck_count": 0,
+            "wishlist_is_public": False,
         }])
 
     def test_directory_excludes_public_wishlist_binders(self):
@@ -471,6 +474,21 @@ class ProfileControlTests(unittest.TestCase):
         self.assertIsNone(result["public_handle_error"])
         self.assertTrue(result["is_profile_public"])
         self.assertTrue(result["public_show_values"])
+        self.assertEqual(result["wishlist_visibility"], "private")
+
+    def test_wishlist_visibility_is_explicit_and_validated(self):
+        from pydantic import ValidationError
+
+        db = self._db()
+        u = self._user(db)
+        result = update_profile(
+            ProfileUpdate(wishlist_visibility="trade_matches"),
+            db=db,
+            current_user=u,
+        )
+        self.assertEqual(result["wishlist_visibility"], "trade_matches")
+        with self.assertRaises(ValidationError):
+            ProfileUpdate(wishlist_visibility="everyone")
 
     def test_get_profile_explains_invalid_trainer_name(self):
         db = self._db()

@@ -2,17 +2,19 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { ArrowLeft, HelpCircle } from 'lucide-react'
 import clsx from 'clsx'
-import { getPublicBinder } from '../api/publicClient'
+import { getPublicBinder, getPublicProfile } from '../api/publicClient'
 import { formatEur } from '../utils/formatEur'
 import { groupCardsByPrint } from '../utils/groupCardsByPrint'
 import { formatBinderCountSummary } from '../utils/binderCounts'
 import { useSettings } from '../contexts/SettingsContext'
 import { CardLegend, CardStack } from '../components/card-system'
 import PrintingDetailBadges from '../components/PrintingDetailBadges'
+import PublicProfileShell from '../components/public/PublicProfileShell'
 
 export default function PublicBinderView() {
   const { handle, binderId } = useParams()
   const [binder, setBinder] = useState(null)
+  const [profile, setProfile] = useState(null)
   const [error, setError] = useState(null)
   const [badgeLegendOpen, setBadgeLegendOpen] = useState(false)
   const { t } = useSettings()
@@ -21,20 +23,19 @@ export default function PublicBinderView() {
     let cancelled = false
     setBinder(null)
     setError(null)
-    getPublicBinder(handle, binderId)
-      .then(data => { if (!cancelled) setBinder(data) })
+    Promise.all([getPublicProfile(handle), getPublicBinder(handle, binderId)])
+      .then(([profileData, binderData]) => { if (!cancelled) { setProfile(profileData); setBinder(binderData) } })
       .catch(() => { if (!cancelled) setError(true) })
     return () => { cancelled = true }
   }, [handle, binderId])
 
   if (error) return <div className="min-h-screen flex items-center justify-center text-text-secondary">{t('publicProfiles.binderUnavailable')}</div>
-  if (!binder) return <div className="min-h-screen flex items-center justify-center text-text-secondary">{t('common.loading')}</div>
+  if (!binder || !profile) return <div className="min-h-screen flex items-center justify-center text-text-secondary">{t('common.loading')}</div>
 
   const tiles = groupCardsByPrint(binder.cards)
 
   return (
-    <main className="min-h-screen bg-bg-primary px-3 py-6 text-text-primary sm:px-4">
-      <div className="mx-auto max-w-5xl">
+    <PublicProfileShell profile={profile} handle={handle} activeSection="binders" t={t}>
         <Link to={`/u/${handle}`} className="btn-ghost inline-flex py-1.5 text-sm">
           <ArrowLeft size={14} /> {t('publicProfiles.backToProfile')}
         </Link>
@@ -105,7 +106,6 @@ export default function PublicBinderView() {
           )
         })}
         </div>
-      </div>
-    </main>
+    </PublicProfileShell>
   )
 }

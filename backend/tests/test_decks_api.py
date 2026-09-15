@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 try:
     from fastapi import HTTPException
@@ -9,7 +10,7 @@ try:
     from api.binders import add_binder_cards_to_wishlist, create_binder, switch_binder_entry_card, update_binder
     from api.decks import add_deck_entry, compare_owned_decks, convert_deck_to_planned, convert_deck_to_real, create_deck, delete_deck, delete_deck_entry, duplicate_deck, get_deck, get_decks, update_deck, update_deck_entry
     from database import Base
-    from models import Binder, BinderCard, Card, CollectionItem, PrintingDetailTag, User, WishlistItem
+    from models import Binder, BinderCard, Card, CollectionItem, PrintingDetailTag, Setting, User, WishlistItem
     from schemas import BinderCardSwitch, BinderCreate, BinderUpdate, DeckCreate, DeckEntryCreate, DeckEntryUpdate, DeckUpdate
     API_TEST_DEPS_AVAILABLE = True
 except ModuleNotFoundError:
@@ -121,6 +122,104 @@ class DeckApiTests(unittest.TestCase):
         self.assertEqual(updated.target_size, 40)
         self.assertEqual(updated.current_card_count, 2)
         self.assertEqual(len(updated.entries), 1)
+
+    def test_deck_public_sharing_defaults_off_and_requires_global_feature(self):
+        deck = self._create()
+        self.assertFalse(deck.is_public)
+        with self.assertRaises(HTTPException) as context:
+            update_deck(deck.id, DeckUpdate(is_public=None), current_user=self.user, db=self.db)
+        self.assertEqual(context.exception.status_code, 422)
+        with self.assertRaises(HTTPException) as context:
+            update_deck(deck.id, DeckUpdate(is_public=True), current_user=self.user, db=self.db)
+        self.assertEqual(context.exception.status_code, 403)
+        self.db.add(Setting(key="public_profiles_enabled", value="true"))
+        self.db.commit()
+        shared = update_deck(deck.id, DeckUpdate(is_public=True), current_user=self.user, db=self.db)
+        self.assertTrue(shared.is_public)
+
+    def test_private_custom_cards_cannot_enter_a_public_deck(self):
+        custom = Card(
+            id="custom-1",
+            name="Private card",
+            set_id="custom",
+            number="1",
+            lang="en",
+            supertype="Trainer",
+            is_custom=True,
+            custom_owner_id=self.user.id,
+        )
+        self.db.add_all([custom, Setting(key="public_profiles_enabled", value="true")])
+        self.db.commit()
+        deck = self._create()
+        shared = update_deck(deck.id, DeckUpdate(is_public=True), current_user=self.user, db=self.db)
+        with self.assertRaises(HTTPException) as context:
+            add_deck_entry(shared.id, DeckEntryCreate(card_id=custom.id), current_user=self.user, db=self.db)
+        self.assertEqual(context.exception.status_code, 422)
+
+    def test_deck_with_private_custom_card_cannot_be_shared(self):
+        custom = Card(
+            id="custom-2",
+            name="Private card",
+            set_id="custom",
+            number="2",
+            lang="en",
+            supertype="Trainer",
+            is_custom=True,
+            custom_owner_id=self.user.id,
+        )
+        self.db.add_all([custom, Setting(key="public_profiles_enabled", value="true")])
+        self.db.commit()
+        deck = self._create()
+        add_deck_entry(deck.id, DeckEntryCreate(card_id=custom.id), current_user=self.user, db=self.db)
+        with self.assertRaises(HTTPException) as context:
+            update_deck(deck.id, DeckUpdate(is_public=True), current_user=self.user, db=self.db)
+        self.assertEqual(context.exception.status_code, 422)
+
+    def test_equivalent_print_switch_rechecks_custom_card_after_share_race(self):
+        self.card.playable_fingerprint = "same-card"
+        custom = Card(
+            id="custom-race",
+            name=self.card.name,
+            set_id="custom",
+            number="1",
+            lang="en",
+            supertype="Pokemon",
+            is_custom=True,
+            custom_owner_id=self.user.id,
+            playable_fingerprint="same-card",
+        )
+        self.db.add_all([custom, Setting(key="public_profiles_enabled", value="true")])
+        self.db.commit()
+        deck = self._create()
+        entry = add_deck_entry(
+            deck.id,
+            DeckEntryCreate(card_id=self.card.id),
+            current_user=self.user,
+            db=self.db,
+        ).entries[0]
+        calls = 0
+
+        def publish_between_checks(_db, card):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                stored = self.db.get(Binder, deck.id)
+                stored.is_public = True
+                self.db.commit()
+            return card
+
+        with patch("api.binders._ensure_card_gameplay_data", side_effect=publish_between_checks):
+            with self.assertRaises(HTTPException) as context:
+                switch_binder_entry_card(
+                    deck.id,
+                    entry.id,
+                    BinderCardSwitch(card_id=custom.id),
+                    current_user=self.user,
+                    db=self.db,
+                )
+
+        self.assertEqual(context.exception.status_code, 422)
+        self.assertEqual(self.db.get(BinderCard, entry.id).card_id, self.card.id)
 
     def test_entry_quantity_counts_ownership_and_shortage(self):
         self._own(self.card.id, 1, variant="Normal")

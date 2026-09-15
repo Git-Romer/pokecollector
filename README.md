@@ -18,9 +18,9 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - 👤 **Creator:** [Gilles Romer](https://romerg.de/)
 - ✉️ **Contact:** [info@romerg.de](mailto:info@romerg.de)
 
-![Version](https://img.shields.io/badge/version-v1.49.0-e3000b?style=flat-square) ![Dark Theme](https://img.shields.io/badge/theme-dark-1a1a2e?style=flat-square) ![TCGdex](https://img.shields.io/badge/card%20data-TCGdex-e3000b?style=flat-square) ![Docker](https://img.shields.io/badge/deploy-Docker-2496ed?style=flat-square) ![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square) ![React](https://img.shields.io/badge/frontend-React%2018-61dafb?style=flat-square) [![Support animal rescue](https://img.shields.io/badge/support-animal%20rescue-e3000b?style=flat-square)](https://pokecollector.romerg.de/#support)
+![Version](https://img.shields.io/badge/version-v1.50.0-e3000b?style=flat-square) ![Dark Theme](https://img.shields.io/badge/theme-dark-1a1a2e?style=flat-square) ![TCGdex](https://img.shields.io/badge/card%20data-TCGdex-e3000b?style=flat-square) ![Docker](https://img.shields.io/badge/deploy-Docker-2496ed?style=flat-square) ![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square) ![React](https://img.shields.io/badge/frontend-React%2018-61dafb?style=flat-square) [![Support animal rescue](https://img.shields.io/badge/support-animal%20rescue-e3000b?style=flat-square)](https://pokecollector.romerg.de/#support)
 
-**Current version:** `v1.49.0` · Releases are tracked on the [GitHub Releases page](https://github.com/Git-Romer/pokecollector/releases).
+**Current version:** `v1.50.0` · Releases are tracked on the [GitHub Releases page](https://github.com/Git-Romer/pokecollector/releases).
 
 ![WebApp Preview](preview-homescreen.png)
 
@@ -83,7 +83,7 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - Persistent Deck Builder for 20-, 40-, and 60-card lists, with editable targets, ownership totals, shortage warnings, validation, analytics, and probabilities
 - Explicit actions send missing Planned Binder or Deck copies to the global Wishlist
 - Convert between Planned and physical Binders, import/export Binder CSV files, and populate a physical Binder from an owned set
-- Wishlist with Telegram price alerts
+- Wishlist with Telegram price alerts and profile-wide Private, Trade matches, or Public visibility
 
 ### 📈 Prices, Portfolio & Analytics
 - Cardmarket EUR pricing and TCGPlayer USD pricing via TCGdex
@@ -98,12 +98,12 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - Per-user settings for language, currency, Telegram keys, and scanner provider keys
 - Force password change support on first login
 - Profile avatar and profile name editing
-- Optional public trainer directory, profiles, shared Binders, and value visibility, all opt-in and admin-gated
+- Optional public trainer directory, profiles, shared Binders, Wishlists, Decks, and value visibility, all opt-in and admin-gated
 - Cascade deletion of user-owned data
 
 ### 🃏 Deck Builder
 
-Decks are private, user-owned Card Lists with a target size of **20**, **40**, or **60** cards (60 is the default). A **Planned Deck** may contain owned or unowned catalogue cards, shows shortages against the available collection, and can add missing copies to the global Wishlist. Required quantities may exceed current ownership, so the list can be completed before every physical card has been acquired.
+Decks are user-owned Card Lists with a target size of **20**, **40**, or **60** cards (60 is the default). They are private by default and may be shared individually through an enabled public profile. A **Planned Deck** may contain owned or unowned catalogue cards, shows shortages against the available collection, and can add missing copies to the global Wishlist. Required quantities may exceed current ownership, so the list can be completed before every physical card has been acquired.
 
 A **Real Deck** represents cards that have actually been set aside. It accepts only free copies from the collection and reserves those exact copies automatically, using the same shared allocation limits as a physical Binder. A Planned Deck can become a Real Deck once every required copy is available; converting it back releases all reserved copies without changing the planned card quantities.
 
@@ -112,7 +112,8 @@ Binders, Planned Binders, Planned Decks, and Real Decks share the existing `bind
 ### 🏆 Social & Community
 - Leaderboard, trainer comparison, and achievements in multi-user mode
 - View other trainers' collections from the Leaderboard
-- Optional public trainer profiles with trainer-name URLs, a public directory, individually shared collection binders, and opt-in market values
+- Optional public trainer profiles with trainer-name URLs, a public directory, individually shared collection Binders and Decks, configurable Wishlist visibility, and opt-in market values
+- Public Wishlists expose catalogue details and requested quantities only; public Decks reuse the read-only Deck composition, validation, analytics, and probability views without exposing ownership or allocation data
 - Admin-controlled public sharing switch, disabled by default on new and upgraded installations
 - Community section in Settings with GitHub contributors and PokéCollector supporters
 

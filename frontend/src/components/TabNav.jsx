@@ -7,7 +7,7 @@ export default function TabNav({ tabs }) {
   return (
     <div className="flex border-b border-border overflow-x-auto scrollbar-none -mx-4 px-4 mb-4" style={{ WebkitOverflowScrolling: 'touch' }}>
       {tabs.map((tab) => {
-        const active = location.pathname === tab.to || location.pathname.startsWith(`${tab.to}/`)
+        const active = tab.active ?? (location.pathname === tab.to || (!tab.exact && location.pathname.startsWith(`${tab.to}/`)))
         return (
           <button
             key={tab.to}

@@ -322,6 +322,7 @@ class DeckUpdate(BaseModel):
     target_size: Optional[Literal[20, 40, 60]] = None
     description: Optional[str] = None
     format: Optional[Literal["Standard", "Expanded", "Unlimited", "Casual"]] = None
+    is_public: Optional[bool] = None
 
 
 class DeckEntryCreate(BaseModel):
@@ -377,6 +378,43 @@ class DeckValidationResponse(BaseModel):
     checks: List[DeckValidationCheck] = Field(default_factory=list)
 
 
+class DeckProbabilityAccess(BaseModel):
+    count: int
+    opening_probability: float
+    cards_seen_probability: float
+
+
+class DeckProbabilityBasicPokemon(BaseModel):
+    count: int
+    at_least_one: float
+    none: float
+
+
+class DeckProbabilityPrizeRisk(BaseModel):
+    at_least_one: float
+    all_copies: float
+    expected_copies: float
+
+
+class DeckProbabilityKeyCard(BaseModel):
+    name: str
+    copies: int
+    opening_probability: float
+    cards_seen_probability: float
+    prize_risk: DeckProbabilityPrizeRisk
+
+
+class DeckProbabilityResponse(BaseModel):
+    deck_size: int
+    opening_hand_size: int
+    subsequent_draws: int
+    cards_seen: int
+    prize_count: int
+    basic_pokemon: DeckProbabilityBasicPokemon
+    outs: Dict[str, DeckProbabilityAccess]
+    key_card: Optional[DeckProbabilityKeyCard] = None
+
+
 class DeckResponse(BaseModel):
     id: int
     name: str
@@ -386,6 +424,7 @@ class DeckResponse(BaseModel):
     target_size: Literal[20, 40, 60]
     description: Optional[str] = None
     format: Literal["Standard", "Expanded", "Unlimited", "Casual"] = "Casual"
+    is_public: bool = False
     shared_conflict_count: int = 0
     shared_missing_copy_count: int = 0
     created_at: Optional[datetime] = None
@@ -672,3 +711,4 @@ class SyncLogResponse(BaseModel):
 class ProfileUpdate(BaseModel):
     is_profile_public: Optional[bool] = None
     public_show_values: Optional[bool] = None
+    wishlist_visibility: Optional[Literal["private", "trade_matches", "public"]] = None

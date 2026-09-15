@@ -447,10 +447,26 @@ def _run_migrations(conn):
         "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_public_handle ON users (public_handle)",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_profile_public BOOLEAN DEFAULT FALSE",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS public_show_values BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS wishlist_visibility VARCHAR DEFAULT 'private'",
         "ALTER TABLE binders ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT FALSE",
         # Enforce NOT NULL on new boolean columns for upgraded installs (ADD COLUMN with DEFAULT backfills existing rows first)
         "ALTER TABLE users ALTER COLUMN is_profile_public SET NOT NULL",
         "ALTER TABLE users ALTER COLUMN public_show_values SET NOT NULL",
+        "UPDATE users SET wishlist_visibility = 'private' WHERE wishlist_visibility IS NULL OR wishlist_visibility NOT IN ('private', 'trade_matches', 'public')",
+        "ALTER TABLE users ALTER COLUMN wishlist_visibility SET DEFAULT 'private'",
+        "ALTER TABLE users ALTER COLUMN wishlist_visibility SET NOT NULL",
+        """DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'ck_users_wishlist_visibility'
+                  AND conrelid = 'users'::regclass
+            ) THEN
+                ALTER TABLE users
+                    ADD CONSTRAINT ck_users_wishlist_visibility
+                    CHECK (wishlist_visibility IN ('private', 'trade_matches', 'public'));
+            END IF;
+        END$$""",
         "ALTER TABLE binders ALTER COLUMN is_public SET NOT NULL",
         # v57: Track metadata enrichment attempts independently from general card updates.
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS last_metadata_enrichment_attempt_at TIMESTAMP",

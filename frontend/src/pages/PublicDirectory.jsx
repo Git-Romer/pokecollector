@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { BookOpen } from 'lucide-react'
+import { BookOpen, Heart, Layers3 } from 'lucide-react'
 import { getPublicProfiles } from '../api/publicClient'
 import PokeBallLoader from '../components/PokeBallLoader'
 import { useSettings } from '../contexts/SettingsContext'
@@ -63,10 +63,12 @@ export default function PublicDirectory() {
                 <div className="min-w-0">
                   <h2 className="truncate text-lg font-semibold">{profile.trainer_name}</h2>
                   <p className="truncate text-xs text-text-muted">@{profile.handle}</p>
-                  <p className="mt-2 flex items-center gap-1.5 text-sm text-text-secondary">
-                    <BookOpen size={14} />
-                    {profile.binder_count} {profile.binder_count === 1 ? t('publicProfiles.sharedBinderCount') : t('publicProfiles.sharedBindersCount')}
-                  </p>
+                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-sm text-text-secondary">
+                    {profile.binder_count > 0 && <span className="inline-flex items-center gap-1"><BookOpen size={14} />{profile.binder_count}</span>}
+                    {profile.wishlist_is_public && <span className="inline-flex items-center gap-1"><Heart size={14} />{t('publicProfiles.wishlist')}</span>}
+                    {profile.deck_count > 0 && <span className="inline-flex items-center gap-1"><Layers3 size={14} />{profile.deck_count}</span>}
+                    {profile.binder_count === 0 && !profile.wishlist_is_public && profile.deck_count === 0 && <span>{t('publicProfiles.noSharedContent')}</span>}
+                  </div>
                 </div>
               </Link>
             ))}

@@ -28,6 +28,7 @@ from services.binder_allocations import (
 from services.wishlist_missing import plan_missing_wishlist_additions
 from services.tcgdex_languages import SUPPORTED_TCGDEX_LANGUAGES, is_supported_tcgdex_language, normalize_tcgdex_language
 from services.public_profile_feature import public_profiles_enabled
+from services.public_profile import public_deck_accepts_card
 import datetime
 import csv
 import io
@@ -1332,6 +1333,8 @@ def add_card_to_binder(
         raise HTTPException(status_code=400, detail="Use the Deck editor to add cards to a Real Deck")
     ensured_card = ensure_card_exists(db, card_id)
     _require_owned_custom_card(ensured_card, current_user.id)
+    if not public_deck_accepts_card(binder, ensured_card):
+        raise HTTPException(status_code=422, detail="Private custom cards cannot be added to a public deck")
     binder = _relock_binder_for_write(
         db, binder_id, current_user.id, binder_type
     )
@@ -1872,6 +1875,8 @@ def switch_binder_entry_card(
             user_id=current_user.id,
         )
     _require_owned_custom_card(target_card, current_user.id)
+    if not public_deck_accepts_card(binder, target_card):
+        raise HTTPException(status_code=422, detail="Private custom cards cannot be added to a public deck")
 
     source_card = _ensure_card_gameplay_data(db, bc.card)
     target_card = _ensure_card_gameplay_data(db, target_card)
@@ -1883,6 +1888,11 @@ def switch_binder_entry_card(
     binder = _relock_binder_for_write(
         db, binder_id, current_user.id, binder_type
     )
+    target_card = db.query(Card).filter(Card.id == target_card.id).populate_existing().first()
+    if not target_card:
+        raise HTTPException(status_code=409, detail="Selected card changed while switching prints; please try again")
+    if not public_deck_accepts_card(binder, target_card):
+        raise HTTPException(status_code=422, detail="Private custom cards cannot be added to a public deck")
     bc = db.query(BinderCard).filter(
         BinderCard.id == binder_card_id,
         BinderCard.binder_id == binder_id,

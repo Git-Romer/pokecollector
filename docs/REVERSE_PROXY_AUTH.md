@@ -10,9 +10,9 @@ Allow unauthenticated access to these paths when public profiles should be reach
 
 | Path | Purpose |
 | --- | --- |
-| `/u` and `/u/*` | Public trainer directory, profiles, and binders |
-| `/api/public/*` | Anonymous public-profile and binder data |
-| `/api/images/card/*` | Card artwork used by public binders |
+| `/u` and `/u/*` | Public trainer directory, profiles, Binders, Wishlists, and Decks |
+| `/api/public/*` | Anonymous public-profile, Binder, Wishlist, and Deck data |
+| `/api/images/card/*` | Card artwork used by public Binders, Wishlists, and Decks |
 | `/api/pokedex/images/sprites/*` | Trainer avatars used by public pages |
 | `/assets/*` | Compiled JavaScript, CSS, and lazy-loaded page bundles |
 | `/pokeball.svg` and `/cardback.jpg` | Public-page and missing-card artwork |
@@ -24,8 +24,9 @@ PokéCollector still applies its own sharing controls after a request reaches th
 
 1. An administrator must enable public profiles.
 2. The trainer must publish their profile.
-3. Each collection binder must be shared separately.
-4. Collection values remain hidden unless the trainer enables them.
+3. Each collection Binder or Deck must be shared separately; private custom cards block Deck sharing.
+4. The Wishlist must be set to **Public wishlist**; **Trade matches** is authenticated and does not expose the full list.
+5. Collection values remain hidden unless the trainer enables them.
 
 `PUBLIC_MODE=true` controls the frontend container's public-installation SEO
 output at startup. It does not grant access to a profile or replace any of the
@@ -67,9 +68,10 @@ These exceptions expose the files and endpoints needed to render anonymous publi
 Test from a private browser window without an Authentik session:
 
 1. Open `/u`.
-2. Open a trainer profile and one shared binder.
-3. Confirm trainer sprites and card images load.
-4. Confirm `/settings` still requires the proxy login.
-5. Confirm a protected API route such as `/api/collection/` still requires the proxy login.
+2. Open a trainer profile and its enabled Binder, Wishlist, and Deck tabs.
+3. Open one shared Binder and one shared Deck; exercise Deck probability controls.
+4. Confirm trainer sprites and card images load.
+5. Confirm `/settings` still requires the proxy login.
+6. Confirm a protected API route such as `/api/collection/` still requires the proxy login.
 
 If the public page HTML loads but remains blank, inspect the browser network panel. A redirect or HTML login response for `/assets/*` usually means the frontend bundles are still protected. Missing card images usually mean `/api/images/card/*` or `/cardback.jpg` is still protected.
