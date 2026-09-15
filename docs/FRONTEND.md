@@ -16,19 +16,31 @@ Routes are defined in `frontend/src/App.jsx`.
 | `/scans/:jobId` | `pages/ScanQueue.jsx` | Review one queued scan job |
 | `/collection` | `pages/Collection.jsx` | User collection |
 | `/collection/user/:userId` | `pages/UserCollection.jsx` | Read-only view of another user's collection |
+| `/pokedex` | `pages/Pokedex.jsx` | National Pokédex completion overview |
+| `/pokedex/:dexId` | `pages/PokedexSpecies.jsx` | Species detail and matching card printings |
 | `/sets` | `pages/Sets.jsx` | Set browser |
 | `/sets/:setId` | `pages/SetDetail.jsx` | Set checklist |
 | `/wishlist` | `pages/Wishlist.jsx` | Wishlist and alerts |
-| `/binders` | `pages/Binders.jsx` | Binder list |
-| `/binders/:binderId` | `pages/BinderDetail.jsx` | Binder detail |
+| `/binders` | `pages/Binders.jsx` | Unified Binders, Planned Binders, Planned Decks, and Real Decks |
+| `/binders/:binderId` | `pages/BinderDetail.jsx` | Binder or Planned Binder detail |
+| `/decks` | redirect | Redirects Card List discovery to `/binders` |
+| `/decks/inventory` | redirect | Legacy redirect to `/binders` |
+| `/decks/compare` | `pages/DeckCompare.jsx` | Side-by-side Deck comparison |
+| `/decks/:deckId` | `pages/DeckEditor.jsx` | Planned or Real Deck editor |
+| `/decks/:deckId/build` | redirect | Legacy Deck Builder redirect |
 | `/analytics` | `pages/Analytics.jsx` | Analytics tabs |
 | `/products` | `pages/Products.jsx` | Sealed products |
+| `/trades` | `pages/Trades.jsx` | Trade journal and valuation |
 | `/leaderboard` | `pages/Leaderboard.jsx` | Multi-user leaderboard |
 | `/leaderboard/compare/:userId` | `pages/Compare.jsx` | Trainer comparison |
 | `/achievements` | `pages/Achievements.jsx` | Current user achievements |
 | `/achievements/:userId` | `pages/Achievements.jsx` | Another user's achievements |
 | `/settings` | `pages/Settings.jsx` | App settings and admin tools |
 | `/migration` | `pages/CardMigration.jsx` | Custom card migration queue |
+| `/u` | `pages/PublicDirectory.jsx` | Anonymous public trainer directory |
+| `/u/:handle` | `pages/PublicProfile.jsx` | Anonymous public trainer profile |
+| `/u/:handle/binder/:binderId` | `pages/PublicBinderView.jsx` | Anonymous shared collection Binder |
+| `/__card-system` | `pages/CardSystemGallery.jsx` | Development-only shared component gallery |
 
 ## Auth Flow
 
@@ -158,7 +170,10 @@ Defined in `frontend/src/components/TabNav.jsx`.
   - profile name editing
   - avatar picker
   - theme picker
-  - app language dropdown and currency controls
+  - app language, primary/display price source, currency, and portfolio-basis controls
+  - owner-photo preference and delete-all owner-photo action
+  - cross-language price/image fallback preferences and digital-set visibility
+  - public-profile, public-handle, and optional public-value controls
   - TCGdex sync-language selection for admins
   - Telegram configuration and guided Gemini/OpenAI-compatible scanner setup
   - administrator-only tested custom scanner models and server setup summary
@@ -168,7 +183,58 @@ Defined in `frontend/src/components/TabNav.jsx`.
   - backup and restore
   - Community sections for contributors and supporters
 
-The supporter section calls the installation's own `/api/community/supporters` endpoint once whenever the Community view is entered. It retains the last valid result only in the browser's in-memory query cache, hides that cache while the entry fetch is pending or after it fails, and performs no timed, background, or focus-based refreshes. Above the supporter cards it shows the supporter count, combined donation count, and exact known-currency totals grouped by currency; mixed-currency records are identified instead of being combined into a misleading amount. The browser never calls the public website registry directly, and no supporter projection is persisted by the installation.
+The supporter section calls the installation's own
+`/api/community/supporters` endpoint once whenever the Community view is
+entered. It retains the last valid result only in the browser's in-memory query
+cache, hides that cache while the entry fetch is pending or after it fails, and
+performs no timed, background, or focus-based refreshes. Above the supporter
+cards it shows the supporter count, combined donation count, and exact
+known-currency totals grouped by currency; mixed-currency records are identified
+instead of being combined into a misleading amount. The browser never calls the
+public website registry directly, and no supporter projection is persisted by
+the installation.
+
+### Collection and Card Lists
+
+`pages/Collection.jsx` owns filtering, strict CSV import, export actions,
+printing-detail tags, and private owner-card photos. Owner photos are loaded
+through authenticated endpoints and can be preferred over catalogue artwork in
+the current user's UI.
+
+`pages/Binders.jsx`, `pages/BinderDetail.jsx`, `pages/DeckEditor.jsx`, and
+`pages/DeckCompare.jsx` share the Card List domain. Physical Binders and Real
+Decks allocate exact owned copies from one capacity pool. Planned Binders and
+Planned Decks store requirements without reserving inventory. The Deck editor
+adds validation, composition, shortage, legality, probability, duplicate, and
+planned/real conversion tools. See [`CARD_LISTS.md`](CARD_LISTS.md).
+
+### Search, Pokédex, products, and trades
+
+`pages/CardSearch.jsx` keeps free text and advanced filters in the URL. Filters
+cover number, set, category, type, subtype, rarity, HP range, artist, rule text,
+language, sort, and pagination. Text matching is accent-insensitive; card-code
+queries such as `PFL 001` use the same route. The Pokédex species screen applies
+the API's `dex_id` filter when it loads matching printings.
+
+`pages/Pokedex.jsx` derives owned/missing species from collection data and
+supports search, generation/region, and status filters. It uses German species
+metadata when the app language is German and English metadata otherwise.
+`pages/PokedexSpecies.jsx` reuses the card grid for matching printings.
+
+`pages/Products.jsx` covers sealed/opened product lifecycle, batch entry,
+images and Cardmarket links, linked pulls, sales/flat gains, and realized versus
+unrealized results. `pages/Trades.jsx` previews values and records editable
+incoming/outgoing card and cash changes while keeping the collection in sync.
+
+### Public profile routes
+
+The `/u` route tree is intentionally outside `ProtectedRoutes`. It consumes
+only `/api/public/*` serializers, not authenticated collection responses. The
+admin master switch and trainer opt-in gate the public profile. Each shared
+Binder additionally requires its own opt-in, while the separate value-visibility
+preference controls only whether prices are returned. Reverse-proxy installations
+must also allow the narrow route set in
+[`REVERSE_PROXY_AUTH.md`](REVERSE_PROXY_AUTH.md).
 
 ## Card UI
 
@@ -183,6 +249,12 @@ Approved `CardDisplay` variants include `grid`, `carousel`, `ranking`, `selectab
 See [`CARD_SYSTEM.md`](CARD_SYSTEM.md) for usage, design tokens, review guidance, and the contributor-friendly process for proposing a new shared variant.
 
 `CardItem.jsx`, `UnifiedCard.jsx`, and the low-level state components remain implementation details of this public system and should not be imported by feature pages.
+
+`ImageZoomOverlay.jsx` provides the shared click/touch artwork inspection used
+outside scanner comparison. It supports zoom, pan, keyboard close, and preserves
+the normal Card Display click contract. Printing-detail badges and the unified
+primary-price presentation are supplied through the same shared card state so
+feature pages do not invent competing labels.
 
 ### `pages/CardSearch.jsx`
 
@@ -200,7 +272,13 @@ See [`CARD_SYSTEM.md`](CARD_SYSTEM.md) for usage, design tokens, review guidance
 
 Opening a candidate starts a full-screen linked pan/zoom comparison (`CardZoomModal`, `useLinkedZoom` in `components/ScanReview.jsx`): scroll or click to zoom toward the pointer (up to 6x), drag to pan, arrow keys step through the other candidates for that photo while the zoom/pan position is preserved, and Escape backs out of the zoom before closing the modal. Candidate images load progressively (`useCandidateFullImage`): a blurred thumbnail stand-in shows instantly and crossfades to the full-resolution image once decoded, sourced from the backend's candidate-image cache with a CDN fallback. Thumbnails are prefetched as soon as a photo's candidates arrive; the high-resolution image prefetches on hover/touch (`usePrefetchMatchImages`, `prefetchImage`). Accepting a match from the zoom view routes through the same add-to-collection modal used elsewhere — there is no auto-accept — and atomically adds and resolves the scan before automatically opening the next unresolved photo in the job (`openNextReview` in `ScanQueue.jsx`), so a failed request stays on the current review and a batch can be cleared without returning to the list between cards. A candidate whose printed set total contradicts the recognized photo shows a ⚠ badge in the grid. Once an item is resolved it collapses to a compact green-check row (recognized name and number), re-expandable as a read-only review on click, so a long batch stays scannable without allowing the same scan to be added twice.
 
-Rate-limit countdowns distinguish daily quota from ordinary throttling. Photos remain available only while their item needs review and are deleted on confirmation/dismissal; jobs expire after 14 days.
+Rate-limit countdowns distinguish daily quota from ordinary throttling. Queued
+photos remain available only while their item needs review and are deleted on
+confirmation/dismissal; jobs expire after 14 days. Before an atomic
+add-and-resolve request, the frontend retains the source Blob in memory. When
+the confirmed card has no catalogue or custom fallback artwork, it then makes a
+best-effort upload into the user's private collection-card photo storage.
+Failure to retain that optional copy never rolls back the collection add.
 
 The AI/Card Scanner section in `pages/Settings.jsx` shows **Share scanner diagnostics** as an available control only when the server configured writable `SCAN_TRACE_DIR` storage. The toggle is off by default. Turning it off stops future tracing without deleting existing data; the adjacent confirmed delete button removes all stored diagnostics for the current user and remains available through the stable cleanup path when new collection is disabled.
 
@@ -214,6 +292,10 @@ Notable frontend API bindings include:
 - GitHub community endpoints
 - social endpoints for leaderboard / compare / achievements
 - selective backup download via `downloadBackup(include)`
+- Card List/Deck allocation and conversion endpoints
+- product lifecycle, linked-card ledger, and trade endpoints
+- Pokédex, profile, and anonymous public-profile endpoints
+- authenticated collection-card photo and printing-detail-tag endpoints
 
 ## Removed / No Longer Documented
 

@@ -42,6 +42,11 @@ import {
 
 The components accept the existing card data and action props. They automatically provide the shared visual states when given values such as `selected`, `dimWhenUnowned`, `unavailableReason`, `onClick`, or `onSelect`.
 
+Card artwork inspection outside the scanner uses the shared
+`ImageZoomOverlay.jsx`. It opens from the established artwork affordance and
+supports pointer-centered zoom, drag/touch pan, and keyboard dismissal without
+changing the card's primary feature action.
+
 ## Design tokens
 
 Shared dimensions, radii, and border colors live in `card-system/tokens.css`; JavaScript consumers use `CARD_SYSTEM_TOKENS` from `tokens.js`. Adjust these tokens or a shared component when a design decision should change everywhere.
@@ -54,11 +59,17 @@ Use these points when implementing or reviewing any screen that presents cards:
 
 - Full cards use one frame. The default frame is grey; data, price, and image fallbacks use the shared purple, amber, and blue frame treatments. Manual artwork used because official artwork is missing belongs to the image-fallback treatment.
 - Hover and keyboard focus brighten the frame with a restrained glow. Touch actions must remain available without hover.
-- Ownership, print variation, quantity, wishlist, product-source, selection, and binder-progress indicators use the shared badges. Any screen that displays these indicators also provides the shared legend nearby.
+- Ownership, print variation, reusable printing-detail tags, quantity,
+  wishlist, product-source, selection, and Binder/Deck progress indicators use
+  the shared badges. Any screen that displays these indicators also provides
+  the shared legend nearby.
 - Missing cards in comparison contexts such as Set and Pokédex views keep the grey ownership overlay. Disabled cards show a reason instead of silently ignoring interaction.
 - Card names stay on one ellipsized line in aligned grids and compact rows. The set abbreviation/card number and price remain aligned when neighboring names have different lengths.
 - Missing artwork uses the Pokémon card back. Loading uses the shared skeleton; failed supplied artwork offers retry; compact lists prioritize visible images and defer distant rows.
 - Compact rows show the complete artwork inside the standard compact frame. Collection, Analytics, Wishlist, trades, comparisons, rankings, binders, and optimizer rows should feel like the same family.
+- Price presentation uses the user's configured primary price and the shared
+  variant-aware fallback rules. Feature pages may add contextual totals, but
+  should not independently choose another field as the card's headline price.
 - Dialogs use the shared floating, content-sized frame on desktop and mobile. The close action stays at the top-right and tabs/actions remain centered and usable with keyboard and touch.
 - Specialist workflows may optimize speed and selection behavior, but scanner, binder, optimizer, trade, bulk-selection, and migration views keep the shared card identity and state language.
 
@@ -89,7 +100,10 @@ Review should focus on whether the idea belongs in the shared system and whether
 
 - Identify the closest existing full-card, compact-row, ranking, selectable, comparison, stack, dialog, and legend patterns before starting.
 - Use shared components where they fit; explain intentional differences in the pull request.
-- Check real data combinations: owned/unowned, wishlist, multiple variants, quantities, mixed languages, all fallback-source combinations, manual artwork, missing artwork, and unavailable states.
+- Check real data combinations: owned/unowned, wishlist, multiple variants,
+  reusable printing-detail tags, quantities, mixed languages, all
+  fallback-source combinations, owner/manual artwork, missing artwork, and
+  unavailable states.
 - Check long and missing names, numbers, prices, rarity, and metadata without breaking alignment.
 - Check loading, retry, cached remounts, large lists, keyboard, touch, and responsive behavior.
 - Include desktop and mobile screenshots for affected screens and update shared visual snapshots when appropriate.
@@ -101,7 +115,10 @@ Maintainers and AI-assisted reviews should use this checklist for every pull req
 
 1. Compare the proposal with the closest established patterns and the visual language above.
 2. Inspect every affected consumer, not only the screenshot or page named in the issue.
-3. Confirm that card data comes from the correct object, especially collection-item variant, quantity, condition, language, wishlist, and product state.
+3. Confirm that card data comes from the correct object, especially
+   collection-item variant, printing-detail tags, quantity, condition,
+   language, owner-photo preference, wishlist, allocation, product, and trade
+   state.
 4. Check that indicators have a legend and fallback frames still communicate data, price, image, and manual-artwork fallback states.
 5. Exercise edge states and specialist workflows rather than reviewing only the default card.
 6. Test representative real pages on desktop and mobile. Use Chromium and WebKit/Safari for browser-facing loading or layout changes.

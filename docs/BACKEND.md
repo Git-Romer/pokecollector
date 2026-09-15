@@ -36,7 +36,7 @@ FastAPI app entry point: `backend/main.py`.
 | POST | `/api/cards/custom/dismiss/{match_id}` | Dismiss match |
 | GET | `/api/cards/{card_id}/lang/{lang}` | Resolve equivalent card in another language |
 | GET | `/api/cards/{card_id}/price-history` | Price history |
-| PUT | `/api/cards/{card_id}/custom-image` | Set temporary custom image URL |
+| PUT | `/api/cards/{card_id}/custom-image` | Set/clear a validated HTTPS fallback image for an API card with no TCGdex artwork |
 | GET | `/api/cards/{card_id}` | Card detail |
 | POST | `/api/cards/recognize` | Card recognition through the user's configured vision provider |
 | POST | `/api/cards/recognize/jobs` | Sanitize and enqueue up to 50 persistent scan photos |
@@ -45,8 +45,17 @@ FastAPI app entry point: `backend/main.py`.
 | GET | `/api/cards/recognize/jobs/{job_id}/items/{item_id}/image` | Private sanitized review photo |
 | GET | `/api/cards/recognize/jobs/{job_id}/items/{item_id}/candidates/{index}/image` | A candidate's full-resolution artwork, served from the shared image cache |
 | POST | `/api/cards/recognize/jobs/{job_id}/items/{item_id}/resolve` | Confirm/dismiss an item and delete its queued photo |
+| POST | `/api/cards/recognize/jobs/{job_id}/items/{item_id}/resolve-and-add` | Atomically add the selected card and resolve the queued item |
 | POST | `/api/cards/recognize/jobs/{job_id}/items/{item_id}/retry` | Retry one reviewable item individually |
 | DELETE | `/api/cards/recognize/jobs/{job_id}` | Delete a job and its queued photos |
+
+`GET /api/cards/search` accepts `q` (with `name` as a compatibility alias),
+`number`, `set_id`, `type`, `category`, `subtype`, `rarity`, `artist`,
+`rule_text`, `hp_min`, `hp_max`, `dex_id`, `lang`, `sort_by`, `sort_order`,
+`page`, and `page_size`. Text filters are accent-insensitive. `rule_text`
+searches card effects plus attack/ability names and effects. Card numbers use
+the same leading-zero and alphanumeric matching as exact lookup, and `q` also
+recognizes code-number pairs such as `PFL 001`.
 
 Custom cards belong to exactly one user. Owners may publish a card as a shared template, but other users must clone it before using it in collections, wishlists, binders, products, or trades. Clones have independent IDs, metadata, images, and prices. Manual image URLs must use public HTTPS destinations and are fetched through the size-limited image proxy. During upgrade, existing custom cards become shared templates owned by the first-created admin account, while each other referencing user receives one private clone and keeps their existing references.
 
@@ -59,8 +68,15 @@ Custom cards belong to exactly one user. Owners may publish a card as a shared t
 | POST | `/api/collection/` | Add to collection |
 | POST | `/api/collection/bulk-add` | Bulk-add selected cards; commits each item independently and reports added/updated/failed counts |
 | POST | `/api/collection/import-csv` | Strict CSV collection import with all-or-nothing validation |
+| GET | `/api/collection/printing-detail-tags` | List reusable printing-detail tags for the current user |
+| POST | `/api/collection/printing-detail-tags` | Create or reuse a normalized tag |
+| PUT | `/api/collection/printing-detail-tags/{tag_id}` | Rename an owned reusable tag |
+| DELETE | `/api/collection/printing-detail-tags/{tag_id}` | Delete an owned reusable tag and its associations |
 | PUT | `/api/collection/{item_id}` | Update collection item |
 | DELETE | `/api/collection/{item_id}` | Delete collection item |
+| GET | `/api/collection/{item_id}/photo` | Read the owner's private photo for that card identity |
+| POST | `/api/collection/{item_id}/photo` | Store/replace one sanitized owner photo for that card identity |
+| DELETE | `/api/collection/{item_id}/photo` | Delete the owner's photo for that card identity |
 | GET | `/api/collection/stats/summary` | Collection summary |
 | GET | `/api/sets/` | List sets |
 | GET | `/api/sets/new` | Newly detected sets |
@@ -74,21 +90,47 @@ Custom cards belong to exactly one user. Owners may publish a card as a shared t
 | GET | `/api/binders/` | Binders |
 | POST | `/api/binders/` | Create binder |
 | PUT | `/api/binders/{binder_id}` | Update binder |
+| POST | `/api/binders/{binder_id}/convert-to-collection` | Atomically convert a Planned Binder to a physical Binder |
+| POST | `/api/binders/{binder_id}/convert-to-wishlist` | Convert a physical Binder to a Planned Binder and release allocations |
 | DELETE | `/api/binders/{binder_id}` | Delete binder |
 | GET | `/api/binders/{binder_id}/cards` | Binder cards |
 | GET | `/api/binders/{binder_id}/optimize-prints` | Equivalent-print optimization preview |
 | POST | `/api/binders/{binder_id}/optimize-prints` | Apply equivalent-print optimization |
 | POST | `/api/binders/{binder_id}/cards` | Add card to binder |
 | POST | `/api/binders/{binder_id}/collection-items` | Add owned collection item to binder |
+| POST | `/api/binders/add-owned-set` | Create a Card List populated from an owned set |
+| POST | `/api/binders/{binder_id}/add-owned-set` | Add owned cards from a set to an existing Card List |
 | PUT | `/api/binders/{binder_id}/entries/{binder_card_id}` | Update binder entry quantity |
 | GET | `/api/binders/{binder_id}/entries/{binder_card_id}/equivalent-prints` | List equivalent prints for an entry |
 | PUT | `/api/binders/{binder_id}/entries/{binder_card_id}/card` | Switch an entry to an equivalent print |
-| POST | `/api/binders/{binder_id}/entries/{binder_card_id}/wishlist` | Move binder entry to wishlist |
-| POST | `/api/binders/{binder_id}/wishlist` | Add wishlist card to binder |
+| POST | `/api/binders/{binder_id}/entries/{binder_card_id}/wishlist` | Add the entry's needed copies to the global Wishlist |
+| POST | `/api/binders/{binder_id}/wishlist` | Add all missing planned-list copies to the global Wishlist |
 | GET | `/api/binders/{binder_id}/export-csv` | Binder CSV export |
 | POST | `/api/binders/{binder_id}/import-csv` | Binder CSV import |
 | DELETE | `/api/binders/{binder_id}/entries/{binder_card_id}` | Remove binder entry |
 | DELETE | `/api/binders/{binder_id}/cards/{card_id}` | Remove card from binder |
+
+### Decks
+
+Decks are backed by the shared Binder/Card List tables; these compatibility
+routes expose Deck-specific validation, allocation, comparison, and probability
+responses.
+
+| Method | Path | Notes |
+|--------|------|-------|
+| GET | `/api/decks/` | List the current user's Planned and Real Decks |
+| POST | `/api/decks/` | Create a 20-, 40-, or 60-card Deck |
+| GET | `/api/decks/compare` | Compare two Decks and their probability analysis |
+| POST | `/api/decks/{deck_id}/duplicate` | Duplicate as a new Planned Deck without physical allocations |
+| POST | `/api/decks/{deck_id}/convert-to-real` | Atomically reserve every required owned copy |
+| POST | `/api/decks/{deck_id}/convert-to-planned` | Release allocations and retain the planned quantities |
+| GET | `/api/decks/{deck_id}` | Deck detail with validation, composition, shortages, and allocations |
+| GET | `/api/decks/{deck_id}/probability` | Opening hand/draw/prize probability analysis |
+| PATCH | `/api/decks/{deck_id}` | Update Deck metadata |
+| DELETE | `/api/decks/{deck_id}` | Delete Deck and release allocations |
+| POST | `/api/decks/{deck_id}/entries` | Add/increment a planned card entry |
+| PATCH | `/api/decks/{deck_id}/entries/{entry_id}` | Update required quantity |
+| DELETE | `/api/decks/{deck_id}/entries/{entry_id}` | Remove planned entry |
 
 ### Dashboard, Analytics, Social, Community
 
@@ -98,6 +140,7 @@ Custom cards belong to exactly one user. Owners may publish a card as a shared t
 | GET | `/api/analytics/duplicates` | Duplicate cards |
 | GET | `/api/analytics/top-movers` | Price movers |
 | GET | `/api/analytics/rarity-stats` | Rarity distribution |
+| GET | `/api/analytics/trades-summary` | Aggregate trade counts, totals, and deltas |
 | GET | `/api/analytics/investment-tracker` | Portfolio history |
 | GET | `/api/analytics/new-sets` | Analytics new sets |
 | GET | `/api/social/leaderboard` | Multi-user leaderboard |
@@ -107,6 +150,19 @@ Custom cards belong to exactly one user. Owners may publish a card as a shared t
 | GET | `/api/community/supporters` | Fresh, strictly validated public supporter registry projection; returns `503` with `Cache-Control: no-store` on any upstream or validation failure |
 | GET | `/api/github/rescue-donations` | Rescue donation total from `RESCUE_DONATIONS.csv` |
 
+### Pokédex, Profiles, and Public Sharing
+
+| Method | Path | Notes |
+|--------|------|-------|
+| GET | `/api/pokedex` | Species completion overview with generation/status/search filters |
+| GET | `/api/pokedex/{dex_id}` | One species with ownership and printing summary |
+| GET | `/api/pokedex/images/{kind}/{dex_id}.png` | Cached `sprites` or `artwork` image |
+| GET | `/api/profile/` | Current user's public-profile preferences and handle |
+| PUT | `/api/profile/` | Publish/unpublish profile and optionally expose values |
+| GET | `/api/public/profiles` | Anonymous directory of published profiles |
+| GET | `/api/public/profiles/{handle}` | Anonymous published profile summary |
+| GET | `/api/public/profiles/{handle}/binders/{binder_id}` | Anonymous shared collection Binder |
+
 ### Products, Export, Backup, Sync, Settings
 
 | Method | Path | Notes |
@@ -114,14 +170,22 @@ Custom cards belong to exactly one user. Owners may publish a card as a shared t
 | GET | `/api/products/types` | Product type suggestions |
 | GET | `/api/products/` | Product list |
 | POST | `/api/products/` | Create product |
+| POST | `/api/products/batch` | Create up to 200 product records in one batch |
+| PUT | `/api/products/lifecycle/bulk` | Change sealed/opened state for multiple products |
 | PUT | `/api/products/{product_id}` | Update product |
 | DELETE | `/api/products/{product_id}` | Delete product |
 | GET | `/api/products/summary` | Product summary |
 | GET | `/api/products/{product_id}` | Product detail |
 | POST | `/api/products/{product_id}/cards` | Link collection cards to product |
+| POST | `/api/products/{product_id}/cards/bulk` | Link up to 200 collection-card selections atomically |
 | DELETE | `/api/products/{product_id}/cards/{product_card_id}` | Unlink product card |
 | POST | `/api/products/{product_id}/cards/{product_card_id}/sell` | Record product-card sale |
 | POST | `/api/products/{product_id}/ledger` | Add product ledger entry |
+| GET | `/api/trades/` | Current user's trade journal |
+| GET | `/api/trades/{trade_id}` | Trade detail with immutable item snapshots |
+| POST | `/api/trades/value` | Preview incoming/outgoing card values |
+| POST | `/api/trades/` | Create a trade and apply inventory changes atomically |
+| PUT | `/api/trades/{trade_id}` | Safely reverse and reapply an editable trade |
 | GET | `/api/export/csv` | CSV export |
 | GET | `/api/export/pdf` | PDF export |
 | GET | `/api/backup/download` | Admin-only SQL backup |
@@ -135,18 +199,22 @@ Custom cards belong to exactly one user. Owners may publish a card as a shared t
 | GET | `/api/sync/status` | Sync status and history |
 | GET | `/api/images/card/{card_id}/{size}` | Card image proxy/cache |
 | GET | `/api/images/set/{set_id}/{image_type}` | Set logo/symbol proxy/cache |
+| GET | `/api/images/product/{product_id}` | Token-gated, size-limited proxy for a validated product image |
 | GET | `/api/settings/` | Effective settings for current user |
 | GET | `/api/settings/scanner` | Typed provider/model readiness for the current user |
 | PUT | `/api/settings/scanner` | Save an already-verified scanner configuration or remove a key |
 | POST | `/api/settings/scanner/test` | Two-image capability test with optional atomic save |
 | GET | `/api/settings/tcgdex-languages` | Supported TCGdex language metadata |
+| GET | `/api/settings/tcgdex-filter-languages` | Languages currently available for catalogue filtering |
 | PUT | `/api/settings/` | Update settings |
 | GET | `/api/settings/debug-log` | Admin-only debug log download |
 | DELETE | `/api/settings/scan-diagnostics` | Delete all persisted scanner diagnostics for the current user |
+| DELETE | `/api/settings/card-photos` | Delete all private collection-card photos for the current user |
 | GET | `/api/settings/telegram_status` | Whether Telegram is configured for current user |
 | GET | `/api/settings/exchange-rate` | Exchange-rate lookup for display currency |
 | GET | `/api/settings/{key}` | Get one setting |
 | POST | `/api/settings/{key}` | Set one setting |
+| GET | `/api/health` | Unauthenticated service-health probe |
 
 ## Models
 
@@ -168,7 +236,45 @@ Custom cards belong to exactly one user. Owners may publish a card as a shared t
 - Active fields: `card_id`, `user_id`, `quantity`, `condition`, `variant`, `purchase_price`, `lang`
 - Variant values are now the physical print variants only: `Normal`, `Holo`, `Reverse Holo`, `First Edition`
 - The old grading UI is gone; the database migration history still contains a legacy `grade` column, but it is not part of the current ORM model or API schema
-- Existing rows are grouped by user, card, variant, language, condition, and purchase price when cards are added through the API
+- Existing rows are grouped by user, card, variant, language, condition,
+  purchase price, and normalized printing-detail tag set when cards are added
+  through the API
+- `printing_detail_tags` adds reusable owner-scoped descriptors without expanding
+  the fixed physical-variant enum
+
+### `CollectionCardPhoto` and `PrintingDetailTag`
+
+- `CollectionCardPhoto` stores one private image per `user_id + card_id`; all
+  grouped collection rows for that card identity share it
+- Photo bytes are returned only through authenticated collection endpoints and
+  never written to the globally visible catalogue-card image cache
+- `PrintingDetailTag` is unique per user after Unicode normalization and a
+  fixed digest key
+- The same tag may be associated with collection items, product cards, product
+  ledger entries, and trade items
+
+### `Binder` / `BinderCard`
+
+- `binder_type` is `collection`, `wishlist`, `deck`, or `physical_deck`
+- Planned rows store `card_id + required_quantity`; physical rows add an exact
+  `collection_item_id`
+- `target_size`, when present, is 20, 40, or 60
+- `is_public` applies to collection Binders exposed through public profiles
+- Allocation services enforce one shared owned-copy capacity across physical
+  Binders and Real Decks
+
+### Products and trades
+
+- `ProductPurchase` tracks batch, image/Cardmarket links, notes, and lifecycle
+  state (`sealed`, `opened`, `sold`, or `review`)
+- `ProductCard` links opened-product contents to source collection rows while
+  retaining initial, active, and sold quantities
+- `ProductLedgerEntry` preserves realized sales, gains, adjustments, and trade
+  outflow history even if an active collection row is later removed
+- `Trade` records partner/date/notes, cash-adjusted incoming/outgoing values,
+  and value delta
+- `TradeItem` stores direction and a card/condition/variant/language/printing
+  snapshot plus provenance used to safely edit newer trades
 
 ### `User`
 
@@ -190,13 +296,13 @@ Custom cards belong to exactly one user. Owners may publish a card as a shared t
 
 - `Set`
 - `WishlistItem`
-- `Binder` / `BinderCard`
-- `ProductPurchase`
 - `PriceHistory`
 - `PortfolioSnapshot`
 - `SyncLog`
 - `ImageCache`
 - `CustomCardMatch`
+- `ScanJob` / `ScanJobItem` / `ScanQueueUserState`
+- `GeminiQuotaState` / `ScannerProviderLimitState`
 
 ## Settings Scope
 
@@ -216,6 +322,12 @@ Current settings are split in `backend/api/settings.py`:
   - `openai_api_key`
   - provider-specific scanner provider/model settings managed by the dedicated scanner endpoint
   - `scan_diagnostics_enabled`
+  - `prefer_own_card_photos`
+  - `set_overview_filters`
+  - `hidden_set_ids`
+  - `portfolio_display_mode`
+  - provider-specific request timeouts, custom-model selections, capability
+    proofs, and optional Gemini fallback preference
   - `trainer_name`
 - `ADMIN_ONLY_KEYS`
   - `full_sync_interval_days`
@@ -225,6 +337,8 @@ Current settings are split in `backend/api/settings.py`:
   - `debug_mode`
   - `cross_language_price_fallback`
   - `cross_language_image_fallback`
+  - `tcgdex_digital_sets_enabled`
+  - `public_profiles_enabled`
 
 Important behavior:
 
@@ -265,14 +379,31 @@ Supported groups:
 
 Current table mapping:
 
-- `collection`: `collection`, `wishlist`, `binders`, `binder_cards`
-- `users`: `users`, `user_settings`, `settings`
+- `collection`: `collection`, `wishlist`, `binders`, `binder_cards`,
+  `printing_detail_tags`, `collection_printing_detail_tags`
+- `users`: `users`, `user_settings`, `settings`, `printing_detail_tags`
 - `cards`: `cards`, `sets`, `price_history`, `custom_card_matches`
-- `products`: `product_purchases`, `portfolio_snapshots`
+- `products`: `product_purchases`, `product_cards`, `product_ledger_entries`,
+  `portfolio_snapshots`, `printing_detail_tags`,
+  `product_card_printing_detail_tags`, `product_ledger_printing_detail_tags`
 - `system`: `sync_log`
 - `images`: `image_cache`
 
 If `include=full`, image cache is excluded unless `images` is also explicitly included.
+
+Use `full` for disaster recovery. Selective mappings are targeted export groups,
+not guaranteed standalone restore sets: they may depend on rows in another
+group and currently do not include every independent newer table, including
+trades, trade-item tag associations, private collection-card photos, and scan
+queue/provider state. A full dump includes those database tables. Scanner trace
+and queued-photo files remain filesystem data and are not part of SQL backups.
+
+### Manual restore
+
+`POST /api/backup/restore` accepts only a non-empty `.sql` upload, streams it to
+a temporary file, and invokes `psql` with `ON_ERROR_STOP=1`, `--no-psqlrc`, and
+`--single-transaction`. Any SQL error rolls back the whole restore. The
+temporary file is removed whether the operation succeeds or fails.
 
 ### Automatic Pre-upgrade Backup
 
@@ -307,7 +438,13 @@ Environment controls:
 4. Candidates are found by querying the locally synced `cards` table and ranked deterministically by local number, language, printed total, set code, regulation mark, artist, and HP. Missing evidence is neutral and contradictions are negative. Broad substring rows from either the local catalogue or live TCGdex are retained only when their complete names match after accent, case, and whitespace normalization, so an unrelated containing name or different card suffix cannot become a confident number match. A (language, name) search pair falls back to one live TCGdex call (`_api_search_fallback` in `backend/api/recognize.py`) when it has no name-compatible local rows, or when a collector number was recognized but none of those rows has that number. The second condition matters when a newly released printing reuses an existing card name before the local sync reaches it. The fallback result is used for that one scan only and is never persisted to `cards`. When every required live fallback is unavailable and no local candidate exists, the scan reports a transient catalogue outage instead of a false "no matches" result. Queued scans save the parsed vision result before matching and reuse it for catalogue-outage retries, so recovery does not repeat the paid extraction. Scan traces tag each search-pair result's `source` as `local` or `api_fallback`, and cached retries mark the extraction source as `queue_cache`.
 5. If metadata is inconclusive, conservative pHash can accept a close, clearly separated visual winner without another provider call. It never overrides known contradictions.
 6. Individual scans may use the same provider's visual comparison when pHash abstains; composite scans fall back to individual recognition instead.
-7. Queue results remain reviewable after restarts. Confirming and adding a candidate uses one row-locked database transaction so concurrent tabs cannot increment the collection twice; confirming/dismissing then deletes the queued photo. Unreviewed jobs expire after 14 days.
+7. Queue results remain reviewable after restarts. Confirming and adding a
+   candidate uses one row-locked database transaction so concurrent tabs cannot
+   increment the collection twice. The frontend retains the source Blob before
+   that request; when no catalogue/custom artwork exists, it uploads the Blob
+   afterward as a best-effort authenticated collection-card photo. Failure does
+   not undo the collection add. Confirming/dismissing deletes the queued photo.
+   Unreviewed jobs expire after 14 days.
 
 Provider error handling:
 

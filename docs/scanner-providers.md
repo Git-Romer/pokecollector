@@ -35,8 +35,13 @@ The status at the top explains what is still needed:
 Put the chosen variables in the project `.env` file, then recreate the backend:
 
 ```bash
-docker compose up -d --build backend
+docker compose up -d backend
 ```
+
+That command recreates the backend when its environment changed and keeps the
+published GHCR image. Contributors running source-built images should instead
+keep both Compose files in the command, as documented in
+[`CONTRIBUTING.md`](../CONTRIBUTING.md).
 
 Open Scanner Settings as an administrator afterward. The **Server setup details** section shows enabled providers, the sanitized destination, approved models, and whether each user needs a key. It never displays API keys.
 
