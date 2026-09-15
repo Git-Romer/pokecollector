@@ -1,5 +1,11 @@
 # Implementation brief: National Pokédex for PokéCollector
 
+> [!NOTE]
+> This is the historical implementation brief for the feature delivered in
+> v1.23.5. It preserves the original scope and follow-up boundary. For current
+> runtime behavior, routes, backfill revisions, cache commands, and Cardmarket
+> links, use [`POKEDEX.md`](POKEDEX.md).
+
 ## Goal
 
 Add an additive species-first view covering National Dex #001–1025 while retaining all existing set, card, collection, binder, and wishlist workflows.
@@ -37,6 +43,9 @@ Not included in this feature:
 - automatic wants-list/cart/Shopping Wizard operations;
 - replacement of existing set completion logic.
 
-## Follow-up
+## Original follow-up idea
 
-Add a wishlist-to-Cardmarket transfer assistant after this feature. The first version should provide exact-product links/checklist and an optional Cardmarket decklist-text export with clear matching limitations.
+A wishlist-to-Cardmarket transfer assistant was intentionally left outside the
+Pokédex implementation. If pursued later, it should provide exact-product
+links/checklists and clearly explain matching limitations; it should not imply
+Cardmarket authentication or automatic account/cart access.

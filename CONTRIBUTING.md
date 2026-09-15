@@ -18,6 +18,28 @@ npm test
 npm run build
 ```
 
+For backend work, install `backend/requirements.txt` and run the relevant
+standard-library `unittest` files (or the full suite) with the backend on the
+Python import path:
+
+```bash
+python -m pip install -r backend/requirements.txt
+(cd backend && python -m unittest discover -s tests -p 'test_*.py')
+```
+
+For changes that touch versions or deployment definitions, also run:
+
+```bash
+node scripts/check-version.mjs
+docker compose config --quiet
+docker compose -f docker-compose.yml -f docker-compose.build.yml config --quiet
+```
+
+Update the README or the focused guide under `docs/` whenever behavior,
+configuration, routes, storage, privacy, or operational steps change. Keep
+historical implementation briefs clearly labelled so they are not mistaken for
+current instructions.
+
 The frontend test command also validates literal translation keys. Add new user-facing keys to `src/i18n/en.js`; other language bundles can fall back to English until a translation is contributed. Missing keys fail with the source file and line instead of appearing as raw labels in the app.
 
 To build and run the container images from your checkout instead of pulling the
@@ -42,7 +64,7 @@ build override.
 
 ## Card interfaces
 
-The public card system in `src/components/card-system` is the normal starting point for card interfaces. It provides established frames, rows, badges, dialogs, and loading/error states so contributors can focus on the feature itself.
+The public card system in `frontend/src/components/card-system` is the normal starting point for card interfaces. It provides established frames, rows, badges, dialogs, and loading/error states so contributors can focus on the feature itself.
 
 ```jsx
 import { CardDisplay, CardLegend, CardRow, CardStack } from '../components/card-system'

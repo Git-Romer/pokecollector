@@ -8,6 +8,10 @@ A species is **Owned** when the current user has at least one collection item wh
 
 A multi-Pokémon card can contain several `dex_ids` and counts toward each species. Removing the final matching collection item changes the species back to **Missing**.
 
+Condition, physical variant, printing-detail tags, purchase price, Binder/Deck
+allocation, and owner-card photos do not change completion: one positive
+collection quantity for a matching `dex_id` is sufficient.
+
 ## Data sources
 
 - The bundled `backend/data/pokedex.json` contains National Dex #001–1025, English and German names, generation, region, and types.
@@ -77,6 +81,10 @@ GET /api/cards/search?dex_id={dex_id}
 
 The overview supports `generation`, `region`, `status`, `search`, and `lang` query parameters.
 
+The species page can sort printings by the user's selected primary price in
+either direction, owned first, Wishlist first, or set/card number. Card actions
+reuse the normal shared card dialog and collection/Wishlist workflows.
+
 ## Cardmarket links
 
 Specific card views prefer an exact public Cardmarket product redirect stored in `cardmarket_products`:
@@ -90,3 +98,7 @@ When no exact product ID is available, PokéCollector opens a Pokémon-category 
 ## Wishlist export follow-up
 
 The current schema intentionally exposes the metadata needed for a later “Export wishlist for Cardmarket” transfer assistant. Automated Cardmarket account login, wants-list synchronization, cart creation, and Shopping Wizard execution are not part of this change.
+
+The original delivered scope and boundaries are preserved in the
+[`POKEDEX_IMPLEMENTATION_BRIEF.md`](POKEDEX_IMPLEMENTATION_BRIEF.md) historical
+brief. This document is the current operational reference.

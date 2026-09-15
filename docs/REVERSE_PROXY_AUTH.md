@@ -27,6 +27,11 @@ PokéCollector still applies its own sharing controls after a request reaches th
 3. Each collection binder must be shared separately.
 4. Collection values remain hidden unless the trainer enables them.
 
+`PUBLIC_MODE=true` controls the frontend container's public-installation SEO
+output at startup. It does not grant access to a profile or replace any of the
+four application sharing checks above, and it does not configure the reverse
+proxy.
+
 ## Authentik
 
 Authentik proxy providers support an **Unauthenticated Paths** or **Unauthenticated URLs** field. Each line is a Go regular expression.

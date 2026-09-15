@@ -51,14 +51,17 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 ### 📦 Collection Management
 - Add cards with quantity, condition, variant, and purchase price
 - Variants are now limited to `Normal`, `Holo`, `Reverse Holo`, and `First Edition`
+- Add reusable, owner-scoped printing-detail tags such as signed, stamped, misprint, or altered; tags follow the physical copy through products and trades
+- Keep one private owner photo per owned card identity; use it as an artwork fallback by default or prefer it everywhere
 - Card rarity is read-only from TCGdex and displayed separately from variant
 - Track localized TCGdex card rows separately by language code, including all supported TCGdex languages
 - Manually create owner-scoped custom cards not present in TCGdex
 - Share manual cards as copy-only templates so other trainers receive independent cards and portfolio values
 
 ### 🔍 Search & Scanning
-- Search the locally cached card database by name, set, type, rarity, HP, artist, and more
+- Search the locally cached card database by name, number, set, category, type, subtype, rarity, HP range, artist, and attack/ability/rule text
 - Short-code search like `PFL 001`
+- Accent-insensitive, URL-backed filters make advanced searches bookmarkable and preserve them across navigation
 - Multi-select search results and bulk-add matching cards to the collection
 - Unified persistent scanner with individual and composite batch recognition, via Gemini or any OpenAI-compatible vision endpoint
 - Persistent, restart-safe scan queue with a review inbox, 14-day expiry, and automatic retries that do not consume recognition attempts for rate limits
@@ -66,6 +69,7 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - Deterministic matching ranks local number, printed total, set code, regulation mark, artist, and HP before optional visual verification
 - Conservative local pHash matching can resolve exceptionally clear candidates without a second Gemini request and safely abstains on ambiguous photos
 - Native camera and gallery capture with an optional positioning guide; queued photos are sanitized and deleted after confirmation or dismissal
+- When a confirmed card has no catalogue or custom fallback artwork, its sanitized scan is retained as that user's private card photo on a best-effort basis
 - Scanner strips suffixes like `ex` / `GX` / `VSTAR` for broader matching
 - Optional consent-controlled scanner diagnostics for installations that enable `SCAN_TRACE_DIR`; disabled per user by default with a separate delete action
 - Card modal auto-preselects a likely variant from TCGdex variant flags
@@ -78,13 +82,15 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - Planned Binders track future collection projects without allocating owned copies
 - Persistent Deck Builder for 20-, 40-, and 60-card lists, with editable targets, ownership totals, shortage warnings, validation, analytics, and probabilities
 - Explicit actions send missing Planned Binder or Deck copies to the global Wishlist
+- Convert between Planned and physical Binders, import/export Binder CSV files, and populate a physical Binder from an owned set
 - Wishlist with Telegram price alerts
 
 ### 📈 Prices, Portfolio & Analytics
 - Cardmarket EUR pricing and TCGPlayer USD pricing via TCGdex
 - Price history charts and portfolio snapshots
 - Dashboard, duplicates, top movers, rarity stats, and investment tracker
-- Sealed product tracking with realized and unrealized P&L
+- Sealed product tracking with batch creation, lifecycle states, product images/Cardmarket links, linked pulls, a realized-gains ledger, and realized/unrealized P&L
+- Trade journal with incoming/outgoing cards and cash, automatic collection updates, editable trades, valuation, and trade analytics
 
 ### 👤 Single-User & Multi-User
 - Single-user mode: no login required, auto-auth as admin
@@ -92,6 +98,7 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - Per-user settings for language, currency, Telegram keys, and scanner provider keys
 - Force password change support on first login
 - Profile avatar and profile name editing
+- Optional public trainer directory, profiles, shared Binders, and value visibility, all opt-in and admin-gated
 - Cascade deletion of user-owned data
 
 ### 🃏 Deck Builder
@@ -116,20 +123,25 @@ Binders, Planned Binders, Planned Decks, and Real Decks share the existing `bind
 
 ### ⚙️ Utilities
 - CSV and PDF export
-- Strict CSV collection import with a downloadable template; required row values are `set_code` and `number`, while `quantity`, `condition`, `variant`, `lang`, and `purchase_price` may be blank
+- Strict CSV collection import with a downloadable template; required row values are `set_code` and `number`, while `quantity`, `condition`, `variant`, `lang`, `purchase_price`, and `printing_details` may be blank
 - Admin-only sync endpoints and scheduler controls
-- Backup and restore, including selective backup groups for collection, users, cards, products, system data, and images
+- Full SQL backup and atomic restore, plus selective backup groups for targeted exports
 - Backend image proxy/cache for cards and sets
+
+For complete recovery, use a **full** backup. Selective groups are intended for
+targeted exports, may depend on rows outside their group, and do not currently
+cover every newer feature table, such as trades and private collection-card
+photos.
 
 ### CSV Collection Import
 
-The Collection page includes an **Import CSV** action and a downloadable template. CSV imports are intentionally strict: the header must be exactly:
+The Collection page includes an **Import CSV** action and a downloadable template. CSV imports are intentionally strict. The preferred header is exactly:
 
 ```csv
-set_code,number,quantity,condition,variant,lang,purchase_price
+set_code,number,quantity,condition,variant,lang,purchase_price,printing_details
 ```
 
-All columns must be present, but only `set_code` and `number` need values in each row. Use the card code shown in PokéCollector/card lists, for example `ASC 152`: `ASC` goes into `set_code`, and `152` goes into `number`.
+All columns must be present, but only `set_code` and `number` need values in each row. The legacy seven-column header without `printing_details` is still accepted and imports rows without printing-detail tags. Use the card code shown in PokéCollector/card lists, for example `ASC 152`: `ASC` goes into `set_code`, and `152` goes into `number`.
 
 | Column | Required value? | Notes |
 | --- | --- | --- |
@@ -140,13 +152,14 @@ All columns must be present, but only `set_code` and `number` need values in eac
 | `variant` | No | Leave blank or use `Normal`, `Holo`, `Reverse Holo`, `First Edition`. |
 | `lang` | No | Defaults to `en`; accepts any supported TCGdex language code. |
 | `purchase_price` | No | Optional per-card purchase price. |
+| `printing_details` | No | Reusable tags separated by `\|`, for example `Pokémon stamp\|Cracked ice`. Up to 10 unique tags are allowed per row; each tag may contain up to 80 characters and cannot itself contain `\|`. |
 
 Example:
 
 ```csv
-set_code,number,quantity,condition,variant,lang,purchase_price
-ASC,152,2,NM,,en,
-PFL,001,1,LP,Reverse Holo,de,1.25
+set_code,number,quantity,condition,variant,lang,purchase_price,printing_details
+ASC,152,2,NM,,en,,Pokémon stamp|Cracked ice
+PFL,001,1,LP,Reverse Holo,de,1.25,
 ```
 
 If any row contains a wrong value or an unknown card code, the import does not add any cards. The response shows the affected row number, so the CSV can be corrected and uploaded again.
@@ -170,8 +183,9 @@ curl -fsSL -o .env.new https://github.com/Git-Romer/pokecollector/releases/lates
 mv .env.new .env
 ```
 
-Edit `.env` and set secure values for at least `POSTGRES_PASSWORD` and
-`JWT_SECRET_KEY`:
+Edit `.env` and set a secure `POSTGRES_PASSWORD`. You may also set
+`JWT_SECRET_KEY` yourself; leaving it empty generates and persists a strong key
+under `data/auth/`:
 
 ```env
 POSTGRES_PASSWORD=your_secure_password
@@ -229,6 +243,12 @@ docker compose exec backend python -m scripts.cache_pokedex_images
 ```
 
 See [National Pokédex documentation](docs/POKEDEX.md) for the data model, routes, cache behavior, and Cardmarket links.
+
+See [Card Lists and Decks](docs/CARD_LISTS.md) for Binder, Planned Binder,
+Planned Deck, and Real Deck behavior, including shared owned-copy allocation.
+
+See [Deployment and releases](docs/DEPLOYMENT.md) for image names, supported
+platforms, version pinning, updates, rollback, and the automated release flow.
 
 For scanner keys, hosted OpenAI, Ollama, and other compatible vision servers, see the [scanner provider setup guide](docs/scanner-providers.md).
 
@@ -324,19 +344,21 @@ If you are already locked out of multi-user mode, set `USER_MODE=single` in the 
 | `TELEGRAM_BOT_TOKEN` | Initial Telegram bot token for the admin user | *(empty)* |
 | `TELEGRAM_CHAT_ID` | Initial Telegram chat ID for the admin user | *(empty)* |
 | `TCGDEX_SYNC_LANGUAGES` | Initial admin default for TCGdex set/card sync languages on first launch only. After bootstrap, the DB setting in Settings is authoritative. Comma-separated TCGdex language codes, or `all` to enable every supported TCGdex language. Empty or invalid values safely fall back to `en,de`. Extra languages increase sync time, API calls, and database size. | `en,de` |
-| `ADMIN_BOOTSTRAP_LOG` | Whether bootstrap credentials may be logged on first start | `true` |
 | `USER_MODE` | Pin the mode from the environment, overriding the stored setting and disabling the in-app toggle. `single` forces single-user (no login screen) and is the recovery hatch after a multi-user lockout; `multi` forces multi-user. Because `single` disables authentication, use it only on a local/LAN install and unset it once recovered. Unset means the in-app setting controls the mode. | *(unset)* |
 | `PUBLIC_MODE` | Enable SEO meta tags, Open Graph, and allow search engine indexing. Default blocks all crawlers. Recreate the frontend container after changing it. | `false` |
 | `POKECOLLECTOR_VERSION` | Optional frontend and backend image-tag override for controlled deployments and rollbacks. Leave unset to use the exact release bundled with `docker-compose.yml`; `latest` is available only when deliberately requested. | Bundled release version |
 | `CORS_ORIGINS` | Comma-separated list of allowed origins for CORS. If empty, allows all origins. Set to your domain for production (e.g. `https://pokecollector.romerg.de`). | *(all)* |
-| `POKEDEX_METADATA_BACKFILL_ON_STARTUP` | Run the one-time Pokédex metadata backfill automatically after startup when existing card rows are missing `dex_ids` or Cardmarket product metadata | `true` |
-| `POKEDEX_METADATA_BACKFILL_BATCH_LIMIT` | Number of cards selected per automatic Pokédex metadata backfill batch | `5000` |
-| `POKEDEX_METADATA_BACKFILL_BATCH_DELAY_SECONDS` | Pause between automatic Pokédex metadata backfill batches to avoid a tight TCGdex request loop | `0.5` |
 | `PRE_UPGRADE_BACKUP_ENABLED` | Create an automatic SQL backup before startup migrations when an existing install starts on a new app version | `true` |
 | `PRE_UPGRADE_BACKUP_REQUIRED` | Stop startup if the automatic pre-upgrade backup fails. Set to `false` only if you have another verified backup process. | `true` |
 | `PRE_UPGRADE_BACKUP_KEEP` | Number of automatic pre-upgrade backups to retain in `/app/backups`; minimum `1` | `10` |
 | `BACKEND_PORT` | Host port the backend is published on. Change it if another stack on the same host already uses `8000`. The container port is unaffected. | `8000` |
 | `FRONTEND_PORT` | Host port the frontend is published on. Change it if another stack on the same host already uses `3000`. The container port is unaffected. | `3000` |
+
+This table covers variables passed through by the bundled Compose file. Custom
+backend deployments can also set advanced process-level variables such as
+`ADMIN_BOOTSTRAP_LOG` and the `POKEDEX_METADATA_BACKFILL_*` controls directly;
+adding those names only to the project `.env` file does not configure the
+standard Compose service.
 
 The bundled exact version is the safe default. The separate frontend and
 backend `latest` aliases cannot be updated as one atomic registry operation, so
@@ -461,13 +483,19 @@ Published installations pull frontend and backend images from `ghcr.io` and Post
 | [`docs/BACKEND.md`](docs/BACKEND.md) | API routes, models, settings scoping, backup behavior |
 | [`docs/FRONTEND.md`](docs/FRONTEND.md) | Routes, pages, components, contexts, theming, i18n |
 | [`docs/CARD_SYSTEM.md`](docs/CARD_SYSTEM.md) | Public card components, variants, gallery, and extension workflow |
+| [`docs/CARD_LISTS.md`](docs/CARD_LISTS.md) | Binders, planned lists, Decks, owned-copy allocation, conversions, and CSV workflows |
+| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | GHCR images, Compose installation, updates, rollback, and release automation |
+| [`docs/POKEDEX.md`](docs/POKEDEX.md) | National Pokédex completion, metadata, images, routes, and Cardmarket links |
 | [`docs/REVERSE_PROXY_AUTH.md`](docs/REVERSE_PROXY_AUTH.md) | Forward-auth exceptions for public profiles and binders |
+| [`docs/scanner-providers.md`](docs/scanner-providers.md) | Gemini, hosted OpenAI, Ollama, and compatible scanner-provider setup |
 
 ---
 
 ## 🔧 Configuration Reference
 
-All settings are persisted in the database and edited in the Settings UI.
+Most app preferences are persisted in the database and edited in Settings.
+Theme is browser-local, while environment variables control bootstrap and
+container-level behavior.
 
 | Setting | Default | Notes |
 |---------|---------|-------|
@@ -478,6 +506,8 @@ All settings are persisted in the database and edited in the Settings UI.
 | TCGdex Sync Languages | `en,de` | Admin-only. Controls which TCGdex set/card languages full sync fetches. Extra languages increase sync time, API calls, and database size. |
 | Cross-language Price Fallback | `true` | Admin-only. Uses English exact-ID price data when the selected card language has no native public price data. |
 | Cross-language Image Fallback | `true` | Admin-only. Uses English exact-ID images when the selected card language has no native public image data. |
+| Show digital sets | `true` | Admin-only. Hides or shows digital-only catalogue sets. |
+| Public profiles | `false` | Admin-only master switch. Trainers and individual Binders must still opt in separately. |
 | Debug Mode | `false` | Admin-only. Enables downloadable backend debug logging. |
 | Theme | `default` | Stored in browser local storage |
 | Price Sync Interval | `30` minutes | Admin-only |
@@ -512,11 +542,17 @@ PokéCollector now uses PostgreSQL 18 for Docker installs. Existing Docker insta
 
 You do not need to install every intermediate PokéCollector app version first. Upgrade from your current PostgreSQL 15 install directly to this release: the script handles the database engine major-version upgrade, then the backend applies the app's cumulative startup migrations. Older installs that predate the recorded app-version setting are still treated as existing installs and backed up before those app migrations run.
 
-Create or verify a manual backup first while your current PostgreSQL 15 stack is still running:
+Create a manual backup first while your current PostgreSQL 15 stack is still running:
 
 ```bash
-docker compose exec postgres pg_dump -U pokemon pokemon_tcg > backup_$(date +%Y%m%d).sql
+backup_file="backup_$(date +%Y%m%d_%H%M%S).sql"
+umask 077
+docker compose exec -T postgres pg_dump -U pokemon pokemon_tcg --clean --if-exists > "$backup_file"
+test -s "$backup_file"
 ```
+
+Do not continue if the final check fails. The restrictive `umask` matters
+because a full SQL dump can contain user settings and scanner API credentials.
 
 Then pull the updated project files, but do not run the normal image update commands yet. Also do not run `docker compose down -v` or remove Docker volumes before the upgrade script finishes; that deletes the old database volume and leaves only your manual backup as the recovery path.
 
@@ -545,11 +581,17 @@ Automatic backups are stored in the mounted backups folder:
 
 By default, startup stops if this safety backup fails. This protects existing card collections before version migrations run.
 
-> **Important:** Always create your own manual backup before updating the application. The automatic pre-upgrade backup is an extra safety net, not a replacement for a verified backup you control.
+> **Important:** Always create your own manual backup before updating the application. The automatic pre-upgrade backup is an extra safety net, not a replacement for a backup you control and have independently tested when practical.
 
 ```bash
-docker compose exec postgres pg_dump -U pokemon pokemon_tcg > backup_$(date +%Y%m%d).sql
+backup_file="backup_$(date +%Y%m%d_%H%M%S).sql"
+umask 077
+docker compose exec -T postgres pg_dump -U pokemon pokemon_tcg --clean --if-exists > "$backup_file"
+test -s "$backup_file"
 ```
+
+Do not continue if the final check fails. Store full SQL dumps securely: they
+can contain user settings and scanner API credentials.
 
 Then update the deployment definition. For an installation created with the
 Quick Start instructions:
@@ -577,6 +619,12 @@ need a controlled deployment. Remove the override to follow the version bundled
 with the downloaded Compose file during normal updates.
 
 Database migrations run automatically on startup after the pre-upgrade backup succeeds. If you need to roll back, stop the app, switch back to the previous app version, and restore the matching SQL backup.
+
+The restore endpoint validates `.sql` uploads, streams them to a temporary file,
+and runs PostgreSQL with `ON_ERROR_STOP` inside one transaction. A failed restore
+rolls back instead of leaving a partially restored database. The temporary
+upload is removed afterward. See [Deployment and releases](docs/DEPLOYMENT.md)
+for a complete version-pinning and rollback procedure.
 
 ---
 
