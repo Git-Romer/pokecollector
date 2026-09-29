@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
+import da from './da'
 import de from './de'
 import en from './en'
 import es from './es'
@@ -22,6 +23,7 @@ import zhCn from './zhCn'
 import zhTw from './zhTw'
 
 const locales = {
+  da,
   de,
   en,
   es,
