@@ -1,3 +1,4 @@
+import base64
 import asyncio
 import contextlib
 import unittest
@@ -44,6 +45,12 @@ try:
 except ModuleNotFoundError:
     HTTPException = Exception
     API_TEST_DEPS_AVAILABLE = False
+
+
+# A decodable 1x1 PNG: visual verification only shows decodable references.
+_TINY_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+)
 
 
 @unittest.skipUnless(API_TEST_DEPS_AVAILABLE, "FastAPI/httpx are not installed in this lightweight test environment")
@@ -1671,7 +1678,8 @@ class PhashMatchingTests(unittest.IsolatedAsyncioTestCase):
             new=AsyncMock(return_value=(candidates, 0)),
         ), patch(
             "api.recognize._download_candidate_images",
-            new=AsyncMock(return_value={}),
+            # A visual pick needs the model to have seen the candidate.
+            new=AsyncMock(return_value={"first": _TINY_PNG, "second": _TINY_PNG}),
         ), patch(
             "api.recognize._phash_best_match",
             side_effect=RuntimeError("unexpected pHash failure"),
@@ -1718,7 +1726,8 @@ class PhashMatchingTests(unittest.IsolatedAsyncioTestCase):
             new=AsyncMock(return_value=(candidates, 0)),
         ), patch(
             "api.recognize._download_candidate_images",
-            new=AsyncMock(return_value={}),
+            # A visual pick needs the model to have seen the candidate.
+            new=AsyncMock(return_value={"first": _TINY_PNG, "second": _TINY_PNG}),
         ), patch(
             "api.recognize._phash_best_match", return_value=None
         ), patch(
