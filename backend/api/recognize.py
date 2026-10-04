@@ -1014,6 +1014,7 @@ async def _search_and_rank_candidates(
     native_candidate_count = 0
     fallback_attempts = 0
     reachable_fallbacks = 0
+    digital_set_ids: set[str] | None = None
     for search_language, search_name in search_pairs:
         if len(candidates) >= 15:
             break
@@ -1042,6 +1043,8 @@ async def _search_and_rank_candidates(
                         # catalogue rows, while true is always a user-created
                         # card and must not become a scanner candidate.
                         Card.is_custom.isnot(True),
+                        # Digital-only (TCG Pocket) printings cannot be photographed.
+                        Card.is_digital.isnot(True),
                         Card.lang == search_language,
                         name_filter,
                     )
@@ -1134,7 +1137,17 @@ async def _search_and_rank_candidates(
             fallback_attempts += 1
             if fallback_reachable:
                 reachable_fallbacks += 1
-            cards.extend(fallback_cards)
+            if digital_set_ids is None:
+                digital_set_ids = {
+                    set_id for (set_id,) in db.query(Set.tcg_set_id).filter(Set.is_digital.is_(True))
+                }
+            cards.extend(
+                card for card in fallback_cards
+                if str(card.get("tcg_card_id") or "").rsplit("-", 1)[0] not in digital_set_ids
+                # Sets that are not synced locally: TCGdex serves digital-only
+                # (TCG Pocket) artwork under the "tcgp" series path.
+                and "/tcgp/" not in str(card.get("image") or "")
+            )
 
         selected_cards = select_search_candidates(
             cards,
