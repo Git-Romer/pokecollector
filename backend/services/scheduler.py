@@ -5,7 +5,10 @@ import logging
 import datetime
 
 logger = logging.getLogger(__name__)
-scheduler = BackgroundScheduler()
+# APScheduler skips a run that starts more than misfire_grace_time late (default
+# 1 s). Container hosts routinely wake a second or two late, which silently
+# skipped the one-minute scan-queue job; coalesce keeps a late run to one.
+scheduler = BackgroundScheduler(job_defaults={"misfire_grace_time": 60, "coalesce": True})
 
 _DEFAULT_FULL_SYNC_DAYS = 5
 _DEFAULT_PRICE_SYNC_MINUTES = 30
