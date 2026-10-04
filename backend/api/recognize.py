@@ -39,6 +39,7 @@ from services.scan_providers import (
 )
 import logging
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from api.auth import get_current_user
 from database import get_db
@@ -562,11 +563,49 @@ def _normalized_scanner_name(name: object) -> str:
     return re.sub(r"\s+", " ", strip_diacritics(value)).strip()
 
 
+_TRAILING_QUALIFIER = re.compile(r"\s*\([^()]*\)\s*$")
+# Separators and punctuation the model and the catalogue write
+# inconsistently: spaces, hyphens/dashes, apostrophes and periods. Symbols
+# that carry identity (gender signs, delta, star) are not included.
+_SEPARATORS = re.compile(r"[\s\-\u2010-\u2013'\u2018\u2019\u02bc`\u00b4.]+")
+
+
+def _name_search_terms(name: str) -> list[str]:
+    """Search terms that reach catalogue names written with other separators.
+
+    Retrieval is a substring search, so "Ho Oh" never reaches "Ho-Oh" and a
+    recognized "Boss's Orders (Giovanni)" never reaches "Boss's Orders". The
+    strict compatibility check still runs on every returned row.
+    """
+    name = re.sub(r"[\u2010-\u2013]", "-", name)
+    name = re.sub(r"[\u2018\u2019\u02bc`\u00b4]", "'", name)
+    base = _TRAILING_QUALIFIER.sub("", name).strip() or name
+    spaced = re.sub(r"\s*&\s*", " & ", base)
+    terms = [name, base, base.replace("-", " "), base.replace(" ", "-"), spaced]
+    return list(dict.fromkeys(term for term in terms if term))
+
+
 def _scanner_names_compatible(expected: object, candidate: object) -> bool:
-    """Match complete printed names across accents, case, and whitespace."""
+    """Match complete printed names across accents, case, and whitespace.
+
+    The catalogue sometimes adds a qualifier the card does not print
+    ("Boss's Orders (Giovanni)"), and separators are written inconsistently
+    ("Charizard & Braixen-GX" / "Charizard&Braixen GX" / "... Braixen GX",
+    "Hop’s" / "Hop's"). A trailing parenthesis and separators (see
+    _SEPARATORS) are ignored on both sides; any other difference still
+    rejects the name.
+    """
     expected_name = _normalized_scanner_name(expected)
     candidate_name = _normalized_scanner_name(candidate)
-    return bool(expected_name and expected_name == candidate_name)
+    if not expected_name or not candidate_name:
+        return False
+    if expected_name == candidate_name:
+        return True
+    expected_name, candidate_name = (
+        _SEPARATORS.sub("", _TRAILING_QUALIFIER.sub("", name))
+        for name in (expected_name, candidate_name)
+    )
+    return expected_name == candidate_name
 
 
 def _normalized_card_type(value: object) -> str:
@@ -1029,7 +1068,12 @@ async def _search_and_rank_candidates(
                 break
         expected_name = card_name if search_language == language else card_name_en
         try:
-            name_filter = accent_insensitive_contains(db, Card.name, search_name)
+            name_filters = [
+                condition
+                for term in _name_search_terms(search_name)
+                if (condition := accent_insensitive_contains(db, Card.name, term)) is not None
+            ]
+            name_filter = or_(*name_filters) if name_filters else None
             if name_filter is None:
                 rows = []
             else:
@@ -1128,9 +1172,20 @@ async def _search_and_rank_candidates(
             for card in cards
         ))
         if not cards or (target_number and not local_has_number_match):
-            fallback_cards, fallback_reachable = await _api_search_fallback(
-                search_language, search_name, expected_name, trace
-            )
+            # The live search is a substring match too: try the separator and
+            # qualifier variants until one returns compatible cards. The pair
+            # counts as reachable when any variant got a meaningful answer.
+            fallback_cards, fallback_reachable = [], False
+            for term in _name_search_terms(search_name):
+                term_cards, term_reachable = await _api_search_fallback(
+                    search_language, term, expected_name, trace
+                )
+                fallback_reachable = fallback_reachable or term_reachable
+                if term_cards:
+                    fallback_cards = term_cards
+                    break
+                if not term_reachable:
+                    break
             fallback_attempts += 1
             if fallback_reachable:
                 reachable_fallbacks += 1
