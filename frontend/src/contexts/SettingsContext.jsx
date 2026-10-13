@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 import en from '../i18n/en'
 import { priceFieldFromPrimary } from '../utils/prices'
 import { normalizeTcgdexLanguageCsv } from '../utils/tcgdexLanguages'
@@ -68,6 +68,17 @@ function cacheLanguage(language) {
 
 function initialSettings() {
   return { ...DEFAULT_SETTINGS, language: readCachedLanguage() || DEFAULT_SETTINGS.language }
+}
+
+function currencySymbolFor(code) {
+  try {
+    const part = new Intl.NumberFormat('en', { style: 'currency', currency: code, currencyDisplay: 'narrowSymbol' })
+      .formatToParts(0)
+      .find(p => p.type === 'currency')
+    return part?.value || code
+  } catch {
+    return code
+  }
 }
 
 const SettingsContext = createContext(null)
@@ -143,7 +154,8 @@ export function SettingsProvider({ children }) {
     const token = localStorage.getItem('token')
     if (authLoading || (multiUser && !token)) return
 
-    const fetchExchangeRate = async (from, to, fallback) => {
+    // Resolves to null when the backend has no rate (unknown currency and API unreachable).
+    const fetchExchangeRate = async (from, to) => {
       try {
         const headers = token && multiUser ? { Authorization: `Bearer ${token}` } : {}
         const response = await fetch(`/api/settings/exchange-rate?from=${from}&to=${to}`, {
@@ -151,31 +163,35 @@ export function SettingsProvider({ children }) {
         })
         if (!response.ok) throw new Error('Exchange rate lookup failed')
         const data = await response.json()
-        return Number(data.rate) || fallback
+        return Number(data.rate) || null
       } catch {
-        return fallback
+        return null
       }
     }
 
-    const curr = settings.currency || 'EUR'
+    const curr = (settings.currency || 'EUR').toUpperCase()
     let cancelled = false
-    if (curr === 'USD') {
-      setExchangeRateReady(false)
-      setExchangeRateCurrency(null)
-      setExchangeRate(1.1)
-      fetchExchangeRate('EUR', 'USD', 1.1).then(rate => {
-        if (!cancelled) {
-          setExchangeRate(rate)
-          setExchangeRateCurrency('USD')
-          setExchangeRateReady(true)
-        }
-      })
-    } else {
+    if (curr === 'EUR') {
       setExchangeRateReady(true)
       setExchangeRateCurrency('EUR')
       setExchangeRate(1.0)
-      fetchExchangeRate('USD', 'EUR', 0.91).then(rate => {
-        if (!cancelled) setUsdToEurRate(rate)
+    } else {
+      setExchangeRateReady(false)
+      setExchangeRateCurrency(null)
+      fetchExchangeRate('EUR', curr).then(rate => {
+        if (cancelled) return
+        // Without a rate, show EUR amounts rather than mislabeled converted ones.
+        setExchangeRate(rate ?? 1.0)
+        setExchangeRateCurrency(rate ? curr : 'EUR')
+        setExchangeRateReady(true)
+      })
+    }
+    // TCGPlayer prices are stored in USD; convert them to the display currency.
+    if (curr === 'USD') {
+      setUsdToEurRate(1.0)
+    } else {
+      fetchExchangeRate('USD', curr).then(rate => {
+        if (!cancelled) setUsdToEurRate(rate ?? (curr === 'EUR' ? 0.91 : null))
       })
     }
     return () => { cancelled = true }
@@ -248,9 +264,13 @@ export function SettingsProvider({ children }) {
     return settings.price_primary || 'trend'
   }, [settings.price_primary])
 
-  const currency = settings.currency || 'EUR'
-  const currencySymbol = currency === 'USD' ? '$' : '€'
-  const moneyExchangeRateReady = currency !== 'USD' || (exchangeRateReady && exchangeRateCurrency === 'USD')
+  const requestedCurrency = (settings.currency || 'EUR').toUpperCase()
+  // If no rate could be loaded, fall back to showing EUR so labels match the amounts.
+  const currency = exchangeRateReady && exchangeRateCurrency && exchangeRateCurrency !== requestedCurrency
+    ? exchangeRateCurrency
+    : requestedCurrency
+  const currencySymbol = useMemo(() => currencySymbolFor(currency), [currency])
+  const moneyExchangeRateReady = currency === 'EUR' || (exchangeRateReady && exchangeRateCurrency === currency)
   const pricePrimary = getPricePrimary()
   const pricePrimaryField = priceFieldFromPrimary(pricePrimary)
 
@@ -262,7 +282,9 @@ export function SettingsProvider({ children }) {
 
   const formatUsdPrice = useCallback((usdAmount) => {
     if (usdAmount == null || isNaN(Number(usdAmount))) return '-'
-    const converted = currency === 'USD' ? Number(usdAmount) : Number(usdAmount) * usdToEurRate
+    // No USD rate for the display currency: show the original USD amount.
+    if (usdToEurRate == null) return `$${Number(usdAmount).toFixed(2)}`
+    const converted = Number(usdAmount) * usdToEurRate
     return `${currencySymbol}${converted.toFixed(2)}`
   }, [currency, currencySymbol, usdToEurRate])
 
