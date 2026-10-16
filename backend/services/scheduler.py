@@ -5,10 +5,9 @@ import logging
 import datetime
 
 logger = logging.getLogger(__name__)
-# APScheduler skips a run that starts more than misfire_grace_time late (default
-# 1 s). Container hosts routinely wake a second or two late, which silently
-# skipped the one-minute scan-queue job; coalesce keeps a late run to one.
-scheduler = BackgroundScheduler(job_defaults={"misfire_grace_time": 60, "coalesce": True})
+# Give the persistent scan queue a short recovery window without changing other jobs.
+scheduler = BackgroundScheduler()
+_SCAN_QUEUE_MISFIRE_GRACE_SECONDS = 60
 
 _DEFAULT_FULL_SYNC_DAYS = 5
 _DEFAULT_PRICE_SYNC_MINUTES = 30
@@ -217,6 +216,8 @@ def start_scheduler():
             name="Persistent Scan Queue",
             replace_existing=True,
             next_run_time=now_utc + datetime.timedelta(seconds=45),
+            misfire_grace_time=_SCAN_QUEUE_MISFIRE_GRACE_SECONDS,
+            coalesce=True,
         )
 
         if needs_pokedex_backfill:
