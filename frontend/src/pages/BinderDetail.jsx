@@ -612,7 +612,7 @@ export default function BinderDetail() {
                 showBinderProgress={isWishlist}
               />
               {isCollection && <div className="mt-3 flex items-center gap-2 border-t border-border pt-3">
-                <span className="inline-flex flex-shrink-0 items-center rounded-full bg-green/80 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white shadow-sm">
+                <span className="inline-flex flex-shrink-0 items-center rounded-full bg-green/80 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white shadow-xs">
                   2x
                 </span>
                 <span className="text-xs leading-tight text-text-secondary">
@@ -694,7 +694,7 @@ export default function BinderDetail() {
       )}
 
       {showPrintOptimizer && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm md:flex md:items-center md:justify-center md:bg-black/80" onClick={() => setShowPrintOptimizer(false)}>
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs md:flex md:items-center md:justify-center md:bg-black/80" onClick={() => setShowPrintOptimizer(false)}>
           <div
             className="fixed bottom-0 left-0 right-0 rounded-t-2xl max-h-[90dvh] overflow-y-auto bg-bg-surface border-t border-border md:static md:rounded-2xl md:border md:max-w-3xl md:w-full md:max-h-[85vh]"
             onClick={e => e.stopPropagation()}

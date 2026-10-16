@@ -150,7 +150,7 @@ function ProductSourceBadge({ item, t, compact = false, className = '' }) {
       <span
         title={`${t('collection.foundIn')}: ${summary.title}`}
         className={clsx(
-          'inline-flex items-center justify-center rounded-full border border-yellow/40 bg-bg/85 text-yellow shadow-lg backdrop-blur-sm',
+          'inline-flex items-center justify-center rounded-full border border-yellow/40 bg-bg/85 text-yellow shadow-lg backdrop-blur-xs',
           className || 'h-6 w-6'
         )}
       >
@@ -201,7 +201,7 @@ const downloadCsvImportTemplate = () => {
 function CsvImportModal({ t, onClose, onChooseFile, onDownloadTemplate, isImporting }) {
   return createPortal(
     <div
-      className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm md:flex md:items-center md:justify-center md:bg-black/80"
+      className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs md:flex md:items-center md:justify-center md:bg-black/80"
       onClick={onClose}
     >
       <div

@@ -926,7 +926,7 @@ export default function Settings() {
                       type="text"
                       value={usernameInput}
                       onChange={(e) => setUsernameInput(e.target.value)}
-                      className="w-32 rounded-lg border border-border bg-bg-primary px-2 py-1.5 text-xs text-text-primary outline-none focus:border-brand-red"
+                      className="w-32 rounded-lg border border-border bg-bg-primary px-2 py-1.5 text-xs text-text-primary outline-hidden focus:border-brand-red"
                       style={{ WebkitTextFillColor: "var(--color-text-primary)", WebkitBoxShadow: "0 0 0px 1000px var(--color-bg) inset" }}
                       autoFocus
                       maxLength={32}
@@ -1648,7 +1648,7 @@ export default function Settings() {
                       onBlur={handleAlertThresholdBlur}
                       min="1"
                       max="100"
-                      className="text-xs font-semibold text-text-primary rounded-lg px-3 py-1.5 outline-none w-16 text-right"
+                      className="text-xs font-semibold text-text-primary rounded-lg px-3 py-1.5 outline-hidden focus-visible:ring-2 focus-visible:ring-brand-red/60 w-16 text-right"
                       style={{
                         background: 'rgba(255,255,255,0.07)',
                         border: '1px solid rgba(255,255,255,0.1)',

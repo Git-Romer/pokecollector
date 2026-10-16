@@ -349,7 +349,7 @@ export default function SetDetail() {
 
       {binderPickerOpen && createPortal(
         <div
-          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm md:flex md:items-center md:justify-center md:bg-black/80"
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs md:flex md:items-center md:justify-center md:bg-black/80"
           onClick={() => setBinderPickerOpen(false)}
         >
           <div

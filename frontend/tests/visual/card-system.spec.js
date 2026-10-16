@@ -96,8 +96,26 @@ async function dispatchPinch(image) {
   })
 }
 
+test('forced-colors outline utility remains visible', async ({ page }) => {
+  await waitForGallery(page)
+  await page.emulateMedia({ forcedColors: 'active' })
+  const outline = await page.evaluate(() => {
+    const input = document.createElement('input')
+    input.classList.add(['outline', 'hidden'].join('-'))
+    input.style.position = 'fixed'
+    document.body.append(input)
+    input.focus()
+    const styles = getComputedStyle(input)
+    const result = { style: styles.outlineStyle, width: styles.outlineWidth }
+    input.remove()
+    return result
+  })
+  expect(outline).toEqual({ style: 'solid', width: '2px' })
+})
+
 test('shared card variants and states remain consistent', async ({ page }) => {
   await waitForGallery(page)
+  await expect(page.getByTestId('open-card-dialog')).toHaveCSS('cursor', 'pointer')
   await expect(page.getByTestId('binder-zero-state').locator('.unified-card-missing-overlay')).toHaveCount(1)
   await expect(page.getByTestId('binder-partial-state').locator('.unified-card-missing-overlay')).toHaveCount(0)
   await expect(page.getByTestId('carousel-state').locator('.lucide-sparkles')).toHaveCount(3)
