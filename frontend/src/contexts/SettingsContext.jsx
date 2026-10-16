@@ -159,16 +159,20 @@ export function SettingsProvider({ children }) {
 
     const curr = settings.currency || 'EUR'
     let cancelled = false
-    if (curr === 'USD') {
+    if (curr !== 'EUR') {
       setExchangeRateReady(false)
       setExchangeRateCurrency(null)
-      setExchangeRate(1.1)
-      fetchExchangeRate('EUR', 'USD', 1.1).then(rate => {
+      const fallback = curr === 'DKK' ? 7.46 : 1.1
+      setExchangeRate(fallback)
+      fetchExchangeRate('EUR', curr, fallback).then(rate => {
         if (!cancelled) {
           setExchangeRate(rate)
-          setExchangeRateCurrency('USD')
+          setExchangeRateCurrency(curr)
           setExchangeRateReady(true)
         }
+      })
+      fetchExchangeRate('USD', 'EUR', 0.91).then(rate => {
+        if (!cancelled) setUsdToEurRate(rate)
       })
     } else {
       setExchangeRateReady(true)
@@ -249,22 +253,28 @@ export function SettingsProvider({ children }) {
   }, [settings.price_primary])
 
   const currency = settings.currency || 'EUR'
-  const currencySymbol = currency === 'USD' ? '$' : '€'
-  const moneyExchangeRateReady = currency !== 'USD' || (exchangeRateReady && exchangeRateCurrency === 'USD')
+  const currencySymbol = currency === 'USD' ? '$' : currency === 'DKK' ? 'kr.' : '€'
+  const moneyExchangeRateReady = currency === 'EUR' || (exchangeRateReady && exchangeRateCurrency === currency)
   const pricePrimary = getPricePrimary()
   const pricePrimaryField = priceFieldFromPrimary(pricePrimary)
 
   const formatPrice = useCallback((eurAmount) => {
     if (eurAmount == null || isNaN(Number(eurAmount))) return '-'
     const converted = Number(eurAmount) * exchangeRate
+    if (currency === 'DKK') {
+      return `${converted.toFixed(2)} kr.`
+    }
     return `${currencySymbol}${converted.toFixed(2)}`
-  }, [exchangeRate, currencySymbol])
+  }, [exchangeRate, currencySymbol, currency])
 
   const formatUsdPrice = useCallback((usdAmount) => {
     if (usdAmount == null || isNaN(Number(usdAmount))) return '-'
-    const converted = currency === 'USD' ? Number(usdAmount) : Number(usdAmount) * usdToEurRate
+    const converted = currency === 'USD' ? Number(usdAmount) : Number(usdAmount) * usdToEurRate * exchangeRate
+    if (currency === 'DKK') {
+      return `${converted.toFixed(2)} kr.`
+    }
     return `${currencySymbol}${converted.toFixed(2)}`
-  }, [currency, currencySymbol, usdToEurRate])
+  }, [currency, currencySymbol, usdToEurRate, exchangeRate])
 
   return (
     <SettingsContext.Provider value={{

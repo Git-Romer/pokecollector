@@ -193,6 +193,7 @@ const CURRENCY_SYMBOLS = {
   EUR: '€',
   USD: '$',
   GBP: '£',
+  DKK: 'kr. ',
 }
 
 function formatSupporterAmount(amountCents, currency = 'EUR') {
@@ -1156,6 +1157,7 @@ export default function Settings() {
                   options={[
                     { value: 'EUR', label: '€ EUR' },
                     { value: 'USD', label: '$ USD' },
+                    { value: 'DKK', label: 'kr. DKK' },
                   ]}
                   onChange={handleCurrencyChange}
                 />

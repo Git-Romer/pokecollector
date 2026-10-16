@@ -19,13 +19,15 @@ def _normalize_currency(value: str | None) -> tuple[str, str]:
     currency = (value or "EUR").upper()
     if currency == "USD":
         return "USD", "$"
+    if currency == "DKK":
+        return "DKK", "kr. "
     return "EUR", "€"
 
 
 def _convert_eur(amount: float | None, exchange_rate: float, currency: str) -> float | None:
     if amount is None:
         return None
-    return float(amount) * exchange_rate if currency == "USD" else float(amount)
+    return float(amount) * exchange_rate if currency != "EUR" else float(amount)
 
 
 def _format_money(amount: float | None, symbol: str) -> str:

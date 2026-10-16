@@ -89,15 +89,24 @@ def _format_user_eur(amount: float, db=None, user_id=None) -> str:
         except Exception:
             currency = "EUR"
 
-    if currency == "USD":
+    if currency != "EUR":
         try:
             with httpx.Client(timeout=5.0) as client:
-                response = client.get("https://api.frankfurter.dev/v2/rate/EUR/USD")
+                response = client.get(f"https://api.frankfurter.dev/v2/rate/EUR/{currency}")
                 response.raise_for_status()
                 rate = parse_frankfurter_v2_rate(response.json())
         except Exception:
-            rate = 1.1
-        return f"${(amount or 0) * rate:.2f}"
+            from services.exchange_rates import fallback_exchange_rate
+            try:
+                rate = fallback_exchange_rate("EUR", currency)
+            except Exception:
+                rate = 1.0
+        val = (amount or 0) * rate
+        if currency == "USD":
+            return f"${val:.2f}"
+        if currency == "DKK":
+            return f"{val:.2f} kr."
+        return f"{val:.2f} {currency}"
     return f"€{(amount or 0):.2f}"
 
 
