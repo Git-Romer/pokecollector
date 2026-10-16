@@ -1622,6 +1622,17 @@ const en = {
     showDetails: 'Show details',
     hideDetails: 'Hide details',
     printedTotalMismatch: "Printed set total doesn't match this photo",
+    useWebcam: 'Use webcam',
+    webcamUnsupported: 'Requires HTTPS or localhost',
+    webcamGuideText: 'Hold a card steady inside the frame',
+    webcamPermissionDenied: 'Camera access was denied. Allow camera access in your browser settings and try again.',
+    webcamNoCamera: 'No camera was found on this device.',
+    webcamStreamError: 'The camera feed could not be started.',
+    webcamTryAgain: 'Try again',
+    webcamCapture: 'Capture',
+    webcamDone: 'Done',
+    webcamCaptured: 'Photo captured',
+    webcamSelectCamera: 'Select camera',
   },
 
   // Language filter / card language

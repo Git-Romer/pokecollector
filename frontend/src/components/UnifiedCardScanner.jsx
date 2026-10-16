@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Camera, Check, HelpCircle, ImagePlus, Loader2, Trash2, Upload, X } from 'lucide-react'
+import { Camera, Check, HelpCircle, ImagePlus, Loader2, Trash2, Upload, Video, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 import { enqueueScanJob, getScannerConfiguration } from '../api/client'
@@ -9,6 +9,13 @@ import { useSettings } from '../contexts/SettingsContext'
 import { isSupportedScannerImage, SCANNER_IMAGE_ACCEPT } from '../utils/scannerImages'
 import ConfirmDialog from './ui/ConfirmDialog'
 import Modal from './ui/Modal'
+import WebcamCapture from './WebcamCapture'
+
+const isWebcamSupported = () => (
+  typeof window !== 'undefined'
+  && window.isSecureContext
+  && Boolean(window.navigator?.mediaDevices?.getUserMedia)
+)
 
 
 function PhotoPositionGuide({ title, description }) {
@@ -42,6 +49,8 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
   const [confirmation, setConfirmation] = useState(null)
   const [photoGuidePinned, setPhotoGuidePinned] = useState(false)
   const [photoGuideHovered, setPhotoGuideHovered] = useState(false)
+  const [mode, setMode] = useState('staging')
+  const [webcamSupported] = useState(isWebcamSupported)
   const cameraRef = useRef()
   const galleryRef = useRef()
   const stagedFilesRef = useRef([])
@@ -56,6 +65,10 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
   useEffect(() => {
     stagedFilesRef.current = stagedFiles
   }, [stagedFiles])
+
+  useEffect(() => {
+    if (stagedFiles.length >= 50 && mode === 'webcam') setMode('staging')
+  }, [stagedFiles.length, mode])
 
   useEffect(() => () => {
     stagedFilesRef.current.forEach(item => URL.revokeObjectURL(item.previewUrl))
@@ -106,6 +119,7 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
     setPhotoGuidePinned(false)
     setPhotoGuideHovered(false)
     setConfirmation(null)
+    setMode('staging')
     onClose?.()
   }
 
@@ -224,7 +238,13 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
             )}
           </div>
 
-          {stagedFiles.length > 0 ? (
+          {mode === 'webcam' ? (
+            <WebcamCapture
+              onCapture={file => appendFiles([file])}
+              onExit={() => setMode('staging')}
+              maxReached={stagedFiles.length >= 50}
+            />
+          ) : stagedFiles.length > 0 ? (
             <div className="grid grid-cols-3 gap-3 sm:grid-cols-5 md:grid-cols-7">
               {stagedFiles.map((item, index) => (
                 <div key={item.id} className="space-y-1.5">
@@ -265,7 +285,8 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
             </div>
           )}
 
-          <div className="grid gap-2 sm:grid-cols-2">
+          {mode === 'staging' && (
+          <div className="grid gap-2 sm:grid-cols-3">
             <div className="flex gap-2">
               <button
                 type="button"
@@ -318,6 +339,16 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
             </div>
             <button
               type="button"
+              onClick={() => setMode('webcam')}
+              disabled={stagedFiles.length >= 50 || !webcamSupported}
+              title={!webcamSupported ? t('scanner.webcamUnsupported') : undefined}
+              className="btn-secondary flex items-center justify-center gap-2"
+            >
+              <Video size={16} />
+              <span>{t('scanner.useWebcam')}</span>
+            </button>
+            <button
+              type="button"
               onClick={() => galleryRef.current?.click()}
               disabled={stagedFiles.length >= 50}
               className="btn-secondary flex items-center justify-center gap-2"
@@ -326,8 +357,9 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
               <span>{t('scanner.chooseFromGallery')}</span>
             </button>
           </div>
+          )}
 
-          {stagedFiles.length > 1 && canComposite && (
+          {mode === 'staging' && stagedFiles.length > 1 && canComposite && (
             <button
               type="button"
               onClick={toggleAllIndividual}

@@ -31,6 +31,19 @@ images together:
 POKECOLLECTOR_VERSION=1.51.2
 ```
 
+## Live webcam scanning needs a secure context
+
+The scanner's live webcam capture mode uses the browser `getUserMedia` API,
+which browsers only grant on a secure context: HTTPS, or `http://localhost`.
+An installation reached over plain HTTP on a LAN IP (the default for
+`docker-compose.yml` without a reverse proxy) will show the "Use webcam"
+button disabled with an explanatory tooltip — the existing device-camera
+("Take photo") and gallery upload capture methods are unaffected and keep
+working over plain HTTP. Put PokéCollector behind a reverse proxy that
+terminates TLS (see [REVERSE_PROXY_AUTH.md](REVERSE_PROXY_AUTH.md) for an
+authenticating example) to enable live webcam scanning on other devices on
+the network.
+
 ## Install without cloning the repository
 
 ```bash
