@@ -2,6 +2,10 @@
 
 React 18 SPA built with Vite. Source lives under `frontend/src/`.
 
+## Browser Support
+
+The frontend uses Tailwind CSS v4, which requires Safari 16.4+, Chrome 111+, or Firefox 128+. Older browser versions are not supported by this frontend build.
+
 ## Route Table
 
 Routes are defined in `frontend/src/App.jsx`.
