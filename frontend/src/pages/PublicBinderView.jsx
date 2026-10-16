@@ -39,7 +39,7 @@ export default function PublicBinderView() {
         <Link to={`/u/${handle}`} className="btn-ghost inline-flex py-1.5 text-sm">
           <ArrowLeft size={14} /> {t('publicProfiles.backToProfile')}
         </Link>
-        <div className="my-4 flex flex-wrap items-baseline justify-between gap-2 rounded-2xl border border-border bg-bg-secondary p-4 shadow-sm">
+        <div className="my-4 flex flex-wrap items-baseline justify-between gap-2 rounded-2xl border border-border bg-bg-secondary p-4 shadow-xs">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-text-muted">{t('publicProfiles.sharedBinder')}</p>
             <h1 className="text-2xl font-bold">{binder.name}</h1>
@@ -82,7 +82,7 @@ export default function PublicBinderView() {
           const backLayers = Math.min(tile.variantCount - 1, 2)
           const layerOffset = 8
           return (
-            <article key={tile.id} className="rounded-xl border border-border bg-bg-secondary p-2 shadow-sm">
+            <article key={tile.id} className="rounded-xl border border-border bg-bg-secondary p-2 shadow-xs">
               <CardStack
                 card={tile}
                 image={tile.image}

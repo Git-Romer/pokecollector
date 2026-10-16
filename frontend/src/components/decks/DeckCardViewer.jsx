@@ -63,7 +63,7 @@ export default function DeckCardViewer({ entries, activeIndex, onClose, onPrevio
           <div className="rounded-xl border border-border bg-bg-card p-3">
             <p className="mb-2 text-xs font-medium text-text-muted">{t('decks.quantity')}</p>
             <div className="flex items-center gap-2">
-              <div className="inline-flex items-center rounded-full border border-border bg-bg-surface p-1 shadow-sm">
+              <div className="inline-flex items-center rounded-full border border-border bg-bg-surface p-1 shadow-xs">
                 <button type="button" className="grid h-9 w-9 place-items-center rounded-full text-text-secondary transition-colors hover:bg-bg-elevated hover:text-text-primary disabled:opacity-30" disabled={entry.required_quantity <= 1} onClick={() => onQuantityChange?.(entry, -1)} aria-label={label('decks.decreaseQuantity', { name: entry.card?.name || entry.card_id })}><Minus size={16} /></button>
                 <span className="min-w-12 text-center text-base font-black text-text-primary" aria-live="polite">{entry.required_quantity}</span>
                 <button type="button" className="grid h-9 w-9 place-items-center rounded-full text-text-secondary transition-colors hover:bg-bg-elevated hover:text-text-primary disabled:opacity-30" disabled={entry.required_quantity >= 99} onClick={() => onQuantityChange?.(entry, 1)} aria-label={label('decks.increaseQuantity', { name: entry.card?.name || entry.card_id })}><Plus size={16} /></button>

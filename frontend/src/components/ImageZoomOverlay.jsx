@@ -173,12 +173,12 @@ export default function ImageZoomOverlay({ src, alt = '', onClose }) {
       aria-label={`${t('card.zoomImage')} — ${alt}`}
       tabIndex={-1}
       onKeyDown={onDialogKeyDown}
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-xs"
     >
       <button
         type="button"
         onClick={onClose}
-        className="absolute right-3 top-3 z-20 grid h-10 w-10 place-items-center rounded-full border border-white/15 bg-black/75 text-white shadow-lg transition-colors hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red"
+        className="absolute right-3 top-3 z-20 grid h-10 w-10 place-items-center rounded-full border border-white/15 bg-black/75 text-white shadow-lg transition-colors hover:bg-black focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-red"
         aria-label={t('common.close')}
       >
         <X size={20} aria-hidden />

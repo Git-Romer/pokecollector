@@ -324,7 +324,7 @@ export function UnifiedCardDialog({
   const setNumber = getCardSetNumber(card)
   const dialog = (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm sm:p-6"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 backdrop-blur-xs sm:p-6"
       onClick={onClose}
     >
       <div
@@ -344,7 +344,7 @@ export function UnifiedCardDialog({
           ref={resolvedCloseButtonRef}
           type="button"
           onClick={onClose}
-          className="absolute right-3 top-3 z-50 grid h-9 w-9 place-items-center rounded-full border border-white/15 bg-black/75 text-white shadow-lg transition-colors hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red"
+          className="absolute right-3 top-3 z-50 grid h-9 w-9 place-items-center rounded-full border border-white/15 bg-black/75 text-white shadow-lg transition-colors hover:bg-black focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-red"
           aria-label={t('common.close')}
         >
           <X size={18} aria-hidden />
