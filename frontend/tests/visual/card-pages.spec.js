@@ -507,6 +507,52 @@ test('Collection displays and reuses printing-detail tags in the owned-card edit
   await expect(dialog.getByText('Expansion Stamp', { exact: true })).toBeVisible()
 })
 
+for (const surface of ['Collection', 'card search']) {
+  for (const action of ['remove', 'update', 'remove without detail']) {
+    test(`${surface} explains a rejected collection ${action} and keeps the card`, async ({ page }) => {
+      const removing = action.startsWith('remove')
+      const detail = action === 'remove without detail' ? '' : removing
+        ? 'This collection item is linked to a product. Sell or unlink the product card before removing it from the active collection.'
+        : 'Collection quantity cannot be lower than 2 active product-linked copies. Sell or unlink those product cards first.'
+      const requests = []
+      await page.route('**/api/collection/1', route => {
+        requests.push(route.request().method())
+        return route.fulfill({ status: detail ? 409 : 500, json: { detail } })
+      })
+      if (surface === 'card search') {
+        await page.route('**/api/cards/custom', route => route.fulfill({ json: [] }))
+        await page.route('**/api/cards/search?*', route => route.fulfill({ json: {
+          data: [{ ...collection[0].card, owned_quantity: 2, owned_items: [collection[0]] }],
+          total_count: 1,
+          page: 1,
+          page_size: 20,
+        } }))
+      }
+      await page.goto(surface === 'Collection' ? '/collection' : '/search?q=Visual')
+      await page.getByRole('button', { name: /^Visual card 1/ }).press('Enter')
+      const dialog = page.getByRole('dialog')
+      await dialog.getByRole('tab', { name: surface === 'Collection' ? 'Manage copies' : 'Owned copies' }).click()
+      if (removing) {
+        await dialog.getByTitle('Remove from collection', { exact: true }).click()
+        if (surface === 'Collection') {
+          await page.getByRole('button', { name: 'Remove', exact: true }).click()
+        }
+      } else {
+        await dialog.getByRole('spinbutton').first().fill('1')
+        if (surface === 'Collection') {
+          await dialog.getByRole('button', { name: 'Save', exact: true }).click()
+        } else {
+          await dialog.getByRole('spinbutton').first().press('Enter')
+        }
+      }
+      await expect.poll(() => requests).toEqual([removing ? 'DELETE' : 'PUT'])
+      await expect(page.getByRole('status')).toHaveText(detail || 'Failed to remove')
+      await expect(dialog).toBeVisible()
+      await expect(dialog.getByTitle('Remove from collection', { exact: true })).toBeEnabled()
+    })
+  }
+}
+
 test('Wishlist price tabs reuse the complete shared card price details', async ({ page }) => {
   await page.route('**/api/wishlist/', route => route.fulfill({
     status: 200,

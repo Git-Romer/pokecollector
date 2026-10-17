@@ -208,6 +208,12 @@ printing-detail tags, and private owner-card photos. Owner photos are loaded
 through authenticated endpoints and can be preferred over catalogue artwork in
 the current user's UI.
 
+The collection editor and card-detail Owned copies tab display the API's reason
+when an edit or removal is rejected. Active product links must be unlinked from
+the product's cards panel before removing the collection row; links with sale
+history remain protected. Copies allocated to Card Lists must be released first.
+A rejected action keeps the dialog and collection entry available.
+
 `pages/Binders.jsx`, `pages/BinderDetail.jsx`, `pages/DeckEditor.jsx`, and
 `pages/DeckCompare.jsx` share the Card List domain. Physical Binders and Real
 Decks allocate exact owned copies from one capacity pool. Planned Binders and
