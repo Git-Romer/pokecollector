@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { Plus, Heart, X, PenLine, Pencil, Trash2 } from 'lucide-react'
-import { addToCollection, addToWishlist, cloneCustomCard, createCustomCard, updateCustomCard, updateCardCustomImage, deleteCustomCard, getSets, updateCollectionItem, removeFromCollection } from '../api/client'
+import { addToCollection, addToWishlist, cloneCustomCard, createCustomCard, updateCustomCard, updateCardCustomImage, deleteCustomCard, getSets, updateCollectionItem, removeFromCollection, getApiErrorMessage } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { useSettings } from '../contexts/SettingsContext'
 import { useConfirmDialog } from '../contexts/ConfirmDialogContext'
@@ -647,7 +647,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
       invalidateCardState(queryClient)
       invalidateTcgdexFilterLanguages(queryClient)
     },
-    onError: () => toast.error(t('collection.updateFailed')),
+    onError: (error) => toast.error(getApiErrorMessage(error, t('collection.updateFailed'))),
   })
 
   const removeMutation = useMutation({
@@ -660,7 +660,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
       invalidateCardState(queryClient)
       invalidateTcgdexFilterLanguages(queryClient)
     },
-    onError: () => toast.error(t('collection.removeFailed')),
+    onError: (error) => toast.error(getApiErrorMessage(error, t('collection.removeFailed'))),
   })
 
   const customImageMutation = useMutation({

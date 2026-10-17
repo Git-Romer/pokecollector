@@ -439,7 +439,7 @@ function CollectionEditModal({ item, onClose }) {
       invalidateTcgdexFilterLanguages(queryClient)
       onClose()
     },
-    onError: () => toast.error(t('collection.updateFailed')),
+    onError: (error) => toast.error(getApiErrorMessage(error, t('collection.updateFailed'))),
   })
 
   const deleteMutation = useMutation({
@@ -450,7 +450,7 @@ function CollectionEditModal({ item, onClose }) {
       invalidateTcgdexFilterLanguages(queryClient)
       onClose()
     },
-    onError: () => toast.error(t('collection.removeFailed')),
+    onError: (error) => toast.error(getApiErrorMessage(error, t('collection.removeFailed'))),
   })
 
   const cloneMutation = useMutation({
