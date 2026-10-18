@@ -43,7 +43,7 @@ from services.scan_providers import (
 )
 import logging
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 from api.auth import get_current_user
 from database import get_db
@@ -71,6 +71,29 @@ PHASH_CANDIDATE_LIMIT = 8
 SEARCH_CANDIDATE_QUERY_LIMIT = 50
 MAX_REFERENCE_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_REFERENCE_IMAGE_PIXELS = 50_000_000
+CATALOGUE_FALLBACK_MAX_REQUESTS = 12
+CATALOGUE_FALLBACK_TOTAL_TIMEOUT_SECONDS = 30.0
+
+
+class CatalogueFallbackBudget:
+    """Share one serial TCGdex request/time budget across a scan's card matches."""
+
+    def __init__(self):
+        self.request_count = 0
+        self.deadline: float | None = None
+        self.any_reachable = False
+
+    def reserve_request(self) -> float | None:
+        loop = asyncio.get_running_loop()
+        if self.deadline is None:
+            self.deadline = loop.time() + CATALOGUE_FALLBACK_TOTAL_TIMEOUT_SECONDS
+        if self.request_count >= CATALOGUE_FALLBACK_MAX_REQUESTS:
+            return None
+        remaining = self.deadline - loop.time()
+        if remaining <= 0:
+            return None
+        self.request_count += 1
+        return remaining
 
 
 class GeminiRateLimitHTTPException(HTTPException):
@@ -611,26 +634,61 @@ def _normalized_scanner_name(name: object) -> str:
     return re.sub(r"\s+", " ", strip_diacritics(value)).strip()
 
 
-_TRAILING_QUALIFIER = re.compile(r"\s*\([^()]*\)\s*$")
+_TRAILING_QUALIFIER = re.compile(r"\s*\(([^()]*)\)\s*$")
 # Separators and punctuation the model and the catalogue write
 # inconsistently: spaces, hyphens/dashes, apostrophes and periods. Symbols
 # that carry identity (gender signs, delta, star) are not included.
-_SEPARATORS = re.compile(r"[\s\-\u2010-\u2013'\u2018\u2019\u02bc`\u00b4.]+")
+_SEPARATORS = re.compile(r"[\s\-\u2010-\u2015'\u2018\u2019\u02bc`\u00b4.]+")
 
 
-def _name_search_terms(name: str) -> list[str]:
+def _name_search_terms(
+    name: str, *, include_token_fallback: bool = False
+) -> list[str]:
     """Search terms that reach catalogue names written with other separators.
 
     Retrieval is a substring search, so "Ho Oh" never reaches "Ho-Oh" and a
     recognized "Boss's Orders (Giovanni)" never reaches "Boss's Orders". The
-    strict compatibility check still runs on every returned row.
+    longest name token is a final live-catalogue fallback when punctuation
+    differences prevent the full phrase from matching. The strict
+    compatibility check still runs on every returned row.
     """
-    name = re.sub(r"[\u2010-\u2013]", "-", name)
+    name = re.sub(r"[\u2010-\u2015]", "-", name)
     name = re.sub(r"[\u2018\u2019\u02bc`\u00b4]", "'", name)
     base = _TRAILING_QUALIFIER.sub("", name).strip() or name
     spaced = re.sub(r"\s*&\s*", " & ", base)
-    terms = [name, base, base.replace("-", " "), base.replace(" ", "-"), spaced]
+    compact_ampersand = re.sub(r"\s*&\s*", "&", base)
+    terms = [
+        name,
+        base,
+        base.replace("-", " "),
+        base.replace(" ", "-"),
+        spaced,
+        compact_ampersand,
+    ]
+    tokens = re.findall(r"[^\W_]+", base, flags=re.UNICODE)
+    if include_token_fallback and len(tokens) > 1:
+        terms.append(max(tokens, key=len))
     return list(dict.fromkeys(term for term in terms if term))
+
+
+_NAME_SEARCH_SQL_PUNCTUATION = (
+    " ", "-", "\u2010", "\u2011", "\u2012", "\u2013", "\u2014",
+    "\u2015", "'", "\u2018", "\u2019", "\u02bc", "`", "\u00b4", ".",
+)
+
+
+def _name_search_key(name: str) -> str:
+    """Remove separators while retaining identity-bearing symbols."""
+    base = _TRAILING_QUALIFIER.sub("", str(name or "")).strip() or str(name or "").strip()
+    return _SEPARATORS.sub("", base)
+
+
+def _normalized_name_search_column(column):
+    """Build a portable SQL expression matching `_name_search_key`."""
+    normalized = column
+    for punctuation in _NAME_SEARCH_SQL_PUNCTUATION:
+        normalized = func.replace(normalized, punctuation, "")
+    return normalized
 
 
 def _scanner_names_compatible(expected: object, candidate: object) -> bool:
@@ -639,9 +697,9 @@ def _scanner_names_compatible(expected: object, candidate: object) -> bool:
     The catalogue sometimes adds a qualifier the card does not print
     ("Boss's Orders (Giovanni)"), and separators are written inconsistently
     ("Charizard & Braixen-GX" / "Charizard&Braixen GX" / "... Braixen GX",
-    "Hop’s" / "Hop's"). A trailing parenthesis and separators (see
-    _SEPARATORS) are ignored on both sides; any other difference still
-    rejects the name.
+    "Hop’s" / "Hop's"). A qualifier may be omitted from either name; when
+    both names include one, the qualifiers must also match. Separators (see
+    _SEPARATORS) are ignored, while identity-bearing symbols remain distinct.
     """
     expected_name = _normalized_scanner_name(expected)
     candidate_name = _normalized_scanner_name(candidate)
@@ -649,11 +707,23 @@ def _scanner_names_compatible(expected: object, candidate: object) -> bool:
         return False
     if expected_name == candidate_name:
         return True
-    expected_name, candidate_name = (
-        _SEPARATORS.sub("", _TRAILING_QUALIFIER.sub("", name))
-        for name in (expected_name, candidate_name)
+    expected_qualifier = _TRAILING_QUALIFIER.search(expected_name)
+    candidate_qualifier = _TRAILING_QUALIFIER.search(candidate_name)
+    expected_base = (
+        expected_name[:expected_qualifier.start()].strip()
+        if expected_qualifier else expected_name
     )
-    return expected_name == candidate_name
+    candidate_base = (
+        candidate_name[:candidate_qualifier.start()].strip()
+        if candidate_qualifier else candidate_name
+    )
+    if _SEPARATORS.sub("", expected_base) != _SEPARATORS.sub("", candidate_base):
+        return False
+    if not expected_qualifier or not candidate_qualifier:
+        return True
+    expected_text = _SEPARATORS.sub("", expected_qualifier.group(1))
+    candidate_text = _SEPARATORS.sub("", candidate_qualifier.group(1))
+    return expected_text == candidate_text
 
 
 def _normalized_card_type(value: object) -> str:
@@ -1112,7 +1182,10 @@ async def _search_and_rank_candidates(
     db: Session,
     card_info: dict,
     trace: ScanTrace | None = None,
+    *,
+    catalogue_fallback_budget: CatalogueFallbackBudget | None = None,
 ) -> tuple[list[dict], int]:
+    fallback_budget = catalogue_fallback_budget or CatalogueFallbackBudget()
     card_name = re.sub(r"\s+", " ", str(card_info.get("name") or "").strip())
     card_name_en = (
         re.sub(r"\s+", " ", str(card_info.get("name_en") or card_name).strip())
@@ -1161,6 +1234,13 @@ async def _search_and_rank_candidates(
                 for term in _name_search_terms(search_name)
                 if (condition := accent_insensitive_contains(db, Card.name, term)) is not None
             ]
+            normalized_name_filter = accent_insensitive_contains(
+                db,
+                _normalized_name_search_column(Card.name),
+                _name_search_key(search_name),
+            )
+            if normalized_name_filter is not None:
+                name_filters.append(normalized_name_filter)
             name_filter = or_(*name_filters) if name_filters else None
             if name_filter is None:
                 rows = []
@@ -1279,15 +1359,27 @@ async def _search_and_rank_candidates(
             for card in cards
         ))
         if not cards or (target_number and not local_has_number_match):
-            # The live search is a substring match too: try the separator and
-            # qualifier variants until one returns compatible cards. The pair
-            # counts as reachable when any variant got a meaningful answer.
+            # The live search is a substring match too: try separator and
+            # qualifier variants, then a longest-token fallback, until one
+            # returns compatible cards. Bound all serial catalogue requests
+            # for this scan by count and wall-clock time.
             fallback_cards, fallback_reachable = [], False
-            for term in _name_search_terms(search_name):
-                term_cards, term_reachable = await _api_search_fallback(
-                    search_language, term, expected_name, trace
-                )
+            for term in _name_search_terms(search_name, include_token_fallback=True):
+                remaining_timeout = fallback_budget.reserve_request()
+                if remaining_timeout is None:
+                    break
+                try:
+                    term_cards, term_reachable = await asyncio.wait_for(
+                        _api_search_fallback(
+                            search_language, term, expected_name, trace
+                        ),
+                        timeout=remaining_timeout,
+                    )
+                except asyncio.TimeoutError:
+                    break
                 fallback_reachable = fallback_reachable or term_reachable
+                if term_reachable:
+                    fallback_budget.any_reachable = True
                 if term_cards:
                     fallback_cards = term_cards
                     break
@@ -1366,7 +1458,12 @@ async def _search_and_rank_candidates(
             if not is_english_fallback:
                 native_candidate_count += 1
 
-    if not candidates and fallback_attempts and not reachable_fallbacks:
+    if (
+        not candidates
+        and fallback_attempts
+        and not reachable_fallbacks
+        and not fallback_budget.any_reachable
+    ):
         raise CatalogueUnavailableHTTPException()
 
     candidate_set_ids = {
@@ -1429,6 +1526,7 @@ async def match_card_info(
     provider: ScanProvider | None = None,
     request_timeout_seconds: int = DEFAULT_SCANNER_REQUEST_TIMEOUT_SECONDS,
     prewarm_candidates: bool = False,
+    catalogue_fallback_budget: CatalogueFallbackBudget | None = None,
 ) -> dict:
     """Shared deterministic matcher for both individual and composite scans.
 
@@ -1437,7 +1535,12 @@ async def match_card_info(
     """
     provider = provider or ScanProvider(GEMINI)
     card_info = normalize_recognized_card_info(card_info)
-    candidates, number_match_count = await _search_and_rank_candidates(db, card_info, trace)
+    candidates, number_match_count = await _search_and_rank_candidates(
+        db,
+        card_info,
+        trace,
+        catalogue_fallback_budget=catalogue_fallback_budget,
+    )
     confident, decision = _metadata_decision(card_info, candidates)
 
     top_candidates = retain_ranked_candidates(candidates)
@@ -1941,6 +2044,7 @@ async def match_composite_card_info(
     photo_bytes: bytes | None = None,
     trace: ScanTrace | None = None,
     prewarm_candidates: bool = False,
+    catalogue_fallback_budget: CatalogueFallbackBudget | None = None,
 ) -> dict:
     """Use local pHash before an uncertain composite falls back individually."""
     return await match_card_info(
@@ -1950,4 +2054,5 @@ async def match_composite_card_info(
         photo_bytes=photo_bytes,
         trace=trace,
         prewarm_candidates=prewarm_candidates,
+        catalogue_fallback_budget=catalogue_fallback_budget,
     )
