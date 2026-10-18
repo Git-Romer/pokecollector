@@ -63,6 +63,28 @@ class DigitalCardTests(LocalCatalogueTestCase):
         ids = await self.candidate_ids(name="Magnezone", number_local="SV29")
         self.assertEqual(ids, ["sma-SV29_en"])
 
+    async def test_card_in_digital_set_is_excluded_even_if_card_flag_is_false(self):
+        self.db.add_all([
+            Set(id="B1a_en", tcg_set_id="B1a", name="Pocket", lang="en", is_digital=True),
+            self.card("B1a-026_en", "Magnezone", "026", is_digital=False),
+        ])
+        self.db.commit()
+        self.assertEqual(
+            await self.candidate_ids(name="Magnezone", number_local="026"),
+            [],
+        )
+
+    async def test_card_in_legacy_digital_set_is_excluded_even_if_card_flag_is_false(self):
+        self.db.add_all([
+            Set(id="B1a_en", tcg_set_id=None, name="Pocket", lang="en", is_digital=True),
+            self.card("B1a-026_en", "Magnezone", "026", is_digital=False),
+        ])
+        self.db.commit()
+        self.assertEqual(
+            await self.candidate_ids(name="Magnezone", number_local="026"),
+            [],
+        )
+
     async def test_unsynced_pocket_artwork_from_the_live_fallback_is_excluded(self):
         self.db.add(self.card("sma-SV29_en", "Magnezone", "SV29"))
         self.db.commit()
@@ -76,6 +98,22 @@ class DigitalCardTests(LocalCatalogueTestCase):
         self.fallback.return_value = (
             [{"id": "B1a-026_en", "tcg_card_id": "B1a-026", "name": "Magnezone", "number": "026"}], True)
         ids = await self.candidate_ids(name="Magnezone", number_local="26")
+        self.assertNotIn("B1a-026_en", ids)
+
+    async def test_live_fallback_rows_from_legacy_digital_set_are_excluded(self):
+        self.db.add_all([
+            Set(id="B1a_en", tcg_set_id=None, name="Pocket", lang="en", is_digital=True),
+            self.card("sma-SV29_en", "Magnezone", "SV29"),
+        ])
+        self.db.commit()
+        self.fallback.return_value = ([{
+            "id": "B1a-026_en",
+            "tcg_card_id": "B1a-026",
+            "name": "Magnezone",
+            "number": "026",
+            "image": "https://assets.tcgdex.net/en/x/B1a/B1a-026/low.webp",
+        }], True)
+        ids = await self.candidate_ids(name="Magnezone", number_local="026")
         self.assertNotIn("B1a-026_en", ids)
 
 

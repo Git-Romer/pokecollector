@@ -12,7 +12,11 @@ from collections.abc import Callable
 from email.utils import parsedate_to_datetime
 from functools import lru_cache
 from urllib.parse import urlparse
-from services.tcgdex_languages import is_supported_tcgdex_language, normalize_tcgdex_language
+from services.tcgdex_languages import (
+    is_supported_tcgdex_language,
+    normalize_tcgdex_language,
+    strip_lang_suffix,
+)
 from services.gemini_rate_limit import (
     GeminiKeyBlockedError,
     acquire_gemini_slot,
@@ -39,6 +43,7 @@ from services.scan_providers import (
 )
 import logging
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from api.auth import get_current_user
 from database import get_db
@@ -1000,6 +1005,21 @@ ENGLISH_FALLBACK_MIN_CANDIDATES = 3
 ENGLISH_FALLBACK_TOTAL_CANDIDATE_LIMIT = ENGLISH_FALLBACK_MIN_CANDIDATES * 2
 
 
+def _digital_set_ids(db: Session) -> set[str]:
+    """Return TCG set IDs marked digital, including legacy Set.id records."""
+    result: set[str] = set()
+    for tcg_set_id, set_id in db.query(Set.tcg_set_id, Set.id).filter(
+        Set.is_digital.is_(True)
+    ):
+        if tcg_set_id:
+            result.add(str(tcg_set_id))
+        elif set_id:
+            legacy_tcg_set_id, _ = strip_lang_suffix(set_id)
+            if legacy_tcg_set_id:
+                result.add(legacy_tcg_set_id)
+    return result
+
+
 async def _search_and_rank_candidates(
     db: Session,
     card_info: dict,
@@ -1052,21 +1072,23 @@ async def _search_and_rank_candidates(
             if name_filter is None:
                 rows = []
             else:
-                local_query = (
-                    db.query(Card)
-                    .filter(
-                        Card.tcg_card_id.isnot(None),
-                        # Existing upgraded databases may still contain NULL
-                        # here. database.py already treats NULL and false as
-                        # catalogue rows, while true is always a user-created
-                        # card and must not become a scanner candidate.
-                        Card.is_custom.isnot(True),
-                        # Digital-only (TCG Pocket) printings cannot be photographed.
-                        Card.is_digital.isnot(True),
-                        Card.lang == search_language,
-                        name_filter,
+                if digital_set_ids is None:
+                    digital_set_ids = _digital_set_ids(db)
+                local_filters = [
+                    Card.tcg_card_id.isnot(None),
+                    # Existing upgraded databases may still contain NULL here.
+                    # database.py treats NULL and false as catalogue rows, while
+                    # true is always a user-created card and must not be a candidate.
+                    Card.is_custom.isnot(True),
+                    Card.is_digital.isnot(True),
+                    Card.lang == search_language,
+                    name_filter,
+                ]
+                if digital_set_ids:
+                    local_filters.append(
+                        or_(Card.set_id.is_(None), ~Card.set_id.in_(digital_set_ids))
                     )
-                )
+                local_query = db.query(Card).filter(*local_filters)
                 rows = []
                 matching_rows = []
                 projected_rows = local_query.with_entities(
@@ -1159,9 +1181,7 @@ async def _search_and_rank_candidates(
             if fallback_reachable:
                 reachable_fallbacks += 1
             if digital_set_ids is None:
-                digital_set_ids = {
-                    set_id for (set_id,) in db.query(Set.tcg_set_id).filter(Set.is_digital.is_(True))
-                }
+                digital_set_ids = _digital_set_ids(db)
             cards.extend(
                 card for card in fallback_cards
                 if str(card.get("tcg_card_id") or "").rsplit("-", 1)[0] not in digital_set_ids
