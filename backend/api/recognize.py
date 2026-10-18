@@ -12,14 +12,18 @@ from collections.abc import Callable
 from email.utils import parsedate_to_datetime
 from functools import lru_cache
 from urllib.parse import urlparse
-from services.tcgdex_languages import is_supported_tcgdex_language, normalize_tcgdex_language
+from services.tcgdex_languages import (
+    is_supported_tcgdex_language,
+    normalize_tcgdex_language,
+    strip_lang_suffix,
+)
 from services.gemini_rate_limit import (
     GeminiKeyBlockedError,
     acquire_gemini_slot,
     penalize_gemini_key,
     record_gemini_success,
 )
-from services.scan_candidate_images import prewarm_candidate_images
+from services.scan_candidate_images import TRUSTED_REFERENCE_IMAGE_HOSTS, prewarm_candidate_images
 from services.scan_storage import MAX_FILE_BYTES, ScanUploadError, read_limited_upload, sanitize_image_bytes
 from services.scan_trace import ScanTrace, create_scan_trace
 from services.text_search import accent_insensitive_contains, strip_diacritics
@@ -67,7 +71,6 @@ PHASH_CANDIDATE_LIMIT = 8
 SEARCH_CANDIDATE_QUERY_LIMIT = 50
 MAX_REFERENCE_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_REFERENCE_IMAGE_PIXELS = 50_000_000
-TRUSTED_REFERENCE_IMAGE_HOSTS = {"assets.tcgdex.net"}
 
 
 class GeminiRateLimitHTTPException(HTTPException):
@@ -178,10 +181,14 @@ def retain_ranked_candidates(
     baseline = [card for card in candidates if not card.get("_number_extra")][
         :baseline_limit
     ]
-    extras = [card for card in candidates if card.get("_number_extra")][
-        :matching_extra_limit
+    extras = [
+        card for card in candidates
+        if card.get("_number_extra") and not card.get("_gallery_alternative")
+    ][:matching_extra_limit]
+    alternatives = [card for card in candidates if card.get("_gallery_alternative")][
+        :GALLERY_ALTERNATIVE_LIMIT
     ]
-    retained_ids = {id(card) for card in baseline + extras}
+    retained_ids = {id(card) for card in baseline + extras + alternatives}
     return [card for card in candidates if id(card) in retained_ids]
 
 
@@ -229,16 +236,54 @@ def _normalize_number(value) -> str | None:
     return _normalize_collector_number(value)
 
 
+_GALLERY_PREFIXES = ("tg", "gg", "sv", "rc")
+GALLERY_ALTERNATIVE_LIMIT = 4
+
+
+def _gallery_number_match(row_number, target_number) -> bool:
+    """Whether a catalogue number is a gallery printing of a prefix-less read.
+
+    Small subset prefixes (TG06, SV28) are easy to miss in a photo. This
+    only brings such printings into the candidate list as alternatives; it
+    never counts as a number match for ranking or for a decision.
+    """
+    if not target_number or not str(target_number).isdigit():
+        return False
+    normalized = normalize_scanner_card_number(row_number)
+    return bool(normalized) and any(
+        normalized == f"{prefix}{target_number}" for prefix in _GALLERY_PREFIXES
+    )
+
+
 def _numbers_match(left, right) -> bool:
     normalized_left = _normalize_number(left)
     normalized_right = _normalize_number(right)
     return normalized_left is not None and normalized_left == normalized_right
 
 
+def _normalize_printed_total(value) -> str | None:
+    """Normalize a printed set total, ignoring known gallery subset prefixes.
+
+    Gallery subsets print the denominator with the subset prefix
+    ("TG07/TG30", "SV28/SV94") while the catalogue stores the numeric set
+    size (30, 94). Compared with the prefix, every correct gallery read
+    looked like a total contradiction. An unknown alphabetic prefix is not
+    stripped: it may identify a different subset and must not break a tie.
+    """
+    normalized = _normalize_number(value)
+    if not normalized:
+        return None
+    prefixed_total = re.fullmatch(r"([a-z]+)(\d+)", normalized)
+    if not prefixed_total:
+        return normalized
+    prefix, digits = prefixed_total.groups()
+    return digits if prefix in _GALLERY_PREFIXES else None
+
+
 def _printed_total_signal(recognized_total, candidate_total) -> int:
     """Return 0 for agreement, 1 for unknown, and 2 for contradiction."""
-    normalized = _normalize_number(recognized_total)
-    candidate_normalized = _normalize_number(candidate_total)
+    normalized = _normalize_printed_total(recognized_total)
+    candidate_normalized = _normalize_printed_total(candidate_total)
     if normalized is None or candidate_normalized is None:
         return 1
     return 0 if normalized == candidate_normalized else 2
@@ -519,6 +564,9 @@ IMPORTANT ACCURACY RULES:
   a "/" and a set total (like "094/165") or next to a set code. If the only number
   on the card is a "No." Pokedex reference, or you cannot find a distinct collector
   number, return null for number_local rather than reusing it.
+- Copy letter prefixes exactly as printed in both number fields: gallery and subset
+  cards print numbers like "TG06/TG30", "GG52/GG70", "SV28/SV94" or "RC5/RC32", so
+  number_local is "TG06" and number_total is "TG30". Never drop such a prefix.
 
 Extract:
 1. Card name exactly as printed, in the card's language
@@ -674,6 +722,11 @@ def _metadata_decision(card_info: dict, candidates: list[dict]) -> tuple[bool, s
         return False, None
 
     signals = _confirmed_identity_signals(card_info, top)
+    if any(card.get("_gallery_alternative") for card in ranked):
+        # The read may have lost a gallery prefix (06 for TG06). A plain
+        # number match is then not unique evidence; leave the choice to
+        # visual verification or the reviewer.
+        signals.discard("number")
     number_matches = sum(
         1
         for card in ranked
@@ -711,6 +764,25 @@ def _metadata_decision(card_info: dict, candidates: list[dict]) -> tuple[bool, s
     ):
         return True, "sole_candidate"
     return False, None
+
+
+_REFERENCE_IMAGE_TYPES = {"PNG": "image/png", "JPEG": "image/jpeg", "WEBP": "image/webp", "GIF": "image/gif"}
+
+
+def _reference_image_mime(data: bytes | None) -> str | None:
+    """MIME type of downloaded reference artwork, or None when it is not a
+    decodable image of a supported type."""
+    if not data:
+        return None
+    try:
+        from PIL import Image
+
+        with Image.open(io.BytesIO(data)) as image:
+            image_format = image.format
+            image.verify()
+    except Exception:
+        return None
+    return _REFERENCE_IMAGE_TYPES.get(image_format or "")
 
 
 async def _download_candidate_images(
@@ -1021,6 +1093,21 @@ ENGLISH_FALLBACK_MIN_CANDIDATES = 3
 ENGLISH_FALLBACK_TOTAL_CANDIDATE_LIMIT = ENGLISH_FALLBACK_MIN_CANDIDATES * 2
 
 
+def _digital_set_ids(db: Session) -> set[str]:
+    """Return TCG set IDs marked digital, including legacy Set.id records."""
+    result: set[str] = set()
+    for tcg_set_id, set_id in db.query(Set.tcg_set_id, Set.id).filter(
+        Set.is_digital.is_(True)
+    ):
+        if tcg_set_id:
+            result.add(str(tcg_set_id))
+        elif set_id:
+            legacy_tcg_set_id, _ = strip_lang_suffix(set_id)
+            if legacy_tcg_set_id:
+                result.add(legacy_tcg_set_id)
+    return result
+
+
 async def _search_and_rank_candidates(
     db: Session,
     card_info: dict,
@@ -1053,6 +1140,7 @@ async def _search_and_rank_candidates(
     native_candidate_count = 0
     fallback_attempts = 0
     reachable_fallbacks = 0
+    digital_set_ids: set[str] | None = None
     for search_language, search_name in search_pairs:
         if len(candidates) >= 15:
             break
@@ -1077,21 +1165,26 @@ async def _search_and_rank_candidates(
             if name_filter is None:
                 rows = []
             else:
-                local_query = (
-                    db.query(Card)
-                    .filter(
-                        Card.tcg_card_id.isnot(None),
-                        # Existing upgraded databases may still contain NULL
-                        # here. database.py already treats NULL and false as
-                        # catalogue rows, while true is always a user-created
-                        # card and must not become a scanner candidate.
-                        Card.is_custom.isnot(True),
-                        Card.lang == search_language,
-                        name_filter,
+                if digital_set_ids is None:
+                    digital_set_ids = _digital_set_ids(db)
+                local_filters = [
+                    Card.tcg_card_id.isnot(None),
+                    # Existing upgraded databases may still contain NULL here.
+                    # database.py treats NULL and false as catalogue rows, while
+                    # true is always a user-created card and must not be a candidate.
+                    Card.is_custom.isnot(True),
+                    Card.is_digital.isnot(True),
+                    Card.lang == search_language,
+                    name_filter,
+                ]
+                if digital_set_ids:
+                    local_filters.append(
+                        or_(Card.set_id.is_(None), ~Card.set_id.in_(digital_set_ids))
                     )
-                )
+                local_query = db.query(Card).filter(*local_filters)
                 rows = []
                 matching_rows = []
+                gallery_rows = []
                 projected_rows = local_query.with_entities(
                     Card.id,
                     Card.tcg_card_id,
@@ -1101,6 +1194,7 @@ async def _search_and_rank_candidates(
                     Card.images_small,
                     Card.images_large,
                     Card.rarity,
+                    Card.custom_image_url,
                 ).order_by(Card.id)
                 for row in projected_rows.yield_per(200):
                     if not _scanner_names_compatible(expected_name, row.name):
@@ -1113,12 +1207,18 @@ async def _search_and_rank_candidates(
                         and len(matching_rows) < 12
                     ):
                         matching_rows.append(row)
+                    elif (
+                        _gallery_number_match(row.number, target_number)
+                        and len(gallery_rows) < GALLERY_ALTERNATIVE_LIMIT
+                    ):
+                        gallery_rows.append(row)
 
-                    # Once both bounded windows are full, later rows cannot
+                    # Once all bounded windows are full, later rows cannot
                     # change the selected local candidates.
                     if (
                         len(rows) >= SEARCH_CANDIDATE_QUERY_LIMIT
                         and (not target_number or len(matching_rows) >= 12)
+                        and (not target_number or len(gallery_rows) >= GALLERY_ALTERNATIVE_LIMIT)
                     ):
                         break
 
@@ -1129,6 +1229,11 @@ async def _search_and_rank_candidates(
                     if row.id not in present_ids
                 )
                 rows = rows[:SEARCH_CANDIDATE_QUERY_LIMIT + 4]
+                # Gallery printings with the same digits stay available even
+                # when a plain printing matches: the prefix may be what the
+                # photo lost.
+                present_ids = {row.id for row in rows}
+                rows.extend(row for row in gallery_rows if row.id not in present_ids)
         except Exception as exc:
             if trace:
                 trace.record_tcgdex(
@@ -1147,8 +1252,10 @@ async def _search_and_rank_candidates(
                 "name": row.name,
                 "card_type": row.supertype,
                 "number": row.number,
-                "image": row.images_small,
-                "image_hd": row.images_large,
+                # A catalogue row without TCGdex artwork may still have a
+                # custom image; the downloader only fetches trusted hosts.
+                "image": row.images_small or row.custom_image_url,
+                "image_hd": row.images_large or row.custom_image_url,
                 "rarity": row.rarity,
             }
             for row in rows
@@ -1189,13 +1296,36 @@ async def _search_and_rank_candidates(
             fallback_attempts += 1
             if fallback_reachable:
                 reachable_fallbacks += 1
-            cards.extend(fallback_cards)
+            if digital_set_ids is None:
+                digital_set_ids = _digital_set_ids(db)
+            cards.extend(
+                card for card in fallback_cards
+                if str(card.get("tcg_card_id") or "").rsplit("-", 1)[0] not in digital_set_ids
+                # Sets that are not synced locally: TCGdex serves digital-only
+                # (TCG Pocket) artwork under the "tcgp" series path.
+                and "/tcgp/" not in str(card.get("image") or "")
+            )
 
         selected_cards = select_search_candidates(
             cards,
             card_info.get("number_local"),
             number_field="number",
         )
+        # The selector keeps a baseline window plus exact number hits. Gallery
+        # printings of a prefix-less read are retained as flagged alternatives.
+        if target_number:
+            chosen = {card.get("id") for card in selected_cards}
+            alternatives = [
+                card for card in cards
+                if card.get("id") not in chosen
+                and _gallery_number_match(card.get("number"), target_number)
+            ][:GALLERY_ALTERNATIVE_LIMIT]
+            for card in alternatives:
+                card["_number_extra"] = True
+            selected_cards = list(selected_cards) + alternatives
+            for card in selected_cards:
+                if _gallery_number_match(card.get("number"), target_number):
+                    card["_gallery_alternative"] = True
         if is_english_fallback:
             # The fallback has a tighter total cap than native search. Put an
             # exact collector-number hit first so the cap cannot discard it
@@ -1231,6 +1361,7 @@ async def _search_and_rank_candidates(
                 "lang": search_language,
                 "_lang": search_language,
                 "_number_extra": bool(card.get("_number_extra")),
+                "_gallery_alternative": bool(card.get("_gallery_alternative")),
             })
             if not is_english_fallback:
                 native_candidate_count += 1
@@ -1366,6 +1497,7 @@ async def match_card_info(
                         top_candidates,
                         candidate_images,
                     )
+                    shown_candidate_ids: set[str] = set()
                     parts = [
                         {"text": "Here is the original card photo:"},
                         image_part(mime_type, image_b64),
@@ -1383,8 +1515,10 @@ async def match_card_info(
                         candidate_bytes = candidate_images.get(
                             str(candidate.get("id") or "")
                         )
-                        if candidate_bytes:
-                            parts.append(image_part_from_bytes("image/webp", candidate_bytes))
+                        candidate_mime = _reference_image_mime(candidate_bytes)
+                        if candidate_mime:
+                            parts.append(image_part_from_bytes(candidate_mime, candidate_bytes))
+                            shown_candidate_ids.add(str(candidate.get("id") or ""))
                         else:
                             parts.append({"text": " (image unavailable)"})
 
@@ -1406,7 +1540,11 @@ async def match_card_info(
                         )
                     if pick_match:
                         pick = selected_position
-                        if 1 <= pick <= len(top_candidates):
+                        # A candidate shown as "(image unavailable)" cannot win
+                        # a visual comparison the model could not make.
+                        if 1 <= pick <= len(top_candidates) and (
+                            str(top_candidates[pick - 1].get("id") or "") in shown_candidate_ids
+                        ):
                             winner = top_candidates[pick - 1]
                             candidates.remove(winner)
                             candidates.insert(0, winner)
@@ -1421,7 +1559,10 @@ async def match_card_info(
             logger.warning("Visual matching failed (non-blocking): %s", exc)
 
     public_matches = [
-        {key: value for key, value in card.items() if key != "_number_extra"}
+        {
+            key: value for key, value in card.items()
+            if key not in ("_number_extra", "_gallery_alternative")
+        }
         for card in retain_ranked_candidates(candidates)
     ]
 
@@ -1715,7 +1856,8 @@ For each card return the same information as an individual scan:
 - number_local: printed local collector number, or null (never a "No." Pokedex
   reference near the artwork or flavor text — that is the species' National Pokedex
   number, not this card's collector number)
-- number_total: printed set total/denominator, or null
+- number_total: printed set total/denominator, or null. Copy letter prefixes exactly
+  as printed in both number fields ("TG06/TG30", "SV28/SV94"); never drop them
 - set_code: printed alphanumeric set code near the number, or null
 - regulation_mark: boxed regulation letter, or null
 - card_type: Pokemon, Trainer, or Energy
