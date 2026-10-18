@@ -262,15 +262,22 @@ def _numbers_match(left, right) -> bool:
 
 
 def _normalize_printed_total(value) -> str | None:
-    """Normalize a printed set total, ignoring a gallery subset prefix.
+    """Normalize a printed set total, ignoring known gallery subset prefixes.
 
     Gallery subsets print the denominator with the subset prefix
     ("TG07/TG30", "SV28/SV94") while the catalogue stores the numeric set
     size (30, 94). Compared with the prefix, every correct gallery read
-    looked like a total contradiction.
+    looked like a total contradiction. An unknown alphabetic prefix is not
+    stripped: it may identify a different subset and must not break a tie.
     """
     normalized = _normalize_number(value)
-    return re.sub(r"^[a-z]+", "", normalized) if normalized else None
+    if not normalized:
+        return None
+    prefixed_total = re.fullmatch(r"([a-z]+)(\d+)", normalized)
+    if not prefixed_total:
+        return normalized
+    prefix, digits = prefixed_total.groups()
+    return digits if prefix in _GALLERY_PREFIXES else None
 
 
 def _printed_total_signal(recognized_total, candidate_total) -> int:

@@ -16,6 +16,7 @@ try:
     from models import Card, Set
     from api.recognize import (
         _gallery_number_match,
+        _metadata_decision,
         _printed_total_signal,
         _search_and_rank_candidates,
         match_card_info,
@@ -60,10 +61,28 @@ class LocalCatalogueTestCase(unittest.IsolatedAsyncioTestCase):
 class PrintedTotalTests(unittest.TestCase):
     def test_prefixed_total_agrees_with_numeric_set_size(self):
         self.assertEqual(_printed_total_signal("TG30", 30), 0)
+        self.assertEqual(_printed_total_signal("GG70", 70), 0)
         self.assertEqual(_printed_total_signal("SV94", 94), 0)
+        self.assertEqual(_printed_total_signal("RC32", 32), 0)
         self.assertEqual(_printed_total_signal("30", 30), 0)
         self.assertEqual(_printed_total_signal("TG30", 31), 2)
         self.assertEqual(_printed_total_signal(None, 30), 1)
+
+    def test_unrecognized_prefix_is_unknown_for_total_comparison(self):
+        self.assertEqual(_printed_total_signal("XY30", 30), 1)
+        self.assertEqual(_printed_total_signal("XY30", 94), 1)
+
+    def test_unrecognized_prefix_does_not_break_a_same_number_tie(self):
+        candidates = [
+            {"number": "6", "printed_total": "30", "_lang": "en"},
+            {"number": "6", "printed_total": "94", "_lang": "en"},
+        ]
+        confident, reason = _metadata_decision(
+            {"number_local": "6", "number_total": "XY30", "language": "en"},
+            candidates,
+        )
+        self.assertFalse(confident)
+        self.assertIsNone(reason)
 
     def test_gallery_match_only_for_prefix_less_digits(self):
         self.assertTrue(_gallery_number_match("TG06", "6"))
