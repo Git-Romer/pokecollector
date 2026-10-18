@@ -1,6 +1,27 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../tailwind.config.js";
+
+/* Tailwind v4 changed space-y-* from top margins on later visible siblings to
+   bottom margins on every non-last child. Keep the v3 spacing contract across
+   the existing UI, where parent/child margins are intentionally composed. */
+@layer utilities {
+  :is(.space-y-0\.5, .space-y-1, .space-y-1\.5, .space-y-2, .space-y-2\.5,
+      .space-y-3, .space-y-4, .space-y-5, .space-y-6, .space-y-8)
+      > :not(:last-child) {
+    margin-block-end: 0;
+  }
+
+  .space-y-0\.5 > :not([hidden]) ~ :not([hidden]) { margin-block-start: calc(var(--spacing) * 0.5); }
+  .space-y-1 > :not([hidden]) ~ :not([hidden]) { margin-block-start: calc(var(--spacing) * 1); }
+  .space-y-1\.5 > :not([hidden]) ~ :not([hidden]) { margin-block-start: calc(var(--spacing) * 1.5); }
+  .space-y-2 > :not([hidden]) ~ :not([hidden]) { margin-block-start: calc(var(--spacing) * 2); }
+  .space-y-2\.5 > :not([hidden]) ~ :not([hidden]) { margin-block-start: calc(var(--spacing) * 2.5); }
+  .space-y-3 > :not([hidden]) ~ :not([hidden]) { margin-block-start: calc(var(--spacing) * 3); }
+  .space-y-4 > :not([hidden]) ~ :not([hidden]) { margin-block-start: calc(var(--spacing) * 4); }
+  .space-y-5 > :not([hidden]) ~ :not([hidden]) { margin-block-start: calc(var(--spacing) * 5); }
+  .space-y-6 > :not([hidden]) ~ :not([hidden]) { margin-block-start: calc(var(--spacing) * 6); }
+  .space-y-8 > :not([hidden]) ~ :not([hidden]) { margin-block-start: calc(var(--spacing) * 8); }
+}
 
 /* ─── CSS Custom Properties ──────────────────────────────────────────────── */
 :root {
@@ -63,6 +84,11 @@ input:-webkit-autofill:focus {
 
 /* ─── Base Typography — word-wrap everywhere ─────────────────────────────── */
 @layer base {
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
   html {
     font-size: 16px;
     -webkit-text-size-adjust: 100%;
@@ -124,7 +150,7 @@ input:-webkit-autofill:focus {
 @layer components {
 
   /* ── Card — glass morphism ── */
-  .card {
+  .card, .card-hover {
     background: rgba(20, 20, 40, 0.6);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
@@ -134,7 +160,7 @@ input:-webkit-autofill:focus {
     transition: all 0.2s ease;
   }
   .card-hover {
-    @apply card cursor-pointer;
+    cursor: pointer;
   }
   .card-hover:hover {
     border-color: rgba(227,0,11,0.3);
@@ -150,59 +176,68 @@ input:-webkit-autofill:focus {
   }
 
   /* ── Buttons — bold with glow ── */
-  .btn-primary {
+  .btn-primary, .btn-primary-sm {
     @apply inline-flex items-center justify-center gap-2
-           text-white px-4 py-2.5 rounded-lg font-semibold text-sm
+           text-white rounded-lg font-semibold
            transition-all duration-200
            disabled:opacity-50 disabled:cursor-not-allowed
            select-none;
     background: #e3000b;
     box-shadow: 0 0 16px rgba(227,0,11,0.3);
   }
-  .btn-primary:hover {
+  .btn-primary {
+    @apply px-4 py-2.5 text-sm;
+  }
+  .btn-primary-sm {
+    @apply px-3 py-1.5 text-xs;
+  }
+  .btn-primary:hover, .btn-primary-sm:hover {
     box-shadow: 0 0 24px rgba(227,0,11,0.45);
     background: #cc000a;
   }
-  .btn-primary:active {
+  .btn-primary:active, .btn-primary-sm:active {
     background: #b80009;
   }
-  .btn-primary-sm {
-    @apply btn-primary px-3 py-1.5 text-xs;
-  }
 
-  .btn-secondary {
+  .btn-secondary, .btn-secondary-sm {
     @apply inline-flex items-center justify-center gap-2
            text-text-secondary hover:text-text-primary
-           px-4 py-2.5 rounded-lg border border-border font-medium text-sm
+           rounded-lg border border-border font-medium
            transition-all duration-200
            disabled:opacity-50 disabled:cursor-not-allowed
            select-none;
     background: rgba(26, 26, 46, 0.72);
   }
-  .btn-secondary:hover {
+  .btn-secondary {
+    @apply px-4 py-2.5 text-sm;
+  }
+  .btn-secondary-sm {
+    @apply px-3 py-1.5 text-xs;
+  }
+  .btn-secondary:hover, .btn-secondary-sm:hover {
     background: rgba(35, 35, 58, 0.9);
     border-color: rgba(255,255,255,0.14);
   }
-  .btn-secondary-sm {
-    @apply btn-secondary px-3 py-1.5 text-xs;
-  }
 
-  .btn-ghost {
+  .btn-ghost, .btn-ghost-sm {
     @apply inline-flex items-center justify-center gap-2
            bg-transparent
            text-text-secondary hover:text-text-primary
-           px-4 py-2.5 rounded-lg font-medium text-sm
+           rounded-lg font-medium
            transition-all duration-200
            disabled:opacity-50 disabled:cursor-not-allowed
            select-none;
     border: 1px solid rgba(255,255,255,0.07);
   }
-  .btn-ghost:hover {
-    background: rgba(26, 26, 46, 0.8);
-    border-color: rgba(255,255,255,0.12);
+  .btn-ghost {
+    @apply px-4 py-2.5 text-sm;
   }
   .btn-ghost-sm {
-    @apply btn-ghost px-3 py-1.5 text-xs;
+    @apply px-3 py-1.5 text-xs;
+  }
+  .btn-ghost:hover, .btn-ghost-sm:hover {
+    background: rgba(26, 26, 46, 0.8);
+    border-color: rgba(255,255,255,0.12);
   }
 
   .btn-danger {
@@ -214,29 +249,32 @@ input:-webkit-autofill:focus {
   }
 
   /* ── Inputs — sleek dark ── */
-  .input {
+  .input, .input-sm {
     background: rgba(15, 15, 26, 0.8);
     border: 1px solid rgba(255,255,255,0.07);
     border-radius: 0.75rem;
-    padding: 0.625rem 0.75rem;
     color: var(--color-text-primary);
-    font-size: 0.875rem;
     width: 100%;
     transition: all 0.2s ease;
     outline: none;
   }
-  .input::placeholder {
+  .input {
+    padding: 0.625rem 0.75rem;
+    font-size: 0.875rem;
+  }
+  .input-sm {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+  }
+  .input::placeholder, .input-sm::placeholder {
     color: var(--color-text-muted);
   }
-  .input:focus {
+  .input:focus, .input-sm:focus {
     border-color: rgba(227,0,11,0.4);
     box-shadow: 0 0 0 3px rgba(227,0,11,0.1);
   }
-  .input-sm {
-    @apply input py-2 text-xs;
-  }
 
-  .select {
+  .select, .select-sm {
     background-color: rgba(15, 15, 26, 0.8);
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23f5f5f7' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
@@ -244,14 +282,20 @@ input:-webkit-autofill:focus {
     background-size: 1rem 1rem;
     border: 1px solid rgba(255,255,255,0.07);
     border-radius: 0.75rem;
-    padding: 0.625rem 2.25rem 0.625rem 0.75rem;
     color: var(--color-text-primary);
-    font-size: 0.875rem;
     width: 100%;
     transition: all 0.2s ease;
     outline: none;
     appearance: none;
     cursor: pointer;
+  }
+  .select {
+    padding: 0.625rem 2.25rem 0.625rem 0.75rem;
+    font-size: 0.875rem;
+  }
+  .select-sm {
+    padding: 0.5rem 2.25rem 0.5rem 0.75rem;
+    font-size: 0.75rem;
   }
   .select option {
     background: var(--color-card);
@@ -261,35 +305,31 @@ input:-webkit-autofill:focus {
     background-image: none;
     padding-right: 0.75rem;
   }
-  .select:focus {
+  .select:focus, .select-sm:focus {
     border-color: rgba(227,0,11,0.4);
     box-shadow: 0 0 0 3px rgba(227,0,11,0.1);
   }
-  .select-sm {
-    @apply select py-2 text-xs;
-  }
-
   /* ── Badges ── */
-  .badge {
+  .badge, .badge-red, .badge-green, .badge-yellow, .badge-blue, .badge-gray, .badge-purple {
     @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium leading-none whitespace-nowrap flex-shrink-0;
   }
   .badge-red {
-    @apply badge bg-brand-red/20 text-brand-red;
+    @apply bg-brand-red/20 text-brand-red;
   }
   .badge-green {
-    @apply badge bg-green/20 text-green;
+    @apply bg-green/20 text-green;
   }
   .badge-yellow {
-    @apply badge bg-yellow/20 text-yellow;
+    @apply bg-yellow/20 text-yellow;
   }
   .badge-blue {
-    @apply badge bg-blue/20 text-blue;
+    @apply bg-blue/20 text-blue;
   }
   .badge-gray {
-    @apply badge bg-bg-elevated text-text-muted;
+    @apply bg-bg-elevated text-text-muted;
   }
   .badge-purple {
-    @apply badge bg-purple-500/20 text-purple-400;
+    @apply bg-purple-500/20 text-purple-400;
   }
 
   /* ── Section Headers ── */
@@ -371,13 +411,13 @@ input:-webkit-autofill:focus {
   }
 
   /* ── List Item ── */
-  .list-item {
+  .list-item, .list-item-hover {
     @apply flex items-center gap-3 p-3 rounded-xl;
     background: rgba(20, 20, 40, 0.6);
     border: 1px solid rgba(255,255,255,0.07);
   }
   .list-item-hover {
-    @apply list-item transition-all duration-150 cursor-pointer;
+    @apply transition-all duration-150 cursor-pointer;
   }
   .list-item-hover:hover {
     background: rgba(26, 26, 46, 0.8);
