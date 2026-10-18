@@ -562,6 +562,7 @@ async def default_composite_processor(
 ) -> list[dict | None]:
     """Recognize a small grid and flag unclear positions for individual work."""
     from api.recognize import (
+        CatalogueFallbackBudget,
         CompositeRecognitionError,
         match_composite_card_info,
         recognize_composite_card_info,
@@ -617,6 +618,7 @@ async def default_composite_processor(
         )
         for position in range(len(images))
     ]
+    catalogue_fallback_budget = CatalogueFallbackBudget()
     for trace, image in zip(traces, images):
         trace.add_secret(api_key)
         trace.set_image(image)
@@ -673,6 +675,7 @@ async def default_composite_processor(
                 photo_bytes=images[position],
                 trace=traces[position],
                 prewarm_candidates=True,
+                catalogue_fallback_budget=catalogue_fallback_budget,
             )
             if not bool(result.get("_identity_confident")):
                 traces[position].record_decision("individual_fallback")
