@@ -4,8 +4,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'react-hot-toast'
 import App from './App.jsx'
 import './components/card-system/tokens.css'
-import './components/card-system/styles.css'
 import './index.css'
+import './components/card-system/styles.css'
 
 // Apply saved theme before first paint to prevent flash
 const savedTheme = localStorage.getItem('theme')

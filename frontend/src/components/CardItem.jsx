@@ -192,7 +192,7 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-50 bg-black/60 md:flex md:items-center md:justify-center md:bg-black/80 md:backdrop-blur-sm"
+    <div className="fixed inset-0 z-50 bg-black/60 md:flex md:items-center md:justify-center md:bg-black/80 md:backdrop-blur-xs"
       onClick={onClose}>
       <div className={[
         'fixed bottom-0 left-0 right-0 rounded-t-2xl max-h-[90dvh] overflow-y-auto',
@@ -748,7 +748,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
                   <button
                     type="button"
                     onClick={() => navigateFromModal(`/search?${new URLSearchParams({ artist: card.artist }).toString()}`)}
-                    className="block max-w-full truncate text-left text-text-primary font-medium text-sm hover:text-brand-red hover:underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/50 rounded"
+                    className="block max-w-full truncate text-left text-text-primary font-medium text-sm hover:text-brand-red hover:underline underline-offset-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-red/50 rounded"
                   >
                     {card.artist}
                   </button>
@@ -763,7 +763,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
                         key={dexId}
                         type="button"
                         onClick={() => navigateFromModal(`/pokedex/${dexId}`)}
-                        className="rounded-full border border-border bg-bg-card px-2 py-1 text-xs font-semibold text-text-primary hover:border-brand-red/50 hover:text-brand-red focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/50"
+                        className="rounded-full border border-border bg-bg-card px-2 py-1 text-xs font-semibold text-text-primary hover:border-brand-red/50 hover:text-brand-red focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-red/50"
                       >
                         #{String(dexId).padStart(3, '0')}
                       </button>

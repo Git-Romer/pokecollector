@@ -23,7 +23,7 @@ export default function CardStack({
           <div
             key={depth}
             aria-hidden
-            className="absolute inset-0 shadow-sm"
+            className="absolute inset-0 shadow-xs"
             style={{
               transform: `translate(${depth * layerOffset}px, ${depth * layerOffset}px) rotate(${depth * 2}deg)`,
               zIndex: visibleLayers - index,

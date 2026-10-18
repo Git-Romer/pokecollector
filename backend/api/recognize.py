@@ -12,14 +12,18 @@ from collections.abc import Callable
 from email.utils import parsedate_to_datetime
 from functools import lru_cache
 from urllib.parse import urlparse
-from services.tcgdex_languages import is_supported_tcgdex_language, normalize_tcgdex_language
+from services.tcgdex_languages import (
+    is_supported_tcgdex_language,
+    normalize_tcgdex_language,
+    strip_lang_suffix,
+)
 from services.gemini_rate_limit import (
     GeminiKeyBlockedError,
     acquire_gemini_slot,
     penalize_gemini_key,
     record_gemini_success,
 )
-from services.scan_candidate_images import prewarm_candidate_images
+from services.scan_candidate_images import TRUSTED_REFERENCE_IMAGE_HOSTS, prewarm_candidate_images
 from services.scan_storage import MAX_FILE_BYTES, ScanUploadError, read_limited_upload, sanitize_image_bytes
 from services.scan_trace import ScanTrace, create_scan_trace
 from services.text_search import accent_insensitive_contains, strip_diacritics
@@ -39,6 +43,7 @@ from services.scan_providers import (
 )
 import logging
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from api.auth import get_current_user
 from database import get_db
@@ -66,7 +71,6 @@ PHASH_CANDIDATE_LIMIT = 8
 SEARCH_CANDIDATE_QUERY_LIMIT = 50
 MAX_REFERENCE_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_REFERENCE_IMAGE_PIXELS = 50_000_000
-TRUSTED_REFERENCE_IMAGE_HOSTS = {"assets.tcgdex.net"}
 
 
 class GeminiRateLimitHTTPException(HTTPException):
@@ -717,6 +721,25 @@ def _metadata_decision(card_info: dict, candidates: list[dict]) -> tuple[bool, s
     return False, None
 
 
+_REFERENCE_IMAGE_TYPES = {"PNG": "image/png", "JPEG": "image/jpeg", "WEBP": "image/webp", "GIF": "image/gif"}
+
+
+def _reference_image_mime(data: bytes | None) -> str | None:
+    """MIME type of downloaded reference artwork, or None when it is not a
+    decodable image of a supported type."""
+    if not data:
+        return None
+    try:
+        from PIL import Image
+
+        with Image.open(io.BytesIO(data)) as image:
+            image_format = image.format
+            image.verify()
+    except Exception:
+        return None
+    return _REFERENCE_IMAGE_TYPES.get(image_format or "")
+
+
 async def _download_candidate_images(
     client: httpx.AsyncClient,
     candidates: list[dict],
@@ -1025,6 +1048,21 @@ ENGLISH_FALLBACK_MIN_CANDIDATES = 3
 ENGLISH_FALLBACK_TOTAL_CANDIDATE_LIMIT = ENGLISH_FALLBACK_MIN_CANDIDATES * 2
 
 
+def _digital_set_ids(db: Session) -> set[str]:
+    """Return TCG set IDs marked digital, including legacy Set.id records."""
+    result: set[str] = set()
+    for tcg_set_id, set_id in db.query(Set.tcg_set_id, Set.id).filter(
+        Set.is_digital.is_(True)
+    ):
+        if tcg_set_id:
+            result.add(str(tcg_set_id))
+        elif set_id:
+            legacy_tcg_set_id, _ = strip_lang_suffix(set_id)
+            if legacy_tcg_set_id:
+                result.add(legacy_tcg_set_id)
+    return result
+
+
 async def _search_and_rank_candidates(
     db: Session,
     card_info: dict,
@@ -1057,6 +1095,7 @@ async def _search_and_rank_candidates(
     native_candidate_count = 0
     fallback_attempts = 0
     reachable_fallbacks = 0
+    digital_set_ids: set[str] | None = None
     for search_language, search_name in search_pairs:
         if len(candidates) >= 15:
             break
@@ -1076,19 +1115,23 @@ async def _search_and_rank_candidates(
             if name_filter is None:
                 rows = []
             else:
-                local_query = (
-                    db.query(Card)
-                    .filter(
-                        Card.tcg_card_id.isnot(None),
-                        # Existing upgraded databases may still contain NULL
-                        # here. database.py already treats NULL and false as
-                        # catalogue rows, while true is always a user-created
-                        # card and must not become a scanner candidate.
-                        Card.is_custom.isnot(True),
-                        Card.lang == search_language,
-                        name_filter,
+                if digital_set_ids is None:
+                    digital_set_ids = _digital_set_ids(db)
+                local_filters = [
+                    Card.tcg_card_id.isnot(None),
+                    # Existing upgraded databases may still contain NULL here.
+                    # database.py treats NULL and false as catalogue rows, while
+                    # true is always a user-created card and must not be a candidate.
+                    Card.is_custom.isnot(True),
+                    Card.is_digital.isnot(True),
+                    Card.lang == search_language,
+                    name_filter,
+                ]
+                if digital_set_ids:
+                    local_filters.append(
+                        or_(Card.set_id.is_(None), ~Card.set_id.in_(digital_set_ids))
                     )
-                )
+                local_query = db.query(Card).filter(*local_filters)
                 rows = []
                 matching_rows = []
                 gallery_rows = []
@@ -1101,6 +1144,7 @@ async def _search_and_rank_candidates(
                     Card.images_small,
                     Card.images_large,
                     Card.rarity,
+                    Card.custom_image_url,
                 ).order_by(Card.id)
                 for row in projected_rows.yield_per(200):
                     if not _scanner_names_compatible(expected_name, row.name):
@@ -1158,8 +1202,10 @@ async def _search_and_rank_candidates(
                 "name": row.name,
                 "card_type": row.supertype,
                 "number": row.number,
-                "image": row.images_small,
-                "image_hd": row.images_large,
+                # A catalogue row without TCGdex artwork may still have a
+                # custom image; the downloader only fetches trusted hosts.
+                "image": row.images_small or row.custom_image_url,
+                "image_hd": row.images_large or row.custom_image_url,
                 "rarity": row.rarity,
             }
             for row in rows
@@ -1189,7 +1235,15 @@ async def _search_and_rank_candidates(
             fallback_attempts += 1
             if fallback_reachable:
                 reachable_fallbacks += 1
-            cards.extend(fallback_cards)
+            if digital_set_ids is None:
+                digital_set_ids = _digital_set_ids(db)
+            cards.extend(
+                card for card in fallback_cards
+                if str(card.get("tcg_card_id") or "").rsplit("-", 1)[0] not in digital_set_ids
+                # Sets that are not synced locally: TCGdex serves digital-only
+                # (TCG Pocket) artwork under the "tcgp" series path.
+                and "/tcgp/" not in str(card.get("image") or "")
+            )
 
         selected_cards = select_search_candidates(
             cards,
@@ -1382,6 +1436,7 @@ async def match_card_info(
                         top_candidates,
                         candidate_images,
                     )
+                    shown_candidate_ids: set[str] = set()
                     parts = [
                         {"text": "Here is the original card photo:"},
                         image_part(mime_type, image_b64),
@@ -1399,8 +1454,10 @@ async def match_card_info(
                         candidate_bytes = candidate_images.get(
                             str(candidate.get("id") or "")
                         )
-                        if candidate_bytes:
-                            parts.append(image_part_from_bytes("image/webp", candidate_bytes))
+                        candidate_mime = _reference_image_mime(candidate_bytes)
+                        if candidate_mime:
+                            parts.append(image_part_from_bytes(candidate_mime, candidate_bytes))
+                            shown_candidate_ids.add(str(candidate.get("id") or ""))
                         else:
                             parts.append({"text": " (image unavailable)"})
 
@@ -1422,7 +1479,11 @@ async def match_card_info(
                         )
                     if pick_match:
                         pick = selected_position
-                        if 1 <= pick <= len(top_candidates):
+                        # A candidate shown as "(image unavailable)" cannot win
+                        # a visual comparison the model could not make.
+                        if 1 <= pick <= len(top_candidates) and (
+                            str(top_candidates[pick - 1].get("id") or "") in shown_candidate_ids
+                        ):
                             winner = top_candidates[pick - 1]
                             candidates.remove(winner)
                             candidates.insert(0, winner)
