@@ -44,7 +44,7 @@ export default function PublicDeckView() {
   return (
     <PublicProfileShell profile={profile} handle={handle} activeSection="decks" t={t}>
       <Link to={`/u/${handle}/decks`} className="btn-ghost mb-4 inline-flex py-1.5 text-sm"><ArrowLeft size={14} /> {t('publicProfiles.backToDecks')}</Link>
-      <section className="mb-4 rounded-2xl border border-border bg-bg-secondary p-4 shadow-sm">
+      <section className="mb-4 rounded-2xl border border-border bg-bg-secondary p-4 shadow-xs">
         <div className="flex flex-wrap items-start justify-between gap-3"><div className="flex gap-3"><DeckIcon className="mt-1 text-brand-red" size={24} /><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-text-muted">{t('publicProfiles.sharedDeck')}</p><h2 className="text-2xl font-bold">{deck.name}</h2><p className="mt-1 text-sm text-text-secondary">{t(`binderTypes.${deck.binder_type === 'physical_deck' ? 'realDeck' : 'plannedDeck'}`)} · {t(`decks.format${deck.format}`)}</p></div></div><DeckValidationPanel validation={deck.validation} t={t} compact /></div>
         {deck.description && <p className="mt-3 border-t border-border pt-3 text-sm text-text-secondary">{deck.description}</p>}
       </section>
