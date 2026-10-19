@@ -273,6 +273,7 @@ async function installApiFixtures(page) {
       },
       '/api/settings/tcgdex-filter-languages': ['en', 'de'],
       '/api/profile/': { feature_enabled: false, is_profile_public: false },
+      '/api/cards/custom': [],
       '/api/collection/': collection,
       '/api/collection/printing-detail-tags': [
         { id: 11, name: 'Cosmos Holo', usage_count: 3 },
@@ -552,6 +553,263 @@ for (const surface of ['Collection', 'card search']) {
     })
   }
 }
+test('Collection dialog links each product source to its product cards panel', async ({ page }) => {
+  const productName = 'Scarlet & Violet Booster Box'
+  const source = {
+    product_card_id: 701,
+    product_id: 71,
+    product_name: productName,
+    product_type: 'Booster Box',
+    purchase_date: '2026-05-30',
+    active_quantity: 2,
+    initial_quantity: 2,
+  }
+  const product = {
+    id: 71,
+    product_name: productName,
+    product_type: 'Booster Box',
+    purchase_price: 100,
+    purchase_date: '2026-05-30',
+    lifecycle_status: 'opened',
+    product_cards: [],
+    ledger_entries: [],
+  }
+  await page.route('**/api/collection/', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(collection.map(item => item.id === 1
+      ? { ...item, product_sources: [source] }
+      : item)),
+  }))
+  await page.route('**/api/products/**', route => {
+    const url = new URL(route.request().url())
+    if (url.pathname === '/api/products/') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([product]),
+      })
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({}) })
+  })
+
+  await page.goto('/collection')
+  await page.getByRole('button', { name: /Visual card 1/ }).click()
+  const dialog = page.getByRole('dialog')
+  const ownedTab = dialog.getByRole('tab', { name: 'Owned copies' })
+  await ownedTab.click()
+  await expect(ownedTab).toHaveAttribute('aria-selected', 'true')
+  await expect(dialog.getByText(productName, { exact: true })).toBeVisible()
+  await expect(dialog.getByText(/2026-05-30/)).toBeVisible()
+  const sourceList = dialog.getByRole('region', { name: 'Found in' })
+  await expect(sourceList).toHaveClass(/rounded-xl/)
+  await expect(sourceList).toHaveClass(/border-border/)
+  await expect(sourceList).toHaveClass(/bg-bg-card/)
+  await expect(sourceList.locator('li').first()).not.toHaveClass(/rounded|border|bg-/)
+  const cardSummary = dialog.getByText('Normal', { exact: true }).locator('..').locator('..')
+  await expect(cardSummary).not.toHaveClass(/bg-bg-card/)
+  await expect(cardSummary).not.toHaveClass(/(?:^|\s)border(?:\s|$)/)
+
+  const manageTab = dialog.getByRole('tab', { name: 'Manage copies' })
+  await manageTab.click()
+  await expect(manageTab).toHaveAttribute('aria-selected', 'true')
+  await expect(dialog.getByRole('region', { name: 'Found in' })).toHaveCount(0)
+  await expect(dialog.getByText('Add another version')).toBeVisible()
+
+  await ownedTab.click()
+  await expect(ownedTab).toHaveAttribute('aria-selected', 'true')
+  await dialog.getByRole('link', { name: `Open product: ${productName}` }).click()
+
+  await expect(page).toHaveURL('/products?productId=71')
+  await expect(page.getByRole('dialog')).toContainText(productName)
+})
+
+test('Card Search owned copies show their linked product and open its cards panel', async ({ page }) => {
+  const productName = 'Scarlet & Violet Booster Box'
+  const source = {
+    product_card_id: 701,
+    product_id: 71,
+    product_name: productName,
+    product_type: 'Booster Box',
+    purchase_date: '2026-05-30',
+    active_quantity: 2,
+    initial_quantity: 2,
+  }
+  const product = {
+    id: 71,
+    product_name: productName,
+    product_type: 'Booster Box',
+    purchase_price: 100,
+    purchase_date: '2026-05-30',
+    lifecycle_status: 'opened',
+    product_cards: [],
+    ledger_entries: [],
+  }
+  const ownedItem = {
+    id: 1,
+    quantity: 3,
+    condition: 'NM',
+    variant: 'Normal',
+    printing_details: [],
+    lang: 'en',
+    purchase_price: 2,
+    product_sources: [source],
+  }
+  await page.route('**/api/cards/search?*', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      data: [{
+        ...collection[0].card,
+        owned: true,
+        owned_quantity: ownedItem.quantity,
+        owned_items: [ownedItem],
+      }],
+      total_count: 1,
+      page: 1,
+      page_size: 20,
+    }),
+  }))
+  await page.route('**/api/products/**', route => {
+    const url = new URL(route.request().url())
+    if (url.pathname === '/api/products/') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([product]),
+      })
+    }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({}) })
+  })
+
+  await page.goto('/search?q=Visual')
+  await page.getByRole('button', { name: /^Visual card 1/ }).press('Enter')
+  const dialog = page.getByRole('dialog')
+  const ownedTab = dialog.getByRole('tab', { name: 'Owned copies' })
+  await ownedTab.click()
+  await expect(ownedTab).toHaveAttribute('aria-selected', 'true')
+  await expect(dialog.getByText(productName, { exact: true })).toBeVisible()
+  const sourceList = dialog.getByRole('region', { name: 'Found in' })
+  await expect(sourceList).toHaveClass(/rounded-xl/)
+  await expect(sourceList).toHaveClass(/border-border/)
+  await expect(sourceList).toHaveClass(/bg-bg-card/)
+  await expect(sourceList.locator('li').first()).not.toHaveClass(/rounded|border|bg-/)
+  const ownershipSummary = dialog.getByText(/Already in collection/).locator('..')
+  await expect(ownershipSummary).not.toHaveClass(/bg-green/)
+  await expect(ownershipSummary).not.toHaveClass(/border-green/)
+  const ownedCopyRow = dialog.getByRole('spinbutton', { name: 'Quantity' }).locator('..')
+  await expect(ownedCopyRow).not.toHaveClass(/bg-bg-card/)
+  await expect(ownedCopyRow).not.toHaveClass(/(?:^|\s)border(?:\s|$)/)
+
+  await dialog.getByRole('link', { name: `Open product: ${productName}` }).click()
+
+  await expect(page).toHaveURL('/products?productId=71')
+  await expect(page.getByRole('dialog')).toContainText(productName)
+})
+
+test('Card Search keeps a product link in linked-copy conflict errors', async ({ page }) => {
+  const productName = 'Scarlet & Violet Booster Box'
+  const source = {
+    product_card_id: 701,
+    product_id: 71,
+    product_name: productName,
+    product_type: 'Booster Box',
+    purchase_date: '2026-05-30',
+    active_quantity: 2,
+    initial_quantity: 2,
+  }
+  const ownedItem = {
+    id: 1,
+    quantity: 3,
+    condition: 'NM',
+    variant: 'Normal',
+    printing_details: [],
+    lang: 'en',
+    purchase_price: 2,
+    product_sources: [source],
+  }
+  const message = 'Collection quantity cannot be lower than 2 active product-linked copies.'
+  await page.route('**/api/cards/search?*', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      data: [{
+        ...collection[0].card,
+        owned: true,
+        owned_quantity: ownedItem.quantity,
+        owned_items: [ownedItem],
+      }],
+      total_count: 1,
+      page: 1,
+      page_size: 20,
+    }),
+  }))
+  await page.route('**/api/collection/1', route => route.fulfill({
+    status: 409,
+    contentType: 'application/json',
+    body: JSON.stringify({ detail: {
+      code: 'collection_product_link_conflict',
+      message,
+      product_sources: [source],
+    } }),
+  }))
+
+  await page.goto('/search?q=Visual')
+  await page.getByRole('button', { name: /^Visual card 1/ }).press('Enter')
+  const dialog = page.getByRole('dialog')
+  await dialog.getByRole('tab', { name: 'Owned copies' }).click()
+  const quantityInput = dialog.getByRole('spinbutton', { name: 'Quantity' })
+  await quantityInput.fill('1')
+  await quantityInput.press('Tab')
+
+  const alert = dialog.getByRole('alert')
+  await expect(alert).toContainText(message)
+  await expect(alert.getByRole('link', { name: `Open product: ${productName}` })).toBeVisible()
+  await expect(alert).toHaveClass(/rounded-lg/)
+  await expect(alert).toHaveClass(/border-brand-red/)
+  await expect(alert).toHaveClass(/bg-brand-red/)
+  await expect(alert.locator('section')).toHaveCount(0)
+})
+
+test('Collection editor keeps a product link in linked-copy conflict errors', async ({ page }) => {
+  const productName = 'Scarlet & Violet Booster Box'
+  const source = {
+    product_card_id: 701,
+    product_id: 71,
+    product_name: productName,
+    product_type: 'Booster Box',
+    purchase_date: '2026-05-30',
+    active_quantity: 2,
+    initial_quantity: 2,
+  }
+  const message = 'Collection quantity cannot be lower than 2 active product-linked copies.'
+  await page.route('**/api/collection/', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(collection.map(item => item.id === 1
+      ? { ...item, product_sources: [source] }
+      : item)),
+  }))
+  await page.route('**/api/collection/1', route => route.fulfill({
+    status: 409,
+    contentType: 'application/json',
+    body: JSON.stringify({ detail: {
+      code: 'collection_product_link_conflict',
+      message,
+      product_sources: [source],
+    } }),
+  }))
+
+  await page.goto('/collection')
+  await page.getByRole('button', { name: /Visual card 1/ }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.locator('input[type="number"]').first().fill('1')
+  await dialog.getByRole('button', { name: 'Save', exact: true }).click()
+
+  const alert = dialog.getByRole('alert')
+  await expect(alert).toContainText(message)
+  await expect(alert.getByRole('link', { name: `Open product: ${productName}` })).toBeVisible()
+})
 
 test('Wishlist price tabs reuse the complete shared card price details', async ({ page }) => {
   await page.route('**/api/wishlist/', route => route.fulfill({

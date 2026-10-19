@@ -964,6 +964,7 @@ const de = {
     linkCardsAction: 'Karten verknüpfen',
     cardsCount: 'Karten ({count})',
     cardsFor: 'Karten für {product}',
+    openLinkedProduct: 'Produkt öffnen',
     linkOwnedCardsHelp: 'Wähle einen oder mehrere genaue Sammlungseinträge aus diesem Produkt aus.',
     selectCards: 'Karten auswählen',
     selectCardsTitle: 'Karten mit {product} verknüpfen',

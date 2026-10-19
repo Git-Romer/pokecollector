@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Response
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 from typing import List, Optional
@@ -6,7 +7,7 @@ from api.auth import get_current_user
 from database import get_db
 from models import (
     Binder, BinderCard, CollectionItem, CollectionCardPhoto, Card,
-    PrintingDetailTag, ProductCard, ProductPurchase, Set, User,
+    PrintingDetailTag, ProductCard, Set, User,
 )
 from schemas import (
     CollectionItemCreate, CollectionItemUpdate, CollectionItemResponse,
@@ -36,6 +37,7 @@ from services.printing_detail_tags import (
     printing_detail_keys,
 )
 from services.card_values import effective_market_price, normalize_price_field
+from services.product_sources import annotate_product_sources, product_sources_by_collection_item
 import datetime
 import csv
 import io
@@ -96,58 +98,9 @@ def _annotate_standard_legality(items: list[CollectionItem], legal_fingerprints:
     return items
 
 
-def _product_source_payload(product_card: ProductCard, product) -> dict:
-    return {
-        "product_card_id": product_card.id,
-        "product_id": product.id,
-        "product_name": product.product_name,
-        "product_type": product.product_type,
-        "purchase_date": product.purchase_date,
-        "active_quantity": int(product_card.active_quantity or 0),
-        "initial_quantity": int(product_card.initial_quantity or 0),
-        "linked_at": product_card.linked_at,
-    }
-
-
 def _chunks(values: list, size: int):
     for start in range(0, len(values), size):
         yield values[start:start + size]
-
-
-def _annotate_product_sources(db: Session, current_user: User, items: list[CollectionItem]) -> list[CollectionItem]:
-    for item in items:
-        item.product_sources = []
-
-    item_ids = [item.id for item in items if item.id is not None]
-    if not item_ids:
-        return items
-
-    sources_by_item_id: dict[int, list[dict]] = {}
-    for chunk in _chunks(item_ids, 500):
-        rows = db.query(ProductCard, ProductPurchase).join(
-            ProductPurchase,
-            ProductPurchase.id == ProductCard.product_id,
-        ).filter(
-            ProductCard.user_id == current_user.id,
-            ProductPurchase.user_id == current_user.id,
-            ProductCard.collection_item_id.in_(chunk),
-            ProductCard.active_quantity > 0,
-        ).order_by(
-            ProductPurchase.purchase_date.desc(),
-            ProductCard.linked_at.desc(),
-            ProductCard.id.desc(),
-        ).all()
-
-        for product_card, product in rows:
-            if product_card.collection_item_id is None:
-                continue
-            sources_by_item_id.setdefault(product_card.collection_item_id, []).append(
-                _product_source_payload(product_card, product)
-            )
-
-    for item in items:
-        item.product_sources = sources_by_item_id.get(item.id, [])
-    return items
 
 
 def _annotate_scan_photos(db: Session, current_user: User, items: list[CollectionItem]) -> list[CollectionItem]:
@@ -185,7 +138,7 @@ def _annotate_collection_items(db: Session, current_user: User, items: list[Coll
         item.available_quantity = max(int(item.quantity or 0) - allocated, 0)
     _annotate_standard_legality(items, _collection_standard_legal_fingerprints(db))
     _annotate_scan_photos(db, current_user, items)
-    return _annotate_product_sources(db, current_user, items)
+    return annotate_product_sources(db, current_user, items)
 
 
 def _annotate_collection_item(db: Session, current_user: User, item: CollectionItem) -> CollectionItem:
@@ -197,6 +150,20 @@ def _active_product_link_quantity(db: Session, current_user: User, collection_it
         ProductCard.user_id == current_user.id,
         ProductCard.collection_item_id == collection_item_id,
     ).scalar() or 0)
+
+
+def _product_link_conflict_detail(
+    db: Session,
+    current_user: User,
+    collection_item_id: int,
+    message: str,
+) -> dict:
+    sources = product_sources_by_collection_item(db, current_user, [collection_item_id])
+    return {
+        "code": "collection_product_link_conflict",
+        "message": message,
+        "product_sources": jsonable_encoder(sources.get(collection_item_id, [])),
+    }
 
 
 def _ensure_set_exists_for_card(db: Session, parsed: dict, lang: str, card_data: Optional[dict] = None) -> None:
@@ -920,7 +887,12 @@ def update_collection_item(
         if update_data["quantity"] < active_linked_quantity:
             raise HTTPException(
                 status_code=409,
-                detail=f"Collection quantity cannot be lower than {active_linked_quantity} active product-linked {'copy' if active_linked_quantity == 1 else 'copies'}. Sell or unlink {'that product card' if active_linked_quantity == 1 else 'those product cards'} first.",
+                detail=_product_link_conflict_detail(
+                    db,
+                    current_user,
+                    item.id,
+                    f"Collection quantity cannot be lower than {active_linked_quantity} active product-linked {'copy' if active_linked_quantity == 1 else 'copies'}. Sell or unlink {'that product card' if active_linked_quantity == 1 else 'those product cards'} first.",
+                ),
             )
         if update_data["quantity"] < allocated_quantity:
             raise HTTPException(
@@ -940,7 +912,12 @@ def update_collection_item(
     if active_linked_quantity > 0 and protected_changes:
         raise HTTPException(
             status_code=409,
-            detail="This exact collection row is linked to a product. Unlink or sell the product-linked copies before changing variant, printing details, condition, language, or purchase price.",
+            detail=_product_link_conflict_detail(
+                db,
+                current_user,
+                item.id,
+                "This exact collection row is linked to a product. Unlink or sell the product-linked copies before changing variant, printing details, condition, language, or purchase price.",
+            ),
         )
 
     old_card_id = item.card_id
@@ -1012,7 +989,12 @@ def remove_from_collection(
     if active_linked_quantity > 0:
         raise HTTPException(
             status_code=409,
-            detail="This collection item is linked to a product. Sell or unlink the product card before removing it from the active collection.",
+            detail=_product_link_conflict_detail(
+                db,
+                current_user,
+                item.id,
+                "This collection item is linked to a product. Sell or unlink the product card before removing it from the active collection.",
+            ),
         )
 
     allocated_quantity = collection_item_allocated_quantity(db, current_user.id, item.id)

@@ -33,7 +33,7 @@ Routes are defined in `frontend/src/App.jsx`.
 | `/decks/:deckId` | `pages/DeckEditor.jsx` | Planned or Real Deck editor |
 | `/decks/:deckId/build` | redirect | Legacy Deck Builder redirect |
 | `/analytics` | `pages/Analytics.jsx` | Analytics tabs |
-| `/products` | `pages/Products.jsx` | Sealed products |
+| `/products` | `pages/Products.jsx` | Sealed products; `?productId=<id>` opens that product's cards panel |
 | `/trades` | `pages/Trades.jsx` | Trade journal and valuation |
 | `/leaderboard` | `pages/Leaderboard.jsx` | Multi-user leaderboard |
 | `/leaderboard/compare/:userId` | `pages/Compare.jsx` | Trainer comparison |
@@ -213,6 +213,18 @@ when an edit or removal is rejected. Active product links must be unlinked from
 the product's cards panel before removing the collection row; links with sale
 history remain protected. Copies allocated to Card Lists must be released first.
 A rejected action keeps the dialog and collection entry available.
+
+`components/ProductSourceList.jsx` is shared by both Owned-copy dialogs. It shows
+each active link's product name, type, purchase date, and quantity, with a direct
+link to `/products?productId=<id>`. `pages/Products.jsx` resolves that ID against
+the signed-in user's product list and opens the existing cards panel; closing
+the panel removes the query parameter.
+
+Product-link conflicts return a structured API detail with a stable `code`, a
+human-readable `message`, and owner-scoped `product_sources`. The shared
+`components/ActionErrorNotice.jsx` keeps that message in the open dialog and
+reuses `ProductSourceList` for navigation. Other failures continue through the
+shared API error formatter.
 
 `pages/Binders.jsx`, `pages/BinderDetail.jsx`, `pages/DeckEditor.jsx`, and
 `pages/DeckCompare.jsx` share the Card List domain. Physical Binders and Real

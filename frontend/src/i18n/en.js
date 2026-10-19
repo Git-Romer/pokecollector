@@ -972,6 +972,7 @@ const en = {
     linkCardsAction: 'Link cards',
     cardsCount: 'Cards ({count})',
     cardsFor: 'Cards for {product}',
+    openLinkedProduct: 'Open product',
     linkOwnedCardsHelp: 'Select one or more exact collection entries from this product.',
     selectCards: 'Select cards',
     selectCardsTitle: 'Link cards to {product}',
