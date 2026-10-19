@@ -4,6 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Trash2, Check, X, Filter, SortAsc, Download, Upload, Loader2, ChevronUp, ChevronDown, Search, PenLine, Grid2X2, List, Library, BookOpen, Heart, Copy, ArrowLeft, Package, Tags } from 'lucide-react'
 import { getCollection, updateCollectionItem, updateCardCustomImage, removeFromCollection, importCollectionCsv, exportCSV, exportPDF, getSets, addToCollection, getBinders, addCollectionItemToBinder, getWishlist, getApiErrorMessage, uploadCollectionItemPhoto, deleteCollectionItemPhoto } from '../api/client'
 import { CustomCardModal } from '../components/CardItem'
+import ActionErrorNotice, { productLinkErrorNotice } from '../components/ActionErrorNotice'
+import ProductSourceList from '../components/ProductSourceList'
 import { useSettings } from '../contexts/SettingsContext'
 import { useConfirmDialog } from '../contexts/ConfirmDialogContext'
 import CardImage from '../components/CardImage'
@@ -316,6 +318,8 @@ function CollectionEditModal({ item, onClose }) {
   const [savedCustomImageUrl, setSavedCustomImageUrl] = useState(card?.custom_image_url || '')
   const [customImageVersion, setCustomImageVersion] = useState(0)
   const [activeTab, setActiveTab] = useState('manage')
+  const [actionError, setActionError] = useState(null)
+
   const [hasOwnPhoto, setHasOwnPhoto] = useState(Boolean(item.has_scan_photo))
   const [selectedImageSource, setSelectedImageSource] = useState(
     settings.prefer_own_card_photos === 'true' ? 'own' : 'catalogue'
@@ -434,23 +438,35 @@ function CollectionEditModal({ item, onClose }) {
       purchase_price: parseMoneyInputValue(price, exchangeRate, null),
     }),
     onSuccess: () => {
+      setActionError(null)
       toast.success(t('collection.updated'))
       invalidateCardState(queryClient)
       invalidateTcgdexFilterLanguages(queryClient)
       onClose()
     },
-    onError: () => toast.error(t('collection.updateFailed')),
+    onMutate: () => setActionError(null),
+    onError: (error) => {
+      const notice = productLinkErrorNotice(error, t('collection.updateFailed'))
+      if (notice) setActionError(notice)
+      else toast.error(getApiErrorMessage(error, t('collection.updateFailed')))
+    },
   })
 
   const deleteMutation = useMutation({
     mutationFn: () => removeFromCollection(item.id),
     onSuccess: () => {
+      setActionError(null)
       toast.success(t('collection.removed'))
       invalidateCardState(queryClient)
       invalidateTcgdexFilterLanguages(queryClient)
       onClose()
     },
-    onError: () => toast.error(t('collection.removeFailed')),
+    onMutate: () => setActionError(null),
+    onError: (error) => {
+      const notice = productLinkErrorNotice(error, t('collection.removeFailed'))
+      if (notice) setActionError(notice)
+      else toast.error(getApiErrorMessage(error, t('collection.removeFailed')))
+    },
   })
 
   const cloneMutation = useMutation({
@@ -678,6 +694,13 @@ function CollectionEditModal({ item, onClose }) {
       }}
       onClose={onClose}
     >
+      {actionError && (
+        <ActionErrorNotice
+          message={actionError.message}
+          productSources={actionError.productSources}
+          t={t}
+        />
+      )}
       {activeTab === 'overview' && (
         <div className="space-y-3">
         <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
@@ -724,7 +747,7 @@ function CollectionEditModal({ item, onClose }) {
 
       {activeTab === 'owned' && (
         <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-bg-card p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/50 pb-3">
             <div className="min-w-0">
               <p className="font-bold text-text-primary">{item.variant || 'Normal'}</p>
               <p className="mt-1 text-xs text-text-muted">
@@ -732,25 +755,12 @@ function CollectionEditModal({ item, onClose }) {
               </p>
               <PrintingDetailBadges details={item.printing_details} className="mt-2" />
             </div>
-            <span className="inline-flex min-w-12 items-center justify-center rounded-lg border border-brand-red/35 bg-brand-red/15 px-3 py-2 text-sm font-black text-brand-red">
+            <span className="shrink-0 text-sm font-bold text-brand-red">
               ×{item.quantity}
             </span>
           </div>
           {productSourceSummary && (
-            <div className="rounded-xl border border-yellow/25 bg-yellow/10 p-3">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-yellow">
-                <Package size={14} aria-hidden />
-                <span>{t('collection.foundIn')}</span>
-              </div>
-              <div className="mt-2 space-y-1">
-                {productSourceSummary.sources.map(source => (
-                  <div key={source.product_card_id} className="flex items-center justify-between gap-3 text-sm">
-                    <p className="truncate font-medium text-text-primary">{source.product_name}</p>
-                    <span className="shrink-0 text-xs font-bold text-yellow">×{source.active_quantity}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <ProductSourceList sources={productSourceSummary.sources} t={t} />
           )}
         </div>
       )}
@@ -777,34 +787,6 @@ function CollectionEditModal({ item, onClose }) {
                 : 'translate-x-0 rotate-0 scale-100 opacity-100'
             )}
           >
-            {productSourceSummary && (
-              <div className="mb-4 rounded-xl border border-yellow/25 bg-yellow/10 px-3 py-2">
-                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-yellow">
-                  <Package size={14} />
-                  <span>{t('collection.foundIn')}</span>
-                </div>
-                <div className="mt-2 space-y-1">
-                  {productSourceSummary.sources.map(source => (
-                    <div key={source.product_card_id} className="flex items-center justify-between gap-3 text-sm">
-                      <div className="min-w-0">
-                        <p className="truncate font-medium text-text-primary">{source.product_name}</p>
-                        {[source.product_type, source.purchase_date].filter(Boolean).length > 0 && (
-                          <p className="truncate text-xs text-text-muted">
-                            {[source.product_type, source.purchase_date].filter(Boolean).join(' · ')}
-                          </p>
-                        )}
-                      </div>
-                      {source.active_quantity > 1 && (
-                        <span className="flex-shrink-0 rounded-full bg-bg/70 px-2 py-0.5 text-xs font-bold text-yellow">
-                          x{source.active_quantity}
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {/* Edit Form */}
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
