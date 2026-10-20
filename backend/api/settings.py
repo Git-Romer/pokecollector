@@ -16,8 +16,12 @@ from services.digital_sets import DIGITAL_SETS_SETTING_KEY, refresh_digital_cata
 from services.exchange_rates import (
     ExchangeRateError,
     fallback_exchange_rate,
+    get_cached_currencies,
     normalize_currency_pair,
+    parse_frankfurter_currencies,
     parse_frankfurter_v2_rate,
+    set_cached_currencies,
+    stale_currencies,
 )
 from services.card_visibility import get_visible_filter_languages
 from services.public_profile_feature import PUBLIC_PROFILES_SETTING_KEY
@@ -115,13 +119,14 @@ class ScannerConfigurationUpdate(BaseModel):
 
 
 SCANNER_TEST_IMAGE_B64 = (
-    "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR4nGN4xvCfJMQw"
-    "qmFUw/DVAAC9iuUQ8Prt2QAAAABJRU5ErkJggg=="
+    "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAYElEQVR4nO3PQQ0AIBDAMMC/"
+    "50MEj4ZkVbDtWbN+dnTAqwa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0"
+    "BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0C2IYAn6MoAmGAAAAAElFTkSuQmCC"
 )
 SCANNER_TEST_SECOND_IMAGE_B64 = (
-    "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAACXBIWXMAAAABAAAA"
-    "AQBPJcTWAAAAGElEQVR4nGNk+MdAEmAhTfmohlENQ0kDAGoRATwbkCdPAAAAAElF"
-    "TkSuQmCC"
+    "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAX0lEQVR4nO3PQQ0AIBDAsAP/"
+    "nkEEj4ZkVbCtOfO1rQNeNaA1oDWgNaA1oDWgNaA1oDWgNaA1oDWgNaA1oDWgNaA1oDWgNaA1"
+    "oDWgNaA1oDWgNaA1oDWgNaA1oDWgNaBdUYYBf0t7CUEAAAAASUVORK5CYII="
 )
 
 # Settings that must not be written through the generic settings endpoints,
@@ -806,7 +811,29 @@ def get_exchange_rate(
         return {"from": source, "to": target, "rate": rate, "fallback": False}
     except Exception as exc:
         logger.warning("Failed to fetch exchange rate %s to %s: %s", source, target, exc)
+        if fallback_rate is None:
+            raise HTTPException(status_code=502, detail="Exchange rate unavailable") from None
         return {"from": source, "to": target, "rate": fallback_rate, "fallback": True}
+
+
+@router.get("/currencies")
+def get_currencies(_current_user: User = Depends(get_current_user)):
+    cached = get_cached_currencies()
+    if cached is not None:
+        return {"currencies": cached}
+    try:
+        response = httpx.get("https://api.frankfurter.dev/v2/currencies", timeout=8)
+        response.raise_for_status()
+        items = parse_frankfurter_currencies(response.json())
+        set_cached_currencies(items)
+        return {"currencies": items}
+    except Exception as exc:
+        logger.warning("Failed to fetch currency list: %s", exc)
+        items = stale_currencies() or [
+            {"code": "EUR", "name": "Euro", "symbol": "€"},
+            {"code": "USD", "name": "United States Dollar", "symbol": "$"},
+        ]
+        return {"currencies": items}
 
 
 @router.get("/{key}")

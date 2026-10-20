@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { Plus, Heart, X, PenLine, Pencil, Trash2 } from 'lucide-react'
-import { addToCollection, addToWishlist, cloneCustomCard, createCustomCard, updateCustomCard, updateCardCustomImage, deleteCustomCard, getSets, updateCollectionItem, removeFromCollection } from '../api/client'
+import { addToCollection, addToWishlist, cloneCustomCard, createCustomCard, updateCustomCard, updateCardCustomImage, deleteCustomCard, getSets, updateCollectionItem, removeFromCollection, getApiErrorMessage } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { useSettings } from '../contexts/SettingsContext'
 import { useConfirmDialog } from '../contexts/ConfirmDialogContext'
@@ -21,6 +21,8 @@ import UnifiedCard, { UnifiedCardDialog } from './UnifiedCard'
 import CardPriceDetails from './card-system/CardPriceDetails'
 import PrintingDetailBadges from './PrintingDetailBadges'
 import PrintingDetailSelector from './PrintingDetailSelector'
+import ProductSourceList from './ProductSourceList'
+import ActionErrorNotice, { productLinkErrorNotice } from './ActionErrorNotice'
 
 const RARITY_COLORS = {
   'Common': 'text-text-secondary',
@@ -192,7 +194,7 @@ export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoA
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-50 bg-black/60 md:flex md:items-center md:justify-center md:bg-black/80 md:backdrop-blur-sm"
+    <div className="fixed inset-0 z-50 bg-black/60 md:flex md:items-center md:justify-center md:bg-black/80 md:backdrop-blur-xs"
       onClick={onClose}>
       <div className={[
         'fixed bottom-0 left-0 right-0 rounded-t-2xl max-h-[90dvh] overflow-y-auto',
@@ -500,37 +502,40 @@ function OwnedVersionRow({ item, onQuantityChange, onRemove, isUpdating, isRemov
   }
 
   return (
-    <div className="flex items-center gap-2 rounded-xl bg-bg-card border border-border p-2">
-      <div className="flex-1 min-w-0">
-        <p className="text-sm text-text-primary font-medium truncate">
-          {[item.variant || 'Normal', item.condition].filter(Boolean).join(' · ')}
-        </p>
-        <PrintingDetailBadges details={item.printing_details} limit={2} className="mt-1" />
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 border-b border-border/50 py-2">
+        <div className="flex-1 min-w-0">
+          <p className="text-sm text-text-primary font-medium truncate">
+            {[item.variant || 'Normal', item.condition].filter(Boolean).join(' · ')}
+          </p>
+          <PrintingDetailBadges details={item.printing_details} limit={2} className="mt-1" />
+        </div>
+        <input
+          type="number"
+          min="1"
+          value={quantity}
+          onChange={(event) => setQuantity(event.target.value)}
+          onBlur={commitQuantity}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') event.currentTarget.blur()
+          }}
+          disabled={isUpdating || isRemoving}
+          className="input text-center px-2 py-1.5"
+          style={{ width: '4.25rem', colorScheme: 'dark' }}
+          aria-label={t('card.quantity')}
+          title={t('card.quantity')}
+        />
+        <button
+          type="button"
+          onClick={() => onRemove(item)}
+          disabled={isRemoving}
+          className="btn-ghost text-brand-red border-brand-red/30 hover:bg-brand-red/10 px-2 py-1.5"
+          title={t('collection.remove')}
+        >
+          <Trash2 size={14} />
+        </button>
       </div>
-      <input
-        type="number"
-        min="1"
-        value={quantity}
-        onChange={(event) => setQuantity(event.target.value)}
-        onBlur={commitQuantity}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') event.currentTarget.blur()
-        }}
-        disabled={isUpdating || isRemoving}
-        className="input text-center px-2 py-1.5"
-        style={{ width: '4.25rem', colorScheme: 'dark' }}
-        aria-label={t('card.quantity')}
-        title={t('card.quantity')}
-      />
-      <button
-        type="button"
-        onClick={() => onRemove(item)}
-        disabled={isRemoving}
-        className="btn-ghost text-brand-red border-brand-red/30 hover:bg-brand-red/10 px-2 py-1.5"
-        title={t('collection.remove')}
-      >
-        <Trash2 size={14} />
-      </button>
+      <ProductSourceList sources={item.product_sources} t={t} />
     </div>
   )
 }
@@ -539,6 +544,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
   if (!card || !card.id) return null
 
   const [activeTab, setActiveTab] = useState(initialTab)
+  const [actionError, setActionError] = useState(null)
   const [quantity, setQuantity] = useState(1)
   const [condition, setCondition] = useState('NM')
   const [variant, setVariant] = useState(() => getDefaultVariant(card))
@@ -561,6 +567,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
 
   useEffect(() => {
     setResolvedCardId(card.id)
+    setActionError(null)
   }, [card.id])
 
   useEffect(() => {
@@ -640,6 +647,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
   const quantityMutation = useMutation({
     mutationFn: ({ item, quantity: nextQuantity }) => updateCollectionItem(item.id, { quantity: nextQuantity }),
     onSuccess: (_response, { item, quantity: nextQuantity }) => {
+      setActionError(null)
       setLocalOwnedItems(current => current.map(row => (
         row.id === item.id ? { ...row, quantity: nextQuantity } : row
       )))
@@ -647,12 +655,18 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
       invalidateCardState(queryClient)
       invalidateTcgdexFilterLanguages(queryClient)
     },
-    onError: () => toast.error(t('collection.updateFailed')),
+    onMutate: () => setActionError(null),
+    onError: (error) => {
+      const notice = productLinkErrorNotice(error, t('collection.updateFailed'))
+      if (notice) setActionError(notice)
+      else toast.error(getApiErrorMessage(error, t('collection.updateFailed')))
+    },
   })
 
   const removeMutation = useMutation({
     mutationFn: (item) => removeFromCollection(item.id),
     onSuccess: (_response, item) => {
+      setActionError(null)
       const remaining = localOwnedItems.filter(row => row.id !== item.id)
       setLocalOwnedItems(remaining)
       if (remaining.length === 0) setActiveTab('add')
@@ -660,7 +674,12 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
       invalidateCardState(queryClient)
       invalidateTcgdexFilterLanguages(queryClient)
     },
-    onError: () => toast.error(t('collection.removeFailed')),
+    onMutate: () => setActionError(null),
+    onError: (error) => {
+      const notice = productLinkErrorNotice(error, t('collection.removeFailed'))
+      if (notice) setActionError(notice)
+      else toast.error(getApiErrorMessage(error, t('collection.removeFailed')))
+    },
   })
 
   const customImageMutation = useMutation({
@@ -705,6 +724,13 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
       onClose={onClose}
     >
       <div className="min-w-0 space-y-4">
+            {actionError && (
+              <ActionErrorNotice
+                message={actionError.message}
+                productSources={actionError.productSources}
+                t={t}
+              />
+            )}
 
             {isForeignTemplate && (
               <div className="rounded-xl border border-yellow/30 bg-yellow/10 p-4">
@@ -748,7 +774,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
                   <button
                     type="button"
                     onClick={() => navigateFromModal(`/search?${new URLSearchParams({ artist: card.artist }).toString()}`)}
-                    className="block max-w-full truncate text-left text-text-primary font-medium text-sm hover:text-brand-red hover:underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/50 rounded"
+                    className="block max-w-full truncate text-left text-text-primary font-medium text-sm hover:text-brand-red hover:underline underline-offset-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-red/50 rounded"
                   >
                     {card.artist}
                   </button>
@@ -763,7 +789,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
                         key={dexId}
                         type="button"
                         onClick={() => navigateFromModal(`/pokedex/${dexId}`)}
-                        className="rounded-full border border-border bg-bg-card px-2 py-1 text-xs font-semibold text-text-primary hover:border-brand-red/50 hover:text-brand-red focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/50"
+                        className="rounded-full border border-border bg-bg-card px-2 py-1 text-xs font-semibold text-text-primary hover:border-brand-red/50 hover:text-brand-red focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-red/50"
                       >
                         #{String(dexId).padStart(3, '0')}
                       </button>
@@ -824,7 +850,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
             )}
             <div className="space-y-3">
               {activeTab === 'owned' && ownedQuantity > 0 && (
-                <div className="rounded-xl border border-green/30 bg-green/10 p-3">
+                <div className="space-y-3">
                   <p className="text-sm font-semibold text-green">✓ {t('cardSearch.alreadyOwned')} · {ownedQuantity}x</p>
                   {modalOwnedItems.length > 0 && (
                     <div className="mt-3 space-y-2">

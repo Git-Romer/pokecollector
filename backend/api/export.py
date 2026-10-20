@@ -8,6 +8,7 @@ from services.card_visibility import visible_any_card_filter
 from services.printing_details import format_printing_details_csv
 from models import CollectionItem, Card, User
 import io
+import re
 import csv
 import datetime
 from xml.sax.saxutils import escape
@@ -16,12 +17,11 @@ router = APIRouter()
 
 
 def _normalize_currency(value: str | None) -> tuple[str, str]:
-    currency = (value or "EUR").upper()
-    if currency == "USD":
-        return "USD", "$"
-    if currency == "DKK":
-        return "DKK", "kr. "
-    return "EUR", "€"
+    currency = (value or "EUR").strip().upper()
+    if not re.fullmatch(r"[A-Z]{3}", currency):
+        currency = "EUR"
+    symbols = {"EUR": "€", "USD": "$", "GBP": "£", "JPY": "¥"}
+    return currency, symbols.get(currency, f"{currency} ")
 
 
 def _convert_eur(amount: float | None, exchange_rate: float, currency: str) -> float | None:

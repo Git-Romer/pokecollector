@@ -209,6 +209,7 @@ responses.
 | POST | `/api/settings/scanner/test` | Two-image capability test with optional atomic save |
 | GET | `/api/settings/tcgdex-languages` | Supported TCGdex language metadata |
 | GET | `/api/settings/tcgdex-filter-languages` | Languages currently available for catalogue filtering |
+| GET | `/api/settings/currencies` | Available currency options from Frankfurter |
 | PUT | `/api/settings/` | Update settings |
 | GET | `/api/settings/debug-log` | Admin-only debug log download |
 | DELETE | `/api/settings/scan-diagnostics` | Delete all persisted scanner diagnostics for the current user |
@@ -506,7 +507,10 @@ Each item is committed independently, so one invalid or unavailable card does no
 
 ## Notifications
 
-`backend/services/telegram.py` now accepts `user_id` and reads Telegram credentials from that user's `UserSetting` rows first.
+`backend/services/telegram.py` reads Telegram credentials and currency from that
+user's `UserSetting` rows. Price alerts convert both the EUR market price and
+threshold to the selected currency when a rate is available; otherwise the
+message labels the values as EUR.
 
 ## Migrations
 

@@ -2,7 +2,12 @@ import httpx
 import os
 import logging
 
-from services.exchange_rates import parse_frankfurter_v2_rate
+from services.exchange_rates import (
+    ExchangeRateError,
+    fallback_exchange_rate,
+    normalize_currency_pair,
+    parse_frankfurter_v2_rate,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +81,7 @@ def send_message(text: str, db=None, user_id=None) -> bool:
         return False
 
 
-def _format_user_eur(amount: float, db=None, user_id=None) -> str:
+def _get_user_currency(db=None, user_id=None) -> str:
     currency = "EUR"
     if db is not None and user_id is not None:
         try:
@@ -88,38 +93,58 @@ def _format_user_eur(amount: float, db=None, user_id=None) -> str:
             currency = (row.value if row and row.value else "EUR").upper()
         except Exception:
             currency = "EUR"
+    return currency
 
-    if currency != "EUR":
-        try:
-            with httpx.Client(timeout=5.0) as client:
-                response = client.get(f"https://api.frankfurter.dev/v2/rate/EUR/{currency}")
-                response.raise_for_status()
-                rate = parse_frankfurter_v2_rate(response.json())
-        except Exception:
-            from services.exchange_rates import fallback_exchange_rate
-            try:
-                rate = fallback_exchange_rate("EUR", currency)
-            except Exception:
-                rate = 1.0
-        val = (amount or 0) * rate
-        if currency == "USD":
-            return f"${val:.2f}"
-        if currency == "DKK":
-            return f"{val:.2f} kr."
-        return f"{val:.2f} {currency}"
-    return f"€{(amount or 0):.2f}"
+
+def _get_eur_exchange_rate(currency: str) -> float | None:
+    try:
+        source, target = normalize_currency_pair("EUR", currency)
+    except ExchangeRateError:
+        return None
+    if source == target:
+        return 1.0
+
+    fallback_rate = fallback_exchange_rate(source, target)
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            response = client.get(f"https://api.frankfurter.dev/v2/rate/{source}/{target}")
+            response.raise_for_status()
+            return parse_frankfurter_v2_rate(response.json())
+    except Exception as exc:
+        logger.warning("Failed to fetch Telegram exchange rate EUR/%s: %s", target, exc)
+        return fallback_rate
+
+
+def _format_currency_amount(amount: float, currency: str, rate: float | None) -> str:
+    value = amount or 0
+    if rate is None:
+        return f"EUR {value:.2f}"
+
+    converted = value * rate
+    if currency == "EUR":
+        return f"€{converted:.2f}"
+    if currency == "USD":
+        return f"${converted:.2f}"
+    return f"{currency} {converted:.2f}"
+
+
+def _format_user_eur(amount: float, db=None, user_id=None) -> str:
+    currency = _get_user_currency(db=db, user_id=user_id)
+    return _format_currency_amount(amount, currency, _get_eur_exchange_rate(currency))
 
 
 def send_price_alert(card_name: str, current_price: float, threshold: float, alert_type: str, db=None, user_id=None):
-    """Send a price alert notification."""
+    """Send a price alert notification, displaying both EUR amounts in the user's currency."""
     emoji = "📈" if alert_type == "above" else "📉"
     direction = "above" if alert_type == "above" else "below"
+    currency = _get_user_currency(db=db, user_id=user_id)
+    rate = _get_eur_exchange_rate(currency)
 
     text = (
         f"{emoji} <b>Pokemon TCG Price Alert</b>\n\n"
         f"🃏 <b>{card_name}</b>\n"
-        f"Current price: <b>{_format_user_eur(current_price, db=db, user_id=user_id)}</b>\n"
-        f"Alert threshold ({direction}): <b>{_format_user_eur(threshold, db=db, user_id=user_id)}</b>\n\n"
+        f"Current price: <b>{_format_currency_amount(current_price, currency, rate)}</b>\n"
+        f"Alert threshold ({direction}): <b>{_format_currency_amount(threshold, currency, rate)}</b>\n\n"
         f"Check your collection! 🎯"
     )
     return send_message(text, db=db, user_id=user_id)

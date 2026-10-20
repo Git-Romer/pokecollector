@@ -193,7 +193,6 @@ const CURRENCY_SYMBOLS = {
   EUR: '€',
   USD: '$',
   GBP: '£',
-  DKK: 'kr. ',
 }
 
 function formatSupporterAmount(amountCents, currency = 'EUR') {
@@ -385,7 +384,12 @@ export default function Settings() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const { user, updateCurrentUser, multiUser, modeLocked } = useAuth()
-  const { settings, updateSettings, t, pricePrimaryField, exchangeRate } = useSettings()
+  const { settings, updateSettings, t, pricePrimaryField, exchangeRate, currency: displayCurrency } = useSettings()
+  const { data: currencyList } = useQuery({
+    queryKey: ['currencies'],
+    queryFn: () => api.get('/settings/currencies').then(r => r.data.currencies),
+    staleTime: 24 * 60 * 60 * 1000,
+  })
   const supportPageUrl = settings.language === 'de'
     ? 'https://pokecollector.romerg.de/de/#support'
     : 'https://pokecollector.romerg.de/#support'
@@ -829,7 +833,15 @@ export default function Settings() {
   const currentAppLang = currentLang === 'zh' ? 'zh-cn' : currentLang
   const currentCurrency = settings.currency || 'EUR'
   const currentPriceType = settings.price_primary || 'trend'
-  const exportParams = { price_field: pricePrimaryField, currency: currentCurrency, exchange_rate: exchangeRate }
+  const currencyOptions = (() => {
+    const base = currencyList?.length
+      ? currencyList
+      : [{ code: 'EUR', name: 'Euro', symbol: '€' }, { code: 'USD', name: 'US Dollar', symbol: '$' }]
+    const options = base.map(c => ({ value: c.code, label: `${c.code} — ${c.name}` }))
+    if (!options.some(o => o.value === currentCurrency)) options.push({ value: currentCurrency, label: currentCurrency })
+    return options
+  })()
+  const exportParams = { price_field: pricePrimaryField, currency: displayCurrency, exchange_rate: exchangeRate }
   const currentTcgdexSyncLanguages = normalizeTcgdexLanguageCsv(settings.tcgdex_sync_languages || 'en,de')
   const digitalSetsEnabled = settings.tcgdex_digital_sets_enabled === 'true'
   const crossLanguagePriceFallback = settings.cross_language_price_fallback !== 'false'
@@ -927,7 +939,7 @@ export default function Settings() {
                       type="text"
                       value={usernameInput}
                       onChange={(e) => setUsernameInput(e.target.value)}
-                      className="w-32 rounded-lg border border-border bg-bg-primary px-2 py-1.5 text-xs text-text-primary outline-none focus:border-brand-red"
+                      className="w-32 rounded-lg border border-border bg-bg-primary px-2 py-1.5 text-xs text-text-primary outline-hidden focus:border-brand-red"
                       style={{ WebkitTextFillColor: "var(--color-text-primary)", WebkitBoxShadow: "0 0 0px 1000px var(--color-bg) inset" }}
                       autoFocus
                       maxLength={32}
@@ -1154,11 +1166,7 @@ export default function Settings() {
               <SettingsRow label={t('settings.currency')} description={t('settings.currencyDesc')}>
                 <SelectControl
                   value={currentCurrency}
-                  options={[
-                    { value: 'EUR', label: '€ EUR' },
-                    { value: 'USD', label: '$ USD' },
-                    { value: 'DKK', label: 'kr. DKK' },
-                  ]}
+                  options={currencyOptions}
                   onChange={handleCurrencyChange}
                 />
               </SettingsRow>
@@ -1650,7 +1658,7 @@ export default function Settings() {
                       onBlur={handleAlertThresholdBlur}
                       min="1"
                       max="100"
-                      className="text-xs font-semibold text-text-primary rounded-lg px-3 py-1.5 outline-none w-16 text-right"
+                      className="text-xs font-semibold text-text-primary rounded-lg px-3 py-1.5 outline-hidden focus-visible:ring-2 focus-visible:ring-brand-red/60 w-16 text-right"
                       style={{
                         background: 'rgba(255,255,255,0.07)',
                         border: '1px solid rgba(255,255,255,0.1)',
