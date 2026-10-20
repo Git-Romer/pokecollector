@@ -14,14 +14,12 @@ from models import CollectionCardPhoto, Setting, UserSetting, User
 from services.debug_logging import configure_debug_logging, get_debug_log_path
 from services.digital_sets import DIGITAL_SETS_SETTING_KEY, refresh_digital_catalogue_flags
 from services.exchange_rates import (
+    CurrencyMetadataUnavailable,
     ExchangeRateError,
-    fallback_exchange_rate,
-    get_cached_currencies,
+    ExchangeRateUnavailable,
+    get_currency_metadata,
+    get_exchange_rate as get_cached_exchange_rate,
     normalize_currency_pair,
-    parse_frankfurter_currencies,
-    parse_frankfurter_v2_rate,
-    set_cached_currencies,
-    stale_currencies,
 )
 from services.card_visibility import get_visible_filter_languages
 from services.public_profile_feature import PUBLIC_PROFILES_SETTING_KEY
@@ -790,50 +788,27 @@ def get_telegram_status(db: Session = Depends(get_db), current_user: User = Depe
 def get_exchange_rate(
     from_currency: str = Query(alias="from"),
     to_currency: str = Query(alias="to"),
-    _current_user: User = Depends(get_current_user),
 ):
     try:
         source, target = normalize_currency_pair(from_currency, to_currency)
     except ExchangeRateError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
-
-    fallback_rate = fallback_exchange_rate(source, target)
-    if source == target:
-        return {"from": source, "to": target, "rate": fallback_rate, "fallback": False}
+    if source not in {"EUR", "USD"}:
+        raise HTTPException(status_code=422, detail="Unsupported conversion base")
 
     try:
-        response = httpx.get(
-            f"https://api.frankfurter.dev/v2/rate/{source}/{target}",
-            timeout=8,
-        )
-        response.raise_for_status()
-        rate = parse_frankfurter_v2_rate(response.json())
-        return {"from": source, "to": target, "rate": rate, "fallback": False}
-    except Exception as exc:
-        logger.warning("Failed to fetch exchange rate %s to %s: %s", source, target, exc)
-        if fallback_rate is None:
-            raise HTTPException(status_code=502, detail="Exchange rate unavailable") from None
-        return {"from": source, "to": target, "rate": fallback_rate, "fallback": True}
+        quote = get_cached_exchange_rate(source, target)
+    except ExchangeRateUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
+    return {"from": source, "to": target, **quote}
 
 
 @router.get("/currencies")
 def get_currencies(_current_user: User = Depends(get_current_user)):
-    cached = get_cached_currencies()
-    if cached is not None:
-        return {"currencies": cached}
     try:
-        response = httpx.get("https://api.frankfurter.dev/v2/currencies", timeout=8)
-        response.raise_for_status()
-        items = parse_frankfurter_currencies(response.json())
-        set_cached_currencies(items)
-        return {"currencies": items}
-    except Exception as exc:
-        logger.warning("Failed to fetch currency list: %s", exc)
-        items = stale_currencies() or [
-            {"code": "EUR", "name": "Euro", "symbol": "€"},
-            {"code": "USD", "name": "United States Dollar", "symbol": "$"},
-        ]
-        return {"currencies": items}
+        return get_currency_metadata()
+    except CurrencyMetadataUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
 
 
 @router.get("/{key}")

@@ -23,6 +23,7 @@ import { formatDistanceToNow } from 'date-fns'
 import toast from 'react-hot-toast'
 import { TCGDEX_LANGUAGES, normalizeTcgdexLanguageCsv, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { APP_LANGUAGES } from '../utils/appLanguages'
+import { currencyOptionsFor } from '../utils/currencyOptions'
 import { invalidateCollectionPhotoState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -87,12 +88,13 @@ function Toggle({ value, onChange, label, disabled = false }) {
   )
 }
 
-function SelectControl({ value, options, onChange }) {
+function SelectControl({ value, options, onChange, disabled = false }) {
   return (
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="select w-full max-w-full sm:w-auto text-xs font-semibold"
+      disabled={disabled}
+      className={`select w-full max-w-full sm:w-auto text-xs font-semibold ${disabled ? 'cursor-not-allowed opacity-60' : ''}`}
     >
       {options.map((opt) => (
         <option key={opt.value} value={opt.value}>
@@ -384,12 +386,13 @@ export default function Settings() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const { user, updateCurrentUser, multiUser, modeLocked } = useAuth()
-  const { settings, updateSettings, t, pricePrimaryField, exchangeRate, currency: displayCurrency } = useSettings()
-  const { data: currencyList } = useQuery({
+  const { settings, updateSettings, t, pricePrimaryField, currency: displayCurrency, exchangeRateReady, usdExchangeRateReady, exchangeRateStale, exchangeRateDate } = useSettings()
+  const { data: currencyMetadata, isError: currencyListError } = useQuery({
     queryKey: ['currencies'],
-    queryFn: () => api.get('/settings/currencies').then(r => r.data.currencies),
+    queryFn: () => api.get('/settings/currencies').then(r => r.data),
     staleTime: 24 * 60 * 60 * 1000,
   })
+  const currencyList = currencyMetadata?.currencies || []
   const supportPageUrl = settings.language === 'de'
     ? 'https://pokecollector.romerg.de/de/#support'
     : 'https://pokecollector.romerg.de/#support'
@@ -833,15 +836,22 @@ export default function Settings() {
   const currentAppLang = currentLang === 'zh' ? 'zh-cn' : currentLang
   const currentCurrency = settings.currency || 'EUR'
   const currentPriceType = settings.price_primary || 'trend'
-  const currencyOptions = (() => {
-    const base = currencyList?.length
-      ? currencyList
-      : [{ code: 'EUR', name: 'Euro', symbol: '€' }, { code: 'USD', name: 'US Dollar', symbol: '$' }]
-    const options = base.map(c => ({ value: c.code, label: `${c.code} — ${c.name}` }))
-    if (!options.some(o => o.value === currentCurrency)) options.push({ value: currentCurrency, label: currentCurrency })
-    return options
-  })()
-  const exportParams = { price_field: pricePrimaryField, currency: displayCurrency, exchange_rate: exchangeRate }
+  const currencyOptions = currencyOptionsFor(currencyList, currentCurrency)
+  const currencyDescription = currencyListError
+    ? t('settings.currencyListUnavailable')
+    : ((!exchangeRateReady || !usdExchangeRateReady)
+      ? t('settings.currencyRateUnavailable')
+      : (exchangeRateStale
+        ? `${t('settings.currencyRateCached')} ${exchangeRateDate || ''}`.trim()
+        : t('settings.currencyDesc')))
+  const exportParams = { price_field: pricePrimaryField, currency: displayCurrency }
+  const handleCsvExport = async () => {
+    try {
+      await exportCSV(exportParams)
+    } catch (error) {
+      toast.error(error.response?.data?.detail || t('common.error'))
+    }
+  }
   const currentTcgdexSyncLanguages = normalizeTcgdexLanguageCsv(settings.tcgdex_sync_languages || 'en,de')
   const digitalSetsEnabled = settings.tcgdex_digital_sets_enabled === 'true'
   const crossLanguagePriceFallback = settings.cross_language_price_fallback !== 'false'
@@ -1163,11 +1173,12 @@ export default function Settings() {
                   onChange={handleLanguageChange}
                 />
               </SettingsRow>
-              <SettingsRow label={t('settings.currency')} description={t('settings.currencyDesc')}>
+              <SettingsRow label={t('settings.currency')} description={currencyDescription}>
                 <SelectControl
                   value={currentCurrency}
                   options={currencyOptions}
                   onChange={handleCurrencyChange}
+                  disabled={!currencyList.length}
                 />
               </SettingsRow>
               <SettingsRow label={t('settings.priceType')} description={t('settings.priceTypeDesc')}>
@@ -1479,7 +1490,7 @@ export default function Settings() {
               </SettingsRow>
               <SettingsRow label={t('settings.csvExport')} description={t('settings.csvExportDesc')}>
                 <button
-                  onClick={() => exportCSV(exportParams)}
+                  onClick={handleCsvExport}
                   className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity"
                   style={{ background: 'rgba(255,255,255,0.07)', color: '#90a4ae', border: '1px solid rgba(255,255,255,0.1)' }}
                 >

@@ -1016,7 +1016,7 @@ function CollectionEditModal({ item, onClose }) {
 }
 
 export default function Collection() {
-  const { t, settings, formatPrice, pricePrimaryField, currency, exchangeRate } = useSettings()
+  const { t, settings, formatPrice, pricePrimaryField, currency } = useSettings()
   const visibleLanguages = useVisibleTcgdexLanguages()
   const [viewMode, setViewMode] = useState('grid')
   const [editingCollectionItem, setEditingCollectionItem] = useState(null) // for CollectionEditModal
@@ -1281,7 +1281,14 @@ export default function Collection() {
 
   const totalValue = filtered.reduce((sum, item) => sum + (getEffectivePrice(item.card, item.variant) * item.quantity), 0)
   const totalCards = filtered.reduce((sum, item) => sum + item.quantity, 0)
-  const exportParams = { price_field: pricePrimaryField, currency, exchange_rate: exchangeRate }
+  const exportParams = { price_field: pricePrimaryField, currency }
+  const handleExport = async (exporter) => {
+    try {
+      await exporter(exportParams)
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, t('common.error')))
+    }
+  }
 
   const setDynamicFilter = (key, value) => updateFilter(key, value)
 
@@ -1367,8 +1374,8 @@ export default function Collection() {
           >
             <Upload size={14} />CSV
           </button>
-          <button onClick={() => exportCSV(exportParams)} className="btn-ghost text-sm py-1.5 px-2" title="CSV" aria-label="CSV"><Download size={14} />CSV</button>
-          <button onClick={() => exportPDF(exportParams)} className="btn-ghost text-sm py-1.5"><Download size={14} />PDF</button>
+          <button onClick={() => handleExport(exportCSV)} className="btn-ghost text-sm py-1.5 px-2" title="CSV" aria-label="CSV"><Download size={14} />CSV</button>
+          <button onClick={() => handleExport(exportPDF)} className="btn-ghost text-sm py-1.5"><Download size={14} />PDF</button>
         </div>
       </div>
 

@@ -2,10 +2,9 @@ import unittest
 
 from services.exchange_rates import (
     ExchangeRateError,
-    fallback_exchange_rate,
     normalize_currency_pair,
     parse_frankfurter_currencies,
-    parse_frankfurter_v2_rate,
+    parse_frankfurter_v2_rates,
 )
 
 
@@ -22,36 +21,34 @@ class ExchangeRateTests(unittest.TestCase):
                 with self.assertRaises(ExchangeRateError):
                     normalize_currency_pair(*pair)
 
-    def test_fallback_is_none_for_unknown_pair(self):
-        self.assertIsNone(fallback_exchange_rate("EUR", "JPY"))
-
     def test_parses_currency_list(self):
         items = parse_frankfurter_currencies([
             {"iso_code": "USD", "name": "US Dollar", "symbol": "$"},
             {"iso_code": "TOOLONG"},
             {"iso_code": "AED", "name": "Dirham", "symbol": "د.إ"},
         ])
-        self.assertEqual([i["code"] for i in items], ["AED", "USD"])
+        self.assertEqual([item["code"] for item in items], ["AED", "USD"])
 
-    def test_fallback_rates_are_available_for_supported_pairs(self):
-        self.assertEqual(fallback_exchange_rate("EUR", "EUR"), 1.0)
-        self.assertEqual(fallback_exchange_rate("EUR", "USD"), 1.1)
-        self.assertEqual(fallback_exchange_rate("USD", "EUR"), 0.91)
+    def test_parses_a_base_rate_set_and_provider_dates(self):
+        rates = parse_frankfurter_v2_rates([
+            {"date": "2026-10-20", "base": "EUR", "quote": "EUR", "rate": 1},
+            {"date": "2026-10-20", "base": "EUR", "quote": "DKK", "rate": 7.46},
+        ], "EUR")
+        self.assertEqual(rates[1]["base_currency"], "EUR")
+        self.assertEqual(rates[1]["quote_currency"], "DKK")
+        self.assertEqual(rates[1]["rate"], 7.46)
+        self.assertEqual(rates[1]["provider_date"].isoformat(), "2026-10-20")
 
-    def test_parses_frankfurter_v2_rate(self):
-        self.assertEqual(parse_frankfurter_v2_rate({"rate": 0.92}), 0.92)
-
-    def test_rejects_missing_or_invalid_frankfurter_v2_rate(self):
-        for payload in (
-            {},
-            {"rate": 0},
-            {"rate": "nope"},
-            {"rate": "NaN"},
-            {"rate": "Infinity"},
+    def test_rejects_invalid_or_inconsistent_rate_sets(self):
+        for payload, base in (
+            ([], "EUR"),
+            ([{"date": "not-a-date", "base": "EUR", "quote": "DKK", "rate": 7.46}], "EUR"),
+            ([{"date": "2026-10-20", "base": "USD", "quote": "DKK", "rate": 7.46}], "EUR"),
+            ([{"date": "2026-10-20", "base": "EUR", "quote": "DKK", "rate": 0}], "EUR"),
         ):
             with self.subTest(payload=payload):
                 with self.assertRaises(ExchangeRateError):
-                    parse_frankfurter_v2_rate(payload)
+                    parse_frankfurter_v2_rates(payload, base)
 
 
 if __name__ == "__main__":

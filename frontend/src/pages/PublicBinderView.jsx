@@ -3,7 +3,6 @@ import { useParams, Link } from 'react-router-dom'
 import { ArrowLeft, HelpCircle } from 'lucide-react'
 import clsx from 'clsx'
 import { getPublicBinder, getPublicProfile } from '../api/publicClient'
-import { formatEur } from '../utils/formatEur'
 import { groupCardsByPrint } from '../utils/groupCardsByPrint'
 import { formatBinderCountSummary } from '../utils/binderCounts'
 import { useSettings } from '../contexts/SettingsContext'
@@ -17,7 +16,7 @@ export default function PublicBinderView() {
   const [profile, setProfile] = useState(null)
   const [error, setError] = useState(null)
   const [badgeLegendOpen, setBadgeLegendOpen] = useState(false)
-  const { t } = useSettings()
+  const { t, formatPrice } = useSettings()
 
   useEffect(() => {
     let cancelled = false
@@ -48,7 +47,7 @@ export default function PublicBinderView() {
             </p>
           </div>
           {binder.total_value != null && (
-            <span className="text-lg font-semibold">{formatEur(binder.total_value)}</span>
+            <span className="text-lg font-semibold">{formatPrice(binder.total_value)}</span>
           )}
         </div>
 
@@ -100,7 +99,7 @@ export default function PublicBinderView() {
               <div className="text-xs text-text-secondary">{tile.set_name} · #{tile.number}</div>
               <PrintingDetailBadges details={tile.prints.flatMap(print => print.printing_details || [])} limit={2} className="mt-1" />
               {tile.total_value != null && (
-                <div className="text-xs font-semibold">{formatEur(tile.total_value)}</div>
+                <div className="text-xs font-semibold">{formatPrice(tile.total_value)}</div>
               )}
             </article>
           )
