@@ -49,6 +49,11 @@ Routes are defined in `frontend/src/App.jsx`.
 | `/u/:handle/deck/:deckId` | `pages/PublicDeckView.jsx` | Anonymous read-only Deck cards, validation, analytics, and probabilities |
 | `/__card-system` | `pages/CardSystemGallery.jsx` | Development-only shared component gallery |
 
+Wishlist price-alert thresholds are entered and displayed in the selected
+currency. They are converted to EUR for storage and comparison with the EUR
+market price; Telegram alerts convert both values to the selected currency when
+an exchange rate is available.
+
 ## Auth Flow
 
 ### `AuthContext`

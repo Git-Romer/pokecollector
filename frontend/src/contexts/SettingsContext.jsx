@@ -175,9 +175,12 @@ export function SettingsProvider({ children }) {
       setExchangeRateReady(true)
       setExchangeRateCurrency('EUR')
       setExchangeRate(1.0)
+      setUsdToEurRate(0.91)
     } else {
       setExchangeRateReady(false)
       setExchangeRateCurrency(null)
+      setExchangeRate(1.0)
+      setUsdToEurRate(curr === 'USD' ? 1.0 : null)
       fetchExchangeRate('EUR', curr).then(rate => {
         if (cancelled) return
         // Without a rate, show EUR amounts rather than mislabeled converted ones.
@@ -265,28 +268,39 @@ export function SettingsProvider({ children }) {
   }, [settings.price_primary])
 
   const requestedCurrency = (settings.currency || 'EUR').toUpperCase()
-  // If no rate could be loaded, fall back to showing EUR so labels match the amounts.
-  const currency = exchangeRateReady && exchangeRateCurrency && exchangeRateCurrency !== requestedCurrency
-    ? exchangeRateCurrency
-    : requestedCurrency
+  const moneyExchangeRateReady = requestedCurrency === 'EUR'
+    ? exchangeRateReady && exchangeRateCurrency === 'EUR'
+    : exchangeRateReady && exchangeRateCurrency === requestedCurrency
+  // Until the selected rate is ready, show EUR amounts with a matching EUR label.
+  const currency = moneyExchangeRateReady ? requestedCurrency : 'EUR'
   const currencySymbol = useMemo(() => currencySymbolFor(currency), [currency])
-  const moneyExchangeRateReady = currency === 'EUR' || (exchangeRateReady && exchangeRateCurrency === currency)
   const pricePrimary = getPricePrimary()
   const pricePrimaryField = priceFieldFromPrimary(pricePrimary)
+  const displayRate = moneyExchangeRateReady ? exchangeRate : 1.0
+
+  const convertEurToDisplay = useCallback((eurAmount) => {
+    if (eurAmount == null || isNaN(Number(eurAmount))) return null
+    return Number(eurAmount) * displayRate
+  }, [displayRate])
+
+  const convertDisplayToEur = useCallback((displayAmount) => {
+    if (displayAmount == null || isNaN(Number(displayAmount))) return null
+    return Number(displayAmount) / displayRate
+  }, [displayRate])
 
   const formatPrice = useCallback((eurAmount) => {
     if (eurAmount == null || isNaN(Number(eurAmount))) return '-'
-    const converted = Number(eurAmount) * exchangeRate
+    const converted = convertEurToDisplay(eurAmount)
     return `${currencySymbol}${converted.toFixed(2)}`
-  }, [exchangeRate, currencySymbol])
+  }, [convertEurToDisplay, currencySymbol])
 
   const formatUsdPrice = useCallback((usdAmount) => {
     if (usdAmount == null || isNaN(Number(usdAmount))) return '-'
     // No USD rate for the display currency: show the original USD amount.
-    if (usdToEurRate == null) return `$${Number(usdAmount).toFixed(2)}`
+    if (usdToEurRate == null || !moneyExchangeRateReady) return `$${Number(usdAmount).toFixed(2)}`
     const converted = Number(usdAmount) * usdToEurRate
     return `${currencySymbol}${converted.toFixed(2)}`
-  }, [currency, currencySymbol, usdToEurRate])
+  }, [currencySymbol, moneyExchangeRateReady, usdToEurRate])
 
   return (
     <SettingsContext.Provider value={{
@@ -302,6 +316,8 @@ export function SettingsProvider({ children }) {
       currencySymbol,
       exchangeRate,
       exchangeRateReady: moneyExchangeRateReady,
+      convertEurToDisplay,
+      convertDisplayToEur,
       formatPrice,
       formatUsdPrice,
     }}>
