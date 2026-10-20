@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useMemo } 
 import en from '../i18n/en'
 import { priceFieldFromPrimary } from '../utils/prices'
 import { normalizeTcgdexLanguageCsv } from '../utils/tcgdexLanguages'
+import { currencySymbolFor, formatSelectedCurrency, rateForSelectedCurrency } from '../utils/currencyFormatting'
 import { useAuth } from './AuthContext'
 
 const TRANSLATION_LOADERS = {
@@ -44,10 +45,10 @@ const DEFAULT_SETTINGS = {
 }
 
 const LANGUAGE_STORAGE_KEY = 'app_language'
+const CURRENCY_STORAGE_KEY = 'app_currency'
 
-// The backend stays the source of truth for the language, but it only answers after
-// auth resolves. Mirroring the choice locally lets the first paint (and a failed or
-// unauthenticated settings fetch) use the language the user actually picked.
+// The backend stays the source of truth for the language and currency, but these
+// small local copies preserve the user's selected display preference for first paint.
 function readCachedLanguage() {
   try {
     const cached = localStorage.getItem(LANGUAGE_STORAGE_KEY)
@@ -66,18 +67,30 @@ function cacheLanguage(language) {
   }
 }
 
-function initialSettings() {
-  return { ...DEFAULT_SETTINGS, language: readCachedLanguage() || DEFAULT_SETTINGS.language }
+function readCachedCurrency() {
+  try {
+    const cached = localStorage.getItem(CURRENCY_STORAGE_KEY)
+    return cached && /^[A-Z]{3}$/.test(cached) ? cached : null
+  } catch {
+    return null
+  }
 }
 
-function currencySymbolFor(code) {
+function cacheCurrency(currency) {
+  const normalized = String(currency || '').trim().toUpperCase()
+  if (!/^[A-Z]{3}$/.test(normalized)) return
   try {
-    const part = new Intl.NumberFormat('en', { style: 'currency', currency: code, currencyDisplay: 'narrowSymbol' })
-      .formatToParts(0)
-      .find(p => p.type === 'currency')
-    return part?.value || code
+    localStorage.setItem(CURRENCY_STORAGE_KEY, normalized)
   } catch {
-    return code
+    // Storage can be unavailable; the backend setting remains authoritative.
+  }
+}
+
+function initialSettings() {
+  return {
+    ...DEFAULT_SETTINGS,
+    language: readCachedLanguage() || DEFAULT_SETTINGS.language,
+    currency: readCachedCurrency() || 'EUR',
   }
 }
 
@@ -87,10 +100,24 @@ export function SettingsProvider({ children }) {
   const { user, loading: authLoading, multiUser } = useAuth()
   const [settings, setSettings] = useState(initialSettings)
   const [loaded, setLoaded] = useState(false)
-  const [exchangeRate, setExchangeRate] = useState(1.0)
-  const [exchangeRateReady, setExchangeRateReady] = useState(true)
-  const [exchangeRateCurrency, setExchangeRateCurrency] = useState('EUR')
-  const [usdToEurRate, setUsdToEurRate] = useState(0.91)
+  const [exchangeRate, setExchangeRate] = useState(() => (
+    (settings.currency || 'EUR').toUpperCase() === 'EUR' ? 1 : null
+  ))
+  const [exchangeRateReady, setExchangeRateReady] = useState(() => (
+    (settings.currency || 'EUR').toUpperCase() === 'EUR'
+  ))
+  const [exchangeRateCurrency, setExchangeRateCurrency] = useState(() => (
+    (settings.currency || 'EUR').toUpperCase() === 'EUR' ? 'EUR' : null
+  ))
+  const [usdToDisplayRate, setUsdToDisplayRate] = useState(() => (
+    (settings.currency || 'EUR').toUpperCase() === 'USD' ? 1 : null
+  ))
+  const [usdToDisplayRateCurrency, setUsdToDisplayRateCurrency] = useState(() => (
+    (settings.currency || 'EUR').toUpperCase() === 'USD' ? 'USD' : null
+  ))
+  const [exchangeRateStale, setExchangeRateStale] = useState(false)
+  const [exchangeRateDate, setExchangeRateDate] = useState(null)
+  const [exchangeRateSyncedAt, setExchangeRateSyncedAt] = useState(null)
   const [loadedTranslations, setLoadedTranslations] = useState({ en })
 
   // Load settings from backend once auth mode is known. Single-user mode has no
@@ -115,6 +142,7 @@ export function SettingsProvider({ children }) {
       .then(data => {
         const language = data.language === 'zh' ? 'zh-cn' : data.language
         cacheLanguage(language)
+        cacheCurrency(data.currency)
         setSettings(prev => ({
           ...prev,
           ...data,
@@ -148,55 +176,79 @@ export function SettingsProvider({ children }) {
     return () => { cancelled = true }
   }, [lang, loadedTranslations])
 
-  // Fetch exchange rates through the backend to avoid browser CORS/redirect issues.
-  // Most app prices are stored in EUR; TCGPlayer prices are stored in USD and need the inverse path.
+  // Exchange-rate requests use the backend's shared database cache. EUR and USD
+  // are synchronized in both directions so selecting another currency later can
+  // still use the most recently saved rate while offline.
   useEffect(() => {
     const token = localStorage.getItem('token')
-    if (authLoading || (multiUser && !token)) return
+    if (authLoading) return
 
-    // Resolves to null when the backend has no rate (unknown currency and API unreachable).
     const fetchExchangeRate = async (from, to) => {
       try {
         const headers = token && multiUser ? { Authorization: `Bearer ${token}` } : {}
-        const response = await fetch(`/api/settings/exchange-rate?from=${from}&to=${to}`, {
-          headers,
-        })
-        if (!response.ok) throw new Error('Exchange rate lookup failed')
+        const params = new URLSearchParams({ from, to })
+        const response = await fetch(`/api/settings/exchange-rate?${params}`, { headers })
+        if (!response.ok) return null
         const data = await response.json()
-        return Number(data.rate) || null
+        const rate = Number(data.rate)
+        if (!Number.isFinite(rate) || rate <= 0) return null
+        return {
+          rate,
+          stale: Boolean(data.stale),
+          providerDate: data.provider_date || null,
+          syncedAt: data.synced_at || null,
+        }
       } catch {
         return null
       }
     }
 
     const curr = (settings.currency || 'EUR').toUpperCase()
+    const usesEurBaseDirectly = curr === 'EUR'
+    const usesUsdBaseDirectly = curr === 'USD'
+    const eurPair = usesEurBaseDirectly ? ['EUR', 'USD'] : ['EUR', curr]
+    const usdPair = usesUsdBaseDirectly ? ['USD', 'EUR'] : ['USD', curr]
     let cancelled = false
-    if (curr === 'EUR') {
-      setExchangeRateReady(true)
-      setExchangeRateCurrency('EUR')
-      setExchangeRate(1.0)
-      setUsdToEurRate(0.91)
-    } else {
-      setExchangeRateReady(false)
-      setExchangeRateCurrency(null)
-      setExchangeRate(1.0)
-      setUsdToEurRate(curr === 'USD' ? 1.0 : null)
-      fetchExchangeRate('EUR', curr).then(rate => {
-        if (cancelled) return
-        // Without a rate, show EUR amounts rather than mislabeled converted ones.
-        setExchangeRate(rate ?? 1.0)
-        setExchangeRateCurrency(rate ? curr : 'EUR')
+
+    setExchangeRateReady(usesEurBaseDirectly)
+    setExchangeRateCurrency(usesEurBaseDirectly ? 'EUR' : null)
+    setExchangeRate(usesEurBaseDirectly ? 1 : null)
+    setUsdToDisplayRate(usesUsdBaseDirectly ? 1 : null)
+    setUsdToDisplayRateCurrency(usesUsdBaseDirectly ? 'USD' : null)
+    setExchangeRateStale(false)
+    setExchangeRateDate(null)
+    setExchangeRateSyncedAt(null)
+
+    Promise.all([
+      fetchExchangeRate(...eurPair),
+      fetchExchangeRate(...usdPair),
+    ]).then(([eurQuote, usdQuote]) => {
+      if (cancelled) return
+
+      if (usesEurBaseDirectly) {
+        setExchangeRate(1)
+        setExchangeRateCurrency('EUR')
         setExchangeRateReady(true)
-      })
-    }
-    // TCGPlayer prices are stored in USD; convert them to the display currency.
-    if (curr === 'USD') {
-      setUsdToEurRate(1.0)
-    } else {
-      fetchExchangeRate('USD', curr).then(rate => {
-        if (!cancelled) setUsdToEurRate(rate ?? (curr === 'EUR' ? 0.91 : null))
-      })
-    }
+      } else if (eurQuote) {
+        setExchangeRate(eurQuote.rate)
+        setExchangeRateCurrency(curr)
+        setExchangeRateReady(true)
+      } else {
+        setExchangeRate(null)
+        setExchangeRateCurrency(null)
+        setExchangeRateReady(false)
+      }
+
+      const usdRate = usesUsdBaseDirectly ? 1 : (usdQuote?.rate ?? null)
+      setUsdToDisplayRate(usdRate)
+      setUsdToDisplayRateCurrency(usdRate == null ? null : curr)
+      const staleQuote = [eurQuote, usdQuote].find(quote => quote?.stale)
+      const statusQuote = staleQuote || (usesEurBaseDirectly ? usdQuote : eurQuote)
+      setExchangeRateStale(Boolean(staleQuote))
+      setExchangeRateDate(statusQuote?.providerDate || null)
+      setExchangeRateSyncedAt(statusQuote?.syncedAt || null)
+    })
+
     return () => { cancelled = true }
   }, [settings.currency, authLoading, multiUser, user?.id])
 
@@ -218,6 +270,7 @@ export function SettingsProvider({ children }) {
       const saved = await resp.json()
       const language = saved.language === 'zh' ? 'zh-cn' : saved.language
       cacheLanguage(language)
+      cacheCurrency(saved.currency)
       setSettings(prev => ({
         ...prev,
         ...saved,
@@ -271,36 +324,37 @@ export function SettingsProvider({ children }) {
   const moneyExchangeRateReady = requestedCurrency === 'EUR'
     ? exchangeRateReady && exchangeRateCurrency === 'EUR'
     : exchangeRateReady && exchangeRateCurrency === requestedCurrency
-  // Until the selected rate is ready, show EUR amounts with a matching EUR label.
-  const currency = moneyExchangeRateReady ? requestedCurrency : 'EUR'
-  const currencySymbol = useMemo(() => currencySymbolFor(currency), [currency])
+  const currency = requestedCurrency
+  const currencySymbol = useMemo(
+    () => currencySymbolFor(currency, lang),
+    [currency, lang],
+  )
   const pricePrimary = getPricePrimary()
   const pricePrimaryField = priceFieldFromPrimary(pricePrimary)
-  const displayRate = moneyExchangeRateReady ? exchangeRate : 1.0
+  const displayRate = moneyExchangeRateReady ? exchangeRate : null
+  const usdDisplayRate = rateForSelectedCurrency(
+    usdToDisplayRate,
+    usdToDisplayRateCurrency,
+    requestedCurrency,
+  )
 
   const convertEurToDisplay = useCallback((eurAmount) => {
-    if (eurAmount == null || isNaN(Number(eurAmount))) return null
+    if (eurAmount == null || !Number.isFinite(Number(eurAmount)) || displayRate == null) return null
     return Number(eurAmount) * displayRate
   }, [displayRate])
 
   const convertDisplayToEur = useCallback((displayAmount) => {
-    if (displayAmount == null || isNaN(Number(displayAmount))) return null
+    if (displayAmount == null || !Number.isFinite(Number(displayAmount)) || displayRate == null) return null
     return Number(displayAmount) / displayRate
   }, [displayRate])
 
-  const formatPrice = useCallback((eurAmount) => {
-    if (eurAmount == null || isNaN(Number(eurAmount))) return '-'
-    const converted = convertEurToDisplay(eurAmount)
-    return `${currencySymbol}${converted.toFixed(2)}`
-  }, [convertEurToDisplay, currencySymbol])
+  const formatPrice = useCallback((eurAmount) => (
+    formatSelectedCurrency(eurAmount, currency, displayRate, lang)
+  ), [currency, displayRate, lang])
 
-  const formatUsdPrice = useCallback((usdAmount) => {
-    if (usdAmount == null || isNaN(Number(usdAmount))) return '-'
-    // No USD rate for the display currency: show the original USD amount.
-    if (usdToEurRate == null || !moneyExchangeRateReady) return `$${Number(usdAmount).toFixed(2)}`
-    const converted = Number(usdAmount) * usdToEurRate
-    return `${currencySymbol}${converted.toFixed(2)}`
-  }, [currencySymbol, moneyExchangeRateReady, usdToEurRate])
+  const formatUsdPrice = useCallback((usdAmount) => (
+    formatSelectedCurrency(usdAmount, currency, usdDisplayRate, lang)
+  ), [currency, usdDisplayRate, lang])
 
   return (
     <SettingsContext.Provider value={{
@@ -314,8 +368,12 @@ export function SettingsProvider({ children }) {
       loaded,
       currency,
       currencySymbol,
-      exchangeRate,
+      exchangeRate: displayRate,
       exchangeRateReady: moneyExchangeRateReady,
+      usdExchangeRateReady: usdDisplayRate != null,
+      exchangeRateStale,
+      exchangeRateDate,
+      exchangeRateSyncedAt,
       convertEurToDisplay,
       convertDisplayToEur,
       formatPrice,

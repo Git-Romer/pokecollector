@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 from api.auth import get_current_user
@@ -6,9 +6,14 @@ from database import get_db
 from services.card_values import effective_market_price, normalize_price_field
 from services.card_visibility import visible_any_card_filter
 from services.printing_details import format_printing_details_csv
+from services.exchange_rates import (
+    ExchangeRateError,
+    ExchangeRateUnavailable,
+    get_exchange_rate,
+    normalize_currency_code,
+)
 from models import CollectionItem, Card, User
 import io
-import re
 import csv
 import datetime
 from xml.sax.saxutils import escape
@@ -16,37 +21,42 @@ from xml.sax.saxutils import escape
 router = APIRouter()
 
 
-def _normalize_currency(value: str | None) -> tuple[str, str]:
-    currency = (value or "EUR").strip().upper()
-    if not re.fullmatch(r"[A-Z]{3}", currency):
-        currency = "EUR"
-    symbols = {"EUR": "€", "USD": "$", "GBP": "£", "JPY": "¥"}
-    return currency, symbols.get(currency, f"{currency} ")
+def _export_currency_and_rate(value: str | None) -> tuple[str, float]:
+    try:
+        currency = normalize_currency_code(value or "EUR")
+    except ExchangeRateError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+
+    try:
+        quote = get_exchange_rate("EUR", currency)
+    except ExchangeRateUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
+    return currency, float(quote["rate"])
 
 
-def _convert_eur(amount: float | None, exchange_rate: float, currency: str) -> float | None:
+def _convert_eur(amount: float | None, exchange_rate: float) -> float | None:
     if amount is None:
         return None
-    return float(amount) * exchange_rate if currency != "EUR" else float(amount)
+    return float(amount) * exchange_rate
 
 
-def _format_money(amount: float | None, symbol: str) -> str:
+def _format_money(amount: float | None, currency: str) -> str:
     if amount is None:
         return "-"
-    return f"{symbol}{amount:.2f}"
+    return f"{currency} {amount:,.2f}"
 
 
 @router.get("/csv")
 def export_csv(
     price_field: str = Query(default="price_trend", description="Price field to use for value calculation"),
     currency: str = Query(default="EUR", description="Display currency"),
-    exchange_rate: float = Query(default=1.0, gt=0, description="EUR to selected currency rate"),
+    exchange_rate: float | None = Query(default=None, gt=0, include_in_schema=False),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Export collection as CSV."""
+    """Export collection as CSV in the requested display currency."""
     price_field = normalize_price_field(price_field)
-    currency, symbol = _normalize_currency(currency)
+    currency, conversion_rate = _export_currency_and_rate(currency)
     items = db.query(CollectionItem).join(Card, Card.id == CollectionItem.card_id).options(
         joinedload(CollectionItem.card).joinedload(Card.set_ref)
     ).filter(
@@ -73,8 +83,8 @@ def export_csv(
             continue
         set_name = card.set_ref.name if card.set_ref else ""
         current_price = effective_market_price(card, item.variant, price_field)
-        display_current_price = _convert_eur(current_price, exchange_rate, currency)
-        display_purchase_price = _convert_eur(item.purchase_price, exchange_rate, currency)
+        display_current_price = _convert_eur(current_price, conversion_rate)
+        display_purchase_price = _convert_eur(item.purchase_price, conversion_rate)
         total_value = round((display_current_price or 0) * item.quantity, 2)
 
         writer.writerow([
@@ -108,13 +118,13 @@ def export_csv(
 def export_pdf(
     price_field: str = Query(default="price_trend", description="Price field to use for value calculation"),
     currency: str = Query(default="EUR", description="Display currency"),
-    exchange_rate: float = Query(default=1.0, gt=0, description="EUR to selected currency rate"),
+    exchange_rate: float | None = Query(default=None, gt=0, include_in_schema=False),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Export collection as PDF."""
+    """Export collection as PDF in the requested display currency."""
     price_field = normalize_price_field(price_field)
-    currency, symbol = _normalize_currency(currency)
+    currency, conversion_rate = _export_currency_and_rate(currency)
     try:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import A4, landscape
@@ -172,8 +182,10 @@ def export_pdf(
             if not card:
                 continue
             set_name = (card.set_ref.name[:20] if card.set_ref else "")
-            current_price = _convert_eur(effective_market_price(card, item.variant, price_field), exchange_rate, currency)
-            purchase_price = _convert_eur(item.purchase_price, exchange_rate, currency)
+            current_price = _convert_eur(
+                effective_market_price(card, item.variant, price_field), conversion_rate
+            )
+            purchase_price = _convert_eur(item.purchase_price, conversion_rate)
             val = round((current_price or 0) * item.quantity, 2)
             total_value += val
 
@@ -190,13 +202,13 @@ def export_pdf(
                     escape(format_printing_details_csv(item.printing_detail_tags) or "-"),
                     detail_style,
                 ),
-                _format_money(purchase_price, symbol) if purchase_price else "-",
-                _format_money(current_price, symbol) if current_price else "-",
-                _format_money(val, symbol),
+                _format_money(purchase_price, currency) if purchase_price else "-",
+                _format_money(current_price, currency) if current_price else "-",
+                _format_money(val, currency),
             ])
 
         # Summary row
-        data.append(["", "", "", "", "", "", "", "", "", "", "TOTAL:", _format_money(total_value, symbol)])
+        data.append(["", "", "", "", "", "", "", "", "", "", "TOTAL:", _format_money(total_value, currency)])
 
         col_widths = [72, 55, 25, 50, 24, 44, 55, 27, 92, 45, 52, 52]
         table = Table(data, colWidths=col_widths)

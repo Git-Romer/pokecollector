@@ -75,6 +75,18 @@ def _run_migrations(conn):
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS is_custom BOOLEAN DEFAULT FALSE",
         "ALTER TABLE sets ADD COLUMN IF NOT EXISTS is_digital BOOLEAN DEFAULT FALSE",
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS is_digital BOOLEAN DEFAULT FALSE",
+        "CREATE TABLE IF NOT EXISTS currency_rates ("
+        "base_currency VARCHAR(3) NOT NULL, "
+        "quote_currency VARCHAR(3) NOT NULL, "
+        "rate DOUBLE PRECISION NOT NULL CHECK (rate > 0), "
+        "provider_date DATE NOT NULL, "
+        "synced_at TIMESTAMPTZ NOT NULL, "
+        "PRIMARY KEY (base_currency, quote_currency))",
+        "CREATE TABLE IF NOT EXISTS currency_metadata ("
+        "currency_code VARCHAR(3) PRIMARY KEY, "
+        "name VARCHAR NOT NULL, "
+        "symbol VARCHAR NOT NULL, "
+        "synced_at TIMESTAMPTZ NOT NULL)",
         # Create custom_card_matches table if it doesn't exist (handled by create_all, belt+suspenders)
         """CREATE TABLE IF NOT EXISTS custom_card_matches (
             id SERIAL PRIMARY KEY,

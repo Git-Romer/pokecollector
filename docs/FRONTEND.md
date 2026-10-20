@@ -49,10 +49,16 @@ Routes are defined in `frontend/src/App.jsx`.
 | `/u/:handle/deck/:deckId` | `pages/PublicDeckView.jsx` | Anonymous read-only Deck cards, validation, analytics, and probabilities |
 | `/__card-system` | `pages/CardSystemGallery.jsx` | Development-only shared component gallery |
 
-Wishlist price-alert thresholds are entered and displayed in the selected
-currency. They are converted to EUR for storage and comparison with the EUR
-market price; Telegram alerts convert both values to the selected currency when
-an exchange rate is available.
+Price amounts throughout the app use the selected currency. Cardmarket values and
+purchase prices are stored in EUR; TCGPlayer values are stored in USD. The backend
+synchronizes EUR- and USD-based exchange-rate sets and currency metadata into a
+shared per-installation database cache, which supports offline conversion with the
+last saved rates. Wishlist thresholds are entered and displayed in the selected
+currency, then converted to EUR for storage and comparison. Exports and Telegram
+use the same cached conversion; when no rate has ever been synced, they show the
+selected currency as unavailable rather than displaying an EUR/USD amount. The
+Supporters panel is the only exception: historical donation totals stay in their
+recorded currencies so they are not presented as exact converted gift amounts.
 
 ## Auth Flow
 
@@ -111,7 +117,7 @@ Notes:
 - Translation bundles are loaded from `frontend/src/i18n/` and wired in `SettingsContext`
 - UI languages include all supported TCGdex language codes, plus Swedish. Regional variants such as `es-mx`, `pt-br`, `pt-pt`, `zh-tw`, and `zh-cn` are selectable from a compact dropdown in Settings.
 - Legacy stored `zh` settings are normalized in the frontend to `zh-cn` for display
-- USD display uses exchange rates from the backend Frankfurter endpoint
+- EUR and USD source prices use the backend Frankfurter rate cache, which serves the latest saved quotes when the provider is offline
 
 ### `useTheme`
 
