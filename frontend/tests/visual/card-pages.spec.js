@@ -898,7 +898,7 @@ test('currency changes do not display prices using the previous exchange rate', 
   await expect.poll(() => selectedCurrency).toBe('GBP')
   await gbpRateRequested
   await navigate('/wishlist')
-  await expect(page.getByText('€5.00', { exact: true }).filter({ visible: true }).first()).toBeVisible()
+  await expect(page.getByText('Unavailable (GBP)', { exact: true }).filter({ visible: true }).first()).toBeVisible()
 
   releaseGbpRate()
   await expect(page.getByText('£4.00', { exact: true }).filter({ visible: true }).first()).toBeVisible()
