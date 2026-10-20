@@ -1,4 +1,6 @@
+import asyncio
 import datetime
+import json
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -7,9 +9,11 @@ from services.product_ledger import product_effective_value
 
 try:
     from fastapi import HTTPException
+    from fastapi.exception_handlers import http_exception_handler
     from pydantic import ValidationError
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
+    from starlette.requests import Request
 
     from api.products import (
         bulk_update_product_lifecycle,
@@ -23,8 +27,8 @@ try:
         update_product,
     )
     from api.images import get_product_image
-    from api.cards import delete_custom_card
-    from api.collection import get_collection, update_collection_item
+    from api.cards import _with_collection_summary, delete_custom_card
+    from api.collection import get_collection, remove_from_collection, update_collection_item
     from database import Base
     from models import Binder, BinderCard, Card, CollectionItem, ImageCache, PrintingDetailTag, ProductCard, ProductLedgerEntry, ProductPurchase, User
     from services.product_images import product_image_cache_key, product_image_token
@@ -926,6 +930,159 @@ class ProductLedgerApiTests(unittest.TestCase):
         collection = get_collection(current_user=self.user, db=self.db)
 
         self.assertEqual(collection[0].product_sources, [])
+
+    def test_card_search_owned_items_include_active_product_sources(self):
+        product = self.add_product()
+        item = self.add_collection_item(quantity=3)
+        link_collection_item_to_product(
+            product.id,
+            ProductCardLinkCreate(collection_item_id=item.id, quantity=2),
+            current_user=self.user,
+            db=self.db,
+        )
+
+        cards = _with_collection_summary(
+            self.db,
+            self.user,
+            [{"id": self.card.id}],
+        )
+
+        source = cards[0]["owned_items"][0]["product_sources"][0]
+        self.assertEqual(source["product_id"], product.id)
+        self.assertEqual(source["product_name"], "Collection Box")
+        self.assertEqual(source["active_quantity"], 2)
+
+    def test_card_search_product_sources_are_scoped_to_the_collection_owner(self):
+        item = self.add_collection_item(quantity=2)
+        foreign_product = self.add_product(user=self.other_user)
+        owned_product = self.add_product()
+        self.db.add_all([
+            ProductCard(
+                product_id=foreign_product.id,
+                user_id=self.user.id,
+                collection_item_id=item.id,
+                initial_quantity=1,
+                active_quantity=1,
+                sold_quantity=0,
+            ),
+            ProductCard(
+                product_id=owned_product.id,
+                user_id=self.other_user.id,
+                collection_item_id=item.id,
+                initial_quantity=1,
+                active_quantity=1,
+                sold_quantity=0,
+            ),
+        ])
+        self.db.commit()
+
+        cards = _with_collection_summary(
+            self.db,
+            self.user,
+            [{"id": self.card.id}],
+        )
+
+        self.assertEqual(cards[0]["owned_items"][0]["product_sources"], [])
+
+    def test_product_linked_delete_conflict_includes_product_sources(self):
+        product = self.add_product()
+        item = self.add_collection_item(quantity=1)
+        link_collection_item_to_product(
+            product.id,
+            ProductCardLinkCreate(collection_item_id=item.id, quantity=1),
+            current_user=self.user,
+            db=self.db,
+        )
+
+        with self.assertRaises(HTTPException) as context:
+            remove_from_collection(item.id, current_user=self.user, db=self.db)
+
+        detail = context.exception.detail
+        self.assertEqual(detail["code"], "collection_product_link_conflict")
+        self.assertIn("linked to a product", detail["message"])
+        self.assertEqual(detail["product_sources"][0]["product_id"], product.id)
+        self.assertEqual(detail["product_sources"][0]["active_quantity"], 1)
+
+    def test_product_linked_delete_conflict_response_serializes_purchase_date(self):
+        product = self.add_product()
+        item = self.add_collection_item(quantity=1)
+        link_collection_item_to_product(
+            product.id,
+            ProductCardLinkCreate(collection_item_id=item.id, quantity=1),
+            current_user=self.user,
+            db=self.db,
+        )
+
+        with self.assertRaises(HTTPException) as context:
+            remove_from_collection(item.id, current_user=self.user, db=self.db)
+
+        path = f"/api/collection/{item.id}"
+        request = Request({
+            "type": "http",
+            "http_version": "1.1",
+            "method": "DELETE",
+            "scheme": "http",
+            "path": path,
+            "raw_path": path.encode("ascii"),
+            "query_string": b"",
+            "headers": [],
+            "client": ("testclient", 123),
+            "server": ("testserver", 80),
+        })
+        response = asyncio.run(http_exception_handler(request, context.exception))
+
+        self.assertEqual(response.status_code, 409)
+        payload = json.loads(bytes(response.body))
+        source = payload["detail"]["product_sources"][0]
+        self.assertEqual(source["product_id"], product.id)
+        self.assertEqual(source["purchase_date"], product.purchase_date.isoformat())
+
+    def test_product_linked_quantity_conflict_includes_product_sources(self):
+        product = self.add_product()
+        item = self.add_collection_item(quantity=2)
+        link_collection_item_to_product(
+            product.id,
+            ProductCardLinkCreate(collection_item_id=item.id, quantity=2),
+            current_user=self.user,
+            db=self.db,
+        )
+
+        with self.assertRaises(HTTPException) as context:
+            update_collection_item(
+                item.id,
+                CollectionItemUpdate(quantity=1),
+                current_user=self.user,
+                db=self.db,
+            )
+
+        detail = context.exception.detail
+        self.assertEqual(detail["code"], "collection_product_link_conflict")
+        self.assertIn("2 active product-linked copies", detail["message"])
+        self.assertEqual(detail["product_sources"][0]["product_id"], product.id)
+        self.assertEqual(detail["product_sources"][0]["active_quantity"], 2)
+
+    def test_product_linked_identity_conflict_includes_product_sources(self):
+        product = self.add_product()
+        item = self.add_collection_item(quantity=2)
+        link_collection_item_to_product(
+            product.id,
+            ProductCardLinkCreate(collection_item_id=item.id, quantity=1),
+            current_user=self.user,
+            db=self.db,
+        )
+
+        with self.assertRaises(HTTPException) as context:
+            update_collection_item(
+                item.id,
+                CollectionItemUpdate(condition="LP"),
+                current_user=self.user,
+                db=self.db,
+            )
+
+        detail = context.exception.detail
+        self.assertEqual(detail["code"], "collection_product_link_conflict")
+        self.assertIn("This exact collection row is linked to a product", detail["message"])
+        self.assertEqual(detail["product_sources"][0]["product_id"], product.id)
 
     def test_selling_an_allocated_final_copy_is_blocked_without_mutation(self):
         product = self.add_product()

@@ -105,7 +105,7 @@ function ProductValueInfo({ label, detailsLabel, explanation }) {
         type="button"
         aria-label={`${label}: ${detailsLabel}`}
         aria-describedby={descriptionId}
-        className="inline-flex h-6 w-6 items-center justify-center rounded-full text-text-muted transition-colors hover:text-yellow focus-visible:text-yellow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow/60"
+        className="inline-flex h-6 w-6 items-center justify-center rounded-full text-text-muted transition-colors hover:text-yellow focus-visible:text-yellow focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-yellow/60"
       >
         <Info size={12} aria-hidden="true" />
       </button>

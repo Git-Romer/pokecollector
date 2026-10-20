@@ -16,10 +16,10 @@ function PhotoPositionGuide({ title, description }) {
     <div className="space-y-3">
       <div className="mx-auto w-36 rounded-2xl border-2 border-text-muted/50 bg-bg-surface p-3 shadow-inner">
         <div className="relative mx-auto aspect-[2.5/3.5] w-20 rounded-md border-2 border-brand-yellow bg-bg-elevated">
-          <span className="absolute left-1 top-1 h-3 w-3 rounded-sm border-l-2 border-t-2 border-white" />
-          <span className="absolute right-1 top-1 h-3 w-3 rounded-sm border-r-2 border-t-2 border-white" />
-          <span className="absolute bottom-1 left-1 h-3 w-3 rounded-sm border-b-2 border-l-2 border-white" />
-          <span className="absolute bottom-1 right-1 h-3 w-3 rounded-sm border-b-2 border-r-2 border-white" />
+          <span className="absolute left-1 top-1 h-3 w-3 rounded-xs border-l-2 border-t-2 border-white" />
+          <span className="absolute right-1 top-1 h-3 w-3 rounded-xs border-r-2 border-t-2 border-white" />
+          <span className="absolute bottom-1 left-1 h-3 w-3 rounded-xs border-b-2 border-l-2 border-white" />
+          <span className="absolute bottom-1 right-1 h-3 w-3 rounded-xs border-b-2 border-r-2 border-white" />
           <div className="absolute inset-x-2 top-3 h-8 rounded bg-white/10" />
           <div className="absolute inset-x-2 bottom-3 space-y-1">
             <div className="h-1 rounded bg-white/20" />
