@@ -384,7 +384,12 @@ export default function Settings() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const { user, updateCurrentUser, multiUser, modeLocked } = useAuth()
-  const { settings, updateSettings, t, pricePrimaryField, exchangeRate } = useSettings()
+  const { settings, updateSettings, t, pricePrimaryField, exchangeRate, currency: displayCurrency } = useSettings()
+  const { data: currencyList } = useQuery({
+    queryKey: ['currencies'],
+    queryFn: () => api.get('/settings/currencies').then(r => r.data.currencies),
+    staleTime: 24 * 60 * 60 * 1000,
+  })
   const supportPageUrl = settings.language === 'de'
     ? 'https://pokecollector.romerg.de/de/#support'
     : 'https://pokecollector.romerg.de/#support'
@@ -828,7 +833,15 @@ export default function Settings() {
   const currentAppLang = currentLang === 'zh' ? 'zh-cn' : currentLang
   const currentCurrency = settings.currency || 'EUR'
   const currentPriceType = settings.price_primary || 'trend'
-  const exportParams = { price_field: pricePrimaryField, currency: currentCurrency, exchange_rate: exchangeRate }
+  const currencyOptions = (() => {
+    const base = currencyList?.length
+      ? currencyList
+      : [{ code: 'EUR', name: 'Euro', symbol: '€' }, { code: 'USD', name: 'US Dollar', symbol: '$' }]
+    const options = base.map(c => ({ value: c.code, label: `${c.code} — ${c.name}` }))
+    if (!options.some(o => o.value === currentCurrency)) options.push({ value: currentCurrency, label: currentCurrency })
+    return options
+  })()
+  const exportParams = { price_field: pricePrimaryField, currency: displayCurrency, exchange_rate: exchangeRate }
   const currentTcgdexSyncLanguages = normalizeTcgdexLanguageCsv(settings.tcgdex_sync_languages || 'en,de')
   const digitalSetsEnabled = settings.tcgdex_digital_sets_enabled === 'true'
   const crossLanguagePriceFallback = settings.cross_language_price_fallback !== 'false'
@@ -1153,10 +1166,7 @@ export default function Settings() {
               <SettingsRow label={t('settings.currency')} description={t('settings.currencyDesc')}>
                 <SelectControl
                   value={currentCurrency}
-                  options={[
-                    { value: 'EUR', label: '€ EUR' },
-                    { value: 'USD', label: '$ USD' },
-                  ]}
+                  options={currencyOptions}
                   onChange={handleCurrencyChange}
                 />
               </SettingsRow>

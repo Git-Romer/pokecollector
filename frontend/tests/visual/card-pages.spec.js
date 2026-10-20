@@ -811,6 +811,162 @@ test('Collection editor keeps a product link in linked-copy conflict errors', as
   await expect(alert.getByRole('link', { name: `Open product: ${productName}` })).toBeVisible()
 })
 
+test('currency changes do not display prices using the previous exchange rate', async ({ page }) => {
+  const baseSettings = {
+    language: 'en',
+    price_primary: 'trend',
+    price_display: '["trend","avg","avg1","avg7","avg30","low"]',
+    tcgdex_sync_languages: 'en,de',
+  }
+  let selectedCurrency = 'EUR'
+  let releaseGbpRate
+  let signalUsdRateReady
+  let signalGbpRateRequest
+  const gbpRateGate = new Promise(resolve => { releaseGbpRate = resolve })
+  const usdRateReady = new Promise(resolve => { signalUsdRateReady = resolve })
+  const gbpRateRequested = new Promise(resolve => { signalGbpRateRequest = resolve })
+  await page.route('**/api/settings/', async route => {
+    if (route.request().method() === 'PUT') {
+      selectedCurrency = route.request().postDataJSON().currency || selectedCurrency
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ ...baseSettings, currency: selectedCurrency }),
+    })
+  })
+  await page.route('**/api/settings/scanner', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ provider: 'gemini', model: '', request_timeout_seconds: 60, providers: [] }),
+  }))
+  await page.route('**/api/settings/currencies', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ currencies: [
+      { code: 'EUR', name: 'Euro', symbol: '€' },
+      { code: 'USD', name: 'US Dollar', symbol: '$' },
+      { code: 'GBP', name: 'British Pound', symbol: '£' },
+    ] }),
+  }))
+  await page.route('**/api/settings/exchange-rate?*', async route => {
+    const url = new URL(route.request().url())
+    const from = url.searchParams.get('from')
+    const to = url.searchParams.get('to')
+    if (from === 'EUR' && to === 'GBP') {
+      signalGbpRateRequest()
+      await gbpRateGate
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ from, to, rate: 0.8 }) })
+      return
+    }
+    const rate = from === 'EUR' && to === 'USD' ? 1.25
+      : from === 'USD' && to === 'EUR' ? 0.8
+        : from === 'USD' && to === 'GBP' ? 0.64
+          : 1
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ from, to, rate }) })
+    if (from === 'EUR' && to === 'USD') signalUsdRateReady()
+  })
+  await page.route('**/api/wishlist/', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify([{
+      id: 91,
+      card_id: collection[0].card_id,
+      quantity: 1,
+      price_alert_above: null,
+      price_alert_below: null,
+      created_at: '2026-09-14T12:00:00',
+      card: collection[0].card,
+    }]),
+  }))
+
+  await page.goto('/wishlist')
+  const navigate = async path => page.evaluate(nextPath => {
+    window.history.pushState({}, '', nextPath)
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  }, path)
+  await navigate('/settings')
+  const currencySelect = page.locator('select').filter({ has: page.locator('option[value="USD"]') })
+  await currencySelect.selectOption('USD')
+  await expect.poll(() => selectedCurrency).toBe('USD')
+  await usdRateReady
+  await navigate('/wishlist')
+  await expect(page.getByText('$6.25', { exact: true }).filter({ visible: true }).first()).toBeVisible()
+
+  await navigate('/settings')
+  await page.locator('select').filter({ has: page.locator('option[value="GBP"]') }).selectOption('GBP')
+  await expect.poll(() => selectedCurrency).toBe('GBP')
+  await gbpRateRequested
+  await navigate('/wishlist')
+  await expect(page.getByText('€5.00', { exact: true }).filter({ visible: true }).first()).toBeVisible()
+
+  releaseGbpRate()
+  await expect(page.getByText('£4.00', { exact: true }).filter({ visible: true }).first()).toBeVisible()
+})
+
+test('wishlist alert thresholds wait for selected currency settings before enabling conversion', async ({ page }) => {
+  let resolveSettings
+  const settingsGate = new Promise(resolve => { resolveSettings = resolve })
+  await page.route('**/api/settings/', async route => {
+    await settingsGate
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        language: 'en',
+        price_primary: 'trend',
+        price_display: '["trend","avg","avg1","avg7","avg30","low"]',
+        tcgdex_sync_languages: 'en,de',
+        currency: 'USD',
+      }),
+    })
+  })
+  await page.route('**/api/settings/exchange-rate?*', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ from: 'EUR', to: 'USD', rate: 1.25, fallback: false }),
+  }))
+  await page.route('**/api/wishlist/', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify([{
+      id: 91,
+      card_id: collection[0].card_id,
+      quantity: 2,
+      price_alert_above: 10,
+      price_alert_below: 8,
+      created_at: '2026-09-14T12:00:00',
+      card: collection[0].card,
+    }]),
+  }))
+  await page.goto('/wishlist')
+  await page.getByRole('button', { name: /Visual card 1/ }).click()
+
+  const dialog = page.getByRole('dialog')
+  const above = dialog.locator('input[placeholder="↑ Alert above"]')
+  const below = dialog.locator('input[placeholder="↓ Alert below"]')
+  const save = above.locator('xpath=../..').getByRole('button').first()
+  await expect(above).toBeDisabled()
+  await expect(below).toBeDisabled()
+  await expect(save).toBeDisabled()
+
+  resolveSettings()
+  await expect(above).toBeEnabled()
+  await expect(above).toHaveValue('12.50')
+  await expect(below).toHaveValue('10.00')
+
+  await above.fill('15.00')
+  const updateRequest = page.waitForRequest(request => (
+    request.url().includes('/api/wishlist/91') && request.method() === 'PUT'
+  ))
+  await save.click()
+  const request = await updateRequest
+  expect(request.postDataJSON()).toMatchObject({
+    price_alert_above: 12,
+    price_alert_below: 8,
+  })
+})
+
 test('Wishlist price tabs reuse the complete shared card price details', async ({ page }) => {
   await page.route('**/api/wishlist/', route => route.fulfill({
     status: 200,

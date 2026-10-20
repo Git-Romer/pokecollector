@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 import en from '../i18n/en'
 import { priceFieldFromPrimary } from '../utils/prices'
 import { normalizeTcgdexLanguageCsv } from '../utils/tcgdexLanguages'
@@ -68,6 +68,17 @@ function cacheLanguage(language) {
 
 function initialSettings() {
   return { ...DEFAULT_SETTINGS, language: readCachedLanguage() || DEFAULT_SETTINGS.language }
+}
+
+function currencySymbolFor(code) {
+  try {
+    const part = new Intl.NumberFormat('en', { style: 'currency', currency: code, currencyDisplay: 'narrowSymbol' })
+      .formatToParts(0)
+      .find(p => p.type === 'currency')
+    return part?.value || code
+  } catch {
+    return code
+  }
 }
 
 const SettingsContext = createContext(null)
@@ -143,7 +154,8 @@ export function SettingsProvider({ children }) {
     const token = localStorage.getItem('token')
     if (authLoading || (multiUser && !token)) return
 
-    const fetchExchangeRate = async (from, to, fallback) => {
+    // Resolves to null when the backend has no rate (unknown currency and API unreachable).
+    const fetchExchangeRate = async (from, to) => {
       try {
         const headers = token && multiUser ? { Authorization: `Bearer ${token}` } : {}
         const response = await fetch(`/api/settings/exchange-rate?from=${from}&to=${to}`, {
@@ -151,31 +163,38 @@ export function SettingsProvider({ children }) {
         })
         if (!response.ok) throw new Error('Exchange rate lookup failed')
         const data = await response.json()
-        return Number(data.rate) || fallback
+        return Number(data.rate) || null
       } catch {
-        return fallback
+        return null
       }
     }
 
-    const curr = settings.currency || 'EUR'
+    const curr = (settings.currency || 'EUR').toUpperCase()
     let cancelled = false
-    if (curr === 'USD') {
-      setExchangeRateReady(false)
-      setExchangeRateCurrency(null)
-      setExchangeRate(1.1)
-      fetchExchangeRate('EUR', 'USD', 1.1).then(rate => {
-        if (!cancelled) {
-          setExchangeRate(rate)
-          setExchangeRateCurrency('USD')
-          setExchangeRateReady(true)
-        }
-      })
-    } else {
+    if (curr === 'EUR') {
       setExchangeRateReady(true)
       setExchangeRateCurrency('EUR')
       setExchangeRate(1.0)
-      fetchExchangeRate('USD', 'EUR', 0.91).then(rate => {
-        if (!cancelled) setUsdToEurRate(rate)
+      setUsdToEurRate(0.91)
+    } else {
+      setExchangeRateReady(false)
+      setExchangeRateCurrency(null)
+      setExchangeRate(1.0)
+      setUsdToEurRate(curr === 'USD' ? 1.0 : null)
+      fetchExchangeRate('EUR', curr).then(rate => {
+        if (cancelled) return
+        // Without a rate, show EUR amounts rather than mislabeled converted ones.
+        setExchangeRate(rate ?? 1.0)
+        setExchangeRateCurrency(rate ? curr : 'EUR')
+        setExchangeRateReady(true)
+      })
+    }
+    // TCGPlayer prices are stored in USD; convert them to the display currency.
+    if (curr === 'USD') {
+      setUsdToEurRate(1.0)
+    } else {
+      fetchExchangeRate('USD', curr).then(rate => {
+        if (!cancelled) setUsdToEurRate(rate ?? (curr === 'EUR' ? 0.91 : null))
       })
     }
     return () => { cancelled = true }
@@ -248,23 +267,40 @@ export function SettingsProvider({ children }) {
     return settings.price_primary || 'trend'
   }, [settings.price_primary])
 
-  const currency = settings.currency || 'EUR'
-  const currencySymbol = currency === 'USD' ? '$' : '€'
-  const moneyExchangeRateReady = currency !== 'USD' || (exchangeRateReady && exchangeRateCurrency === 'USD')
+  const requestedCurrency = (settings.currency || 'EUR').toUpperCase()
+  const moneyExchangeRateReady = requestedCurrency === 'EUR'
+    ? exchangeRateReady && exchangeRateCurrency === 'EUR'
+    : exchangeRateReady && exchangeRateCurrency === requestedCurrency
+  // Until the selected rate is ready, show EUR amounts with a matching EUR label.
+  const currency = moneyExchangeRateReady ? requestedCurrency : 'EUR'
+  const currencySymbol = useMemo(() => currencySymbolFor(currency), [currency])
   const pricePrimary = getPricePrimary()
   const pricePrimaryField = priceFieldFromPrimary(pricePrimary)
+  const displayRate = moneyExchangeRateReady ? exchangeRate : 1.0
+
+  const convertEurToDisplay = useCallback((eurAmount) => {
+    if (eurAmount == null || isNaN(Number(eurAmount))) return null
+    return Number(eurAmount) * displayRate
+  }, [displayRate])
+
+  const convertDisplayToEur = useCallback((displayAmount) => {
+    if (displayAmount == null || isNaN(Number(displayAmount))) return null
+    return Number(displayAmount) / displayRate
+  }, [displayRate])
 
   const formatPrice = useCallback((eurAmount) => {
     if (eurAmount == null || isNaN(Number(eurAmount))) return '-'
-    const converted = Number(eurAmount) * exchangeRate
+    const converted = convertEurToDisplay(eurAmount)
     return `${currencySymbol}${converted.toFixed(2)}`
-  }, [exchangeRate, currencySymbol])
+  }, [convertEurToDisplay, currencySymbol])
 
   const formatUsdPrice = useCallback((usdAmount) => {
     if (usdAmount == null || isNaN(Number(usdAmount))) return '-'
-    const converted = currency === 'USD' ? Number(usdAmount) : Number(usdAmount) * usdToEurRate
+    // No USD rate for the display currency: show the original USD amount.
+    if (usdToEurRate == null || !moneyExchangeRateReady) return `$${Number(usdAmount).toFixed(2)}`
+    const converted = Number(usdAmount) * usdToEurRate
     return `${currencySymbol}${converted.toFixed(2)}`
-  }, [currency, currencySymbol, usdToEurRate])
+  }, [currencySymbol, moneyExchangeRateReady, usdToEurRate])
 
   return (
     <SettingsContext.Provider value={{
@@ -280,6 +316,8 @@ export function SettingsProvider({ children }) {
       currencySymbol,
       exchangeRate,
       exchangeRateReady: moneyExchangeRateReady,
+      convertEurToDisplay,
+      convertDisplayToEur,
       formatPrice,
       formatUsdPrice,
     }}>
