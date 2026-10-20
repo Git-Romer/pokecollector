@@ -13,6 +13,14 @@ export function currencySymbolFor(code, locale = 'en') {
   }
 }
 
+export function rateForSelectedCurrency(rate, rateCurrency, selectedCurrency) {
+  const numericRate = Number(rate)
+  const target = String(selectedCurrency || '').trim().toUpperCase()
+  const quoteCurrency = String(rateCurrency || '').trim().toUpperCase()
+  if (!target || !Number.isFinite(numericRate) || numericRate <= 0 || quoteCurrency !== target) return null
+  return numericRate
+}
+
 export function formatSelectedCurrency(amount, currency, rate, locale = 'en') {
   if (amount == null || amount === '') return '-'
   const numericAmount = Number(amount)

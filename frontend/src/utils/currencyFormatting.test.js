@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { currencySymbolFor, formatSelectedCurrency } from './currencyFormatting'
+import { currencySymbolFor, formatSelectedCurrency, rateForSelectedCurrency } from './currencyFormatting'
 
 describe('selected-currency formatting', () => {
   it('uses Intl formatting for each selected currency', () => {
@@ -17,6 +17,29 @@ describe('selected-currency formatting', () => {
 
   it('marks a missing conversion as unavailable in the selected currency', () => {
     expect(formatSelectedCurrency(10, 'DKK', null, 'en')).toBe('Unavailable (DKK)')
+  })
+
+  it('does not reuse a saved quote while a new currency quote is pending', async () => {
+    let resolveNewQuote
+    const newQuote = new Promise(resolve => { resolveNewQuote = resolve })
+    let quote = { rate: 6.8, currency: 'DKK' }
+    const selectedCurrency = 'CAD'
+    const formatted = () => formatSelectedCurrency(
+      5,
+      selectedCurrency,
+      rateForSelectedCurrency(quote.rate, quote.currency, selectedCurrency),
+      'en',
+    )
+    const applyQuote = newQuote.then(value => { quote = value })
+
+    expect(formatted()).toBe('Unavailable (CAD)')
+    resolveNewQuote({ rate: 1.25, currency: 'CAD' })
+    await applyQuote
+    expect(formatted()).toBe(formatSelectedCurrency(5, 'CAD', 1.25, 'en'))
+  })
+
+  it('uses a saved quote when it targets the selected currency', () => {
+    expect(rateForSelectedCurrency(1.25, 'CAD', 'cad')).toBe(1.25)
   })
 
   it('keeps missing amounts separate from unavailable rates', () => {

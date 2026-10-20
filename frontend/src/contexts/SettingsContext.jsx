@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useMemo } 
 import en from '../i18n/en'
 import { priceFieldFromPrimary } from '../utils/prices'
 import { normalizeTcgdexLanguageCsv } from '../utils/tcgdexLanguages'
-import { currencySymbolFor, formatSelectedCurrency } from '../utils/currencyFormatting'
+import { currencySymbolFor, formatSelectedCurrency, rateForSelectedCurrency } from '../utils/currencyFormatting'
 import { useAuth } from './AuthContext'
 
 const TRANSLATION_LOADERS = {
@@ -112,6 +112,9 @@ export function SettingsProvider({ children }) {
   const [usdToDisplayRate, setUsdToDisplayRate] = useState(() => (
     (settings.currency || 'EUR').toUpperCase() === 'USD' ? 1 : null
   ))
+  const [usdToDisplayRateCurrency, setUsdToDisplayRateCurrency] = useState(() => (
+    (settings.currency || 'EUR').toUpperCase() === 'USD' ? 'USD' : null
+  ))
   const [exchangeRateStale, setExchangeRateStale] = useState(false)
   const [exchangeRateDate, setExchangeRateDate] = useState(null)
   const [exchangeRateSyncedAt, setExchangeRateSyncedAt] = useState(null)
@@ -211,6 +214,7 @@ export function SettingsProvider({ children }) {
     setExchangeRateCurrency(usesEurBaseDirectly ? 'EUR' : null)
     setExchangeRate(usesEurBaseDirectly ? 1 : null)
     setUsdToDisplayRate(usesUsdBaseDirectly ? 1 : null)
+    setUsdToDisplayRateCurrency(usesUsdBaseDirectly ? 'USD' : null)
     setExchangeRateStale(false)
     setExchangeRateDate(null)
     setExchangeRateSyncedAt(null)
@@ -235,7 +239,9 @@ export function SettingsProvider({ children }) {
         setExchangeRateReady(false)
       }
 
-      setUsdToDisplayRate(usesUsdBaseDirectly ? 1 : (usdQuote?.rate ?? null))
+      const usdRate = usesUsdBaseDirectly ? 1 : (usdQuote?.rate ?? null)
+      setUsdToDisplayRate(usdRate)
+      setUsdToDisplayRateCurrency(usdRate == null ? null : curr)
       const staleQuote = [eurQuote, usdQuote].find(quote => quote?.stale)
       const statusQuote = staleQuote || (usesEurBaseDirectly ? usdQuote : eurQuote)
       setExchangeRateStale(Boolean(staleQuote))
@@ -326,6 +332,11 @@ export function SettingsProvider({ children }) {
   const pricePrimary = getPricePrimary()
   const pricePrimaryField = priceFieldFromPrimary(pricePrimary)
   const displayRate = moneyExchangeRateReady ? exchangeRate : null
+  const usdDisplayRate = rateForSelectedCurrency(
+    usdToDisplayRate,
+    usdToDisplayRateCurrency,
+    requestedCurrency,
+  )
 
   const convertEurToDisplay = useCallback((eurAmount) => {
     if (eurAmount == null || !Number.isFinite(Number(eurAmount)) || displayRate == null) return null
@@ -342,8 +353,8 @@ export function SettingsProvider({ children }) {
   ), [currency, displayRate, lang])
 
   const formatUsdPrice = useCallback((usdAmount) => (
-    formatSelectedCurrency(usdAmount, currency, usdToDisplayRate, lang)
-  ), [currency, usdToDisplayRate, lang])
+    formatSelectedCurrency(usdAmount, currency, usdDisplayRate, lang)
+  ), [currency, usdDisplayRate, lang])
 
   return (
     <SettingsContext.Provider value={{
@@ -357,9 +368,9 @@ export function SettingsProvider({ children }) {
       loaded,
       currency,
       currencySymbol,
-      exchangeRate,
+      exchangeRate: displayRate,
       exchangeRateReady: moneyExchangeRateReady,
-      usdExchangeRateReady: usdToDisplayRate != null,
+      usdExchangeRateReady: usdDisplayRate != null,
       exchangeRateStale,
       exchangeRateDate,
       exchangeRateSyncedAt,
