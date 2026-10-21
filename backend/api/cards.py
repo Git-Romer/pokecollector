@@ -290,7 +290,7 @@ def _search_by_code_number(
                 for card_data in set_data.get("cards", []):
                     parsed = pokemon_api.parse_card_for_db(card_data, default_set_id=tcg_set_id, lang=set_lang)
                     parsed = apply_cross_language_fallbacks(db, parsed)
-                    upsert_card(db, parsed)
+                    upsert_card(db, parsed, partial=True)
                 db.commit()
             except Exception:
                 db.rollback()
@@ -310,7 +310,7 @@ def _search_by_code_number(
                             )
                             if not parsed:
                                 continue
-                            upsert_card(db, parsed)
+                            upsert_card(db, parsed, partial=True)
                         db.commit()
                     except Exception:
                         db.rollback()

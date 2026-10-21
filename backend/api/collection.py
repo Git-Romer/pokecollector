@@ -16,6 +16,7 @@ from schemas import (
 )
 from services import pokemon_api
 from services.card_fallbacks import apply_cross_language_fallbacks, build_missing_language_card
+from services.card_upsert import update_existing_card
 from services.card_numbers import card_number_matches
 from services.collection_photos import MAX_UPLOAD_BYTES, InvalidPhoto, normalize_photo
 from services.card_visibility import visible_any_card_filter, visible_card_filter
@@ -436,9 +437,7 @@ def _find_card_by_code(db: Session, set_code: str, card_number: str, lang: str) 
                 parsed = apply_cross_language_fallbacks(db, parsed)
                 existing = db.query(Card).filter(Card.id == parsed["id"]).first()
                 if existing:
-                    for key, value in parsed.items():
-                        if key != "id":
-                            setattr(existing, key, value)
+                    update_existing_card(existing, parsed, partial=True)
                 else:
                     db.add(Card(**parsed))
             db.commit()
