@@ -25,6 +25,7 @@ const TRANSLATION_LOADERS = {
   id: () => import('../i18n/id'),
   th: () => import('../i18n/th'),
   'zh-tw': () => import('../i18n/zhTw'),
+  da: () => import('../i18n/da'),
 }
 const SUPPORTED_LANGUAGES = new Set(['en', ...Object.keys(TRANSLATION_LOADERS)])
 

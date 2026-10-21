@@ -18,4 +18,5 @@ export const APP_LANGUAGES = [
   { value: 'th', label: '🇹🇭 TH - ไทย' },
   { value: 'zh-cn', label: '🇨🇳 ZH-CN - 简体中文' },
   { value: 'sv', label: '🇸🇪 SV - Svenska' },
+  { value: 'da', label: '🇩🇰 DA - Dansk' },
 ]
