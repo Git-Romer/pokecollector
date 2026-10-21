@@ -1,5 +1,5 @@
-// IMPORTANT: Every key added to de.js MUST also be added to en.js with an English translation.
-// The SettingsContext falls back to German if a key is missing in the active language file.
+// IMPORTANT: Add new UI keys to en.js before translating them here.
+// SettingsContext falls back to English when a Danish translation is missing.
 const da = {
   // Navigation
   nav: {
@@ -972,6 +972,7 @@ const da = {
     linkCardsAction: 'Tilknyt kort',
     cardsCount: 'Kort ({count})',
     cardsFor: 'Kort til {product}',
+    openLinkedProduct: 'Åbn produkt',
     linkOwnedCardsHelp: 'Vælg en eller flere præcise samlingsposter fra dette produkt.',
     selectCards: 'Vælg kort',
     selectCardsTitle: 'Tilknyt kort til {product}',
@@ -1162,7 +1163,10 @@ const da = {
     trainerNameDesc: 'Vises på startskærmen',
     languageDesc: 'Skift app-sprog',
     currency: 'Valuta',
-    currencyDesc: 'Prisvisning',
+    currencyDesc: 'Vis værdier i den valgte valuta. Gemte valutakurser gør omregninger tilgængelige offline.',
+    currencyRateUnavailable: 'Der er ingen gemt omregningskurs for denne valuta. Opret forbindelse til internettet for at synkronisere en.',
+    currencyRateCached: 'Bruger den gemte valutakurs fra',
+    currencyListUnavailable: 'Valutalisten er endnu ikke gemt lokalt. Opret forbindelse til internettet én gang for at indlæse de tilgængelige valutaer.',
     priceType: 'Pristype',
     priceTypeDesc: 'Hvilken Cardmarket-pris der vises',
     preferOwnCardPhotos: 'Foretræk mine kortfotos',
