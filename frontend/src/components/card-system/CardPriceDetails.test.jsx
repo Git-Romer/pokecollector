@@ -7,8 +7,8 @@ import CardPriceDetails, { cardmarketPriceBreakdown, tcgplayerPriceBreakdown } f
 vi.mock('../../contexts/SettingsContext', () => ({
   useSettings: () => ({
     t: key => key,
-    formatPrice: value => `EUR ${Number(value).toFixed(2)}`,
-    formatUsdPrice: value => `USD ${Number(value).toFixed(2)}`,
+    formatPrice: value => `DKK ${Number(value).toFixed(2)}`,
+    formatUsdPrice: value => `DKK ${Number(value).toFixed(2)}`,
     pricePrimary: 'trend',
     pricePrimaryField: 'price_trend',
   }),
@@ -49,12 +49,12 @@ describe('CardPriceDetails', () => {
     const markup = renderPriceDetails()
 
     expect(markup).toContain('prices.cardmarketTitle')
-    expect(markup).toContain('EUR 16.23')
+    expect(markup).toContain('DKK 16.23')
     expect(markup).toContain('cardmarket.buy')
     expect(markup).toContain('TCGPlayer')
-    expect(markup).toContain('USD 9.50')
-    expect(markup).toContain('USD 11.25')
-    expect(markup).toContain('USD 14.00')
+    expect(markup).toContain('DKK 9.50')
+    expect(markup).toContain('DKK 11.25')
+    expect(markup).toContain('DKK 14.00')
   })
 
   it('keeps collection-specific content as a thin addition to the shared details', () => {
@@ -81,8 +81,8 @@ describe('CardPriceDetails', () => {
     }
     const markup = renderPriceDetails({ card: secondaryOnlyCard, variant: 'Normal' })
 
-    expect(markup).toContain('EUR 12.34')
-    expect(markup).not.toContain('EUR 0.00')
+    expect(markup).toContain('DKK 12.34')
+    expect(markup).not.toContain('DKK 0.00')
   })
 })
 

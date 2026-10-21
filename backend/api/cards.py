@@ -37,6 +37,7 @@ from services.card_numbers import card_number_filter
 from services.tcgdex_languages import english_fallback_languages, has_lang_suffix, is_supported_tcgdex_language, normalize_tcgdex_language
 from services.text_search import accent_insensitive_contains, json_array_text_matches, normalize_search_term
 from services.card_state import card_state_summaries
+from services.product_sources import annotate_product_sources
 import datetime
 import re
 from uuid import uuid4
@@ -142,6 +143,7 @@ def _with_collection_summary(db: Session, current_user: User, card_dicts: List[d
         CollectionItem.user_id == current_user.id,
         CollectionItem.card_id.in_(card_ids),
     ).all()
+    annotate_product_sources(db, current_user, items)
     summaries = card_state_summaries(
         db,
         current_user.id,
@@ -163,6 +165,7 @@ def _with_collection_summary(db: Session, current_user: User, card_dicts: List[d
                 "printing_details": [tag.name for tag in item.printing_detail_tags],
                 "lang": item.lang,
                 "purchase_price": item.purchase_price,
+                "product_sources": item.product_sources,
             }
             for item in by_card.get(card.get("id"), [])
         ]
@@ -287,7 +290,7 @@ def _search_by_code_number(
                 for card_data in set_data.get("cards", []):
                     parsed = pokemon_api.parse_card_for_db(card_data, default_set_id=tcg_set_id, lang=set_lang)
                     parsed = apply_cross_language_fallbacks(db, parsed)
-                    upsert_card(db, parsed)
+                    upsert_card(db, parsed, partial=True)
                 db.commit()
             except Exception:
                 db.rollback()
@@ -307,7 +310,7 @@ def _search_by_code_number(
                             )
                             if not parsed:
                                 continue
-                            upsert_card(db, parsed)
+                            upsert_card(db, parsed, partial=True)
                         db.commit()
                     except Exception:
                         db.rollback()

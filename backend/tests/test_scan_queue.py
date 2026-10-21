@@ -565,6 +565,127 @@ class ScanQueueTests(unittest.TestCase):
         items = self.db.query(ScanJobItem).order_by(ScanJobItem.position).all()
         self.assertEqual([item.status for item in items], ["done", "done"])
 
+    def test_composite_positions_share_catalogue_request_budget(self):
+        user = self.users[0]
+        recognized = {
+            0: {
+                "name": "Alpha-Beta Gamma Delta GX",
+                "name_en": "Omega-Beta Zeta Theta GX",
+                "language": "de",
+                "number_local": "1",
+            },
+            1: {
+                "name": "Alpha-Beta Kappa Lambda GX",
+                "name_en": "Omega-Beta Sigma Theta GX",
+                "language": "de",
+                "number_local": "2",
+            },
+            2: {
+                "name": "Alpha-Beta Delta Epsilon GX",
+                "name_en": "Omega-Beta Rho Theta GX",
+                "language": "de",
+                "number_local": "3",
+            },
+        }
+        provider = MagicMock()
+        provider.name = "gemini"
+        provider.model.return_value = "gemini-flash-latest"
+        provider.credential.return_value = None
+        provider.requires_credential.return_value = False
+        provider.rate_limit_scope.return_value = MagicMock(
+            __enter__=MagicMock(return_value=None),
+            __exit__=MagicMock(return_value=False),
+        )
+        recognize = AsyncMock(return_value=recognized)
+        fallback = AsyncMock(return_value=([], True))
+
+        with patch(
+            "services.scan_providers.get_provider", return_value=provider
+        ), patch(
+            "services.scan_providers.require_scanner_capability_mode",
+            return_value="full",
+        ), patch(
+            "services.scan_trace.create_scan_trace",
+            side_effect=lambda *args, **kwargs: MagicMock(),
+        ), patch(
+            "services.card_composite.build_composite", return_value=b"composite"
+        ), patch(
+            "api.recognize.recognize_composite_card_info", new=recognize
+        ), patch(
+            "api.recognize._api_search_fallback", new=fallback
+        ):
+            results = asyncio.run(
+                scan_queue.default_composite_processor(
+                    self.db,
+                    user.id,
+                    [b"first", b"second", b"third"],
+                    ["image/jpeg"] * 3,
+                )
+            )
+
+        self.assertEqual(results, [None, None, None])
+        self.assertEqual(fallback.await_count, 12)
+
+    def test_composite_positions_share_catalogue_fallback_deadline(self):
+        user = self.users[0]
+        recognized = {
+            0: {"name": "Pikachu", "language": "en", "number_local": "25"},
+            1: {"name": "Charizard", "language": "en", "number_local": "4"},
+        }
+        provider = MagicMock()
+        provider.name = "gemini"
+        provider.model.return_value = "gemini-flash-latest"
+        provider.credential.return_value = None
+        provider.requires_credential.return_value = False
+        provider.rate_limit_scope.return_value = MagicMock(
+            __enter__=MagicMock(return_value=None),
+            __exit__=MagicMock(return_value=False),
+        )
+        recognize = AsyncMock(return_value=recognized)
+        calls = 0
+        cancelled = []
+
+        async def delayed_fallback(*args):
+            nonlocal calls
+            calls += 1
+            try:
+                await asyncio.sleep(0.015 if calls == 1 else 0.07)
+            except asyncio.CancelledError:
+                cancelled.append(calls)
+                raise
+            return [], True
+
+        fallback = AsyncMock(side_effect=delayed_fallback)
+        with patch(
+            "api.recognize.CATALOGUE_FALLBACK_TOTAL_TIMEOUT_SECONDS", 0.08
+        ), patch(
+            "services.scan_providers.get_provider", return_value=provider
+        ), patch(
+            "services.scan_providers.require_scanner_capability_mode",
+            return_value="full",
+        ), patch(
+            "services.scan_trace.create_scan_trace",
+            side_effect=lambda *args, **kwargs: MagicMock(),
+        ), patch(
+            "services.card_composite.build_composite", return_value=b"composite"
+        ), patch(
+            "api.recognize.recognize_composite_card_info", new=recognize
+        ), patch(
+            "api.recognize._api_search_fallback", new=fallback
+        ):
+            results = asyncio.run(
+                scan_queue.default_composite_processor(
+                    self.db,
+                    user.id,
+                    [b"first", b"second"],
+                    ["image/jpeg"] * 2,
+                )
+            )
+
+        self.assertEqual(results, [None, None])
+        self.assertEqual(fallback.await_count, 2)
+        self.assertEqual(cancelled, [2])
+
     def test_unclear_composite_position_retries_without_confident_siblings(self):
         self._job(self.users[0], positions=(0, 1, 2, 3))
         items = self.db.query(ScanJobItem).order_by(ScanJobItem.position).all()

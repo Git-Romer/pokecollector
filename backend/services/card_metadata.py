@@ -6,7 +6,7 @@ import datetime
 import logging
 from typing import Iterable
 
-from sqlalchemy import JSON, and_, case, func, or_
+from sqlalchemy import JSON, and_, case, func, not_, or_
 from sqlalchemy.orm import Session
 
 from models import Card, Set
@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_METADATA_ENRICHMENT_PER_FULL_SYNC = 500
 METADATA_ENRICHMENT_PER_SEARCH_PAGE = 20
 METADATA_ENRICHMENT_COOLDOWN = datetime.timedelta(days=7)
+METADATA_FULL_REFRESH_COOLDOWN = datetime.timedelta(days=30)
 POKEMON_SUPERTYPE_VALUES = ("pokemon", "pokémon")
 ELEMENTAL_SUPERTYPE_VALUES = (*POKEMON_SUPERTYPE_VALUES, "energy")
 
@@ -31,6 +32,19 @@ def _json_value_missing(column):
     not match those rows, so metadata backfills must handle both forms.
     """
     return or_(column.is_(None), column == JSON.NULL)
+
+
+def _metadata_missing_condition():
+    return or_(
+        Card.rarity.is_(None),
+        Card.supertype.is_(None),
+        Card.subtypes.is_(None),
+        and_(Card.types.is_(None), func.lower(Card.supertype).in_(ELEMENTAL_SUPERTYPE_VALUES)),
+        and_(
+            or_(_json_value_missing(Card.dex_ids), _json_value_missing(Card.cardmarket_products)),
+            func.lower(Card.supertype).in_(POKEMON_SUPERTYPE_VALUES),
+        ),
+    )
 
 _ANY_METADATA_FIELDS = (
     "rarity",
@@ -127,8 +141,13 @@ def _clear_missing_set_reference(db: Session, parsed: dict) -> None:
         parsed["set_id"] = None
 
 
-def enrich_card_metadata(db: Session, card: Card) -> Card | None:
-    """Fetch full TCGdex detail for one card and upsert enriched metadata."""
+def enrich_card_metadata(
+    db: Session,
+    card: Card,
+    *,
+    metadata_only: bool = False,
+) -> Card | None:
+    """Fetch full TCGdex detail and upsert metadata, optionally preserving price state."""
     detail_id = _card_detail_id(card)
     if not detail_id:
         return None
@@ -138,9 +157,12 @@ def enrich_card_metadata(db: Session, card: Card) -> Card | None:
         return None
 
     parsed = pokemon_api.parse_card_for_db(card_data, lang=card_lang)
-    parsed = apply_cross_language_fallbacks(db, parsed)
+    if metadata_only:
+        parsed = apply_cross_language_fallbacks(db, parsed, price_enabled=False)
+    else:
+        parsed = apply_cross_language_fallbacks(db, parsed)
     _clear_missing_set_reference(db, parsed)
-    return upsert_card(db, parsed)
+    return upsert_card(db, parsed, metadata_only=metadata_only)
 
 
 def enrich_cards_metadata(
@@ -151,14 +173,17 @@ def enrich_cards_metadata(
     commit_every: int = 50,
     force: bool = False,
     ignore_cooldown: bool = False,
+    metadata_only: bool = False,
 ) -> dict:
     """Enrich up to limit cards, atomically claiming each upstream attempt.
 
     ``force`` bypasses the generic missing-metadata predicate for specialized
     backfills. ``ignore_cooldown`` also bypasses the seven-day retry window,
     while an optimistic timestamp comparison still rejects stale concurrent
-    claims. ``commit_every`` remains accepted for compatibility; claims and
-    results are committed per card so they are visible to concurrent workers.
+    claims. ``metadata_only`` refreshes catalogue fields without touching price
+    values or price-sync attempt timestamps. ``commit_every`` remains accepted
+    for compatibility; claims and results are committed per card so they are
+    visible to concurrent workers.
     """
     del commit_every
     result = {
@@ -219,7 +244,7 @@ def enrich_cards_metadata(
 
         result["attempted"] += 1
         try:
-            enriched = enrich_card_metadata(db, claimed_card)
+            enriched = enrich_card_metadata(db, claimed_card, metadata_only=metadata_only)
             if enriched:
                 result["updated"] += 1
                 result["ids"].append(enriched.id)
@@ -264,8 +289,15 @@ def enrich_missing_card_metadata(
     *,
     limit: int = DEFAULT_METADATA_ENRICHMENT_PER_FULL_SYNC,
 ) -> dict:
-    """Enrich a bounded batch of catalogue cards that still only have brief set-list data."""
-    cooldown_cutoff = datetime.datetime.utcnow() - METADATA_ENRICHMENT_COOLDOWN
+    """Enrich missing rows, then fairly refresh due full-detail catalogue cards.
+
+    Both queues share one per-sync request limit. Missing metadata stays first
+    priority; complete rows rotate by oldest last-attempt timestamp and are
+    refreshed no more than once per 30 days.
+    """
+    limit = max(int(limit or 0), 0)
+    now = datetime.datetime.utcnow()
+    cooldown_cutoff = now - METADATA_ENRICHMENT_COOLDOWN
     candidates = (
         db.query(Card)
         .filter(
@@ -275,16 +307,7 @@ def enrich_missing_card_metadata(
                 Card.last_metadata_enrichment_attempt_at.is_(None),
                 Card.last_metadata_enrichment_attempt_at <= cooldown_cutoff,
             ),
-            or_(
-                Card.rarity.is_(None),
-                Card.supertype.is_(None),
-                Card.subtypes.is_(None),
-                and_(Card.types.is_(None), func.lower(Card.supertype).in_(ELEMENTAL_SUPERTYPE_VALUES)),
-                and_(
-                    or_(_json_value_missing(Card.dex_ids), _json_value_missing(Card.cardmarket_products)),
-                    func.lower(Card.supertype).in_(POKEMON_SUPERTYPE_VALUES),
-                ),
-            ),
+            _metadata_missing_condition(),
         )
         .order_by(
             case((Card.last_metadata_enrichment_attempt_at.is_(None), 0), else_=1),
@@ -294,4 +317,40 @@ def enrich_missing_card_metadata(
         .limit(limit)
         .all()
     )
-    return enrich_cards_metadata(db, candidates, limit=limit, force=True)
+    result = enrich_cards_metadata(db, candidates, limit=limit, force=True)
+    result["refreshed"] = 0
+    remaining = max(limit - result["attempted"], 0)
+    if not remaining:
+        return result
+
+    refresh_cutoff = now - METADATA_FULL_REFRESH_COOLDOWN
+    refresh_candidates = (
+        db.query(Card)
+        .filter(
+            Card.is_custom.is_(False),
+            Card.tcg_card_id.isnot(None),
+            or_(
+                Card.last_metadata_enrichment_attempt_at.is_(None),
+                Card.last_metadata_enrichment_attempt_at <= refresh_cutoff,
+            ),
+            not_(_metadata_missing_condition()),
+        )
+        .order_by(
+            case((Card.last_metadata_enrichment_attempt_at.is_(None), 0), else_=1),
+            Card.last_metadata_enrichment_attempt_at.asc(),
+            Card.id.asc(),
+        )
+        .limit(remaining)
+        .all()
+    )
+    refreshed = enrich_cards_metadata(
+        db,
+        refresh_candidates,
+        limit=remaining,
+        force=True,
+        metadata_only=True,
+    )
+    result["refreshed"] = refreshed["attempted"]
+    for key in ("attempted", "updated", "missing", "failed", "deferred"):
+        result[key] += refreshed[key]
+    return result

@@ -209,15 +209,38 @@ responses.
 | POST | `/api/settings/scanner/test` | Two-image capability test with optional atomic save |
 | GET | `/api/settings/tcgdex-languages` | Supported TCGdex language metadata |
 | GET | `/api/settings/tcgdex-filter-languages` | Languages currently available for catalogue filtering |
+| GET | `/api/settings/currencies` | Authenticated Frankfurter currency metadata from the installation cache |
 | PUT | `/api/settings/` | Update settings |
 | GET | `/api/settings/debug-log` | Admin-only debug log download |
 | DELETE | `/api/settings/scan-diagnostics` | Delete all persisted scanner diagnostics for the current user |
 | DELETE | `/api/settings/card-photos` | Delete all private collection-card photos for the current user |
 | GET | `/api/settings/telegram_status` | Whether Telegram is configured for current user |
-| GET | `/api/settings/exchange-rate` | Exchange-rate lookup for display currency |
+| GET | `/api/settings/exchange-rate` | Public read-only EUR/USD-base quote from the installation cache, with provider date and stale status |
 | GET | `/api/settings/{key}` | Get one setting |
 | POST | `/api/settings/{key}` | Set one setting |
 | GET | `/api/health` | Unauthenticated service-health probe |
+
+## Currency data and offline conversion
+
+Frankfurter currency metadata and rates are stored in global, per-installation
+`currency_metadata` and `currency_rates` tables. Rate rows are keyed by base and
+quote currency and include the provider's observation date and the time they were
+synced. The backend refreshes a stale base-rate set when a conversion is requested;
+metadata is refreshed daily. Each response marks a cached rate/list as stale when
+its refresh window has passed and the provider could not be reached.
+
+The frontend requests both EUR-based and USD-based rate sets for the selected
+currency. Collection, wishlist, analytics, public binder/profile values, exports,
+and Telegram use the selected currency. If a conversion has never been synced, the
+API returns unavailable rather than relabeling an EUR or USD amount as the selected
+currency. A new offline installation therefore needs one successful sync before it
+can convert to currencies other than its native price currencies. The database cache
+is local to each self-hosted installation; it is not shared between installations.
+
+The exchange-rate endpoint is public read-only so anonymous public-profile views can
+use the same cache; it accepts only EUR or USD bases, which are the price sources
+used by the app. The currency metadata endpoint remains authenticated. Neither
+endpoint exposes user settings or collection data.
 
 ## Models
 
@@ -506,7 +529,10 @@ Each item is committed independently, so one invalid or unavailable card does no
 
 ## Notifications
 
-`backend/services/telegram.py` now accepts `user_id` and reads Telegram credentials from that user's `UserSetting` rows first.
+`backend/services/telegram.py` reads Telegram credentials and currency from that
+user's `UserSetting` rows. Price alerts convert both the EUR market price and
+threshold to the selected currency using the shared rate cache; if no rate has
+ever been synced, both values are marked unavailable in the selected currency.
 
 ## Migrations
 

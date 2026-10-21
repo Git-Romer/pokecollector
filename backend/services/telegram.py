@@ -2,7 +2,11 @@ import httpx
 import os
 import logging
 
-from services.exchange_rates import parse_frankfurter_v2_rate
+from services.exchange_rates import (
+    ExchangeRateError,
+    get_exchange_rate,
+    normalize_currency_code,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -76,41 +80,67 @@ def send_message(text: str, db=None, user_id=None) -> bool:
         return False
 
 
-def _format_user_eur(amount: float, db=None, user_id=None) -> str:
-    currency = "EUR"
-    if db is not None and user_id is not None:
-        try:
-            from models import UserSetting
-            row = db.query(UserSetting).filter(
-                UserSetting.user_id == user_id,
-                UserSetting.key == "currency",
-            ).first()
-            currency = (row.value if row and row.value else "EUR").upper()
-        except Exception:
-            currency = "EUR"
+def _get_user_currency(db=None, user_id=None) -> str | None:
+    if db is None or user_id is None:
+        return "EUR"
+    try:
+        from models import UserSetting
+        row = db.query(UserSetting).filter(
+            UserSetting.user_id == user_id,
+            UserSetting.key == "currency",
+        ).first()
+    except Exception as exc:
+        logger.warning("Could not read selected Telegram currency (%s)", type(exc).__name__)
+        return None
 
-    if currency == "USD":
-        try:
-            with httpx.Client(timeout=5.0) as client:
-                response = client.get("https://api.frankfurter.dev/v2/rate/EUR/USD")
-                response.raise_for_status()
-                rate = parse_frankfurter_v2_rate(response.json())
-        except Exception:
-            rate = 1.1
-        return f"${(amount or 0) * rate:.2f}"
-    return f"€{(amount or 0):.2f}"
+    currency = row.value if row and row.value else "EUR"
+    try:
+        return normalize_currency_code(currency)
+    except ExchangeRateError:
+        return None
+
+
+def _get_eur_exchange_rate(currency: str | None) -> float | None:
+    if currency is None:
+        return None
+    try:
+        quote = get_exchange_rate("EUR", currency)
+        return float(quote["rate"])
+    except Exception as exc:
+        logger.warning(
+            "Could not resolve Telegram conversion for %s (%s)",
+            currency,
+            type(exc).__name__,
+        )
+        return None
+
+
+def _format_currency_amount(
+    amount: float, currency: str | None, rate: float | None
+) -> str:
+    if currency is None or rate is None:
+        return f"Unavailable ({currency or 'selected currency'})"
+    converted = float(amount or 0) * rate
+    return f"{currency} {converted:,.2f}"
+
+
+def _format_user_eur(amount: float, db=None, user_id=None) -> str:
+    currency = _get_user_currency(db=db, user_id=user_id)
+    return _format_currency_amount(amount, currency, _get_eur_exchange_rate(currency))
 
 
 def send_price_alert(card_name: str, current_price: float, threshold: float, alert_type: str, db=None, user_id=None):
-    """Send a price alert notification."""
+    """Send both price values in the selected currency, or mark them unavailable."""
     emoji = "📈" if alert_type == "above" else "📉"
     direction = "above" if alert_type == "above" else "below"
+    currency = _get_user_currency(db=db, user_id=user_id)
+    rate = _get_eur_exchange_rate(currency)
 
     text = (
         f"{emoji} <b>Pokemon TCG Price Alert</b>\n\n"
         f"🃏 <b>{card_name}</b>\n"
-        f"Current price: <b>{_format_user_eur(current_price, db=db, user_id=user_id)}</b>\n"
-        f"Alert threshold ({direction}): <b>{_format_user_eur(threshold, db=db, user_id=user_id)}</b>\n\n"
+        f"Current price: <b>{_format_currency_amount(current_price, currency, rate)}</b>\n"
+        f"Alert threshold ({direction}): <b>{_format_currency_amount(threshold, currency, rate)}</b>\n\n"
         f"Check your collection! 🎯"
     )
     return send_message(text, db=db, user_id=user_id)

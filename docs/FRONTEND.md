@@ -2,6 +2,10 @@
 
 React 18 SPA built with Vite. Source lives under `frontend/src/`.
 
+## Browser Support
+
+The frontend uses Tailwind CSS v4, which requires Safari 16.4+, Chrome 111+, or Firefox 128+. Older browser versions are not supported by this frontend build.
+
 ## Route Table
 
 Routes are defined in `frontend/src/App.jsx`.
@@ -29,7 +33,7 @@ Routes are defined in `frontend/src/App.jsx`.
 | `/decks/:deckId` | `pages/DeckEditor.jsx` | Planned or Real Deck editor |
 | `/decks/:deckId/build` | redirect | Legacy Deck Builder redirect |
 | `/analytics` | `pages/Analytics.jsx` | Analytics tabs |
-| `/products` | `pages/Products.jsx` | Sealed products |
+| `/products` | `pages/Products.jsx` | Sealed products; `?productId=<id>` opens that product's cards panel |
 | `/trades` | `pages/Trades.jsx` | Trade journal and valuation |
 | `/leaderboard` | `pages/Leaderboard.jsx` | Multi-user leaderboard |
 | `/leaderboard/compare/:userId` | `pages/Compare.jsx` | Trainer comparison |
@@ -44,6 +48,17 @@ Routes are defined in `frontend/src/App.jsx`.
 | `/u/:handle/wishlist` | `pages/PublicWishlistView.jsx` | Anonymous searchable, filterable public Wishlist |
 | `/u/:handle/deck/:deckId` | `pages/PublicDeckView.jsx` | Anonymous read-only Deck cards, validation, analytics, and probabilities |
 | `/__card-system` | `pages/CardSystemGallery.jsx` | Development-only shared component gallery |
+
+Price amounts throughout the app use the selected currency. Cardmarket values and
+purchase prices are stored in EUR; TCGPlayer values are stored in USD. The backend
+synchronizes EUR- and USD-based exchange-rate sets and currency metadata into a
+shared per-installation database cache, which supports offline conversion with the
+last saved rates. Wishlist thresholds are entered and displayed in the selected
+currency, then converted to EUR for storage and comparison. Exports and Telegram
+use the same cached conversion; when no rate has ever been synced, they show the
+selected currency as unavailable rather than displaying an EUR/USD amount. The
+Supporters panel is the only exception: historical donation totals stay in their
+recorded currencies so they are not presented as exact converted gift amounts.
 
 ## Auth Flow
 
@@ -102,7 +117,7 @@ Notes:
 - Translation bundles are loaded from `frontend/src/i18n/` and wired in `SettingsContext`
 - UI languages include all supported TCGdex language codes, plus Swedish. Regional variants such as `es-mx`, `pt-br`, `pt-pt`, `zh-tw`, and `zh-cn` are selectable from a compact dropdown in Settings.
 - Legacy stored `zh` settings are normalized in the frontend to `zh-cn` for display
-- USD display uses exchange rates from the backend Frankfurter endpoint
+- EUR and USD source prices use the backend Frankfurter rate cache, which serves the latest saved quotes when the provider is offline
 
 ### `useTheme`
 
@@ -203,6 +218,24 @@ the installation.
 printing-detail tags, and private owner-card photos. Owner photos are loaded
 through authenticated endpoints and can be preferred over catalogue artwork in
 the current user's UI.
+
+The collection editor and card-detail Owned copies tab display the API's reason
+when an edit or removal is rejected. Active product links must be unlinked from
+the product's cards panel before removing the collection row; links with sale
+history remain protected. Copies allocated to Card Lists must be released first.
+A rejected action keeps the dialog and collection entry available.
+
+`components/ProductSourceList.jsx` is shared by both Owned-copy dialogs. It shows
+each active link's product name, type, purchase date, and quantity, with a direct
+link to `/products?productId=<id>`. `pages/Products.jsx` resolves that ID against
+the signed-in user's product list and opens the existing cards panel; closing
+the panel removes the query parameter.
+
+Product-link conflicts return a structured API detail with a stable `code`, a
+human-readable `message`, and owner-scoped `product_sources`. The shared
+`components/ActionErrorNotice.jsx` keeps that message in the open dialog and
+reuses `ProductSourceList` for navigation. Other failures continue through the
+shared API error formatter.
 
 `pages/Binders.jsx`, `pages/BinderDetail.jsx`, `pages/DeckEditor.jsx`, and
 `pages/DeckCompare.jsx` share the Card List domain. Physical Binders and Real

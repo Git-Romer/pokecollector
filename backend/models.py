@@ -678,6 +678,27 @@ class UserSetting(Base):
     __table_args__ = (UniqueConstraint("user_id", "key", name="uq_user_setting"),)
 
 
+class CurrencyRate(Base):
+    """Latest locally synchronized rate for one currency pair."""
+    __tablename__ = "currency_rates"
+
+    base_currency = Column(String(3), primary_key=True)
+    quote_currency = Column(String(3), primary_key=True)
+    rate = Column(Float, nullable=False)
+    provider_date = Column(Date, nullable=False)
+    synced_at = Column(DateTime(timezone=True), nullable=False, index=True)
+
+
+class CurrencyMetadata(Base):
+    """Provider-supplied display metadata shared by all users of this installation."""
+    __tablename__ = "currency_metadata"
+
+    currency_code = Column(String(3), primary_key=True)
+    name = Column(String, nullable=False)
+    symbol = Column(String, nullable=False)
+    synced_at = Column(DateTime(timezone=True), nullable=False, index=True)
+
+
 class CustomCardMatch(Base):
     """Tracks custom cards that now have an equivalent API card on TCGdex."""
     __tablename__ = "custom_card_matches"
