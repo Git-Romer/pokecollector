@@ -1,7 +1,7 @@
 {
   "name": "pokemon-tcg-collection",
   "private": true,
-  "version": "1.55.0",
+  "version": "1.55.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -33,7 +33,7 @@
     "@types/react-dom": "^18.2.19",
     "@vitejs/plugin-react": "^6.0.2",
     "tailwindcss": "^4.3.3",
-    "vite": "^8.0.16",
-    "vitest": "^4.1.11"
+    "vite": "^8.3.5",
+    "vitest": "^4.1.12"
   }
 }
