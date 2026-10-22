@@ -310,7 +310,9 @@ feature pages do not invent competing labels.
 
 ### Scanner and review inbox
 
-`components/UnifiedCardScanner.jsx` is the capture-only entry point. It supports the native device camera and gallery uploads, stages one or more photos, allows per-photo individual recognition overrides, and includes an optional positioning guide beside **Take photo**. Every submission enqueues a persistent job and routes to the same review inbox, including a one-photo scan.
+`components/UnifiedCardScanner.jsx` is the capture-only entry point. It supports the native device camera and gallery uploads, a live webcam mode, stages one or more photos, allows per-photo individual recognition overrides, and includes an optional positioning guide beside **Take photo**. Every submission enqueues a persistent job and routes to the same review inbox, including a one-photo scan.
+
+`components/WebcamCapture.jsx` renders a live `getUserMedia` preview with a card-shaped guide box for desktops with an attached webcam. It auto-captures a frame once the scene stops moving and the guide box is filled (frame-differencing logic in `utils/webcamStability.js`, no ML), with a manual capture button and Space/Enter as a fallback. After each capture the feed stays live for scanning a stack of cards back-to-back; captured frames are staged the same way as a "Take photo" shot. Requires a secure context (HTTPS or `localhost`) — the "Use webcam" button is disabled with an explanatory tooltip otherwise.
 
 `pages/ScanQueue.jsx` and `components/ScanReview.jsx` show job progress, retry countdowns/reasons, sanitized source photos, ranked candidates, failed items, individual retry, dismissal, and collection-add review. The navigation badge counts outstanding items. A confirmed candidate id is sent when resolving an item so opted-in diagnostics can be labelled with human-reviewed ground truth.
 
