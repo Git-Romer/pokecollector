@@ -417,7 +417,7 @@ class LinkStartTests(IdentityRouteTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(set(response.json().keys()), {"authorization_url"})
         self.assertTrue(response.json()["authorization_url"].startswith(ISSUER))
-        self.assertEqual(self.provider.build_kwargs, [{"prompt": "login", "max_age": 0}])
+        self.assertEqual(self.provider.build_kwargs, [{"prompt": "login"}])
         self.assert_security_headers(response)
 
         set_cookie = response.headers["set-cookie"]

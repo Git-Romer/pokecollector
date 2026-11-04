@@ -835,7 +835,6 @@ async def start_oidc_link(
         provider = _build_oidc_provider(oidc)
         authorization = await provider.build_authorization_url(
             prompt="login",
-            max_age=0,
         )
         if not _is_safe_authorization_redirect(authorization.url):
             return _oidc_json(503, {"detail": "Sign-in provider is unavailable"})

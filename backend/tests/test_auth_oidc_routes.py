@@ -1286,10 +1286,10 @@ class OidcAccountManagementRouteTests(RouteTestCase):
         )
 
         self.assertEqual(response.status_code, 200, response.text)
-        self.assertEqual(self.provider.build_calls, [{"prompt": "login", "max_age": 0}])
+        self.assertEqual(self.provider.build_calls, [{"prompt": "login"}])
         params = parse_qs(urlsplit(response.json()["authorization_url"]).query)
         self.assertEqual(params["prompt"], ["login"])
-        self.assertEqual(params["max_age"], ["0"])
+        self.assertNotIn("max_age", params)
         transaction = self.db.query(OidcAuthTransaction).one()
         self.assertEqual(transaction.operation, OPERATION_LINK)
         self.assertEqual(transaction.user_id, user.id)
