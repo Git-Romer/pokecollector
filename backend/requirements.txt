@@ -13,3 +13,5 @@ bcrypt
 python-jose[cryptography]
 slowapi==0.1.9
 pywebpush==2.5.0
+Authlib==1.9.3
+httpx2==2.16.0

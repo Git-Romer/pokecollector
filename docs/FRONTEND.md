@@ -37,6 +37,7 @@ Routes are defined in `frontend/src/App.jsx`.
 | Route | Component File | Notes |
 |------|----------------|-------|
 | `/login` | `pages/Login.jsx` | Multi-user login screen |
+| `/auth/oidc/complete` | `pages/OidcComplete.jsx` | Public, one-use handoff completion route; does not read provider code/state from the URL |
 | `/` | `pages/HomeScreen.jsx` | Portal-style home screen |
 | `/dashboard` | `pages/Dashboard.jsx` | Portfolio summary |
 | `/search` | `pages/CardSearch.jsx` | Card search, scanner entry, and multi-select bulk add |
@@ -104,6 +105,7 @@ Responsibilities:
   - `status` (`loading`, `ready`, `offline` or `degraded`)
   - `offline` (`degraded` or `offline`)
   - `multiUser`
+  - `authMode`, `passwordLoginEnabled`, `oidcEnabled`, and `oidcDisplayName`
   - `loginUser(token, userData)`
   - `updateCurrentUser(updates)`
   - `logout()` (async; asks the offline logout guard first)
@@ -116,10 +118,14 @@ Security-related behavior:
 - `logout()` removes token and user from local storage
 - Logout forces a full page reload to clear cached React Query data and prevent cross-user leakage
 - Axios also clears auth state on `401`
+- OIDC completion, identity, link and unlink requests opt out of the generic `401` session-clearing interceptor so a failed account-link operation does not silently log the user out
 
-### Login and Password Change
+### Login, OIDC Completion, and Password Change
 
 - `pages/Login.jsx` is only used when `multiUser === true`
+- The login form follows `/api/auth/mode` capabilities: local/mixed modes can show password login; an enabled provider adds a configured-label sign-in action; OIDC-only mode does not show a password form
+- `pages/OidcComplete.jsx` posts an empty JSON body to redeem browser-bound cookies. A login result is passed to `loginUser`; a link result preserves the current session and returns to Settings. Provider callback values and tokens are not read from the frontend URL.
+- OIDC error query values map through a fixed, prototype-safe translation allowlist; provider error text is never rendered directly
 - `App.jsx` defines an inline `ForcePasswordChangeScreen`
 - If `user.must_change_password` is true, normal app routes are blocked until `/api/auth/me/force-password` succeeds
 
@@ -221,6 +227,7 @@ Defined in `frontend/src/components/TabNav.jsx`.
 - Includes:
   - profile name editing
   - avatar picker
+  - OIDC identity status, mixed-mode link/unlink actions, and explicit local-password/confirmation prompts
   - theme picker
   - app language, primary/display price source, currency, and portfolio-basis controls
   - owner-photo preference and delete-all owner-photo action

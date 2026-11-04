@@ -10,8 +10,14 @@ FastAPI app entry point: `backend/main.py`.
 |--------|------|-------|
 | POST | `/api/auth/login` | Username/password login |
 | GET | `/api/auth/me` | Current authenticated user |
-| GET | `/api/auth/mode` | Returns `{ multi_user: boolean }` |
-| PUT | `/api/auth/mode` | Admin-only toggle for single-user vs multi-user mode |
+| GET | `/api/auth/mode` | Public authentication capabilities, including local/mixed/OIDC-only mode, password-login support, OIDC availability and configured provider label |
+| PUT | `/api/auth/mode` | Admin-only toggle for legacy local single-user vs multi-user mode; environment-pinned `AUTH_MODE` cannot be changed here |
+| GET | `/api/auth/oidc/start` | Start browser-bound OIDC authorization-code + PKCE flow; fixed provider redirect |
+| GET | `/api/auth/oidc/callback` | Validate and consume provider callback; redirects to the fixed frontend completion path |
+| POST | `/api/auth/oidc/complete` | Redeem the one-use browser handoff; returns an app token for login or `{ linked: true }` for account linking |
+| GET | `/api/auth/oidc/identity` | Current user's safe identity status: `{ linked, display_name, unlink_permitted }`; no subject or provider tokens |
+| POST | `/api/auth/oidc/link` | Mixed mode only; requires bearer session, current local password, exact Origin/JSON request and fresh provider authentication |
+| POST | `/api/auth/oidc/unlink` | Mixed mode only; requires current password and explicit confirmation; removes only the current user's configured-issuer identity |
 | GET | `/api/auth/users` | Admin-only user list |
 | POST | `/api/auth/users` | Admin-only user creation |
 | PUT | `/api/auth/users/{user_id}` | Admin-only user update |
@@ -20,6 +26,12 @@ FastAPI app entry point: `backend/main.py`.
 | PUT | `/api/auth/me/force-password` | Complete required first-login password change |
 | PUT | `/api/auth/me/avatar` | Update current user's avatar |
 | PUT | `/api/auth/me/username` | Update current user's profile name |
+
+OIDC behavior, configuration, rollout and host-only identity recovery are
+documented in [OpenID Connect Authentication](OIDC_AUTHENTICATION.md). OIDC
+identity resolution uses exact `(issuer, subject)` pairs; email is not an
+identity key. OIDC-only startup requires an active linked administrator and
+never performs implicit admin bootstrap.
 
 ### Cards
 
@@ -461,8 +473,17 @@ endpoint exposes user settings or collection data.
 
 ### `User`
 
-- Fields include `role`, `avatar_id`, and `must_change_password`
+- Fields include `role`, `avatar_id`, and `must_change_password`; `hashed_password`
+  may be null for accounts provisioned through OIDC-only sign-in
 - `must_change_password` is returned by auth responses and enforced by the frontend after login
+
+### OIDC identity and transaction models
+
+- `OidcIdentity` maps one exact `(issuer, subject)` pair to a local user; both
+  issuer/subject and issuer/user pairs are unique.
+- `OidcAuthTransaction` stores browser-bound, one-use authorization/handoff
+  state, keyed digests and encrypted transient values. Expired and invalidated
+  flows are cleaned up independently of user-owned collection data.
 
 ### `Setting`
 
@@ -774,6 +795,9 @@ All routes need a signed-in user (`backend/api/push.py`, prefix `/api/push`):
 
 - Migrations are raw SQL statements in `backend/database.py`
 - They are idempotent and run on startup
+- OIDC identity/password and transaction-schema migrations run outside the legacy
+  migration loop that tolerates old statements, and fail startup if schema
+  verification fails
 - Automatic pre-upgrade backups run before `init_db()` migrations on existing installs when the app version changes
 - Legacy migration comments still mention older columns like `grade` or removed integrations, but the current runtime model and routers do not include eBay functionality
 

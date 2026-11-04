@@ -11,7 +11,7 @@ try:
     from api.auth import UpdateUserRequest, change_username, delete_user, update_user
     from database import Base
     from models import Card, Trade, TradeItem, User, UserSetting
-    from services.auth import bootstrap_admin
+    from services.auth import bootstrap_admin, hash_password
 
     API_TEST_DEPS_AVAILABLE = True
 except ModuleNotFoundError:
@@ -25,7 +25,7 @@ class AuthAdminSafetyTests(unittest.TestCase):
         Base.metadata.create_all(engine)
         Session = sessionmaker(bind=engine)
         self.db = Session()
-        self.admin = User(username="admin", hashed_password="x", role="admin", is_active=True)
+        self.admin = User(username="admin", hashed_password=hash_password("x"), role="admin", is_active=True)
         self.db.add(self.admin)
         self.db.commit()
         self.db.refresh(self.admin)
@@ -61,7 +61,7 @@ class AuthAdminSafetyTests(unittest.TestCase):
         self.assertEqual(self.admin.role, "admin")
 
     def test_can_deactivate_admin_when_another_active_admin_remains(self):
-        second_admin = User(username="misty", hashed_password="x", role="admin", is_active=True)
+        second_admin = User(username="misty", hashed_password=hash_password("x"), role="admin", is_active=True)
         self.db.add(second_admin)
         self.db.commit()
         self.db.refresh(second_admin)
@@ -80,7 +80,7 @@ class AuthAdminSafetyTests(unittest.TestCase):
         self.assertTrue(self.admin.is_active)
 
     def test_can_demote_admin_when_another_active_admin_remains(self):
-        second_admin = User(username="misty", hashed_password="x", role="admin", is_active=True)
+        second_admin = User(username="misty", hashed_password=hash_password("x"), role="admin", is_active=True)
         self.db.add(second_admin)
         self.db.commit()
         self.db.refresh(second_admin)

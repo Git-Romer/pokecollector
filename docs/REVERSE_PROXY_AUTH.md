@@ -66,7 +66,7 @@ For domain-level forward auth, Authentik matches the complete URL instead. Repla
 
 If the installation uses HTTP or a non-standard port internally, match the URL that Authentik receives. Authentik documents the difference between provider modes in its [proxy provider documentation](https://docs.goauthentik.io/add-secure-apps/providers/proxy/#allowing-unauthenticated-requests).
 
-These exceptions expose the files and endpoints needed to render anonymous public views. Compiled frontend assets and globally visible card artwork are available through the listed routes, but protected collection data and administration APIs remain behind authentication. They do not make PokéCollector use the identity supplied by Authentik. Native OIDC support would be a separate authentication integration.
+These exceptions expose the files and endpoints needed to render anonymous public views. Compiled frontend assets and globally visible card artwork are available through the listed routes, but protected collection data and administration APIs remain behind authentication. These forward-auth exceptions do not enable native OIDC sign-in; see [OpenID Connect Authentication](OIDC_AUTHENTICATION.md) for the application's OIDC integration. Do not bypass authentication for all `/api` routes.
 
 ## Verification
 

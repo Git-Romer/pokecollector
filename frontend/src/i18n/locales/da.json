@@ -1118,6 +1118,7 @@
     "multiUserMode": "Flerbruger-tilstand",
     "multiUserModeDesc": "Aktivér loginskærm og brugeradministration",
     "multiUserModeLocked": "Låst af USER_MODE-miljøvariablen; ændr den der og genstart.",
+    "multiUserModeManaged": "Styret af AUTH_MODE-miljøvariablen; ændr den der og genstart.",
     "multiUserEnableTitle": "Aktivér flerbruger-tilstand?",
     "multiUserEnableWarning": "Dette slår loginskærmen til med det samme og logger dig ud. Du skal logge ind igen som {username}, så sørg for, at du kender den adgangskode først.",
     "multiUserEnableResetHint": "Du kan indstille eller nulstille admin-adgangskoden fra hosten med set_admin_password-scriptet (se dokumentationen). Og hvis du nogensinde bliver låst ude, gendanner USER_MODE=single lokal adgang.",

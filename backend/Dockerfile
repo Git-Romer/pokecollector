@@ -29,4 +29,8 @@ RUN mkdir -p /app/backups /app/debug /app/data/pokedex-images/sprites /app/data/
 
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Access logging is disabled: uvicorn's default access log records the full
+# request target, which would retain OIDC callback `code`/`state` query values.
+# External proxies must likewise suppress or path-only-log the callback; see
+# frontend/nginx.conf. Application/error logs never include URLs or tokens.
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]

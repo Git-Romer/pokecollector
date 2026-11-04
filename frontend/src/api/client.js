@@ -84,6 +84,28 @@ export const forceChangePassword = (newPassword) => api.put('/auth/me/force-pass
 export const changeAvatar = (avatarId) => api.put('/auth/me/avatar', { avatar_id: avatarId }).then(r => r.data)
 export const changeUsername = (username) => api.put('/auth/me/username', { username }).then(r => r.data)
 
+// OIDC completion is browser-bound by an HttpOnly handoff cookie. The empty
+// body is deliberate; the browser sends the cookie and the backend infers
+// login vs. link from the stored transaction. A failed completion must not let
+// the shared 401 interceptor discard an otherwise valid local session.
+export const completeOidcLogin = () => api.post('/auth/oidc/complete', {}, {
+  preserveSessionOnUnauthorized: true,
+}).then(r => r.data)
+export const getOidcIdentity = () => api.get('/auth/oidc/identity', {
+  preserveSessionOnUnauthorized: true,
+}).then(r => r.data)
+export const linkOidcIdentity = (currentPassword) => api.post('/auth/oidc/link', {
+  current_password: currentPassword,
+}, {
+  preserveSessionOnUnauthorized: true,
+}).then(r => r.data)
+export const unlinkOidcIdentity = (currentPassword) => api.post('/auth/oidc/unlink', {
+  current_password: currentPassword,
+  confirmation: true,
+}, {
+  preserveSessionOnUnauthorized: true,
+}).then(r => r.data)
+
 
 const formatApiErrorDetail = (detail) => {
   if (!detail) return ''

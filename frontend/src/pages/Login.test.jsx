@@ -2,12 +2,26 @@ import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('react-router-dom', () => ({ Navigate: () => null, useNavigate: () => () => {} }))
+vi.mock('react-router-dom', () => ({
+  Navigate: () => null,
+  useNavigate: () => () => {},
+  useSearchParams: () => [new URLSearchParams(), () => {}],
+}))
 vi.mock('react-hot-toast', () => ({ default: { error: () => {} } }))
 vi.mock('../api/client', () => ({ login: () => {} }))
 vi.mock('../components/AuthStartupScreen', () => ({ default: () => null }))
 vi.mock('../contexts/AuthContext', () => ({
-  useAuth: () => ({ user: null, loading: false, multiUser: true, loginUser: () => {} }),
+  useAuth: () => ({
+    user: null,
+    loading: false,
+    multiUser: true,
+    loginUser: () => {},
+    // Password-only capability so the forms this test asserts on are the ones
+    // rendered; the OIDC button paths are covered by the Playwright spec.
+    passwordLoginEnabled: true,
+    oidcEnabled: false,
+    oidcDisplayName: '',
+  }),
 }))
 vi.mock('../contexts/SettingsContext', () => ({ useSettings: () => ({ t: (key) => key }) }))
 

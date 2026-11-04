@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import logging
 import os
+import re
 import secrets
 import tempfile
 from datetime import datetime, timedelta
@@ -108,12 +109,41 @@ def secret_fingerprint(namespace: str, material: str) -> str:
     return hmac.new(SECRET_KEY.encode(), scoped, hashlib.sha256).hexdigest()
 
 
+# bcrypt modular-crypt hashes: $2a$/$2b$/$2y$, two-digit cost, 53-character salt+digest.
+# This is a structural format check for policy decisions; it never proves that the
+# operator knows the password or that the hash verifies a particular value.
+_BCRYPT_HASH_RE = re.compile(r"^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$")
+
+
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
+def has_valid_password_hash(hashed_password: str | None) -> bool:
+    """True when a stored value is a syntactically valid bcrypt password hash."""
+    return bool(
+        isinstance(hashed_password, str) and _BCRYPT_HASH_RE.match(hashed_password)
+    )
+
+
+def verify_password(plain_password: str, hashed_password: str | None) -> bool:
+    """Verify a password, returning False for absent or malformed hashes.
+
+    SSO-only accounts store ``NULL`` and legacy rows can contain a malformed
+    value; neither may crash password login or password-change endpoints.
+    """
+    if not isinstance(plain_password, str) or not plain_password:
+        return False
+    if not isinstance(hashed_password, str) or not has_valid_password_hash(
+        hashed_password
+    ):
+        return False
+    try:
+        return bcrypt.checkpw(
+            plain_password.encode("utf-8"), hashed_password.encode("utf-8")
+        )
+    except (TypeError, ValueError):
+        return False
 
 
 def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
@@ -141,6 +171,11 @@ def bootstrap_admin(db: Session):
         hashed_password=hash_password(password),
         role="admin",
         is_active=True,
+        # Bootstrap creates a password-capable account only in local/mixed mode
+        # (main.py never calls it for oidc-only), so it starts without a forced
+        # password change. SSO-only accounts are provisioned separately with a
+        # NULL password and this flag false.
+        must_change_password=False,
     )
     db.add(admin)
     db.commit()

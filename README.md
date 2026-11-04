@@ -34,6 +34,7 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - [Quick Start](#-quick-start)
 - [Reverse Proxy Authentication](#-reverse-proxy-authentication)
 - [Managing Users](#-managing-users)
+- [OpenID Connect Authentication](#-open-id-connect-authentication)
 - [Environment Variables](#-environment-variables)
 - [Sync Behavior](#-sync-behavior)
 - [Architecture](#-architecture)
@@ -98,6 +99,7 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 ### 👤 Single-User & Multi-User
 - Single-user mode: no login required, auto-auth as admin
 - Multi-user mode: JWT login, admin/trainer roles, separate user data
+- Optional native OIDC sign-in for multi-user installations, with mixed local-password mode or OIDC-only mode
 - Per-user settings for language, currency, Telegram keys, and scanner provider keys
 - Force password change support on first login
 - Profile avatar and profile name editing
@@ -271,7 +273,7 @@ For scanner keys, hosted OpenAI, Ollama, and other compatible vision servers, se
 
 If PokéCollector is protected by Authentik, Authelia, oauth2-proxy, or another forward-auth layer, the proxy checks requests before they reach PokéCollector. Enabling public profiles inside the app is therefore not enough on its own. The proxy must also allow the public pages, their public API calls, and the assets those pages use.
 
-See [Reverse proxy authentication](docs/REVERSE_PROXY_AUTH.md) for the complete route list, Authentik examples, and a verification checklist. Do not bypass authentication for all `/api` routes.
+See [Reverse proxy authentication](docs/REVERSE_PROXY_AUTH.md) for the complete route list, Authentik examples, and a verification checklist. Do not bypass authentication for all `/api` routes. This forward-auth configuration is separate from native OIDC login described below.
 
 ---
 
@@ -310,7 +312,23 @@ The script prompts for the new password (add `--username <name>` for a non-defau
 
 ### Recovering from a lockout
 
-If you are already locked out of multi-user mode, set `USER_MODE=single` in the environment and restart. That pins single-user mode and disables the login screen regardless of the stored setting, so you regain local admin access; reset the password with the script above, then remove the variable and restart to return to multi-user mode. While `USER_MODE` is set, the Multi-User Mode toggle in Settings is disabled and shows that the environment controls it. Because `USER_MODE=single` disables the login screen, treat it as a local/LAN recovery tool and do not leave it set on an internet-facing install. (`USER_MODE=multi` pins multi-user mode instead, which is safe to leave set.)
+If you are already locked out of legacy multi-user mode while `AUTH_MODE=local`, set `USER_MODE=single` in the environment and restart. That pins single-user mode and disables the login screen regardless of the stored setting, so you regain local admin access; reset the password with the script above, then remove the variable and restart to return to multi-user mode. While `USER_MODE` is set, the Multi-User Mode toggle in Settings is disabled and shows that the environment controls it. Because `USER_MODE=single` disables the login screen, treat it as a local/LAN recovery tool and do not leave it set on an internet-facing install. (`USER_MODE=multi` pins multi-user mode instead, which is safe to leave set.)
+
+`USER_MODE=single` is not a recovery path when `AUTH_MODE=mixed` or
+`AUTH_MODE=oidc-only`; those modes require authentication and reject the
+conflicting setting. For OIDC account recovery, use the procedures in
+[OpenID Connect Authentication](docs/OIDC_AUTHENTICATION.md).
+
+---
+
+## 🔑 OpenID Connect Authentication
+
+Native OIDC is optional and configured with the backend's `AUTH_MODE` and
+`OIDC_*` environment variables. Start in `mixed` mode to link an existing local
+administrator before switching to `oidc-only`; OIDC-only startup requires an
+active linked administrator and does not create an admin from provider claims.
+See [OpenID Connect Authentication](docs/OIDC_AUTHENTICATION.md) for provider
+registration, rollout, account linking/unlinking, recovery, and security details.
 
 ---
 
@@ -348,7 +366,13 @@ If you are already locked out of multi-user mode, set `USER_MODE=single` in the 
 | `TELEGRAM_BOT_TOKEN` | Initial Telegram bot token for the admin user | *(empty)* |
 | `TELEGRAM_CHAT_ID` | Initial Telegram chat ID for the admin user | *(empty)* |
 | `TCGDEX_SYNC_LANGUAGES` | Initial admin default for TCGdex set/card sync languages on first launch only. After bootstrap, the DB setting in Settings is authoritative. Comma-separated TCGdex language codes, or `all` to enable every supported TCGdex language. Empty or invalid values safely fall back to `en,de`. Extra languages increase sync time, API calls, and database size. | `en,de` |
-| `USER_MODE` | Pin the mode from the environment, overriding the stored setting and disabling the in-app toggle. `single` forces single-user (no login screen) and is the recovery hatch after a multi-user lockout; `multi` forces multi-user. Because `single` disables authentication, use it only on a local/LAN install and unset it once recovered. Unset means the in-app setting controls the mode. | *(unset)* |
+| `USER_MODE` | Pin the legacy local single-user or multi-user mode from the environment, overriding the stored setting and disabling the in-app toggle. `single` forces single-user (no login screen) and is a recovery hatch only when `AUTH_MODE=local`; it conflicts with OIDC-enabled modes. `multi` forces multi-user. Unset means the in-app setting controls the mode when `AUTH_MODE=local`. | *(unset)* |
+| `AUTH_MODE` | Pin authentication policy: `local` preserves existing behavior, `mixed` enables local passwords plus OIDC, and `oidc-only` disables password login and requires an active linked administrator at startup. `mixed` and `oidc-only` conflict with `USER_MODE=single`; changing the value requires a backend restart. | `local` |
+| `OIDC_ISSUER_URL` | Exact issuer identifier from the provider's discovery document. Required for `mixed` and `oidc-only`; OIDC discovery is derived from this value. | *(empty)* |
+| `OIDC_CLIENT_ID` | Confidential OIDC client's client ID. Required for `mixed` and `oidc-only`. | *(empty)* |
+| `OIDC_CLIENT_SECRET` | Confidential OIDC client's secret. Keep it private and out of Git. Required for `mixed` and `oidc-only`. | *(empty)* |
+| `OIDC_REDIRECT_URI` | Exact registered callback URI, e.g. `https://cards.example.test/api/auth/oidc/callback`. Production requires HTTPS; the callback path is fixed. | *(empty)* |
+| `OIDC_DISPLAY_NAME` | Friendly provider label shown in the login and account settings UI. | `Single sign-on` |
 | `PUBLIC_MODE` | Enable SEO meta tags, Open Graph, and allow search engine indexing. Default blocks all crawlers. Recreate the frontend container after changing it. | `false` |
 | `PWA_ENABLED` | Let the frontend save its own files on the device for offline start (needs HTTPS). Off by default. `false` is also the kill switch: it removes an installed service worker. Recreate the frontend container after changing it. See [docs/PWA.md](docs/PWA.md). | `false` |
 | `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | Optional web push (price alerts). Both are optional and are not passed through by the stock `docker-compose.yml`: the signing key is created in `./data/auth` on first use. See [docs/PWA.md](docs/PWA.md). | *(unset)* |
@@ -495,6 +519,7 @@ Published installations pull frontend and backend images from `ghcr.io` and Post
 | [`docs/PWA.md`](docs/PWA.md) | Installing on iPhone, offline start, HTTPS, flags, kill switch |
 | [`docs/POKEDEX.md`](docs/POKEDEX.md) | National Pokédex completion, metadata, images, routes, and Cardmarket links |
 | [`docs/REVERSE_PROXY_AUTH.md`](docs/REVERSE_PROXY_AUTH.md) | Forward-auth exceptions for public profiles and binders |
+| [`docs/OIDC_AUTHENTICATION.md`](docs/OIDC_AUTHENTICATION.md) | Native OIDC setup, rollout, account linking, recovery, and security notes |
 | [`docs/scanner-providers.md`](docs/scanner-providers.md) | Gemini, hosted OpenAI, Ollama, and compatible scanner-provider setup |
 
 ---
