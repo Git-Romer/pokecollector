@@ -1,0 +1,43 @@
+/* Layout adapter only: effect-profile math comes from the pinned upstream CSS. */
+.holo-effect-layer { display: contents; pointer-events: none; }
+.pc-holo-card[data-holo-artwork] {
+  transform: none;
+  -webkit-transform: none;
+  transform-style: flat;
+  pointer-events: auto;
+  z-index: auto;
+  will-change: auto;
+  --card-radius: 4.55% / 3.5%;
+  --card-opacity: .25;
+  --card-scale: 1;
+  --pointer-x: 50%; --pointer-y: 50%;
+  --pointer-from-center: 0; --pointer-from-top: .5; --pointer-from-left: .5;
+  --background-x: 50%; --background-y: 50%;
+}
+.unified-card-art.pc-holo-card { aspect-ratio: 2.5 / 3.5; }
+/* The verified renderer owns the foil; suppress the old automatic shine sweep. */
+.pc-holo-card[data-holo-artwork]::after { display: none; animation: none; }
+/* The artwork rotates, not its layout host. A painted host leaves a stationary
+   rectangle/glow behind the tilted card. Keep its spacing, remove only paint. */
+.unified-card-frame:has([data-holo-artwork][data-holo-mode]) {
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+}
+.unified-card-frame:has([data-holo-artwork][data-holo-mode]) .unified-card-primary-action:focus-visible {
+  outline: 2px solid var(--color-text-primary, white);
+  outline-offset: 3px;
+}
+.pc-holo-card[data-holo-artwork] .pc-holo-card__shine,
+.pc-holo-card[data-holo-artwork] .pc-holo-card__glare {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  border-radius: inherit; pointer-events: none;
+}
+.pc-holo-card__glare { z-index: 4; }
+/* Pointer smoothing is driven by the same rAF clock as the shader; do not
+   repeatedly restart a CSS transform transition from a frame callback. */
+[data-holo-rotator] { transition: none; transform-origin: center; }
+.holo-zoom-artwork { position: relative; width: 100%; border-radius: 4.55% / 3.5%; overflow: hidden; }
+@media (prefers-reduced-motion: reduce) {
+  [data-holo-rotator] { transition: none; }
+}

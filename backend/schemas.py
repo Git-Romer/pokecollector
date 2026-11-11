@@ -27,6 +27,7 @@ class SetBase(BaseModel):
 class CardBase(BaseModel):
     id: str
     tcg_card_id: Optional[str] = None
+    lang: Optional[str] = None
     name: str
     set_id: Optional[str] = None
     number: Optional[str] = None
