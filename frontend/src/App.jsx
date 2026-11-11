@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Outlet, Route, Routes, useParams } from 'react
 import { Suspense, lazy, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import PokeBallLoader from './components/PokeBallLoader'
+import HoloDeviceMotionController from './components/HoloDeviceMotionController'
 import AuthStartupScreen from './components/AuthStartupScreen'
 import { SettingsProvider } from './contexts/SettingsContext'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
@@ -200,6 +201,7 @@ export default function App() {
   return (
     <AuthProvider>
       <SettingsProvider>
+        <HoloDeviceMotionController />
         <ConfirmDialogProvider>
           <BrowserRouter>
             <Routes>

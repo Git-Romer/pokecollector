@@ -9,11 +9,11 @@ vi.mock('./AuthContext', () => ({
 import { SettingsProvider, useSettings } from './SettingsContext'
 
 function CurrencyProbe() {
-  const { currency, formatPrice, formatUsdPrice } = useSettings()
+  const { currency, formatPrice, formatUsdPrice, settings } = useSettings()
   return createElement(
     'span',
     null,
-    `${currency}|${formatPrice(10)}|${formatUsdPrice(5)}`,
+    `${currency}|${formatPrice(10)}|${formatUsdPrice(5)}|holo:${settings.holo_effects_enabled}`,
   )
 }
 
@@ -35,6 +35,7 @@ describe('SettingsContext selected-currency fallback', () => {
     expect(markup).not.toContain('USD')
     expect(markup).not.toContain('€')
     expect(markup).not.toContain('$')
+    expect(markup).toContain('holo:false')
     vi.unstubAllGlobals()
   })
 })

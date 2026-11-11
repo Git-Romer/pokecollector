@@ -1151,6 +1151,8 @@ const de = {
     priceTypeDesc: 'Welcher Cardmarket-Preis wird angezeigt',
     preferOwnCardPhotos: 'Eigene Kartenfotos bevorzugen',
     preferOwnCardPhotosDesc: 'Zeigt dein privates Kartenfoto zuerst, sofern vorhanden. Das Katalogbild bleibt im Kartendialog verfügbar.',
+    holoEffects: 'Erweiterte Holo-Effekte',
+    holoEffectsDesc: 'Passende freigegebene Effekte ersetzen die Standarddarstellung von Holo- und Reverse-Holo-Karten. Bewege den Zeiger über diese Karten, um die Folie mit einer sehr leichten Neigung in deiner Sammlung zu sehen. Im Kartendialog und in der vergrößerten Ansicht ist die Neigung stärker. Kein automatisches Schimmern im Ruhezustand. Auf unterstützten Smartphones wird die Gerätebewegung mit der Browser-Berechtigung automatisch genutzt; halte dein Smartphone 1,3 Sekunden nahezu still, um den Effekt sanft neu zu zentrieren. Standardmäßig aus; private Fotos und eigene Bilder bleiben unverändert. Reduzierte Bewegung wird berücksichtigt. Effekte: Simon Goellner / pokemon-cards-css (GPL v3).',
     deleteCardPhotos: 'Meine Kartenfotos löschen',
     deleteCardPhotosDesc: 'Löscht alle privaten Fotos, die deinen Sammlungskarten zugeordnet sind, dauerhaft.',
     deleteCardPhotosConfirm: 'Alle privaten Fotos deiner Sammlungskarten dauerhaft löschen? Katalogbilder, manuelle Karten und Scanner-Diagnosen bleiben erhalten.',
