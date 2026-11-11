@@ -229,6 +229,13 @@ synced. The backend refreshes a stale base-rate set when a conversion is request
 metadata is refreshed daily. Each response marks a cached rate/list as stale when
 its refresh window has passed and the provider could not be reached.
 
+The rate feed can also contain assets with longer codes, such as `AAVE` or
+`USDT`. The backend skips quotes outside its three-letter currency format so
+those records do not block valid currency conversions. A response with no
+supported quotes is rejected; invalid dates, rates, duplicate supported quotes,
+and inconsistent bases still fail validation. This does not expand the currency
+codes accepted by the API.
+
 The frontend requests both EUR-based and USD-based rate sets for the selected
 currency. Collection, wishlist, analytics, public binder/profile values, exports,
 and Telegram use the selected currency. If a conversion has never been synced, the
