@@ -591,7 +591,12 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
     ? `${cardImageUrl(customImageCardId, 'large')}?v=${customImageVersion}`
     : null
   const manualImageProxyUrl = card.is_custom ? resolveCardImageUrl(card, 'large') : null
+  const officialLargeProxyUrl = !card.is_custom && (card?.images?.large || card?.images_large)
+    && typeof customImageCardId === 'string'
+    ? cardImageUrl(customImageCardId, 'large')
+    : null
   const cardImage = manualImageProxyUrl
+    || officialLargeProxyUrl
     || card?.images?.large
     || card?.images_large
     || (card?.image ? `${card.image}/high.webp` : null)

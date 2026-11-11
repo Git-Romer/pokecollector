@@ -65,6 +65,34 @@ class ExchangeRateCacheTests(unittest.TestCase):
             self.assertEqual(cached.rate, 7.46)
             self.assertEqual(cached.provider_date.isoformat(), "2026-10-20")
 
+    def test_syncs_supported_rates_when_provider_also_returns_long_asset_codes(self):
+        payload = [
+            {"date": "2026-10-20", "base": "EUR", "quote": "AAVE", "rate": 0.009},
+            {"date": "2026-10-20", "base": "EUR", "quote": "USD", "rate": 1.12},
+            {"date": "2026-10-20", "base": "EUR", "quote": "USDT", "rate": 1.12},
+            {"date": "2026-10-20", "base": "EUR", "quote": "DKK", "rate": 7.46},
+        ]
+        with patch("services.exchange_rates.httpx.get", return_value=_Response(payload)) as request:
+            usd = get_exchange_rate("EUR", "USD", session_factory=self.sessions, now=self.now)
+            dkk = get_exchange_rate("EUR", "DKK", session_factory=self.sessions, now=self.now)
+
+        self.assertEqual(usd["rate"], 1.12)
+        self.assertEqual(dkk["rate"], 7.46)
+        self.assertFalse(usd["stale"])
+        self.assertFalse(dkk["stale"])
+        self.assertEqual(request.call_count, 1)
+        with self.sessions() as db:
+            self.assertEqual(
+                {row.quote_currency for row in db.query(CurrencyRate).all()},
+                {"USD", "DKK"},
+            )
+        with patch("services.exchange_rates.httpx.get", side_effect=httpx.ConnectError("offline")):
+            saved = get_exchange_rate(
+                "EUR", "USD", session_factory=self.sessions, now=self.now + timedelta(hours=2)
+            )
+        self.assertEqual(saved["rate"], 1.12)
+        self.assertTrue(saved["stale"])
+
     def test_returns_stale_saved_rate_when_provider_is_offline(self):
         stale_synced_at = self.now - timedelta(hours=2)
         with self.sessions() as db:

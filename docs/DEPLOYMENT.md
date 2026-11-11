@@ -17,7 +17,7 @@ Registry:
 Both images support `linux/amd64` and `linux/arm64`. PostgreSQL continues to use
 the official `postgres:18-alpine` image.
 
-Every application release has a stable version tag such as `1.55.1`. The
+Every application release has a stable version tag such as `1.56.4`. The
 Compose file downloaded from that release defaults both application services to
 that exact version. A `latest` alias is also published for discovery, but it is
 not the default: two separate repository tags cannot be promoted atomically, so
@@ -28,8 +28,16 @@ Set `POKECOLLECTOR_VERSION` in `.env` to pin or override both application
 images together:
 
 ```env
-POKECOLLECTOR_VERSION=1.55.1
+POKECOLLECTOR_VERSION=1.56.4
 ```
+
+## Advanced Holo publisher
+
+Advanced Holo is off by default per user. Released frontend images use the public publisher at `https://pokecollector.romerg.de`, allowed by the shipped Nginx Content Security Policy. The publisher must explicitly allow the app's requesting origin for public reads; enabling the setting does not grant publication, storage or admin access. If no matching verified design is available, or the origin is not allowed, the ordinary appearance stays in place.
+
+For a source build, `VITE_HOLO_EFFECTS_API_BASE_URL` is a frontend Docker build argument, also forwarded by `docker-compose.build.yml`. Leave it unset for the official publisher; set it to an explicitly empty value for a trusted same-origin development proxy. For example, `VITE_HOLO_EFFECTS_API_BASE_URL= docker compose -f docker-compose.yml -f docker-compose.build.yml build frontend` builds the same-origin client. FastAPI does not provide publisher routes, so this requires the development proxy to route `/api/holo/` to the dashboard separately.
+
+An alternative publisher requires rebuilding the frontend and explicitly adding that exact origin to Nginx `connect-src`, plus the app origin in the publisher's public-read CORS allowlist. Never inject arbitrary runtime values into CSP. Setting a runtime environment variable on a published frontend container does not change its compiled bundle. Trusted HTTPS and browser SHA-256 verification remain required.
 
 ## Install without cloning the repository
 

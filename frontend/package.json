@@ -1,14 +1,15 @@
 {
   "name": "pokemon-tcg-collection",
   "private": true,
-  "version": "1.55.1",
+  "version": "1.56.4",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "node scripts/build-holo-css.mjs",
     "build": "vite build",
     "check:translations": "node scripts/check-translations.mjs",
     "preview": "vite preview",
-    "test": "npm run check:translations && node --test scripts/configure-public-mode.test.mjs && vitest run src",
+    "test": "npm run check:translations && node --test scripts/configure-public-mode.test.mjs scripts/holo-deployment.test.mjs && vitest run src",
     "test:visual": "playwright test",
     "test:visual:webkit": "playwright test --config=playwright.webkit.config.js",
     "test:visual:update": "playwright test --update-snapshots",

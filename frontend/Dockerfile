@@ -8,6 +8,9 @@ RUN npm ci
 COPY VERSION /VERSION
 COPY frontend/ .
 
+ARG VITE_HOLO_EFFECTS_API_BASE_URL=https://pokecollector.romerg.de
+ENV VITE_HOLO_EFFECTS_API_BASE_URL=$VITE_HOLO_EFFECTS_API_BASE_URL
+
 RUN cp public/robots-block.txt public/robots.txt \
     && npm run build
 

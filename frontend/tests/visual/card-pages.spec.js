@@ -323,6 +323,89 @@ test.beforeEach(async ({ page }) => {
   await installApiFixtures(page)
 })
 
+for (const binderType of ['collection', 'wishlist']) {
+  test(`binder card dialog opens and updates quantities in a ${binderType} binder`, async ({ page }) => {
+    const errors = []
+    page.on('pageerror', error => errors.push(error.message))
+    let requiredQuantity = 2
+    const updates = []
+    await page.route('**/api/binders/11/cards**', route => route.fulfill({ json: {
+      binder: { id: 11, name: 'Dialog regression binder', binder_type: binderType, color: '#e3000b' },
+      cards: [{
+        ...card(1), binder_card_id: 110, collection_item_id: 1,
+        card: { id: 'visual-card-1', name: 'Visual card 1', images_small: null, images_large: null },
+        required_quantity: requiredQuantity, owned_quantity: 3, collection_quantity: 3,
+        quantity: requiredQuantity, max_assignable_quantity: 3, available_quantity: 3 - requiredQuantity,
+        missing_quantity: 0,
+      }],
+      available_collection_item_quantities: { 1: 3 - requiredQuantity },
+    } }))
+    await page.route('**/api/binders/11/entries/110', route => {
+      requiredQuantity = route.request().postDataJSON().required_quantity
+      updates.push(requiredQuantity)
+      return route.fulfill({ json: { required_quantity: requiredQuantity } })
+    })
+    await page.route('**/api/binders/11/entries/110/equivalent-prints?*', route => route.fulfill({ json: { equivalents: [] } }))
+    await page.goto('/binders/11')
+    await page.getByTestId('card-list-gallery').getByRole('button', { name: 'Visual card 1', exact: true }).click()
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toBeVisible()
+    const quantity = dialog.getByText(binderType === 'collection' ? 'Copies in this binder' : 'Required in binder', { exact: true }).locator('..')
+    await quantity.getByRole('button').first().click()
+    await expect.poll(() => updates).toEqual([1])
+    await expect(quantity.getByRole('button').first()).toBeDisabled()
+    await quantity.getByRole('button').last().click()
+    await expect.poll(() => updates).toEqual([1, 2])
+    await page.keyboard.press('Escape')
+    await expect(dialog).toHaveCount(0)
+    await expect(page.getByTestId('card-list-gallery')).toBeVisible()
+    await page.getByTestId('card-list-gallery').getByRole('button', { name: 'Visual card 1', exact: true }).click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+    await page.getByRole('dialog').getByRole('button', { name: 'Done', exact: true }).click()
+    await expect(page.getByRole('dialog')).toHaveCount(0)
+    expect(errors).toEqual([])
+  })
+}
+
+test('binder card dialog switches between catalogue and private photos', async ({ page }) => {
+  const errors = []
+  page.on('pageerror', error => errors.push(error.message))
+  const photo = await (await page.request.get('/cardback.jpg')).body()
+  const referenceCard = card(1, {
+    images_small: 'https://example.test/card-low.webp',
+    images_large: 'https://example.test/card-high.webp',
+  })
+  await page.route('**/api/collection/1/photo', route => route.fulfill({ status: 200, contentType: 'image/jpeg', body: photo }))
+  await page.route('**/api/binders/11/cards**', route => route.fulfill({ json: {
+    binder: { id: 11, name: 'Photo regression binder', binder_type: 'collection', color: '#e3000b' },
+    cards: [{
+      ...referenceCard, binder_card_id: 110, collection_item_id: 1,
+      card: { id: referenceCard.id, name: referenceCard.name, images_small: referenceCard.images_small, images_large: referenceCard.images_large },
+      has_scan_photo: true, required_quantity: 1, owned_quantity: 1, collection_quantity: 1,
+      quantity: 1, missing_quantity: 0, max_assignable_quantity: 1,
+    }],
+    available_collection_item_quantities: {},
+  } }))
+  await page.route('**/api/binders/11/entries/110/equivalent-prints?*', route => route.fulfill({ json: { equivalents: [] } }))
+  await page.goto('/binders/11')
+  await page.getByTestId('card-list-gallery').getByRole('button', { name: 'Visual card 1', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  const source = dialog.getByRole('group', { name: 'Choose card image' })
+  await expect(source).toBeVisible()
+  await expect(source.getByRole('button', { name: 'Catalogue', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  const artwork = dialog.getByRole('img', { name: 'Visual card 1', exact: true })
+  await expect(artwork).toHaveAttribute('src', /\/api\/images\/card\//)
+  await source.getByRole('button', { name: 'My card', exact: true }).click()
+  await expect(source.getByRole('button', { name: 'My card', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(artwork).toHaveAttribute('src', /^blob:/)
+  await source.getByRole('button', { name: 'Catalogue', exact: true }).click()
+  await expect(artwork).toHaveAttribute('src', /\/api\/images\/card\//)
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(page.getByTestId('card-list-gallery')).toBeVisible()
+  expect(errors).toEqual([])
+})
+
 test('legacy physical-deck workflow redirects to the unified Deck editor', async ({ page }) => {
   await page.goto('/decks/1/build')
   await page.waitForURL('**/decks/1')

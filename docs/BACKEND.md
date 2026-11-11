@@ -220,6 +220,39 @@ responses.
 | POST | `/api/settings/{key}` | Set one setting |
 | GET | `/api/health` | Unauthenticated service-health probe |
 
+## Image caching
+
+The database image cache remains the source of downloaded artwork. Public card
+artwork and set logos/symbols also use the frontend's bounded Nginx disk cache
+(up to 1 GiB, discarded with the frontend container). Repeated requests can be
+served without transferring the image from the backend again.
+
+These routes are mutable, not content-addressed assets. New public responses use
+`public, max-age=0, s-maxage=60, must-revalidate`: browsers revalidate their copy,
+while shared caches may reuse it for at most 60 seconds. Changes to artwork,
+visibility or fallback settings can therefore take up to that interval to reach
+a shared-cache hit. Existing browser entries created by older releases retain
+their original expiry. ETags are SHA-256 hashes of the actual image bytes, so
+clearing/refilling the database image cache cannot incorrectly validate changed
+bytes just because the source URL stayed the same. Set image cache keys include
+the selected source URL, including English fallback URLs.
+
+Manual cards and custom fallback artwork use `private, no-store`. Missing card
+redirects and set placeholders use `no-store`, so a temporary failure does not
+hide artwork that becomes available later. Fingerprints, token-gated product
+images and private collection photos never use the shared proxy image cache.
+Requests carrying authorization, cookies, explicit cache controls or a retry
+parameter bypass it too. Expired entries are not served when revalidation fails.
+The existing product-token and private-photo authorization rules are unchanged.
+
+For a disposable integration check, run
+`python scripts/test-image-proxy-cache.py --bind 0.0.0.0 --proxy-url http://frontend`
+on an isolated network where its synthetic upstream is reachable as
+`backend:8000` and the frontend uses the candidate `frontend/nginx.conf`. Publish
+no host ports and mount no production data. The check counts upstream requests,
+verifies conditional responses, private-route exclusions, expiry, fallback
+recovery and security headers. It does not measure production traffic.
+
 ## Currency data and offline conversion
 
 Frankfurter currency metadata and rates are stored in global, per-installation
@@ -228,6 +261,13 @@ quote currency and include the provider's observation date and the time they wer
 synced. The backend refreshes a stale base-rate set when a conversion is requested;
 metadata is refreshed daily. Each response marks a cached rate/list as stale when
 its refresh window has passed and the provider could not be reached.
+
+The rate feed can also contain assets with longer codes, such as `AAVE` or
+`USDT`. The backend skips quotes outside its three-letter currency format so
+those records do not block valid currency conversions. A response with no
+supported quotes is rejected; invalid dates, rates, duplicate supported quotes,
+and inconsistent bases still fail validation. This does not expand the currency
+codes accepted by the API.
 
 The frontend requests both EUR-based and USD-based rate sets for the selected
 currency. Collection, wishlist, analytics, public binder/profile values, exports,

@@ -290,6 +290,13 @@ The system centralizes card structure, borders, image handling, badges, ownershi
 
 Approved `CardDisplay` variants include `grid`, `carousel`, `ranking`, `selectable`, `artwork`, and `compact-artwork`. A development-only component gallery is available at `/__card-system`.
 
+`CardImage` keeps its viewport gate and preserves native `loading="lazy"` after
+an image enters that gate. Explicit `loading="eager"` still takes priority. The
+shared WebKit viewport fallback, image retry state and cached-view remount
+handling remain in place. Public artwork can be served by the bounded proxy
+cache described in [BACKEND.md](BACKEND.md#image-caching); private owner photos
+are excluded.
+
 See [`CARD_SYSTEM.md`](CARD_SYSTEM.md) for usage, design tokens, review guidance, and the contributor-friendly process for proposing a new shared variant.
 
 `CardItem.jsx`, `UnifiedCard.jsx`, and the low-level state components remain implementation details of this public system and should not be imported by feature pages.
@@ -299,6 +306,8 @@ outside scanner comparison. It supports zoom, pan, keyboard close, and preserves
 the normal Card Display click contract. Printing-detail badges and the unified
 primary-price presentation are supplied through the same shared card state so
 feature pages do not invent competing labels.
+
+The optional Holo effect client reads the published-design list from `/api/holo/list`, then resolves the exact card/language/finish/profile through `/api/holo/current` and its immutable `/api/holo/versions/:version/manifest` and `/assets/:role` routes. Released images default to the public publisher at `https://pokecollector.romerg.de`; effect requests are made only after the user enables Advanced Holo. The shipped Nginx `connect-src` permits that exact HTTPS origin, not arbitrary websites. For source builds, the frontend Dockerfile accepts `VITE_HOLO_EFFECTS_API_BASE_URL` as a build argument; the local Compose build override forwards the same variable. An explicitly empty value selects same-origin `/api/holo/` routing for a trusted development proxy, while an unset value keeps the official publisher. Setting a container runtime environment variable does not rewrite an already-built Vite bundle. A custom publisher requires a rebuilt frontend and a matching explicit `connect-src` entry in its Nginx configuration; it must also allow the requesting app origin in its public-read CORS configuration. FastAPI does not proxy publisher routes. Keep the dashboard website/OAuth origin unchanged and add the collection app's exact origin to `HOLO_EFFECTS_ALLOWED_ORIGINS` for public effect reads only. Functional previews require trusted HTTPS: ordinary LAN HTTP does not provide the Web Crypto SHA-256 verification used here, and missing verification fails closed. List and current pointers are revalidated; versioned manifests and PNG effect assets use immutable browser caching and are hash-checked before display. Effects apply only when the official large-image fingerprint, card ID, and language exactly match the published record, and only to the user's opted-in `Holo` or `Reverse Holo` variant with a matching `holo` or `reverse` finish. Effect availability never adds a collection finish or gates inventory writes. The existing treatment remains in place when a matching verified effect is unavailable; profiles describe rendering, not another physical finish. The preference defaults off. The client never reads contributor evidence or direct storage URLs.
 
 ### `pages/CardSearch.jsx`
 

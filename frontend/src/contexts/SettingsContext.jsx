@@ -43,6 +43,7 @@ const DEFAULT_SETTINGS = {
   debug_mode: 'false',
   public_profiles_enabled: 'false',
   prefer_own_card_photos: 'false',
+  holo_effects_enabled: 'false',
 }
 
 const LANGUAGE_STORAGE_KEY = 'app_language'

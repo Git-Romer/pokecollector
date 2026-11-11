@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 import hashlib
 import httpx
 from pathlib import Path
@@ -53,7 +53,7 @@ def _card_back_response():
     return RedirectResponse(
         url="/cardback.jpg",
         status_code=307,
-        headers={"Cache-Control": "public, max-age=86400"},
+        headers={"Cache-Control": "no-store"},
     )
 
 
@@ -64,15 +64,8 @@ def _set_fallback_response():
     return FileResponse(
         _SET_FALLBACK_IMAGE,
         media_type="image/svg+xml",
-        headers={"Cache-Control": "public, max-age=2592000, immutable"},
+        headers={"Cache-Control": "no-store"},
     )
-
-
-def _matches_etag(if_none_match: str | None, etag: str) -> bool:
-    if not if_none_match:
-        return False
-    tokens = [token.strip() for token in if_none_match.split(",")]
-    return "*" in tokens or etag in tokens or f"W/{etag}" in tokens
 
 
 def _is_globally_visible_card_image(db: Session, card: Card) -> bool:
@@ -186,6 +179,75 @@ def _get_or_fetch_custom_image(
     raise HTTPException(status_code=502, detail="Custom image redirected too many times")
 
 
+def _if_none_match_matches(header_value: str | None, etag: str) -> bool:
+    if not header_value:
+        return False
+    target = etag[1:-1]
+    for candidate in header_value.split(","):
+        candidate = candidate.strip()
+        if candidate == "*":
+            return True
+        if candidate.startswith("W/"):
+            candidate = candidate[2:].strip()
+        if candidate.startswith('"') and candidate.endswith('"') and candidate[1:-1] == target:
+            return True
+    return False
+
+
+def _image_response(data: bytes, content_type: str, request: Request | None, cache_control: str):
+    # These routes are mutable. Validate the actual bytes, not merely the source
+    # URL: clearing/refilling the image cache can replace artwork at the same URL.
+    etag = f'"{hashlib.sha256(data).hexdigest()}"'
+    headers = {
+        "ETag": etag,
+        "Cache-Control": cache_control,
+        "X-Content-Type-Options": "nosniff",
+    }
+    if request is not None and _if_none_match_matches(request.headers.get("if-none-match"), etag):
+        return Response(status_code=304, headers=headers)
+    return Response(content=data, media_type=content_type, headers=headers)
+
+
+@router.get("/card/{card_id}/fingerprint")
+def get_card_image_fingerprint(
+    card_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Identify the exact official large-image bytes served by the image proxy."""
+    card = db.query(Card).filter(Card.id == card_id).first()
+    if (
+        not card
+        or not _is_globally_visible_card_image(db, card)
+        or getattr(card, "is_custom", False)
+        or not card.tcg_card_id
+        or not card.lang
+        or card.image_source_lang is not None
+        or not card.images_large
+    ):
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    url = card.images_large
+    url_hash = hashlib.sha1(url.encode("utf-8")).hexdigest()
+    cache_key = f"card:{card_id}:large:{url_hash}"
+    data, _content_type = _get_or_fetch(db, cache_key, url)
+    digest = hashlib.sha256(data).hexdigest()
+    etag = f'"{digest}"'
+    headers = {
+        "ETag": etag,
+        "Cache-Control": "public, max-age=0, must-revalidate",
+        "X-Content-Type-Options": "nosniff",
+    }
+
+    if _if_none_match_matches(request.headers.get("if-none-match"), etag):
+        return Response(status_code=304, headers=headers)
+
+    return JSONResponse(
+        content={"tcgCardId": card.tcg_card_id, "language": card.lang, "sha256": digest},
+        headers=headers,
+    )
+
+
 @router.get("/card/{card_id}/{size}")
 def get_card_image(
     card_id: str,
@@ -211,22 +273,12 @@ def get_card_image(
         return _card_back_response()
 
     url_hash = hashlib.sha1(url.encode("utf-8")).hexdigest()
-    etag = f'"{url_hash}"'
     is_custom_artwork = bool(card.is_custom or (card.custom_image_url and url == card.custom_image_url))
     cache_control = (
-        "public, max-age=3600, must-revalidate"
+        "private, no-store"
         if is_custom_artwork
-        else "public, max-age=2592000, immutable"
+        else "public, max-age=0, s-maxage=60, must-revalidate"
     )
-
-    if request is not None and _matches_etag(request.headers.get("if-none-match"), etag):
-        return Response(
-            status_code=304,
-            headers={
-                "ETag": etag,
-                "Cache-Control": cache_control,
-            },
-        )
 
     try:
         if card.is_custom:
@@ -242,14 +294,7 @@ def get_card_image(
             data, content_type = _get_or_fetch(db, f"card:{card_id}:{size}:{url_hash}", url)
     except (HTTPException, ValueError):
         return _card_back_response()
-    return Response(
-        content=data,
-        media_type=content_type,
-        headers={
-            "ETag": etag,
-            "Cache-Control": cache_control,
-        },
-    )
+    return _image_response(data, content_type, request, cache_control)
 
 
 @router.get("/set/{set_id}/{image_type}")
@@ -286,17 +331,9 @@ def get_set_image(
     if not url:
         return _set_fallback_response()
 
+    # A corrected logo URL must not reuse a blob fetched for the previous URL.
     url_hash = hashlib.sha1(url.encode("utf-8")).hexdigest()
-    etag = f'"{url_hash}"'
-
-    if request is not None and _matches_etag(request.headers.get("if-none-match"), etag):
-        return Response(
-            status_code=304,
-            headers={
-                "ETag": etag,
-                "Cache-Control": "public, max-age=2592000, immutable",
-            },
-        )
+    cache_key = f"{cache_key}:{url_hash}"
 
     try:
         data, content_type = _get_or_fetch(db, cache_key, url)
@@ -304,13 +341,9 @@ def get_set_image(
         if exc.status_code == 502:
             return _set_fallback_response()
         raise
-    return Response(
-        content=data,
-        media_type=content_type,
-        headers={
-            "ETag": etag,
-            "Cache-Control": "public, max-age=2592000, immutable",
-        },
+    return _image_response(
+        data, content_type, request,
+        "public, max-age=0, s-maxage=60, must-revalidate",
     )
 
 
