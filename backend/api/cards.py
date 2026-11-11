@@ -66,6 +66,7 @@ def _card_to_dict(card: Card, current_user_id: int | None = None) -> dict:
     } if set_ref else None
     return {
         "id": card.id,
+        "tcg_card_id": card.tcg_card_id,
         "name": card.name,
         "number": card.number,
         "localId": card.number,

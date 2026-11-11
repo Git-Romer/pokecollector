@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 import hashlib
 import httpx
 from pathlib import Path
@@ -173,6 +173,61 @@ def _get_or_fetch_custom_image(
         return data, content_type
 
     raise HTTPException(status_code=502, detail="Custom image redirected too many times")
+
+
+def _if_none_match_matches(header_value: str | None, etag: str) -> bool:
+    if not header_value:
+        return False
+    target = etag[1:-1]
+    for candidate in header_value.split(","):
+        candidate = candidate.strip()
+        if candidate == "*":
+            return True
+        if candidate.startswith("W/"):
+            candidate = candidate[2:].strip()
+        if candidate.startswith('"') and candidate.endswith('"') and candidate[1:-1] == target:
+            return True
+    return False
+
+
+@router.get("/card/{card_id}/fingerprint")
+def get_card_image_fingerprint(
+    card_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Identify the exact official large-image bytes served by the image proxy."""
+    card = db.query(Card).filter(Card.id == card_id).first()
+    if (
+        not card
+        or not _is_globally_visible_card_image(db, card)
+        or getattr(card, "is_custom", False)
+        or not card.tcg_card_id
+        or not card.lang
+        or card.image_source_lang is not None
+        or not card.images_large
+    ):
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    url = card.images_large
+    url_hash = hashlib.sha1(url.encode("utf-8")).hexdigest()
+    cache_key = f"card:{card_id}:large:{url_hash}"
+    data, _content_type = _get_or_fetch(db, cache_key, url)
+    digest = hashlib.sha256(data).hexdigest()
+    etag = f'"{digest}"'
+    headers = {
+        "ETag": etag,
+        "Cache-Control": "public, max-age=0, must-revalidate",
+        "X-Content-Type-Options": "nosniff",
+    }
+
+    if _if_none_match_matches(request.headers.get("if-none-match"), etag):
+        return Response(status_code=304, headers=headers)
+
+    return JSONResponse(
+        content={"tcgCardId": card.tcg_card_id, "language": card.lang, "sha256": digest},
+        headers=headers,
+    )
 
 
 @router.get("/card/{card_id}/{size}")

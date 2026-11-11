@@ -1171,6 +1171,8 @@ const en = {
     priceTypeDesc: 'Which Cardmarket price is displayed',
     preferOwnCardPhotos: 'Prefer my card photos',
     preferOwnCardPhotosDesc: 'Show your private card photo first wherever one exists. Catalogue artwork remains available in the card dialog.',
+    holoEffects: 'Advanced Holo effects',
+    holoEffectsDesc: 'Matching approved effects replace the standard treatment of Holo and Reverse Holo cards. Move over these cards to reveal the foil with a very slight tilt in your collection. The card dialog and enlarged view use a fuller tilt effect. No automatic shimmer while idle. On supported phones, device motion activates with native browser permission; hold your phone nearly still for 1.3 seconds to gently recenter. Off by default; private photos and custom artwork stay unchanged. Motion follows your reduced-motion preference. Effects: Simon Goellner / pokemon-cards-css (GPL v3).',
     deleteCardPhotos: 'Delete my card photos',
     deleteCardPhotosDesc: 'Permanently delete all private photos attached to your collection cards.',
     deleteCardPhotosConfirm: 'Permanently delete all of your private collection-card photos? Catalogue images, custom cards, and scanner diagnostics are not affected.',
