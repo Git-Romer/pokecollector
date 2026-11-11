@@ -163,24 +163,24 @@ test('card artwork zoom keeps interaction on the image and fits short screens', 
   expect(fittedBox.y + fittedBox.height).toBeLessThanOrEqual(375)
 
   await zoomDialog.getByRole('button', { name: 'Zoom in' }).click()
-  await expect.poll(() => image.evaluate(node => node.style.transform)).toContain('scale(1.75)')
+  await expect.poll(() => image.evaluate(node => node.closest('[data-holo-host]').style.transform)).toContain('scale(1.75)')
   await zoomDialog.getByRole('button', { name: 'Reset zoom' }).click()
-  await expect.poll(() => image.evaluate(node => node.style.transform)).toContain('scale(1)')
+  await expect.poll(() => image.evaluate(node => node.closest('[data-holo-host]').style.transform)).toContain('scale(1)')
 
   await image.hover()
   await page.mouse.wheel(0, -120)
-  await expect.poll(() => image.evaluate(node => node.style.transform)).not.toContain('scale(1)')
+  await expect.poll(() => image.evaluate(node => node.closest('[data-holo-host]').style.transform)).not.toContain('scale(1)')
   await zoomDialog.getByRole('button', { name: 'Reset zoom' }).click()
 
   if (testInfo.project.use.hasTouch) {
     await dispatchPinch(image)
-    await expect.poll(() => image.evaluate(node => node.style.transform)).toContain('scale(2)')
+    await expect.poll(() => image.evaluate(node => node.closest('[data-holo-host]').style.transform)).toContain('scale(2)')
     await zoomDialog.getByRole('button', { name: 'Reset zoom' }).click()
   }
 
   if (testInfo.project.use.hasTouch) await image.tap()
   else await image.click()
-  await expect.poll(() => image.evaluate(node => node.style.transform)).toContain('scale(2.5)')
+  await expect.poll(() => image.evaluate(node => node.closest('[data-holo-host]').style.transform)).toContain('scale(2.5)')
   await expect(image).toHaveCSS('cursor', 'grab')
 
   let box = await image.boundingBox()
@@ -195,7 +195,7 @@ test('card artwork zoom keeps interaction on the image and fits short screens', 
     await page.mouse.move(startX + 2, startY + 1)
     await page.mouse.up()
   }
-  await expect.poll(() => image.evaluate(node => node.style.transform)).toContain('scale(1)')
+  await expect.poll(() => image.evaluate(node => node.closest('[data-holo-host]').style.transform)).toContain('scale(1)')
 
   if (testInfo.project.use.hasTouch) await image.tap()
   else await image.click()
@@ -203,11 +203,11 @@ test('card artwork zoom keeps interaction on the image and fits short screens', 
   if (!box) throw new Error('Zoomed image is not rendered')
   startX = box.x + box.width / 2
   startY = box.y + box.height / 2
-  const transformBeforeDrag = await image.evaluate(node => node.style.transform)
+  const transformBeforeDrag = await image.evaluate(node => node.closest('[data-holo-host]').style.transform)
   if (testInfo.project.use.hasTouch) {
     await dispatchTouchDrag(image, 10, 8)
-    await expect.poll(() => image.evaluate(node => node.style.transform)).not.toBe(transformBeforeDrag)
-    await expect.poll(() => image.evaluate(node => node.style.transform)).toContain('scale(2.5)')
+    await expect.poll(() => image.evaluate(node => node.closest('[data-holo-host]').style.transform)).not.toBe(transformBeforeDrag)
+    await expect.poll(() => image.evaluate(node => node.closest('[data-holo-host]').style.transform)).toContain('scale(2.5)')
     box = await image.boundingBox()
     if (!box) throw new Error('Panned image is not rendered')
     startX = box.x + box.width / 2
@@ -219,8 +219,8 @@ test('card artwork zoom keeps interaction on the image and fits short screens', 
   await expect(image).toHaveCSS('cursor', 'grabbing')
   await page.mouse.up()
   await expect(image).toHaveCSS('cursor', 'grab')
-  await expect.poll(() => image.evaluate(node => node.style.transform)).not.toBe(transformBeforeDrag)
-  await expect.poll(() => image.evaluate(node => node.style.transform)).toContain('scale(2.5)')
+  await expect.poll(() => image.evaluate(node => node.closest('[data-holo-host]').style.transform)).not.toBe(transformBeforeDrag)
+  await expect.poll(() => image.evaluate(node => node.closest('[data-holo-host]').style.transform)).toContain('scale(2.5)')
   await expect(zoomDialog).toBeVisible()
 
   await page.keyboard.press('Escape')

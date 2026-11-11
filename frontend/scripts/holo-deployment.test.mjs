@@ -11,11 +11,12 @@ test('shipped frontend CSP permits the exact official publisher without widening
   const policy = nginx.match(/add_header Content-Security-Policy "([^"]+)" always;/)?.[1]
   assert.ok(policy, 'production CSP must be explicit')
   const directives = Object.fromEntries(policy.split(';').map(part => part.trim().split(/\s+/)).filter(parts => parts[0]).map(([name, ...values]) => [name, values]))
-  assert.ok(directives['connect-src'].includes(publisher))
-  assert.ok(directives['connect-src'].includes("'self'"))
-  assert.ok(!directives['connect-src'].some(value => value.includes('*')))
+  assert.deepEqual(directives['connect-src'], [
+    "'self'", publisher, 'https://api.tcgdex.net', 'https://api.frankfurter.app',
+    'https://api.github.com', 'https://raw.githubusercontent.com',
+    'https://generativelanguage.googleapis.com',
+  ])
   assert.deepEqual(directives['script-src'], ["'self'"])
-  assert.ok(!directives['connect-src'].includes('http://pokecollector.romerg.de'))
 })
 
 test('image build exposes a publisher-origin override and local Compose forwards explicit empty values', () => {
