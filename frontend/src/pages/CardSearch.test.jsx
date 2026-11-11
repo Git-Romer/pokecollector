@@ -69,4 +69,9 @@ describe('CardSearch set code and number detection', () => {
     expect(CARD_CODE_NUMBER_RE.test('M2a 228')).toBe(true)
     expect(CARD_CODE_NUMBER_RE.test('sv08 032')).toBe(true)
   })
+
+  it('accepts digit-first set codes such as the 30th anniversary set', () => {
+    expect(CARD_CODE_NUMBER_RE.test('30C 001')).toBe(true)
+    expect(CARD_CODE_NUMBER_RE.test('30c 1')).toBe(true)
+  })
 })

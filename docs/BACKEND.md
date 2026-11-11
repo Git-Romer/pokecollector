@@ -55,7 +55,9 @@ FastAPI app entry point: `backend/main.py`.
 `page`, and `page_size`. Text filters are accent-insensitive. `rule_text`
 searches card effects plus attack/ability names and effects. Card numbers use
 the same leading-zero and alphanumeric matching as exact lookup, and `q` also
-recognizes code-number pairs such as `PFL 001`.
+recognizes code-number pairs such as `PFL 001` or `30C 001`. Set codes may start
+with a digit. A code that matches no set falls back to the name search, so card
+names that look like a code-number pair (`151 025`) stay reachable.
 
 Custom cards belong to exactly one user. Owners may publish a card as a shared template, but other users must clone it before using it in collections, wishlists, binders, products, or trades. Clones have independent IDs, metadata, images, and prices. Manual image URLs must use public HTTPS destinations and are fetched through the size-limited image proxy. During upgrade, existing custom cards become shared templates owned by the first-created admin account, while each other referencing user receives one private clone and keeps their existing references.
 

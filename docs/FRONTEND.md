@@ -249,7 +249,7 @@ planned/real conversion tools. See [`CARD_LISTS.md`](CARD_LISTS.md).
 `pages/CardSearch.jsx` keeps free text and advanced filters in the URL. Filters
 cover number, set, category, type, subtype, rarity, HP range, artist, rule text,
 language, sort, and pagination. Text matching is accent-insensitive; card-code
-queries such as `PFL 001` use the same route. The Pokédex detail screen applies
+queries such as `PFL 001` or `30C 001` use the same route. The Pokédex detail screen applies
 the compatible `dex_id` filter in Grouped mode and `pokedex_entry_id` in
 Separate forms mode when it loads matching printings.
 
