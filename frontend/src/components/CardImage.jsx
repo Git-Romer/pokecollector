@@ -205,7 +205,7 @@ export default function CardImage({
           alt={alt}
           className={className || 'w-full h-full object-cover'}
           style={{ ...(src ? {} : { opacity: 0.8 }), ...style }}
-          loading={loading === 'lazy' ? 'eager' : loading}
+          loading={loading}
           onError={handleError}
           onLoad={() => setStatus(previous => ({
             source: src,

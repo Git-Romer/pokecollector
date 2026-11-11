@@ -290,6 +290,13 @@ The system centralizes card structure, borders, image handling, badges, ownershi
 
 Approved `CardDisplay` variants include `grid`, `carousel`, `ranking`, `selectable`, `artwork`, and `compact-artwork`. A development-only component gallery is available at `/__card-system`.
 
+`CardImage` keeps its viewport gate and preserves native `loading="lazy"` after
+an image enters that gate. Explicit `loading="eager"` still takes priority. The
+shared WebKit viewport fallback, image retry state and cached-view remount
+handling remain in place. Public artwork can be served by the bounded proxy
+cache described in [BACKEND.md](BACKEND.md#image-caching); private owner photos
+are excluded.
+
 See [`CARD_SYSTEM.md`](CARD_SYSTEM.md) for usage, design tokens, review guidance, and the contributor-friendly process for proposing a new shared variant.
 
 `CardItem.jsx`, `UnifiedCard.jsx`, and the low-level state components remain implementation details of this public system and should not be imported by feature pages.

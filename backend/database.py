@@ -16,7 +16,10 @@ DATABASE_URL = os.getenv(
     "postgresql://pokemon:changeme@localhost:5432/pokemon_tcg"
 )
 
-engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_size=10, max_overflow=20)
+engine_kwargs = {"pool_pre_ping": True}
+if not DATABASE_URL.startswith("sqlite"):
+    engine_kwargs.update({"pool_size": 10, "max_overflow": 20})
+engine = create_engine(DATABASE_URL, **engine_kwargs)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 logger = logging.getLogger(__name__)

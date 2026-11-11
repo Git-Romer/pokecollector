@@ -50,7 +50,11 @@ def _card_back_response():
     # Keep using the frontend's existing placeholder artwork. The backend only
     # changes the missing-image response behavior; it must not replace the
     # placeholder image data/design.
-    return RedirectResponse(url="/cardback.jpg", status_code=307)
+    return RedirectResponse(
+        url="/cardback.jpg",
+        status_code=307,
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 def _set_fallback_response():
@@ -60,7 +64,7 @@ def _set_fallback_response():
     return FileResponse(
         _SET_FALLBACK_IMAGE,
         media_type="image/svg+xml",
-        headers={"Cache-Control": "public, max-age=86400"},
+        headers={"Cache-Control": "no-store"},
     )
 
 
@@ -190,6 +194,20 @@ def _if_none_match_matches(header_value: str | None, etag: str) -> bool:
     return False
 
 
+def _image_response(data: bytes, content_type: str, request: Request | None, cache_control: str):
+    # These routes are mutable. Validate the actual bytes, not merely the source
+    # URL: clearing/refilling the image cache can replace artwork at the same URL.
+    etag = f'"{hashlib.sha256(data).hexdigest()}"'
+    headers = {
+        "ETag": etag,
+        "Cache-Control": cache_control,
+        "X-Content-Type-Options": "nosniff",
+    }
+    if request is not None and _if_none_match_matches(request.headers.get("if-none-match"), etag):
+        return Response(status_code=304, headers=headers)
+    return Response(content=data, media_type=content_type, headers=headers)
+
+
 @router.get("/card/{card_id}/fingerprint")
 def get_card_image_fingerprint(
     card_id: str,
@@ -234,6 +252,7 @@ def get_card_image_fingerprint(
 def get_card_image(
     card_id: str,
     size: str,
+    request: Request = None,
     db: Session = Depends(get_db),
 ):
     if size not in ("small", "large"):
@@ -253,9 +272,16 @@ def get_card_image(
     if not url:
         return _card_back_response()
 
+    url_hash = hashlib.sha1(url.encode("utf-8")).hexdigest()
+    is_custom_artwork = bool(card.is_custom or (card.custom_image_url and url == card.custom_image_url))
+    cache_control = (
+        "private, no-store"
+        if is_custom_artwork
+        else "public, max-age=0, s-maxage=60, must-revalidate"
+    )
+
     try:
         if card.is_custom:
-            url_hash = hashlib.sha1(url.encode("utf-8")).hexdigest()
             data, content_type = _get_or_fetch_custom_image(
                 db,
                 f"card:{card_id}:{size}:manual:{url_hash}",
@@ -265,19 +291,19 @@ def get_card_image(
         elif card.custom_image_url and url == card.custom_image_url:
             data, content_type = _get_or_fetch_custom_image(db, f"card:{card_id}:{size}:custom", url)
         else:
-            url_hash = hashlib.sha1(url.encode("utf-8")).hexdigest()
             data, content_type = _get_or_fetch(db, f"card:{card_id}:{size}:{url_hash}", url)
     except (HTTPException, ValueError):
         return _card_back_response()
-    return Response(
-        content=data,
-        media_type=content_type,
-        headers={"Cache-Control": "public, max-age=86400"},
-    )
+    return _image_response(data, content_type, request, cache_control)
 
 
 @router.get("/set/{set_id}/{image_type}")
-def get_set_image(set_id: str, image_type: str, db: Session = Depends(get_db)):
+def get_set_image(
+    set_id: str,
+    image_type: str,
+    request: Request = None,
+    db: Session = Depends(get_db),
+):
     if image_type not in ("logo", "symbol"):
         raise HTTPException(status_code=400, detail="image_type must be logo or symbol")
 
@@ -305,16 +331,19 @@ def get_set_image(set_id: str, image_type: str, db: Session = Depends(get_db)):
     if not url:
         return _set_fallback_response()
 
+    # A corrected logo URL must not reuse a blob fetched for the previous URL.
+    url_hash = hashlib.sha1(url.encode("utf-8")).hexdigest()
+    cache_key = f"{cache_key}:{url_hash}"
+
     try:
         data, content_type = _get_or_fetch(db, cache_key, url)
     except HTTPException as exc:
         if exc.status_code == 502:
             return _set_fallback_response()
         raise
-    return Response(
-        content=data,
-        media_type=content_type,
-        headers={"Cache-Control": "public, max-age=86400"},
+    return _image_response(
+        data, content_type, request,
+        "public, max-age=0, s-maxage=60, must-revalidate",
     )
 
 
