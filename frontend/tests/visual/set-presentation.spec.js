@@ -49,6 +49,10 @@ test('set-name translation supports hover, focus, tap, Escape and outside dismis
     // Touch compatibility mouse events must not undo the deliberate tap state.
     await name.dispatchEvent('mouseout', { relatedTarget: await page.locator('h1').elementHandle() })
     await expect(tooltip).toHaveText('English name')
+    await name.tap()
+    await expect(tooltip).toBeHidden()
+    await name.tap()
+    await expect(tooltip).toBeVisible()
   }
   await expect(name).toHaveAttribute('aria-describedby', await tooltip.getAttribute('id'))
   const bounds = await tooltip.boundingBox()
@@ -66,6 +70,10 @@ test('set-name translation supports hover, focus, tap, Escape and outside dismis
   await expect(tooltip).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(tooltip).toBeHidden()
+  // A click entering from outside must not undo the hover-open event.
+  await page.mouse.move(0, 0)
+  await name.hover()
+  await expect(tooltip).toBeVisible()
   await name.click()
   await expect(tooltip).toBeVisible()
   await page.locator('h1').click()
