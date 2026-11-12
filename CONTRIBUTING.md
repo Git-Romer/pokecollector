@@ -40,7 +40,7 @@ configuration, routes, storage, privacy, or operational steps change. Keep
 historical implementation briefs clearly labelled so they are not mistaken for
 current instructions.
 
-The frontend test command also validates literal translation keys. Add new user-facing keys to `src/i18n/en.js`; other language bundles can fall back to English until a translation is contributed. Missing keys fail with the source file and line instead of appearing as raw labels in the app.
+The frontend test command validates literal translation keys and all translation JSON files. Add new user-facing keys to `src/i18n/locales/en.json`; other language bundles can fall back to English until a translation is contributed. Missing keys fail with the source file and line instead of appearing as raw labels in the app. Duplicate keys, blank translations and placeholder mismatches are also rejected.
 
 To build and run the container images from your checkout instead of pulling the
 published release images:
@@ -61,6 +61,10 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml down
 
 A plain `docker compose up` uses the published GHCR images instead of the local
 build override.
+
+## Translations
+
+Partial translations are welcome. Edit the JSON for your language in `frontend/src/i18n/locales/`, keep placeholders such as `{count}` unchanged, and run `npm run check:translations` from `frontend/`. The [translation guide](docs/TRANSLATING.md) explains the files, contributor credit and the planned Hosted Weblate workflow. Browser-based contributions will be linked there once the integration is active.
 
 ## Card interfaces
 

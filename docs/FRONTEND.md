@@ -114,7 +114,9 @@ Provides:
 
 Notes:
 
-- Translation bundles are loaded from `frontend/src/i18n/` and wired in `SettingsContext`
+- Translation data lives in `frontend/src/i18n/locales/*.json`; small `.js` import wrappers preserve existing loaders in `SettingsContext`.
+- English is the source and runtime fallback. Missing target keys are allowed; blank values are not. Regional aliases continue to reuse their current base catalogue.
+- `npm run check:translations` validates JSON, duplicate keys, value shapes, placeholders and literal UI keys. See [Translating PokéCollector](TRANSLATING.md) for contributor instructions and the pending Hosted Weblate setup.
 - UI languages include all supported TCGdex language codes, plus Swedish. Regional variants such as `es-mx`, `pt-br`, `pt-pt`, `zh-tw`, and `zh-cn` are selectable from a compact dropdown in Settings.
 - Legacy stored `zh` settings are normalized in the frontend to `zh-cn` for display
 - EUR and USD source prices use the backend Frankfurter rate cache, which serves the latest saved quotes when the provider is offline
