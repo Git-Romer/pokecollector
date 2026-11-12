@@ -1,6 +1,47 @@
 // IMPORTANT: Every key added to de.js MUST also be added to en.js with an English translation.
 // The SettingsContext falls back to German if a key is missing in the active language file.
 const de = {
+  bulkRemoval: {
+      "select": "Karten auswählen",
+"actions": "Auswahlaktionen",
+"conflictTitle": "Diese Karten sind noch zugeordnet",
+"conflictHint": "Es wurde nichts entfernt. Prüfe die betroffenen Karten und ihre Zuordnungen.",
+"copies": "{count} Exemplare",
+"releaseAssignments": "Aufgelistete Zuordnungen entfernen",
+"confirmRelease": "Entfernen der Zuordnungen bestätigen",
+"releaseConfirm": "{entries} aufgelistete Zuordnungen mit {copies} Exemplaren aus diesen Ordnern und Decks entfernen? Nur die ausgewählten Sammlungseinträge sind betroffen. Dein Sammlungsbestand bleibt unverändert.",
+"released": "Zuordnungen entfernt. Deine Sammlung wurde nicht gelöscht. Du kannst das Entfernen aus der Sammlung erneut versuchen.",
+"retryRemoval": "Entfernen aus Sammlung erneut versuchen",
+"productProtected": "Verknüpftes Produkt:",
+"productHint": "Produktverknüpfungen benötigen eine eigene Bestätigung. Verknüpfungen mit Verkaufs- oder Tauschhistorie können nicht entfernt werden.",
+"unlinkProduct": "Produktverknüpfung entfernen",
+"confirmUnlink": "Entfernen bestätigen",
+"unlinkProducts": "Aufgelistete Produktverknüpfungen entfernen",
+"confirmUnlinkProducts": "Entfernen der Produktverknüpfungen bestätigen",
+"unlinkAllConfirm": "{entries} Produktverknüpfungen mit {copies} Exemplaren entfernen? Alle angezeigten Verknüpfungen müssen entfernbar sein, sonst wird nichts geändert. Produkte und eigene Exemplare bleiben erhalten. Es wird kein Verkauf erfasst.",
+"unavailableEntries": "Diese Eintrags-IDs sind nicht mehr verfügbar: {ids}. Schließe dieses Fenster und aktualisiere die Ansicht.",
+"cancelUnlink": "Entfernen abbrechen",
+"unlinkConfirm": "Verknüpfung von {copies} Exemplaren von {card} mit {product} entfernen? Das Produkt und deine Sammlung bleiben erhalten. Nur die Verknüpfung wird entfernt, kein Verkauf erfasst.",
+"blockersCleared": "Verknüpfungen entfernt. Deine Sammlung wurde nicht gelöscht. Du kannst das Entfernen aus der Sammlung jetzt erneut versuchen.",
+"assignmentsChanged": "Zuordnungen wurden geändert. Prüfe die aktualisierte Liste und bestätige erneut.",
+"close": "Schließen",
+      "selectVisible": "Sichtbare auswählen",
+      "removeSelected": "Ausgewählte entfernen",
+      "cancelSelection": "Auswahl abbrechen",
+      "selected": "{entries} Einträge · {copies} Exemplare ausgewählt",
+      "titleCollection": "Aus Sammlung entfernen?",
+      "titleBinder": "Aus Ordner entfernen?",
+      "titleDeck": "Aus Deck entfernen?",
+      "confirmCollection": "Möchtest du {entries} Einträge mit {copies} Exemplaren aus deiner Sammlung entfernen? Alle Exemplare dieser Einträge werden entfernt, aber keine Karten aus Ordnern oder Decks. Zugewiesene oder mit Produkten verknüpfte Einträge müssen zuerst freigegeben werden. Das kann nicht rückgängig gemacht werden.",
+      "confirmBinder": "Möchtest du {entries} Einträge mit {copies} Exemplaren aus diesem Ordner entfernen? Deine Sammlung und andere Listen bleiben unverändert.",
+      "confirmDeck": "Möchtest du {entries} Einträge mit {copies} Exemplaren aus diesem Deck entfernen? Deine Sammlung und andere Listen bleiben unverändert.",
+      "collectionHint": "Alle Exemplare der ausgewählten Einträge werden entfernt. Zuweisungen in Ordnern und Decks müssen vorher separat freigegeben werden.",
+      "listHint": "Nur Einträge in dieser Liste werden entfernt. Deine Sammlung und andere Listen bleiben unverändert.",
+      "limit": "Wähle höchstens 500 Einträge gleichzeitig aus. Grenze den Filter ein, um weniger sichtbare Einträge auszuwählen.",
+      "changed": "Die Auswahl hat sich während der Bestätigung geändert. Prüfe die Einträge und bestätige erneut.",
+      "failed": "Das Entfernen konnte nicht bestätigt werden. Lade die Seite vor einem erneuten Versuch neu."
+  },
+
   // Navigation
   nav: {
     dashboard: 'Dashboard',

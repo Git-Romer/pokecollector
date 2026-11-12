@@ -1,3 +1,6 @@
+import { bulkRemoveCollectionItems } from '../api/client'
+import { useBulkRemoval } from '../hooks/useBulkRemoval'
+import BulkRemovalToolbar, { BulkRemovalToggle, BulkRemovalActions } from '../components/BulkRemovalToolbar'
 import { useState, useMemo, useId, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -1279,6 +1282,16 @@ export default function Collection() {
     return result
   }, [items, filterRarity, filterCondition, filterVariant, filterPrintingDetail, filterSet, filterType, filterCategories, filterSubtypes, filterLegality, filterLang, filterMinPrice, filterMaxPrice, filterDuplicates, searchText, sortBy, sortOrder, pricePrimaryField])
 
+  const bulkRemoval = useBulkRemoval({
+    items: filtered, kind: 'collection', scopeKey: 'collection', t,
+    remove: bulkRemoveCollectionItems,
+    blocked: csvImportMutation.isPending,
+  })
+  const selectionCheckbox = item => (
+    <input type="checkbox" className="h-4 w-4 accent-brand-red" checked={bulkRemoval.selectedIds.has(item.id)}
+      disabled={bulkRemoval.locked} aria-label={`${t('bulkRemoval.select')} ${item.card?.name || item.id}`}
+      onClick={event => event.stopPropagation()} onChange={() => bulkRemoval.toggle(item)} />
+  )
   const totalValue = filtered.reduce((sum, item) => sum + (getEffectivePrice(item.card, item.variant) * item.quantity), 0)
   const totalCards = filtered.reduce((sum, item) => sum + item.quantity, 0)
   const exportParams = { price_field: pricePrimaryField, currency }
@@ -1314,19 +1327,21 @@ export default function Collection() {
 
   return (
     <>
-      <div className="space-y-4 pb-2">
+      <div className={`space-y-4 ${bulkRemoval.active ? 'pb-48 lg:pb-6' : 'pb-6'}`}>
         <TabNav tabs={COLLECTION_TABS} />
 
       {/* ─── Header ───────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
+      <header className={`flex items-center justify-between gap-2 mb-4 flex-wrap ${bulkRemoval.active ? 'lg:sticky lg:top-3 lg:z-30 lg:bg-bg-surface/95 lg:py-2 lg:backdrop-blur' : ''}`}>
         <div className="min-w-0">
           <h1 className="text-xl font-bold text-text-primary">{t('collection.title')}</h1>
           <p className="text-sm text-text-secondary mt-1">
             {totalCards.toLocaleString()} {t('collection.cards')} · {formatPrice(totalValue)} {t('collection.totalValue')}
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <BulkRemovalActions selection={bulkRemoval} empty={filtered.length === 0}>
+          <div className="flex items-center gap-2 flex-wrap">
 
+          <BulkRemovalToggle selection={bulkRemoval} empty={filtered.length === 0} />
           {/* VIEW TOGGLE */}
           <div className="flex items-center gap-0.5 bg-bg-elevated rounded-lg p-1">
             <button
@@ -1377,7 +1392,8 @@ export default function Collection() {
           <button onClick={() => handleExport(exportCSV)} className="btn-ghost text-sm py-1.5 px-2" title="CSV" aria-label="CSV"><Download size={14} />CSV</button>
           <button onClick={() => handleExport(exportPDF)} className="btn-ghost text-sm py-1.5"><Download size={14} />PDF</button>
         </div>
-      </div>
+        </BulkRemovalActions>
+      </header>
 
       <PrintingDetailTagManager
         isOpen={showPrintingDetailManager}
@@ -1579,6 +1595,8 @@ export default function Collection() {
         />
       )}
 
+      <BulkRemovalToolbar selection={bulkRemoval} kind="collection" empty={filtered.length === 0} />
+
       {/* ─── GRID BINDER VIEW ─────────────────────────────────────── */}
       {viewMode === 'grid' && (
         <>
@@ -1610,7 +1628,10 @@ export default function Collection() {
                       languageLabel={hasMixedCollectionLanguages && item.lang ? tcgdexLanguageLabel(item.lang) : null}
                       variantEffectSource={item.variant}
                       stateIndicatorProps={{ card: cardState, alwaysShowQuantity: true }}
-                      onClick={() => setEditingCollectionItem(item)}
+                      onClick={bulkRemoval.active ? undefined : () => setEditingCollectionItem(item)}
+                      onSelect={bulkRemoval.active ? () => bulkRemoval.toggle(item) : undefined}
+                      selected={bulkRemoval.selectedIds.has(item.id)}
+                      unavailableReason={bulkRemoval.active && bulkRemoval.locked ? t('common.loading') : undefined}
                       overlay={(
                         <>
                           <ProductSourceBadge item={item} t={t} compact className="absolute bottom-2 left-2 z-20 h-6 w-6" />
@@ -1670,9 +1691,10 @@ export default function Collection() {
                         <tr
                           key={item.id}
                           className="border-b border-border/50 hover:bg-bg-elevated/50 transition-colors cursor-pointer"
-                          onClick={() => setEditingCollectionItem(item)}
+                          onClick={() => bulkRemoval.active ? bulkRemoval.toggle(item) : setEditingCollectionItem(item)}
                         >
                           <td className="px-4 py-3">
+                            {bulkRemoval.active && <span className="mr-3 inline-flex">{selectionCheckbox(item)}</span>}
                             <CollectionCardIdentity
                               item={item}
                               name={card?.name}
@@ -1719,7 +1741,8 @@ export default function Collection() {
                               className="rounded-lg p-2 text-text-muted transition-colors hover:bg-bg-card hover:text-text-primary"
                               onClick={(event) => {
                                 event.stopPropagation()
-                                setEditingCollectionItem(item)
+                                if (bulkRemoval.active) bulkRemoval.toggle(item)
+                                else setEditingCollectionItem(item)
                               }}
                               aria-label={`${t('common.edit')} ${card?.name || ''}`}
                             >
@@ -1769,7 +1792,8 @@ export default function Collection() {
                       badges={badges}
                       value={marketPrice > 0 ? formatPrice(totalVal) : '-'}
                       valueSecondary={pnl !== null ? `${pnl >= 0 ? '+' : ''}${formatPrice(pnl)}` : undefined}
-                      onClick={() => setEditingCollectionItem(item)}
+                      onClick={() => bulkRemoval.active ? bulkRemoval.toggle(item) : setEditingCollectionItem(item)}
+                      rightAction={bulkRemoval.active ? selectionCheckbox(item) : undefined}
                       variantEffectSource={item.variant}
                     />
                   )

@@ -244,6 +244,25 @@ Planned Decks store requirements without reserving inventory. The Deck editor
 adds validation, composition, shortage, legality, probability, duplicate, and
 planned/real conversion tools. See [`CARD_LISTS.md`](CARD_LISTS.md).
 
+### Bulk removal within one view
+
+Collection, binder details and the deck editor each have their own **Select**
+control. Select individual entries, or use **Select visible** for the current
+filter, then **Remove selected**. Confirmation shows both entry and copy counts.
+Up to 500 entries can be selected per request. Cancellation keeps the selection;
+leaving selection mode clears it. Changing a filter drops hidden selections.
+
+Collection removal deletes all copies in each selected collection entry, not
+other entries for the same catalogue card. Existing binder/deck allocations and
+active product links still block the entire selection. Release allocations in
+the appropriate list first. Binder and deck removal changes only that list,
+releasing its applicable allocations without reducing collection quantities.
+Planned lists change only their plan. There is no combined remove-everywhere action.
+
+The shared `useBulkRemoval` hook and `BulkRemovalToolbar` coordinate confirmation,
+selection and cache refresh; the existing card gallery displays selected entries.
+Failures keep the selection visible. A pending operation cannot be submitted twice.
+
 ### Search, Pokédex, products, and trades
 
 `pages/CardSearch.jsx` keeps free text and advanced filters in the URL. Filters
@@ -362,3 +381,12 @@ Notable frontend API bindings include:
 
 - No eBay integration in the current frontend
 - No grading UI in the current frontend
+
+
+Bulk selection starts from **Select cards** in each view header. Selection actions remain sticky on desktop and above navigation on mobile. A blocked collection-removal popup names every affected card and its lists/products. Assignment removal requires its own confirmation; collection deletion requires a separate retry and confirmation. Product sources are shown but never automatically unlinked.
+
+
+The conflict popup also offers a separately confirmed **Unlink from product** action beside each product source. It calls the documented product DELETE endpoint with the displayed collection-entry ID and active quantity as preconditions. Failed/history-protected links remain visible; unlinking never deletes ownership or records a sale. Collection removal still needs a separate retry and confirmation.
+
+
+**Unlink listed products** submits every displayed product-link snapshot in one atomic bulk API call, rather than looping individual requests. A failed bulk call keeps every displayed blocker and does not report a partial success. A separate collection-removal retry is still required. API business failures provide structured blocker codes and follow-up resolution payloads; unavailable entries are not silently dropped from a requested deletion.

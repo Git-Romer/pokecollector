@@ -1,3 +1,5 @@
+from schemas import BulkRemoveRequest, BulkRemoveResponse
+from services.card_list_removal import remove_card_list_entries
 import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -685,3 +687,11 @@ def delete_deck_entry(
     deck.updated_at = datetime.datetime.utcnow()
     db.commit()
     return get_deck(deck_id, current_user, db)
+
+
+@router.post('/{deck_id}/entries/bulk-delete', response_model=BulkRemoveResponse)
+def bulk_remove_deck_entries(
+    deck_id: int, request: BulkRemoveRequest,
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    return remove_card_list_entries(db, current_user.id, deck_id, request.item_ids, deck=True)

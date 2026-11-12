@@ -1,6 +1,47 @@
 // IMPORTANT: Every key added to de.js MUST also be added to en.js with an English translation.
 // The SettingsContext falls back to German if a key is missing in the active language file.
 const en = {
+  bulkRemoval: {
+      "select": "Select cards",
+"actions": "Selection actions",
+"conflictTitle": "These cards are still assigned",
+"conflictHint": "Nothing was removed. Review the affected cards and their assignments below.",
+"copies": "{count} copies",
+"releaseAssignments": "Remove listed assignments",
+"confirmRelease": "Confirm removal of assignments",
+"releaseConfirm": "Remove {entries} listed assignments containing {copies} copies from these binders and decks? Only the selected collection entries are affected. Collection ownership will stay unchanged.",
+"released": "Assignments removed. Your collection has not been deleted. You can now retry collection removal.",
+"retryRemoval": "Retry collection removal",
+"productProtected": "Linked product:",
+"productHint": "Product links require a separate confirmation. Links with sale or trade history cannot be removed.",
+"unlinkProduct": "Unlink from product",
+"confirmUnlink": "Confirm unlink",
+"unlinkProducts": "Unlink listed products",
+"confirmUnlinkProducts": "Confirm unlink of products",
+"unlinkAllConfirm": "Unlink {entries} product links covering {copies} copies? All displayed links must be removable or nothing changes. Products and owned copies stay in place. No sale is recorded.",
+"unavailableEntries": "These entry IDs are no longer available: {ids}. Close this popup and refresh before trying again.",
+"cancelUnlink": "Cancel unlink",
+"unlinkConfirm": "Unlink {copies} copies of {card} from {product}? The product and your collection stay unchanged. This removes only the link and does not record a sale.",
+"blockersCleared": "Links removed. Your collection has not been deleted. You can now retry collection removal.",
+"assignmentsChanged": "Assignments changed. Review the updated list and confirm again.",
+"close": "Close",
+      "selectVisible": "Select visible",
+      "removeSelected": "Remove selected",
+      "cancelSelection": "Cancel selection",
+      "selected": "{entries} entries · {copies} copies selected",
+      "titleCollection": "Remove from collection?",
+      "titleBinder": "Remove from binder?",
+      "titleDeck": "Remove from deck?",
+      "confirmCollection": "Remove {entries} entries containing {copies} copies from your collection? This removes all copies in those entries, not cards from binders or decks. Allocated or product-linked entries must be released first. This cannot be undone.",
+      "confirmBinder": "Remove {entries} entries containing {copies} copies from this binder? Your collection and other lists will stay unchanged.",
+      "confirmDeck": "Remove {entries} entries containing {copies} copies from this deck? Your collection and other lists will stay unchanged.",
+      "collectionHint": "All copies in each selected entry will be removed. Binder and deck allocations must be released separately first.",
+      "listHint": "Only entries in this list will be removed. Your collection and other lists will stay unchanged.",
+      "limit": "Select up to 500 entries at a time. Narrow the filter to select fewer visible entries.",
+      "changed": "The selection changed while confirming. Check the entries and confirm again.",
+      "failed": "Removal could not be confirmed. Refresh before trying again."
+  },
+
   // Navigation
   nav: {
     dashboard: 'Dashboard',
