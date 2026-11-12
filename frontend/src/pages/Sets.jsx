@@ -557,7 +557,10 @@ export default function Sets() {
                 )}
 
                 {/* Set logo area — big, centered with dot pattern */}
-                <div className="h-28 sm:h-32 bg-bg-elevated flex items-center justify-center relative overflow-hidden">
+                <div
+                  className="h-28 sm:h-32 bg-bg-elevated border-b border-border/40 flex items-center justify-center relative overflow-hidden"
+                  style={{ backgroundImage: 'radial-gradient(ellipse at 50% 35%, rgba(255,255,255,0.035), transparent 75%)' }}
+                >
                   {/* Dot grid background pattern */}
                   <div
                     className="absolute inset-0 opacity-5"
@@ -566,20 +569,22 @@ export default function Sets() {
                       backgroundSize: '24px 24px',
                     }}
                   />
-                  {/* Subtle background symbol */}
-                  {resolveSetImageUrl(set, 'symbol') && (
+                  {/* Echo this set's logo, not the symbol endpoint's generic fallback. */}
+                  {set.images_logo && (
                     <img
-                      src={resolveSetImageUrl(set, 'symbol')}
+                      src={resolveSetImageUrl(set, 'logo')}
                       alt=""
-                      className="absolute inset-0 w-full h-full object-contain opacity-[0.04] scale-150 pointer-events-none"
+                      aria-hidden="true"
+                      loading="lazy"
+                      className="absolute inset-0 m-auto h-[70%] w-[76%] scale-[1.8] object-contain opacity-[0.075] blur-[2px] pointer-events-none select-none"
+                      style={{ maskImage: 'radial-gradient(ellipse at center, black 20%, transparent 78%)' }}
                     />
                   )}
-
                   {resolveSetImageUrl(set, 'logo') ? (
                     <img
                       src={resolveSetImageUrl(set, 'logo')}
                       alt={set.name}
-                      className="max-h-[80%] max-w-[75%] object-contain group-hover:scale-105 transition-transform duration-300 relative z-10"
+                      className="h-[70%] w-[76%] object-contain drop-shadow-md group-hover:scale-105 transition-transform duration-300 motion-reduce:transition-none motion-reduce:group-hover:scale-100 relative z-10"
                       loading="lazy"
                     />
                   ) : resolveSetImageUrl(set, 'symbol') ? (

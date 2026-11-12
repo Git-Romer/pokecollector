@@ -23,7 +23,8 @@ async function installApi(page, language = 'en') {
       '/api/settings/tcgdex-filter-languages': ['en', 'de', 'ja'],
       '/api/sets/': [
         { id: 'shared_de', tcg_set_id: 'shared', name: 'Deutscher Name', lang: 'de', total: 100, owned_count: 5,
-          release_date: '2026-07-01', translated_name: 'English name', translated_name_lang: 'en' },
+          release_date: '2026-07-01', images_logo: 'https://assets.example.test/shared/logo.png',
+          translated_name: 'English name', translated_name_lang: 'en' },
         { id: 'exclusive_ja', tcg_set_id: 'exclusive', name: '日本語のセット', lang: 'ja', total: 50, owned_count: 0,
           release_date: '2026-08-01', translated_name: null, translated_name_lang: null },
       ],
@@ -76,6 +77,50 @@ test('set-name translation supports hover, focus, tap, Escape and outside dismis
   await expect(unavailable.getByRole('tooltip')).toHaveCount(0)
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   expect(errors).toEqual([])
+})
+
+test('set cards use their own logo as a decorative background without duplicating missing-artwork fallbacks', async ({ page }) => {
+  await installApi(page)
+  await page.route('**/api/images/set/exclusive_ja/logo', route => route.fulfill({
+    contentType: 'image/svg+xml',
+    body: '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="160"><text x="160" y="95" text-anchor="middle" fill="#aaa" font-size="48">Pokémon</text></svg>',
+  }))
+  const symbolRequests = []
+  page.on('request', request => {
+    if (/\/api\/images\/set\/[^/]+\/symbol$/.test(new URL(request.url()).pathname)) symbolRequests.push(request.url())
+  })
+  await page.goto('/sets')
+  const card = page.locator('[data-scroll-anchor="set-shared_de"]')
+  const logo = card.getByRole('img', { name: 'Deutscher Name', exact: true })
+  await expect(logo).toBeVisible()
+  await expect.poll(() => logo.evaluate(image => image.complete && image.naturalWidth > 0)).toBe(true)
+  const backdrop = card.locator('img[aria-hidden="true"]')
+  await expect(backdrop).toHaveCount(1)
+  await expect(backdrop).toHaveAttribute('src', await logo.getAttribute('src'))
+  await expect(backdrop).toHaveAttribute('alt', '')
+  await expect(backdrop).toHaveCSS('pointer-events', 'none')
+  const alignment = await backdrop.evaluate((image) => {
+    const foreground = image.parentElement.querySelector('img:not([aria-hidden="true"])')
+    const backgroundBox = image.getBoundingClientRect()
+    const foregroundBox = foreground.getBoundingClientRect()
+    const transform = new DOMMatrixReadOnly(getComputedStyle(image).transform)
+    return {
+      x: Math.abs(backgroundBox.x + backgroundBox.width / 2 - foregroundBox.x - foregroundBox.width / 2),
+      y: Math.abs(backgroundBox.y + backgroundBox.height / 2 - foregroundBox.y - foregroundBox.height / 2),
+      rotationX: transform.b, rotationY: transform.c,
+    }
+  })
+  expect(alignment.x).toBeLessThan(1)
+  expect(alignment.y).toBeLessThan(1)
+  expect(alignment.rotationX).toBe(0)
+  expect(alignment.rotationY).toBe(0)
+  await expect(card.locator('img')).toHaveCount(2)
+  const fallbackCard = page.locator('[data-scroll-anchor="set-exclusive_ja"]')
+  const fallback = fallbackCard.getByRole('img', { name: '日本語のセット', exact: true })
+  await fallback.scrollIntoViewIfNeeded()
+  await expect.poll(() => fallback.evaluate(image => image.complete && image.naturalWidth > 0)).toBe(true)
+  await expect(fallbackCard.locator('img')).toHaveCount(1)
+  expect(symbolRequests).toEqual([])
 })
 
 test('date labels and requested name locale follow the app language, not card language', async ({ page }) => {
