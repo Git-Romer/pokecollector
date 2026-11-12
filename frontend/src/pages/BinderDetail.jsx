@@ -1,3 +1,6 @@
+import { bulkRemoveBinderEntries } from '../api/client'
+import { useBulkRemoval } from '../hooks/useBulkRemoval'
+import BulkRemovalToolbar, { BulkRemovalToggle, BulkRemovalActions } from '../components/BulkRemovalToolbar'
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -368,9 +371,6 @@ export default function BinderDetail() {
     if (binderType === 'deck') navigate(`/decks/${binderId}`, { replace: true })
   }, [binderId, binderType, navigate])
 
-  if (isLoading) return <div className="skeleton h-64 rounded-xl" />
-  if (binderType === 'deck') return <div className="skeleton h-64 rounded-xl" />
-
   const cards = data?.cards || []
   const unavailableCollectionItemIds = new Set(data?.unavailable_collection_item_ids || [])
   const ownedCount = data?.owned_count ?? cards.reduce((sum, c) => sum + Math.min(c.owned_quantity || 0, c.required_quantity || 1), 0)
@@ -403,6 +403,15 @@ export default function BinderDetail() {
     return true
   }), binderSortBy, { isWishlist })
 
+  const bulkRemoval = useBulkRemoval({
+    items: visibleCards, kind: 'binder', scopeKey: `binder:${binderId}`, t,
+    remove: ids => bulkRemoveBinderEntries(binderId, ids),
+    blocked: removeMutation.isPending || updateEntryMutation.isPending || importMutation.isPending || applyPrintOptimizationMutation.isPending,
+  })
+
+  if (isLoading) return <div className="skeleton h-64 rounded-xl" />
+  if (binderType === 'deck') return <div className="skeleton h-64 rounded-xl" />
+
   const changeRequiredQuantity = (card, delta) => {
     const maximum = isCollection ? (card.max_assignable_quantity || 1) : 99
     const next = Math.max(1, Math.min(maximum, (card.required_quantity || 1) + delta))
@@ -427,12 +436,12 @@ export default function BinderDetail() {
   }
 
   return (
-    <div className="space-y-4 pb-2">
+    <div className={`space-y-4 ${bulkRemoval.active ? 'pb-48 lg:pb-6' : 'pb-6'}`}>
       <button onClick={() => navigate('/binders')} className="btn-ghost text-sm py-1.5">
         <ArrowLeft size={14} /> {t('nav.binders')}
       </button>
 
-      <div className="flex items-start justify-between gap-3 flex-wrap">
+      <header className={`flex items-start justify-between gap-3 flex-wrap ${bulkRemoval.active ? 'lg:sticky lg:top-3 lg:z-30 lg:bg-bg-surface/95 lg:py-2 lg:backdrop-blur' : ''}`}>
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: binder?.color }} />
@@ -453,7 +462,9 @@ export default function BinderDetail() {
           {binder?.description && <p className="text-sm text-text-secondary mt-1">{binder.description}</p>}
           <p className="text-xs text-text-muted mt-1">{formatBinderCountSummary(totalCount, uniqueCount, t)}</p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <BulkRemovalActions selection={bulkRemoval} empty={visibleCards.length === 0}>
+          <div className="flex items-center gap-2 flex-wrap">
+          <BulkRemovalToggle selection={bulkRemoval} empty={visibleCards.length === 0} />
           <button
             onClick={() => {
               if (showSearch) clearPickerSelection()
@@ -515,7 +526,8 @@ export default function BinderDetail() {
           </button>
           <input ref={fileInputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleImportFile} />
         </div>
-      </div>
+        </BulkRemovalActions>
+      </header>
 
       <div className={isWishlist ? "grid grid-cols-2 md:grid-cols-5 gap-2" : "grid grid-cols-2 md:grid-cols-4 gap-2"}>
         <div className="card p-3"><p className="text-xs text-text-muted">{t('binderTypes.required')}</p><p className="text-lg font-bold text-text-primary">{totalCount}</p></div>
@@ -625,6 +637,8 @@ export default function BinderDetail() {
         </>
       )}
 
+      <BulkRemovalToolbar selection={bulkRemoval} kind="binder" empty={visibleCards.length === 0} />
+
       {cards.length > 0 && (
         <div className="card p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
           <input
@@ -675,6 +689,7 @@ export default function BinderDetail() {
       ) : (
         <CardListGallery
           entries={visibleCards}
+          selection={bulkRemoval}
           mode={isWishlist ? 'planned' : 'physical'}
           onOpen={card => setSelectedCard(card)}
           t={t}

@@ -1,3 +1,6 @@
+from schemas import BulkRemoveRequest, BulkRemoveResponse
+from services.card_list_removal import remove_card_list_entries
+from services.binder_allocations import trim_deck_allocations as _trim_deck_allocations
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, or_
@@ -241,34 +244,6 @@ def _deck_plan_query(query, binder_type: str):
         return query.filter(BinderCard.collection_item_id.is_(None))
     return query
 
-
-def _trim_deck_allocations(
-    db: Session,
-    binder_id: int,
-    card_id: str,
-    required_quantity: int,
-) -> None:
-    """Keep exact Deck allocations at or below the matching plan quantity."""
-    allocations = db.query(BinderCard).filter(
-        BinderCard.binder_id == binder_id,
-        BinderCard.card_id == card_id,
-        BinderCard.collection_item_id.isnot(None),
-    ).order_by(BinderCard.id.asc()).with_for_update(of=BinderCard).all()
-    remaining = max(
-        sum(_safe_required_quantity(row.required_quantity) for row in allocations)
-        - max(int(required_quantity or 0), 0),
-        0,
-    )
-    for row in reversed(allocations):
-        if remaining == 0:
-            break
-        quantity = _safe_required_quantity(row.required_quantity)
-        removed = min(quantity, remaining)
-        if removed == quantity:
-            db.delete(row)
-        else:
-            row.required_quantity = quantity - removed
-        remaining -= removed
 
 
 def _ensure_card_gameplay_data(db: Session, card: Card | None) -> Card | None:
@@ -2649,3 +2624,11 @@ def remove_card_from_binder(
         db.delete(bc)
     db.commit()
     return {"message": "Card removed from binder"}
+
+
+@router.post('/{binder_id}/entries/bulk-delete', response_model=BulkRemoveResponse)
+def bulk_remove_binder_entries(
+    binder_id: int, request: BulkRemoveRequest,
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    return remove_card_list_entries(db, current_user.id, binder_id, request.item_ids, deck=False)

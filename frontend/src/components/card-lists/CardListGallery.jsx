@@ -12,6 +12,7 @@ export default function CardListGallery({
   pricePrimaryField,
   publicQuantityLabel,
   publicDetailLabel,
+  selection,
 }) {
   const planned = mode === 'planned'
   const publicView = mode === 'public'
@@ -76,7 +77,10 @@ export default function CardListGallery({
                 progressLabel={progressLabel}
               />
             ) : undefined}
-            onClick={() => onOpen(entry, index)}
+            onClick={selection?.active ? undefined : () => onOpen?.(entry, index)}
+            onSelect={selection?.active ? () => selection.toggle(entry) : undefined}
+            selected={selection?.selectedIds.has(entry.binder_card_id ?? entry.id) || false}
+            unavailableReason={selection?.active && selection.locked ? t('common.loading') : undefined}
             actionLabel={label?.('cardListPicker.openCard', { name: card.name || card.id })}
           />
         )
