@@ -6,6 +6,7 @@ export default function SetName({ set, language }) {
   const id = useId()
   const trigger = useRef(null)
   const tooltip = useRef(null)
+  const pointerType = useRef(null)
   const [anchor, setAnchor] = useState(null)
   const translated = set.translated_name_lang === language && set.translated_name?.trim()
   const available = translated && translated !== set.name
@@ -42,7 +43,14 @@ export default function SetName({ set, language }) {
       onPointerLeave={event => { if (event.pointerType === 'mouse' && !tooltip.current?.contains(event.relatedTarget)) hide() }}
       onFocus={event => { if (event.currentTarget.matches(':focus-visible')) show() }}
       onBlur={hide}
-      onClick={event => { event.stopPropagation(); if (anchor) hide(); else show() }}
+      onPointerDown={event => { pointerType.current = event.pointerType }}
+      onClick={event => {
+        event.stopPropagation()
+        // Mouse entry can already have opened the tooltip before this click.
+        if (event.detail !== 0 && pointerType.current === 'mouse') show()
+        else if (anchor) hide()
+        else show()
+      }}
     >{set.name}</button>
     {anchor && createPortal(<span
       ref={tooltip}
