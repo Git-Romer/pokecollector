@@ -1242,8 +1242,8 @@ export default function Collection() {
         const nameMatch = textIncludes(card?.name, q)
         const setMatch = textIncludes(card?.set_name, q) || textIncludes(card?.set?.name, q) || textIncludes(card?.set_ref?.name, q)
         const numberMatch = cardNumberMatches(card?.number, q) || cardNumberMatches(card?.localId, q)
-        // Support "SET NUMBER" shortcode (e.g. "PFL 001", "OBF 125")
-        const codeMatch = /^([A-Za-z]+\d*)\s+(\d+)$/.exec(q)
+        // Support "SET NUMBER" shortcode (e.g. "PFL 001", "OBF 125", "30C 001")
+        const codeMatch = /^([A-Za-z0-9]+)\s+(\d+)$/.exec(q)
         let shortcodeMatch = false
         if (codeMatch) {
           const [, setCode, num] = codeMatch

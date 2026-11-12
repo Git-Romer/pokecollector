@@ -88,6 +88,42 @@ class CardSearchQueryParameterTests(unittest.TestCase):
                 lang="en",
                 is_custom=False,
             ),
+            Set(
+                id="30th_ja",
+                tcg_set_id="30th",
+                name="30th Anniversary",
+                abbreviation="30C",
+                lang="ja",
+            ),
+            Card(
+                id="30th-001_ja",
+                tcg_card_id="30th-001",
+                name="Owei",
+                set_id="30th",
+                number="001",
+                lang="ja",
+                is_custom=False,
+            ),
+            # Cards whose names look like a code-number pair. They must stay
+            # reachable through the name search when the code matches no set.
+            Card(
+                id="named-151-025_en",
+                tcg_card_id="named-151-025",
+                name="151 025",
+                set_id="named",
+                number="025",
+                lang="en",
+                is_custom=False,
+            ),
+            Card(
+                id="named-30c-001_ja",
+                tcg_card_id="named-30c-001",
+                name="30C 001",
+                set_id="named",
+                number="001",
+                lang="ja",
+                is_custom=False,
+            ),
         ])
         self.db.commit()
         self.db.refresh(self.user)
@@ -117,6 +153,26 @@ class CardSearchQueryParameterTests(unittest.TestCase):
 
     def test_q_routes_to_existing_set_code_and_number_search(self):
         self.assertEqual(self._search_ids(q="m2a 228", lang="ja"), ["M2a-228_ja"])
+
+    def test_q_routes_to_digit_first_set_code_search(self):
+        # "30C 001" must not be treated as a plain name search: the 30th
+        # anniversary set carries a digit-first official abbreviation.
+        self.assertEqual(self._search_ids(q="30C 001", lang="ja"), ["30th-001_ja"])
+        self.assertEqual(self._search_ids(q="30c 1", lang="ja"), ["30th-001_ja"])
+
+    def test_resolved_set_code_does_not_fall_back_to_card_name_search(self):
+        # The set code resolved, so only that set may answer the query. The
+        # card named "30C 001" must not leak into the result.
+        self.assertEqual(self._search_ids(q="30C 001", lang="ja"), ["30th-001_ja"])
+
+    def test_unknown_set_code_falls_back_to_card_name_search(self):
+        # "151 025" matches no set, so the term must still reach a card whose
+        # name looks like a code-number pair.
+        with patch("api.cards.pokemon_api.get_all_sets", return_value=[]):
+            self.assertEqual(
+                self._search_ids(q="151 025", lang="en"),
+                ["named-151-025_en"],
+            )
 
     def test_http_query_binding_decodes_q_and_keeps_legacy_name_compatible(self):
         with patch("api.cards.enrich_card_metadata_ids_in_background"):
