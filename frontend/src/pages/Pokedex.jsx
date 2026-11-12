@@ -56,7 +56,7 @@ function PokemonTile({ entry, onClick, language, t }) {
       data-scroll-anchor={`pokemon-${entry.entry_id}`}
       onClick={onClick}
       className={clsx(
-        'group relative rounded-2xl border p-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-brand-red',
+        'group relative rounded-2xl border p-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-lg focus:outline-hidden focus:ring-2 focus:ring-brand-red',
         entry.owned
           ? 'border-green/30 bg-gradient-to-b from-green/10 to-bg-card'
           : 'border-border bg-bg-card hover:border-text-muted'

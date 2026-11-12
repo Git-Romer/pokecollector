@@ -1,4 +1,4 @@
-FROM node:20-alpine AS builder
+FROM --platform=$BUILDPLATFORM node:20-alpine AS builder
 
 WORKDIR /app
 
@@ -7,6 +7,9 @@ RUN npm ci
 
 COPY VERSION /VERSION
 COPY frontend/ .
+
+ARG VITE_HOLO_EFFECTS_API_BASE_URL=https://pokecollector.romerg.de
+ENV VITE_HOLO_EFFECTS_API_BASE_URL=$VITE_HOLO_EFFECTS_API_BASE_URL
 
 RUN cp public/robots-block.txt public/robots.txt \
     && npm run build
@@ -22,7 +25,9 @@ COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 COPY frontend/docker-entrypoint.d/40-configure-public-mode.sh /docker-entrypoint.d/40-configure-public-mode.sh
 
 RUN cp /usr/share/nginx/html/index.html /usr/share/nginx/html/index.html.template \
-    && chmod +x /docker-entrypoint.d/40-configure-public-mode.sh
+    && chmod +x /docker-entrypoint.d/40-configure-public-mode.sh \
+    && mkdir -p /var/cache/nginx/images \
+    && chown -R nginx:nginx /var/cache/nginx
 
 EXPOSE 80
 

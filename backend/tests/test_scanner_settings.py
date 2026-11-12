@@ -431,8 +431,13 @@ class ScannerConfigurationTests(unittest.TestCase):
             with Image.open(io.BytesIO(raw)) as image:
                 image.load()
                 self.assertEqual(image.format, "PNG")
-                self.assertEqual(image.size, (16, 16))
-                parsed.append(image.convert("RGB").getpixel((8, 8)))
+                self.assertGreaterEqual(image.width, 32)
+                self.assertGreaterEqual(image.height, 32)
+                parsed.append(
+                    image.convert("RGB").getpixel(
+                        (image.width // 2, image.height // 2)
+                    )
+                )
         magenta, green = parsed
         self.assertGreater(magenta[0], 200)
         self.assertLess(magenta[1], 20)

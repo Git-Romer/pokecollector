@@ -77,7 +77,7 @@ export default function PeriodSelector({ value, onChange, periods = CARD_PERIODS
                 'min-h-[36px] whitespace-nowrap rounded-md font-semibold transition-all duration-150 touch-manipulation',
                 size === 'sm' ? 'px-2.5 py-1 text-xs' : 'px-4 py-1.5 text-sm',
                 isActive
-                  ? 'bg-brand-red text-white shadow-sm'
+                  ? 'bg-brand-red text-white shadow-xs'
                   : 'text-text-muted hover:text-text-primary hover:bg-bg-elevated'
               )}
             >

@@ -42,12 +42,25 @@ collection quantity for a matching entry is sufficient.
 - If TCGdex omits `dexId` for a full Pokémon card, PokéCollector conservatively infers the National Dex number from an exact English or German base species name, such as `Mega-Glurak Y-ex` -> `Glurak` -> `006`.
 - TCGdex variant-level Cardmarket catalogue IDs are stored in `cards.cardmarket_products` without collapsing foil variants.
 
-Existing set-list rows only contain brief card data. After upgrading, the
-backend starts a versioned background backfill and records completion in the
-`pokedex_metadata_backfill_completed` setting. Exact form mappings are derived
-locally from existing card rows; missing upstream metadata is enriched through
-the existing TCGdex path. Collection rows are never rewritten. To retry or
-inspect the backfill manually:
+Set-card lists contain partial records. For an existing card, a brief sync may
+update fields it actually returns, but a missing value does not erase saved
+catalogue metadata. A successful full-card detail response is authoritative and
+can update or clear those fields.
+
+Each full sync enriches missing metadata first, then uses the remaining shared
+request budget to refresh complete catalogue cards in a fair rotation. A card is
+eligible for that refresh after 30 days; the queue is bounded by the existing
+per-sync metadata limit. This allows upstream corrections to reach existing
+rows without requesting full detail for the entire catalogue on every sync.
+Scheduled metadata refreshes do not overwrite price fields or price-sync
+attempts; those remain on the existing price-sync path.
+
+After upgrading, the backend also starts a versioned background backfill to
+repair rows that may have lost metadata under the older brief-row behavior. It
+records completion in the `pokedex_metadata_backfill_completed` setting. Exact
+form mappings are derived locally from existing card rows; only missing
+upstream metadata is refetched. Collection rows are never rewritten. To retry
+or inspect the backfill manually:
 
 ```bash
 docker compose exec backend \

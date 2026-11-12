@@ -218,7 +218,7 @@ def get_set_checklist(
             for card_data in set_data.get("cards", []):
                 parsed = pokemon_api.parse_card_for_db(card_data, default_set_id=tcg_id, lang=set_lang)
                 parsed = apply_cross_language_fallbacks(db, parsed)
-                upsert_card(db, parsed)
+                upsert_card(db, parsed, partial=True)
             db.commit()
             cards = query_set_cards()
         except Exception:
@@ -233,7 +233,7 @@ def get_set_checklist(
     if fallback_enabled and (not cards or (set_total and len(cards) < set_total)):
         try:
             for parsed in build_missing_language_cards_for_set(db, tcg_id, set_lang, expected_total=set_total):
-                upsert_card(db, parsed)
+                upsert_card(db, parsed, partial=True)
             db.commit()
         except Exception:
             db.rollback()

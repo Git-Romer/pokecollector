@@ -1,3 +1,4 @@
+@layer components {
   .unified-card-frame {
     position: relative;
     width: 100%;
@@ -173,3 +174,4 @@
     from { background-position: 100% 0; }
     to { background-position: -120% 0; }
   }
+}

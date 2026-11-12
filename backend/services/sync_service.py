@@ -450,7 +450,7 @@ def _sync_set_card_catalogue(
                         set_log_id,
                     )
                     continue
-                upsert_card(db, parsed)
+                upsert_card(db, parsed, partial=True)
                 native_card_ids.add(card_id)
 
             # SessionLocal uses autoflush=False. Make native rows visible to the
@@ -482,7 +482,7 @@ def _sync_set_card_catalogue(
                             set_log_id,
                         )
                         continue
-                    upsert_card(db, parsed)
+                    upsert_card(db, parsed, partial=True)
                     fallback_card_ids.add(card_id)
 
             set_obj.updated_at = datetime.datetime.utcnow()
@@ -513,7 +513,7 @@ def _sync_set_card_catalogue(
                                 set_log_id,
                             )
                             continue
-                        upsert_card(db, parsed)
+                        upsert_card(db, parsed, partial=True)
                         fallback_card_ids.add(card_id)
                     set_obj.updated_at = datetime.datetime.utcnow()
                     result["sets_refreshed"] += 1
@@ -901,16 +901,17 @@ def _perform_full_sync_locked(db: Session) -> dict:
             catalogue_result["complete_sets_skipped"],
         )
 
-        # 2b. Set card lists only contain brief card data. Enrich a bounded
-        # batch with full card detail so global search filters can work on
-        # unowned catalogue cards without making every full sync unbounded.
+        # 2b. Brief set rows omit rich card metadata. Enrich missing rows first,
+        # then rotate complete rows through full detail on a 30-day cooldown.
+        # Both queues share one request limit so each full sync stays bounded.
         metadata_limit = _metadata_enrichment_limit(db)
         metadata_result = enrich_missing_card_metadata(db, limit=metadata_limit)
         if metadata_result["attempted"]:
             logger.info(
-                "Full sync metadata enrichment: attempted=%s updated=%s missing=%s failed=%s deferred=%s limit=%s",
+                "Full sync metadata enrichment: attempted=%s updated=%s refreshed=%s missing=%s failed=%s deferred=%s limit=%s",
                 metadata_result["attempted"],
                 metadata_result["updated"],
+                metadata_result.get("refreshed", 0),
                 metadata_result["missing"],
                 metadata_result["failed"],
                 metadata_result.get("deferred", 0),

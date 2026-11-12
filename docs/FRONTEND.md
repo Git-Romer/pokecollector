@@ -2,6 +2,10 @@
 
 React 18 SPA built with Vite. Source lives under `frontend/src/`.
 
+## Browser Support
+
+The frontend uses Tailwind CSS v4, which requires Safari 16.4+, Chrome 111+, or Firefox 128+. Older browser versions are not supported by this frontend build.
+
 ## Route Table
 
 Routes are defined in `frontend/src/App.jsx`.
@@ -29,7 +33,7 @@ Routes are defined in `frontend/src/App.jsx`.
 | `/decks/:deckId` | `pages/DeckEditor.jsx` | Planned or Real Deck editor |
 | `/decks/:deckId/build` | redirect | Legacy Deck Builder redirect |
 | `/analytics` | `pages/Analytics.jsx` | Analytics tabs |
-| `/products` | `pages/Products.jsx` | Sealed products |
+| `/products` | `pages/Products.jsx` | Sealed products; `?productId=<id>` opens that product's cards panel |
 | `/trades` | `pages/Trades.jsx` | Trade journal and valuation |
 | `/leaderboard` | `pages/Leaderboard.jsx` | Multi-user leaderboard |
 | `/leaderboard/compare/:userId` | `pages/Compare.jsx` | Trainer comparison |
@@ -44,6 +48,17 @@ Routes are defined in `frontend/src/App.jsx`.
 | `/u/:handle/wishlist` | `pages/PublicWishlistView.jsx` | Anonymous searchable, filterable public Wishlist |
 | `/u/:handle/deck/:deckId` | `pages/PublicDeckView.jsx` | Anonymous read-only Deck cards, validation, analytics, and probabilities |
 | `/__card-system` | `pages/CardSystemGallery.jsx` | Development-only shared component gallery |
+
+Price amounts throughout the app use the selected currency. Cardmarket values and
+purchase prices are stored in EUR; TCGPlayer values are stored in USD. The backend
+synchronizes EUR- and USD-based exchange-rate sets and currency metadata into a
+shared per-installation database cache, which supports offline conversion with the
+last saved rates. Wishlist thresholds are entered and displayed in the selected
+currency, then converted to EUR for storage and comparison. Exports and Telegram
+use the same cached conversion; when no rate has ever been synced, they show the
+selected currency as unavailable rather than displaying an EUR/USD amount. The
+Supporters panel is the only exception: historical donation totals stay in their
+recorded currencies so they are not presented as exact converted gift amounts.
 
 ## Auth Flow
 
@@ -102,7 +117,7 @@ Notes:
 - Translation bundles are loaded from `frontend/src/i18n/` and wired in `SettingsContext`
 - UI languages include all supported TCGdex language codes, plus Swedish. Regional variants such as `es-mx`, `pt-br`, `pt-pt`, `zh-tw`, and `zh-cn` are selectable from a compact dropdown in Settings.
 - Legacy stored `zh` settings are normalized in the frontend to `zh-cn` for display
-- USD display uses exchange rates from the backend Frankfurter endpoint
+- EUR and USD source prices use the backend Frankfurter rate cache, which serves the latest saved quotes when the provider is offline
 
 ### `useTheme`
 
@@ -204,6 +219,24 @@ printing-detail tags, and private owner-card photos. Owner photos are loaded
 through authenticated endpoints and can be preferred over catalogue artwork in
 the current user's UI.
 
+The collection editor and card-detail Owned copies tab display the API's reason
+when an edit or removal is rejected. Active product links must be unlinked from
+the product's cards panel before removing the collection row; links with sale
+history remain protected. Copies allocated to Card Lists must be released first.
+A rejected action keeps the dialog and collection entry available.
+
+`components/ProductSourceList.jsx` is shared by both Owned-copy dialogs. It shows
+each active link's product name, type, purchase date, and quantity, with a direct
+link to `/products?productId=<id>`. `pages/Products.jsx` resolves that ID against
+the signed-in user's product list and opens the existing cards panel; closing
+the panel removes the query parameter.
+
+Product-link conflicts return a structured API detail with a stable `code`, a
+human-readable `message`, and owner-scoped `product_sources`. The shared
+`components/ActionErrorNotice.jsx` keeps that message in the open dialog and
+reuses `ProductSourceList` for navigation. Other failures continue through the
+shared API error formatter.
+
 `pages/Binders.jsx`, `pages/BinderDetail.jsx`, `pages/DeckEditor.jsx`, and
 `pages/DeckCompare.jsx` share the Card List domain. Physical Binders and Real
 Decks allocate exact owned copies from one capacity pool. Planned Binders and
@@ -257,6 +290,13 @@ The system centralizes card structure, borders, image handling, badges, ownershi
 
 Approved `CardDisplay` variants include `grid`, `carousel`, `ranking`, `selectable`, `artwork`, and `compact-artwork`. A development-only component gallery is available at `/__card-system`.
 
+`CardImage` keeps its viewport gate and preserves native `loading="lazy"` after
+an image enters that gate. Explicit `loading="eager"` still takes priority. The
+shared WebKit viewport fallback, image retry state and cached-view remount
+handling remain in place. Public artwork can be served by the bounded proxy
+cache described in [BACKEND.md](BACKEND.md#image-caching); private owner photos
+are excluded.
+
 See [`CARD_SYSTEM.md`](CARD_SYSTEM.md) for usage, design tokens, review guidance, and the contributor-friendly process for proposing a new shared variant.
 
 `CardItem.jsx`, `UnifiedCard.jsx`, and the low-level state components remain implementation details of this public system and should not be imported by feature pages.
@@ -266,6 +306,8 @@ outside scanner comparison. It supports zoom, pan, keyboard close, and preserves
 the normal Card Display click contract. Printing-detail badges and the unified
 primary-price presentation are supplied through the same shared card state so
 feature pages do not invent competing labels.
+
+The optional Holo effect client reads the published-design list from `/api/holo/list`, then resolves the exact card/language/finish/profile through `/api/holo/current` and its immutable `/api/holo/versions/:version/manifest` and `/assets/:role` routes. Released images default to the public publisher at `https://pokecollector.romerg.de`; effect requests are made only after the user enables Advanced Holo. The shipped Nginx `connect-src` permits that exact HTTPS origin, not arbitrary websites. For source builds, the frontend Dockerfile accepts `VITE_HOLO_EFFECTS_API_BASE_URL` as a build argument; the local Compose build override forwards the same variable. An explicitly empty value selects same-origin `/api/holo/` routing for a trusted development proxy, while an unset value keeps the official publisher. Setting a container runtime environment variable does not rewrite an already-built Vite bundle. A custom publisher requires a rebuilt frontend and a matching explicit `connect-src` entry in its Nginx configuration; it must also allow the requesting app origin in its public-read CORS configuration. FastAPI does not proxy publisher routes. Keep the dashboard website/OAuth origin unchanged and add the collection app's exact origin to `HOLO_EFFECTS_ALLOWED_ORIGINS` for public effect reads only. Functional previews require trusted HTTPS: ordinary LAN HTTP does not provide the Web Crypto SHA-256 verification used here, and missing verification fails closed. List and current pointers are revalidated; versioned manifests and PNG effect assets use immutable browser caching and are hash-checked before display. Effects apply only when the official large-image fingerprint, card ID, and language exactly match the published record, and only to the user's opted-in `Holo` or `Reverse Holo` variant with a matching `holo` or `reverse` finish. Effect availability never adds a collection finish or gates inventory writes. The existing treatment remains in place when a matching verified effect is unavailable; profiles describe rendering, not another physical finish. The preference defaults off. The client never reads contributor evidence or direct storage URLs.
 
 ### `pages/CardSearch.jsx`
 
@@ -277,9 +319,15 @@ feature pages do not invent competing labels.
 
 ### Scanner and review inbox
 
-`components/UnifiedCardScanner.jsx` is the capture-only entry point. It supports the native device camera and gallery uploads, a live webcam mode, stages one or more photos, allows per-photo individual recognition overrides, and includes an optional positioning guide beside **Take photo**. Every submission enqueues a persistent job and routes to the same review inbox, including a one-photo scan.
+`components/UnifiedCardScanner.jsx` is the capture-only entry point. It supports the native device camera and gallery uploads, a live webcam mode, stages one or more photos, allows per-photo individual recognition overrides, and includes an optional positioning guide beside **Take photos**. Every submission enqueues a persistent job and routes to the same review inbox, including a one-photo scan.
 
-`components/WebcamCapture.jsx` renders a live `getUserMedia` preview with a card-shaped guide box for desktops with an attached webcam. It auto-captures a frame once the scene stops moving and the guide box is filled (frame-differencing logic in `utils/webcamStability.js`, no ML), with a manual capture button and Space/Enter as a fallback. After each capture the feed stays live for scanning a stack of cards back-to-back; captured frames are staged the same way as a "Take photo" shot. Requires a secure context (HTTPS or `localhost`) — the "Use webcam" button is disabled with an explanatory tooltip otherwise.
+The scanner exposes **Take photos** and **Choose from gallery**. **Take photos** opens a small choice: **Single photo** retains the existing native-camera file input (where the device/browser supports it); **Continuous capture** opens the in-app camera preview. Neither opening this choice nor using Single photo starts a live camera stream. Continuous capture includes the explanation: ‘Keep the camera open and take photos automatically when each card is held steady.’ Cancel returns to staging without discarding photos. If live camera access is unavailable, only Continuous capture is disabled; Single photo and gallery selection remain available.
+
+`components/WebcamCapture.jsx` provides that continuous preview. Choose **Continuous capture**, allow camera access, and hold a card inside the guide. A small grayscale sample of the visible guide checks movement and image detail over a roughly 700 ms hold. Normal capture is more tolerant of handheld jitter: brief wobbles can preserve the hold, but sustained or large movement resets it, and the current frame must be quiet before capturing. Capture uses Normal tolerance and requests the default rear-facing camera automatically, without camera or tolerance selectors. The browser decides which rear lens to provide. The preview height follows the available viewport so the camera and Capture/Done controls fit together; the guide remains larger on tall phones. Motion sensors are not required or enabled for capture. Start scanning stays hidden while capturing, including at the 50-photo limit: press Done first to stop the camera and review the staged batch. This is a capture heuristic, not card detection, and a patterned background or glare can affect it. **Capture** provides a manual fallback. Space/Enter also capture when focus is outside interactive controls; normal button and editable-field keyboard behaviour is preserved.
+
+Each photo retains the full camera frame and joins the local staging batch, up to 50 photos. **Done** stops the camera and returns to the photo grid without discarding the batch. The live preview is not continuously uploaded. **Start scanning** uploads the staged photos through the existing recognition/review queue; a capture does not directly add a card to the collection. Closing, clearing or submitting stops the camera, as does leaving the view. Photos still being encoded after exit or a camera change are discarded. Capture requests do not overlap. Camera interruption and playback failure offer a retry rather than leaving a false live state.
+
+The automatic trigger waits for a scene change after a capture before it can fire again, but this is not identity-based duplicate detection. Prefer manual capture when lighting or movement prevents a reliable automatic capture. Browser permission and a secure context (HTTPS or localhost) are required. An unavailable API or insecure context disables **Continuous capture**; native photo/gallery capture stays available.
 
 `pages/ScanQueue.jsx` and `components/ScanReview.jsx` show job progress, retry countdowns/reasons, sanitized source photos, ranked candidates, failed items, individual retry, dismissal, and collection-add review. The navigation badge counts outstanding items. A confirmed candidate id is sent when resolving an item so opted-in diagnostics can be labelled with human-reviewed ground truth.
 

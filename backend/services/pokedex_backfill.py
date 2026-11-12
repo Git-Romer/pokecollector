@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 COMPLETED_SETTING_KEY = "pokedex_metadata_backfill_completed"
 REVISION_SETTING_KEY = "pokedex_metadata_backfill_revision"
 STATUS_SETTING_KEY = "pokedex_metadata_backfill_status"
-CURRENT_BACKFILL_REVISION = "form-entries-v1"
+CURRENT_BACKFILL_REVISION = "brief-card-sync-repair-v1"
 DEFAULT_BATCH_LIMIT = 5000
 DEFAULT_BATCH_DELAY_SECONDS = 0.5
 

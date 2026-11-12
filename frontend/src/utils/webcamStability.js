@@ -8,7 +8,9 @@ export const SAMPLE_SIZE = 64
 export const DEFAULT_STABILITY_THRESHOLDS = {
   // Mean grayscale delta (0-255 scale) between consecutive sampled frames
   // below which the scene counts as "not moving".
-  motionThreshold: 6,
+  motionThreshold: 10,
+  jitterGraceMs: 200,
+  hardMotionThreshold: 32,
   // Edge-energy below which the guide box counts as empty (blank desk/background)
   // rather than filled with a textured card.
   contentThreshold: 10,
@@ -17,7 +19,7 @@ export const DEFAULT_STABILITY_THRESHOLDS = {
   // Motion spike required, after a capture, to clear the "already captured
   // this card" lock — distinctly larger than the jitter of a steadily held
   // card, so removing/replacing the card is what re-arms auto-capture.
-  rearmMotionThreshold: 18,
+  rearmMotionThreshold: 24,
 }
 
 // Converts an ImageData (from a downsampled offscreen canvas) into a plain
@@ -70,6 +72,8 @@ export function evaluateStability({
   motionScore,
   contentScore,
   stableSinceTs,
+  motionSinceTs = null,
+  motionSamples = [],
   now,
   armed,
   thresholds = DEFAULT_STABILITY_THRESHOLDS,
@@ -77,14 +81,22 @@ export function evaluateStability({
   const { motionThreshold, contentThreshold, stableDurationMs, rearmMotionThreshold } = thresholds
 
   const isMoving = motionScore > motionThreshold
-  const nextStableSinceTs = isMoving ? null : (stableSinceTs ?? now)
+  const isFilled = contentScore > contentThreshold
+  const samples = [...motionSamples.filter(sample => now - sample.ts <= stableDurationMs), { ts: now, score: motionScore }]
+  const meanMotion = samples.reduce((sum, sample) => sum + sample.score, 0) / samples.length
+  // A brief wobble need not erase the whole hold; sustained or large motion does.
+  const movingSince = isMoving && meanMotion > motionThreshold ? (motionSinceTs ?? now) : null
+  const reset = !isFilled || motionScore > (thresholds.hardMotionThreshold ?? 32)
+    || (movingSince != null && now - movingSince >= (thresholds.jitterGraceMs ?? 200))
+  const nextStableSinceTs = reset ? null : (stableSinceTs ?? (isMoving ? null : now))
   const nextArmed = armed || motionScore > rearmMotionThreshold
   const isStableLongEnough = nextStableSinceTs != null && now - nextStableSinceTs >= stableDurationMs
-  const isFilled = contentScore > contentThreshold
-  const shouldCapture = Boolean(nextArmed && isStableLongEnough && isFilled)
+  const shouldCapture = Boolean(nextArmed && isStableLongEnough && isFilled && !isMoving && meanMotion <= motionThreshold)
 
   return {
     shouldCapture,
+    motionSinceTs: movingSince,
+    motionSamples: samples,
     stableSinceTs: nextStableSinceTs,
     // A firing capture immediately disarms itself; re-arming requires a
     // fresh motion spike on a later frame (card removed/replaced).

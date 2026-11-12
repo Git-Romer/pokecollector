@@ -3,7 +3,6 @@ import { useParams, Link } from 'react-router-dom'
 import { ArrowLeft, HelpCircle } from 'lucide-react'
 import clsx from 'clsx'
 import { getPublicBinder, getPublicProfile } from '../api/publicClient'
-import { formatEur } from '../utils/formatEur'
 import { groupCardsByPrint } from '../utils/groupCardsByPrint'
 import { formatBinderCountSummary } from '../utils/binderCounts'
 import { useSettings } from '../contexts/SettingsContext'
@@ -17,7 +16,7 @@ export default function PublicBinderView() {
   const [profile, setProfile] = useState(null)
   const [error, setError] = useState(null)
   const [badgeLegendOpen, setBadgeLegendOpen] = useState(false)
-  const { t } = useSettings()
+  const { t, formatPrice } = useSettings()
 
   useEffect(() => {
     let cancelled = false
@@ -39,7 +38,7 @@ export default function PublicBinderView() {
         <Link to={`/u/${handle}`} className="btn-ghost inline-flex py-1.5 text-sm">
           <ArrowLeft size={14} /> {t('publicProfiles.backToProfile')}
         </Link>
-        <div className="my-4 flex flex-wrap items-baseline justify-between gap-2 rounded-2xl border border-border bg-bg-secondary p-4 shadow-sm">
+        <div className="my-4 flex flex-wrap items-baseline justify-between gap-2 rounded-2xl border border-border bg-bg-secondary p-4 shadow-xs">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-text-muted">{t('publicProfiles.sharedBinder')}</p>
             <h1 className="text-2xl font-bold">{binder.name}</h1>
@@ -48,7 +47,7 @@ export default function PublicBinderView() {
             </p>
           </div>
           {binder.total_value != null && (
-            <span className="text-lg font-semibold">{formatEur(binder.total_value)}</span>
+            <span className="text-lg font-semibold">{formatPrice(binder.total_value)}</span>
           )}
         </div>
 
@@ -82,7 +81,7 @@ export default function PublicBinderView() {
           const backLayers = Math.min(tile.variantCount - 1, 2)
           const layerOffset = 8
           return (
-            <article key={tile.id} className="rounded-xl border border-border bg-bg-secondary p-2 shadow-sm">
+            <article key={tile.id} className="rounded-xl border border-border bg-bg-secondary p-2 shadow-xs">
               <CardStack
                 card={tile}
                 image={tile.image}
@@ -100,7 +99,7 @@ export default function PublicBinderView() {
               <div className="text-xs text-text-secondary">{tile.set_name} · #{tile.number}</div>
               <PrintingDetailBadges details={tile.prints.flatMap(print => print.printing_details || [])} limit={2} className="mt-1" />
               {tile.total_value != null && (
-                <div className="text-xs font-semibold">{formatEur(tile.total_value)}</div>
+                <div className="text-xs font-semibold">{formatPrice(tile.total_value)}</div>
               )}
             </article>
           )

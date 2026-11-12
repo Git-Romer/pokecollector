@@ -118,7 +118,7 @@ export function ScanAddModal({
       aria-label={t('scanner.addToCollection')}
       tabIndex={-1}
       onKeyDown={onDialogKeyDown}
-      className="fixed inset-0 z-[300] flex items-end justify-center bg-black/80 p-2 backdrop-blur-sm sm:items-center sm:p-3"
+      className="fixed inset-0 z-[300] flex items-end justify-center bg-black/80 p-2 backdrop-blur-xs sm:items-center sm:p-3"
       onClick={onClose}
     >
       <div
@@ -129,7 +129,7 @@ export function ScanAddModal({
         <button
           type="button"
           onClick={onClose}
-          className="absolute right-3 top-3 z-50 grid h-9 w-9 place-items-center rounded-full border border-white/15 bg-black/70 text-white shadow-lg hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red"
+          className="absolute right-3 top-3 z-50 grid h-9 w-9 place-items-center rounded-full border border-white/15 bg-black/70 text-white shadow-lg hover:bg-black focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-red"
           aria-label={t('common.close')}
         >
           <X size={18} />

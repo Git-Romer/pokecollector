@@ -764,6 +764,8 @@ export default function Products() {
     filters,
     updateFilter,
     clearFilters,
+    searchParams,
+    setSearchParams,
   } = useDynamicFilterUrlState(PRODUCT_FILTER_DEFINITIONS)
   const { filterType, filterDateFrom, filterDateTo } = filters
   const queryClient = useQueryClient()
@@ -771,6 +773,22 @@ export default function Products() {
     queryKey: ['products', pricePrimaryField],
     queryFn: () => getProducts({ price_field: pricePrimaryField }).then(r => r.data),
   })
+
+  useEffect(() => {
+    const requestedId = Number(searchParams.get('productId'))
+    if (!Number.isSafeInteger(requestedId) || requestedId <= 0) return
+    if (products.some(product => Number(product.id) === requestedId)) {
+      setCardProductId(requestedId)
+    }
+  }, [products, searchParams])
+
+  const closeProductCards = () => {
+    setCardProductId(null)
+    if (!searchParams.has('productId')) return
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('productId')
+    setSearchParams(nextParams, { replace: true })
+  }
 
   const { data: summary } = useQuery({
     queryKey: ['products-summary', pricePrimaryField],
@@ -1489,7 +1507,7 @@ export default function Products() {
         collectionItems={collectionItems}
         formatPrice={formatPrice}
         t={t}
-        onClose={() => setCardProductId(null)}
+        onClose={closeProductCards}
         loading={linkCardsMutation.isPending || unlinkCardMutation.isPending || sellCardMutation.isPending || flatGainMutation.isPending}
         onLink={(productId, items) => linkCardsMutation.mutateAsync({ productId, items })}
         onUnlink={(productId, productCardId) => unlinkCardMutation.mutateAsync({ productId, productCardId })}

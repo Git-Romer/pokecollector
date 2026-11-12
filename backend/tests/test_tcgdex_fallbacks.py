@@ -7,6 +7,8 @@ try:
 
     from database import Base
     from models import Card, Set, Setting
+    from services import pokemon_api
+    from services.card_upsert import upsert_card
     from services.card_fallbacks import (
         apply_cross_language_fallbacks,
         build_missing_language_card,
@@ -150,6 +152,66 @@ class TcgdexFallbackTests(unittest.TestCase):
 
         get_set_cards.assert_not_called()
         self.assertEqual(cards, [])
+
+
+    def test_native_brief_row_clears_sibling_source_before_incomplete_set_fallback(self):
+        target_set = Set(
+            id="sv1_de",
+            tcg_set_id="sv1",
+            name="Scarlet & Violet",
+            total=2,
+            lang="de",
+        )
+        english_set = Set(
+            id="sv1_en",
+            tcg_set_id="sv1",
+            name="Scarlet & Violet",
+            total=1,
+            lang="en",
+        )
+        target = Card(
+            id="sv1-1_de",
+            tcg_card_id="sv1-1",
+            name="Sprigatito fallback",
+            set_id="sv1",
+            number="1",
+            lang="de",
+            data_source_lang="en",
+            is_custom=False,
+        )
+        self.db.add_all([target_set, english_set, target])
+        self.db.commit()
+
+        parsed = pokemon_api.parse_card_for_db(
+            {
+                "id": "sv1-1",
+                "localId": "1",
+                "name": "Felori native",
+                "image": "https://de.example/sv1/1",
+            },
+            default_set_id="sv1",
+            lang="de",
+        )
+        parsed = apply_cross_language_fallbacks(self.db, parsed)
+        upsert_card(self.db, parsed, partial=True)
+        self.db.commit()
+
+        with patch(
+            "services.card_fallbacks.pokemon_api.get_set_cards",
+            return_value={"cards": []},
+        ) as get_set_cards:
+            fallback_cards = build_missing_language_cards_for_set(
+                self.db,
+                "sv1",
+                "de",
+                expected_total=2,
+            )
+
+        self.assertEqual(fallback_cards, [])
+        get_set_cards.assert_called_once_with("sv1", lang="en")
+        self.db.refresh(target)
+        self.assertEqual(target.name, "Felori native")
+        self.assertIsNone(target.data_source_lang)
 
 
 if __name__ == "__main__":

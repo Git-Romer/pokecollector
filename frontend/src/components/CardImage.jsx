@@ -205,7 +205,7 @@ export default function CardImage({
           alt={alt}
           className={className || 'w-full h-full object-cover'}
           style={{ ...(src ? {} : { opacity: 0.8 }), ...style }}
-          loading={loading === 'lazy' ? 'eager' : loading}
+          loading={loading}
           onError={handleError}
           onLoad={() => setStatus(previous => ({
             source: src,
@@ -229,7 +229,7 @@ export default function CardImage({
           <button
             type="button"
             className={compactError
-              ? 'grid h-full w-full place-items-center text-brand-red focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red'
+              ? 'grid h-full w-full place-items-center text-brand-red focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-red'
               : 'btn-ghost mt-1 min-h-8 px-3 py-1.5 text-xs'}
             onClick={retry}
             aria-label={t('card.retryImage')}

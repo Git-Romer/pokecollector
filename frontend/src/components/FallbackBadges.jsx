@@ -19,7 +19,7 @@ export default function FallbackBadges({ card, className = '', compact = false, 
   const badgeClass = (tone) => clsx(
     baseClass,
     'font-bold whitespace-nowrap',
-    overlay && 'shadow-[0_1px_3px_rgba(0,0,0,0.85)] backdrop-blur-sm',
+    overlay && 'shadow-[0_1px_3px_rgba(0,0,0,0.85)] backdrop-blur-xs',
     tone === 'data' && (overlay
       ? 'bg-purple-950/95 text-purple-50 border border-purple-200/80'
       : 'bg-purple-500/15 text-purple-300 border border-purple-500/30'),

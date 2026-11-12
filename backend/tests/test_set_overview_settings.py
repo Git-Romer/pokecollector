@@ -69,6 +69,20 @@ class SetOverviewSettingsTests(unittest.TestCase):
             "capital_invested",
         )
 
+    def test_holo_rendering_preference_is_per_user_and_defaults_off(self):
+        self.assertEqual(_get_user_settings(self.db, self.user.id)["holo_effects_enabled"], "false")
+
+        update_settings(
+            {"holo_effects_enabled": "true"},
+            db=self.db,
+            current_user=self.user,
+        )
+
+        self.assertEqual(_get_user_settings(self.db, self.user.id)["holo_effects_enabled"], "true")
+        self.assertEqual(_get_user_settings(self.db, self.other_user.id)["holo_effects_enabled"], "false")
+        self.assertEqual(self.db.query(Setting).filter(Setting.key == "holo_effects_enabled").count(), 0)
+        self.assertEqual(self.db.query(UserSetting).filter(UserSetting.key == "holo_effects_enabled").count(), 1)
+
     def test_set_overview_settings_are_per_user(self):
         update_settings({
             "set_overview_filters": '{"search":"charizard","sortBy":"name"}',

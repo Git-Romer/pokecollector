@@ -570,7 +570,7 @@ export default function Trades() {
 
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             <section className="space-y-3">
-              <div className="rounded-lg border border-border bg-bg-elevated/30 p-3 space-y-3 shadow-sm">
+              <div className="rounded-lg border border-border bg-bg-elevated/30 p-3 space-y-3 shadow-xs">
                 <div className="flex items-center justify-between gap-2">
                   <h2 className="text-sm font-bold uppercase tracking-[0.14em] text-text-muted">{t('trades.give')}</h2>
                   <span className="text-sm font-bold text-text-primary">{formatPrice(totals.outgoingValue)}</span>
@@ -626,7 +626,7 @@ export default function Trades() {
             </section>
 
             <section className="space-y-3">
-              <div className="rounded-lg border border-border bg-bg-elevated/30 p-3 space-y-3 shadow-sm">
+              <div className="rounded-lg border border-border bg-bg-elevated/30 p-3 space-y-3 shadow-xs">
                 <div className="flex items-center justify-between gap-2">
                   <h2 className="text-sm font-bold uppercase tracking-[0.14em] text-text-muted">{t('trades.receive')}</h2>
                   <span className="text-sm font-bold text-text-primary">{formatPrice(totals.incomingValue)}</span>

@@ -27,7 +27,7 @@ export function CompactCardIdentity({
       type={onClick ? 'button' : undefined}
       className={clsx(
         'flex min-w-0 items-center gap-3 text-left',
-        onClick && 'rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/70',
+        onClick && 'rounded-lg focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-red/70',
         className,
       )}
       onClick={onClick}
@@ -109,7 +109,7 @@ export default function CardListItem({
         'bg-[rgba(20,20,40,0.6)] backdrop-blur-xl',
         'border-[rgba(255,255,255,0.05)]',
         onClick && 'cursor-pointer hover:border-brand-red/30 hover:bg-bg-elevated hover:shadow-glow active:bg-bg-elevated transition-all duration-200',
-        onClick && 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red/70',
+        onClick && 'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-red/70',
         className
       )}
       onClick={onClick}

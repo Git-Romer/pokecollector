@@ -51,6 +51,11 @@ def cache_key_for(url: str) -> str:
     return f"scan-candidate:{hashlib.sha1(url.encode('utf-8')).hexdigest()}"
 
 
+# Card-artwork hosts trusted for recognition references and the review image
+# cache. Exact hostnames only; never user-supplied hosts.
+TRUSTED_REFERENCE_IMAGE_HOSTS = frozenset({"assets.tcgdex.net"})
+
+
 def validate_candidate_image_url(raw_url: str) -> str:
     """Accept only direct HTTPS artwork URLs from TCGdex's public CDN."""
     url = str(raw_url or "").strip()
@@ -61,7 +66,7 @@ def validate_candidate_image_url(raw_url: str) -> str:
         raise ValueError("Invalid candidate image port") from exc
     if (
         parsed.scheme != "https"
-        or (parsed.hostname or "").rstrip(".").lower() != "assets.tcgdex.net"
+        or (parsed.hostname or "").rstrip(".").lower() not in TRUSTED_REFERENCE_IMAGE_HOSTS
         or parsed.username
         or parsed.password
         or port not in (None, 443)

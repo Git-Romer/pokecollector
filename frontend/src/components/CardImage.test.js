@@ -33,4 +33,18 @@ describe('CardImage', () => {
     expect(markup).toContain('src="https://example.test/pikachu.webp"')
     expect(markup).not.toContain('retry=')
   })
+
+  it('preserves native lazy loading after the viewport gate', () => {
+    const markup = renderToStaticMarkup(createElement(CardImage, {
+      src: 'https://example.test/pikachu.webp', alt: 'Pikachu',
+    }))
+    expect(markup).toContain('loading="lazy"')
+  })
+
+  it('preserves explicit eager loading for a priority image', () => {
+    const markup = renderToStaticMarkup(createElement(CardImage, {
+      src: 'https://example.test/pikachu.webp', alt: 'Pikachu', loading: 'eager',
+    }))
+    expect(markup).toContain('loading="eager"')
+  })
 })

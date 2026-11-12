@@ -152,7 +152,7 @@ describe('evaluateStability', () => {
 
   it('does not treat ordinary hand jitter while holding a card as a re-arm trigger', () => {
     // Motion above the "moving" threshold but below the re-arm threshold
-    // (e.g. a slight wobble) should reset the stability timer without
+    // (e.g. a slight wobble) should preserve the hold briefly without
     // re-arming a already-fired capture lock.
     const result = evaluateStability({
       motionScore: thresholds.motionThreshold + 1,
@@ -162,6 +162,43 @@ describe('evaluateStability', () => {
       armed: false,
     })
     expect(result.armed).toBe(false)
-    expect(result.stableSinceTs).toBeNull()
+    expect(result.stableSinceTs).toBe(0)
+  })
+  it('starts the stability window when content enters an otherwise still frame', () => {
+    const empty = evaluateStability({ motionScore: 0, contentScore: 0, stableSinceTs: null, now: 0, armed: true })
+    const entering = evaluateStability({ motionScore: 0, contentScore: 20, stableSinceTs: empty.stableSinceTs, now: 1000, armed: empty.armed })
+    expect(entering.shouldCapture).toBe(false)
+    expect(entering.stableSinceTs).toBe(1000)
+  })
+
+})
+
+
+describe('handheld stability', () => {
+  const step = (state, score, now) => evaluateStability({ ...state, motionScore: score, contentScore: 25, now })
+  it('tolerates a short hand wobble without restarting the steady window', () => {
+    let state = step({ armed: true }, 0, 0)
+    for (const [now, score] of [[100, 3], [200, 14], [300, 3], [400, 2], [500, 3], [600, 2], [700, 2]]) state = step(state, score, now)
+    expect(state.shouldCapture).toBe(true)
+  })
+  it('does not capture during sustained movement', () => {
+    let state = { armed: true }
+    for (let now = 0; now <= 2000; now += 100) {
+      state = step(state, 16, now)
+      expect(state.shouldCapture).toBe(false)
+    }
+  })
+  it('a large movement resets the window immediately', () => {
+    const state = step(step({ armed: true }, 0, 0), 60, 600)
+    expect(state.stableSinceTs).toBeNull()
+    expect(state.shouldCapture).toBe(false)
+  })
+  it('handheld jitter does not rearm the previous photo', () => {
+    let state = { armed: false }
+    for (let now = 0; now <= 1200; now += 100) {
+      state = step(state, now % 300 === 0 ? 14 : 3, now)
+      expect(state.armed).toBe(false)
+      expect(state.shouldCapture).toBe(false)
+    }
   })
 })

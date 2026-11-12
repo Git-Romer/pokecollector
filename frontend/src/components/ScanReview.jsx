@@ -636,7 +636,7 @@ function CandidateGrid({ jobId, itemId, matches, onSelect, onZoom, t }) {
               onClick={() => onZoom(match, matchIndex)}
               aria-label={t('scanner.compareCandidate')}
               title={t('scanner.compareCandidate')}
-              className="relative aspect-[2.5/3.5] w-full overflow-hidden rounded-xl text-left ring-1 ring-white/5 transition-all duration-200 group-hover:ring-2 group-hover:ring-brand-red/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red"
+              className="relative aspect-[2.5/3.5] w-full overflow-hidden rounded-xl text-left ring-1 ring-white/5 transition-all duration-200 group-hover:ring-2 group-hover:ring-brand-red/30 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-red"
             >
               {match.image ? (
                 // CardImage, not a bare <img>: a candidate URL failing to load
@@ -682,7 +682,7 @@ function CandidateGrid({ jobId, itemId, matches, onSelect, onZoom, t }) {
                   onClick={() => onSelect(match)}
                   title={t('scanner.addToCollection')}
                   aria-label={t('scanner.addToCollection')}
-                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red"
+                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-transform hover:scale-110 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-red"
                   style={{ background: '#e3000b', boxShadow: '0 0 12px rgba(227,0,11,0.5)' }}
                 >
                   <Plus size={15} className="text-white" />

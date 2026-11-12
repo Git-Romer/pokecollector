@@ -8,6 +8,8 @@ try:
 
     from database import Base
     from models import Card, Set
+    from services.card_upsert import upsert_card
+    from services.pokedex import available_pokedex_printings
     from services.sync_service import _sets_for_card_catalogue_sync, _sync_set_card_catalogue
 
     DEPS = True
@@ -357,6 +359,110 @@ class FullSyncCardCatalogueTests(unittest.TestCase):
         self.assertEqual(second_card.name, "Old name")
         self.assertGreater(first_set.updated_at, newest_timestamp)
         self.assertEqual(second_set.updated_at, newest_timestamp)
+
+
+    def test_full_detail_update_clears_authoritatively_removed_pokedex_mapping(self):
+        card = Card(
+            id="sv05-078_en",
+            tcg_card_id="sv05-078",
+            name="Flutter Mane",
+            set_id="sv05",
+            number="078",
+            lang="en",
+            supertype="Pokemon",
+            dex_ids=[987],
+            pokedex_entry_ids=["987"],
+            cardmarket_products=[],
+            is_custom=False,
+            is_digital=False,
+        )
+        self.db.add(card)
+        self.db.commit()
+
+        upsert_card(
+            self.db,
+            {
+                "id": card.id,
+                "tcg_card_id": card.tcg_card_id,
+                "name": card.name,
+                "set_id": card.set_id,
+                "number": card.number,
+                "lang": "en",
+                "supertype": "Pokemon",
+                "rarity": "Rare",
+                "types": ["Psychic"],
+                "subtypes": ["Basic"],
+                "dex_ids": [],
+                "pokedex_entry_ids": [],
+                "cardmarket_products": [],
+                "is_custom": False,
+                "is_digital": False,
+            },
+        )
+        self.db.commit()
+        self.db.refresh(card)
+
+        self.assertEqual(card.dex_ids, [])
+        self.assertEqual(card.pokedex_entry_ids, [])
+
+    def test_brief_set_refresh_preserves_existing_pokedex_mapping(self):
+        set_obj = Set(
+            id="sv05_en",
+            tcg_set_id="sv05",
+            name="Temporal Forces",
+            total=1,
+            lang="en",
+        )
+        card = Card(
+            id="sv05-078_en",
+            tcg_card_id="sv05-078",
+            name="Flutter Mane",
+            set_id="sv05",
+            number="078",
+            lang="en",
+            supertype="Pokemon",
+            rarity="Rare",
+            types=["Psychic"],
+            subtypes=["Basic"],
+            dex_ids=[987],
+            pokedex_entry_ids=["987"],
+            cardmarket_products=[],
+            custom_image_url="https://assets.example/custom-fallback.webp",
+            is_custom=False,
+            is_digital=False,
+        )
+        self.db.add_all([set_obj, card])
+        self.db.commit()
+
+        before = available_pokedex_printings(self.db, 1, language="en")
+        self.assertIn("sv05-078", before["987"])
+
+        cache = {
+            ("sv05", "en"): [
+                {
+                    "id": "sv05-078",
+                    "localId": "078",
+                    "name": "Flutter Mane",
+                    "image": "https://assets.example/sv05/078",
+                }
+            ]
+        }
+        result = _sync_set_card_catalogue(
+            self.db,
+            [set_obj],
+            card_list_cache=cache,
+            complete_set_refresh_limit=1,
+        )
+
+        self.db.refresh(card)
+        after = available_pokedex_printings(self.db, 1, language="en")
+        self.assertEqual(result["complete_sets_refreshed"], 1)
+        self.assertEqual(card.dex_ids, [987])
+        self.assertEqual(card.pokedex_entry_ids, ["987"])
+        self.assertEqual(card.rarity, "Rare")
+        self.assertEqual(card.types, ["Psychic"])
+        self.assertIsNone(card.custom_image_url)
+        self.assertIn("sv05-078", after["987"])
 
 
 if __name__ == "__main__":

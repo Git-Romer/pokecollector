@@ -209,15 +209,78 @@ responses.
 | POST | `/api/settings/scanner/test` | Two-image capability test with optional atomic save |
 | GET | `/api/settings/tcgdex-languages` | Supported TCGdex language metadata |
 | GET | `/api/settings/tcgdex-filter-languages` | Languages currently available for catalogue filtering |
+| GET | `/api/settings/currencies` | Authenticated Frankfurter currency metadata from the installation cache |
 | PUT | `/api/settings/` | Update settings |
 | GET | `/api/settings/debug-log` | Admin-only debug log download |
 | DELETE | `/api/settings/scan-diagnostics` | Delete all persisted scanner diagnostics for the current user |
 | DELETE | `/api/settings/card-photos` | Delete all private collection-card photos for the current user |
 | GET | `/api/settings/telegram_status` | Whether Telegram is configured for current user |
-| GET | `/api/settings/exchange-rate` | Exchange-rate lookup for display currency |
+| GET | `/api/settings/exchange-rate` | Public read-only EUR/USD-base quote from the installation cache, with provider date and stale status |
 | GET | `/api/settings/{key}` | Get one setting |
 | POST | `/api/settings/{key}` | Set one setting |
 | GET | `/api/health` | Unauthenticated service-health probe |
+
+## Image caching
+
+The database image cache remains the source of downloaded artwork. Public card
+artwork and set logos/symbols also use the frontend's bounded Nginx disk cache
+(up to 1 GiB, discarded with the frontend container). Repeated requests can be
+served without transferring the image from the backend again.
+
+These routes are mutable, not content-addressed assets. New public responses use
+`public, max-age=0, s-maxage=60, must-revalidate`: browsers revalidate their copy,
+while shared caches may reuse it for at most 60 seconds. Changes to artwork,
+visibility or fallback settings can therefore take up to that interval to reach
+a shared-cache hit. Existing browser entries created by older releases retain
+their original expiry. ETags are SHA-256 hashes of the actual image bytes, so
+clearing/refilling the database image cache cannot incorrectly validate changed
+bytes just because the source URL stayed the same. Set image cache keys include
+the selected source URL, including English fallback URLs.
+
+Manual cards and custom fallback artwork use `private, no-store`. Missing card
+redirects and set placeholders use `no-store`, so a temporary failure does not
+hide artwork that becomes available later. Fingerprints, token-gated product
+images and private collection photos never use the shared proxy image cache.
+Requests carrying authorization, cookies, explicit cache controls or a retry
+parameter bypass it too. Expired entries are not served when revalidation fails.
+The existing product-token and private-photo authorization rules are unchanged.
+
+For a disposable integration check, run
+`python scripts/test-image-proxy-cache.py --bind 0.0.0.0 --proxy-url http://frontend`
+on an isolated network where its synthetic upstream is reachable as
+`backend:8000` and the frontend uses the candidate `frontend/nginx.conf`. Publish
+no host ports and mount no production data. The check counts upstream requests,
+verifies conditional responses, private-route exclusions, expiry, fallback
+recovery and security headers. It does not measure production traffic.
+
+## Currency data and offline conversion
+
+Frankfurter currency metadata and rates are stored in global, per-installation
+`currency_metadata` and `currency_rates` tables. Rate rows are keyed by base and
+quote currency and include the provider's observation date and the time they were
+synced. The backend refreshes a stale base-rate set when a conversion is requested;
+metadata is refreshed daily. Each response marks a cached rate/list as stale when
+its refresh window has passed and the provider could not be reached.
+
+The rate feed can also contain assets with longer codes, such as `AAVE` or
+`USDT`. The backend skips quotes outside its three-letter currency format so
+those records do not block valid currency conversions. A response with no
+supported quotes is rejected; invalid dates, rates, duplicate supported quotes,
+and inconsistent bases still fail validation. This does not expand the currency
+codes accepted by the API.
+
+The frontend requests both EUR-based and USD-based rate sets for the selected
+currency. Collection, wishlist, analytics, public binder/profile values, exports,
+and Telegram use the selected currency. If a conversion has never been synced, the
+API returns unavailable rather than relabeling an EUR or USD amount as the selected
+currency. A new offline installation therefore needs one successful sync before it
+can convert to currencies other than its native price currencies. The database cache
+is local to each self-hosted installation; it is not shared between installations.
+
+The exchange-rate endpoint is public read-only so anonymous public-profile views can
+use the same cache; it accepts only EUR or USD bases, which are the price sources
+used by the app. The currency metadata endpoint remains authenticated. Neither
+endpoint exposes user settings or collection data.
 
 ## Models
 
@@ -506,7 +569,10 @@ Each item is committed independently, so one invalid or unavailable card does no
 
 ## Notifications
 
-`backend/services/telegram.py` now accepts `user_id` and reads Telegram credentials from that user's `UserSetting` rows first.
+`backend/services/telegram.py` reads Telegram credentials and currency from that
+user's `UserSetting` rows. Price alerts convert both the EUR market price and
+threshold to the selected currency using the shared rate cache; if no rate has
+ever been synced, both values are marked unavailable in the selected currency.
 
 ## Migrations
 

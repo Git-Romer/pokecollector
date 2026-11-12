@@ -108,7 +108,7 @@ export function OwnPhotoOverlayBadge({ t, className = 'h-6 w-6' }) {
     <span
       title={t('collection.ownPhoto')}
       className={clsx(
-        'absolute bottom-2 right-2 z-20 inline-flex items-center justify-center rounded-full border border-white/30 bg-bg/85 text-white shadow-lg backdrop-blur-sm',
+        'absolute bottom-2 right-2 z-20 inline-flex items-center justify-center rounded-full border border-white/30 bg-bg/85 text-white shadow-lg backdrop-blur-xs',
         className,
       )}
     >

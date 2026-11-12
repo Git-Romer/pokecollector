@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { useSettings } from '../contexts/SettingsContext'
 import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
 import CardImage from './CardImage'
+import HoloEffectOverlay from './HoloEffectOverlay'
 import FallbackBadges from './FallbackBadges'
 import CardStateIndicators from './CardStateIndicators'
 import ImageZoomOverlay from './ImageZoomOverlay'
@@ -109,6 +110,7 @@ export function CardArtworkFrame({
   stateIndicatorProps = {},
   dimmed = false,
   thumbnail = false,
+  holoMode = 'subtle',
   onLoadingChange,
   onImageStatusChange,
   overlay,
@@ -126,6 +128,7 @@ export function CardArtworkFrame({
   return (
     <div
       ref={viewportRef}
+      data-holo-host
       className={clsx(
         'unified-card-frame',
         interactive && 'unified-card-frame-interactive',
@@ -139,8 +142,8 @@ export function CardArtworkFrame({
       }}
       title={label}
     >
-      <div className="unified-card-action-layer">
-        <div className={clsx('unified-card-art', getCardVariantEffectClass(variantEffectSource))}>
+      <div className="unified-card-action-layer" data-holo-rotator>
+        <div data-holo-artwork className={clsx('unified-card-art', getCardVariantEffectClass(variantEffectSource))}>
           {showStateIndicators && (
             <CardStateIndicators
               card={card}
@@ -162,6 +165,12 @@ export function CardArtworkFrame({
             onLoadingChange={onLoadingChange}
             onStatusChange={onImageStatusChange}
             compactError={thumbnail}
+          />
+          <HoloEffectOverlay
+            card={card}
+            imageUrl={image}
+            variantSource={variantEffectSource}
+            mode={holoMode}
           />
           {dimmed && <span className="unified-card-missing-overlay" aria-hidden />}
           {overlay}
@@ -324,7 +333,7 @@ export function UnifiedCardDialog({
   const setNumber = getCardSetNumber(card)
   const dialog = (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm sm:p-6"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 backdrop-blur-xs sm:p-6"
       onClick={onClose}
     >
       <div
@@ -344,7 +353,7 @@ export function UnifiedCardDialog({
           ref={resolvedCloseButtonRef}
           type="button"
           onClick={onClose}
-          className="absolute right-3 top-3 z-50 grid h-9 w-9 place-items-center rounded-full border border-white/15 bg-black/75 text-white shadow-lg transition-colors hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-red"
+          className="absolute right-3 top-3 z-50 grid h-9 w-9 place-items-center rounded-full border border-white/15 bg-black/75 text-white shadow-lg transition-colors hover:bg-black focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-red"
           aria-label={t('common.close')}
         >
           <X size={18} aria-hidden />
@@ -362,6 +371,7 @@ export function UnifiedCardDialog({
                   variantEffectSource={variantEffectSource}
                   showStateIndicators={false}
                   loading="eager"
+                  holoMode="interactive"
                   interactive={imageZoomReady}
                   onClick={() => setImageZoomOpen(true)}
                   onImageStatusChange={handleImageStatusChange}
@@ -453,7 +463,7 @@ export function UnifiedCardDialog({
     <>
       {createPortal(dialog, document.body)}
       {imageZoomOpen && imageZoomSource && (
-        <ImageZoomOverlay src={imageZoomSource} alt={card.name} onClose={() => setImageZoomOpen(false)} />
+        <ImageZoomOverlay src={imageZoomSource} alt={card.name} holoCard={card} holoVariantSource={variantEffectSource} onClose={() => setImageZoomOpen(false)} />
       )}
     </>
   )

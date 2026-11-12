@@ -3,6 +3,7 @@ import { AlertTriangle, Camera, Check, RefreshCw, X } from 'lucide-react'
 
 import { useSettings } from '../contexts/SettingsContext'
 import {
+  DEFAULT_STABILITY_THRESHOLDS,
   computeContentScore,
   computeMotionScore,
   evaluateStability,
@@ -25,15 +26,15 @@ const FLASH_DURATION_MS = 400
 export default function WebcamCapture({ onCapture, onExit, maxReached }) {
   const { t } = useSettings()
   const [status, setStatus] = useState('requesting') // requesting | live | denied | no-camera | error
-  const [devices, setDevices] = useState([])
-  const [activeDeviceId, setActiveDeviceId] = useState('')
   const [retryToken, setRetryToken] = useState(0)
   const [flash, setFlash] = useState(false)
 
   const videoRef = useRef(null)
+  const guideRef = useRef(null)
   const sampleCanvasRef = useRef(null)
   const captureCanvasRef = useRef(null)
   const streamRef = useRef(null)
+  const encodingRef = useRef(null)
   const rafRef = useRef(null)
   const flashTimeoutRef = useRef(null)
   const stabilityRef = useRef({ stableSinceTs: null, armed: true })
@@ -58,12 +59,16 @@ export default function WebcamCapture({ onCapture, onExit, maxReached }) {
   const captureFrame = useCallback(() => {
     const video = videoRef.current
     const canvas = captureCanvasRef.current
-    if (!video || !canvas || !video.videoWidth) return
+    const stream = streamRef.current
+    if (!video || !canvas || !video.videoWidth || !stream || encodingRef.current) return
     canvas.width = video.videoWidth
     canvas.height = video.videoHeight
     canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height)
+    const encoding = {}
+    encodingRef.current = encoding
     canvas.toBlob(blob => {
-      if (!blob) return
+      if (encodingRef.current === encoding) encodingRef.current = null
+      if (!blob || streamRef.current !== stream) return
       onCapture(new File([blob], `webcam-${Date.now()}.jpg`, { type: 'image/jpeg' }))
       triggerFlash()
     }, 'image/jpeg', 0.92)
@@ -77,60 +82,69 @@ export default function WebcamCapture({ onCapture, onExit, maxReached }) {
     captureFrame()
   }, [status, maxReached, captureFrame])
 
-  // Acquire (and re-acquire on device switch / retry) the camera stream.
+  // Each request owns its stream, including permission grants arriving after exit.
   useEffect(() => {
     let cancelled = false
+    let stream = null
 
+    const stop = () => {
+      const previous = stream
+      stream = null
+      previous?.getTracks().forEach(track => {
+        track.removeEventListener('ended', onEnded)
+        track.stop()
+      })
+      if (streamRef.current === previous) {
+        streamRef.current = null
+        encodingRef.current = null
+        if (videoRef.current) videoRef.current.srcObject = null
+      }
+    }
+    const onEnded = () => {
+      if (cancelled) return
+      stop()
+      setStatus('error')
+    }
     const start = async () => {
       setStatus('requesting')
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
+        stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: 'environment',
             width: { ideal: 1920 },
             height: { ideal: 1080 },
-            ...(activeDeviceId ? { deviceId: { exact: activeDeviceId } } : {}),
           },
         })
         if (cancelled) {
-          stream.getTracks().forEach(track => track.stop())
+          stop()
           return
         }
         streamRef.current = stream
+        stream.getTracks().forEach(track => track.addEventListener('ended', onEnded))
         if (videoRef.current) {
           videoRef.current.srcObject = stream
-          await videoRef.current.play().catch(() => {})
+          await videoRef.current.play()
         }
+        if (cancelled || !stream || streamRef.current !== stream) return
         lastGrayRef.current = null
         stabilityRef.current = { stableSinceTs: null, armed: true }
         setStatus('live')
-        try {
-          const allDevices = await navigator.mediaDevices.enumerateDevices()
-          if (!cancelled) setDevices(allDevices.filter(device => device.kind === 'videoinput'))
-        } catch {
-          // Device labels are a nice-to-have; ignore enumeration failures.
-        }
       } catch (error) {
         if (cancelled) return
-        if (error?.name === 'NotAllowedError' || error?.name === 'PermissionDeniedError') {
+        const acquired = Boolean(stream)
+        stop()
+        if (!acquired && (error?.name === 'NotAllowedError' || error?.name === 'PermissionDeniedError')) {
           setStatus('denied')
-        } else if (error?.name === 'NotFoundError' || error?.name === 'OverconstrainedError') {
+        } else if (!acquired && (error?.name === 'NotFoundError' || error?.name === 'OverconstrainedError')) {
           setStatus('no-camera')
         } else {
           setStatus('error')
         }
       }
     }
-
     start()
-
-    return () => {
-      cancelled = true
-      streamRef.current?.getTracks().forEach(track => track.stop())
-      streamRef.current = null
-      if (videoRef.current) videoRef.current.srcObject = null
-    }
-  }, [activeDeviceId, retryToken])
+    return () => { cancelled = true; stop() }
+  }, [retryToken])
 
   // Frame-differencing loop: auto-captures once a card settles into the guide box.
   useEffect(() => {
@@ -147,7 +161,17 @@ export default function WebcamCapture({ onCapture, onExit, maxReached }) {
       if (timestamp - lastSampleTs < SAMPLE_INTERVAL_MS) return
       lastSampleTs = timestamp
 
-      sampleCtx.drawImage(video, 0, 0, SAMPLE_SIZE, SAMPLE_SIZE)
+      const preview = video.getBoundingClientRect()
+      const guide = guideRef.current?.getBoundingClientRect()
+      if (!guide || !preview.width || !preview.height) return
+      // Match the source region to the guide after object-cover crops the preview.
+      const scale = Math.max(preview.width / video.videoWidth, preview.height / video.videoHeight)
+      const sourceX = Math.max(0, (guide.left - preview.left + (video.videoWidth * scale - preview.width) / 2) / scale)
+      const sourceY = Math.max(0, (guide.top - preview.top + (video.videoHeight * scale - preview.height) / 2) / scale)
+      const sourceWidth = Math.min(video.videoWidth - sourceX, guide.width / scale)
+      const sourceHeight = Math.min(video.videoHeight - sourceY, guide.height / scale)
+      if (sourceWidth <= 0 || sourceHeight <= 0) return
+      sampleCtx.drawImage(video, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, SAMPLE_SIZE, SAMPLE_SIZE)
       const gray = toGrayscale(sampleCtx.getImageData(0, 0, SAMPLE_SIZE, SAMPLE_SIZE))
       const motionScore = computeMotionScore(lastGrayRef.current, gray)
       const contentScore = computeContentScore(gray)
@@ -156,11 +180,12 @@ export default function WebcamCapture({ onCapture, onExit, maxReached }) {
       const result = evaluateStability({
         motionScore,
         contentScore,
-        stableSinceTs: stabilityRef.current.stableSinceTs,
+        ...stabilityRef.current,
+        thresholds: DEFAULT_STABILITY_THRESHOLDS,
         now: Date.now(),
         armed: stabilityRef.current.armed,
       })
-      stabilityRef.current = { stableSinceTs: result.stableSinceTs, armed: result.armed }
+      stabilityRef.current = result
       if (result.shouldCapture && !maxReached) captureFrame()
     }
 
@@ -174,6 +199,10 @@ export default function WebcamCapture({ onCapture, onExit, maxReached }) {
   useEffect(() => {
     if (status !== 'live') return undefined
     const onKeyDown = event => {
+      if (event.defaultPrevented || event.repeat || event.altKey || event.ctrlKey || event.metaKey) return
+      if (event.target instanceof Element && event.target.closest(
+        'button, input, select, textarea, a, [role="button"], [contenteditable]:not([contenteditable="false"])',
+      )) return
       if (event.code === 'Space' || event.code === 'Enter') {
         event.preventDefault()
         handleManualCapture()
@@ -187,7 +216,7 @@ export default function WebcamCapture({ onCapture, onExit, maxReached }) {
 
   return (
     <div className="space-y-3">
-      <div className="relative aspect-video overflow-hidden rounded-2xl border border-white/10 bg-black">
+      <div className="relative h-[clamp(6rem,calc(85dvh-16rem),34rem)] sm:aspect-video sm:h-auto sm:max-h-[calc(85dvh-16rem)] overflow-hidden rounded-2xl border border-white/10 bg-black">
         <video
           ref={videoRef}
           muted
@@ -198,8 +227,8 @@ export default function WebcamCapture({ onCapture, onExit, maxReached }) {
 
         {status === 'live' && (
           <>
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
-              <div className="relative aspect-[2.5/3.5] h-full max-w-full rounded-2xl border-2 border-yellow/80">
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <div ref={guideRef} data-camera-guide className="relative aspect-[2.5/3.5] h-[84%] max-w-[90%] rounded-2xl border-2 border-yellow/80">
                 <span className="absolute left-2 top-2 h-5 w-5 border-l-2 border-t-2 border-white" />
                 <span className="absolute right-2 top-2 h-5 w-5 border-r-2 border-t-2 border-white" />
                 <span className="absolute bottom-2 left-2 h-5 w-5 border-b-2 border-l-2 border-white" />
@@ -248,22 +277,6 @@ export default function WebcamCapture({ onCapture, onExit, maxReached }) {
           </div>
         )}
       </div>
-
-      {devices.length > 1 && status === 'live' && (
-        <select
-          value={activeDeviceId}
-          onChange={event => setActiveDeviceId(event.target.value)}
-          className="select w-full text-sm"
-          aria-label={t('scanner.webcamSelectCamera')}
-        >
-          <option value="">{t('scanner.webcamSelectCamera')}</option>
-          {devices.map((device, index) => (
-            <option key={device.deviceId} value={device.deviceId}>
-              {device.label || `${t('scanner.webcamSelectCamera')} ${index + 1}`}
-            </option>
-          ))}
-        </select>
-      )}
 
       <div className="grid grid-cols-2 gap-2">
         <button
