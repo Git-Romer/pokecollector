@@ -77,6 +77,32 @@ describe('deck progress utilities', () => {
     expect(sorted.map(entry => entry.id)).toEqual([1, 2, 4, 3])
   })
 
+  it('sorts by stage inside each category when asked', () => {
+    const sorted = sortDeckEntries([
+      { id: 1, card: { name: 'Alakazam', supertype: 'Pokemon', stage: 'Stage2', set_id: 'sv1', number: '1' } },
+      { id: 2, card: { name: 'Abra', supertype: 'Pokemon', stage: 'Basic', set_id: 'sv1', number: '2' } },
+      { id: 3, card: { name: 'Kadabra', supertype: 'Pokemon', stage: 'Stage1', set_id: 'sv1', number: '3' } },
+      { id: 4, card: { name: 'Arven', supertype: 'Trainer', trainer_type: 'Supporter', set_id: 'sv1', number: '4' } },
+      { id: 5, card: { name: 'Air Balloon', supertype: 'Trainer', trainer_type: 'Tool', set_id: 'sv1', number: '5' } },
+      { id: 6, card: { name: 'Nest Ball', supertype: 'Trainer', trainer_type: 'Item', set_id: 'sv1', number: '6' } },
+      { id: 7, card: { name: 'Double Turbo Energy', supertype: 'Energy', subtypes: ['Special'], set_id: 'sv1', number: '7' } },
+      { id: 8, card: { name: 'Psychic Energy', supertype: 'Energy', subtypes: ['Basic'], set_id: 'sv1', number: '8' } },
+    ], 'stage')
+    expect(sorted.map(entry => entry.id)).toEqual([2, 3, 1, 4, 6, 5, 8, 7])
+  })
+
+  it('sorts rarest first and plain names alphabetically across categories', () => {
+    const entries = [
+      { id: 1, card: { name: 'Zubat', supertype: 'Pokemon', rarity: 'Common', set_id: 'sv1', number: '1' } },
+      { id: 2, card: { name: 'Mew ex', supertype: 'Pokemon', rarity: 'Double rare', set_id: 'sv1', number: '2' } },
+      { id: 3, card: { name: 'Boss\'s Orders', supertype: 'Trainer', rarity: 'Uncommon', set_id: 'sv1', number: '3' } },
+      { id: 4, card: { name: 'Mystery', supertype: 'Pokemon', rarity: 'Something new', set_id: 'sv1', number: '4' } },
+    ]
+    expect(sortDeckEntries(entries, 'rarity').map(entry => entry.id)).toEqual([2, 3, 1, 4])
+    expect(sortDeckEntries(entries, 'name').map(entry => entry.id)).toEqual([3, 2, 4, 1])
+    expect(sortDeckEntries(entries, 'nonsense').map(entry => entry.id)).toEqual(sortDeckEntries(entries).map(entry => entry.id))
+  })
+
   it('wraps gallery viewer navigation in gallery order', () => {
     expect(nextDeckCardIndex(3, 4)).toBe(0)
     expect(previousDeckCardIndex(0, 4)).toBe(3)

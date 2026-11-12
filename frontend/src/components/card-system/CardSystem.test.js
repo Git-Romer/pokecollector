@@ -63,5 +63,17 @@ describe('CardRequirementProgress', () => {
 
     expect(markup).toContain('lucide-check')
     expect(markup).not.toContain('&gt;4/4&lt;')
+    expect(markup).toContain('×4')
+  })
+
+  it('does not add a copy count to a complete single-copy requirement', () => {
+    const markup = renderToStaticMarkup(createElement(CardRequirementProgress, {
+      ownedQuantity: 1,
+      requiredQuantity: 1,
+      progressLabel: 'Progress: 1/1',
+    }))
+
+    expect(markup).toContain('lucide-check')
+    expect(markup).not.toContain('card-requirement-count')
   })
 })

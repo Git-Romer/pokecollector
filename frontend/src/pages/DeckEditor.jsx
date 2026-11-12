@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Copy, Download, Heart, Layers3, PackageCheck, Pencil, Plus, Trash2, Upload } from 'lucide-react'
+import { ArrowLeft, ArrowUpDown, Copy, Download, Eye, EyeOff, Heart, Layers3, PackageCheck, Pencil, Plus, Trash2, Upload } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { addBinderCardsToWishlist, addDeckEntry, convertDeckToPlanned, convertDeckToReal, deleteDeck, deleteDeckEntry, duplicateDeck, exportBinderCsv, getBinderEntryEquivalentPrints, getCollection, getDeck, importBinderCsv, switchBinderEntryCard, updateDeck } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
@@ -14,7 +14,7 @@ import DeckAnalyticsPanel from '../components/decks/DeckAnalyticsPanel'
 import BinderCsvImportModal from '../components/binders/BinderCsvImportModal'
 import CardListPicker from '../components/card-lists/CardListPicker'
 import CardListGallery from '../components/card-lists/CardListGallery'
-import { deckProgress, nextDeckCardIndex, previousDeckCardIndex, sortDeckEntries } from '../utils/deckProgress'
+import { DECK_SORT_MODES, deckProgress, nextDeckCardIndex, previousDeckCardIndex, sortDeckEntries } from '../utils/deckProgress'
 
 function invalidateDeck(queryClient, deckId) {
   queryClient.invalidateQueries({ queryKey: ['decks'] })
@@ -33,6 +33,11 @@ export default function DeckEditor() {
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(() => typeof window !== 'undefined' && window.localStorage.getItem('pokecollector.deckEditor.ownedCardsCollapsed') === 'false')
   const [showCsvImportModal, setShowCsvImportModal] = useState(false)
+  const [sortMode, setSortMode] = useState(() => {
+    const stored = typeof window !== 'undefined' ? window.localStorage.getItem('pokecollector.deckEditor.sortMode') : null
+    return DECK_SORT_MODES.includes(stored) ? stored : 'type'
+  })
+  const [showPrices, setShowPrices] = useState(() => typeof window === 'undefined' || window.localStorage.getItem('pokecollector.deckEditor.showPrices') !== 'false')
   const label = (key, values) => Object.entries(values).reduce((text, [name, value]) => text.replace(`{${name}}`, value), t(key))
   const { data: deck, isLoading } = useQuery({ queryKey: ['deck', deckId], queryFn: () => getDeck(deckId).then(response => response.data) })
   const { data: collection = [] } = useQuery({ queryKey: ['deck-picker-collection'], queryFn: () => getCollection({}).then(response => response.data) })
@@ -111,7 +116,7 @@ export default function DeckEditor() {
     },
   })
   const { optimisticQuantities, pendingEntryIds, changeQuantity } = useDeckQuantitySync({ deckId, queryClient, onError: showDeckMutationError })
-  const entries = sortDeckEntries((deck?.entries || []).map(entry => optimisticQuantities[entry.id] === undefined ? entry : { ...entry, required_quantity: optimisticQuantities[entry.id] }))
+  const entries = sortDeckEntries((deck?.entries || []).map(entry => optimisticQuantities[entry.id] === undefined ? entry : { ...entry, required_quantity: optimisticQuantities[entry.id] }), sortMode)
   const activeEntry = viewerIndex === null ? null : entries?.[viewerIndex]
   const { data: equivalentPrints, isLoading: equivalentPrintsLoading } = useQuery({
     queryKey: ['binder-entry-equivalents', deckId, activeEntry?.id],
@@ -142,6 +147,15 @@ export default function DeckEditor() {
   const setDeckPickerOpen = next => {
     setPickerOpen(next)
     window.localStorage.setItem('pokecollector.deckEditor.ownedCardsCollapsed', String(!next))
+  }
+  const changeSortMode = next => {
+    setSortMode(next)
+    window.localStorage.setItem('pokecollector.deckEditor.sortMode', next)
+  }
+  const togglePrices = () => {
+    const next = !showPrices
+    setShowPrices(next)
+    window.localStorage.setItem('pokecollector.deckEditor.showPrices', String(next))
   }
 
   return (
@@ -215,6 +229,18 @@ export default function DeckEditor() {
         <section className="space-y-3">
            <DeckCompositionBar entries={entries} progress={progress} t={t} label={label} />
            <DeckValidationPanel validation={deck.validation} t={t} />
+          <div className="flex flex-wrap items-center justify-end gap-2" data-testid="deck-gallery-toolbar">
+            <label className="flex items-center gap-2 text-xs text-text-muted">
+              <ArrowUpDown size={14} aria-hidden />
+              <span>{t('decks.sortBy')}</span>
+              <select className="select py-1 text-sm" value={sortMode} onChange={event => changeSortMode(event.target.value)} aria-label={t('decks.sortBy')}>
+                {DECK_SORT_MODES.map(mode => <option key={mode} value={mode}>{t(`decks.sortBy${mode.charAt(0).toUpperCase()}${mode.slice(1)}`)}</option>)}
+              </select>
+            </label>
+            <button type="button" className="btn-ghost px-2 py-1 text-sm" onClick={togglePrices} aria-pressed={!showPrices} title={t('decks.builderViewHelp')}>
+              {showPrices ? <EyeOff size={14} /> : <Eye size={14} />} {showPrices ? t('decks.hidePrices') : t('decks.showPrices')}
+            </button>
+          </div>
           {entries.length === 0 ? (
             <div className="card py-14 text-center text-sm text-text-muted">{t('decks.emptyDeck')}</div>
           ) : (
@@ -224,7 +250,7 @@ export default function DeckEditor() {
               onOpen={(_entry, index) => setViewerIndex(index)}
               t={t}
               label={label}
-              formatPrice={formatPrice}
+              formatPrice={showPrices ? formatPrice : null}
               pricePrimaryField={pricePrimaryField}
             />
           )}

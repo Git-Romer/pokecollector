@@ -60,7 +60,7 @@ export default function CardListGallery({
             key={entry.binder_card_id || entry.id || card.id}
             item={collectionItem}
             card={displayCard}
-            price={price > 0 ? formatPrice(price) : null}
+            price={price > 0 && formatPrice ? formatPrice(price) : null}
             variantEffectSource={entry.display_variant || variant || card}
             showStateIndicators={!planned}
             dimWhenUnowned={planned}

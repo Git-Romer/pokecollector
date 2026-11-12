@@ -96,7 +96,14 @@ allocations.
 
 The `/decks` and `/decks/inventory` frontend paths redirect to `/binders`, where
 all lists are managed. `/decks/:deckId` opens the Deck editor and
-`/decks/compare` opens comparison. The `/api/decks` compatibility API provides
+`/decks/compare` opens comparison. The Deck editor gallery can be sorted by card
+type (default), by type and stage (Basic → Stage 1 → Stage 2, then Supporter →
+Item → Tool → Stadium, then basic before special Energy), by rarity (rarest
+first), or by name; the choice persists in `localStorage`. A "Hide prices"
+toggle (also persisted) turns the gallery into a builder view that drops market
+values so the page reads as a pick list from the collection. Complete planned
+tiles show `×N` next to the green check whenever more than one copy is required,
+so physical copies can be counted out by artwork. The `/api/decks` compatibility API provides
 Deck-specific CRUD, conversion, validation, allocation, comparison, and
 probability responses.
 
