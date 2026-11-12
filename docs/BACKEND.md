@@ -59,6 +59,26 @@ recognizes code-number pairs such as `PFL 001`.
 
 Custom cards belong to exactly one user. Owners may publish a card as a shared template, but other users must clone it before using it in collections, wishlists, binders, products, or trades. Clones have independent IDs, metadata, images, and prices. Manual image URLs must use public HTTPS destinations and are fetched through the size-limited image proxy. During upgrade, existing custom cards become shared templates owned by the first-created admin account, while each other referencing user receives one private clone and keeps their existing references.
 
+### Set display metadata
+
+`GET /api/sets/?lang=de&name_lang=en` keeps each set's original `name`, `lang`,
+`release_date`, identity and collection counts. It adds nullable `translated_name`
+and `translated_name_lang` fields. Without `name_lang`, the user's own app-language
+setting is used; it is independent of the card-language filter.
+
+Translations come from the locally synchronized catalogue and require exactly one
+set in the requested name language with the same canonical `tcg_set_id`. Missing,
+blank or ambiguous names return null for both fields. No upstream requests or
+catalogue writes are triggered to obtain a translation. Unsynchronized names and
+UI-only languages without TCGdex catalogue support (such as Swedish and Danish)
+therefore have no translated label. Regional sets with different identifiers are
+not matched by similar names, abbreviations or dates. This is not machine
+translation or an inferred equivalence between Japanese and international sets.
+
+Clients can format the unchanged ISO release date in their display locale. The
+Sets page uses month/year in the selected app language with UTC calendar handling,
+so time-zone conversion cannot move a release into the preceding month.
+
 ### Collection, Sets, Wishlist, Binders
 
 | Method | Path | Notes |
@@ -78,7 +98,7 @@ Custom cards belong to exactly one user. Owners may publish a card as a shared t
 | POST | `/api/collection/{item_id}/photo` | Store/replace one sanitized owner photo for that card identity |
 | DELETE | `/api/collection/{item_id}/photo` | Delete the owner's photo for that card identity |
 | GET | `/api/collection/stats/summary` | Collection summary |
-| GET | `/api/sets/` | List sets |
+| GET | `/api/sets/` | List sets; optional `lang` filters catalogue language, optional `name_lang` selects translated-name metadata (defaults to the authenticated user's app language) |
 | GET | `/api/sets/new` | Newly detected sets |
 | POST | `/api/sets/mark-seen` | Mark new-set badges seen |
 | GET | `/api/sets/{set_id}` | Set detail |

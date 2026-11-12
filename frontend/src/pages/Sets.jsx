@@ -7,6 +7,8 @@ import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
 import { resolveSetImageUrl } from '../utils/imageUrl'
 import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
+import SetName from '../components/SetName'
+import { formatSetReleaseDate } from '../utils/setPresentation'
 import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import { normalizeTcgdexLanguage, tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { setMatchesSearch } from '../utils/textSearch'
@@ -101,8 +103,8 @@ export default function Sets() {
   }, [t, updateSettings])
 
   const { data: sets = [], isLoading } = useQuery({
-    queryKey: ['sets', langFilter],
-    queryFn: () => getSets({ lang: langFilter }).then(r => r.data),
+    queryKey: ['sets', langFilter, { nameLanguage: settings.language || 'en' }],
+    queryFn: () => getSets({ lang: langFilter, name_lang: settings.language || 'en' }).then(r => r.data),
     enabled: filtersHydrated,
   })
   const { saveScrollPosition, createDetailNavigationState } = useListScrollRestoration({
@@ -601,7 +603,7 @@ export default function Sets() {
                 {/* Set info */}
                 <div className="p-3">
                   <div className="flex items-start gap-1.5 mb-0.5">
-                    <p className="font-bold text-text-primary text-sm leading-tight truncate flex-1">{set.name}</p>
+                    <SetName set={set} language={settings.language || 'en'} />
                     {/* Language badge - supported TCGdex language, never "both" */}
                     {set.lang && (
                       <span className={`flex-shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded leading-none ${tcgdexLanguageBadgeClass(set.lang)}`}>
@@ -616,12 +618,9 @@ export default function Sets() {
                     {set.series}
                     {set.total ? ` · ${set.total} ${t('sets.cards')}` : ''}
                   </p>
-                  {set.release_date && (() => {
-                    const d = new Date(set.release_date)
-                    const label = isNaN(d.getTime()) ? set.release_date :
-                      d.toLocaleDateString('de-DE', { month: 'short', year: 'numeric' })
-                    return <p className="text-[10px] text-text-muted mb-2">{label}</p>
-                  })()}
+                  {set.release_date && (
+                    <p className="text-[10px] text-text-muted mb-2">{formatSetReleaseDate(set.release_date, settings.language)}</p>
+                  )}
                   {!set.release_date && <div className="mb-2.5" />}
 
                   {/* HP-style progress bar */}

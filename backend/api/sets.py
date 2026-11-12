@@ -19,7 +19,7 @@ from services.card_numbers import natural_card_number_key
 from services.card_upsert import upsert_card
 from services.card_visibility import get_configured_sync_languages, visible_set_filter
 from services.digital_sets import digital_sets_enabled
-from services.display_language import get_tcgdex_display_language
+from services.display_language import get_display_language, get_tcgdex_display_language
 from services.tcgdex_languages import DEFAULT_TCGDEX_SYNC_LANGUAGES, has_lang_suffix, is_supported_tcgdex_language, normalize_tcgdex_language
 
 router = APIRouter()
@@ -60,6 +60,7 @@ def get_sets(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     refresh: bool = False,
+    name_lang: Optional[str] = None,
     lang: Optional[str] = Query(None, description="Language filter: supported TCGdex language code or 'all'"),
 ):
     """Get all sets, optionally refresh from TCGdex API.
@@ -118,7 +119,25 @@ def get_sets(
         set_lang = set_obj.lang or 'en'
         set_obj.owned_count = owned_map.get((tcg_id, set_lang), 0)
 
-    return sets
+    # Only a matching catalogue identity is a translation. Regional expansions
+    # with different IDs must not be guessed from names, dates or abbreviations.
+    name_language = normalize_tcgdex_language(
+        name_lang if name_lang is not None else get_display_language(db, current_user.id)
+    )
+    identities = {item.tcg_set_id for item in sets if item.tcg_set_id}
+    translations = {}
+    if identities and is_supported_tcgdex_language(name_language):
+        for item in db.query(Set).filter(Set.lang == name_language, Set.tcg_set_id.in_(identities)).all():
+            translations.setdefault(item.tcg_set_id, []).append(item)
+    result = []
+    for item in sets:
+        matches = translations.get(item.tcg_set_id, [])
+        translated = matches[0] if len(matches) == 1 and matches[0].name.strip() else None
+        result.append(SetBase.model_validate(item).model_copy(update={
+            "translated_name": translated.name if translated else None,
+            "translated_name_lang": name_language if translated else None,
+        }))
+    return result
 
 
 @router.get("/new")
