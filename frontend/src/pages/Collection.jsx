@@ -1327,7 +1327,7 @@ export default function Collection() {
 
   return (
     <>
-      <div className={`space-y-4 ${bulkRemoval.active ? 'pb-48 lg:pb-6' : 'pb-6'}`}>
+      <div className={`space-y-4 ${bulkRemoval.active ? 'pb-48 lg:pb-6' : 'pb-2'}`}>
         <TabNav tabs={COLLECTION_TABS} />
 
       {/* ─── Header ───────────────────────────────────────────────── */}

@@ -552,7 +552,15 @@ test('legacy deck inventory route returns to Card Lists', async ({ page }) => {
 test('real Collection list keeps shared artwork, identity, and fallback treatment', async ({ page }) => {
   await page.goto('/collection')
   await page.getByTitle('List view').click()
+  // :visible also matches off-screen rows. Load their lazy artwork before
+  // capturing the complete list, then restore the original viewport.
+  const initialScroll = await page.evaluate(() => ({ x: window.scrollX, y: window.scrollY }))
+  for (const artwork of await page.locator('.unified-card-compact-artwork:visible').all()) {
+    await artwork.scrollIntoViewIfNeeded()
+    await expect(artwork.locator('.unified-card-skeleton')).toHaveCount(0)
+  }
   await expectVisibleArtwork(page)
+  await page.evaluate(({ x, y }) => window.scrollTo(x, y), initialScroll)
 
   await expect(page.locator(
     '.unified-card-frame[style*="--pc-card-border-image"]:visible',
