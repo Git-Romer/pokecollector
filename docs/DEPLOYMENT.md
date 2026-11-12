@@ -17,7 +17,7 @@ Registry:
 Both images support `linux/amd64` and `linux/arm64`. PostgreSQL continues to use
 the official `postgres:18-alpine` image.
 
-Every application release has a stable version tag such as `1.56.4`. The
+Every application release has a stable version tag such as `1.56.5`. The
 Compose file downloaded from that release defaults both application services to
 that exact version. A `latest` alias is also published for discovery, but it is
 not the default: two separate repository tags cannot be promoted atomically, so
@@ -28,8 +28,21 @@ Set `POKECOLLECTOR_VERSION` in `.env` to pin or override both application
 images together:
 
 ```env
-POKECOLLECTOR_VERSION=1.56.4
+POKECOLLECTOR_VERSION=1.56.5
 ```
+
+## Live webcam scanning needs a secure context
+
+The scanner's live webcam capture mode uses the browser `getUserMedia` API,
+which browsers only grant on a secure context: HTTPS, or `http://localhost`.
+An installation reached over plain HTTP on a LAN IP (the default for
+`docker-compose.yml` without a reverse proxy) will show the "Use webcam"
+button disabled with an explanatory tooltip — the existing device-camera
+("Take photo") and gallery upload capture methods are unaffected and keep
+working over plain HTTP. Put PokéCollector behind a reverse proxy that
+terminates TLS (see [REVERSE_PROXY_AUTH.md](REVERSE_PROXY_AUTH.md) for an
+authenticating example) to enable live webcam scanning on other devices on
+the network.
 
 ## Advanced Holo publisher
 

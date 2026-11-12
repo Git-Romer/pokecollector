@@ -1,0 +1,4 @@
+# Shell scripts run inside Linux containers (see frontend/docker-entrypoint.d
+# and scripts/) and fail to execute if checked out with CRLF line endings —
+# which core.autocrlf=true otherwise introduces silently on Windows.
+*.sh text eol=lf
