@@ -8,6 +8,8 @@ class SetBase(BaseModel):
     id: str                             # Composite DB key: "sv1_en" / "sv1_zh-tw"
     tcg_set_id: Optional[str] = None   # Original TCGdex set ID: "sv1"
     name: str
+    translated_name: Optional[str] = None
+    translated_name_lang: Optional[str] = None
     series: Optional[str] = None
     release_date: Optional[str] = None
     total: int = 0
