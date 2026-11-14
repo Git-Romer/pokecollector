@@ -1853,5 +1853,27 @@
     "traderDesc": "Sælg 10 produkter",
     "rareFinder": "Rare Finder",
     "rareFinderDesc": "Få et Illustration Rare-kort"
+  },
+  "bulkRemoval": {
+    "select": "Vælg kort",
+    "actions": "Valghandlinger",
+    "conflictTitle": "Disse kort er stadig tildelt",
+    "conflictHint": "Intet blev fjernet. Gennemgå de berørte kort og deres tildelinger nedenfor.",
+    "copies": "{count} eksemplarer",
+    "releaseAssignments": "Fjern angivne tildelinger",
+    "confirmRelease": "Bekræft fjernelse af tildelinger",
+    "releaseConfirm": "Fjern {entries} angivne tildelinger med {copies} eksemplarer fra disse mapper og decks? Kun de valgte samlingsposter påvirkes. Ejerskab af samlingen forbliver uændret.",
+    "released": "Tildelinger fjernet. Din samling er ikke blevet slettet. Du kan nu prøve at fjerne samlingen igen.",
+    "retryRemoval": "Prøv at fjerne samlingen igen",
+    "productProtected": "Tilknyttet produkt:",
+    "productHint": "Produkttilknytninger kræver en separat bekræftelse. Tilknytninger med salgs- eller byttehistorik kan ikke fjernes.",
+    "unlinkProduct": "Fjern tilknytning til produkt",
+    "confirmUnlink": "Bekræft fjernelse af tilknytning",
+    "unlinkProducts": "Fjern angivne produkter",
+    "confirmUnlinkProducts": "Bekræft fjernelse af produkttilknytninger",
+    "unlinkAllConfirm": "Fjern {entries} produkttilknytninger, der dækker {copies} eksemplarer? Alle viste tilknytninger skal kunne fjernes, ellers ændres intet. Produkter og ejede eksemplarer forbliver uændrede. Intet salg registreres.",
+    "unavailableEntries": "Disse post-id'er er ikke længere tilgængelige: {ids}. Luk dette pop op-vindue, og opdater siden, før du prøver igen.",
+    "cancelUnlink": "Annuller fjernelse af tilknytning",
+    "unlinkConfirm": "Fjern tilknytning for {copies} eksemplarer af {card} fra {product}? Produktet og din samling forbliver uændrede. Dette fjerner kun tilknytningen og registrerer ikke et salg."
   }
 }
