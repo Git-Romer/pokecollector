@@ -16,6 +16,9 @@ the latest target branch, and reuse of an existing `v<version>` release tag.
 Direct default-branch pushes compare against the previous commit; an existing
 tag is accepted there only when it resolves to the exact checked commit.
 The workflow has read-only repository permissions and does not write versions.
+On `main`, `version-check` is a required status check from GitHub Actions, and
+branches must be up to date before merging. These protections also apply to
+administrators. A passing check does not merge a PR; the owner still merges it.
 
 For a local equivalent, fetch the target branch and tags, then run:
 
@@ -53,8 +56,13 @@ promise that Weblate preserves an externally added Git commit SHA.
 
 ## Maintainer setup and activation
 
-1. Review and merge the implementation normally. No workflow merges PRs,
-   pushes application changes directly to `main`, or deploys the application.
+No workflow merges PRs or deploys the application. The dedicated credential and
+live translation round trip are configured and verified, including another
+translation delivery to the same open PR. The required `version-check` protection
+is active on `main`. For recovery or replacement of this integration:
+
+1. Review and merge implementation changes normally. No workflow pushes
+   application changes directly to `main` or bypasses owner review.
 2. Configure the Actions repository secret `WEBLATE_VERSION_TOKEN` with a
    dedicated token restricted to this repository, with Contents write and Pull
    requests read. Do not use a broad operational token. A GitHub App integration

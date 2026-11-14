@@ -2,20 +2,34 @@
 
 Help with a few labels or a whole language. Partial translations are welcome: text that has not been translated yet stays in English.
 
-Hosted Weblate is the selected platform for browser-based contributions. The project has not been connected yet. Until a verified translation-project link is published here, use a GitHub pull request. No Weblate account is needed for that route.
+Translate in your browser through [PokéCollector's Weblate](https://pokecollector.romerg.de/translations/projects/pokecollector/frontend/). You can also edit the translation files and open a GitHub pull request.
+
+## Contribute through Weblate
+
+1. Open the [Frontend translation project](https://pokecollector.romerg.de/translations/projects/pokecollector/frontend/).
+2. Sign in with GitHub or register a Weblate account.
+3. Choose your language and an untranslated string or wording you would like to improve. English is the reference text and cannot be edited through Weblate.
+4. Translate the text, keeping placeholders such as `{name}` and `{count}` unchanged, then save.
+
+Your translations are saved immediately. Weblate checks pending changes once an hour and sends edits that are at least one hour old to a GitHub pull request. Depending on when you save, delivery can take nearly two hours. You do not need to open a pull request yourself; later batches update the existing translation PR while it remains open.
+
+The version bot adds the required patch version and keeps the same suitable version when more translations arrive. Automated checks run on the updated PR, but the project owner still reviews and merges it. Saving a translation does not immediately change the released application: merged translations are bundled into a release, which an installation then needs to update to use.
+
+Weblate retains translator attribution. If you would like credit under a particular public GitHub handle, make it clear in your contribution so it can be checked before merge.
 
 ## Contribute through GitHub
 
 1. Find your language in `frontend/src/i18n/locales/`.
 2. Edit the wording in that JSON file, keeping the existing keys and nesting.
 3. Keep placeholders unchanged. For example, translate `{count} cards` but leave `{count}` intact so the app can insert the number.
-4. Run `npm run check:translations` from `frontend/` and open a focused pull request.
+4. Run `npm run check:translations` from `frontend/`.
+5. Update the application version using the [shared version command](VERSIONING.md) and open a focused pull request. The automatic bump applies only to the configured Weblate branch, not to manually opened translation PRs.
 
 Use `en.json` to look up the meaning of a label. Do not fill untranslated entries with copied English text just to make a file complete. Leave the key absent to use the English fallback. Empty strings are rejected because they would hide a label instead of falling back.
 
 Keys describe where text belongs. For example, `sets.releaseDate` is the release-date label on a set card. If the meaning is unclear, include the page or a screenshot in your PR so the wording can be reviewed in context. A glossary should keep recurring terms such as Binder, Deck, Holo and Reverse Holo consistent without changing their meaning.
 
-Translations remain part of the repository and use its [license](../LICENSE). Existing contributor credit is retained during migration. Translation PRs should preserve translator attribution; reviewers should also check whether a new translator needs adding to `CONTRIBUTORS.csv`. If you would like credit under a particular public GitHub handle, include it in the contribution.
+Translations remain part of the repository and use its [license](../LICENSE). Existing contributor credit is retained. Translation PRs should preserve translator attribution; reviewers should also check whether a new translator needs adding to `CONTRIBUTORS.csv` without duplicating an existing credit.
 
 ## File layout and fallback
 
@@ -24,43 +38,37 @@ Translations remain part of the repository and use its [license](../LICENSE). Ex
 - The small `.js` files one directory above load that data. Edit the JSON, not those import wrappers.
 - Existing language settings and lazy loading are unchanged.
 - `es-mx.json` and `zh-tw.json` are independent regional catalogues.
-- `pt-br` and `pt-pt` currently reuse `pt.json`; `zh-cn` reuses `zh.json`. They remain selectable but should not be imported into Weblate as duplicate translation files. The `zh` catalogue currently supplies simplified Chinese.
+- `pt-br` and `pt-pt` currently reuse `pt.json`; `zh-cn` reuses `zh.json`. They remain selectable but must not be imported into Weblate as duplicate translation files. The `zh` catalogue currently supplies simplified Chinese.
 
 Adding a file alone does not add a selectable language. A new language needs an explicit loader, language-picker entry, any required locale mapping and tests. Discuss that change in an issue or PR before enabling it in Weblate.
 
-The translation check rejects invalid JSON, duplicate keys, blank text, invalid value types and missing or unexpected `{placeholder}` names. It also checks literal translation keys in the interface against English. It does not grade translation quality or claim a language is fully translated. Some older catalogues retain legacy keys that are no longer in English; this migration preserves them rather than silently deleting contributor text.
+The translation check rejects invalid JSON, duplicate keys, blank text, invalid value types and missing or unexpected `{placeholder}` names. It also checks literal translation keys in the interface against English. It does not grade translation quality or claim a language is fully translated. Some older catalogues retain legacy keys that are no longer in English; those are not silently deleted.
 
-## Maintainer setup for Hosted Weblate
+## Maintainer integration
 
-This is the intended setup, not a claim that hosting or repository access is active. The project owner must request and receive hosting approval and authorize the GitHub integration. Do not start a paid plan automatically if free hosting is unavailable.
-
-Use one application-interface component:
+The active service uses one application-interface component:
 
 - Repository: `https://github.com/Git-Romer/pokecollector`
 - Upstream branch: `main`
+- Dedicated PR branch: `weblate-translations`
 - File format: **JSON nested structure file** (`json-nested`), not i18next or ICU JSON
 - File mask: `frontend/src/i18n/locales/*.json`
 - Monolingual base file: `frontend/src/i18n/locales/en.json`
-- Source language: English
-- Template for new translations: empty
-- Import existing translations and retain their history and attribution.
-- Verify language mapping before enabling synchronization, especially `es-mx`, `zh-tw` and the simplified-Chinese `zh` file. Do not create duplicate files for the three aliases above.
-- Restrict new-language creation until the corresponding application support has been reviewed.
-- Enable Weblate's **Remove blank strings** add-on (`weblate.cleanup.blank`) so untranslated JSON entries stay absent and use English fallback. Do not prefill missing entries with English or enable automatic cleanup of legacy keys during initial import.
-- Check placeholders in Weblate where supported; repository validation remains the required safeguard for this app's single-brace placeholders.
-- Use GitHub pull-request integration, not direct pushes to `main`. Prefer a dedicated translation branch with batched updates. Grant only the repository access the chosen integration requires.
-- Keep automatic merging disabled. Translation PRs must run the normal checks and receive human review; only the project owner merges.
-- Do not enable paid machine translation, external AI services or automatic source-text edits as part of setup.
+- Source language: English, with source editing disabled
+- New-language creation restricted until application support has been reviewed
+- **Remove blank strings** add-on (`weblate.cleanup.blank`) so untranslated JSON entries stay absent and use English fallback
+- Automatic push after committing enabled, push on upstream-only updates disabled
+- One-hour minimum pending age and an hourly pending-commit task
+- GitHub PR delivery, with automatic merging disabled
 
-Before publishing the contributor link, verify an actual round trip: import the existing files, change a harmless label through Weblate, receive a PR on the intended branch, run checks, inspect the file diff and translator credit, and confirm that no unrelated files or source strings changed. Review the initial import for empty entries, rewritten keys, regional mappings and unexpected formatting churn. Do not merge a smoke-test change automatically.
+Keep the JSON formatting, regional mappings and contributor history intact. Do not prefill missing entries with English, delete legacy keys in bulk or enable paid machine translation as part of routine synchronization. Weblate checks supplement, rather than replace, the repository's placeholder and catalogue validation.
 
-After that verification, replace the pending-status paragraph at the top with the actual project link and add the same link to the repository's contributor entry points. Do not publish a guessed project URL or a badge for a project that does not exist yet.
+The [version automation guide](VERSIONING.md) explains the dedicated version-writer credential, trusted-main execution, required version check and handling of later Weblate branch replacements. Only the project owner merges PRs. The live delivery, automatic version write, fresh checks and same-PR version restoration have been verified with real translation contributions.
 
 The application ships translations in its frontend build. It makes no runtime requests to Weblate, needs no Weblate secret, and continues working if the translation service is unavailable. No new application API or collection-data access is involved.
 
 Official references:
 
-- [Hosted Weblate and libre-project hosting](https://weblate.org/en/hosting/)
 - [Nested JSON format](https://docs.weblate.org/en/latest/formats/json.html)
 - [GitHub pull-request integration](https://docs.weblate.org/en/latest/admin/code-hosting.html)
 - [Translation add-ons, including removal of blank strings](https://docs.weblate.org/en/latest/admin/addons.html)
