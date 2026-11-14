@@ -51,6 +51,7 @@ function apiFixture(files) {
     }
     if (path === `${prefix}/pulls/12`) return pr()
     if (path === `${prefix}/git/ref/heads/main`) return { object: { sha: base } }
+    if (path === `${prefix}/git/ref/heads/weblate-translations`) return { object: { sha: currentHead } }
     if (path.includes('/compare/')) return { merge_base_commit: { sha: base } }
     if (path.includes('/pulls/12/files')) return [{ filename: locale, status: 'modified' }]
     if (path.includes('/git/trees/')) return { sha: treeId, truncated: false, tree: entries }
@@ -73,6 +74,43 @@ function planFixture() {
   const files = readVersionFiles(root)
   return { files, baseFiles: files, comparisonFiles: files, changes: [{ filename: 'frontend/src/i18n/locales/de.json', status: 'modified' }], cataloguePaths: ['frontend/src/i18n/locales/de.json'], tags: [] }
 }
+
+test('stale PR metadata after a successful push does not report a false failure', async () => {
+  const { updateWeblatePullRequest } = await import('./weblate-version-bot.mjs')
+  const f = apiFixture(readVersionFiles(root))
+  const api = (...args) => {
+    const result = f.api(...args)
+    if (args[0].endsWith('/pulls/12')) result.head.sha = f.head
+    return result
+  }
+  assert.equal(updateWeblatePullRequest(api, 'Git-Romer/pokecollector', 12).commit, f.newCommit)
+  assert.deepEqual(f.writes.map(w => w.method), ['POST', 'POST', 'PATCH'])
+})
+
+test('a genuinely different branch ref after pushing is still reported without another write', async () => {
+  const { updateWeblatePullRequest } = await import('./weblate-version-bot.mjs')
+  const f = apiFixture(readVersionFiles(root))
+  const api = (...args) => {
+    const result = f.api(...args)
+    if (args[0].endsWith('/git/refs/heads/weblate-translations') && args[1] === 'PATCH') f.advance()
+    // Even a fresh-looking PR response must not conceal a different live ref.
+    if (args[0].endsWith('/pulls/12') && f.writes.some(w => w.method === 'PATCH')) result.head.sha = f.newCommit
+    return result
+  }
+  assert.throws(() => updateWeblatePullRequest(api, 'Git-Romer/pokecollector', 12), /branch.*readback/i)
+  assert.deepEqual(f.writes.map(w => w.method), ['POST', 'POST', 'PATCH'])
+})
+
+test('a failed branch-ref readback is surfaced without retrying the push', async () => {
+  const { updateWeblatePullRequest } = await import('./weblate-version-bot.mjs')
+  const f = apiFixture(readVersionFiles(root))
+  const api = (...args) => {
+    if (args[0].endsWith('/git/ref/heads/weblate-translations')) throw new Error('GitHub reference read failed')
+    return f.api(...args)
+  }
+  assert.throws(() => updateWeblatePullRequest(api, 'Git-Romer/pokecollector', 12), /reference read failed/)
+  assert.deepEqual(f.writes.map(w => w.method), ['POST', 'POST', 'PATCH'])
+})
 
 test('repeated automation keeps an existing bump and makes no further changes', async () => {
   const { planWeblateVersion } = await import('./weblate-version.mjs')

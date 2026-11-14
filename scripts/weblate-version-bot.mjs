@@ -78,8 +78,10 @@ export function updateWeblatePullRequest(api, repo, number) {
   const commit = api(`${prefix}/git/commits`, 'POST', { message: `chore(release): bump version to ${plan.version}`, tree: sha(newTree.sha), parents: [head], author: { name: 'github-actions[bot]', email: '41898282+github-actions[bot]@users.noreply.github.com' } })
   stillCurrent()
   api(`${prefix}/git/refs/heads/${branch}`, 'PATCH', { sha: sha(commit.sha), force: false })
-  const updated = api(`${prefix}/pulls/${number}`)
-  if (updated.head.sha !== commit.sha) throw new Error('The branch changed before readback; inspect the current PR before retrying.')
+  // PR head metadata can lag behind a successful ref update. Read back the
+  // Git ref itself, while still failing closed if another writer changed it.
+  const updated = api(`${prefix}/git/ref/heads/${branch}`)
+  if (sha(updated.object.sha) !== commit.sha) throw new Error('The branch changed before readback; inspect the current PR before retrying.')
   return { version: plan.version, commit: commit.sha }
 }
 
