@@ -55,7 +55,8 @@
     "settings": "Einstellungen",
     "cards": "Karten",
     "value": "Wert",
-    "more": "Mehr"
+    "more": "Mehr",
+    "decks": "Decks"
   },
   "pokedex": {
     "title": "Nationaler Pokédex",
@@ -190,7 +191,13 @@
     "success": "Erfolgreich",
     "confirm_delete": "Wirklich löschen?",
     "sold": "Verkauft",
-    "loss": "Verlust"
+    "loss": "Verlust",
+    "normalFilters": "Normale Filter",
+    "advancedFilters": "Erweiterte Filter",
+    "applyFilters": "Filter anwenden",
+    "sortAscending": "Aufsteigend sortieren",
+    "sortDescending": "Absteigend sortieren",
+    "copy": "Kopieren"
   },
   "auth": {
     "login": "Anmelden",
@@ -423,7 +430,8 @@
     "standardLegal": "Standard",
     "searchCards": "Karten suchen...",
     "clearFilters": "Filter zurücksetzen",
-    "foundIn": "Gefunden in"
+    "foundIn": "Gefunden in",
+    "ruleTextSearchFailed": "Kollektion konnte nicht geladen werden. Bitte erneut versuchen."
   },
   "printingDetails": {
     "label": "Druckdetails",
