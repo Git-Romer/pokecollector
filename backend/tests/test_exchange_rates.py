@@ -39,6 +39,41 @@ class ExchangeRateTests(unittest.TestCase):
         self.assertEqual(rates[1]["rate"], 7.46)
         self.assertEqual(rates[1]["provider_date"].isoformat(), "2026-10-20")
 
+    def test_rejects_rate_set_with_no_supported_quotes(self):
+        with self.assertRaises(ExchangeRateError):
+            parse_frankfurter_v2_rates([
+                {"date": "2026-10-20", "base": "EUR", "quote": "AAVE", "rate": 0.009},
+                {"date": "2026-10-20", "base": "EUR", "quote": "USDT", "rate": 1.12},
+            ], "EUR")
+
+    def test_rejects_wrong_base_even_on_an_unsupported_quote(self):
+        with self.assertRaises(ExchangeRateError):
+            parse_frankfurter_v2_rates([
+                {"date": "2026-10-20", "base": "USD", "quote": "AAVE", "rate": 0.009},
+                {"date": "2026-10-20", "base": "EUR", "quote": "DKK", "rate": 7.46},
+            ], "EUR")
+
+    def test_skipping_unsupported_quotes_does_not_hide_invalid_supported_rates(self):
+        for bad_record in (
+            {"date": "not-a-date", "base": "EUR", "quote": "USD", "rate": 1.12},
+            {"date": "2026-10-20", "base": "EUR", "quote": "USD", "rate": 0},
+            {"date": "2026-10-20", "base": "EUR", "quote": "USD", "rate": "NaN"},
+        ):
+            with self.subTest(record=bad_record):
+                with self.assertRaises(ExchangeRateError):
+                    parse_frankfurter_v2_rates([
+                        {"date": "2026-10-20", "base": "EUR", "quote": "AAVE", "rate": 0.009},
+                        bad_record,
+                    ], "EUR")
+
+    def test_rejects_duplicate_supported_quotes_in_mixed_rate_set(self):
+        with self.assertRaises(ExchangeRateError):
+            parse_frankfurter_v2_rates([
+                {"date": "2026-10-20", "base": "EUR", "quote": "USD", "rate": 1.12},
+                {"date": "2026-10-20", "base": "EUR", "quote": "AAVE", "rate": 0.009},
+                {"date": "2026-10-20", "base": "EUR", "quote": "USD", "rate": 1.13},
+            ], "EUR")
+
     def test_rejects_invalid_or_inconsistent_rate_sets(self):
         for payload, base in (
             ([], "EUR"),

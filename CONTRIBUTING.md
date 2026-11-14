@@ -40,7 +40,7 @@ configuration, routes, storage, privacy, or operational steps change. Keep
 historical implementation briefs clearly labelled so they are not mistaken for
 current instructions.
 
-The frontend test command also validates literal translation keys. Add new user-facing keys to `src/i18n/en.js`; other language bundles can fall back to English until a translation is contributed. Missing keys fail with the source file and line instead of appearing as raw labels in the app.
+The frontend test command validates literal translation keys and all translation JSON files. Add new user-facing keys to `src/i18n/locales/en.json`; other language bundles can fall back to English until a translation is contributed. Missing keys fail with the source file and line instead of appearing as raw labels in the app. Duplicate keys, blank translations and placeholder mismatches are also rejected.
 
 To build and run the container images from your checkout instead of pulling the
 published release images:
@@ -61,6 +61,35 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml down
 
 A plain `docker compose up` uses the published GHCR images instead of the local
 build override.
+
+## Application versions
+
+Every pull request needs a version newer than its target branch, including fixes,
+documentation and translation changes. Choose a patch, minor or major increase
+for the scope, then update all version references together:
+
+```bash
+node scripts/bump-version.mjs patch
+# Or choose an explicit version, for example:
+node scripts/bump-version.mjs 2.0.0 --dry-run
+node scripts/check-version.mjs --base origin/main --check-tags
+```
+
+Fetch the target branch and release tags before checking. Keep the same proposed
+version across further commits unless the target branch catches up or the version
+has already been released. The command updates `VERSION`, the frontend package
+and lockfile, Docker image defaults, and README references without changing
+translations or dependencies.
+
+Only the configured Weblate translation branch receives an automatic patch bump.
+Other pull requests choose their own release increment. The check runs on every
+PR update and branch push, without file-path exclusions. See
+[version automation](docs/VERSIONING.md) for the workflow, permissions and
+maintainer activation steps.
+
+## Translations
+
+Partial translations are welcome through [Weblate](https://pokecollector.romerg.de/translations/projects/pokecollector/frontend/) or a GitHub pull request. In Weblate, sign in, choose your language, translate and save; the service sends batched updates to a PR for review. Keep placeholders such as `{count}` unchanged. For direct file edits, use the JSON in `frontend/src/i18n/locales/`, run `npm run check:translations` from `frontend/`, and update the application version. The [translation guide](docs/TRANSLATING.md) explains timing, English fallback and contributor credit.
 
 ## Card interfaces
 

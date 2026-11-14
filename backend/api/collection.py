@@ -1,3 +1,5 @@
+from schemas import BulkRemoveRequest, BulkRemoveResponse, ReleaseAssignmentsRequest
+from services.collection_removal_conflicts import removal_conflicts, release_confirmed_assignments, owned_items
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Response
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import func, or_
@@ -969,54 +971,59 @@ def update_collection_item(
     return _annotate_collection_item(db, current_user, item)
 
 
+def _remove_collection_items(db: Session, current_user: User, item_ids: list[int]):
+    try:
+        lock_user_card_allocations(db, current_user.id)
+        items = owned_items(db, current_user, item_ids)
+        detail = removal_conflicts(db, current_user, items)
+        if detail:
+            raise HTTPException(status_code=409, detail=detail)
+        copies = sum(int(item.quantity or 0) for item in items)
+        card_ids = {item.card_id for item in items if item.card_id is not None}
+        for item in items:
+            db.delete(item)
+        db.flush()
+        remaining_card_ids = {card_id for card_id, in db.query(CollectionItem.card_id).filter(
+            CollectionItem.user_id == current_user.id, CollectionItem.card_id.in_(card_ids),
+        ).distinct().all()}
+        orphaned = card_ids - remaining_card_ids
+        if orphaned:
+            db.query(CollectionCardPhoto).filter(
+                CollectionCardPhoto.user_id == current_user.id,
+                CollectionCardPhoto.card_id.in_(orphaned),
+            ).delete(synchronize_session=False)
+        db.commit()
+        return {"removed_ids": item_ids, "removed_entries": len(item_ids), "removed_copies": copies}
+    except Exception:
+        db.rollback()
+        raise
+
+
+@router.post('/bulk-delete', response_model=BulkRemoveResponse)
+def bulk_remove_collection_items(
+    request: BulkRemoveRequest,
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    return _remove_collection_items(db, current_user, request.item_ids)
+
+
+@router.post('/release-assignments')
+def release_collection_assignments(
+    request: ReleaseAssignmentsRequest,
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    return release_confirmed_assignments(db, current_user, request)
+
+
 @router.delete("/{item_id}")
 def remove_from_collection(
     item_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Remove a card from collection."""
-    lock_user_card_allocations(db, current_user.id)
-    item = db.query(CollectionItem).filter(
-        CollectionItem.id == item_id,
-        CollectionItem.user_id == current_user.id,
-    ).with_for_update(of=CollectionItem).first()
-    if not item:
-        raise HTTPException(status_code=404, detail="Collection item not found")
-
-    active_linked_quantity = _active_product_link_quantity(db, current_user, item.id)
-    if active_linked_quantity > 0:
-        raise HTTPException(
-            status_code=409,
-            detail=_product_link_conflict_detail(
-                db,
-                current_user,
-                item.id,
-                "This collection item is linked to a product. Sell or unlink the product card before removing it from the active collection.",
-            ),
-        )
-
-    allocated_quantity = collection_item_allocated_quantity(db, current_user.id, item.id)
-    if allocated_quantity > 0:
-        raise HTTPException(
-            status_code=409,
-            detail=f"This collection item has {allocated_quantity} {'copy' if allocated_quantity == 1 else 'copies'} allocated to Card Lists. Release {'that copy' if allocated_quantity == 1 else 'those copies'} first.",
-        )
-
-    card_id = item.card_id
-    db.delete(item)
-    db.flush()
-    remaining = db.query(CollectionItem.id).filter(
-        CollectionItem.user_id == current_user.id,
-        CollectionItem.card_id == card_id,
-    ).first()
-    if not remaining:
-        db.query(CollectionCardPhoto).filter(
-            CollectionCardPhoto.user_id == current_user.id,
-            CollectionCardPhoto.card_id == card_id,
-        ).delete(synchronize_session=False)
-    db.commit()
+    _remove_collection_items(db, current_user, [item_id])
     return {"message": "Removed from collection"}
+
 
 
 @router.get("/{item_id}/photo")

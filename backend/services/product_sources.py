@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from sqlalchemy import exists
 from sqlalchemy.orm import Session
 
-from models import CollectionItem, ProductCard, ProductPurchase, User
+from models import CollectionItem, ProductCard, ProductPurchase, ProductLedgerEntry, User
 
 
 COLLECTION_ITEM_SOURCE_CHUNK_SIZE = 500
@@ -21,7 +22,7 @@ def product_sources_by_collection_item(
     sources_by_item_id: dict[int, list[dict]] = {}
     for start in range(0, len(item_ids), COLLECTION_ITEM_SOURCE_CHUNK_SIZE):
         chunk = item_ids[start:start + COLLECTION_ITEM_SOURCE_CHUNK_SIZE]
-        rows = db.query(ProductCard, ProductPurchase).join(
+        rows = db.query(ProductCard, ProductPurchase, exists().where(ProductLedgerEntry.product_card_id == ProductCard.id)).join(
             ProductPurchase,
             ProductPurchase.id == ProductCard.product_id,
         ).filter(
@@ -35,7 +36,7 @@ def product_sources_by_collection_item(
             ProductCard.id.desc(),
         ).all()
 
-        for product_card, product in rows:
+        for product_card, product, has_history in rows:
             collection_item_id = product_card.collection_item_id
             if collection_item_id is None:
                 continue
@@ -48,6 +49,8 @@ def product_sources_by_collection_item(
                 "active_quantity": int(product_card.active_quantity or 0),
                 "initial_quantity": int(product_card.initial_quantity or 0),
                 "linked_at": product_card.linked_at,
+                "can_unlink": not (product_card.sold_quantity > 0 or has_history),
+                "unlink_blocked_reason": "sale_or_trade_history" if product_card.sold_quantity > 0 or has_history else None,
             })
 
     return sources_by_item_id

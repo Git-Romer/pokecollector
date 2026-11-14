@@ -7,6 +7,8 @@ import { useSettings } from '../contexts/SettingsContext'
 import toast from 'react-hot-toast'
 import { resolveSetImageUrl } from '../utils/imageUrl'
 import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
+import SetName from '../components/SetName'
+import { formatSetReleaseDate } from '../utils/setPresentation'
 import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import { normalizeTcgdexLanguage, tcgdexLanguageBadgeClass, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { setMatchesSearch } from '../utils/textSearch'
@@ -101,8 +103,8 @@ export default function Sets() {
   }, [t, updateSettings])
 
   const { data: sets = [], isLoading } = useQuery({
-    queryKey: ['sets', langFilter],
-    queryFn: () => getSets({ lang: langFilter }).then(r => r.data),
+    queryKey: ['sets', langFilter, { nameLanguage: settings.language || 'en' }],
+    queryFn: () => getSets({ lang: langFilter, name_lang: settings.language || 'en' }).then(r => r.data),
     enabled: filtersHydrated,
   })
   const { saveScrollPosition, createDetailNavigationState } = useListScrollRestoration({
@@ -555,7 +557,10 @@ export default function Sets() {
                 )}
 
                 {/* Set logo area — big, centered with dot pattern */}
-                <div className="h-28 sm:h-32 bg-bg-elevated flex items-center justify-center relative overflow-hidden">
+                <div
+                  className="h-28 sm:h-32 bg-bg-elevated border-b border-border/40 flex items-center justify-center relative overflow-hidden"
+                  style={{ backgroundImage: 'radial-gradient(ellipse at 50% 35%, rgba(255,255,255,0.035), transparent 75%)' }}
+                >
                   {/* Dot grid background pattern */}
                   <div
                     className="absolute inset-0 opacity-5"
@@ -564,20 +569,22 @@ export default function Sets() {
                       backgroundSize: '24px 24px',
                     }}
                   />
-                  {/* Subtle background symbol */}
-                  {resolveSetImageUrl(set, 'symbol') && (
+                  {/* Echo this set's logo, not the symbol endpoint's generic fallback. */}
+                  {set.images_logo && (
                     <img
-                      src={resolveSetImageUrl(set, 'symbol')}
+                      src={resolveSetImageUrl(set, 'logo')}
                       alt=""
-                      className="absolute inset-0 w-full h-full object-contain opacity-[0.04] scale-150 pointer-events-none"
+                      aria-hidden="true"
+                      loading="lazy"
+                      className="absolute inset-0 m-auto h-[70%] w-[76%] scale-[1.8] object-contain opacity-[0.075] blur-[2px] pointer-events-none select-none"
+                      style={{ maskImage: 'radial-gradient(ellipse at center, black 20%, transparent 78%)' }}
                     />
                   )}
-
                   {resolveSetImageUrl(set, 'logo') ? (
                     <img
                       src={resolveSetImageUrl(set, 'logo')}
                       alt={set.name}
-                      className="max-h-[80%] max-w-[75%] object-contain group-hover:scale-105 transition-transform duration-300 relative z-10"
+                      className="h-[70%] w-[76%] object-contain drop-shadow-md group-hover:scale-105 transition-transform duration-300 motion-reduce:transition-none motion-reduce:group-hover:scale-100 relative z-10"
                       loading="lazy"
                     />
                   ) : resolveSetImageUrl(set, 'symbol') ? (
@@ -601,7 +608,7 @@ export default function Sets() {
                 {/* Set info */}
                 <div className="p-3">
                   <div className="flex items-start gap-1.5 mb-0.5">
-                    <p className="font-bold text-text-primary text-sm leading-tight truncate flex-1">{set.name}</p>
+                    <SetName set={set} language={settings.language || 'en'} />
                     {/* Language badge - supported TCGdex language, never "both" */}
                     {set.lang && (
                       <span className={`flex-shrink-0 text-[9px] font-black px-1.5 py-0.5 rounded leading-none ${tcgdexLanguageBadgeClass(set.lang)}`}>
@@ -616,12 +623,9 @@ export default function Sets() {
                     {set.series}
                     {set.total ? ` · ${set.total} ${t('sets.cards')}` : ''}
                   </p>
-                  {set.release_date && (() => {
-                    const d = new Date(set.release_date)
-                    const label = isNaN(d.getTime()) ? set.release_date :
-                      d.toLocaleDateString('de-DE', { month: 'short', year: 'numeric' })
-                    return <p className="text-[10px] text-text-muted mb-2">{label}</p>
-                  })()}
+                  {set.release_date && (
+                    <p className="text-[10px] text-text-muted mb-2">{formatSetReleaseDate(set.release_date, settings.language)}</p>
+                  )}
                   {!set.release_date && <div className="mb-2.5" />}
 
                   {/* HP-style progress bar */}

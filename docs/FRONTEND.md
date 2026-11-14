@@ -114,7 +114,9 @@ Provides:
 
 Notes:
 
-- Translation bundles are loaded from `frontend/src/i18n/` and wired in `SettingsContext`
+- Translation data lives in `frontend/src/i18n/locales/*.json`; small `.js` import wrappers preserve existing loaders in `SettingsContext`.
+- English is the source and runtime fallback. Missing target keys are allowed; blank values are not. Regional aliases continue to reuse their current base catalogue.
+- `npm run check:translations` validates JSON, duplicate keys, value shapes, placeholders and literal UI keys. See [Translating PokéCollector](TRANSLATING.md) for contributor instructions and the pending Hosted Weblate setup.
 - UI languages include all supported TCGdex language codes, plus Swedish. Regional variants such as `es-mx`, `pt-br`, `pt-pt`, `zh-tw`, and `zh-cn` are selectable from a compact dropdown in Settings.
 - Legacy stored `zh` settings are normalized in the frontend to `zh-cn` for display
 - EUR and USD source prices use the backend Frankfurter rate cache, which serves the latest saved quotes when the provider is offline
@@ -244,6 +246,25 @@ Planned Decks store requirements without reserving inventory. The Deck editor
 adds validation, composition, shortage, legality, probability, duplicate, and
 planned/real conversion tools. See [`CARD_LISTS.md`](CARD_LISTS.md).
 
+### Bulk removal within one view
+
+Collection, binder details and the deck editor each have their own **Select**
+control. Select individual entries, or use **Select visible** for the current
+filter, then **Remove selected**. Confirmation shows both entry and copy counts.
+Up to 500 entries can be selected per request. Cancellation keeps the selection;
+leaving selection mode clears it. Changing a filter drops hidden selections.
+
+Collection removal deletes all copies in each selected collection entry, not
+other entries for the same catalogue card. Existing binder/deck allocations and
+active product links still block the entire selection. Release allocations in
+the appropriate list first. Binder and deck removal changes only that list,
+releasing its applicable allocations without reducing collection quantities.
+Planned lists change only their plan. There is no combined remove-everywhere action.
+
+The shared `useBulkRemoval` hook and `BulkRemovalToolbar` coordinate confirmation,
+selection and cache refresh; the existing card gallery displays selected entries.
+Failures keep the selection visible. A pending operation cannot be submitted twice.
+
 ### Search, Pokédex, products, and trades
 
 `pages/CardSearch.jsx` keeps free text and advanced filters in the URL. Filters
@@ -290,6 +311,13 @@ The system centralizes card structure, borders, image handling, badges, ownershi
 
 Approved `CardDisplay` variants include `grid`, `carousel`, `ranking`, `selectable`, `artwork`, and `compact-artwork`. A development-only component gallery is available at `/__card-system`.
 
+`CardImage` keeps its viewport gate and preserves native `loading="lazy"` after
+an image enters that gate. Explicit `loading="eager"` still takes priority. The
+shared WebKit viewport fallback, image retry state and cached-view remount
+handling remain in place. Public artwork can be served by the bounded proxy
+cache described in [BACKEND.md](BACKEND.md#image-caching); private owner photos
+are excluded.
+
 See [`CARD_SYSTEM.md`](CARD_SYSTEM.md) for usage, design tokens, review guidance, and the contributor-friendly process for proposing a new shared variant.
 
 `CardItem.jsx`, `UnifiedCard.jsx`, and the low-level state components remain implementation details of this public system and should not be imported by feature pages.
@@ -312,7 +340,15 @@ The optional Holo effect client reads the published-design list from `/api/holo/
 
 ### Scanner and review inbox
 
-`components/UnifiedCardScanner.jsx` is the capture-only entry point. It supports the native device camera and gallery uploads, stages one or more photos, allows per-photo individual recognition overrides, and includes an optional positioning guide beside **Take photo**. Every submission enqueues a persistent job and routes to the same review inbox, including a one-photo scan.
+`components/UnifiedCardScanner.jsx` is the capture-only entry point. It supports the native device camera and gallery uploads, a live webcam mode, stages one or more photos, allows per-photo individual recognition overrides, and includes an optional positioning guide beside **Take photos**. Every submission enqueues a persistent job and routes to the same review inbox, including a one-photo scan.
+
+The scanner exposes **Take photos** and **Choose from gallery**. **Take photos** opens a small choice: **Single photo** retains the existing native-camera file input (where the device/browser supports it); **Continuous capture** opens the in-app camera preview. Neither opening this choice nor using Single photo starts a live camera stream. Continuous capture includes the explanation: ‘Keep the camera open and take photos automatically when each card is held steady.’ Cancel returns to staging without discarding photos. If live camera access is unavailable, only Continuous capture is disabled; Single photo and gallery selection remain available.
+
+`components/WebcamCapture.jsx` provides that continuous preview. Choose **Continuous capture**, allow camera access, and hold a card inside the guide. A small grayscale sample of the visible guide checks movement and image detail over a roughly 700 ms hold. Normal capture is more tolerant of handheld jitter: brief wobbles can preserve the hold, but sustained or large movement resets it, and the current frame must be quiet before capturing. Capture uses Normal tolerance and requests the default rear-facing camera automatically, without camera or tolerance selectors. The browser decides which rear lens to provide. The preview height follows the available viewport so the camera and Capture/Done controls fit together; the guide remains larger on tall phones. Motion sensors are not required or enabled for capture. Start scanning stays hidden while capturing, including at the 50-photo limit: press Done first to stop the camera and review the staged batch. This is a capture heuristic, not card detection, and a patterned background or glare can affect it. **Capture** provides a manual fallback. Space/Enter also capture when focus is outside interactive controls; normal button and editable-field keyboard behaviour is preserved.
+
+Each photo retains the full camera frame and joins the local staging batch, up to 50 photos. **Done** stops the camera and returns to the photo grid without discarding the batch. The live preview is not continuously uploaded. **Start scanning** uploads the staged photos through the existing recognition/review queue; a capture does not directly add a card to the collection. Closing, clearing or submitting stops the camera, as does leaving the view. Photos still being encoded after exit or a camera change are discarded. Capture requests do not overlap. Camera interruption and playback failure offer a retry rather than leaving a false live state.
+
+The automatic trigger waits for a scene change after a capture before it can fire again, but this is not identity-based duplicate detection. Prefer manual capture when lighting or movement prevents a reliable automatic capture. Browser permission and a secure context (HTTPS or localhost) are required. An unavailable API or insecure context disables **Continuous capture**; native photo/gallery capture stays available.
 
 `pages/ScanQueue.jsx` and `components/ScanReview.jsx` show job progress, retry countdowns/reasons, sanitized source photos, ranked candidates, failed items, individual retry, dismissal, and collection-add review. The navigation badge counts outstanding items. A confirmed candidate id is sent when resolving an item so opted-in diagnostics can be labelled with human-reviewed ground truth.
 
@@ -347,3 +383,12 @@ Notable frontend API bindings include:
 
 - No eBay integration in the current frontend
 - No grading UI in the current frontend
+
+
+Bulk selection starts from **Select cards** in each view header. Selection actions remain sticky on desktop and above navigation on mobile. A blocked collection-removal popup names every affected card and its lists/products. Assignment removal requires its own confirmation; collection deletion requires a separate retry and confirmation. Product sources are shown but never automatically unlinked.
+
+
+The conflict popup also offers a separately confirmed **Unlink from product** action beside each product source. It calls the documented product DELETE endpoint with the displayed collection-entry ID and active quantity as preconditions. Failed/history-protected links remain visible; unlinking never deletes ownership or records a sale. Collection removal still needs a separate retry and confirmation.
+
+
+**Unlink listed products** submits every displayed product-link snapshot in one atomic bulk API call, rather than looping individual requests. A failed bulk call keeps every displayed blocker and does not report a partial success. A separate collection-removal retry is still required. API business failures provide structured blocker codes and follow-up resolution payloads; unavailable entries are not silently dropped from a requested deletion.

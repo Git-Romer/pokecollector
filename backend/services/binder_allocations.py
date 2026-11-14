@@ -106,3 +106,32 @@ def collection_item_available_quantity(
         exclude_binder_card_id=exclude_binder_card_id,
     )
     return max(int(collection_item.quantity or 0) - allocated, 0)
+
+
+def trim_deck_allocations(
+    db: Session,
+    binder_id: int,
+    card_id: str,
+    required_quantity: int,
+) -> None:
+    """Keep exact Deck allocations at or below the matching plan quantity."""
+    allocations = db.query(BinderCard).filter(
+        BinderCard.binder_id == binder_id,
+        BinderCard.card_id == card_id,
+        BinderCard.collection_item_id.isnot(None),
+    ).order_by(BinderCard.id.asc()).with_for_update(of=BinderCard).all()
+    remaining = max(
+        sum(stored_binder_quantity(row.required_quantity) for row in allocations)
+        - max(int(required_quantity or 0), 0),
+        0,
+    )
+    for row in reversed(allocations):
+        if remaining == 0:
+            break
+        quantity = stored_binder_quantity(row.required_quantity)
+        removed = min(quantity, remaining)
+        if removed == quantity:
+            db.delete(row)
+        else:
+            row.required_quantity = quantity - removed
+        remaining -= removed

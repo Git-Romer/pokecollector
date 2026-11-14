@@ -186,6 +186,7 @@ export function CardArtworkFrame({
             disabled={Boolean(unavailableReason)}
             aria-disabled={unavailableReason ? true : undefined}
             aria-label={resolvedActionLabel}
+            aria-pressed={onSelect ? selected : undefined}
           />
         )}
         {onAdd && !unavailableReason && (

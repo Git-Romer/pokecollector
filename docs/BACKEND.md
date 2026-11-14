@@ -61,6 +61,26 @@ names that look like a code-number pair (`151 025`) stay reachable.
 
 Custom cards belong to exactly one user. Owners may publish a card as a shared template, but other users must clone it before using it in collections, wishlists, binders, products, or trades. Clones have independent IDs, metadata, images, and prices. Manual image URLs must use public HTTPS destinations and are fetched through the size-limited image proxy. During upgrade, existing custom cards become shared templates owned by the first-created admin account, while each other referencing user receives one private clone and keeps their existing references.
 
+### Set display metadata
+
+`GET /api/sets/?lang=de&name_lang=en` keeps each set's original `name`, `lang`,
+`release_date`, identity and collection counts. It adds nullable `translated_name`
+and `translated_name_lang` fields. Without `name_lang`, the user's own app-language
+setting is used; it is independent of the card-language filter.
+
+Translations come from the locally synchronized catalogue and require exactly one
+set in the requested name language with the same canonical `tcg_set_id`. Missing,
+blank or ambiguous names return null for both fields. No upstream requests or
+catalogue writes are triggered to obtain a translation. Unsynchronized names and
+UI-only languages without TCGdex catalogue support (such as Swedish and Danish)
+therefore have no translated label. Regional sets with different identifiers are
+not matched by similar names, abbreviations or dates. This is not machine
+translation or an inferred equivalence between Japanese and international sets.
+
+Clients can format the unchanged ISO release date in their display locale. The
+Sets page uses month/year in the selected app language with UTC calendar handling,
+so time-zone conversion cannot move a release into the preceding month.
+
 ### Collection, Sets, Wishlist, Binders
 
 | Method | Path | Notes |
@@ -80,7 +100,7 @@ Custom cards belong to exactly one user. Owners may publish a card as a shared t
 | POST | `/api/collection/{item_id}/photo` | Store/replace one sanitized owner photo for that card identity |
 | DELETE | `/api/collection/{item_id}/photo` | Delete the owner's photo for that card identity |
 | GET | `/api/collection/stats/summary` | Collection summary |
-| GET | `/api/sets/` | List sets |
+| GET | `/api/sets/` | List sets; optional `lang` filters catalogue language, optional `name_lang` selects translated-name metadata (defaults to the authenticated user's app language) |
 | GET | `/api/sets/new` | Newly detected sets |
 | POST | `/api/sets/mark-seen` | Mark new-set badges seen |
 | GET | `/api/sets/{set_id}` | Set detail |
@@ -222,6 +242,39 @@ responses.
 | POST | `/api/settings/{key}` | Set one setting |
 | GET | `/api/health` | Unauthenticated service-health probe |
 
+## Image caching
+
+The database image cache remains the source of downloaded artwork. Public card
+artwork and set logos/symbols also use the frontend's bounded Nginx disk cache
+(up to 1 GiB, discarded with the frontend container). Repeated requests can be
+served without transferring the image from the backend again.
+
+These routes are mutable, not content-addressed assets. New public responses use
+`public, max-age=0, s-maxage=60, must-revalidate`: browsers revalidate their copy,
+while shared caches may reuse it for at most 60 seconds. Changes to artwork,
+visibility or fallback settings can therefore take up to that interval to reach
+a shared-cache hit. Existing browser entries created by older releases retain
+their original expiry. ETags are SHA-256 hashes of the actual image bytes, so
+clearing/refilling the database image cache cannot incorrectly validate changed
+bytes just because the source URL stayed the same. Set image cache keys include
+the selected source URL, including English fallback URLs.
+
+Manual cards and custom fallback artwork use `private, no-store`. Missing card
+redirects and set placeholders use `no-store`, so a temporary failure does not
+hide artwork that becomes available later. Fingerprints, token-gated product
+images and private collection photos never use the shared proxy image cache.
+Requests carrying authorization, cookies, explicit cache controls or a retry
+parameter bypass it too. Expired entries are not served when revalidation fails.
+The existing product-token and private-photo authorization rules are unchanged.
+
+For a disposable integration check, run
+`python scripts/test-image-proxy-cache.py --bind 0.0.0.0 --proxy-url http://frontend`
+on an isolated network where its synthetic upstream is reachable as
+`backend:8000` and the frontend uses the candidate `frontend/nginx.conf`. Publish
+no host ports and mount no production data. The check counts upstream requests,
+verifies conditional responses, private-route exclusions, expiry, fallback
+recovery and security headers. It does not measure production traffic.
+
 ## Currency data and offline conversion
 
 Frankfurter currency metadata and rates are stored in global, per-installation
@@ -230,6 +283,13 @@ quote currency and include the provider's observation date and the time they wer
 synced. The backend refreshes a stale base-rate set when a conversion is requested;
 metadata is refreshed daily. Each response marks a cached rate/list as stale when
 its refresh window has passed and the provider could not be reached.
+
+The rate feed can also contain assets with longer codes, such as `AAVE` or
+`USDT`. The backend skips quotes outside its three-letter currency format so
+those records do not block valid currency conversions. A response with no
+supported quotes is rejected; invalid dates, rates, duplicate supported quotes,
+and inconsistent bases still fail validation. This does not expand the currency
+codes accepted by the API.
 
 The frontend requests both EUR-based and USD-based rate sets for the selected
 currency. Collection, wishlist, analytics, public binder/profile values, exports,
@@ -518,6 +578,40 @@ When a queued candidate is confirmed, its TCGdex card id labels all stored attem
 
 Turning consent off stops future capture and leaves existing traces unchanged. There is no automatic retention limit. `DELETE /api/settings/scan-diagnostics` is the explicit per-user deletion action; deleting an account revokes in-flight writes and removes its trace subtree as well. Trace directories use mode `0700` and JSON/JPEG files use `0600`. Diagnostics are not included in SQL backups because they are filesystem analysis data.
 
+## Bulk removal
+
+Authenticated owners can remove complete entries in one atomic request:
+
+- `POST /api/collection/bulk-delete`
+- `POST /api/binders/{binder_id}/entries/bulk-delete`
+- `POST /api/decks/{deck_id}/entries/bulk-delete`
+
+The JSON body is `{"item_ids": [12, 34]}`. IDs are collection-entry IDs for the
+collection route and list-entry IDs for binder/deck routes, never catalogue card
+IDs. Deck requests accept plan-entry IDs, not internal allocation-row IDs.
+The list must contain 1–500 unique, strictly positive integer IDs; malformed,
+duplicate or out-of-range inputs return 422.
+
+Success returns `{"removed_ids": [12, 34], "removed_entries": 2, "removed_copies": 5}`.
+Missing, foreign or wrong-list entries return 404 for the whole request. Collection
+entries with physical-list allocations or active product links return 409. All
+validation, deletes and cleanup share one commit; an error rolls everything back.
+
+Collection removal uses the same protections as single-entry removal. Other
+condition/variant entries for the same card remain, and an owner/card photo is
+removed only when the owner's last matching entry disappears. Catalogue data,
+other users and sold-product history remain intact. Binder/deck removal does not
+delete owned collection entries or photos. Real-deck removal releases only the
+selected plans' allocations; planned lists do not change owned quantities.
+Each route retains the established per-user allocation lock and owner-scoped row
+locks. Releasing a list and later removing collection entries are two separately
+confirmed transactions, not one cross-view operation.
+
+Tests: `python -m unittest discover -s tests -p test_bulk_removal.py` from
+`backend/`. Set `BULK_REMOVAL_POSTGRES_URL` to an approved test database and run
+`test_bulk_removal_postgres.py` to exercise the same contract plus a real lock
+race. That suite creates and removes only a randomly named test schema.
+
 ## Bulk Collection Add
 
 `POST /api/collection/bulk-add` accepts `BulkCollectionAddRequest` with multiple `CollectionItemCreate` items and returns `BulkCollectionAddResponse`:
@@ -542,3 +636,73 @@ ever been synced, both values are marked unavailable in the selected currency.
 - They are idempotent and run on startup
 - Automatic pre-upgrade backups run before `init_db()` migrations on existing installs when the app version changes
 - Legacy migration comments still mention older columns like `grade` or removed integrations, but the current runtime model and routers do not include eBay functionality
+
+
+`POST /collection/release-assignments` is a separate owner-scoped action. Send `item_ids` plus the exact `assignments` snapshot from the collection 409 response (`assignment_id`, `list_id`, `item_id`, `quantity`). A changed snapshot returns 409 without mutation. The release is atomic, preserves collection ownership and product links, and reduces Real Deck plans only by the released copies. The collection 409 response lists all affected cards, binder/deck assignments and active product sources.
+
+
+### Bulk-removal API workflow
+
+Every inventory-changing action in this workflow is callable independently of the UI. Use the installation's normal authentication (for example an `Authorization: Bearer <token>` header). IDs below are database entry IDs, not TCGdex card IDs.
+
+- `POST /api/collection/bulk-delete`: remove whole owned entries, with `{ "item_ids": [123, 124] }`.
+- `POST /api/binders/{binder_id}/entries/bulk-delete`: remove entries from that binder only, with the same payload shape and binder-entry IDs.
+- `POST /api/decks/{deck_id}/entries/bulk-delete`: remove entries from that deck only, with the same payload shape and deck-entry IDs.
+- `POST /api/collection/release-assignments`: release explicitly confirmed binder/real-deck assignments without deleting ownership. Send the selected `item_ids` and the exact `assignments` snapshot returned by a collection-removal 409. Each snapshot row contains `assignment_id`, `list_id`, `item_id`, and `quantity`. Changed assignments return 409 without mutation.
+- `DELETE /api/products/{product_id}/cards/{product_card_id}`: unlink one product source without deleting the product or collection inventory and without recording a sale. Sale/trade history prevents unlinking.
+
+For product unlinking from a displayed confirmation, pass **both** `expected_collection_item_id` and `expected_active_quantity` as query parameters. They are optional for backward compatibility, but pairing them protects against unlinking a link that changed after it was displayed. A mismatched entry/quantity returns 409; an incomplete pair or invalid value returns 422; missing/foreign links return 404. A successful response is the updated product, not a collection deletion.
+
+Example product unlink (substitute the IDs and quantity from the 409 response's `conflicts[].products[]`):
+
+```sh
+curl --fail-with-body --request DELETE \
+  --header "Authorization: Bearer $TOKEN" \
+  "$BASE_URL/api/products/7/cards/42?expected_collection_item_id=123&expected_active_quantity=2"
+```
+
+Example explicit assignment release:
+
+```sh
+curl --fail-with-body --request POST \
+  --header "Authorization: Bearer $TOKEN" \
+  --header 'Content-Type: application/json' \
+  --data '{"item_ids":[123],"assignments":[{"assignment_id":91,"list_id":8,"item_id":123,"quantity":2}]}' \
+  "$BASE_URL/api/collection/release-assignments"
+```
+
+Neither action automatically retries collection deletion. After resolving every blocker, make a separate `POST /api/collection/bulk-delete` request. Each request is atomic; the complete multi-step workflow is not one transaction. The endpoints and optional unlink preconditions are also described by the backend's OpenAPI schema.
+
+
+### Atomic failures and follow-up requests
+
+Bulk collection/list removal, assignment release and product unlinking remain all-or-nothing **per request**. Business-rule failures return a structured `detail` object with:
+
+- `code` and `message`: machine-readable category and readable explanation.
+- `changed: false`: the failed request committed no inventory changes.
+- `blockers`: all blockers found for that request, rather than only the first blocked entry. Each includes a reason `code`, `resource`, relevant submitted IDs and an `action` such as `release_assignments`, `unlink_products`, `refresh_confirmation`, `remove_from_request`, or `cannot_unlink_history`.
+- `conflicts`: collection card names/printing details, assigned lists and exact copy counts, and product sources. Existing collection-conflict fields remain compatible.
+- `resolutions`, where applicable: proposed API `method`, `path` and exact snapshot `body` for explicitly confirmed follow-up calls. These are suggestions, never actions automatically executed by the server. Product resolutions mark `can_execute: false` and list `blocked_by_history` when sale/trade provenance prevents unlinking.
+
+A mixed request containing unavailable IDs and owned blocked entries reports both categories. Missing, wrong-list and foreign-owned IDs use the same `not_found_or_not_accessible` reason and disclose only IDs already supplied by the caller, not another owner's card names, product names or list contents. Such requests return 404; relationship/stale-confirmation conflicts return 409. Invalid request bodies still use standard 422 validation errors. Authentication/authorization failures and unexpected server errors are not card-by-card business-rule results.
+
+A client can inspect a collection failure, explicitly approve and submit the returned assignment-release and product-unlink resolution bodies, then separately retry the original collection deletion. Removing invalid IDs changes the requested batch and must be an explicit client decision, not an automatic best-effort retry. Each follow-up has its own transaction and may itself reject a stale snapshot.
+
+### Bulk product unlink
+
+`POST /api/products/cards/bulk-unlink` accepts 1–5000 unique product-link snapshots:
+
+```json
+{
+  "links": [
+    {"product_id": 7, "product_card_id": 42, "collection_item_id": 123, "active_quantity": 2},
+    {"product_id": 8, "product_card_id": 43, "collection_item_id": 124, "active_quantity": 1}
+  ]
+}
+```
+
+Every field is a strict positive integer; `active_quantity` is at most 999. Duplicate `product_card_id` values are rejected. A success returns `unlinked_ids`, `unlinked_links` and `unlinked_copies`. Purchases, owned quantities, private photos and catalogue cards are preserved, and no sale/trade entry is created.
+
+If **any** link is unavailable, changed or protected by sale/trade history, **no links** are removed. The structured failure reports every discovered `not_found_or_not_accessible`, `product_link_changed` and `product_history_protected` blocker. `current_links` includes owner-safe current snapshots and names so clients can refresh their confirmation; multiple reasons can apply to the same link. Missing/foreign links are not included in `current_links`.
+
+The popup exposes this API as **Unlink listed products**, with a separate confirmation for the full displayed link/copy totals. Individual unlink remains available and backward compatible. Collections remain limited to 500 entries and assignment release to 5000 assignments per request. If a resolution exceeds these documented bounds, explicitly choose a smaller request; do not assume multiple requests form one atomic transaction.

@@ -2,7 +2,10 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { extname, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import en from '../src/i18n/en.js'
+import { parseCatalog, validateCatalog } from './translation-validation.mjs'
+
+const localeRoot = fileURLToPath(new URL('../src/i18n/locales/', import.meta.url))
+const en = parseCatalog(readFileSync(resolve(localeRoot, 'en.json'), 'utf8'))
 
 const frontendRoot = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const sourceRoot = resolve(frontendRoot, 'src')
@@ -22,6 +25,15 @@ function resolveTranslation(path) {
 
 const errors = []
 
+for (const name of readdirSync(localeRoot).filter(name => name.endsWith('.json')).sort()) {
+  try {
+    const catalog = parseCatalog(readFileSync(resolve(localeRoot, name), 'utf8'))
+    for (const error of validateCatalog(catalog, en)) errors.push(`${name}: ${error}`)
+  } catch (error) {
+    errors.push(`${name}: ${error.message}`)
+  }
+}
+
 for (const file of collectFiles(sourceRoot)) {
   const path = relative(sourceRoot, file).replaceAll('\\', '/')
   if (path.startsWith('i18n/') || path.endsWith('.test.js') || path.endsWith('.test.jsx')) continue
@@ -40,7 +52,7 @@ for (const file of collectFiles(sourceRoot)) {
 if (errors.length > 0) {
   console.error('Translation-key check failed:\n')
   for (const error of errors) console.error(`- ${error}`)
-  console.error('\nAdd the key to src/i18n/en.js. Other languages may fall back to English until translated.')
+  console.error('\nEdit src/i18n/locales/*.json. Missing target-language keys may fall back to English; present translations must be non-empty and preserve placeholders.')
   process.exit(1)
 }
 

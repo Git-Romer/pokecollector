@@ -75,8 +75,15 @@ def parse_frankfurter_v2_rates(payload, base_currency: str) -> list[dict]:
         if not isinstance(entry, dict):
             raise ExchangeRateError("invalid exchange-rate record")
         entry_base = normalize_currency_code(entry.get("base"))
-        quote = normalize_currency_code(entry.get("quote"))
-        if entry_base != base or quote in seen_quotes:
+        if entry_base != base:
+            raise ExchangeRateError("inconsistent exchange-rate list")
+        try:
+            quote = normalize_currency_code(entry.get("quote"))
+        except ExchangeRateError:
+            # The provider also returns assets such as AAVE and USDT, which
+            # cannot be stored in the app's three-letter currency cache.
+            continue
+        if quote in seen_quotes:
             raise ExchangeRateError("inconsistent exchange-rate list")
         try:
             provider_date = date.fromisoformat(str(entry.get("date")))
@@ -89,6 +96,8 @@ def parse_frankfurter_v2_rates(payload, base_currency: str) -> list[dict]:
             "rate": _parse_positive_rate(entry.get("rate")),
             "provider_date": provider_date,
         })
+    if not parsed:
+        raise ExchangeRateError("empty supported exchange-rate list")
     return parsed
 
 
