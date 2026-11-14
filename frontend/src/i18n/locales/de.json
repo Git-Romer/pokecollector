@@ -1380,7 +1380,8 @@
     "min360": "Alle 6 Stunden",
     "min720": "Alle 12 Stunden",
     "min1440": "Alle 24 Stunden",
-    "openaiApiKey": "OpenAI API Key"
+    "openaiApiKey": "OpenAI API Key",
+    "multiUserEnableConfirm": "Aktivieren und abmelden"
   },
   "publicProfiles": {
     "directory": "Öffentliche Profile",
