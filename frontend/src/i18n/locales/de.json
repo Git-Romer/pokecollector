@@ -1590,7 +1590,8 @@
     "showDetails": "Details anzeigen",
     "hideDetails": "Details ausblenden",
     "printedTotalMismatch": "Gedruckte Set-Gesamtzahl stimmt nicht mit diesem Foto überein",
-    "webcamUnsupported": "Erfordert HTTPS oder localhost"
+    "webcamUnsupported": "Erfordert HTTPS oder localhost",
+    "takePhotos": "Fotos aufnehmen"
   },
   "lang": {
     "de": "DE",
