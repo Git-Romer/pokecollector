@@ -62,6 +62,31 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml down
 A plain `docker compose up` uses the published GHCR images instead of the local
 build override.
 
+## Application versions
+
+Every pull request needs a version newer than its target branch, including fixes,
+documentation and translation changes. Choose a patch, minor or major increase
+for the scope, then update all version references together:
+
+```bash
+node scripts/bump-version.mjs patch
+# Or choose an explicit version, for example:
+node scripts/bump-version.mjs 2.0.0 --dry-run
+node scripts/check-version.mjs --base origin/main --check-tags
+```
+
+Fetch the target branch and release tags before checking. Keep the same proposed
+version across further commits unless the target branch catches up or the version
+has already been released. The command updates `VERSION`, the frontend package
+and lockfile, Docker image defaults, and README references without changing
+translations or dependencies.
+
+Only the configured Weblate translation branch receives an automatic patch bump.
+Other pull requests choose their own release increment. The check runs on every
+PR update and branch push, without file-path exclusions. See
+[version automation](docs/VERSIONING.md) for the workflow, permissions and
+maintainer activation steps.
+
 ## Translations
 
 Partial translations are welcome. Edit the JSON for your language in `frontend/src/i18n/locales/`, keep placeholders such as `{count}` unchanged, and run `npm run check:translations` from `frontend/`. The [translation guide](docs/TRANSLATING.md) explains the files, contributor credit and the planned Hosted Weblate workflow. Browser-based contributions will be linked there once the integration is active.
