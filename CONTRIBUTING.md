@@ -89,7 +89,7 @@ maintainer activation steps.
 
 ## Translations
 
-Partial translations are welcome. Edit the JSON for your language in `frontend/src/i18n/locales/`, keep placeholders such as `{count}` unchanged, and run `npm run check:translations` from `frontend/`. The [translation guide](docs/TRANSLATING.md) explains the files, contributor credit and the planned Hosted Weblate workflow. Browser-based contributions will be linked there once the integration is active.
+Partial translations are welcome through [Weblate](https://pokecollector.romerg.de/translations/projects/pokecollector/frontend/) or a GitHub pull request. In Weblate, sign in, choose your language, translate and save; the service sends batched updates to a PR for review. Keep placeholders such as `{count}` unchanged. For direct file edits, use the JSON in `frontend/src/i18n/locales/`, run `npm run check:translations` from `frontend/`, and update the application version. The [translation guide](docs/TRANSLATING.md) explains timing, English fallback and contributor credit.
 
 ## Card interfaces
 
