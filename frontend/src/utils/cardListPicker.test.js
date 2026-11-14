@@ -29,6 +29,19 @@ describe('card list picker utilities', () => {
     expect(filterCollectionCards(items, { set: 'sv1', language: 'en' }).map(item => item.card.id)).toEqual(['pika', 'energy'])
   })
 
+  it('finds digit-first and mixed set codes in the owned-card picker', () => {
+    const items = [
+      { quantity: 1, card: { id: '30th-001_de', name: 'Owei', number: '001', lang: 'de', set_id: '30th', set_ref: { id: '30th_de', tcg_set_id: '30th', abbreviation: '30C', name: 'Anniversary' } } },
+      { quantity: 1, card: { id: 'M2a-228_ja', name: 'Lucario', number: '228', lang: 'ja', set_id: 'M2a', set_ref: { abbreviation: 'M2A' } } },
+    ]
+    for (const query of ['30C 001', '30c 1', ' 30C   0001 ', '30th 1']) {
+      expect(filterCollectionCards(items, { search: query }).map(item => item.card.id)).toEqual(['30th-001_de'])
+    }
+    expect(filterCollectionCards(items, { search: 'M2a 228' }).map(item => item.card.id)).toEqual(['M2a-228_ja'])
+    expect(filterCollectionCards(items, { search: '30C 2' })).toEqual([])
+    expect(filterCollectionCards(items, { search: '30C 1', language: 'ja' })).toEqual([])
+  })
+
   it('exposes deduplicated set and language filter options', () => {
     expect(cardListPickerOptions(aggregateCollectionItems(collection))).toEqual({
       sets: [{ id: 'sv2', name: 'Paldea Evolved' }, { id: 'sv1', name: 'Scarlet & Violet' }],

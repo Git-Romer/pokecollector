@@ -323,6 +323,58 @@ test.beforeEach(async ({ page }) => {
   await installApiFixtures(page)
 })
 
+for (const surface of ['collection', 'deck', 'planned binder', 'physical binder']) {
+  test(`digit-first set codes work in the ${surface} browser`, async ({ page }) => {
+    const errors = []
+    page.on('pageerror', error => errors.push(error.message))
+    const digitCard = card(99, {
+      id: '30th-001_de', name: 'Owei', number: '001', lang: 'de', set_id: '30th',
+      set_ref: { id: '30th_de', tcg_set_id: '30th', name: 'Anniversary', abbreviation: '30C' },
+    })
+    const rows = [{ id: 99, card_id: digitCard.id, quantity: 1, available_quantity: 1, lang: 'de', variant: 'Normal', condition: 'NM', printing_details: [], card: digitCard }, collection[0]]
+    await page.route('**/api/collection/', route => route.fulfill({ json: rows }))
+    if (surface === 'physical binder') {
+      await page.route('**/api/binders/11/cards**', route => route.fulfill({ json: {
+        binder: { ...plannedBinder, id: 11, name: 'Physical Binder', binder_type: 'collection' }, cards: [],
+        available_collection_item_quantities: { 99: 1, 1: 2 },
+      } }))
+    }
+    await page.goto(surface === 'collection' ? '/collection' : surface === 'deck' ? '/decks/1' : surface === 'physical binder' ? '/binders/11' : '/binders/10')
+    if (surface !== 'collection') await page.getByRole('button', { name: 'Add cards', exact: true }).click()
+    const input = page.getByPlaceholder(surface === 'collection' ? /Search cards/ : 'Search your collection').first()
+    const target = surface === 'collection' ? page.getByRole('button', { name: /Owei/ }) : page.getByRole('button', { name: 'Select Owei', exact: true })
+    for (const query of ['30C 001', '30c 1', ' 30C   0001 ']) {
+      await input.fill(query)
+      await expect(target).toBeVisible()
+    }
+    await input.fill('30C 999')
+    await expect(target).toHaveCount(0)
+    await input.fill('Owei')
+    await expect(target).toBeVisible()
+    await input.fill('')
+    await expect(target).toBeVisible()
+    expect(errors).toEqual([])
+  })
+}
+
+
+test('digit-first Card Search keeps the query through direct links and reloads', async ({ page }) => {
+  const queries = []
+  await page.route('**/api/cards/search?*', route => {
+    const params = new URL(route.request().url()).searchParams
+    const query = params.get('q') || params.get('name') || ''
+    queries.push(query)
+    const matches = /^30c\s+0*1$/i.test(query.trim())
+    return route.fulfill({ json: { data: matches ? [card(99, { id: '30th-001_de', name: 'Owei', number: '001', set_id: '30th', set_ref: { id: '30th_de', name: 'Anniversary', abbreviation: '30C' } })] : [], total_count: matches ? 1 : 0, page: 1, page_size: 20 } })
+  })
+  await page.goto('/search?q=30C%20001')
+  await expect(page.getByRole('heading', { name: 'Owei', exact: true })).toBeVisible()
+  expect(queries).toContain('30C 001')
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Owei', exact: true })).toBeVisible()
+  expect(queries.filter(q => q === '30C 001').length).toBeGreaterThanOrEqual(2)
+})
+
 for (const binderType of ['collection', 'wishlist']) {
   test(`binder card dialog opens and updates quantities in a ${binderType} binder`, async ({ page }) => {
     const errors = []

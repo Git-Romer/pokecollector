@@ -174,6 +174,37 @@ class CardSearchQueryParameterTests(unittest.TestCase):
                 ["named-151-025_en"],
             )
 
+    def test_digit_first_search_http_contract_and_empty_resolved_set(self):
+        with patch("api.cards.pokemon_api.get_set_cards", return_value={"cards": []}), patch(
+            "api.cards.enrich_card_metadata_ids_in_background"
+        ):
+            cases = [
+                ({"q": "30C 001", "lang": "ja"}, ["30th-001_ja"]),
+                ({"q": " 30c   0001 ", "lang": "ja"}, ["30th-001_ja"]),
+                ({"name": "30C 1", "lang": "ja"}, ["30th-001_ja"]),
+                ({"q": "30C 1", "lang": "all"}, ["30th-001_ja"]),
+                ({"q": "30C 999", "lang": "ja"}, []),
+                ({"q": "m2a 228", "lang": "ja"}, ["M2a-228_ja"]),
+                ({"q": "30C 1", "lang": "ja", "page": 2, "page_size": 1}, []),
+            ]
+            for params, expected in cases:
+                with self.subTest(params=params):
+                    response = self.client.get("/api/cards/search", params=params)
+                    self.assertEqual(response.status_code, 200)
+                    self.assertEqual([c["id"] for c in response.json()["data"]], expected)
+            self.db.add(Card(id="named-30c-999_ja", tcg_card_id="named-30c-999", name="30C 999", set_id="named", number="999", lang="ja", is_custom=False))
+            self.db.commit()
+            self.assertEqual(self._search_ids(q="30C 999", lang="ja"), [])
+
+    def test_digit_first_search_keeps_language_and_rule_text_filters(self):
+        target = self.db.query(Card).filter(Card.id == "30th-001_ja").one()
+        target.card_effect = "Draw two cards"
+        self.db.commit()
+        with patch("api.cards.pokemon_api.get_all_sets", return_value=[]):
+            self.assertEqual(self._search_ids(q="30C 1", lang="en"), [])
+        self.assertEqual(self._search_ids(q="30C 1", lang="ja", rule_text="Draw"), ["30th-001_ja"])
+        self.assertEqual(self._search_ids(q="30C 1", lang="ja", rule_text="discard"), [])
+
     def test_http_query_binding_decodes_q_and_keeps_legacy_name_compatible(self):
         with patch("api.cards.enrich_card_metadata_ids_in_background"):
             response = self.client.get("/api/cards/search?q=m2a+228&lang=ja")

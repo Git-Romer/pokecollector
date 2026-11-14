@@ -33,6 +33,18 @@ describe('public catalogue uses app search semantics', () => {
     const cards=await searchPublicCards('151 025','de')
     expect(cards.map(c=>c.id)).toEqual(['named-1'])
    })
+ it('resolves digit-first abbreviations and never falls back after resolving a set', async () => {
+  vi.stubGlobal('fetch', vi.fn(async url => {
+   if (url.endsWith('/sets/30c')) return { status: 404 }
+   if (url.includes('abbreviation.official')) return { ok: true, json: async () => [{ id: '30th' }] }
+   if (url.endsWith('/sets/30th')) return { ok: true, json: async () => ({ id: '30th', name: 'Anniversary', cards: [{ id: '30th-001', localId: '001', name: 'Owei' }] }) }
+   throw Error('Unexpected name-search fallback: ' + url)
+  }))
+  expect((await searchPublicCards('30C 001', 'de')).map(c => c.id)).toEqual(['30th-001'])
+  expect((await searchPublicCards('30c 1', 'de')).map(c => c.id)).toEqual(['30th-001'])
+  expect(await searchPublicCards('30C 999', 'de')).toEqual([])
+  expect(fetch.mock.calls.some(([url]) => url.endsWith('/de/cards'))).toBe(false)
+ })
  it('does not retain a failed index load, and rejects unsupported languages', async () => {
   // A different exact card path is intentionally not covered by the EN index cache.
   vi.stubGlobal('fetch', vi.fn().mockRejectedValueOnce(Error('offline')).mockResolvedValue({ok:true,json:async()=>({id:'retry-9',name:'Retry'})}))
