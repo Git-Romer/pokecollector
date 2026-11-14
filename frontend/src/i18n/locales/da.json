@@ -1355,7 +1355,9 @@
     "min180": "Hver 3. time",
     "min360": "Hver 6. time",
     "min720": "Hver 12. time",
-    "min1440": "Hver 24. time"
+    "min1440": "Hver 24. time",
+    "holoEffects": "Avancerede holo-effekter",
+    "holoEffectsDesc": "Matchende godkendte effekter erstatter standardbehandlingen for Holo- og Reverse Holo-kort. Bevæg musen hen over kortene for at afsløre folien med et meget let tilt i din samling. Kortdialogen og den forstørrede visning bruger en fyldigere tilt-effekt. Ingen automatisk glans, når kortet er inaktivt. På understøttede telefoner aktiveres enhedens bevægelsessensor med indbygget browsetilladelse; hold din telefon næsten helt stille i 1,3 sekunder for langsomt at centrere igen. Slået fra som standard; private billeder og brugertilpasset kunst forblir uændrede. Bevægelsen følger din præference for reduceret bevægelse. Effekter: Simon Goellner / pokemon-cards-css (GPL v3)."
   },
   "publicProfiles": {
     "directory": "Offentlige profiler",
@@ -1572,7 +1574,21 @@
     "expandCard": "Udvid foto",
     "showDetails": "Vis detaljer",
     "hideDetails": "Skjul detaljer",
-    "printedTotalMismatch": "Det trykte sæt-total matcher ikke dette foto"
+    "printedTotalMismatch": "Det trykte sæt-total matcher ikke dette foto",
+    "takePhotos": "Tag billeder",
+    "singlePhoto": "Enkelt billede",
+    "singlePhotoDescription": "Åbn enhedens kamera for at tage et billede, hvor det understøttes.",
+    "continuousCapture": "Kontinuerlig optagelse",
+    "continuousCaptureDescription": "Hold kameraet åbent, og tag automatisk billeder, når hvert kort holdes helt stille.",
+    "webcamUnsupported": "Kræver HTTPS eller localhost",
+    "webcamGuideText": "Hold et kort roligt inden for rammen",
+    "webcamPermissionDenied": "Kameratjenesten blev afvist. Tillad kamerabadgang i dine browserindstillinger, og prøv igen.",
+    "webcamNoCamera": "Intet kamera blev fundet på denne enhed.",
+    "webcamStreamError": "Kamerastrømmen kunne ikke startes.",
+    "webcamTryAgain": "Prøv igen",
+    "webcamCapture": "Optag",
+    "webcamDone": "Færdig",
+    "webcamCaptured": "Billede taget"
   },
   "lang": {
     "de": "DE",
@@ -1874,6 +1890,24 @@
     "unlinkAllConfirm": "Fjern {entries} produkttilknytninger, der dækker {copies} eksemplarer? Alle viste tilknytninger skal kunne fjernes, ellers ændres intet. Produkter og ejede eksemplarer forbliver uændrede. Intet salg registreres.",
     "unavailableEntries": "Disse post-id'er er ikke længere tilgængelige: {ids}. Luk dette pop op-vindue, og opdater siden, før du prøver igen.",
     "cancelUnlink": "Annuller fjernelse af tilknytning",
-    "unlinkConfirm": "Fjern tilknytning for {copies} eksemplarer af {card} fra {product}? Produktet og din samling forbliver uændrede. Dette fjerner kun tilknytningen og registrerer ikke et salg."
+    "unlinkConfirm": "Fjern tilknytning for {copies} eksemplarer af {card} fra {product}? Produktet og din samling forbliver uændrede. Dette fjerner kun tilknytningen og registrerer ikke et salg.",
+    "blockersCleared": "Tilknytninger fjernet. Din samling er ikke blevet slettet. Du kan nu prøve at fjerne samlingen igen.",
+    "assignmentsChanged": "Tildelinger ændret. Gennemgå den opdaterede liste, og bekræft igen.",
+    "close": "Luk",
+    "selectVisible": "Vælg synlige",
+    "removeSelected": "Fjern markerede",
+    "cancelSelection": "Annuller markering",
+    "selected": "{entries} poster · {copies} eksemplarer markeret",
+    "titleCollection": "Fjern fra samling?",
+    "titleBinder": "Fjern fra samlemapper?",
+    "titleDeck": "Fjern fra deck?",
+    "confirmCollection": "Vil du fjerne {entries} poster med i alt {copies} eksemplarer fra din samling? Dette fjerner alle eksemplarer i disse poster, ikke kort fra samlemapper eller decks. Allokerede eller produkt-tilknyttede poster skal frigives først. Dette kan ikke fortrydes.",
+    "confirmBinder": "Fjern {entries} poster indeholdende {copies} eksemplarer fra denne samlemappe? Din samling og andre lister forbliver uændrede.",
+    "confirmDeck": "Fjern {entries} poster indeholdende {copies} eksemplarer fra dette deck? Din samling og andre lister forbliver uændrede.",
+    "collectionHint": "Alle eksemplarer i hver af de markerede poster fjernes. Allokeringer i samlemapper og decks skal frigives separat først.",
+    "listHint": "Kun poster på denne liste vil blive fjernet. Din samling og andre lister forbliver uændrede.",
+    "limit": "Vælg op til 500 poster ad gangen. Afgrænset filtret for at vælge færre synlige poster.",
+    "changed": "Markeringen ændrede sig under bekræftelsen. Kontrollér posterne, og bekræft igen.",
+    "failed": "Fjernelsen kunne ikke bekræftes. Genopfrisk siden, før du prøver igen."
   }
 }
