@@ -18,7 +18,7 @@ export async function searchPublicCards(query, language, { signal } = {}) {
   const text = String(query || '').trim()
   if (!text) return []
   const prefix = '/' + language
-  const codeNumber = text.match(/^([A-Za-z][A-Za-z0-9]*)\s+(\d+)$/)
+  const codeNumber = text.match(/^([A-Za-z0-9]+)\s+(\d+)$/)
   if (codeNumber) {
     const code = codeNumber[1].toLowerCase()
     const [direct, official] = await Promise.all([
@@ -26,10 +26,15 @@ export async function searchPublicCards(query, language, { signal } = {}) {
       read(prefix + '/sets?abbreviation.official=' + encodeURIComponent('eq:' + code.toUpperCase()), signal),
     ])
     const ids = [...new Set([...(direct?.id ? [direct.id] : []), ...(Array.isArray(official) ? official.map(s => s.id) : [])])]
-    const sets = await Promise.all(ids.map(id => read(prefix + '/sets/' + encodeURIComponent(id), signal)))
-    return sets.flatMap(set => (set?.cards || []).filter(card => cardNumberMatches(card.localId, codeNumber[2]))
-      .map(card => ({ ...card, set: { id: set.id, name: set.name }, matchingSetCode: codeNumber[1].toUpperCase() })))
-      .sort((a, b) => a.id.localeCompare(b.id))
+    if (ids.length) {
+      const sets = await Promise.all(ids.map(id => read(prefix + '/sets/' + encodeURIComponent(id), signal)))
+      return sets.flatMap(set => (set?.cards || []).filter(card => cardNumberMatches(card.localId, codeNumber[2]))
+        .map(card => ({ ...card, set: { id: set.id, name: set.name }, matchingSetCode: codeNumber[1].toUpperCase() })))
+        .sort((a, b) => a.id.localeCompare(b.id))
+    }
+    // The code resolves to no public set, so it is not a set reference. Fall
+    // through to the name search below, which keeps card names that look
+    // like a code-number pair reachable.
   }
   // Keep explicit TCGdex IDs, but don't misclassify hyphenated Pokémon names
   // (Ho-Oh, Porygon-Z) as IDs. Their numeric suffix distinguishes catalogue IDs.

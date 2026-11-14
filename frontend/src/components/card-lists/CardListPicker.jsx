@@ -37,7 +37,7 @@ function filterExactCollectionItems(items, filters) {
     if (filters.condition && item.condition !== filters.condition) return false
     if (!query) return true
 
-    const shortcode = /^([A-Za-z]+\d*)\s+(\d+)$/.exec(query)
+    const shortcode = /^([A-Za-z0-9]+)\s+(\d+)$/.exec(query)
     const shortcodeMatches = shortcode && [card.set_ref?.abbreviation, card.set_id, card.set_ref?.tcg_set_id]
       .some(value => normalizeSearchText(value) === shortcode[1])
       && cardNumberMatches(card.number, String(parseInt(shortcode[2], 10)))

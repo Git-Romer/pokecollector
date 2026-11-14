@@ -31,7 +31,7 @@ import { useDynamicFilterUrlState } from '../hooks/useDynamicFilterUrlState'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import PrintingDetailSelector from '../components/PrintingDetailSelector'
 
-export const CARD_CODE_NUMBER_RE = /^([A-Za-z][A-Za-z0-9]*)\s+(\d+)$/
+export const CARD_CODE_NUMBER_RE = /^([A-Za-z0-9]+)\s+(\d+)$/
 
 const TYPES = ['Fire', 'Water', 'Grass', 'Lightning', 'Psychic', 'Fighting', 'Darkness', 'Metal', 'Dragon', 'Colorless', 'Fairy', 'Stellar']
 const CATEGORIES = ['Pokemon', 'Trainer', 'Energy']
