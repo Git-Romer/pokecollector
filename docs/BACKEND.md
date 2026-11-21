@@ -165,6 +165,7 @@ responses.
 | GET | `/api/analytics/trades-summary` | Aggregate trade counts, totals, and deltas |
 | GET | `/api/analytics/investment-tracker` | Portfolio history |
 | GET | `/api/analytics/new-sets` | Analytics new sets |
+| GET | `/api/analytics/species-duplicates` | Species owned in two or more printings, with per-printing quantities and values |
 | GET | `/api/social/leaderboard` | Multi-user leaderboard |
 | GET | `/api/social/compare/{user_id}` | Multi-user comparison |
 | GET | `/api/social/achievements/{user_id}` | Achievement progress |
@@ -172,11 +173,20 @@ responses.
 | GET | `/api/community/supporters` | Fresh, strictly validated public supporter registry projection; returns `503` with `Cache-Control: no-store` on any upstream or validation failure |
 | GET | `/api/github/rescue-donations` | Rescue donation total from `RESCUE_DONATIONS.csv` |
 
+`/api/analytics/species-duplicates` groups the collection by species and keeps only
+species with at least two distinct printings. A printing is a card, not a
+collection row: condition/variant rows of one card add up as one printing with a
+quantity-weighted unit price. Cards mapped to several dex ids count under each
+species. Species sort by printing count, then value; printings sort by value. The
+summary counts each distinct printing once. `/api/pokedex/directory` returns the
+same catalogue order as `/api/pokedex`, without per-user ownership data.
+
 ### Pokédex, Profiles, and Public Sharing
 
 | Method | Path | Notes |
 |--------|------|-------|
 | GET | `/api/pokedex` | Grouped or exact-form completion overview with generation/status/search/form filters |
+| GET | `/api/pokedex/directory` | Static species catalogue (names, slug, generation, region, types) for UI lookups; no database access |
 | GET | `/api/pokedex/{entry_id}` | One species/form with ownership, related forms, and printing summary |
 | GET | `/api/pokedex/images/{kind}/{entry_id}.png` | Cached `sprites` or `artwork` image, including form artwork |
 | GET | `/api/profile/` | Current user's public-profile, value, and Wishlist-visibility preferences and handle |
