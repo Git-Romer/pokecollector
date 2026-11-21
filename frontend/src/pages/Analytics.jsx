@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -6,9 +6,9 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   AreaChart, Area
 } from 'recharts'
-import { TrendingUp, TrendingDown, Copy, BarChart3, Activity, Plus, X, ShoppingCart, Info } from 'lucide-react'
+import { TrendingUp, TrendingDown, Copy, BarChart3, Activity, Plus, X, ShoppingCart, Info, Layers } from 'lucide-react'
 import {
-  getDuplicates, getTopMovers, getRarityStats,
+  getDuplicates, getTopMovers, getRarityStats, getSpeciesDuplicates,
   getInvestmentTracker, getTradeStats, getAnalyticsNewSets, getProducts, createProduct
 } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
@@ -22,6 +22,9 @@ import toast from 'react-hot-toast'
 import { hasCatalogueImage, resolveCardImageUrl } from '../utils/imageUrl'
 import MoneyInput from '../components/MoneyInput'
 import { parseMoneyInputValue } from '../utils/moneyInput'
+import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
+import CardGroupSection from '../components/CardGroupSection'
+import { formatDexNumber, formatSpeciesCounts, speciesName, speciesSpriteUrl } from '../utils/species'
 
 const RARITY_COLORS = [
   '#EF1515', '#3b82f6', '#22c55e', '#eab308', '#8b5cf6',
@@ -157,9 +160,12 @@ function AddExpenseModal({ onClose, onSuccess }) {
 
 export default function Analytics() {
   const { t, formatPrice, pricePrimaryField, currencySymbol, settings } = useSettings()
+  const language = settings.language === 'de' ? 'de' : 'en'
   const [moversPeriod, setMoversPeriod] = useState('7d')
   const [moversSort, setMoversSort] = useState('percentage')
   const [activeTab, setActiveTab] = useState('duplicates')
+  const [openSpecies, setOpenSpecies] = useState(() => new Set())
+  const autoOpenedSpecies = useRef(false)
   const [showExpenseModal, setShowExpenseModal] = useState(false)
   const [selectedCard, setSelectedCard] = useState(null)
   const [selectedImageSource, setSelectedImageSource] = useState('catalogue')
@@ -187,6 +193,19 @@ export default function Analytics() {
     queryKey: ['duplicates', pricePrimaryField],
     queryFn: () => getDuplicates({ price_field: pricePrimaryField }).then(r => r.data),
   })
+
+  const { data: speciesDuplicates = null, isLoading: speciesLoading } = useQuery({
+    queryKey: ['species-duplicates', pricePrimaryField],
+    queryFn: () => getSpeciesDuplicates({ price_field: pricePrimaryField }).then(r => r.data),
+  })
+  const speciesRows = Array.isArray(speciesDuplicates?.species) ? speciesDuplicates.species : []
+  const speciesSummary = speciesDuplicates?.summary || null
+  useEffect(() => {
+    // Keep the first species expanded so the printing list is discoverable.
+    if (autoOpenedSpecies.current || speciesRows.length === 0) return
+    autoOpenedSpecies.current = true
+    setOpenSpecies(new Set([speciesRows[0].dex_id]))
+  }, [speciesRows])
 
   const moversDay = PERIOD_DAYS[moversPeriod] || 7
   const { data: topMovers = [], isLoading: moversLoading } = useQuery({
@@ -221,6 +240,7 @@ export default function Analytics() {
 
   const tabs = [
     { key: 'duplicates', label: t('analytics.duplicates'), icon: Copy },
+    { key: 'species', label: t('analytics.speciesDuplicates'), icon: Layers },
     { key: 'movers', label: t('analytics.topMovers'), icon: TrendingUp },
     { key: 'rarity', label: t('analytics.rarityStats'), icon: BarChart3 },
     { key: 'investment', label: t('analytics.investment'), icon: Activity },
@@ -243,6 +263,36 @@ export default function Analytics() {
   const realizedValue = latestSnapshot?.realized_value ?? 0
   const totalPnl = latestSnapshot?.pnl ?? 0
   const hasTradeStats = tradeStats && tradeStats.trade_count > 0
+
+  const toggleSpecies = (dexId) => setOpenSpecies(current => {
+    const next = new Set(current)
+    if (next.has(dexId)) next.delete(dexId)
+    else next.add(dexId)
+    return next
+  })
+
+  // A printing exposes only the fields this endpoint returns; the card dialog and
+  // the own-photo helpers accept that flattened shape, as on the Duplicates tab.
+  const printingAsCard = (printing) => ({
+    id: printing.card_id,
+    card_id: printing.card_id,
+    tcg_card_id: printing.tcg_card_id || null,
+    name: printing.name,
+    number: printing.number,
+    set_id: printing.set_id,
+    set_ref: printing.set_id ? { id: printing.set_id, name: printing.set_name } : null,
+    rarity: printing.rarity,
+    lang: printing.lang,
+    images_small: printing.images_small,
+  })
+
+  const openPrinting = (printing) => {
+    setSelectedCard({
+      ...printingAsCard(printing),
+      collection_item_id: printing.collection_item_id,
+      has_scan_photo: Boolean(printing.has_scan_photo),
+    })
+  }
 
   return (
     <div className="space-y-4 pb-2">
@@ -337,6 +387,94 @@ export default function Analytics() {
                 ))}
               </div>
             </div>
+          )}
+        </div>
+      )}
+
+      {/* Species Duplicates Tab */}
+      {activeTab === 'species' && (
+        <div className="space-y-4">
+          <p className="text-sm text-text-secondary">{t('analytics.speciesDuplicatesDesc')}</p>
+          {speciesLoading ? (
+            <div className="skeleton h-64 rounded-xl" />
+          ) : speciesRows.length === 0 ? (
+            <div className="card text-center py-12 text-text-muted">{t('analytics.noSpeciesDuplicates')}</div>
+          ) : (
+            <>
+              {speciesSummary && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    {
+                      label: t('analytics.speciesWithDuplicates'),
+                      value: speciesSummary.species_with_duplicates,
+                      color: '#f5c842',
+                    },
+                    { label: t('analytics.printings'), value: speciesSummary.printings, color: '#90a4ae' },
+                    { label: t('analytics.copies'), value: speciesSummary.copies, color: '#90a4ae' },
+                    {
+                      label: t('analytics.totalValue'),
+                      value: formatPrice(speciesSummary.total_value),
+                      color: '#66bb6a',
+                    },
+                  ].map(stat => (
+                    <div key={stat.label} className="rounded-xl p-3 text-center bg-bg-elevated/60 border border-border/70">
+                      <p className="text-xs text-text-muted mb-1 leading-tight">{stat.label}</p>
+                      <p className="text-sm font-black" style={{ color: stat.color }}>{stat.value}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                {speciesRows.map((species) => {
+                  const name = speciesName(species, language)
+                    || species.printings?.[0]?.name
+                    || formatDexNumber(species.dex_id)
+                  return (
+                    <CardGroupSection
+                      key={species.dex_id}
+                      groupId={`species-${species.dex_id}`}
+                      spriteSrc={speciesSpriteUrl(species.dex_id)}
+                      eyebrow={formatDexNumber(species.dex_id)}
+                      heading={name}
+                      summary={formatSpeciesCounts(t, species.printing_count, species.copies)}
+                      totalValue={species.total_value}
+                      formatPrice={formatPrice}
+                      open={openSpecies.has(species.dex_id)}
+                      onToggle={() => toggleSpecies(species.dex_id)}
+                      contentClassName="border-t border-border/60 divide-y divide-border/30"
+                    >
+                      {(species.printings || []).map((printing) => {
+                        const card = printingAsCard(printing)
+                        return (
+                          <div key={printing.card_id} className="p-2 sm:px-3">
+                            <CollectionCardRow
+                              item={{
+                                id: printing.collection_item_id,
+                                card_id: printing.card_id,
+                                has_scan_photo: printing.has_scan_photo,
+                              }}
+                              card={card}
+                              name={printing.name}
+                              setNumber={[printing.set_id, printing.number].filter(Boolean).join(' ').toUpperCase()}
+                              languageLabel={printing.lang ? tcgdexLanguageLabel(printing.lang) : null}
+                              subtext={printing.set_name || null}
+                              badges={[
+                                { label: `${printing.quantity}x`, variant: 'red' },
+                                ...(printing.rarity ? [{ label: printing.rarity, variant: 'gray' }] : []),
+                              ]}
+                              value={formatPrice(printing.total_value)}
+                              valueSecondary={`${formatPrice(printing.price)} ${t('analytics.perCopy')}`}
+                              onClick={() => openPrinting(printing)}
+                            />
+                          </div>
+                        )
+                      })}
+                    </CardGroupSection>
+                  )
+                })}
+              </div>
+            </>
           )}
         </div>
       )}

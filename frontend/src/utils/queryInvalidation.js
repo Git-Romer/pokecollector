@@ -28,6 +28,7 @@ export function invalidateCollectionPhotoState(queryClient) {
   invalidateCardState(queryClient)
   const affected = new Set([
     'duplicates',
+    'species-duplicates',
     'binder-cards',
     'binder-entry-equivalents',
     'binder-print-optimization',

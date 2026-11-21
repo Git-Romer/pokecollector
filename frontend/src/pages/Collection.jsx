@@ -4,8 +4,8 @@ import BulkRemovalToolbar, { BulkRemovalToggle, BulkRemovalActions } from '../co
 import { useState, useMemo, useId, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Trash2, Check, X, Filter, SortAsc, Download, Upload, Loader2, ChevronUp, ChevronDown, Search, PenLine, Grid2X2, List, Library, BookOpen, Heart, Copy, ArrowLeft, Package, Tags } from 'lucide-react'
-import { getCollection, updateCollectionItem, updateCardCustomImage, removeFromCollection, importCollectionCsv, exportCSV, exportPDF, getSets, addToCollection, getBinders, addCollectionItemToBinder, getWishlist, getApiErrorMessage, uploadCollectionItemPhoto, deleteCollectionItemPhoto } from '../api/client'
+import { Trash2, Check, X, Filter, SortAsc, Download, Upload, Loader2, ChevronUp, ChevronDown, Search, PenLine, Grid2X2, List, Library, BookOpen, Heart, Copy, ArrowLeft, Package, Tags, Layers } from 'lucide-react'
+import { getCollection, updateCollectionItem, updateCardCustomImage, removeFromCollection, importCollectionCsv, exportCSV, exportPDF, getSets, addToCollection, getBinders, addCollectionItemToBinder, getWishlist, getApiErrorMessage, uploadCollectionItemPhoto, deleteCollectionItemPhoto, getPokedexDirectory } from '../api/client'
 import { CustomCardModal } from '../components/CardItem'
 import ActionErrorNotice, { productLinkErrorNotice } from '../components/ActionErrorNotice'
 import ProductSourceList from '../components/ProductSourceList'
@@ -34,6 +34,10 @@ import PrintingDetailSelector from '../components/PrintingDetailSelector'
 import PrintingDetailTagManager from '../components/PrintingDetailTagManager'
 import { normalizePrintingDetailName, printingDetailNames } from '../utils/printingDetails'
 import { CARD_VARIANTS } from '../utils/cardVariants'
+import CardGroupSection from '../components/CardGroupSection'
+import { cardDexIds, formatDexNumber, formatSpeciesCounts, groupCollectionBySpecies, speciesSpriteUrl } from '../utils/species'
+
+const COLLECTION_GRID_CLASS = 'grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2'
 
 const CONDITIONS = ['Mint', 'NM', 'LP', 'MP', 'HP']
 const CONDITION_COLORS = {
@@ -1022,6 +1026,9 @@ export default function Collection() {
   const { t, settings, formatPrice, pricePrimaryField, currency } = useSettings()
   const visibleLanguages = useVisibleTcgdexLanguages()
   const [viewMode, setViewMode] = useState('grid')
+  // Species grouping is a display mode of the grid view; the list/table view
+  // stays one table and disables the control instead of half-supporting both.
+  const [groupBy, setGroupBy] = useState('none')
   const [editingCollectionItem, setEditingCollectionItem] = useState(null) // for CollectionEditModal
   const [showCustomModal, setShowCustomModal] = useState(false)
   const [editCard, setEditCard] = useState(null)
@@ -1282,8 +1289,59 @@ export default function Collection() {
     return result
   }, [items, filterRarity, filterCondition, filterVariant, filterPrintingDetail, filterSet, filterType, filterCategories, filterSubtypes, filterLegality, filterLang, filterMinPrice, filterMaxPrice, filterDuplicates, searchText, sortBy, sortOrder, pricePrimaryField])
 
+  // ─── Species grouping (grid view) ─────────────────────────────
+  const speciesLanguage = settings.language === 'de' ? 'de' : 'en'
+  // Names come from the static species directory, not the ownership aggregate:
+  // grouping needs 1025 static rows, while /pokedex would scan the whole card
+  // catalogue for per-user availability this view never uses.
+  const { data: speciesDirectory } = useQuery({
+    queryKey: ['pokedex', 'directory'],
+    queryFn: getPokedexDirectory,
+    enabled: groupBy === 'species',
+    staleTime: 30 * 60 * 1000,
+  })
+  const speciesByDexId = useMemo(() => {
+    const map = new Map()
+    for (const entry of speciesDirectory?.species || []) map.set(Number(entry.dex_id), entry)
+    return map
+  }, [speciesDirectory])
+  const speciesGrouping = useMemo(() => groupCollectionBySpecies(filtered, {
+    speciesByDexId,
+    language: speciesLanguage,
+    itemValue: (item) => getEffectivePrice(item.card, item.variant) * (Number(item.quantity) || 0),
+  }), [filtered, speciesByDexId, speciesLanguage, pricePrimaryField])
+  const [openSpeciesGroups, setOpenSpeciesGroups] = useState(() => new Set())
+  const [openOtherCards, setOpenOtherCards] = useState(true)
+  const speciesGroupsInitialised = useRef(false)
+  useEffect(() => {
+    // Open the first species once so the grouped layout shows its tiles
+    // immediately; everything else starts collapsed on large collections.
+    if (groupBy !== 'species' || speciesGroupsInitialised.current) return
+    const firstGroup = speciesGrouping.groups[0]
+    if (!firstGroup) return
+    speciesGroupsInitialised.current = true
+    setOpenSpeciesGroups(new Set([firstGroup.dexId]))
+  }, [groupBy, speciesGrouping.groups])
+  const toggleSpeciesGroup = (dexId) => setOpenSpeciesGroups(current => {
+    const next = new Set(current)
+    if (next.has(dexId)) next.delete(dexId)
+    else next.add(dexId)
+    return next
+  })
+  // "Select visible" follows what the grouped view actually shows: items in
+  // collapsed groups are hidden, exactly as filtered-out rows are.
+  const groupedVisibleItems = useMemo(() => {
+    if (groupBy !== 'species') return filtered
+    const visible = []
+    speciesGrouping.groups.forEach(group => {
+      if (openSpeciesGroups.has(group.dexId)) visible.push(...group.items)
+    })
+    if (openOtherCards) visible.push(...speciesGrouping.other.items)
+    return visible
+  }, [groupBy, filtered, speciesGrouping, openSpeciesGroups, openOtherCards])
+
   const bulkRemoval = useBulkRemoval({
-    items: filtered, kind: 'collection', scopeKey: 'collection', t,
+    items: groupedVisibleItems, kind: 'collection', scopeKey: 'collection', t,
     remove: bulkRemoveCollectionItems,
     blocked: csvImportMutation.isPending,
   })
@@ -1313,6 +1371,56 @@ export default function Collection() {
   const toggleFilters = () => {
     if (!showFilters) setShowAdvancedFilters(Boolean(hasAdvancedFilters))
     setShowFilters(current => !current)
+  }
+
+  const changeViewMode = (mode) => {
+    setViewMode(mode)
+    // The list/table view is not grouped, so leaving the grid clears the mode
+    // rather than leaving a disabled control claiming an active grouping.
+    if (mode === 'list') setGroupBy('none')
+  }
+
+  const renderCollectionCard = (item, { grouped = false } = {}) => {
+    const card = item.card
+    const marketPrice = getEffectivePrice(card, item.variant)
+    const cardState = {
+      ...withCollectionItemState(card, item),
+      wishlisted: [
+        item.card_id,
+        card?.id,
+        card?.tcg_card_id,
+      ].filter(Boolean).some(id => wishlistedCardIds.has(String(id))),
+    }
+    const dexCount = cardDexIds(item).length
+    return (
+      <CollectionCardDisplay
+        key={item.id}
+        item={item}
+        price={marketPrice > 0 ? formatPrice(marketPrice) : null}
+        languageLabel={hasMixedCollectionLanguages && item.lang ? tcgdexLanguageLabel(item.lang) : null}
+        variantEffectSource={item.variant}
+        stateIndicatorProps={{ card: cardState, alwaysShowQuantity: true }}
+        captionAccessory={grouped && dexCount > 1 ? (
+          <span
+            className="badge badge-gray px-1 py-0 text-[9px]"
+            title={t('collection.multiSpeciesHint')}
+            aria-label={t('collection.multiSpeciesHint')}
+          >
+            +{dexCount - 1}
+          </span>
+        ) : null}
+        onClick={bulkRemoval.active ? undefined : () => setEditingCollectionItem(item)}
+        onSelect={bulkRemoval.active ? () => bulkRemoval.toggle(item) : undefined}
+        selected={bulkRemoval.selectedIds.has(item.id)}
+        unavailableReason={bulkRemoval.active && bulkRemoval.locked ? t('common.loading') : undefined}
+        overlay={(
+          <>
+            <ProductSourceBadge item={item} t={t} compact className="absolute bottom-2 left-2 z-20 h-6 w-6" />
+            <PrintingDetailBadges details={item.printing_details} limit={1} className="absolute left-2 top-2 z-20 max-w-[calc(100%-1rem)]" />
+          </>
+        )}
+      />
+    )
   }
 
   if (isLoading) {
@@ -1345,14 +1453,14 @@ export default function Collection() {
           {/* VIEW TOGGLE */}
           <div className="flex items-center gap-0.5 bg-bg-elevated rounded-lg p-1">
             <button
-              onClick={() => setViewMode('grid')}
+              onClick={() => changeViewMode('grid')}
               title={t('collection.binderView')}
               className={`p-1.5 rounded-md transition-colors ${viewMode === 'grid' ? 'bg-brand-red text-white' : 'text-text-muted hover:text-text-primary'}`}
             >
               <Grid2X2 size={15} />
             </button>
             <button
-              onClick={() => setViewMode('list')}
+              onClick={() => changeViewMode('list')}
               title={t('collection.listView')}
               className={`p-1.5 rounded-md transition-colors ${viewMode === 'list' ? 'bg-brand-red text-white' : 'text-text-muted hover:text-text-primary'}`}
             >
@@ -1422,6 +1530,26 @@ export default function Collection() {
             >
               {sortOrder === 'asc' ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             </button>
+          </div>
+
+          <div
+            className="flex items-center gap-2"
+            title={viewMode === 'list' ? t('collection.groupGridViewOnly') : undefined}
+          >
+            <Layers size={14} className="text-text-muted" aria-hidden />
+            <label htmlFor="collection-group-by" className="text-xs text-text-muted">
+              {t('collection.groupBy')}
+            </label>
+            <select
+              id="collection-group-by"
+              className="select w-32 py-1.5 text-sm"
+              value={viewMode === 'list' ? 'none' : groupBy}
+              disabled={viewMode === 'list'}
+              onChange={(e) => setGroupBy(e.target.value)}
+            >
+              <option value="none">{t('collection.groupNone')}</option>
+              <option value="species">{t('collection.groupPokemon')}</option>
+            </select>
           </div>
 
           <div className="relative flex-1 min-w-[160px] max-w-xs">
@@ -1606,41 +1734,49 @@ export default function Collection() {
               <p className="text-text-muted">{t('collection.empty')}</p>
               <p className="text-xs text-text-muted mt-1">{t('collection.emptyHint')}</p>
             </div>
+          ) : groupBy === 'species' ? (
+            speciesGrouping.groups.length === 0 && speciesGrouping.other.items.length === 0 ? null : (
+              <div className="space-y-3">
+                {speciesGrouping.groups.map((group) => (
+                  <CardGroupSection
+                    key={group.dexId}
+                    groupId={`species-${group.dexId}`}
+                    spriteSrc={speciesSpriteUrl(group.dexId)}
+                    eyebrow={formatDexNumber(group.dexId)}
+                    heading={group.name}
+                    summary={formatSpeciesCounts(t, group.printingCount, group.copies)}
+                    totalValue={group.totalValue > 0 ? group.totalValue : null}
+                    formatPrice={formatPrice}
+                    open={openSpeciesGroups.has(group.dexId)}
+                    onToggle={() => toggleSpeciesGroup(group.dexId)}
+                    contentClassName="border-t border-border/60 p-2 sm:p-3"
+                  >
+                    <div className={COLLECTION_GRID_CLASS}>
+                      {group.items.map(item => renderCollectionCard(item, { grouped: true }))}
+                    </div>
+                  </CardGroupSection>
+                ))}
+
+                {speciesGrouping.other.items.length > 0 && (
+                  <CardGroupSection
+                    groupId="other-cards"
+                    heading={t('collection.otherCards')}
+                    summary={`${speciesGrouping.other.copies} ${t('collection.cards')} · ${formatPrice(speciesGrouping.other.totalValue)}`}
+                    open={openOtherCards}
+                    onToggle={() => setOpenOtherCards(value => !value)}
+                    contentClassName="border-t border-border/60 p-2 sm:p-3"
+                  >
+                    <div className={COLLECTION_GRID_CLASS}>
+                      {speciesGrouping.other.items.map(item => renderCollectionCard(item, { grouped: true }))}
+                    </div>
+                  </CardGroupSection>
+                )}
+              </div>
+            )
           ) : (
             <div className="binder-grid">
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
-                {filtered.map(item => {
-                  const card = item.card
-                  const marketPrice = getEffectivePrice(card, item.variant)
-                  const cardState = {
-                    ...withCollectionItemState(card, item),
-                    wishlisted: [
-                      item.card_id,
-                      card?.id,
-                      card?.tcg_card_id,
-                    ].filter(Boolean).some(id => wishlistedCardIds.has(String(id))),
-                  }
-                  return (
-                    <CollectionCardDisplay
-                      key={item.id}
-                      item={item}
-                      price={marketPrice > 0 ? formatPrice(marketPrice) : null}
-                      languageLabel={hasMixedCollectionLanguages && item.lang ? tcgdexLanguageLabel(item.lang) : null}
-                      variantEffectSource={item.variant}
-                      stateIndicatorProps={{ card: cardState, alwaysShowQuantity: true }}
-                      onClick={bulkRemoval.active ? undefined : () => setEditingCollectionItem(item)}
-                      onSelect={bulkRemoval.active ? () => bulkRemoval.toggle(item) : undefined}
-                      selected={bulkRemoval.selectedIds.has(item.id)}
-                      unavailableReason={bulkRemoval.active && bulkRemoval.locked ? t('common.loading') : undefined}
-                      overlay={(
-                        <>
-                          <ProductSourceBadge item={item} t={t} compact className="absolute bottom-2 left-2 z-20 h-6 w-6" />
-                          <PrintingDetailBadges details={item.printing_details} limit={1} className="absolute left-2 top-2 z-20 max-w-[calc(100%-1rem)]" />
-                        </>
-                      )}
-                    />
-                  )
-                })}
+              <div className={COLLECTION_GRID_CLASS}>
+                {filtered.map(item => renderCollectionCard(item))}
               </div>
             </div>
           )}

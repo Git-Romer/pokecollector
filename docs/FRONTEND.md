@@ -221,6 +221,20 @@ printing-detail tags, and private owner-card photos. Owner photos are loaded
 through authenticated endpoints and can be preferred over catalogue artwork in
 the current user's UI.
 
+The grid toolbar's **Group by** control adds a **Pokémon** mode beside the
+default **None**. It groups the already filtered, searched and sorted rows by
+the first id in `card.dex_ids`, so a card that depicts several species appears
+once and carries a small marker instead of being duplicated. Species names come
+from `GET /api/pokedex/directory`, the static catalogue lookup, so enabling the
+mode never scans card availability. Each collapsible
+header shows the cached species sprite, its dex number, the species name in the
+UI language, the printing and copy counts, and the group's value; the first
+group starts expanded and the rest start collapsed. Cards without dex ids
+(Trainers, Energy, manual cards) stay reachable in a trailing **Other cards**
+section. The grouping is grid-only: the list view disables the control and
+explains why in its tooltip, and switching to the list view returns to **None**.
+The choice is in-memory session state, like the sort order and view mode.
+
 The collection editor and card-detail Owned copies tab display the API's reason
 when an edit or removal is rejected. Active product links must be unlinked from
 the product's cards panel before removing the collection row; links with sale
@@ -245,6 +259,19 @@ Decks allocate exact owned copies from one capacity pool. Planned Binders and
 Planned Decks store requirements without reserving inventory. The Deck editor
 adds validation, composition, shortage, legality, probability, duplicate, and
 planned/real conversion tools. See [`CARD_LISTS.md`](CARD_LISTS.md).
+
+### `pages/Analytics.jsx`
+
+Analytics tabs run Duplicates, Species duplicates, Top Movers, Rarity Stats and
+Investment. **Species duplicates** reads
+`GET /api/analytics/species-duplicates?price_field=<field>` and shows a summary
+strip (species, printings, copies, value) above one collapsible section per
+species: cached sprite, dex number, the species name in the UI language,
+printing/copy counts and total value. Expanding a species lists its printings
+with set name, number and language, quantity, unit and total price, and the
+own-photo-aware thumbnail. Selecting a printing opens the shared card dialog,
+matching the Duplicates tab. The tab shares the page's currency formatting,
+English/German species metadata and collection invalidation.
 
 ### Bulk removal within one view
 
