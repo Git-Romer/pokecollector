@@ -1532,25 +1532,25 @@ export default function Collection() {
             </button>
           </div>
 
-          <div
-            className="flex items-center gap-2"
-            title={viewMode === 'list' ? t('collection.groupGridViewOnly') : undefined}
-          >
-            <Layers size={14} className="text-text-muted" aria-hidden />
-            <label htmlFor="collection-group-by" className="text-xs text-text-muted">
-              {t('collection.groupBy')}
-            </label>
-            <select
-              id="collection-group-by"
-              className="select w-32 py-1.5 text-sm"
-              value={viewMode === 'list' ? 'none' : groupBy}
-              disabled={viewMode === 'list'}
-              onChange={(e) => setGroupBy(e.target.value)}
-            >
-              <option value="none">{t('collection.groupNone')}</option>
-              <option value="species">{t('collection.groupPokemon')}</option>
-            </select>
-          </div>
+          {/* Grouping is a grid-only mode: the list view has no place for it, and
+              a disabled control there only adds a row to the mobile toolbar. */}
+          {viewMode === 'grid' && (
+            <div className="flex items-center gap-2">
+              <Layers size={14} className="text-text-muted" aria-hidden />
+              <label htmlFor="collection-group-by" className="text-xs text-text-muted">
+                {t('collection.groupBy')}
+              </label>
+              <select
+                id="collection-group-by"
+                className="select w-32 py-1.5 text-sm"
+                value={groupBy}
+                onChange={(e) => setGroupBy(e.target.value)}
+              >
+                <option value="none">{t('collection.groupNone')}</option>
+                <option value="species">{t('collection.groupPokemon')}</option>
+              </select>
+            </div>
+          )}
 
           <div className="relative flex-1 min-w-[160px] max-w-xs">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />

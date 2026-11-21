@@ -231,8 +231,9 @@ header shows the cached species sprite, its dex number, the species name in the
 UI language, the printing and copy counts, and the group's value; the first
 group starts expanded and the rest start collapsed. Cards without dex ids
 (Trainers, Energy, manual cards) stay reachable in a trailing **Other cards**
-section. The grouping is grid-only: the list view disables the control and
-explains why in its tooltip, and switching to the list view returns to **None**.
+section. The grouping is grid-only: the toolbar control is shown only in the
+grid view, and switching to the list view returns to **None**, so the list table
+stays exactly as it was.
 The choice is in-memory session state, like the sort order and view mode.
 
 The collection editor and card-detail Owned copies tab display the API's reason
