@@ -1170,6 +1170,18 @@
     "unavailableEntries": "Ces identifiants d'entrée ne sont plus disponibles : {ids}. Fermez cette fenêtre et actualisez-la avant de réessayer.",
     "unlinkConfirm": "Dissocier {copies} exemplaires de {card} de {product} ? Le produit et votre collection restent inchangés. Cette action supprime uniquement le lien et n'enregistre pas de vente.",
     "blockersCleared": "Liens supprimés. Votre collection n'a pas été supprimée. Vous pouvez maintenant réessayer de la supprimer.",
-    "assignmentsChanged": "Les affectations ont changé. Veuillez consulter la liste mise à jour et confirmer."
+    "assignmentsChanged": "Les affectations ont changé. Veuillez consulter la liste mise à jour et confirmer.",
+    "close": "Fermer",
+    "selectVisible": "Sélectionner visible",
+    "removeSelected": "Supprimer la sélection",
+    "cancelSelection": "Annuler la sélection",
+    "selected": "{entries} entrées · {copies} copies sélectionnées",
+    "titleCollection": "Retirer de la collection ?",
+    "titleBinder": "Retirer du classeur ?",
+    "titleDeck": "Retirer du paquet ?",
+    "confirmCollection": "Supprimer {entries} entrées contenant {copies} copies de votre collection ? Cette action supprime toutes les copies de ces entrées, à l’exception des cartes des classeurs ou des paquets. Les entrées attribuées ou liées à un produit doivent être libérées au préalable. Cette action est irréversible.",
+    "confirmBinder": "Supprimer {entries} entrées contenant {copies} copies de ce classeur ? Votre collection et vos autres listes resteront inchangés.",
+    "confirmDeck": "Supprimer {entries} entrées contenant {copies} copies de ce paquet ? Votre collection et vos autres listes resteront inchangés.",
+    "collectionHint": "Tous les exemplaires de chaque entrée sélectionnée seront supprimés. Les attributions de classeurs et de jeux doivent d'abord être effectuées séparément."
   }
 }
