@@ -24,6 +24,8 @@ Routes are defined in `frontend/src/App.jsx`.
 | `/pokedex/:dexId` | `pages/PokedexSpecies.jsx` | Species/form detail, related forms, and exact matching card printings |
 | `/sets` | `pages/Sets.jsx` | Set browser |
 | `/sets/:setId` | `pages/SetDetail.jsx` | Set checklist |
+| `/artist/:artistName` | `pages/ArtistChecklist.jsx` | Every card by an artist with owned/missing progress |
+| `/artists` | `pages/Artists.jsx` | Artist directory with collection progress |
 | `/wishlist` | `pages/Wishlist.jsx` | Wishlist and alerts |
 | `/binders` | `pages/Binders.jsx` | Unified Binders, Planned Binders, Planned Decks, and Real Decks |
 | `/binders/:binderId` | `pages/BinderDetail.jsx` | Binder or Planned Binder detail |

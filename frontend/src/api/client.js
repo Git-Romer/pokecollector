@@ -103,6 +103,8 @@ export const updateProfile = (data) => api.put('/profile/', data).then(r => r.da
 
 // Cards
 export const searchCards = (params) => api.get('/cards/search', { params })
+export const getArtistChecklist = (params) => api.get('/cards/artist-checklist', { params })
+export const getArtistsIndex = (params) => api.get('/cards/artists', { params })
 export const getCard = (id) => api.get(`/cards/${id}`)
 export const getCardInLang = (cardId, lang) => api.get(`/cards/${cardId}/lang/${lang}`)
 export const getPriceHistory = (id) => api.get(`/cards/${id}/price-history`)

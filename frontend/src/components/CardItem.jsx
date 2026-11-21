@@ -778,7 +778,7 @@ export function CardModal({ card, onClose, onEdit, defaultLang = 'en', ownedItem
                   <span className="text-text-muted text-xs">{t('card.artist')}</span>
                   <button
                     type="button"
-                    onClick={() => navigateFromModal(`/search?${new URLSearchParams({ artist: card.artist }).toString()}`)}
+                    onClick={() => navigateFromModal(`/artist/${encodeURIComponent(card.artist)}`)}
                     className="block max-w-full truncate text-left text-text-primary font-medium text-sm hover:text-brand-red hover:underline underline-offset-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-red/50 rounded"
                   >
                     {card.artist}

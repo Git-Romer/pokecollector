@@ -5,15 +5,20 @@ describe('invalidateCardState', () => {
   it('refreshes card tile views and the active set checklist without global invalidation', () => {
     const invalidateQueries = vi.fn()
     invalidateCardState({ invalidateQueries }, { setId: 'sv1_en' })
-    expect(invalidateQueries).toHaveBeenCalledTimes(7)
+    expect(invalidateQueries).toHaveBeenCalledTimes(8)
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['printing-detail-tags'] })
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['set-checklist', 'sv1_en'] })
+    const artistChecklistCall = invalidateQueries.mock.calls.find(
+      ([filters]) => typeof filters.predicate === 'function'
+        && filters.predicate({ queryKey: ['artist-checklist', 'Mitsuhiro Arita'] })
+    )
+    expect(artistChecklistCall).toBeTruthy()
   })
 
   it('refreshes every cached set checklist when the mutation has no set context', () => {
     const invalidateQueries = vi.fn()
     invalidateCardState({ invalidateQueries })
-    expect(invalidateQueries).toHaveBeenCalledTimes(7)
+    expect(invalidateQueries).toHaveBeenCalledTimes(8)
 
     const checklistCall = invalidateQueries.mock.calls.find(
       ([filters]) => typeof filters.predicate === 'function'
