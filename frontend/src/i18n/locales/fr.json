@@ -1148,5 +1148,28 @@
     "traderDesc": "Vendez 10 produits",
     "rareFinder": "Chercheur Rare",
     "rareFinderDesc": "Possédez une carte Illustration Rare"
+  },
+  "bulkRemoval": {
+    "select": "Sélectionner les cartes",
+    "actions": "Sélectionner les actions",
+    "conflictTitle": "Ces cartes sont encore attribuées",
+    "conflictHint": "Aucune carte n'a été supprimée. Veuillez consulter ci-dessous les cartes concernées et leurs affectations.",
+    "copies": "{count} copies",
+    "releaseAssignments": "Supprimer les tâches listées",
+    "confirmRelease": "Confirmer la suppression des tâches",
+    "releaseConfirm": "Supprimer les {entries} affectations listées contenant {copies} copies de ces classeurs et paquets ? Seules les entrées de collection sélectionnées sont concernées. La propriété de la collection reste inchangée.",
+    "released": "Les tâches ont été supprimées. Votre collection n'a pas été effacée. Vous pouvez maintenant réessayer de la supprimer.",
+    "retryRemoval": "Réessayer la suppression de la collection",
+    "productProtected": "Produit associé :",
+    "productHint": "Les liens vers les produits nécessitent une confirmation séparée. Les liens comportant un historique de vente ou d'échange ne peuvent être supprimés.",
+    "unlinkProduct": "Dissocier du produit",
+    "confirmUnlink": "Confirmer la dissociation",
+    "unlinkProducts": "Dissocier les produits listés",
+    "confirmUnlinkProducts": "Confirmer la dissociation des produits",
+    "unlinkAllConfirm": "Supprimer les liens produits {entries} couvrant {copies} copies ? Tous les liens affichés doivent être supprimables, sinon rien ne change. Les produits et les copies restent en place. Aucune vente n'est enregistrée.",
+    "unavailableEntries": "Ces identifiants d'entrée ne sont plus disponibles : {ids}. Fermez cette fenêtre et actualisez-la avant de réessayer.",
+    "unlinkConfirm": "Dissocier {copies} exemplaires de {card} de {product} ? Le produit et votre collection restent inchangés. Cette action supprime uniquement le lien et n'enregistre pas de vente.",
+    "blockersCleared": "Liens supprimés. Votre collection n'a pas été supprimée. Vous pouvez maintenant réessayer de la supprimer.",
+    "assignmentsChanged": "Les affectations ont changé. Veuillez consulter la liste mise à jour et confirmer."
   }
 }
