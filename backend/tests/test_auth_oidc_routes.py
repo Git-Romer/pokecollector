@@ -1376,11 +1376,24 @@ class ServingConfigurationTests(unittest.TestCase):
         # The backend's no-store and no-referrer reach the browser: the location
         # hides neither and declares no add_header. A path-scoped map suppresses
         # the duplicated server-level policy for OIDC only.
-        self.assertNotIn("proxy_hide_header Referrer-Policy;", oidc_block)
+        # nginx answers 413/502/504 itself with no upstream headers, so the map
+        # supplies no-referrer for every OIDC path and the proxied copy is
+        # hidden to keep exactly one policy on backend responses.
+        self.assertIn("proxy_hide_header Referrer-Policy;", oidc_block)
         self.assertNotIn("proxy_hide_header Cache-Control;", oidc_block)
         self.assertIn("map $uri $referrer_policy", nginx)
-        self.assertIn('~^/api/auth/oidc(/|$) "";', nginx)
-        self.assertIn("add_header Referrer-Policy $referrer_policy always;", nginx)
+        self.assertIn('~^/api/auth/oidc(/|$) "no-referrer";', nginx)
+        # Since 1.58 the server-level headers live in a snippet that every
+        # location includes, so the policy has to be applied there: an inline
+        # add_header in nginx.conf alone would no longer reach real pages.
+        self.assertIn(
+            "include /etc/nginx/snippets/pc-security-headers.conf;", nginx
+        )
+        headers = (self.repo_root / "frontend" / "nginx-security-headers.conf").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("add_header Referrer-Policy $referrer_policy always;", headers)
+        self.assertNotIn("add_header Referrer-Policy \"strict-origin-when-cross-origin\"", headers)
         # No location-level add_header: it would suppress the inherited
         # server-level CSP/frame/permissions headers.
         self.assertEqual(
@@ -1492,9 +1505,39 @@ class ServingConfigurationTests(unittest.TestCase):
             try:
                 with urllib.request.urlopen(url, timeout=10) as response:
                     status = response.status
+                    headers = response.headers
             except urllib.error.HTTPError as exc:
                 status = exc.code
+                headers = exc.headers
             self.assertIn(status, (500, 502, 503, 504))
+            # nginx answered this one itself (the backend is not listening), so
+            # it is the case where the proxy, not the backend, must supply the
+            # policy. Without the map this response carried no policy at all.
+            self.assertEqual(headers.get("Referrer-Policy"), "no-referrer")
+            self.assertIn("default-src 'self'", headers.get("Content-Security-Policy", ""))
+            self.assertIn("camera=(self)", headers.get("Permissions-Policy", ""))
+
+            # A body over the OIDC location's 16k cap is rejected by nginx with
+            # 413 before the request ever reaches the backend.
+            oversized = urllib.request.Request(
+                f"http://127.0.0.1:{port}/api/auth/oidc/start",
+                data=b"x" * (20 * 1024),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(oversized, timeout=10) as response:
+                    oversized_status = response.status
+                    oversized_headers = response.headers
+            except urllib.error.HTTPError as exc:
+                oversized_status = exc.code
+                oversized_headers = exc.headers
+            self.assertEqual(oversized_status, 413)
+            self.assertEqual(oversized_headers.get("Referrer-Policy"), "no-referrer")
+            self.assertIn(
+                "default-src 'self'",
+                oversized_headers.get("Content-Security-Policy", ""),
+            )
 
             time.sleep(0.2)
             logs = subprocess.run(

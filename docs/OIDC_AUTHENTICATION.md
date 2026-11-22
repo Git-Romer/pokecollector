@@ -192,7 +192,9 @@ database backup before manual identity repair.
   anti-abuse control: an OIDC-only deployment must also enforce a shared rate
   limit at the trusted ingress/proxy.
 - Callback and completion responses use `Cache-Control: no-store` and
-  `Referrer-Policy: no-referrer`. Normal access logging stays enabled: the
+  `Referrer-Policy: no-referrer`. The bundled nginx passes both through
+  unchanged and suppresses its own site-wide referrer policy for these paths,
+  so a single, stricter policy applies. Normal access logging stays enabled: the
   backend and the bundled nginx record OIDC requests path-only, so the one-time
   `code`/`state` query string is never written to a log. Keep equivalent
   protections if replacing the bundled proxy.
