@@ -22,8 +22,11 @@ Lifecycle (the P4 route API; no route consumes this module yet):
   start, and the route must restart the flow. It shares the start lock, so a
   start racing a promotion either deletes the claimed row first or removes the
   freshly promoted handoff.
+* :func:`preview_handoff_transaction` reads the same eligibility predicates
+  without writes; it is only a prompt preview, never completion authorization.
 * :func:`claim_handoff_transaction` atomically redeems a same-browser one-use
-  handoff. Route handlers dispatch on ``transaction.operation``.
+  handoff. Route handlers dispatch on ``transaction.operation``. A caller may
+  defer commit to include chosen-name provisioning in the same atomic unit.
 * :func:`invalidate_user_transactions` and
   :func:`invalidate_identity_transactions` are called inside the P5 unlink
   unit of work: the first removes link rows (including claimed in-flight
@@ -32,8 +35,8 @@ Lifecycle (the P4 route API; no route consumes this module yet):
 
 No database lock is ever held across provider network I/O: claims commit before
 the token exchange and promotion runs only after it. ``start_transaction``,
-both claims and promotion are commit boundaries; the invalidators leave the
-commit to their caller so unlink stays atomic.
+both claims (by default) and promotion are commit boundaries; the invalidators
+leave the commit to their caller so unlink stays atomic.
 """
 from __future__ import annotations
 
@@ -308,7 +311,7 @@ def promote_authorization_to_handoff(
     state_digest = _digest(_STATE_NAMESPACE, state)
     handoff_digest = _digest(_HANDOFF_NAMESPACE, handoff_secret)
     # Store only the bounded, sanitized hint. Invalid provider text becomes
-    # NULL and provisioning uses the random suffix fallback.
+    # NULL so a new identity can be asked for a local account name at completion.
     bounded_hint = validated_username_hint(username_hint)
     handoff_expiry = promoted_at + HANDOFF_TTL
 
@@ -360,34 +363,20 @@ def promote_authorization_to_handoff(
     )
 
 
-def claim_handoff_transaction(
-    db: Session,
+def _handoff_predicates(
     *,
     handoff_secret: str,
     browser_secret: str,
     expected_user_id: int | None = None,
     bearer_token: str | None = None,
     now: datetime | None = None,
-) -> OidcAuthTransaction | None:
-    """Atomically redeem a completion handoff for this browser.
-
-    Completion infers the operation solely from the stored row; the caller
-    cannot choose login versus link. A login handoff is redeemable without an
-    authenticated context, while a link handoff is only redeemable when the
-    current user id and the initiating bearer token are supplied and match.
-    Both are part of the atomic predicate, so an incomplete or mismatched link
-    attempt is rejected without consuming somebody else's handoff.
-
-    Route handlers must dispatch on ``transaction.operation`` after the claim:
-    a login handoff may issue an application token, a link handoff must return
-    the linked result and never replace the current session.
-    """
+):
+    """One shared eligibility predicate for read-only previews and atomic claims."""
     if (expected_user_id is None) != (bearer_token is None):
         raise OidcTransactionError(
             "Link completion requires both the initiating user and bearer token"
         )
 
-    claimed_at = _utcnow(now)
     handoff_digest = _digest(_HANDOFF_NAMESPACE, handoff_secret)
     browser_digest = _digest(_BROWSER_NAMESPACE, browser_secret)
 
@@ -396,7 +385,7 @@ def claim_handoff_transaction(
         OidcAuthTransaction.browser_digest == browser_digest,
         OidcAuthTransaction.phase == PHASE_HANDOFF,
         OidcAuthTransaction.consumed_at.is_(None),
-        OidcAuthTransaction.expires_at > claimed_at,
+        OidcAuthTransaction.expires_at > _utcnow(now),
     ]
     if expected_user_id is None:
         # Unauthenticated completion may only redeem a login handoff.
@@ -414,6 +403,65 @@ def claim_handoff_transaction(
             )
         )
 
+    return handoff_digest, predicates
+
+
+def preview_handoff_transaction(
+    db: Session,
+    *,
+    handoff_secret: str,
+    browser_secret: str,
+    expected_user_id: int | None = None,
+    bearer_token: str | None = None,
+    now: datetime | None = None,
+) -> OidcAuthTransaction | None:
+    """Read an eligible handoff without consuming, committing or extending it.
+
+    This is only a prompt preview, never authorization to complete. Callers must
+    perform the conditional claim again before any provisioning or token issue.
+    """
+    _, predicates = _handoff_predicates(
+        handoff_secret=handoff_secret,
+        browser_secret=browser_secret,
+        expected_user_id=expected_user_id,
+        bearer_token=bearer_token,
+        now=now,
+    )
+    with db.no_autoflush:
+        return (
+            db.query(OidcAuthTransaction)
+            .filter(*predicates)
+            .populate_existing()
+            .one_or_none()
+        )
+
+
+def claim_handoff_transaction(
+    db: Session,
+    *,
+    handoff_secret: str,
+    browser_secret: str,
+    expected_user_id: int | None = None,
+    bearer_token: str | None = None,
+    now: datetime | None = None,
+    commit: bool = True,
+) -> OidcAuthTransaction | None:
+    """Atomically redeem a same-browser one-use handoff with exact link binding.
+
+    The stored operation is authoritative, including when a bearer is supplied
+    for a login. By default consumption commits immediately. With ``commit=False``
+    the caller must commit consumption and provisioning together, or roll both
+    back; an uncommitted preview is never sufficient completion authorization.
+    """
+    claimed_at = _utcnow(now)
+    handoff_digest, predicates = _handoff_predicates(
+        handoff_secret=handoff_secret,
+        browser_secret=browser_secret,
+        expected_user_id=expected_user_id,
+        bearer_token=bearer_token,
+        now=claimed_at,
+    )
+
     result = db.execute(
         update(OidcAuthTransaction)
         .where(*predicates)
@@ -423,7 +471,8 @@ def claim_handoff_transaction(
     if result.rowcount != 1:
         return None
 
-    db.commit()
+    if commit:
+        db.commit()
     return (
         db.query(OidcAuthTransaction)
         .filter(

@@ -215,7 +215,18 @@
     "startingMessage": "Server und Sitzung werden überprüft...",
     "connectionTitle": "PokéCollector ist nicht erreichbar",
     "connectionMessage": "Der Server wird noch gestartet oder ist vorübergehend nicht verfügbar. PokéCollector verbindet sich automatisch erneut.",
-    "retryConnection": "Erneut versuchen"
+    "retryConnection": "Erneut versuchen",
+    "oidcUsernameTitle": "Wähle deinen Benutzernamen",
+    "oidcUsernameMessage": "Dein Anmeldedienst hat keinen verwendbaren Namen übermittelt. Wähle einen Benutzernamen, um dein PokéCollector-Konto zu erstellen.",
+    "oidcUsernameHelp": "Verwende 2–32 Zeichen. Leerzeichen am Anfang und Ende werden entfernt.",
+    "oidcUsernameSubmit": "Konto erstellen",
+    "oidcUsernameSubmitting": "Konto wird erstellt...",
+    "oidcUsernameInvalid": "Gib einen Benutzernamen mit 2–32 Zeichen ohne Leerzeichen am Anfang und Ende ein.",
+    "oidcUsernameTaken": "Dieser Benutzername ist bereits vergeben. Wähle einen anderen und versuche es erneut.",
+    "oidcUsernameExpiry": "Schließe die Anmeldung innerhalb von 60 Sekunden ab. Wenn die Zeit abläuft, gehe zur Anmeldung zurück und beginne erneut.",
+    "oidcCompleteFailedTitle": "Anmeldung konnte nicht abgeschlossen werden",
+    "oidcCompleteFailedMessage": "Die Anmeldung ist möglicherweise abgelaufen oder wurde bereits verwendet. Bitte beginne auf der Anmeldeseite erneut.",
+    "oidcBackToLogin": "Zurück zur Anmeldung"
   },
   "home": {
     "welcomeBack": "Willkommen zurück",

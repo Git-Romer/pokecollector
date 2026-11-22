@@ -124,7 +124,7 @@ Security-related behavior:
 
 - `pages/Login.jsx` is only used when `multiUser === true`
 - The login form follows `/api/auth/mode` capabilities: local/mixed modes can show password login; an enabled provider adds a configured-label sign-in action; OIDC-only mode does not show a password form
-- `pages/OidcComplete.jsx` posts an empty JSON body to redeem browser-bound cookies. A login result is passed to `loginUser`; a link result preserves the current session and returns to Settings. Provider callback values and tokens are not read from the frontend URL.
+- `pages/OidcComplete.jsx` initially posts an empty JSON body with browser-bound cookies. A login result is passed to `loginUser`; a link result preserves the current session and returns to Settings. For a new identity without a usable provider name, `{username_required: true}` opens an account-name form without creating a session. Submitting `{username}` retries completion; only the allowlisted invalid/taken-name errors keep the form editable. The original 60-second handoff expiry still applies. Provider callback values and tokens are not read from the frontend URL.
 - OIDC error query values map through a fixed, prototype-safe translation allowlist; provider error text is never rendered directly
 - `App.jsx` defines an inline `ForcePasswordChangeScreen`
 - If `user.must_change_password` is true, normal app routes are blocked until `/api/auth/me/force-password` succeeds

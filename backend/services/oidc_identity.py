@@ -40,6 +40,10 @@ class OidcIdentityConflictError(RuntimeError):
     """The identity is already linked to this user or another account."""
 
 
+class OidcUsernameTakenError(OidcProvisioningError):
+    """The exact self-selected username belongs to an existing account."""
+
+
 def find_identity(db: Session, issuer: str, subject: str) -> OidcIdentity | None:
     """Return the identity for an exact issuer+subject pair, if it exists."""
     return (
@@ -94,8 +98,8 @@ def validated_username_hint(
     """Return a bounded, conservative hint from provider profile claims.
 
     ``preferred_username`` wins over ``name``. Unusable values yield ``None`` so
-    provisioning falls back to the random suffix instead of persisting raw,
-    unbounded or markup-bearing provider text.
+    completion can distinguish missing hints without persisting raw, unbounded
+    or markup-bearing provider text.
     """
     return (
         sanitize_username_hint(preferred_username)
@@ -177,6 +181,55 @@ def provision_user_for_identity(
         return user
 
     raise OidcProvisioningError("Could not provision a local account")
+
+
+def provision_user_for_identity_with_username(
+    db: Session, *, issuer: str, subject: str, username: str
+) -> User:
+    """Provision an exact self-selected name without committing the outer unit.
+
+    Both candidate rows live inside one savepoint. A uniqueness race may resolve
+    the exact issuer+subject winner, never an account found by username. The
+    caller owns rollback/commit of the surrounding handoff claim and must check
+    active state and expiry before committing or issuing a JWT.
+    """
+    if not isinstance(issuer, str) or not issuer:
+        raise OidcProvisioningError("OIDC issuer is required")
+    if not isinstance(subject, str) or not subject:
+        raise OidcProvisioningError("OIDC subject is required")
+    if (
+        not isinstance(username, str)
+        or username != username.strip()
+        or not 2 <= len(username) <= _MAX_USERNAME_LENGTH
+    ):
+        raise OidcProvisioningError("Invalid local username")
+
+    existing = find_identity(db, issuer, subject)
+    if existing is not None:
+        return existing.user
+    try:
+        with db.begin_nested():
+            user = User(
+                username=username,
+                hashed_password=None,
+                role="trainer",
+                is_active=True,
+                must_change_password=False,
+            )
+            db.add(user)
+            db.add(OidcIdentity(issuer=issuer, subject=subject, user=user))
+            db.flush()
+    except IntegrityError:
+        # Only the savepoint rolls back. In particular, do not discard the
+        # outer atomic handoff claim and then continue to issue a token.
+        winner = find_identity(db, issuer, subject)
+        if winner is not None:
+            return winner.user
+        if not _username_is_free(db, username):
+            raise OidcUsernameTakenError("Username already taken") from None
+        # Unknown constraint failures are not username collisions.
+        raise
+    return user
 
 
 def link_identity(

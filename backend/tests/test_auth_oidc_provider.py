@@ -6,6 +6,7 @@ publishes discovery metadata and JWKS, authenticates the client with
 happens at Authlib's actual ``parse_id_token`` boundary, not through a mocked
 verifier. No network provider, real credentials or database are used.
 """
+import asyncio
 import base64
 import hashlib
 import logging
@@ -33,6 +34,7 @@ if PROVIDER_DEPS_AVAILABLE:
         OidcDiscoveryError,
         OidcFreshAuthenticationError,
         OidcProvider,
+        OidcProviderError,
         OidcTokenExchangeError,
         OidcTokenValidationError,
     )
@@ -85,6 +87,13 @@ class SyntheticProvider:
         self.id_token = None
         self.token_status = 200
         self.token_response_override = None
+        self.userinfo_requests = []
+        self.userinfo_profile = {"sub": "subject-1"}
+        self.userinfo_status = 200
+        self.userinfo_headers = {}
+        self.userinfo_content = None
+        self.userinfo_error = None
+        self.unexpected_requests = []
         self.transport = httpx2.MockTransport(self.handle)
 
     def metadata(self):
@@ -172,6 +181,20 @@ class SyntheticProvider:
                 },
             )
 
+        if path.endswith("/userinfo"):
+            self.userinfo_requests.append(request)
+            if self.userinfo_error is not None:
+                raise self.userinfo_error
+            kwargs = (
+                {"content": self.userinfo_content}
+                if self.userinfo_content is not None
+                else {"json": self.userinfo_profile}
+            )
+            return httpx2.Response(
+                self.userinfo_status, headers=self.userinfo_headers, **kwargs
+            )
+
+        self.unexpected_requests.append(request)
         return httpx2.Response(404)
 
 
@@ -363,6 +386,283 @@ class SuccessfulValidationTests(ProviderTestCase):
         )
         for name in ("exp", "iat", "sub", "nonce"):
             self.assertEqual(options[name], {"essential": True})
+
+
+@unittest.skipUnless(PROVIDER_DEPS_AVAILABLE, "OIDC provider dependencies are not installed")
+class UserInfoTests(ProviderTestCase):
+    def setUp(self):
+        super().setUp()
+        self.provider.metadata_overrides["userinfo_endpoint"] = ISSUER + "/userinfo"
+
+    async def test_userinfo_only_profile_is_subject_bound_and_bearer_only(self):
+        self.provider.userinfo_profile = {
+            "sub": "subject-1",
+            "preferred_username": "  synthetic-trainer  ",
+            "name": "  Synthetic Trainer  ",
+            "email": "unused@example.test",
+            "iss": "https://other.example.test",
+            "auth_time": 123,
+        }
+        identity = await self.exchange()
+        self.assertEqual(identity.issuer, ISSUER)
+        self.assertEqual(identity.subject, "subject-1")
+        self.assertIsNone(identity.auth_time)
+        self.assertEqual(identity.preferred_username, "synthetic-trainer")
+        self.assertEqual(identity.name, "Synthetic Trainer")
+        self.assertEqual(
+            set(vars(identity)),
+            {"issuer", "subject", "auth_time", "preferred_username", "name"},
+        )
+        self.assertEqual(len(self.provider.userinfo_requests), 1)
+        request = self.provider.userinfo_requests[0]
+        self.assertEqual(request.method, "GET")
+        self.assertEqual(str(request.url), ISSUER + "/userinfo")
+        self.assertEqual(request.content, b"")
+        self.assertEqual(
+            request.headers["authorization"], "Bearer synthetic-access-token"
+        )
+        self.assertNotIn("client_secret", str(request.headers))
+        self.assertNotIn(CLIENT_SECRET, str(request.headers))
+        self.assertEqual(
+            request.extensions["timeout"],
+            {"connect": 5.0, "read": 5.0, "write": 5.0, "pool": 5.0},
+        )
+
+    async def test_id_token_profile_values_take_precedence(self):
+        now = int(self.provider.clock.now)
+        self.provider.id_token = self.provider.sign(
+            self.provider.claims(
+                preferred_username="id-token-trainer", name="ID Token Name",
+                auth_time=now,
+            )
+        )
+        self.provider.userinfo_profile.update(
+            preferred_username="other-trainer", name="Other Name", auth_time=1
+        )
+        identity = await self.exchange(require_fresh_auth=True)
+        self.assertEqual(identity.preferred_username, "id-token-trainer")
+        self.assertEqual(identity.name, "ID Token Name")
+        self.assertEqual(identity.auth_time, now)
+        self.assertEqual(len(self.provider.userinfo_requests), 1)
+
+    async def test_each_missing_profile_field_is_filled_independently(self):
+        self.provider.userinfo_profile.update(
+            preferred_username="userinfo-trainer", name="UserInfo Name"
+        )
+        for claims, expected in (
+            ({"preferred_username": "id-trainer"}, ("id-trainer", "UserInfo Name")),
+            ({"name": "ID Name"}, ("userinfo-trainer", "ID Name")),
+            ({"preferred_username": " ", "name": 42}, ("userinfo-trainer", "UserInfo Name")),
+        ):
+            with self.subTest(claims=claims):
+                self.provider.id_token = self.provider.sign(self.provider.claims(**claims))
+                identity = await self.exchange()
+                self.assertEqual((identity.preferred_username, identity.name), expected)
+
+    async def test_optional_userinfo_profile_claims_remain_bounded(self):
+        for value in (None, 42, True, [], {}, "", "  ", "x" * 257):
+            with self.subTest(value=value):
+                self.provider.userinfo_profile.update(preferred_username=value, name=value)
+                identity = await self.exchange()
+                self.assertIsNone(identity.preferred_username)
+                self.assertIsNone(identity.name)
+
+    async def test_userinfo_subject_is_required_exact_and_string(self):
+        # Even with usable ID-token hints, advertised UserInfo fails closed.
+        self.provider.id_token = self.provider.sign(
+            self.provider.claims(preferred_username="id-trainer")
+        )
+        for subject in (_REMOVE, None, 123, True, [], "", "subject-2", "subject-1 "):
+            with self.subTest(subject=subject):
+                self.provider.userinfo_profile = {"preferred_username": "hint"}
+                if subject is not _REMOVE:
+                    self.provider.userinfo_profile["sub"] = subject
+                with self.assertRaises(OidcTokenValidationError):
+                    await self.exchange()
+
+    async def test_invalid_id_token_prevents_userinfo_request(self):
+        for claims in (
+            self.provider.claims(nonce="wrong-nonce"),
+            self.provider.claims(iss="https://other.example.test"),
+            self.provider.claims(exp=int(self.provider.clock.now) - 3600),
+        ):
+            with self.subTest(claims=claims):
+                self.provider.id_token = self.provider.sign(claims)
+                with self.assertRaises(OidcTokenValidationError):
+                    await self.exchange()
+        self.provider.id_token = self.provider.sign(
+            self.provider.claims(), key=OTHER_RSA_KEY, kid=RSA_KEY.kid
+        )
+        with self.assertRaises(OidcTokenValidationError):
+            await self.exchange()
+        self.assertEqual(self.provider.userinfo_requests, [])
+
+    async def test_userinfo_cannot_satisfy_link_freshness(self):
+        now = int(self.provider.clock.now)
+        self.provider.userinfo_profile["auth_time"] = now
+        for auth_time in (_REMOVE, now - 301, now + 61):
+            with self.subTest(auth_time=auth_time):
+                self.provider.id_token = self.provider.sign(
+                    self.provider.claims(auth_time=auth_time)
+                )
+                with self.assertRaises(OidcFreshAuthenticationError):
+                    await self.exchange(require_fresh_auth=True)
+        self.assertEqual(self.provider.userinfo_requests, [])
+
+    async def test_invalid_userinfo_metadata_is_rejected_before_exchange(self):
+        for endpoint in (
+            None, "", 42, False, [], {}, "relative/userinfo",
+            "http://idp.example.test/userinfo", "http://127.0.0.1.example.test/userinfo",
+            "https://idp.example.test:bad/userinfo",
+            "https://user:password@idp.example.test/userinfo",
+            "https://idp.example.test/userinfo?token=unsafe",
+            "https://idp.example.test/userinfo#fragment",
+            "https://idp.example.test/white space",
+        ):
+            with self.subTest(endpoint=endpoint):
+                self.provider.metadata_overrides["userinfo_endpoint"] = endpoint
+                with self.assertRaises(OidcConfigurationError):
+                    await self.exchange()
+        self.assertEqual(self.provider.token_requests, 0)
+        self.assertEqual(self.provider.userinfo_requests, [])
+
+    async def test_shared_loopback_http_policy_is_preserved_for_userinfo(self):
+        for host in ("127.0.0.1", "[::1]", "localhost"):
+            with self.subTest(host=host):
+                endpoint = f"http://{host}:9000/userinfo"
+                self.provider.metadata_overrides["userinfo_endpoint"] = endpoint
+                self.adapter = OidcProvider(
+                    self.config,
+                    transport=self.provider.transport,
+                    clock=self.provider.clock,
+                )
+                identity = await self.exchange()
+                self.assertEqual(identity.subject, "subject-1")
+                self.assertEqual(str(self.provider.userinfo_requests[-1].url), endpoint)
+
+    async def test_userinfo_redirects_are_rejected_without_forwarding_tokens(self):
+        for status in (301, 302, 303, 307, 308):
+            with self.subTest(status=status):
+                self.provider.userinfo_status = status
+                self.provider.userinfo_headers = {
+                    "Location": "https://other.example.test/steal"
+                }
+                with self.assertRaises(OidcTokenValidationError):
+                    await self.exchange()
+        self.assertEqual(len(self.provider.userinfo_requests), 5)
+        self.assertEqual(self.provider.unexpected_requests, [])
+
+    async def test_absent_endpoint_keeps_id_token_only_compatibility(self):
+        self.provider.metadata_overrides.pop("userinfo_endpoint")
+        # No access token/type was needed by the old ID-token-only flow.
+        self.provider.token_response_override = {
+            "id_token": self.provider.sign(self.provider.claims(name="ID Name"))
+        }
+        identity = await self.exchange()
+        self.assertEqual(identity.name, "ID Name")
+        self.assertEqual(self.provider.userinfo_requests, [])
+
+    async def test_missing_or_invalid_bearer_credentials_fail_closed(self):
+        for field, values in (
+            ("access_token", (
+                _REMOVE, None, "", 123, True, [], {},
+                "bad token", "bad\r\nheader", "nonascii-🔥",
+            )),
+            ("token_type", (
+                _REMOVE, None, "", 123, True, [], {}, "Basic", "DPoP", "Bearer ",
+            )),
+        ):
+            for value in values:
+                with self.subTest(field=field, value=value):
+                    token = {
+                        "id_token": self.provider.sign(self.provider.claims()),
+                        "access_token": "synthetic-access-token", "token_type": "Bearer",
+                    }
+                    if value is _REMOVE:
+                        token.pop(field)
+                    else:
+                        token[field] = value
+                    self.provider.token_response_override = token
+                    with self.assertRaises(OidcProviderError) as raised:
+                        await self.exchange()
+                    self.assertNotIn("synthetic-access-token", str(raised.exception))
+                    if value != "":
+                        self.assertNotIn(str(value), str(raised.exception))
+        self.assertEqual(self.provider.userinfo_requests, [])
+
+    async def test_bearer_token_type_is_case_insensitive(self):
+        self.provider.token_response_override = {
+            "id_token": self.provider.sign(self.provider.claims()),
+            "access_token": "synthetic-access-token", "token_type": "bEaReR",
+        }
+        identity = await self.exchange()
+        self.assertEqual(identity.subject, "subject-1")
+
+    async def test_userinfo_http_json_and_transport_failures_are_generic(self):
+        for status, content, error in (
+            (401, b'{"error_description":"private-response-marker"}', None),
+            (500, b"private-response-marker", None),
+            (200, b"private-response-marker", None),
+            (200, b"[]", None), (200, b"null", None),
+            (200, b'"private-response-marker"', None), (200, b"42", None),
+            (200, b'{"sub":"subject-1","error":"private-response-marker"}', None),
+            (200, None, httpx2.ReadTimeout("private-response-marker")),
+            (200, None, httpx2.ConnectError("private-response-marker")),
+        ):
+            with self.subTest(status=status, content=content, error=error):
+                self.provider.userinfo_status = status
+                self.provider.userinfo_content = content
+                self.provider.userinfo_error = error
+                with self.assertRaises(OidcTokenValidationError) as raised:
+                    await self.exchange()
+                self.assertIn(
+                    str(raised.exception),
+                    ("UserInfo request failed", "UserInfo validation failed"),
+                )
+                self.assertNotIn("private-response-marker", str(raised.exception))
+
+    async def test_userinfo_cancellation_is_preserved(self):
+        self.provider.userinfo_error = asyncio.CancelledError()
+        with self.assertRaises(asyncio.CancelledError):
+            await self.exchange()
+        self.assertEqual(len(self.provider.userinfo_requests), 1)
+
+    async def test_userinfo_transport_ignores_unrelated_discovery_fields(self):
+        self.provider.metadata_overrides.update({
+            "verify": False, "timeout": 0.001, "follow_redirects": True,
+            "transport": "not-a-transport", "headers": {"X-Injected": "1"},
+        })
+        await self.exchange()
+        request = self.provider.userinfo_requests[0]
+        self.assertNotIn("X-Injected", request.headers)
+        self.assertEqual(request.extensions["timeout"]["read"], 5.0)
+        for key in ("verify", "timeout", "follow_redirects", "transport", "headers"):
+            self.assertNotIn(key, self.adapter._app.server_metadata)
+
+    async def test_profile_tokens_and_error_responses_are_not_logged_or_returned(self):
+        logger = logging.getLogger()
+        handler = _RecordingLogHandler()
+        original_level = logger.level
+        logger.addHandler(handler)
+        logger.setLevel(logging.DEBUG)
+        self.provider.userinfo_profile.update(
+            email="private-marker@example.test", ignored="raw-claim-marker"
+        )
+        try:
+            identity = await self.exchange()
+            self.provider.userinfo_profile["sub"] = "private-subject-marker"
+            with self.assertRaises(OidcTokenValidationError) as raised:
+                await self.exchange()
+        finally:
+            logger.removeHandler(handler)
+            logger.setLevel(original_level)
+        text = "\n".join(handler.messages) + repr(identity) + str(raised.exception)
+        self.assertTrue(handler.messages, "capture should include HTTP control records")
+        for marker in (
+            "private-marker@example.test", "raw-claim-marker", "private-subject-marker",
+            "synthetic-access-token", CLIENT_SECRET, self.provider.id_token,
+        ):
+            self.assertNotIn(marker, text)
 
 
 @unittest.skipUnless(PROVIDER_DEPS_AVAILABLE, "OIDC provider dependencies are not installed")

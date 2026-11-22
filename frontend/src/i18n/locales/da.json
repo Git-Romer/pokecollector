@@ -175,7 +175,18 @@
     "startingMessage": "Tjekker serveren og din session...",
     "connectionTitle": "Kan ikke nå PokéCollector",
     "connectionMessage": "Serveren starter stadig eller er midlertidigt utilgængelig. PokéCollector vil oprette forbindelse automatisk igen.",
-    "retryConnection": "Prøv igen"
+    "retryConnection": "Prøv igen",
+    "oidcUsernameTitle": "Vælg dit brugernavn",
+    "oidcUsernameMessage": "Din loginudbyder delte ikke et brugbart navn. Vælg et brugernavn for at oprette din PokéCollector-konto.",
+    "oidcUsernameHelp": "Brug 2–32 tegn. Mellemrum i starten og slutningen fjernes.",
+    "oidcUsernameSubmit": "Opret konto",
+    "oidcUsernameSubmitting": "Opretter konto...",
+    "oidcUsernameInvalid": "Indtast et brugernavn med 2–32 tegn uden mellemrum i starten og slutningen.",
+    "oidcUsernameTaken": "Brugernavnet er allerede i brug. Vælg et andet, og prøv igen.",
+    "oidcUsernameExpiry": "Afslut inden for 60 sekunder efter login. Hvis tiden udløber, skal du gå tilbage til login og starte igen.",
+    "oidcCompleteFailedTitle": "Login kunne ikke gennemføres",
+    "oidcCompleteFailedMessage": "Loginforsøget kan være udløbet eller allerede brugt. Start igen fra loginsiden.",
+    "oidcBackToLogin": "Tilbage til login"
   },
   "home": {
     "welcomeBack": "Velkommen tilbage",

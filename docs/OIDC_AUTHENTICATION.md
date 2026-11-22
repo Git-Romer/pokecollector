@@ -67,9 +67,28 @@ secret. Leave `AUTH_MODE` unset or blank to retain local behavior.
 Provider identities are keyed by the exact pair `(issuer, subject)`. Email is
 not used as an account key and is not used to attach an identity to an existing
 user. The provider's optional `preferred_username` or `name` may be used as a
-sanitized initial local username; collisions fall back to a safe generated
-trainer name. New OIDC-only accounts are trainers and have no local password.
-Roles and collection ownership remain local to PokéCollector.
+sanitized initial local username. When discovery advertises a `userinfo_endpoint`,
+the backend fetches its JSON response using the access token after validating the
+ID token. The response's `sub` must exactly match the validated ID-token subject.
+Valid ID-token profile values take precedence; UserInfo fills missing profile
+values. This supports providers such as Authelia that normally return profile
+claims through UserInfo rather than the ID token.
+
+Providers without a UserInfo endpoint retain ID-token-only profile lookup. If
+neither source supplies a usable name for a new identity, the completion page
+asks the user to choose an account name before creating the local account. Names
+must be 2–32 characters after trimming and available; a rejected name can be
+corrected while the original browser-bound sign-in remains valid. No account or
+application token is created merely by displaying the form. The existing
+60-second completion window is not extended by the form or validation errors;
+after it expires, start sign-in again.
+
+Usable provider-supplied names are still assigned automatically, with a random
+suffix on collision. A manually chosen name is never silently suffixed. New
+OIDC-only accounts are trainers and have no local password. Later sign-ins do not
+overwrite an existing local username or ask for a new one; users can change it in
+Settings without changing their identity link or collection ownership. Roles
+remain local to PokéCollector.
 
 In `mixed` mode, an active local user can link one identity for the configured
 issuer from **Settings**. Linking requires the current local password, the same
@@ -135,6 +154,12 @@ database backup before manual identity repair.
 - Provider tokens and ID-token claims are not persisted as application sessions.
   The app issues its normal JWT; local logout clears that app
   session but does not perform provider logout or revoke the provider session.
+- UserInfo requests have a bounded timeout and do not follow redirects. An
+  advertised endpoint must use HTTPS (or loopback HTTP for development).
+  An endpoint failure, malformed response or subject mismatch rejects sign-in
+  rather than provisioning an account from an unverified profile. UserInfo cannot
+  replace the ID-token issuer, subject or fresh-authentication proof. Provider
+  tokens and full UserInfo responses are not persisted.
 - Existing application JWTs are not revoked by changing `AUTH_MODE`; they remain
   valid until expiry or user deactivation. Rotate the JWT secret only with an
   understanding of the resulting session invalidation.
@@ -155,5 +180,6 @@ database backup before manual identity repair.
 | Backend refuses to start | Check `AUTH_MODE`, required OIDC variables, the exact issuer, `USER_MODE`, and that `OIDC_REDIRECT_URI` uses the exact callback path. Configuration errors do not include secret values. |
 | Provider reports redirect mismatch | Compare the provider's registered URI byte-for-byte with `OIDC_REDIRECT_URI`, including scheme, port and path. |
 | Callback reports an expired/restart error | Start a new flow in the same browser. State is one-use, browser-bound, short-lived, and a newer flow invalidates the older one. |
+| Sign-in fails after successful provider authentication | If discovery advertises UserInfo, check that it returns a JSON object with the same `sub` as the ID token and accepts the issued bearer access token. Redirects and failed UserInfo requests are rejected. Do not log tokens or full responses. |
 | OIDC-only startup reports no linked administrator | Start in `mixed`, link an active administrator, then switch to `oidc-only`; or use the host-only recovery procedure above after verifying the account and subject. |
 | Browser rejects a link/completion request | Serve the app at the origin configured in `OIDC_REDIRECT_URI`; OIDC POSTs reject absent or different `Origin` headers. |

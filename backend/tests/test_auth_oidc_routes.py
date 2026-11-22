@@ -5,6 +5,7 @@ provider boundary (the signed-token boundary itself is covered by the P3
 provider suite). The database is SQLite with ``PRAGMA foreign_keys=ON``.
 No network provider, live instance or real credentials are used.
 """
+import json
 import os
 import secrets
 import shutil
@@ -243,7 +244,10 @@ class RouteTestCase(unittest.TestCase):
         self.assertEqual(callback.status_code, 302)
         return callback
 
-    def complete(self, *, origin=APP_ORIGIN, token=None, content_type="application/json"):
+    def complete(
+        self, *, origin=APP_ORIGIN, token=None,
+        content_type="application/json", body=b"{}",
+    ):
         headers = {}
         if origin is not None:
             headers["Origin"] = origin
@@ -253,7 +257,7 @@ class RouteTestCase(unittest.TestCase):
             headers["Authorization"] = f"Bearer {token}"
         # Send raw bytes so a deliberately missing Content-Type stays missing.
         return self.client.post(
-            "/api/auth/oidc/complete", content=b"{}", headers=headers
+            "/api/auth/oidc/complete", content=body, headers=headers
         )
 
     def replace_browser_cookie(self, value):
@@ -628,7 +632,7 @@ class CompletionRouteTests(RouteTestCase):
         self.assert_security_headers(response)
 
     def test_login_completion_provisions_new_trainer_once(self):
-        self.login_handoff()
+        self.login_handoff(preferred_username="synthetic-trainer")
 
         first = self.complete()
         self.assertEqual(first.status_code, 200)
@@ -682,7 +686,7 @@ class CompletionRouteTests(RouteTestCase):
                 return None
             return real_find(db, issuer, subject)
 
-        self.login_handoff()
+        self.login_handoff(preferred_username="new-trainer")
         with patch(
             "services.oidc_identity.find_identity", side_effect=miss_once
         ):
@@ -720,6 +724,30 @@ class CompletionRouteTests(RouteTestCase):
         )
         self.assertEqual(user.username, "Misty-Waterflower")
 
+    def test_subsequent_login_preserves_local_username_when_profile_changes(self):
+        self.login_handoff(preferred_username="first-trainer", name="First Name")
+        first = self.complete()
+        self.assertEqual(first.status_code, 200)
+        user_id = first.json()["user"]["id"]
+
+        # A local rename and changed provider hints must not change ownership or
+        # replace the existing account's chosen local username.
+        user = self.db.query(User).filter(User.id == user_id).one()
+        user.username = "local-chosen-name"
+        self.db.commit()
+        self.login_handoff(preferred_username="changed-trainer", name="Changed Name")
+        second = self.complete()
+
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.json()["user"]["id"], user_id)
+        self.assertEqual(second.json()["user"]["username"], "local-chosen-name")
+        self.db.refresh(user)
+        self.assertEqual(user.username, "local-chosen-name")
+        self.assertEqual(self.db.query(User).count(), 1)
+        identity = find_identity(self.db, ISSUER, SUBJECT)
+        self.assertEqual(identity.user_id, user_id)
+        self.assertEqual(self.db.query(OidcIdentity).count(), 1)
+
     def test_hint_collision_uses_suffix_and_never_attaches(self):
         existing = self.add_user("Ash-Ketchum")
         self.login_handoff(preferred_username="Ash Ketchum")
@@ -751,21 +779,15 @@ class CompletionRouteTests(RouteTestCase):
         self.assertNotIn("@", user.username)
         self.assertIsNotNone(find_identity(self.db, ISSUER, SUBJECT))
 
-    def test_unusable_hint_falls_back_to_safe_trainer_name(self):
+    def test_unusable_hint_requires_username_before_provisioning(self):
         self.login_handoff(preferred_username="🔥🔥")
 
         response = self.complete()
 
         self.assertEqual(response.status_code, 200)
-        user = (
-            self.db.query(User)
-            .filter(User.id == response.json()["user"]["id"])
-            .one()
-        )
-        self.assertTrue(
-            user.username == "trainer" or user.username.startswith("trainer-")
-        )
-        self.assertLessEqual(len(user.username), 32)
+        self.assertEqual(response.json(), {"username_required": True})
+        self.assertEqual(self.db.query(User).count(), 0)
+        self.assertEqual(self.db.query(OidcIdentity).count(), 0)
 
     def test_completion_is_browser_bound(self):
         self.login_handoff()
@@ -805,7 +827,7 @@ class CompletionRouteTests(RouteTestCase):
         )
         self._link_handoff(admin, bearer)
 
-        response = self.complete(token=bearer)
+        response = self.complete(token=bearer, body=b'{"username":null}')
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"linked": True})
@@ -910,6 +932,295 @@ class CompletionRouteTests(RouteTestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIsNone(find_identity(self.db, ISSUER, "link-subject"))
+
+
+class UsernameFallbackCompletionTests(RouteTestCase):
+    def submit(self, username):
+        return self.complete(body=json.dumps({"username": username}).encode())
+
+    def pending(self):
+        return self.db.query(OidcAuthTransaction).populate_existing().one()
+
+    def assert_unconsumed(self, deadline):
+        row = self.pending()
+        self.assertIsNone(row.consumed_at)
+        self.assertEqual(row.expires_at, deadline)
+
+    def test_repeated_prompt_does_not_consume_extend_create_or_issue_token(self):
+        self.login_handoff()
+        row = self.pending()
+        deadline, digest = row.expires_at, row.handoff_digest
+        cookies = dict(self.client.cookies)
+        with patch.object(auth_api, "create_access_token") as mint:
+            for _ in range(2):
+                response = self.complete()
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json(), {"username_required": True})
+                self.assert_security_headers(response)
+                self.assertNotIn("set-cookie", response.headers)
+                self.assert_unconsumed(deadline)
+            mint.assert_not_called()
+        self.assertEqual(self.pending().handoff_digest, digest)
+        self.assertEqual(dict(self.client.cookies), cookies)
+        self.assertEqual(self.db.query(User).count(), 0)
+        self.assertEqual(self.db.query(OidcIdentity).count(), 0)
+
+    def test_exact_trimmed_self_service_names_and_length_boundaries(self):
+        for index, username in enumerate((" ab ", "x" * 32, "  雪の trainer 名 🔥  ")):
+            with self.subTest(username=username):
+                auth_api._oidc_rate_state.clear()
+                self.login_handoff(subject=f"chosen-{index}")
+                response = self.submit(username)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json()["user"]["username"], username.strip())
+                self.assertIn("access_token", response.json())
+                user = self.db.query(User).filter_by(id=response.json()["user"]["id"]).one()
+                self.assertEqual(user.username, username.strip())
+                self.assertEqual(user.role, "trainer")
+                self.assertTrue(user.is_active)
+                self.assertIsNone(user.hashed_password)
+                self.assertFalse(user.must_change_password)
+                self.assertEqual(find_identity(self.db, ISSUER, f"chosen-{index}").user_id, user.id)
+                self.assertEqual(self.submit(username).status_code, 400)
+
+    def test_invalid_supplied_names_are_retryable_without_consumption(self):
+        self.login_handoff()
+        deadline = self.pending().expires_at
+        for invalid in (None, "", "  ", "x", " x ", "x" * 33, 123, True, [], {}):
+            with self.subTest(invalid=invalid):
+                auth_api._oidc_rate_state.clear()
+                response = self.submit(invalid)
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.json(), {
+                    "code": "invalid_username",
+                    "detail": "Username must be between 2 and 32 characters",
+                })
+                self.assert_security_headers(response)
+                self.assert_unconsumed(deadline)
+        self.assertEqual(self.db.query(User).count(), 0)
+        self.assertEqual(self.db.query(OidcIdentity).count(), 0)
+        self.assertEqual(self.submit("retry-name").status_code, 200)
+
+    def test_username_collision_never_links_or_suffixes_and_same_handoff_can_retry(self):
+        existing = self.add_user("taken-name", role="admin")
+        self.login_handoff()
+        deadline = self.pending().expires_at
+        cookies = dict(self.client.cookies)
+        response = self.submit(" taken-name ")
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json(), {
+            "code": "username_taken", "detail": "Username already taken",
+        })
+        self.assert_unconsumed(deadline)
+        self.assertEqual(dict(self.client.cookies), cookies)
+        self.assertNotIn("set-cookie", response.headers)
+        self.assertEqual(self.db.query(User).count(), 1)
+        self.assertEqual(self.db.query(OidcIdentity).count(), 0)
+        retry = self.submit("available-name")
+        self.assertEqual(retry.status_code, 200)
+        self.assertNotEqual(retry.json()["user"]["id"], existing.id)
+        self.assertEqual(retry.json()["user"]["username"], "available-name")
+
+    def test_existing_identity_ignores_chosen_field_without_rename_or_prompt(self):
+        user = self.add_user("local-name")
+        self.link(user)
+        for chosen in (None, "replacement-name"):
+            with self.subTest(chosen=chosen):
+                self.login_handoff()
+                response = self.submit(chosen)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json()["user"]["id"], user.id)
+                self.assertEqual(response.json()["user"]["username"], "local-name")
+        user.is_active = False
+        self.db.commit()
+        self.login_handoff()
+        self.assertEqual(self.submit("replacement-name").status_code, 403)
+        self.assertEqual(self.db.query(User).count(), 1)
+        self.assertEqual(user.username, "local-name")
+
+    def test_provider_named_provisioning_ignores_chosen_name_even_if_invalid(self):
+        self.login_handoff(preferred_username="Provider Trainer")
+        response = self.submit(None)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["user"]["username"], "Provider-Trainer")
+
+    def test_malformed_and_oversized_bodies_fail_before_any_claim(self):
+        self.login_handoff()
+        deadline = self.pending().expires_at
+        for body, status in (
+            (b"{", 400), (b"[]", 400), (b"null", 400), (b"", 400),
+            (b'{"username":"' + b"x" * 8192 + b'"}', 413),
+        ):
+            with self.subTest(body_length=len(body)):
+                with patch.object(auth_api, "claim_handoff_transaction") as claim:
+                    response = self.complete(body=body)
+                self.assertEqual(response.status_code, status)
+                claim.assert_not_called()
+                self.assert_unconsumed(deadline)
+
+    def test_wrong_browser_expired_superseded_and_replayed_handoffs_fail_generically(self):
+        self.login_handoff()
+        cookies = dict(self.client.cookies)
+        self.replace_browser_cookie("wrong-browser")
+        wrong_browser = self.submit("chosen-name")
+        self.assertEqual(wrong_browser.status_code, 400)
+        self.assertEqual(wrong_browser.json(), {"detail": "Sign-in could not be completed"})
+        self.replace_browser_cookie(cookies[auth_api.OIDC_BROWSER_COOKIE])
+        # Expiry and supersession are independently rejected with no naming retry.
+        row = self.pending()
+        row.expires_at = datetime.utcnow() - timedelta(seconds=1)
+        self.db.commit()
+        self.assertEqual(self.submit("chosen-name").status_code, 400)
+        self.login_handoff()
+        self.start()
+        self.assertEqual(self.submit("chosen-name").status_code, 400)
+        self.login_handoff()
+        self.assertEqual(self.submit("chosen-name").status_code, 200)
+        replay = self.submit("other-name")
+        self.assertEqual(replay.status_code, 400)
+        self.assertNotIn("code", replay.json())
+
+    def test_wrong_issuer_never_prompts_or_provisions(self):
+        self.login_handoff()
+        with oidc_env(OIDC_ISSUER_URL=OTHER_ISSUER):
+            response = self.submit("chosen-name")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json(), {"detail": "Sign-in could not be completed"})
+        self.assertEqual(self.db.query(User).count(), 0)
+        self.assertEqual(self.complete().status_code, 400)
+
+    def test_deferred_claim_rechecks_issuer_and_login_operation_after_preview(self):
+        self.login_handoff()
+        deadline = self.pending().expires_at
+        real_claim = auth_api.claim_handoff_transaction
+        for field, value in (("issuer", OTHER_ISSUER), ("operation", OPERATION_LINK)):
+            with self.subTest(field=field):
+                def changed_claim(db, **kwargs):
+                    claimed = real_claim(db, **kwargs)
+                    setattr(claimed, field, value)
+                    return claimed
+
+                with patch.object(auth_api, "claim_handoff_transaction", changed_claim):
+                    with patch.object(auth_api, "create_access_token") as mint:
+                        response = self.submit("chosen-name")
+                        mint.assert_not_called()
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.json(), {"detail": "Sign-in could not be completed"})
+                self.assert_unconsumed(deadline)
+                self.assertEqual(self.db.query(User).count(), 0)
+                self.assertEqual(self.db.query(OidcIdentity).count(), 0)
+
+    def test_post_insert_failure_rolls_back_both_rows_and_claim_then_retry_succeeds(self):
+        self.login_handoff()
+        deadline = self.pending().expires_at
+        real_provision = auth_api.provision_user_for_identity_with_username
+
+        def fail_after_insert(db, **kwargs):
+            real_provision(db, **kwargs)
+            raise RuntimeError("synthetic-private-failure")
+
+        with patch.object(auth_api, "provision_user_for_identity_with_username", fail_after_insert):
+            with patch.object(auth_api, "create_access_token") as mint:
+                response = self.submit("chosen-name")
+                mint.assert_not_called()
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.json(), {"detail": "Sign-in failed"})
+        self.assert_unconsumed(deadline)
+        self.assertEqual(self.db.query(User).count(), 0)
+        self.assertEqual(self.db.query(OidcIdentity).count(), 0)
+        self.assertEqual(self.submit("chosen-name").status_code, 200)
+
+    def test_expiry_after_blocking_provisioning_rolls_back_rows_and_claim(self):
+        self.login_handoff()
+        deadline = self.pending().expires_at
+        with patch.object(auth_api, "datetime") as clock:
+            clock.utcnow.return_value = deadline + timedelta(seconds=1)
+            with patch.object(auth_api, "create_access_token") as mint:
+                response = self.submit("chosen-name")
+                mint.assert_not_called()
+        self.assertEqual(response.status_code, 400)
+        self.assert_unconsumed(deadline)
+        self.assertEqual(self.db.query(User).count(), 0)
+        self.assertEqual(self.db.query(OidcIdentity).count(), 0)
+
+    def test_unknown_integrity_error_is_generic_not_a_username_conflict(self):
+        from sqlalchemy.exc import IntegrityError
+
+        self.login_handoff()
+        deadline = self.pending().expires_at
+        real_flush = self.db.flush
+
+        def insert_then_fail(*args, **kwargs):
+            candidate_pending = any(
+                isinstance(row, User) and row.username == "chosen-name"
+                for row in self.db.new
+            )
+            real_flush(*args, **kwargs)
+            if candidate_pending:
+                raise IntegrityError("synthetic-statement", {}, Exception("private-error"))
+
+        with patch.object(self.db, "flush", insert_then_fail):
+            response = self.submit("chosen-name")
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.json(), {"detail": "Sign-in failed"})
+        self.assert_unconsumed(deadline)
+        self.assertEqual(self.db.query(User).count(), 0)
+        self.assertEqual(self.db.query(OidcIdentity).count(), 0)
+
+    def test_identity_appearing_after_preview_is_not_renamed_or_reprovisioned(self):
+        user = self.add_user("race-winner")
+        self.link(user)
+        real_resolve = auth_api.resolve_identity_user
+        for active in (True, False):
+            with self.subTest(active=active):
+                user.is_active = active
+                self.db.commit()
+                self.login_handoff()
+                deadline = self.pending().expires_at
+                calls = {"count": 0}
+
+                def miss_preview(db, issuer, subject):
+                    calls["count"] += 1
+                    return None if calls["count"] == 1 else real_resolve(db, issuer, subject)
+
+                with patch.object(auth_api, "resolve_identity_user", miss_preview):
+                    response = self.submit("candidate-name")
+                self.assertEqual(response.status_code, 200 if active else 403)
+                self.assertEqual(self.db.query(User).count(), 1)
+                self.assertEqual(self.db.query(OidcIdentity).count(), 1)
+                self.db.refresh(user)
+                self.assertEqual(user.username, "race-winner")
+                if active:
+                    self.assertEqual(response.json()["user"]["id"], user.id)
+                else:
+                    self.assert_unconsumed(deadline)
+
+    def test_identity_deleted_after_preview_cannot_reprovision_unnamed_trainer(self):
+        user = self.add_user("existing-local-name")
+        self.link(user)
+        self.login_handoff()
+        real_claim = auth_api.claim_handoff_transaction
+
+        def claim_then_remove_identity(db, **kwargs):
+            transaction = real_claim(db, **kwargs)
+            identity = find_identity(db, ISSUER, SUBJECT)
+            db.delete(identity)
+            db.commit()
+            return transaction
+
+        with patch.object(auth_api, "claim_handoff_transaction", claim_then_remove_identity):
+            with patch.object(auth_api, "provision_user_for_identity") as provision:
+                with patch.object(auth_api, "create_access_token") as mint:
+                    response = self.complete()
+                    provision.assert_not_called()
+                    mint.assert_not_called()
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json(), {"detail": "Sign-in could not be completed"})
+        self.assert_security_headers(response)
+        self.assertEqual(self.db.query(User).count(), 1)
+        self.assertEqual(self.db.query(OidcIdentity).count(), 0)
+        self.assertEqual(self.db.query(User).one().username, "existing-local-name")
+        self.assertIsNotNone(self.pending().consumed_at)
 
 
 class RateLimitTests(RouteTestCase):

@@ -132,11 +132,18 @@ export function safeAuthorizationUrl(payload) {
 
 /**
  * Discriminate the completion response exactly as the API contract defines it:
- * a TokenResponse, or `{linked:true}`. Any other combination is rejected rather
- * than guessed at.
+ * a TokenResponse, `{linked:true}`, or `{username_required:true}`. Ambiguous
+ * combinations are rejected rather than guessed at.
  */
 export function parseOidcCompletion(payload) {
   if (!isPlainObject(payload)) throw new Error('Unexpected sign-in response')
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'username_required')) {
+    if (payload.username_required === true && Object.keys(payload).length === 1) {
+      return { kind: 'username_required' }
+    }
+    throw new Error('Unexpected sign-in response')
+  }
 
   const hasToken = typeof payload.access_token === 'string' && payload.access_token.trim() !== ''
   const hasLinkedFlag = Object.prototype.hasOwnProperty.call(payload, 'linked')
@@ -161,15 +168,24 @@ export function parseOidcCompletion(payload) {
   throw new Error('Unexpected sign-in response')
 }
 
+// Only these two status/code pairs preserve the pending handoff for correction.
+// Never render server detail strings or infer retryability from the status alone.
+export function oidcUsernameErrorTranslationKey(error) {
+  const status = error?.response?.status
+  const code = error?.response?.data?.code
+  if (status === 400 && code === 'invalid_username') return 'auth.oidcUsernameInvalid'
+  if (status === 409 && code === 'username_taken') return 'auth.oidcUsernameTaken'
+  return null
+}
+
 /**
- * Run the one-shot completion request and apply the result.
+ * Run a completion request and apply a token response only.
  *
- * `request` performs `POST /api/auth/oidc/complete` with an empty body.
- * `loginUser` is only called for a login TokenResponse; linking must keep the
- * current session and token untouched.
+ * The initial request is empty; a prompted fallback sends only `username`.
+ * Linking and name prompts keep the current session and token untouched.
  */
-export async function runOidcCompletion({ request, loginUser }) {
-  const payload = await request()
+export async function runOidcCompletion({ request, loginUser, username }) {
+  const payload = await (username === undefined ? request() : request({ username }))
   const result = parseOidcCompletion(payload)
 
   if (result.kind === 'login') {

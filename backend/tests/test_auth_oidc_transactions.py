@@ -9,6 +9,7 @@ PostgreSQL test responsibility.
 import os
 import secrets
 import unittest
+from unittest.mock import patch
 from datetime import datetime, timedelta
 
 os.environ.setdefault("JWT_SECRET_KEY", "focused-oidc-transaction-test-secret")
@@ -50,6 +51,7 @@ if TRANSACTION_DEPS_AVAILABLE:
         generate_transaction_secret,
         invalidate_identity_transactions,
         invalidate_user_transactions,
+        preview_handoff_transaction,
         promote_authorization_to_handoff,
         purge_expired_transactions,
         start_transaction,
@@ -415,6 +417,82 @@ class FlowLifecycleTests(TransactionTestCase):
         # Supplying an authenticated context cannot turn a login handoff into a
         # link; the stored operation is authoritative for route dispatch.
         self.assertEqual(claimed.operation, OPERATION_LOGIN)
+
+
+@unittest.skipUnless(TRANSACTION_DEPS_AVAILABLE, "OIDC transaction dependencies are not installed")
+class HandoffPreviewAndDeferredClaimTests(TransactionTestCase):
+    def test_preview_has_no_writes_commit_or_expiry_extension(self):
+        row = self.handoff()
+        deadline = row.expires_at
+        with patch.object(self.db, "commit", wraps=self.db.commit) as commit:
+            for _ in range(2):
+                preview = preview_handoff_transaction(
+                    self.db, handoff_secret=HANDOFF, browser_secret=BROWSER, now=BASE
+                )
+                self.assertIsNotNone(preview)
+                self.assertIsNone(preview.consumed_at)
+                self.assertEqual(preview.expires_at, deadline)
+            commit.assert_not_called()
+        self.assertFalse(self.db.dirty)
+        self.assertFalse(self.db.new)
+
+    def test_deferred_claim_can_rollback_then_claim_and_commit_once(self):
+        self.handoff()
+        binding = dict(handoff_secret=HANDOFF, browser_secret=BROWSER, now=BASE)
+        with patch.object(self.db, "commit", wraps=self.db.commit) as commit:
+            claimed = claim_handoff_transaction(self.db, **binding, commit=False)
+            self.assertIsNotNone(claimed.consumed_at)
+            commit.assert_not_called()
+        self.assertIsNone(preview_handoff_transaction(self.db, **binding))
+        self.db.rollback()
+        self.assertIsNotNone(preview_handoff_transaction(self.db, **binding))
+        self.assertIsNotNone(claim_handoff_transaction(self.db, **binding, commit=False))
+        self.db.commit()
+        self.assertIsNone(claim_handoff_transaction(self.db, **binding))
+
+    def test_preview_does_not_autoflush_unrelated_pending_changes(self):
+        self.handoff()
+        pending = User(username="not-yet-persisted", role="trainer", is_active=True)
+        self.db.add(pending)
+        with patch.object(self.db, "flush", wraps=self.db.flush) as flush:
+            self.assertIsNotNone(preview_handoff_transaction(
+                self.db, handoff_secret=HANDOFF, browser_secret=BROWSER, now=BASE
+            ))
+            flush.assert_not_called()
+        self.assertIsNone(pending.id)
+        self.db.rollback()
+
+    def test_preview_and_claim_share_browser_expiry_phase_and_consumption_rules(self):
+        self.handoff()
+        binding = dict(handoff_secret=HANDOFF, browser_secret=BROWSER, now=BASE)
+        for overrides in (
+            {"browser_secret": "wrong-browser"},
+            {"handoff_secret": "wrong-handoff"},
+            {"now": BASE + HANDOFF_TTL},
+        ):
+            for operation in (preview_handoff_transaction, claim_handoff_transaction):
+                self.assertIsNone(operation(self.db, **{**binding, **overrides}))
+        row = self.db.query(OidcAuthTransaction).one()
+        row.phase = PHASE_AUTHORIZATION
+        self.db.commit()
+        self.assertIsNone(preview_handoff_transaction(self.db, **binding))
+        self.assertIsNone(claim_handoff_transaction(self.db, **binding))
+
+    def test_preview_enforces_exact_link_user_bearer_and_operation(self):
+        user = self.add_user()
+        self.handoff(operation=OPERATION_LINK, user_id=user.id, bearer_token=BEARER)
+        binding = dict(handoff_secret=HANDOFF, browser_secret=BROWSER, now=BASE)
+        for operation in (preview_handoff_transaction, claim_handoff_transaction):
+            self.assertIsNone(operation(self.db, **binding))
+            self.assertIsNone(operation(
+                self.db, **binding, expected_user_id=user.id, bearer_token="wrong-bearer"
+            ))
+            self.assertIsNone(operation(
+                self.db, **binding, expected_user_id=user.id + 1, bearer_token=BEARER
+            ))
+        self.assertIsNotNone(preview_handoff_transaction(
+            self.db, **binding, expected_user_id=user.id, bearer_token=BEARER
+        ))
 
 
 @unittest.skipUnless(TRANSACTION_DEPS_AVAILABLE, "OIDC transaction dependencies are not installed")

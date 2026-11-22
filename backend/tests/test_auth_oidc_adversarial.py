@@ -226,7 +226,7 @@ class AdversarialRouteTestCase(unittest.TestCase):
             params={"state": state, "code": code},
         )
 
-    def login_handoff(self, subject=SUBJECT, *, preferred_username=None, name=None):
+    def login_handoff(self, subject=SUBJECT, *, preferred_username="synthetic-trainer", name=None):
         self.provider.identity = ProviderIdentity(
             issuer=ISSUER,
             subject=subject,

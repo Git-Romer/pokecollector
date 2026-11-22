@@ -130,7 +130,7 @@ class OidcFreshAuthenticationError(OidcProviderError):
 
 @dataclass(frozen=True)
 class OidcIdentity:
-    """Validated identity claims from an ID token (no provider tokens)."""
+    """ID-token identity with optional validated profile hints (no tokens)."""
 
     issuer: str
     subject: str
@@ -289,7 +289,10 @@ class OidcProvider:
                 "OIDC_ISSUER_URL"
             )
 
-        for key in ("authorization_endpoint", "token_endpoint", "jwks_uri"):
+        endpoint_keys = ["authorization_endpoint", "token_endpoint", "jwks_uri"]
+        if "userinfo_endpoint" in metadata:
+            endpoint_keys.append("userinfo_endpoint")
+        for key in endpoint_keys:
             value = metadata.get(key)
             if not isinstance(value, str) or not value:
                 raise OidcConfigurationError(
@@ -339,9 +342,7 @@ class OidcProvider:
         # keys (e.g. verify/timeout/headers) must never reach the transport.
         return {
             "issuer": metadata["issuer"],
-            "authorization_endpoint": metadata["authorization_endpoint"],
-            "token_endpoint": metadata["token_endpoint"],
-            "jwks_uri": metadata["jwks_uri"],
+            **{key: metadata[key] for key in endpoint_keys},
             "id_token_signing_alg_values_supported": allowed,
         }
 
@@ -435,9 +436,68 @@ class OidcProvider:
             raise OidcTokenValidationError(
                 "Authorization response did not include an ID token"
             )
-        return await self._validate_id_token(
+        identity = await self._validate_id_token(
             app, token, nonce=nonce, require_fresh_auth=require_fresh_auth
         )
+        endpoint = app.server_metadata.get("userinfo_endpoint")
+        if endpoint is None:
+            return identity
+
+        # Fetch only after all ID-token checks, including link freshness. The
+        # exact ID-token issuer/subject/auth_time remain authoritative; UserInfo
+        # may only fill missing display hints after its subject is bound to them.
+        profile = await self._fetch_userinfo(endpoint, token, identity.subject)
+        return OidcIdentity(
+            issuer=identity.issuer,
+            subject=identity.subject,
+            auth_time=identity.auth_time,
+            preferred_username=identity.preferred_username
+            or _profile_claim(profile, "preferred_username"),
+            name=identity.name or _profile_claim(profile, "name"),
+        )
+
+    async def _fetch_userinfo(
+        self, endpoint: str, token: dict[str, Any], subject: str
+    ) -> dict[str, Any]:
+        access_token = token.get("access_token")
+        token_type = token.get("token_type")
+        # RFC 6750 bearer syntax excludes whitespace/control/header injection.
+        if (
+            not isinstance(access_token, str)
+            or re.fullmatch(r"[A-Za-z0-9._~+/-]+=*", access_token) is None
+            or not isinstance(token_type, str)
+            or token_type.lower() != "bearer"
+        ):
+            raise OidcTokenValidationError("UserInfo access token is invalid")
+
+        try:
+            # A plain client intentionally has no OAuth client credentials or
+            # automatic token handling. Never follow a redirect with a token.
+            async with httpx2.AsyncClient(
+                timeout=self._timeout,
+                follow_redirects=False,
+                transport=self._transport,
+            ) as client:
+                response = await client.get(
+                    endpoint,
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+            if response.status_code != 200:
+                raise OidcTokenValidationError("UserInfo request failed")
+            profile = response.json()
+        except asyncio.CancelledError:
+            raise
+        except (httpx2.HTTPError, OSError, ValueError):
+            raise OidcTokenValidationError("UserInfo request failed") from None
+
+        if (
+            not isinstance(profile, dict)
+            or not isinstance(profile.get("sub"), str)
+            or profile["sub"] != subject
+            or "error" in profile
+        ):
+            raise OidcTokenValidationError("UserInfo validation failed")
+        return profile
 
     async def _validate_id_token(
         self,

@@ -297,3 +297,158 @@ test('an unavailable identity endpoint leaves settings explanatory rather than b
   await expect(page.getByText('Sign-in details are unavailable right now.')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible()
 })
+
+test('an unnamed new identity prompts once, focuses the field and creates no session', async ({ page }, testInfo) => {
+  const bodies = []
+  await mockApi(page, {
+    onRequest: async (route, url) => {
+      if (url.pathname !== '/api/auth/oidc/complete') return false
+      bodies.push(route.request().postDataJSON())
+      await route.fulfill({ json: { username_required: true } })
+      return true
+    },
+  })
+
+  await page.goto('/auth/oidc/complete')
+  await expect(page.getByRole('heading', { name: 'Choose your username' })).toBeVisible()
+  await expect(page.getByLabel('Username', { exact: true })).toBeFocused()
+  await expect(page.getByText('Use 2–32 characters.', { exact: false })).toBeVisible()
+  await expect(page.getByText('Finish within 60 seconds', { exact: false })).toBeVisible()
+  expect(bodies).toEqual([{}]) // Includes StrictMode's double-effect cycle.
+  expect(await page.evaluate(() => localStorage.getItem('token'))).toBeNull()
+  expect(await page.evaluate(() => localStorage.getItem('user'))).toBeNull()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  await page.screenshot({ path: testInfo.outputPath('oidc-username-form.png'), fullPage: true })
+
+  await page.getByLabel('Username', { exact: true }).fill('Demo Collector')
+  await expect(page).toHaveURL('/auth/oidc/complete')
+  expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toContain('Demo Collector')
+  await page.getByRole('link', { name: 'Back to sign in' }).click()
+  await expect(page).toHaveURL('/login')
+  expect(bodies).toEqual([{}]) // Going back does not create the account.
+})
+
+test('username submission trims the name, prevents double posts and logs in on success', async ({ page }, testInfo) => {
+  const bodies = []
+  let finishSubmission
+  const submission = new Promise(resolve => { finishSubmission = resolve })
+  await mockApi(page, {
+    onRequest: async (route, url) => {
+      if (url.pathname !== '/api/auth/oidc/complete') return false
+      const body = route.request().postDataJSON()
+      bodies.push(body)
+      if (!body.username) {
+        await route.fulfill({ json: { username_required: true } })
+      } else {
+        await submission
+        await route.fulfill({ json: { access_token: 'demo-app-token', user: { ...admin, username: body.username } } })
+      }
+      return true
+    },
+  })
+
+  await page.goto('/auth/oidc/complete')
+  await page.getByLabel('Username', { exact: true }).fill('  Demo Collector  ')
+  await page.getByLabel('Username', { exact: true }).press('Enter')
+  try {
+    await expect(page.getByRole('button', { name: 'Creating account...' })).toBeDisabled()
+    await expect(page.getByLabel('Username', { exact: true })).toBeDisabled()
+    await expect(page.getByRole('link', { name: 'Back to sign in' })).toHaveAttribute('aria-disabled', 'true')
+    await page.locator('form').evaluate(form => { form.requestSubmit(); form.requestSubmit() })
+    expect(bodies).toEqual([{}, { username: 'Demo Collector' }])
+    expect(await page.evaluate(() => localStorage.getItem('token'))).toBeNull()
+    expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toContain('Demo Collector')
+    await page.screenshot({ path: testInfo.outputPath('oidc-username-submitting.png'), fullPage: true })
+  } finally {
+    finishSubmission()
+  }
+  await expect(page).toHaveURL('/')
+  expect(await page.evaluate(() => localStorage.getItem('token'))).toBe('demo-app-token')
+  expect(bodies).toHaveLength(2)
+})
+
+test('invalid and taken usernames stay editable with safe inline errors and preserve input', async ({ page }, testInfo) => {
+  const bodies = []
+  await mockApi(page, {
+    onRequest: async (route, url) => {
+      if (url.pathname !== '/api/auth/oidc/complete') return false
+      bodies.push(route.request().postDataJSON())
+      if (bodies.length === 1) {
+        await route.fulfill({ json: { username_required: true } })
+      } else if (bodies.length === 2) {
+        await route.fulfill({ status: 400, json: { code: 'invalid_username', detail: 'Untrusted provider detail' } })
+      } else if (bodies.length === 3) {
+        await route.fulfill({ status: 409, json: { code: 'username_taken', detail: 'Untrusted provider detail' } })
+      } else {
+        await route.fulfill({ json: { access_token: 'demo-app-token', user: { ...admin, username: 'Demo Trainer' } } })
+      }
+      return true
+    },
+  })
+
+  await page.goto('/auth/oidc/complete')
+  const input = page.getByLabel('Username', { exact: true })
+  const submit = page.getByRole('button', { name: 'Create account', exact: true })
+  await input.fill('  x  ')
+  await submit.click()
+  await expect(input).toHaveAttribute('aria-invalid', 'true')
+  await expect(input).toBeFocused()
+  await expect(page.getByText('Enter a username with 2–32 characters', { exact: false })).toBeVisible()
+  await expect(input).toHaveValue('  x  ')
+  await input.fill('x'.repeat(33))
+  await input.press('Enter')
+  await expect(input).toHaveAttribute('aria-invalid', 'true')
+  expect(bodies).toEqual([{}]) // Client-side length errors never post.
+
+  await input.fill('  Demo Collector  ')
+  await submit.click()
+  await expect(input).toBeFocused()
+  await expect(input).toHaveAttribute('aria-invalid', 'true')
+  await expect(input).toHaveValue('  Demo Collector  ')
+  await expect(page.getByText('Untrusted provider detail')).toHaveCount(0)
+  await page.screenshot({ path: testInfo.outputPath('oidc-username-invalid.png'), fullPage: true })
+
+  await input.press('Enter')
+  await expect(page.getByText('That username is already taken. Choose another and try again.')).toBeVisible()
+  await expect(input).toHaveValue('  Demo Collector  ')
+  await expect(input).toBeFocused()
+  await expect(submit).toBeEnabled()
+  expect(await page.evaluate(() => localStorage.getItem('token'))).toBeNull()
+  await page.screenshot({ path: testInfo.outputPath('oidc-username-taken.png'), fullPage: true })
+
+  await input.fill('Demo Trainer')
+  await expect(input).toHaveAttribute('aria-invalid', 'false')
+  await input.press('Enter')
+  await expect(page).toHaveURL('/')
+  expect(bodies).toEqual([{}, { username: 'Demo Collector' }, { username: 'Demo Collector' }, { username: 'Demo Trainer' }])
+})
+
+test('an expired username handoff requires a fresh sign-in without retrying or exposing detail', async ({ page }, testInfo) => {
+  const bodies = []
+  await mockApi(page, {
+    onRequest: async (route, url) => {
+      if (url.pathname !== '/api/auth/oidc/complete') return false
+      bodies.push(route.request().postDataJSON())
+      await route.fulfill(bodies.length === 1
+        ? { json: { username_required: true } }
+        : { status: 400, json: { detail: 'Untrusted provider detail' } })
+      return true
+    },
+  })
+
+  await page.goto('/auth/oidc/complete')
+  await page.getByLabel('Username', { exact: true }).fill('Demo Collector')
+  await page.getByRole('button', { name: 'Create account' }).click()
+  const heading = page.getByRole('heading', { name: 'Sign-in could not be completed' })
+  await expect(heading).toBeVisible()
+  await expect(heading).toBeFocused()
+  await expect(page.getByLabel('Username', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('Please start again from the sign-in page.', { exact: false })).toBeVisible()
+  await expect(page.getByText('Untrusted provider detail')).toHaveCount(0)
+  expect(await page.evaluate(() => localStorage.getItem('token'))).toBeNull()
+  expect(await page.evaluate(() => localStorage.getItem('user'))).toBeNull()
+  await page.screenshot({ path: testInfo.outputPath('oidc-username-expired.png'), fullPage: true })
+  await page.getByRole('link', { name: 'Back to sign in' }).click()
+  await expect(page).toHaveURL('/login')
+  expect(bodies).toHaveLength(2)
+})

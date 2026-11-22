@@ -3,6 +3,7 @@ import logging
 import os
 import threading
 import time
+from datetime import datetime
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
@@ -39,8 +40,10 @@ from services.auth_policy import (
 from services.oidc_identity import (
     OidcIdentityConflictError,
     OidcProvisioningError,
+    OidcUsernameTakenError,
     find_user_identity,
     provision_user_for_identity,
+    provision_user_for_identity_with_username,
     resolve_identity_user,
     validated_username_hint,
 )
@@ -62,6 +65,7 @@ from services.oidc_transactions import (
     generate_transaction_secret,
     invalidate_identity_transactions,
     invalidate_user_transactions,
+    preview_handoff_transaction,
     promote_authorization_to_handoff,
     purge_expired_transactions,
     start_transaction,
@@ -567,8 +571,9 @@ async def oidc_complete(
     """Redeem the one-use handoff and issue an app token or link result.
 
     The stored operation is authoritative: the caller cannot choose login versus
-    link. A login handoff issues the existing ``TokenResponse``; a link handoff
-    returns ``{"linked": true}`` and never replaces the current session.
+    link. A login handoff issues the existing ``TokenResponse``, or previews a
+    username prompt for a new identity with no usable provider hint. A link
+    handoff returns ``{"linked": true}`` and never replaces the current session.
     """
     policy, error = _oidc_policy_or_error()
     if error is not None:
@@ -590,6 +595,12 @@ async def oidc_complete(
         return _oidc_json(
             429, {"detail": "Too many sign-in attempts. Try again in a minute."}
         )
+    try:
+        data = await _read_oidc_json_object(request)
+    except OidcRequestBodyTooLarge:
+        return _oidc_json(413, {"detail": "Request body too large"})
+    if data is None:
+        return _oidc_json(400, {"detail": "Sign-in could not be completed"})
     _purge_expired_bounded(db)
 
     browser_secret = request.cookies.get(OIDC_BROWSER_COOKIE)
@@ -599,6 +610,33 @@ async def oidc_complete(
 
     current_user = _bearer_user_for_completion(db, token)
     current_user_id = current_user.id if current_user is not None else None
+    binding = {
+        "handoff_secret": handoff_secret,
+        "browser_secret": browser_secret,
+        "expected_user_id": current_user_id,
+        "bearer_token": token if current_user_id is not None else None,
+    }
+    preview = preview_handoff_transaction(db, **binding)
+    if preview is None:
+        return _oidc_json(400, {"detail": "Sign-in could not be completed"})
+    if (
+        preview.issuer == oidc.issuer_url
+        and preview.operation == OPERATION_LOGIN
+        and resolve_identity_user(db, preview.issuer, preview.subject) is None
+        and validated_username_hint(preview.username_hint) is None
+    ):
+        if "username" not in data:
+            return _oidc_json(200, {"username_required": True})
+        username = data["username"]
+        if not isinstance(username, str) or not 2 <= len(username.strip()) <= 32:
+            return _oidc_json(400, {
+                "code": "invalid_username",
+                "detail": "Username must be between 2 and 32 characters",
+            })
+        return _complete_oidc_with_username(
+            db, binding, username.strip(), expected_issuer=oidc.issuer_url
+        )
+
     transaction = claim_handoff_transaction(
         db,
         handoff_secret=handoff_secret,
@@ -620,10 +658,15 @@ async def oidc_complete(
             db, transaction.issuer, transaction.subject
         )
         if user is None:
+            # An identity seen by preview may have been removed after claim.
+            # This already-consumed legacy path cannot safely prompt now: fail
+            # closed rather than silently creating an unnamed trainer account.
+            if validated_username_hint(transaction.username_hint) is None:
+                return _oidc_json(400, {"detail": "Sign-in could not be completed"})
             try:
                 # The bounded provider hint was carried from callback to this
-                # handoff. Provisioning sanitizes it again and falls back to a
-                # random suffix if it is unusable or already taken.
+                # handoff. Provisioning sanitizes it again and uses a random
+                # suffix if the usable provider-derived name is already taken.
                 user = provision_user_for_identity(
                     db,
                     issuer=transaction.issuer,
@@ -639,22 +682,7 @@ async def oidc_complete(
         if not user.is_active:
             return _oidc_json(403, {"detail": "Account is not available"})
 
-        access_token = create_access_token(
-            {"sub": str(user.id), "role": user.role}
-        )
-        return _oidc_json(
-            200,
-            TokenResponse(
-                access_token=access_token,
-                user={
-                    "id": user.id,
-                    "username": user.username,
-                    "role": user.role,
-                    "avatar_id": user.avatar_id,
-                    "must_change_password": user.must_change_password,
-                },
-            ).model_dump(),
-        )
+        return _oidc_login_response(user)
 
     if transaction.operation == OPERATION_LINK:
         # Linking is only valid in mixed mode. A handoff started in mixed mode
@@ -693,6 +721,68 @@ async def oidc_complete(
         return _oidc_json(200, {"linked": True})
 
     return _oidc_json(400, {"detail": "Sign-in could not be completed"})
+
+
+def _complete_oidc_with_username(
+    db: Session, binding: dict, username: str, *, expected_issuer: str
+):
+    """Commit the conditional claim and exact-name provisioning as one unit."""
+    try:
+        transaction = claim_handoff_transaction(db, **binding, commit=False)
+        if (
+            transaction is None
+            or transaction.operation != OPERATION_LOGIN
+            or transaction.issuer != expected_issuer
+        ):
+            db.rollback()
+            return _oidc_json(400, {"detail": "Sign-in could not be completed"})
+        deadline = transaction.expires_at
+        # Another completion may have provisioned this identity since preview.
+        # Resolve it again under the claimed unit; its local name always wins.
+        user = resolve_identity_user(db, transaction.issuer, transaction.subject)
+        if user is None:
+            user = provision_user_for_identity_with_username(
+                db,
+                issuer=transaction.issuer,
+                subject=transaction.subject,
+                username=username,
+            )
+        db.refresh(user)
+        if not user.is_active:
+            db.rollback()
+            return _oidc_json(403, {"detail": "Account is not available"})
+        # Unique-index contention can outlast the original 60-second deadline.
+        # Never extend it, or commit candidate rows/consumption after it expires.
+        if deadline <= datetime.utcnow():
+            db.rollback()
+            return _oidc_json(400, {"detail": "Sign-in could not be completed"})
+        db.commit()
+    except OidcUsernameTakenError:
+        db.rollback()
+        return _oidc_json(409, {
+            "code": "username_taken", "detail": "Username already taken",
+        })
+    except Exception:
+        db.rollback()
+        return _oidc_json(500, {"detail": "Sign-in failed"})
+    # No JWT is minted until the atomic unit is durably committed.
+    return _oidc_login_response(user)
+
+
+def _oidc_login_response(user: User) -> JSONResponse:
+    return _oidc_json(
+        200,
+        TokenResponse(
+            access_token=create_access_token({"sub": str(user.id), "role": user.role}),
+            user={
+                "id": user.id,
+                "username": user.username,
+                "role": user.role,
+                "avatar_id": user.avatar_id,
+                "must_change_password": user.must_change_password,
+            },
+        ).model_dump(),
+    )
 
 
 def _validate_oidc_post_request(request: Request, oidc) -> JSONResponse | None:

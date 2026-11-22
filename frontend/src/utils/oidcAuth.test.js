@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   formatProviderLabel,
   oidcErrorTranslationKey,
+  oidcUsernameErrorTranslationKey,
   parseOidcCompletion,
   parseOidcIdentity,
   readOidcError,
@@ -103,6 +104,10 @@ describe('parseOidcCompletion', () => {
     expect(parseOidcCompletion({ linked: true })).toEqual({ kind: 'linked' })
   })
 
+  it('accepts only the exact username prompt without treating it as a session', () => {
+    expect(parseOidcCompletion({ username_required: true })).toEqual({ kind: 'username_required' })
+  })
+
   it.each([
     null,
     undefined,
@@ -118,6 +123,14 @@ describe('parseOidcCompletion', () => {
     { linked: 'true' },
     { linked: true, access_token: 'token', user },
     { linked: true, provider: 'extra' },
+    { username_required: false },
+    { username_required: 'true' },
+    { username_required: true, user },
+    { username_required: true, access_token: 'token', user },
+    { username_required: true, linked: true },
+    { username_required: true, linked: false },
+    { username_required: true, access_token: '' },
+    { username_required: false, access_token: 'token', user },
   ])('rejects any other response shape: %j', payload => {
     expect(() => parseOidcCompletion(payload)).toThrow('Unexpected sign-in response')
   })
@@ -142,6 +155,37 @@ describe('runOidcCompletion', () => {
     expect(loginUser).not.toHaveBeenCalled()
   })
 
+  it('does not log in or submit a name during the initial prompt', async () => {
+    const request = vi.fn().mockResolvedValue({ username_required: true })
+    const loginUser = vi.fn()
+
+    await expect(runOidcCompletion({ request, loginUser })).resolves.toEqual({ kind: 'username_required' })
+    expect(request).toHaveBeenCalledExactlyOnceWith()
+    expect(loginUser).not.toHaveBeenCalled()
+  })
+
+  it('sends only the chosen username, then logs in only on a token response', async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce({ username_required: true })
+      .mockResolvedValueOnce({ access_token: 'app-token', user })
+    const loginUser = vi.fn()
+
+    await runOidcCompletion({ request, loginUser })
+    expect(loginUser).not.toHaveBeenCalled()
+    await runOidcCompletion({ request, loginUser, username: 'Demo Collector' })
+    expect(request).toHaveBeenNthCalledWith(2, { username: 'Demo Collector' })
+    expect(loginUser).toHaveBeenCalledExactlyOnceWith('app-token', user)
+  })
+
+  it('does not log in on an ambiguous prompt response', async () => {
+    const loginUser = vi.fn()
+    await expect(runOidcCompletion({
+      request: vi.fn().mockResolvedValue({ username_required: true, access_token: 'token', user }),
+      loginUser,
+    })).rejects.toThrow('Unexpected sign-in response')
+    expect(loginUser).not.toHaveBeenCalled()
+  })
+
   it('propagates a failed completion without calling loginUser', async () => {
     const error = { response: { status: 401 } }
     const loginUser = vi.fn()
@@ -151,6 +195,29 @@ describe('runOidcCompletion', () => {
       loginUser,
     })).rejects.toBe(error)
     expect(loginUser).not.toHaveBeenCalled()
+  })
+})
+
+describe('oidcUsernameErrorTranslationKey', () => {
+  it.each([
+    [400, 'invalid_username', 'auth.oidcUsernameInvalid'],
+    [409, 'username_taken', 'auth.oidcUsernameTaken'],
+  ])('allows only the retryable status/code pair %s / %s', (status, code, key) => {
+    expect(oidcUsernameErrorTranslationKey({ response: { status, data: { code, detail: 'Untrusted detail' } } })).toBe(key)
+  })
+
+  it.each([
+    undefined,
+    {},
+    { response: { status: 400, data: { detail: 'Sign-in could not be completed' } } },
+    { response: { status: 400, data: { code: 'username_taken' } } },
+    { response: { status: 409, data: { code: 'invalid_username' } } },
+    { response: { status: 401, data: { code: 'invalid_username' } } },
+    { response: { status: 429, data: { code: 'username_taken' } } },
+    { response: { status: 400, data: { code: 'constructor' } } },
+    { response: { status: 400, data: { code: '<script>detail</script>' } } },
+  ])('requires a restart for anything else: %j', error => {
+    expect(oidcUsernameErrorTranslationKey(error)).toBeNull()
   })
 })
 
