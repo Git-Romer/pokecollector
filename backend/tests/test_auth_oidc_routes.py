@@ -655,6 +655,22 @@ class CompletionRouteTests(RouteTestCase):
         self.assertEqual(second.status_code, 400)
         self.assertEqual(self.db.query(User).count(), 1)
 
+    def test_mixed_mode_provisions_any_provider_authenticated_identity(self):
+        """Documented behaviour: the provider is the access gate in mixed mode.
+
+        Any identity the provider authenticates receives a trainer account on its
+        first sign-in. PokéCollector does not consult provider groups or an
+        allowlist, so a deployment must restrict access to the client at the
+        provider (see docs/OIDC_AUTHENTICATION.md).
+        """
+        self.login_handoff(subject="never-seen-subject", name="New Person")
+
+        response = self.complete()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["user"]["role"], "trainer")
+        self.assertIsNotNone(find_identity(self.db, ISSUER, "never-seen-subject"))
+
     def test_login_completion_works_with_an_existing_bearer(self):
         user = self.add_user("linked")
         self.link(user)
