@@ -23,6 +23,10 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 
 os.environ.setdefault("JWT_SECRET_KEY", "focused-oidc-routes-test-secret")
 
+# The real-nginx checks need a container runtime and a local nginx image, so they
+# only run when explicitly requested. They never masquerade as passing coverage.
+_NGINX_RUNTIME_TEST_ENABLED = os.environ.get("OIDC_AUTH_NGINX_TEST") == "1"
+
 try:
     # Third-party dependencies only; internal import errors below must fail.
     from fastapi import FastAPI
@@ -1252,24 +1256,52 @@ class ServingConfigurationTests(unittest.TestCase):
     def setUp(self):
         self.repo_root = Path(__file__).resolve().parents[2]
 
-    def test_uvicorn_access_log_is_disabled(self):
+    def test_uvicorn_access_log_is_enabled(self):
+        # Access logging must stay on; the OIDC query string is redacted by the
+        # uvicorn.access filter instead of by disabling logging for the app.
         dockerfile = (self.repo_root / "backend" / "Dockerfile").read_text(
             encoding="utf-8"
         )
-        self.assertIn("--no-access-log", dockerfile)
+        self.assertNotIn("--no-access-log", dockerfile)
+        self.assertIn('CMD ["uvicorn", "main:app"', dockerfile)
+        main_source = (self.repo_root / "backend" / "main.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("install_oidc_access_log_redaction", main_source)
 
-    def test_nginx_callback_is_path_only_logged_with_no_referrer(self):
+    def test_nginx_callback_is_path_only_logged_without_query(self):
         nginx = (self.repo_root / "frontend" / "nginx.conf").read_text(
             encoding="utf-8"
         )
-        self.assertIn("location ^~ /api/auth/oidc/", nginx)
+        # A dedicated format logs the method and path only ($uri excludes the
+        # query string), and the OIDC location must use it with logging on.
+        self.assertIn("log_format oidc_path_only", nginx)
+        log_format = nginx.split("log_format oidc_path_only", 1)[1]
+        log_format = log_format.split(";", 1)[0]
+        self.assertIn("$request_method $uri", log_format)
+        self.assertNotIn("$request_uri", log_format)
+        self.assertNotIn("$request ", log_format)
+        self.assertIn(
+            "access_log /var/log/nginx/access.log oidc_path_only;", nginx
+        )
+        self.assertNotIn("access_log off;", nginx)
+        self.assertIn(
+            "location ^~ /api/auth/oidc/", nginx, "OIDC location is required"
+        )
         oidc_block = nginx.split("location ^~ /api/auth/oidc/", 1)[1]
         oidc_block = oidc_block.split("}", 1)[0]
-        self.assertIn("access_log off;", oidc_block)
-        self.assertIn("proxy_hide_header Referrer-Policy;", oidc_block)
         self.assertIn("error_log /dev/null crit;", oidc_block)
-        self.assertIn('Cache-Control "no-store"', oidc_block)
-        self.assertIn('Referrer-Policy "no-referrer"', oidc_block)
+        # No location-level add_header: it would suppress the inherited
+        # server-level CSP/frame/permissions headers.
+        self.assertEqual(
+            [
+                line.strip()
+                for line in oidc_block.splitlines()
+                if line.strip().startswith("add_header")
+            ],
+            [],
+        )
+        self.assertNotIn("proxy_hide_header Cache-Control;", oidc_block)
 
     def _podman_nginx_image(self):
         if shutil.which("podman") is None:
@@ -1284,6 +1316,10 @@ class ServingConfigurationTests(unittest.TestCase):
             self.skipTest("nginx:alpine image is not available locally")
         return "docker.io/library/nginx:alpine"
 
+    @unittest.skipUnless(
+        _NGINX_RUNTIME_TEST_ENABLED,
+        "set OIDC_AUTH_NGINX_TEST=1 to run the real-nginx serving checks",
+    )
     def test_nginx_config_syntax_with_real_nginx(self):
         image = self._podman_nginx_image()
         nginx_conf = self.repo_root / "frontend" / "nginx.conf"
@@ -1312,7 +1348,11 @@ class ServingConfigurationTests(unittest.TestCase):
         )
         self.assertIn("syntax is ok", (result.stdout + result.stderr).lower())
 
-    def test_nginx_error_path_does_not_log_callback_uri(self):
+    @unittest.skipUnless(
+        _NGINX_RUNTIME_TEST_ENABLED,
+        "set OIDC_AUTH_NGINX_TEST=1 to run the real-nginx serving checks",
+    )
+    def test_nginx_error_path_logs_path_only_without_query(self):
         image = self._podman_nginx_image()
         nginx_conf = self.repo_root / "frontend" / "nginx.conf"
         name = f"oidc-nginx-{secrets.token_hex(4)}"
@@ -1374,9 +1414,11 @@ class ServingConfigurationTests(unittest.TestCase):
                 timeout=20,
             )
             combined = logs.stdout + logs.stderr
+            # The attempt is recorded, but only as method plus path.
+            self.assertIn("/api/auth/oidc/callback", combined)
             self.assertNotIn("URI_SECRET_VALUE", combined)
             self.assertNotIn("STATE_SECRET_VALUE", combined)
-            self.assertNotIn("/api/auth/oidc/callback", combined)
+            self.assertNotIn("?code=", combined)
         finally:
             subprocess.run(
                 ["podman", "rm", "-f", name],

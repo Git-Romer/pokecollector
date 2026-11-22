@@ -19,6 +19,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Normal access logging stays enabled; only the OIDC query string (one-time
+# callback code/state) is stripped at the logging boundary.
+from services.access_log import install_oidc_access_log_redaction  # noqa: E402
+
+install_oidc_access_log_redaction()
+
 # Rate limiter: uses client IP, default 60 requests/minute
 limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
 
