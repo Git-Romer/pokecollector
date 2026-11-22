@@ -355,6 +355,30 @@ class OidcAuthSchemaPostgresTests(unittest.TestCase):
                 init_db(enable_oidc_schema=True)
         self.assertIn("synthetic auth schema failure", str(exc.exception))
 
+    def _created_at_default(self, conn):
+        return conn.execute(text("""
+            SELECT column_default FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = 'oidc_auth_transactions'
+              AND column_name = 'created_at'
+        """)).scalar()
+
+    def test_upgrade_drops_the_transaction_created_at_default(self):
+        # Model the previous release, where created_at carried a DB default that
+        # could mask a caller forgetting to supply it.
+        Base.metadata.create_all(self.engine)
+        with self.engine.begin() as conn:
+            conn.execute(text(
+                "ALTER TABLE oidc_auth_transactions "
+                "ALTER COLUMN created_at SET DEFAULT NOW()"
+            ))
+            self.assertIsNotNone(self._created_at_default(conn))
+
+        database.migrate_oidc_transaction_schema(self.engine)
+
+        with self.engine.connect() as conn:
+            self.assertIsNone(self._created_at_default(conn))
+
     def test_identity_uniqueness_and_fk_cascade(self):
         init_db(enable_oidc_schema=True)
         db = self.SessionLocal()

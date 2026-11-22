@@ -1006,6 +1006,11 @@ def migrate_oidc_transaction_schema(target_engine=None):
     endpoints must not serve traffic. It runs outside the legacy
     error-swallowing migration loop and is idempotent on fresh and upgraded
     databases.
+
+    PostgreSQL also drops the ``created_at`` default: every insert supplies the
+    value, so a default would only mask a caller that forgot. SQLite keeps its
+    default because dropping it needs a full table rebuild; inserts still pass
+    the value explicitly there.
     """
     target_engine = target_engine or engine
     dialect = target_engine.dialect.name
@@ -1046,6 +1051,14 @@ def migrate_oidc_transaction_schema(target_engine=None):
             conn.execute(text(
                 f"ALTER TABLE {OIDC_TRANSACTION_TABLE} "
                 "ADD COLUMN IF NOT EXISTS username_hint VARCHAR(64)"
+            ))
+            # Every insert supplies created_at; a database default would only
+            # hide a caller that forgot. Metadata-only and idempotent on an
+            # upgraded table. SQLite keeps its default: dropping it there needs a
+            # full table rebuild, and inserts always pass the value anyway.
+            conn.execute(text(
+                f"ALTER TABLE {OIDC_TRANSACTION_TABLE} "
+                "ALTER COLUMN created_at DROP DEFAULT"
             ))
             # Repair constraints from an interrupted earlier run.
             for constraint_name, columns in (
@@ -1528,16 +1541,24 @@ def migrate_card_ids():
         db.close()
 
 
-def init_db(*, enable_oidc_schema: bool = False):
+def init_db(*, enable_oidc_schema: bool | None = None):
     """Initialize the database: create tables, run migrations, seed settings.
 
-    ``enable_oidc_schema`` gates the two OIDC schema boundaries on the resolved
-    authentication policy. A fresh database already has the correct shape from
-    ``create_all``; the extra migrations only matter for databases created by an
-    earlier release, and running them in local mode would abort startup on an
-    existing SQLite database whose ``users.hashed_password`` is still NOT NULL.
-    Callers must pass ``True`` whenever OIDC is configured for this process.
+    ``enable_oidc_schema`` gates the two OIDC schema boundaries. A fresh database
+    already has the correct shape from ``create_all``; the extra migrations only
+    matter for databases created by an earlier release, and running them in local
+    mode would abort startup on an existing SQLite database whose
+    ``users.hashed_password`` is still NOT NULL.
+
+    ``None`` (the default) resolves the configured policy here, so a caller that
+    omits the keyword cannot under-migrate a database that this process will then
+    serve with OIDC enabled.
     """
+    if enable_oidc_schema is None:
+        from services.auth_policy import load_auth_policy
+
+        enable_oidc_schema = load_auth_policy().oidc is not None
+
     from models import Base as ModelBase, Setting, User
     ModelBase.metadata.create_all(bind=engine)
 

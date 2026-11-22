@@ -111,6 +111,34 @@ class LegacySqliteStartupTests(unittest.TestCase):
         # The local database was not left half-migrated.
         self.assertTrue(self._hashed_password_is_not_null())
 
+    def test_default_flag_follows_the_resolved_policy(self):
+        """A caller that omits the keyword cannot under-migrate an OIDC install."""
+        oidc_vars = {
+            "OIDC_ISSUER_URL": "https://idp.example.test",
+            "OIDC_CLIENT_ID": "pokecollector",
+            "OIDC_CLIENT_SECRET": "synthetic-secret",
+            "OIDC_REDIRECT_URI": (
+                "https://app.example.test/api/auth/oidc/callback"
+            ),
+        }
+        with patch.object(database, "migrate_oidc_auth_schema") as auth_schema, \
+                patch.object(database, "migrate_oidc_transaction_schema") as tx_schema:
+            with patch.dict(os.environ, {"AUTH_MODE": "local"}, clear=False):
+                database.init_db()
+            auth_schema.assert_not_called()
+            tx_schema.assert_not_called()
+
+            for mode in ("mixed", "oidc-only"):
+                with self.subTest(mode=mode):
+                    auth_schema.reset_mock()
+                    tx_schema.reset_mock()
+                    with patch.dict(
+                        os.environ, {**oidc_vars, "AUTH_MODE": mode}, clear=False
+                    ):
+                        database.init_db()
+                    auth_schema.assert_called_once_with()
+                    tx_schema.assert_called_once_with()
+
     def test_oidc_migrations_only_run_when_requested(self):
         with patch.object(database, "migrate_oidc_auth_schema") as auth_schema, \
                 patch.object(database, "migrate_oidc_transaction_schema") as tx_schema:
