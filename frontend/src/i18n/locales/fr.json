@@ -13,11 +13,48 @@
     "settings": "Paramètres",
     "cards": "Cartes",
     "value": "Valeur",
-    "more": "Plus"
+    "more": "Plus",
+    "pokedex": "Pokédex",
+    "decks": "Paquets",
+    "trades": "Echanges"
   },
   "pokedex": {
     "sortLowToHigh": "du plus bas au plus haut",
-    "sortHighToLow": "du plus haut au plus bas"
+    "sortHighToLow": "du plus haut au plus bas",
+    "title": "Pokédex national",
+    "subtitle": "Suivre les espèces ensemble ou les formes supportées séparément.",
+    "searchPlaceholder": "Nom ou numéro du Pokédex",
+    "national": "National",
+    "generationFilter": "Région Pokédex",
+    "generation": "Génération {generation}",
+    "completionMode": "Mode d'achèvement",
+    "grouped": "Espèces groupées",
+    "forms": "Formulaires séparés",
+    "formFilter": "Type de formulaire",
+    "form_all": "Tous les formulaires",
+    "form_base": "Base",
+    "form_mega": "Mega",
+    "relatedForms": "Formulaires en rapport",
+    "all": "Tout",
+    "owned": "Possédée",
+    "missing": "Manquante",
+    "collected": "Collectionnée",
+    "cardsOwned": "cartes possédées",
+    "printings": "impressions",
+    "noPrintings": "Aucune impression de cartes synchronisée pour le moment",
+    "availableCards": "Impressions de cartes disponibles",
+    "previous": "Pokémon précédent",
+    "next": "Pokémon suivant",
+    "loadingCards": "Chargement des impressions de cartes...",
+    "cardLanguage": "Langue des cartes",
+    "allLanguages": "Toutes les langues",
+    "sortBy": "Trier les cartes",
+    "sortPriceAsc": "Prix : du plus bas au plus élevé",
+    "sortPriceDesc": "Prix : du plus élevé au plus bas",
+    "sortOwnedFirst": "Possédées en premier",
+    "sortWishlistFirst": "Liste de souhaits en premier",
+    "sortSetNumber": "Série et numéro de carte",
+    "noCards": "Aucune impression de carte n'est disponible localement pour le moment. Exécutez le remplissage des métadonnées ou synchronisez davantage d'ensembles."
   },
   "fallback": {
     "data": "Données",
@@ -1182,6 +1219,24 @@
     "confirmCollection": "Supprimer {entries} entrées contenant {copies} copies de votre collection ? Cette action supprime toutes les copies de ces entrées, à l’exception des cartes des classeurs ou des paquets. Les entrées attribuées ou liées à un produit doivent être libérées au préalable. Cette action est irréversible.",
     "confirmBinder": "Supprimer {entries} entrées contenant {copies} copies de ce classeur ? Votre collection et vos autres listes resteront inchangés.",
     "confirmDeck": "Supprimer {entries} entrées contenant {copies} copies de ce paquet ? Votre collection et vos autres listes resteront inchangés.",
-    "collectionHint": "Tous les exemplaires de chaque entrée sélectionnée seront supprimés. Les attributions de classeurs et de jeux doivent d'abord être effectuées séparément."
+    "collectionHint": "Tous les exemplaires de chaque entrée sélectionnée seront supprimés. Les attributions de classeurs et de jeux doivent d'abord être effectuées séparément.",
+    "listHint": "Seules les entrées de cette liste seront supprimées. Votre collection et vos autres listes resteront inchangées.",
+    "limit": "Sélectionnez jusqu'à 500 entrées à la fois. Affinez le filtre pour afficher moins d'entrées.",
+    "changed": "La sélection a changé lors de la confirmation. Veuillez vérifier les entrées et confirmer à nouveau.",
+    "failed": "La suppression n'a pas pu être confirmée. Veuillez actualiser la page avant de réessayer."
+  },
+  "cardmarket": {
+    "buy": "Achetez sur Cardmarket",
+    "openProduct": "Ouvrir le produit exact",
+    "searchFallback": "Aucun identifiant de produit précis n'est enregistré ; cela ouvre une recherche par ensemble et par numéro de collection."
+  },
+  "cardTabs": {
+    "overview": "Aperçu",
+    "prices": "Prix",
+    "owned": "Exemplaires possédés",
+    "add": "Ajouter à la collection",
+    "wishlist": "Liste de souhaits",
+    "manage": "Gérer les copies",
+    "binder": "Classeur"
   }
 }
