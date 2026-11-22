@@ -31,7 +31,7 @@ from sqlalchemy.exc import IntegrityError
 
 from database import SessionLocal
 from models import OidcIdentity, User
-from services.auth_policy import AuthConfigError, _validate_url
+from services.auth_policy import AuthConfigError, validate_url
 from services.oidc_identity import find_identity, find_user_identity
 from services.oidc_transactions import (
     invalidate_identity_transactions,
@@ -95,7 +95,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
     try:
-        _validate_url("OIDC_ISSUER_URL", configured)
+        validate_url("OIDC_ISSUER_URL", configured)
     except AuthConfigError as exc:
         print(f"OIDC_ISSUER_URL is invalid: {exc}", file=sys.stderr)
         return 1

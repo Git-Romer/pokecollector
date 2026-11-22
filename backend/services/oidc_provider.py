@@ -239,8 +239,8 @@ class OidcProvider:
         # Revalidate operator-supplied URLs with the shared policy rules so a
         # directly constructed config cannot bypass startup validation.
         try:
-            auth_policy._validate_url("OIDC_ISSUER_URL", config.issuer_url)
-            redirect = auth_policy._validate_url(
+            auth_policy.validate_url("OIDC_ISSUER_URL", config.issuer_url)
+            redirect = auth_policy.validate_url(
                 "OIDC_REDIRECT_URI", config.redirect_uri
             )
         except auth_policy.AuthConfigError as exc:
@@ -361,7 +361,7 @@ class OidcProvider:
                     f"OpenID Connect discovery is missing {key}"
                 )
             try:
-                auth_policy._validate_url(key, value)
+                auth_policy.validate_url(key, value)
             except auth_policy.AuthConfigError as exc:
                 raise OidcConfigurationError(str(exc)) from None
 

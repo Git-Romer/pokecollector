@@ -175,18 +175,7 @@
     "startingMessage": "Tjekker serveren og din session...",
     "connectionTitle": "Kan ikke nå PokéCollector",
     "connectionMessage": "Serveren starter stadig eller er midlertidigt utilgængelig. PokéCollector vil oprette forbindelse automatisk igen.",
-    "retryConnection": "Prøv igen",
-    "oidcUsernameTitle": "Vælg dit brugernavn",
-    "oidcUsernameMessage": "Din loginudbyder delte ikke et brugbart navn. Vælg et brugernavn for at oprette din PokéCollector-konto.",
-    "oidcUsernameHelp": "Brug 2–32 tegn. Mellemrum i starten og slutningen fjernes.",
-    "oidcUsernameSubmit": "Opret konto",
-    "oidcUsernameSubmitting": "Opretter konto...",
-    "oidcUsernameInvalid": "Indtast et brugernavn med 2–32 tegn uden mellemrum i starten og slutningen.",
-    "oidcUsernameTaken": "Brugernavnet er allerede i brug. Vælg et andet, og prøv igen.",
-    "oidcUsernameExpiry": "Afslut inden for 60 sekunder efter login. Hvis tiden udløber, skal du gå tilbage til login og starte igen.",
-    "oidcCompleteFailedTitle": "Login kunne ikke gennemføres",
-    "oidcCompleteFailedMessage": "Loginforsøget kan være udløbet eller allerede brugt. Start igen fra loginsiden.",
-    "oidcBackToLogin": "Tilbage til login"
+    "retryConnection": "Prøv igen"
   },
   "home": {
     "welcomeBack": "Velkommen tilbage",
@@ -1129,7 +1118,6 @@
     "multiUserMode": "Flerbruger-tilstand",
     "multiUserModeDesc": "Aktivér loginskærm og brugeradministration",
     "multiUserModeLocked": "Låst af USER_MODE-miljøvariablen; ændr den der og genstart.",
-    "multiUserModeManaged": "Styret af AUTH_MODE-miljøvariablen; ændr den der og genstart.",
     "multiUserEnableTitle": "Aktivér flerbruger-tilstand?",
     "multiUserEnableWarning": "Dette slår loginskærmen til med det samme og logger dig ud. Du skal logge ind igen som {username}, så sørg for, at du kender den adgangskode først.",
     "multiUserEnableResetHint": "Du kan indstille eller nulstille admin-adgangskoden fra hosten med set_admin_password-scriptet (se dokumentationen). Og hvis du nogensinde bliver låst ude, gendanner USER_MODE=single lokal adgang.",

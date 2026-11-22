@@ -186,8 +186,8 @@ def _load_oidc_config() -> OidcConfig:
     client_secret = _required_env("OIDC_CLIENT_SECRET")
     redirect_uri = _required_env("OIDC_REDIRECT_URI")
 
-    _validate_url("OIDC_ISSUER_URL", issuer_url)
-    redirect = _validate_url("OIDC_REDIRECT_URI", redirect_uri)
+    validate_url("OIDC_ISSUER_URL", issuer_url)
+    redirect = validate_url("OIDC_REDIRECT_URI", redirect_uri)
     if redirect.path != OIDC_CALLBACK_PATH:
         raise AuthConfigError(
             f"OIDC_REDIRECT_URI must point at the exact path {OIDC_CALLBACK_PATH}"
@@ -204,7 +204,7 @@ def _load_oidc_config() -> OidcConfig:
     )
 
 
-def _validate_url(name: str, value: str):
+def validate_url(name: str, value: str):
     """Validate an operator-configured absolute URL; return its parsed parts."""
     if any(ch.isspace() for ch in value):
         raise AuthConfigError(f"{name} must not contain whitespace")
@@ -236,3 +236,6 @@ def _validate_url(name: str, value: str):
             f"{name} must use HTTPS (plain HTTP is allowed only for loopback development)"
         )
     return parts
+
+# Kept for callers that were written against the previous private name.
+_validate_url = validate_url

@@ -574,7 +574,7 @@ class OidcAuthTestDatabaseGuardTests(unittest.TestCase):
     def test_rejects_non_literal_or_remote_hosts(self):
         remote_hosts = (
             "db.example.test",
-            "10.0.0.5",
+            "192.0.2.5",
             "0.0.0.0",
             "127.0.0.2",
             "localhost.example.test",
@@ -610,7 +610,7 @@ class OidcAuthTestDatabaseGuardTests(unittest.TestCase):
     def test_rejects_query_parameter_connection_overrides(self):
         for query in (
             "host=evil.example.test",
-            "hostaddr=10.0.0.5",
+            "hostaddr=192.0.2.5",
             "port=5432",
             "dbname=postgres",
             "service=prod",
@@ -678,7 +678,7 @@ class OidcAuthTestDatabaseGuardTests(unittest.TestCase):
     def test_every_rejected_target_never_connects_or_drops(self):
         targets = (
             self._url(database="pokemon_tcg"),
-            self._url(host="10.0.0.5"),
+            self._url(host="192.0.2.5"),
             "postgresql+psycopg2://scratch:scratch@127.0.0.1:55432",
             f"postgresql+psycopg2://scratch:scratch@127.0.0.1/{self.approved_name}",
             f"sqlite:///tmp/{self.approved_name}.db",
