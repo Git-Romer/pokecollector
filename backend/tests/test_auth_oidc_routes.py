@@ -6,6 +6,7 @@ provider suite). The database is SQLite with ``PRAGMA foreign_keys=ON``.
 No network provider, live instance or real credentials are used.
 """
 import json
+import dataclasses
 import os
 import secrets
 import shutil
@@ -1425,6 +1426,40 @@ class ServingConfigurationTests(unittest.TestCase):
                 capture_output=True,
                 timeout=30,
             )
+
+
+@unittest.skipUnless(DEPS_AVAILABLE, "backend dependencies are not installed")
+class ProviderAdapterCacheTests(unittest.TestCase):
+    """The route layer must reuse one adapter per configuration."""
+
+    def setUp(self):
+        from services.auth_policy import OidcConfig
+
+        self.config = OidcConfig(
+            issuer_url=ISSUER,
+            client_id="pokecollector",
+            client_secret=CLIENT_SECRET,
+            redirect_uri=REDIRECT_URI,
+        )
+        self.addCleanup(auth_api._oidc_provider_cache.clear)
+
+    def test_same_configuration_reuses_the_adapter(self):
+        first = auth_api._build_oidc_provider(self.config)
+        second = auth_api._build_oidc_provider(self.config)
+
+        self.assertIs(first, second)
+
+    def test_changed_configuration_replaces_the_cached_adapter(self):
+        first = auth_api._build_oidc_provider(self.config)
+        changed = dataclasses.replace(self.config, client_id="other-client")
+
+        second = auth_api._build_oidc_provider(changed)
+
+        self.assertIsNot(first, second)
+        self.assertIs(auth_api._build_oidc_provider(changed), second)
+        # Only the active configuration stays cached, so a changed issuer or
+        # client can never be served by a stale adapter.
+        self.assertEqual(len(auth_api._oidc_provider_cache), 1)
 
 
 @unittest.skipUnless(

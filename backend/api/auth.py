@@ -253,9 +253,41 @@ _oidc_rate_state: dict[tuple[str, str], list[float]] = {}
 _oidc_rate_lock = threading.Lock()
 
 
+def _oidc_provider_cache_key(config) -> tuple:
+    """Everything that changes the adapter's behaviour, and nothing else."""
+    return (
+        config.issuer_url,
+        config.client_id,
+        config.client_secret,
+        config.redirect_uri,
+        config.display_name,
+    )
+
+
+_oidc_provider_cache: dict[tuple, OidcProvider] = {}
+_oidc_provider_cache_lock = threading.Lock()
+
+
 def _build_oidc_provider(config):
-    """Construct the provider adapter (tests patch this boundary)."""
-    return OidcProvider(config)
+    """Return the process-wide provider adapter for this configuration.
+
+    Discovery metadata and JWKS are cached inside the adapter for a bounded
+    window; building a fresh adapter per request would re-fetch both on every
+    sign-in. A deployment has one configured provider, so the cache keeps only
+    the active key and drops an adapter built for a previous configuration
+    (for example after the issuer, client or redirect URI changed).
+
+    Tests patch this boundary to supply a synthetic provider.
+    """
+    key = _oidc_provider_cache_key(config)
+    with _oidc_provider_cache_lock:
+        provider = _oidc_provider_cache.get(key)
+        if provider is None:
+            # Construction is pure validation; all network work is lazy.
+            provider = OidcProvider(config)
+            _oidc_provider_cache.clear()
+            _oidc_provider_cache[key] = provider
+        return provider
 
 
 def _oidc_json(status_code: int, content: dict) -> JSONResponse:

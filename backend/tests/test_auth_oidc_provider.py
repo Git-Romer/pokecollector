@@ -30,6 +30,7 @@ except ModuleNotFoundError:
 if PROVIDER_DEPS_AVAILABLE:
     from services.auth_policy import OidcConfig
     from services.oidc_provider import (
+        METADATA_CACHE_SECONDS,
         OidcConfigurationError,
         OidcDiscoveryError,
         OidcFreshAuthenticationError,
@@ -218,6 +219,54 @@ class ProviderTestCase(unittest.IsolatedAsyncioTestCase):
         return await self.adapter.exchange_code_for_identity(
             code=CODE, code_verifier=VERIFIER, nonce=NONCE, **kwargs
         )
+
+
+@unittest.skipUnless(PROVIDER_DEPS_AVAILABLE, "OIDC provider dependencies are not installed")
+class ProviderCacheTests(ProviderTestCase):
+    """Discovery metadata is fetched once per window, never once per request."""
+
+    async def test_concurrent_first_use_fetches_discovery_once(self):
+        original = self.adapter._fetch_metadata
+        fetch_calls = []
+
+        async def slow_fetch():
+            fetch_calls.append(1)
+            # Yield while holding the lock so a second task really interleaves.
+            await asyncio.sleep(0.01)
+            return await original()
+
+        with patch.object(self.adapter, "_fetch_metadata", slow_fetch):
+            first, second = await asyncio.gather(
+                self.adapter.build_authorization_url(),
+                self.adapter.build_authorization_url(),
+            )
+
+        self.assertTrue(first.url)
+        self.assertTrue(second.url)
+        self.assertNotEqual(first.state, second.state)
+        self.assertEqual(len(fetch_calls), 1)
+        self.assertEqual(self.provider.discovery_requests, 1)
+
+    async def test_metadata_is_reused_within_the_window(self):
+        await self.adapter.build_authorization_url()
+        await self.adapter.build_authorization_url()
+        await self.exchange()
+
+        self.assertEqual(self.provider.discovery_requests, 1)
+
+    async def test_metadata_is_refreshed_after_the_ttl(self):
+        await self.adapter.build_authorization_url()
+        self.assertEqual(self.provider.discovery_requests, 1)
+
+        # Inside the window: still the cached metadata.
+        self.provider.clock.now += METADATA_CACHE_SECONDS - 1
+        await self.adapter.build_authorization_url()
+        self.assertEqual(self.provider.discovery_requests, 1)
+
+        # At the boundary the adapter refetches (fail closed on new policy).
+        self.provider.clock.now += 1
+        await self.adapter.build_authorization_url()
+        self.assertEqual(self.provider.discovery_requests, 2)
 
 
 @unittest.skipUnless(PROVIDER_DEPS_AVAILABLE, "OIDC provider dependencies are not installed")

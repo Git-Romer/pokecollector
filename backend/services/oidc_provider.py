@@ -192,6 +192,7 @@ class OidcProvider:
             pool=timeout_seconds,
         )
         self._app: _OidcClientApp | None = None
+        self._app_lock: asyncio.Lock | None = None
         self._metadata: dict[str, Any] | None = None
         self._metadata_loaded_at: float | None = None
 
@@ -220,13 +221,28 @@ class OidcProvider:
     def discovery_url(self) -> str:
         return self.config.issuer_url.rstrip("/") + _DISCOVERY_PATH
 
+    def _app_is_fresh(self, now: float) -> bool:
+        return (
+            self._app is not None
+            and self._metadata_loaded_at is not None
+            and now - self._metadata_loaded_at < METADATA_CACHE_SECONDS
+        )
+
     async def _get_app(self) -> _OidcClientApp:
-        now = self._clock()
-        if (
-            self._app is None
-            or self._metadata_loaded_at is None
-            or now - self._metadata_loaded_at >= METADATA_CACHE_SECONDS
-        ):
+        """Return the cached app, fetching metadata at most once per window.
+
+        Concurrent first use would otherwise each fetch discovery (and JWKS).
+        The lock is created lazily so a provider can be constructed outside a
+        running event loop and still bind to the loop that uses it.
+        """
+        if self._app_is_fresh(self._clock()):
+            return self._app
+        if self._app_lock is None:
+            self._app_lock = asyncio.Lock()
+        async with self._app_lock:
+            now = self._clock()
+            if self._app_is_fresh(now):
+                return self._app
             metadata = await self._fetch_metadata()
             self._app = self._build_app(metadata)
             self._metadata = metadata
