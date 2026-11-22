@@ -327,6 +327,8 @@ Native OIDC is optional and configured with the backend's `AUTH_MODE` and
 `OIDC_*` environment variables. Start in `mixed` mode to link an existing local
 administrator before switching to `oidc-only`; OIDC-only startup requires an
 active linked administrator and does not create an admin from provider claims.
+In `mixed` mode, any identity the provider authenticates is provisioned a trainer
+account on its first sign-in, so restrict access to this client at the provider.
 See [OpenID Connect Authentication](docs/OIDC_AUTHENTICATION.md) for provider
 registration, rollout, account linking/unlinking, recovery, and security details.
 

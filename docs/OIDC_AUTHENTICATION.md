@@ -22,6 +22,13 @@ Set `AUTH_MODE` in the backend environment:
 always require authentication. `PUBLIC_MODE` only controls indexing/SEO; it is
 not an authentication control.
 
+OIDC accounts need nullable local password hashes, which the automatic startup
+migration applies to PostgreSQL. An existing SQLite database cannot drop that
+constraint in place, so enabling `mixed` or `oidc-only` against one stops at
+startup with an explicit message; recreate the SQLite database or use
+PostgreSQL. `AUTH_MODE=local` is unaffected and never applies the OIDC schema
+changes, so a pre-OIDC database keeps starting unchanged.
+
 For a new installation, start in `mixed`, create or bootstrap a local admin,
 and link the provider identity from **Settings**. After verifying that an active
 administrator is linked, change the environment to `oidc-only` and restart the
@@ -73,6 +80,13 @@ ID token. The response's `sub` must exactly match the validated ID-token subject
 Valid ID-token profile values take precedence; UserInfo fills missing profile
 values. This supports providers such as Authelia that normally return profile
 claims through UserInfo rather than the ID token.
+
+**Access control in `mixed` mode:** any identity that the provider authenticates
+is provisioned a trainer account on its first sign-in. PokéCollector does not
+consult groups, roles or an allowlist before creating that account, so the
+provider's own access rules are the only gate: restrict which users may obtain
+tokens for this client at the provider. `mixed` is intended for linking existing
+local accounts during rollout, not as open self-service registration.
 
 Providers without a UserInfo endpoint retain ID-token-only profile lookup. If
 neither source supplies a usable name for a new identity, the completion page
@@ -154,21 +168,34 @@ database backup before manual identity repair.
 - Provider tokens and ID-token claims are not persisted as application sessions.
   The app issues its normal JWT; local logout clears that app
   session but does not perform provider logout or revoke the provider session.
-- UserInfo requests have a bounded timeout and do not follow redirects. An
-  advertised endpoint must use HTTPS (or loopback HTTP for development).
-  An endpoint failure, malformed response or subject mismatch rejects sign-in
-  rather than provisioning an account from an unverified profile. UserInfo cannot
-  replace the ID-token issuer, subject or fresh-authentication proof. Provider
-  tokens and full UserInfo responses are not persisted.
+- UserInfo requests have a bounded timeout, do not follow redirects and are
+  size-capped. An advertised endpoint must use HTTPS (or loopback HTTP for
+  development). Transport, HTTP, size or JSON failures and a subject that does
+  not match the validated ID token are treated as *no profile hints*: the
+  sign-in continues with the validated ID-token identity and asks for a
+  username when nothing usable is left. UserInfo can never replace the ID-token
+  issuer, subject or fresh-authentication proof, and provider tokens and full
+  UserInfo responses are never persisted or logged.
 - Existing application JWTs are not revoked by changing `AUTH_MODE`; they remain
-  valid until expiry or user deactivation. Rotate the JWT secret only with an
-  understanding of the resulting session invalidation.
-- Login/link throttles are per backend process. Deployments with multiple
-  workers should apply a shared rate limit at the trusted ingress/proxy.
+  valid until expiry or user deactivation.
+- The JWT secret (`JWT_SECRET_KEY`) also derives the key that encrypts pending
+  transaction secrets (nonce and PKCE verifier). Rotating it invalidates every
+  in-flight OIDC login or link, which fails closed and must be restarted from the
+  sign-in page; there is no re-encryption path. Replicas must share the same
+  secret, because a transaction started on one process must be readable on any
+  other. Leaving the secret unset generates a per-instance key, which is only
+  suitable for a single-replica deployment with persistent storage.
+- OIDC throttles are per backend process and keyed on the browser-binding
+  cookie, falling back to the client address for requests that do not present
+  one yet (the first `/oidc/start` of a new browser). The cookie value is
+  client-supplied, so this isolates users behind a shared proxy but is not an
+  anti-abuse control: an OIDC-only deployment must also enforce a shared rate
+  limit at the trusted ingress/proxy.
 - Callback and completion responses use `Cache-Control: no-store` and
-  `Referrer-Policy: no-referrer`. Backend and bundled nginx request logging avoid
-  recording callback query values. Keep equivalent protections if replacing the
-  bundled proxy.
+  `Referrer-Policy: no-referrer`. Normal access logging stays enabled: the
+  backend and the bundled nginx record OIDC requests path-only, so the one-time
+  `code`/`state` query string is never written to a log. Keep equivalent
+  protections if replacing the bundled proxy.
 - The existing bearer JWT is stored by the frontend in browser local storage.
   Protect the application origin against script injection and use HTTPS in
   production.
@@ -180,6 +207,39 @@ database backup before manual identity repair.
 | Backend refuses to start | Check `AUTH_MODE`, required OIDC variables, the exact issuer, `USER_MODE`, and that `OIDC_REDIRECT_URI` uses the exact callback path. Configuration errors do not include secret values. |
 | Provider reports redirect mismatch | Compare the provider's registered URI byte-for-byte with `OIDC_REDIRECT_URI`, including scheme, port and path. |
 | Callback reports an expired/restart error | Start a new flow in the same browser. State is one-use, browser-bound, short-lived, and a newer flow invalidates the older one. |
-| Sign-in fails after successful provider authentication | If discovery advertises UserInfo, check that it returns a JSON object with the same `sub` as the ID token and accepts the issued bearer access token. Redirects and failed UserInfo requests are rejected. Do not log tokens or full responses. |
+| Sign-in fails after successful provider authentication | Check that discovery advertises the endpoints you expect, that the issuer is exact, and that the provider returns RS256 or ES256 ID tokens. If UserInfo is advertised, a broken endpoint only removes profile hints (the user is asked for a username); it does not fail the sign-in. Do not log tokens or full responses. |
 | OIDC-only startup reports no linked administrator | Start in `mixed`, link an active administrator, then switch to `oidc-only`; or use the host-only recovery procedure above after verifying the account and subject. |
 | Browser rejects a link/completion request | Serve the app at the origin configured in `OIDC_REDIRECT_URI`; OIDC POSTs reject absent or different `Origin` headers. |
+
+## Testing
+
+The focused backend suites need no external service:
+
+```bash
+cd backend
+python -m unittest discover -s tests -p 'test_auth*.py'
+```
+
+The transaction and identity race evidence needs a disposable PostgreSQL 18
+database. Those suites drop and recreate the `public` schema, so the guard only
+accepts a literal loopback host and a database named exactly
+`oidc_auth_test_<32 lowercase hex>`; setting the opt-in without a safe URL is a
+hard failure, never a skip.
+
+```bash
+podman run --rm -d --name oidc-pg-test \
+  -e POSTGRES_PASSWORD='<password>' -p 127.0.0.1::5432 postgres:18-alpine
+podman exec oidc-pg-test createdb -U postgres oidc_auth_test_<32 lowercase hex>
+
+OIDC_AUTH_POSTGRES_TEST=1 \
+OIDC_AUTH_TEST_DATABASE_URL='postgresql://postgres:<password>@127.0.0.1:<port>/oidc_auth_test_<32 lowercase hex>' \
+python -m unittest discover -s tests -p 'test_auth_oidc_*postgres.py'
+```
+
+The real-nginx serving checks (path-only log format, inherited server headers,
+configuration syntax) need a container runtime and a local `nginx:alpine` image,
+so they run only when explicitly requested:
+
+```bash
+OIDC_AUTH_NGINX_TEST=1 python -m unittest tests.test_auth_oidc_routes.ServingConfigurationTests
+```

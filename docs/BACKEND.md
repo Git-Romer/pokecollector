@@ -796,8 +796,8 @@ All routes need a signed-in user (`backend/api/push.py`, prefix `/api/push`):
 - Migrations are raw SQL statements in `backend/database.py`
 - They are idempotent and run on startup
 - OIDC identity/password and transaction-schema migrations run outside the legacy
-  migration loop that tolerates old statements, and fail startup if schema
-  verification fails
+  migration loop that tolerates old statements, only when an OIDC provider is
+  configured, and fail startup if schema verification fails
 - Automatic pre-upgrade backups run before `init_db()` migrations on existing installs when the app version changes
 - Legacy migration comments still mention older columns like `grade` or removed integrations, but the current runtime model and routers do not include eBay functionality
 
