@@ -1571,7 +1571,7 @@ class OidcRateLimitBucketTests(unittest.TestCase):
         auth_api._oidc_rate_state.clear()
         self.addCleanup(auth_api._oidc_rate_state.clear)
 
-    def _request(self, *, cookie=None, host="172.18.0.5"):
+    def _request(self, *, cookie=None, host="192.0.2.5"):
         cookies = {} if cookie is None else {auth_api.OIDC_BROWSER_COOKIE: cookie}
         return self._SimpleNamespace(
             cookies=cookies, client=self._SimpleNamespace(host=host)
@@ -1601,7 +1601,7 @@ class OidcRateLimitBucketTests(unittest.TestCase):
         self.assertFalse(auth_api._consume_oidc_rate_limit(anonymous, "start"))
 
         # A different proxy address is a different fallback bucket.
-        other = self._request(host="172.18.0.6")
+        other = self._request(host="192.0.2.6")
         self.assertTrue(auth_api._consume_oidc_rate_limit(other, "start"))
 
     def test_browser_bucket_does_not_collide_with_the_address_fallback(self):
