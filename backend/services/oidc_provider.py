@@ -545,7 +545,7 @@ class OidcProvider:
             or not isinstance(token_type, str)
             or token_type.lower() != "bearer"
         ):
-            logger.warning("OIDC UserInfo skipped (%s)", "invalid_access_token")
+            logger.info("OIDC UserInfo skipped (%s)", "invalid_access_token")
             return None
 
         try:
@@ -563,16 +563,16 @@ class OidcProvider:
                     headers={"Authorization": f"Bearer {access_token}"},
                 )
             if status != 200:
-                logger.warning("OIDC UserInfo unavailable (%s)", "http_status")
+                logger.info("OIDC UserInfo unavailable (%s)", "http_status")
                 return None
             profile = json.loads(body)
         except asyncio.CancelledError:
             raise
         except _ResponseBodyTooLarge:
-            logger.warning("OIDC UserInfo unavailable (%s)", "body_too_large")
+            logger.info("OIDC UserInfo unavailable (%s)", "body_too_large")
             return None
         except (httpx2.HTTPError, OSError, ValueError) as exc:
-            logger.warning("OIDC UserInfo unavailable (%s)", type(exc).__name__)
+            logger.info("OIDC UserInfo unavailable (%s)", type(exc).__name__)
             return None
 
         if (
@@ -581,7 +581,7 @@ class OidcProvider:
             or profile["sub"] != subject
             or "error" in profile
         ):
-            logger.warning("OIDC UserInfo unavailable (%s)", "subject_mismatch")
+            logger.info("OIDC UserInfo unavailable (%s)", "subject_mismatch")
             return None
         return profile
 

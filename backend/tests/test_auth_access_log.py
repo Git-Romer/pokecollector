@@ -5,7 +5,10 @@ query) as the third argument. The filter must strip the query only for OIDC
 paths and leave every other request untouched.
 """
 import logging
+import subprocess
+import sys
 import unittest
+from pathlib import Path
 
 from services.access_log import (
     OIDC_LOG_PATH_PREFIX,
@@ -66,6 +69,11 @@ class OidcAccessLogRedactionFilterTests(unittest.TestCase):
             with self.subTest(path=path):
                 record = _record(path)
                 self.assertEqual(self._logged_target(record), path)
+
+    def test_bare_oidc_prefix_query_is_stripped(self):
+        # The prefix itself is an OIDC path, not only paths below it.
+        record = _record(f"{OIDC_LOG_PATH_PREFIX}?code=synthetic-code")
+        self.assertEqual(self._logged_target(record), OIDC_LOG_PATH_PREFIX)
 
     def test_oidc_path_without_query_is_unchanged(self):
         record = _record("/api/auth/oidc/identity")
@@ -134,6 +142,30 @@ class OidcAccessLogRedactionFilterTests(unittest.TestCase):
         self.assertNotIn("SECRET_STATE", records[0])
         self.assertNotIn("?", records[0])
         self.assertIn("/api/cards?search=SECRET_QUERY", records[1])
+
+
+class AccessLogFilterWiringTests(unittest.TestCase):
+    """Importing the application must install the filter in a real process."""
+
+    def test_importing_the_application_installs_the_filter(self):
+        backend_root = Path(__file__).resolve().parents[1]
+        script = (
+            "import logging, main;"
+            "from services.access_log import OidcAccessLogRedactionFilter as F;"
+            "print(sum(isinstance(f, F) for f in "
+            "logging.getLogger('uvicorn.access').filters))"
+        )
+
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=backend_root,
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "1", result.stdout + result.stderr)
 
 
 if __name__ == "__main__":

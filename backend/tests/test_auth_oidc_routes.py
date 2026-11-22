@@ -1373,6 +1373,14 @@ class ServingConfigurationTests(unittest.TestCase):
         oidc_block = nginx.split("location ^~ /api/auth/oidc/", 1)[1]
         oidc_block = oidc_block.split("}", 1)[0]
         self.assertIn("error_log /dev/null crit;", oidc_block)
+        # The backend's no-store and no-referrer reach the browser: the location
+        # hides neither and declares no add_header. A path-scoped map suppresses
+        # the duplicated server-level policy for OIDC only.
+        self.assertNotIn("proxy_hide_header Referrer-Policy;", oidc_block)
+        self.assertNotIn("proxy_hide_header Cache-Control;", oidc_block)
+        self.assertIn("map $uri $referrer_policy", nginx)
+        self.assertIn('~^/api/auth/oidc(/|$) "";', nginx)
+        self.assertIn("add_header Referrer-Policy $referrer_policy always;", nginx)
         # No location-level add_header: it would suppress the inherited
         # server-level CSP/frame/permissions headers.
         self.assertEqual(
@@ -1570,6 +1578,23 @@ class OidcRateLimitBucketTests(unittest.TestCase):
         self.assertNotIn(secret, keys[0][1])
         self.assertTrue(keys[0][1].startswith("browser:"))
 
+    def test_prune_is_bounded_per_request(self):
+        # An over-full map must not be swept wholesale on the request path.
+        auth_api._oidc_rate_state.clear()
+        for index in range(auth_api._OIDC_RATE_LIMIT_MAX_BUCKETS + 200):
+            auth_api._oidc_rate_state[("start", f"ip:192.0.2.{index}")] = [0.0]
+        before = len(auth_api._oidc_rate_state)
+
+        self.assertTrue(
+            auth_api._consume_oidc_rate_limit(
+                self._request(cookie="prune-cookie"), "start"
+            )
+        )
+
+        removed = before - len(auth_api._oidc_rate_state)
+        self.assertGreater(removed, 0)
+        self.assertLessEqual(removed, auth_api._OIDC_RATE_LIMIT_PRUNE_BATCH)
+
     def test_buckets_are_separate_per_endpoint(self):
         request = self._request(cookie="browser-secret-four")
         self._consume(request, auth_api._OIDC_RATE_LIMIT_MAX, bucket="start")
@@ -1598,6 +1623,20 @@ class ProviderAdapterCacheTests(unittest.TestCase):
         second = auth_api._build_oidc_provider(self.config)
 
         self.assertIs(first, second)
+
+    def test_cached_key_never_holds_the_client_secret(self):
+        auth_api._build_oidc_provider(self.config)
+
+        keys = list(auth_api._oidc_provider_cache)
+        self.assertEqual(len(keys), 1)
+        self.assertNotIn(CLIENT_SECRET, repr(keys[0]))
+
+        # A changed secret still produces a new key and a new adapter.
+        changed = dataclasses.replace(self.config, client_secret="other-secret")
+        self.assertIsNot(
+            auth_api._build_oidc_provider(changed),
+            auth_api._build_oidc_provider(self.config),
+        )
 
     def test_changed_configuration_replaces_the_cached_adapter(self):
         first = auth_api._build_oidc_provider(self.config)

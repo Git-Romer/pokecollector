@@ -27,14 +27,14 @@ def _redact_path(value: str) -> str:
     """Return the path without its query string for OIDC requests only."""
     if not isinstance(value, str):
         return value
-    # Match the OIDC route boundary exactly; a sibling path such as
-    # /api/auth/oidcish must keep its full target.
-    if value != OIDC_LOG_PATH_PREFIX and not value.startswith(
-        OIDC_LOG_PATH_PREFIX + "/"
-    ):
-        return value
     path, separator, _query = value.partition("?")
     if not separator:
+        return value
+    # Match the OIDC route boundary on the path: a bare /api/auth/oidc?code=x is
+    # OIDC, while a sibling such as /api/auth/oidcish?x=1 must keep its target.
+    if path != OIDC_LOG_PATH_PREFIX and not path.startswith(
+        OIDC_LOG_PATH_PREFIX + "/"
+    ):
         return value
     return path
 

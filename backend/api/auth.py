@@ -1,5 +1,6 @@
 import json
 import hashlib
+import itertools
 import logging
 import os
 import threading
@@ -22,6 +23,7 @@ from services.auth import (
     decode_token,
     has_valid_password_hash,
     hash_password,
+    secret_fingerprint,
     verify_password,
 )
 from services.auth_admin import (
@@ -251,16 +253,23 @@ _OIDC_ALLOWED_ERROR_CODES = frozenset(
 _OIDC_RATE_LIMIT_MAX = 10
 _OIDC_RATE_LIMIT_WINDOW_SECONDS = 60.0
 _OIDC_RATE_LIMIT_MAX_BUCKETS = 2048
+# Entries inspected per request once the map is over its bound.
+_OIDC_RATE_LIMIT_PRUNE_BATCH = 64
 _oidc_rate_state: dict[tuple[str, str], list[float]] = {}
 _oidc_rate_lock = threading.Lock()
 
 
 def _oidc_provider_cache_key(config) -> tuple:
-    """Everything that changes the adapter's behaviour, and nothing else."""
+    """Everything that changes the adapter's behaviour, and nothing else.
+
+    The client secret is keyed by a keyed fingerprint rather than stored raw, so
+    the module-level cache never holds a secret; a changed secret still yields a
+    new key (and therefore a new adapter).
+    """
     return (
         config.issuer_url,
         config.client_id,
-        config.client_secret,
+        secret_fingerprint("oidc-provider-cache", config.client_secret),
         config.redirect_uri,
         config.display_name,
     )
@@ -416,9 +425,15 @@ def _consume_oidc_rate_limit(request: Request, bucket: str) -> bool:
     with _oidc_rate_lock:
         if len(_oidc_rate_state) > _OIDC_RATE_LIMIT_MAX_BUCKETS:
             cutoff = now - _OIDC_RATE_LIMIT_WINDOW_SECONDS
-            for existing_key, stamps in list(_oidc_rate_state.items()):
+            # Bounded sweep: at most a fixed slice of keys is inspected per
+            # request, never the whole map, and nothing mutates mid-iteration.
+            victims = list(
+                itertools.islice(_oidc_rate_state, _OIDC_RATE_LIMIT_PRUNE_BATCH)
+            )
+            for existing_key in victims:
+                stamps = _oidc_rate_state.get(existing_key)
                 if not stamps or stamps[-1] < cutoff:
-                    del _oidc_rate_state[existing_key]
+                    _oidc_rate_state.pop(existing_key, None)
         stamps = [
             stamp
             for stamp in _oidc_rate_state.get(key, [])
