@@ -5,7 +5,7 @@ import { Crown, RefreshCw, Download, Upload, Plus, Pencil, Trash2, User, UserChe
 import {
   getSyncStatus, triggerSync, triggerAllPriceSync, rescheduleFullSync, reschedulePriceSync,
   downloadBackup, restoreBackup, exportCSV,
-  getSetting, setSetting, getTelegramStatus, saveSettings, setAuthMode,
+  getSetting, setSetting, getTelegramStatus, setAuthMode,
   getUsers, createUser, updateUser, deleteUser, changePassword, changeAvatar, changeUsername,
   getContributors, getSupporters, getCustomMatches, downloadDebugLog,
   getProfile, updateProfile, deleteScanDiagnostics,

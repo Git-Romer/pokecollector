@@ -20,7 +20,6 @@ try:
         GeminiQuotaState,
         ScanJob,
         ScanJobItem,
-        ScanQueueUserState,
         User,
     )
     from services import gemini_rate_limit

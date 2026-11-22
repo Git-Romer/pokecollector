@@ -1,7 +1,7 @@
 import { bulkRemoveBinderEntries } from '../api/client'
 import { useBulkRemoval } from '../hooks/useBulkRemoval'
 import BulkRemovalToolbar, { BulkRemovalToggle, BulkRemovalActions } from '../components/BulkRemovalToolbar'
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Plus, Minus, Trash2, Package, Star, Download, Upload, X, Heart, HelpCircle } from 'lucide-react'

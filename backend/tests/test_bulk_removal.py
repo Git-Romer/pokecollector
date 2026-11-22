@@ -262,9 +262,9 @@ class BulkRemovalTests(unittest.TestCase):
 
 
     def test_conflict_lists_every_card_and_releases_only_confirmed_assignments(self):
-        row = self.entry(self.binder, self.a)
+        self.entry(self.binder, self.a)
         plan = self.entry(self.deck, quantity=3)
-        assigned = self.entry(self.deck, self.a, quantity=2)
+        self.entry(self.deck, self.a, quantity=2)
         second = CollectionItem(user_id=self.user.id, card_id=self.card.id, quantity=2, variant='Holo')
         self.db.add(second); self.db.commit()
         untouched = self.entry(self.deck, second, quantity=1)

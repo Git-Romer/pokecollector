@@ -55,7 +55,6 @@ CSV_IMPORT_MAX_BYTES = 256 * 1024
 CSV_IMPORT_MAX_ROWS = 1000
 ALLOWED_CONDITIONS = {"Mint", "NM", "LP", "MP", "HP"}
 ALLOWED_VARIANTS = set(CANONICAL_VARIANTS)
-ALLOWED_LANGS = set(SUPPORTED_TCGDEX_LANGUAGES)
 
 
 def _normalize_collection_variant(variant: Optional[str]) -> str:

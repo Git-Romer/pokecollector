@@ -53,7 +53,6 @@ from services.scan_providers import (
     configured_provider_name,
     enabled_providers,
     image_part,
-    installation_model,
     openai_base_url,
     openai_enabled,
     openai_requires_key,

@@ -103,8 +103,6 @@ export const updateProfile = (data) => api.put('/profile/', data).then(r => r.da
 
 // Cards
 export const searchCards = (params) => api.get('/cards/search', { params })
-export const getCard = (id) => api.get(`/cards/${id}`)
-export const getCardInLang = (cardId, lang) => api.get(`/cards/${cardId}/lang/${lang}`)
 export const getPriceHistory = (id) => api.get(`/cards/${id}/price-history`)
 export const createCustomCard = (data) => api.post('/cards/custom', data)
 export const updateCustomCard = (cardId, data) => api.put(`/cards/custom/${cardId}`, data).then(r => r.data)
@@ -168,7 +166,6 @@ export const dismissCustomMatch = (matchId) => api.post(`/cards/custom/dismiss/$
 // Collection
 export const getCollection = (params) => api.get('/collection/', { params })
 export const getUserCollection = (userId, params = {}) => api.get(`/collection/user/${userId}`, { params }).then(r => r.data)
-export const searchCollection = (params) => api.get('/collection/', { params })
 export const addToCollection = (data) => api.post('/collection/', data)
 
 // The owner's own photo of a collected card. A blob rather than an <img src>:
@@ -213,7 +210,6 @@ export const bulkRemoveCollectionItems = itemIds => api.post('/collection/bulk-d
 export const releaseCollectionAssignments = payload => api.post('/collection/release-assignments', payload)
 export const bulkRemoveBinderEntries = (binderId, itemIds) => api.post(`/binders/${binderId}/entries/bulk-delete`, { item_ids: itemIds })
 export const bulkRemoveDeckEntries = (deckId, itemIds) => api.post(`/decks/${deckId}/entries/bulk-delete`, { item_ids: itemIds })
-export const getCollectionStats = (params = {}) => api.get('/collection/stats/summary', { params })
 export const getPrintingDetailTags = () => api.get('/collection/printing-detail-tags').then(r => r.data)
 export const createPrintingDetailTag = (name) => api.post('/collection/printing-detail-tags', { name }).then(r => r.data)
 export const updatePrintingDetailTag = (id, name) => api.put(`/collection/printing-detail-tags/${id}`, { name }).then(r => r.data)
@@ -222,7 +218,6 @@ export const deletePrintingDetailTag = (id, confirm = false) => api.delete(`/col
 // Decks
 export const getDecks = () => api.get('/decks/')
 export const getDeck = (id) => api.get(`/decks/${id}`)
-export const createDeck = (data) => api.post('/decks/', data)
 export const duplicateDeck = (id) => api.post(`/decks/${id}/duplicate`)
 export const convertDeckToReal = (id) => api.post(`/decks/${id}/convert-to-real`)
 export const convertDeckToPlanned = (id) => api.post(`/decks/${id}/convert-to-planned`)
@@ -236,9 +231,7 @@ export const getDeckProbability = (deckId, params = {}) => api.get(`/decks/${dec
 
 // Sets
 export const getSets = (params) => api.get('/sets/', { params })
-export const getSet = (id) => api.get(`/sets/${id}`)
 export const getSetChecklist = (id) => api.get(`/sets/${id}/checklist`)
-export const getNewSets = () => api.get('/sets/new')
 export const markSetsSeen = (setIds) => api.post('/sets/mark-seen', Array.isArray(setIds) ? { set_ids: setIds } : undefined)
 
 // Wishlist
@@ -318,14 +311,12 @@ export const reschedulePriceSync = (intervalMinutes) => api.post('/sync/reschedu
 
 // Products
 export const getProducts = (params = {}) => api.get('/products/', { params })
-export const getProductTypes = () => api.get('/products/types')
 export const createProduct = (data) => api.post('/products/', data)
 export const createProductBatch = (data) => api.post('/products/batch', data)
 export const updateProduct = (id, data) => api.put(`/products/${id}`, data)
 export const bulkUpdateProductLifecycle = (data) => api.put('/products/lifecycle/bulk', data)
 export const deleteProduct = (id) => api.delete(`/products/${id}`)
 export const getProductsSummary = (params = {}) => api.get('/products/summary', { params })
-export const linkProductCard = (productId, data) => api.post(`/products/${productId}/cards`, data).then(r => r.data)
 export const linkProductCards = (productId, data) => api.post(`/products/${productId}/cards/bulk`, data).then(r => r.data)
 export const unlinkProductCard = (productId, productCardId, params = {}) => api.delete(`/products/${productId}/cards/${productCardId}`, { params }).then(r => r.data)
 export const bulkUnlinkProductCards = data => api.post('/products/cards/bulk-unlink', data).then(r => r.data)
@@ -336,7 +327,6 @@ export const getTrades = () => api.get('/trades/').then(r => r.data)
 export const getTrade = (id) => api.get(`/trades/${id}`).then(r => r.data)
 export const createTrade = (data, params = {}) => api.post('/trades/', data, { params }).then(r => r.data)
 export const updateTrade = (id, data, params = {}) => api.put(`/trades/${id}`, data, { params }).then(r => r.data)
-export const valueTrade = (data, params = {}) => api.post('/trades/value', data, { params }).then(r => r.data)
 
 // Export
 export const exportCSV = (params = {}) => {
@@ -404,8 +394,6 @@ export const restoreBackup = (file) => {
 }
 
 // Settings
-export const getSettings = () => api.get('/settings/')
-export const saveSettings = (data) => api.put('/settings/', data)
 export const getSetting = (key) => api.get(`/settings/${key}`).then(r => r.data)
 export const setSetting = (key, value) => api.post(`/settings/${key}`, { value }).then(r => r.data)
 export const getScannerConfiguration = () => api.get('/settings/scanner').then(r => r.data)
@@ -437,7 +425,6 @@ export const downloadDebugLog = () => {
 // GitHub / Community
 export const getContributors = () => api.get('/github/contributors').then(r => r.data)
 export const getSupporters = () => api.get('/community/supporters').then(r => r.data)
-export const getRescueDonations = () => api.get('/github/rescue-donations').then(r => r.data)
 
 // Social
 export const getLeaderboard = (params = {}) => api.get('/social/leaderboard', { params })

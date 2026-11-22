@@ -1,8 +1,8 @@
-import { Fragment, useEffect, useId, useState, useMemo } from 'react'
+import { useEffect, useId, useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Cell
+  ResponsiveContainer
 } from 'recharts'
 import { Plus, Trash2, Edit2, TrendingUp, TrendingDown, Package, Check, X, SortAsc, Filter, ChevronUp, ChevronDown, Link2, DollarSign, History, AlertCircle, Search, ExternalLink } from 'lucide-react'
 import { getProducts, createProductBatch, updateProduct, bulkUpdateProductLifecycle, deleteProduct, getProductsSummary, getCollection, linkProductCards, unlinkProductCard, sellProductCard, addProductLedgerEntry, getApiErrorMessage } from '../api/client'
@@ -17,7 +17,7 @@ import Modal from '../components/ui/Modal'
 import toast from 'react-hot-toast'
 import clsx from 'clsx'
 import { formatMoneyInputValue, isValidMoneyInputValue, parseMoneyInputValue } from '../utils/moneyInput'
-import { productImageUrl, resolveCardImageUrl } from '../utils/imageUrl'
+import { productImageUrl } from '../utils/imageUrl'
 import {
   PRODUCT_CARD_SELECTION_LIMIT,
   PRODUCT_CARD_TIME_RANGES,

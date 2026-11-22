@@ -49,8 +49,6 @@
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
   --safe-area-top:    env(safe-area-inset-top, 0px);
 
-  /* Bottom nav height (used for main content padding) */
-  --bottom-nav-height: 4rem; /* 64px */
 }
 
 /* Safari autofill override */
@@ -351,35 +349,10 @@ input:-webkit-autofill:focus {
     @apply text-xl font-bold text-text-primary;
   }
 
-  /* ── Bottom Nav — frosted glass ── */
-  .bottom-nav {
-    @apply fixed bottom-0 left-0 right-0 z-40
-           flex items-stretch
-           pb-[env(safe-area-inset-bottom,0px)]
-           lg:hidden;
-    background: rgba(15, 15, 26, 0.85);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border-top: 1px solid rgba(255,255,255,0.06);
-  }
-  .bottom-nav-item {
-    @apply flex flex-col items-center justify-center gap-0.5
-           flex-1 py-2 text-[10px] font-medium
-           transition-colors duration-150 select-none cursor-pointer;
-  }
-  .bottom-nav-active {
-    @apply text-brand-red;
-  }
-  .bottom-nav-inactive {
-    @apply text-text-muted hover:text-text-secondary;
-  }
 
   /* ── Safe area utilities ── */
   .safe-area-bottom {
     padding-bottom: env(safe-area-inset-bottom, 0px);
-  }
-  .pb-nav {
-    padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 0.5rem);
   }
 
   /* ── More Sheet Animation ── */

@@ -4,7 +4,7 @@ sets that are not synced locally.
 """
 
 import unittest
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, patch
 
 try:
     from sqlalchemy import create_engine

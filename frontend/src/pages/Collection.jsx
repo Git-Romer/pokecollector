@@ -11,7 +11,6 @@ import ActionErrorNotice, { productLinkErrorNotice } from '../components/ActionE
 import ProductSourceList from '../components/ProductSourceList'
 import { useSettings } from '../contexts/SettingsContext'
 import { useConfirmDialog } from '../contexts/ConfirmDialogContext'
-import CardImage from '../components/CardImage'
 import { CardDialog, CardLegend, CardPriceDetails, withCollectionItemState } from '../components/card-system'
 import { CollectionCardDisplay, CollectionCardIdentity, CollectionCardRow, OwnPhotoOverlayBadge, useCollectionPhotoUrl } from '../components/CollectionCardImage'
 import MoneyInput from '../components/MoneyInput'

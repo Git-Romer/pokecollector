@@ -611,7 +611,7 @@ export function usePrefetchMatchImages(matches) {
 }
 
 // ─── The candidate grid — the "which of these DB candidates is it" picker ──
-function CandidateGrid({ jobId, itemId, matches, onSelect, onZoom, t }) {
+function CandidateGrid({ matches, onSelect, onZoom, t }) {
   usePrefetchMatchImages(matches)
 
   if (!matches?.length) return null
@@ -853,8 +853,6 @@ export function ScanItemPanel({ jobId, item, onAdd, onRetry, onDismiss, onReview
             {t('scanner.bestMatches')} ({item.matches.length})
           </p>
           <CandidateGrid
-            jobId={jobId}
-            itemId={item.id}
             matches={item.matches}
             onSelect={item.resolved ? undefined : match => onAdd(item, match)}
             onZoom={(match, matchIndex) => onReview(item, matchIndex)}
