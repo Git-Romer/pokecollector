@@ -41,7 +41,7 @@ POSTGRES_TEST_ENABLED = (
 class ScanQueuePostgresTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        init_db()
+        init_db(enable_oidc_schema=True)
 
     def setUp(self):
         self.prefix = f"queue-pg-{uuid.uuid4().hex}"
@@ -136,7 +136,7 @@ class ScanQueuePostgresTests(unittest.TestCase):
 class AtomicScanResolvePostgresTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        init_db()
+        init_db(enable_oidc_schema=True)
 
     def setUp(self):
         self.prefix = f"atomic-resolve-{uuid.uuid4().hex}"
@@ -267,7 +267,7 @@ class AtomicScanResolvePostgresTests(unittest.TestCase):
 class GeminiQuotaPostgresConcurrencyTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        init_db()
+        init_db(enable_oidc_schema=True)
 
     def setUp(self):
         self.api_key = f"quota-pg-{uuid.uuid4().hex}"

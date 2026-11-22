@@ -1528,8 +1528,16 @@ def migrate_card_ids():
         db.close()
 
 
-def init_db():
-    """Initialize the database: create tables, run migrations, seed settings."""
+def init_db(*, enable_oidc_schema: bool = False):
+    """Initialize the database: create tables, run migrations, seed settings.
+
+    ``enable_oidc_schema`` gates the two OIDC schema boundaries on the resolved
+    authentication policy. A fresh database already has the correct shape from
+    ``create_all``; the extra migrations only matter for databases created by an
+    earlier release, and running them in local mode would abort startup on an
+    existing SQLite database whose ``users.hashed_password`` is still NOT NULL.
+    Callers must pass ``True`` whenever OIDC is configured for this process.
+    """
     from models import Base as ModelBase, Setting, User
     ModelBase.metadata.create_all(bind=engine)
 
@@ -1540,15 +1548,18 @@ def init_db():
     except Exception:
         pass  # Non-blocking — may not be needed on fresh installs
 
-    # Authentication schema is a security boundary: OIDC identity uniqueness and
-    # nullable password hashes must be present before any traffic is served. It is
-    # deliberately outside the legacy error-swallowing loop above so a failure
-    # aborts startup instead of serving an unconstrained authentication schema.
-    migrate_oidc_auth_schema()
-    # Transaction persistence is the second half of the same fail-fast boundary:
-    # OIDC login/link callbacks must never run without a shared, one-use,
-    # browser-bound transaction store. Identity schema first, then transactions.
-    migrate_oidc_transaction_schema()
+    if enable_oidc_schema:
+        # Authentication schema is a security boundary: OIDC identity uniqueness
+        # and nullable password hashes must be present before any traffic is
+        # served. It is deliberately outside the legacy error-swallowing loop
+        # above so a failure aborts startup instead of serving an unconstrained
+        # authentication schema.
+        migrate_oidc_auth_schema()
+        # Transaction persistence is the second half of the same fail-fast
+        # boundary: OIDC login/link callbacks must never run without a shared,
+        # one-use, browser-bound transaction store. Identity schema first, then
+        # transactions.
+        migrate_oidc_transaction_schema()
 
     # Migrate card IDs to composite format (idempotent)
     try:

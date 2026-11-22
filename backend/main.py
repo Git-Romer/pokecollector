@@ -84,7 +84,10 @@ async def lifespan(app: FastAPI):
     from services.auth_admin import initialize_admin_accounts
     from services.pre_upgrade_backup import maybe_create_pre_upgrade_backup, record_successful_app_version
     maybe_create_pre_upgrade_backup(engine, DATABASE_URL, current_version)
-    init_db()
+    # OIDC schema migrations only run when OIDC is configured: a local-mode
+    # deployment must start unchanged against a pre-OIDC database, including an
+    # existing SQLite file whose users.hashed_password is still NOT NULL.
+    init_db(enable_oidc_schema=_auth_policy.oidc is not None)
     logger.info("Database initialized")
 
     db = SessionLocal()

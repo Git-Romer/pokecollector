@@ -301,8 +301,8 @@ class OidcAuthSchemaPostgresTests(unittest.TestCase):
         # The focused migration, not the legacy swallowing loop, must repair the
         # schema. It is then run again through init_db() to prove idempotency.
         migrate_oidc_auth_schema(self.engine)
-        init_db()
-        init_db()
+        init_db(enable_oidc_schema=True)
+        init_db(enable_oidc_schema=True)
 
         with self.engine.connect() as conn:
             nullable = conn.execute(text("""
@@ -352,11 +352,11 @@ class OidcAuthSchemaPostgresTests(unittest.TestCase):
             side_effect=RuntimeError("synthetic auth schema failure"),
         ):
             with self.assertRaises(RuntimeError) as exc:
-                init_db()
+                init_db(enable_oidc_schema=True)
         self.assertIn("synthetic auth schema failure", str(exc.exception))
 
     def test_identity_uniqueness_and_fk_cascade(self):
-        init_db()
+        init_db(enable_oidc_schema=True)
         db = self.SessionLocal()
         try:
             first = self._user(db, "first")
@@ -398,7 +398,7 @@ class OidcAuthSchemaPostgresTests(unittest.TestCase):
             db.close()
 
     def test_user_deletion_removes_identity_and_preserves_other_ownership(self):
-        init_db()
+        init_db(enable_oidc_schema=True)
         db = self.SessionLocal()
         try:
             caller = self._user(db, "caller", password="caller-password", role="admin")
@@ -450,7 +450,7 @@ class OidcAuthSchemaPostgresTests(unittest.TestCase):
             db.close()
 
     def test_concurrent_admin_demotions_cannot_remove_the_last_usable_admin(self):
-        init_db()
+        init_db(enable_oidc_schema=True)
         db = self.SessionLocal()
         try:
             first = self._user(db, "first-admin", password="first-password", role="admin")
