@@ -1429,6 +1429,75 @@ class ServingConfigurationTests(unittest.TestCase):
 
 
 @unittest.skipUnless(DEPS_AVAILABLE, "backend dependencies are not installed")
+class OidcRateLimitBucketTests(unittest.TestCase):
+    """The OIDC limiter keys per browser, not per shared proxy address."""
+
+    def setUp(self):
+        from types import SimpleNamespace
+
+        self._SimpleNamespace = SimpleNamespace
+        auth_api._oidc_rate_state.clear()
+        self.addCleanup(auth_api._oidc_rate_state.clear)
+
+    def _request(self, *, cookie=None, host="172.18.0.5"):
+        cookies = {} if cookie is None else {auth_api.OIDC_BROWSER_COOKIE: cookie}
+        return self._SimpleNamespace(
+            cookies=cookies, client=self._SimpleNamespace(host=host)
+        )
+
+    def _consume(self, request, times, bucket="start"):
+        return [
+            auth_api._consume_oidc_rate_limit(request, bucket) for _ in range(times)
+        ]
+
+    def test_browsers_behind_one_proxy_address_have_independent_budgets(self):
+        first = self._request(cookie="browser-secret-one")
+        second = self._request(cookie="browser-secret-two")
+
+        allowed = self._consume(first, auth_api._OIDC_RATE_LIMIT_MAX)
+        self.assertTrue(all(allowed))
+        self.assertFalse(auth_api._consume_oidc_rate_limit(first, "start"))
+
+        # Same source address, different browser: still has its own budget.
+        self.assertTrue(auth_api._consume_oidc_rate_limit(second, "start"))
+
+    def test_requests_without_a_cookie_share_the_address_bucket(self):
+        anonymous = self._request()
+
+        allowed = self._consume(anonymous, auth_api._OIDC_RATE_LIMIT_MAX)
+        self.assertTrue(all(allowed))
+        self.assertFalse(auth_api._consume_oidc_rate_limit(anonymous, "start"))
+
+        # A different proxy address is a different fallback bucket.
+        other = self._request(host="172.18.0.6")
+        self.assertTrue(auth_api._consume_oidc_rate_limit(other, "start"))
+
+    def test_browser_bucket_does_not_collide_with_the_address_fallback(self):
+        anonymous = self._request()
+        self._consume(anonymous, auth_api._OIDC_RATE_LIMIT_MAX)
+        self.assertFalse(auth_api._consume_oidc_rate_limit(anonymous, "start"))
+
+        bound = self._request(cookie="browser-secret-three")
+        self.assertTrue(auth_api._consume_oidc_rate_limit(bound, "start"))
+
+    def test_cookie_value_is_not_stored_verbatim(self):
+        secret = "browser-cookie-secret-value"
+        self._consume(self._request(cookie=secret), 1)
+
+        keys = [key for key in auth_api._oidc_rate_state if key[0] == "start"]
+        self.assertEqual(len(keys), 1)
+        self.assertNotIn(secret, keys[0][1])
+        self.assertTrue(keys[0][1].startswith("browser:"))
+
+    def test_buckets_are_separate_per_endpoint(self):
+        request = self._request(cookie="browser-secret-four")
+        self._consume(request, auth_api._OIDC_RATE_LIMIT_MAX, bucket="start")
+
+        self.assertFalse(auth_api._consume_oidc_rate_limit(request, "start"))
+        self.assertTrue(auth_api._consume_oidc_rate_limit(request, "complete"))
+
+
+@unittest.skipUnless(DEPS_AVAILABLE, "backend dependencies are not installed")
 class ProviderAdapterCacheTests(unittest.TestCase):
     """The route layer must reuse one adapter per configuration."""
 

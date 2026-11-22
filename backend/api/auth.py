@@ -1,4 +1,5 @@
 import json
+import hashlib
 import logging
 import os
 import threading
@@ -383,12 +384,34 @@ def _purge_expired_bounded(db: Session) -> None:
         logger.warning("OIDC expired-transaction cleanup failed")
 
 
+def _oidc_rate_limit_key(request: Request, bucket: str) -> tuple[str, str]:
+    """Rate-limit bucket: the browser-binding cookie when present, else the IP.
+
+    The HttpOnly browser-binding cookie is issued by ``/oidc/start`` and only a
+    digest of it is used here, so it is never logged or rendered. Keying on it
+    keeps one browser from exhausting another's budget behind a shared proxy
+    (the bundled nginx forwards every user from one container address).
+
+    Requests without the cookie (including the first ``/oidc/start`` of a new
+    browser, which mints it) fall back to the client address. Anonymous starts
+    therefore stay IP-keyed, so an OIDC-only deployment exposed beyond loopback
+    must still enforce a shared limit at its ingress.
+
+    ``X-Forwarded-For`` is deliberately ignored: it is client-controlled here.
+    """
+    cookie = request.cookies.get(OIDC_BROWSER_COOKIE)
+    if cookie:
+        digest = hashlib.sha256(cookie.encode("utf-8")).hexdigest()
+        return (bucket, "browser:" + digest)
+    client = request.client
+    host = client.host if client is not None and client.host else "unknown"
+    return (bucket, "ip:" + host)
+
+
 def _consume_oidc_rate_limit(request: Request, bucket: str) -> bool:
     """Per-process fixed-window limiter; returns False when throttled."""
     now = time.monotonic()
-    client = request.client
-    client_key = client.host if client is not None and client.host else "unknown"
-    key = (bucket, client_key)
+    key = _oidc_rate_limit_key(request, bucket)
     with _oidc_rate_lock:
         if len(_oidc_rate_state) > _OIDC_RATE_LIMIT_MAX_BUCKETS:
             cutoff = now - _OIDC_RATE_LIMIT_WINDOW_SECONDS
