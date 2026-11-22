@@ -861,6 +861,66 @@ class CompletionRouteTests(RouteTestCase):
         self.assertEqual(success.status_code, 200)
         self.assertEqual(success.json(), {"linked": True})
 
+    def test_link_completion_with_an_unresolvable_bearer_returns_401(self):
+        admin = self.add_user("admin", role="admin", password="local-password")
+        bearer = create_access_token({"sub": str(admin.id), "role": admin.role})
+        self._link_handoff(admin, bearer)
+        expired = create_access_token(
+            {"sub": str(admin.id), "role": admin.role},
+            expires_delta=timedelta(seconds=-60),
+        )
+
+        for bad_token in (expired, "not-a-jwt"):
+            with self.subTest(token=bad_token[:12]):
+                response = self.complete(token=bad_token)
+                self.assertEqual(response.status_code, 401)
+                self.assertEqual(
+                    response.json(), {"detail": "Authentication required"}
+                )
+                self.assert_security_headers(response)
+
+        # The handoff was not consumed by the failed attempts.
+        self.assertIsNone(find_identity(self.db, ISSUER, "link-subject"))
+        success = self.complete(token=bearer)
+        self.assertEqual(success.status_code, 200)
+        self.assertEqual(success.json(), {"linked": True})
+
+    def test_login_handoff_ignores_an_unresolvable_bearer(self):
+        # Login handoffs are bound to the browser, not to a bearer; a stale token
+        # left in the browser must not block sign-in.
+        user = self.add_user("trainer", password="local-password")
+        self.link(user)
+        self.login_handoff()
+
+        response = self.complete(token="not-a-jwt")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("access_token", response.json())
+
+    def test_login_handoff_past_its_deadline_never_mints_a_token(self):
+        user = self.add_user("trainer", password="local-password")
+        self.link(user)
+        self.login_handoff()
+        real_claim = auth_api.claim_handoff_transaction
+
+        def claim_then_expire(db, **kwargs):
+            transaction = real_claim(db, **kwargs)
+            transaction.expires_at = datetime.utcnow() - timedelta(seconds=1)
+            return transaction
+
+        with patch.object(
+            auth_api, "claim_handoff_transaction", claim_then_expire
+        ):
+            with patch.object(auth_api, "create_access_token") as mint:
+                response = self.complete()
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json(), {"detail": "Sign-in could not be completed"}
+        )
+        self.assert_security_headers(response)
+        mint.assert_not_called()
+
     def test_link_conflict_does_not_change_role_or_session(self):
         admin = self.add_user("admin", role="admin", password="local-password")
         bearer = create_access_token({"sub": str(admin.id), "role": admin.role})
@@ -914,7 +974,9 @@ class CompletionRouteTests(RouteTestCase):
 
         response = self.complete(token=bearer)
 
-        self.assertEqual(response.status_code, 400)
+        # A bearer that no longer resolves to an active user is an
+        # authentication failure, not a malformed request.
+        self.assertEqual(response.status_code, 401)
         self.assertNotIn("access_token", response.json())
         self.assertIsNone(find_identity(self.db, ISSUER, "link-subject"))
 
@@ -1230,7 +1292,10 @@ class UsernameFallbackCompletionTests(RouteTestCase):
 
 class RateLimitTests(RouteTestCase):
     def test_start_throttle_is_generic_and_no_store(self):
-        for _ in range(auth_api._OIDC_RATE_LIMIT_MAX):
+        # The first request only has the client address; every later request
+        # carries the browser-binding cookie this client received, so that
+        # browser's bucket is the one that fills up.
+        for _ in range(auth_api._OIDC_RATE_LIMIT_MAX + 1):
             self.assertEqual(self.start().status_code, 302)
 
         response = self.start()

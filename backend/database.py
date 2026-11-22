@@ -1029,7 +1029,7 @@ def migrate_oidc_transaction_schema(target_engine=None):
                     bearer_fingerprint VARCHAR(64),
                     handoff_digest VARCHAR(64),
                     expires_at TIMESTAMP NOT NULL,
-                    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                    created_at TIMESTAMP NOT NULL,
                     consumed_at TIMESTAMP,
                     CONSTRAINT uq_oidc_transaction_state_digest
                         UNIQUE (state_digest),

@@ -30,6 +30,8 @@ except ModuleNotFoundError:
 if PROVIDER_DEPS_AVAILABLE:
     from services.auth_policy import OidcConfig
     from services.oidc_provider import (
+        MAX_DISCOVERY_BODY_BYTES,
+        MAX_USERINFO_BODY_BYTES,
         METADATA_CACHE_SECONDS,
         OidcConfigurationError,
         OidcDiscoveryError,
@@ -82,6 +84,7 @@ class SyntheticProvider:
         self.token_auth_methods = ["client_secret_basic"]
         self.discovery_status = 200
         self.discovery_headers = {}
+        self.discovery_content = None
         self.metadata_overrides = {}
         self.jwks_keys = [RSA_KEY, EC_KEY]
         self.jwks_sequence = []
@@ -143,6 +146,12 @@ class SyntheticProvider:
             if self.discovery_status != 200:
                 return httpx2.Response(
                     self.discovery_status, headers=self.discovery_headers
+                )
+            if self.discovery_content is not None:
+                return httpx2.Response(
+                    200,
+                    content=self.discovery_content,
+                    headers=self.discovery_headers,
                 )
             return httpx2.Response(200, json=self.metadata())
 
@@ -516,18 +525,21 @@ class UserInfoTests(ProviderTestCase):
                 self.assertIsNone(identity.preferred_username)
                 self.assertIsNone(identity.name)
 
-    async def test_userinfo_subject_is_required_exact_and_string(self):
-        # Even with usable ID-token hints, advertised UserInfo fails closed.
+    async def test_mismatched_userinfo_subject_keeps_id_token_hints(self):
+        # UserInfo may only confirm the validated subject. A missing, malformed
+        # or different subject means "no hints", never a failed sign-in.
         self.provider.id_token = self.provider.sign(
-            self.provider.claims(preferred_username="id-trainer")
+            self.provider.claims(preferred_username="id-trainer", name="ID Name")
         )
         for subject in (_REMOVE, None, 123, True, [], "", "subject-2", "subject-1 "):
             with self.subTest(subject=subject):
                 self.provider.userinfo_profile = {"preferred_username": "hint"}
                 if subject is not _REMOVE:
                     self.provider.userinfo_profile["sub"] = subject
-                with self.assertRaises(OidcTokenValidationError):
-                    await self.exchange()
+                identity = await self.exchange()
+                self.assertEqual(identity.subject, "subject-1")
+                self.assertEqual(identity.preferred_username, "id-trainer")
+                self.assertEqual(identity.name, "ID Name")
 
     async def test_invalid_id_token_prevents_userinfo_request(self):
         for claims in (
@@ -589,15 +601,17 @@ class UserInfoTests(ProviderTestCase):
                 self.assertEqual(identity.subject, "subject-1")
                 self.assertEqual(str(self.provider.userinfo_requests[-1].url), endpoint)
 
-    async def test_userinfo_redirects_are_rejected_without_forwarding_tokens(self):
+    async def test_userinfo_redirects_are_not_followed_and_are_ignored(self):
         for status in (301, 302, 303, 307, 308):
             with self.subTest(status=status):
                 self.provider.userinfo_status = status
                 self.provider.userinfo_headers = {
                     "Location": "https://other.example.test/steal"
                 }
-                with self.assertRaises(OidcTokenValidationError):
-                    await self.exchange()
+                identity = await self.exchange()
+                self.assertEqual(identity.subject, "subject-1")
+                self.assertIsNone(identity.preferred_username)
+                self.assertIsNone(identity.name)
         self.assertEqual(len(self.provider.userinfo_requests), 5)
         self.assertEqual(self.provider.unexpected_requests, [])
 
@@ -611,7 +625,7 @@ class UserInfoTests(ProviderTestCase):
         self.assertEqual(identity.name, "ID Name")
         self.assertEqual(self.provider.userinfo_requests, [])
 
-    async def test_missing_or_invalid_bearer_credentials_fail_closed(self):
+    async def test_missing_or_invalid_bearer_credentials_skip_userinfo(self):
         for field, values in (
             ("access_token", (
                 _REMOVE, None, "", 123, True, [], {},
@@ -624,7 +638,9 @@ class UserInfoTests(ProviderTestCase):
             for value in values:
                 with self.subTest(field=field, value=value):
                     token = {
-                        "id_token": self.provider.sign(self.provider.claims()),
+                        "id_token": self.provider.sign(
+                            self.provider.claims(name="ID Name")
+                        ),
                         "access_token": "synthetic-access-token", "token_type": "Bearer",
                     }
                     if value is _REMOVE:
@@ -632,11 +648,10 @@ class UserInfoTests(ProviderTestCase):
                     else:
                         token[field] = value
                     self.provider.token_response_override = token
-                    with self.assertRaises(OidcProviderError) as raised:
-                        await self.exchange()
-                    self.assertNotIn("synthetic-access-token", str(raised.exception))
-                    if value != "":
-                        self.assertNotIn(str(value), str(raised.exception))
+                    # An unusable bearer only means "no profile hints".
+                    identity = await self.exchange()
+                    self.assertEqual(identity.name, "ID Name")
+                    self.assertIsNone(identity.preferred_username)
         self.assertEqual(self.provider.userinfo_requests, [])
 
     async def test_bearer_token_type_is_case_insensitive(self):
@@ -647,7 +662,12 @@ class UserInfoTests(ProviderTestCase):
         identity = await self.exchange()
         self.assertEqual(identity.subject, "subject-1")
 
-    async def test_userinfo_http_json_and_transport_failures_are_generic(self):
+    async def test_userinfo_http_json_and_transport_failures_are_missing_hints(self):
+        # UserInfo only supplies display hints, so none of these may block a
+        # sign-in that the ID token already validated.
+        self.provider.id_token = self.provider.sign(
+            self.provider.claims(preferred_username="id-trainer", name="ID Name")
+        )
         for status, content, error in (
             (401, b'{"error_description":"private-response-marker"}', None),
             (500, b"private-response-marker", None),
@@ -662,13 +682,56 @@ class UserInfoTests(ProviderTestCase):
                 self.provider.userinfo_status = status
                 self.provider.userinfo_content = content
                 self.provider.userinfo_error = error
-                with self.assertRaises(OidcTokenValidationError) as raised:
-                    await self.exchange()
-                self.assertIn(
-                    str(raised.exception),
-                    ("UserInfo request failed", "UserInfo validation failed"),
-                )
-                self.assertNotIn("private-response-marker", str(raised.exception))
+                identity = await self.exchange()
+                self.assertEqual(identity.subject, "subject-1")
+                self.assertEqual(identity.preferred_username, "id-trainer")
+                self.assertEqual(identity.name, "ID Name")
+        # Rejected results are never reflected into the identity or an error.
+        self.assertNotIn("private-response-marker", repr(identity))
+
+    async def test_userinfo_failure_without_id_token_hints_still_signs_in(self):
+        # Nothing usable anywhere: the completion route prompts for a username
+        # instead of failing the sign-in at the provider boundary.
+        self.provider.userinfo_status = 500
+
+        identity = await self.exchange()
+
+        self.assertEqual(identity.subject, "subject-1")
+        self.assertIsNone(identity.preferred_username)
+        self.assertIsNone(identity.name)
+
+    async def test_oversized_userinfo_body_is_ignored(self):
+        self.provider.id_token = self.provider.sign(
+            self.provider.claims(name="ID Name")
+        )
+        self.provider.userinfo_content = b'{"sub":"subject-1"}' + b" " * (
+            MAX_USERINFO_BODY_BYTES + 1024
+        )
+
+        identity = await self.exchange()
+
+        self.assertEqual(identity.name, "ID Name")
+        self.assertIsNone(identity.preferred_username)
+
+    async def test_streamed_userinfo_body_is_capped_despite_a_small_content_length(self):
+        self.provider.userinfo_content = b'{"sub":"subject-1"}' + b" " * (
+            MAX_USERINFO_BODY_BYTES + 1024
+        )
+        self.provider.userinfo_headers = {"content-length": "16"}
+
+        identity = await self.exchange()
+
+        self.assertEqual(identity.subject, "subject-1")
+        self.assertIsNone(identity.preferred_username)
+
+    async def test_oversized_discovery_body_is_rejected(self):
+        self.provider.discovery_content = b"{" + b" " * (
+            MAX_DISCOVERY_BODY_BYTES + 1024
+        )
+
+        with self.assertRaises(OidcDiscoveryError):
+            await self.exchange()
+        self.assertEqual(self.provider.token_requests, 0)
 
     async def test_userinfo_cancellation_is_preserved(self):
         self.provider.userinfo_error = asyncio.CancelledError()
@@ -699,13 +762,14 @@ class UserInfoTests(ProviderTestCase):
         )
         try:
             identity = await self.exchange()
+            # A mismatched UserInfo subject is now ignored as "no hints"; it must
+            # still never appear in a log line or in the returned identity.
             self.provider.userinfo_profile["sub"] = "private-subject-marker"
-            with self.assertRaises(OidcTokenValidationError) as raised:
-                await self.exchange()
+            ignored = await self.exchange()
         finally:
             logger.removeHandler(handler)
             logger.setLevel(original_level)
-        text = "\n".join(handler.messages) + repr(identity) + str(raised.exception)
+        text = "\n".join(handler.messages) + repr(identity) + repr(ignored)
         self.assertTrue(handler.messages, "capture should include HTTP control records")
         for marker in (
             "private-marker@example.test", "raw-claim-marker", "private-subject-marker",
@@ -726,6 +790,20 @@ class ClaimRejectionTests(ProviderTestCase):
 
     async def test_wrong_audience_is_rejected(self):
         await self.assert_rejected(self.provider.claims(aud="another-client"))
+
+    async def test_single_element_audience_list_is_accepted(self):
+        # JWT allows either form for one audience; both must validate.
+        self.provider.id_token = self.provider.sign(
+            self.provider.claims(aud=[CLIENT_ID])
+        )
+        identity = await self.exchange()
+        self.assertEqual(identity.subject, "subject-1")
+
+    async def test_empty_audience_list_is_rejected(self):
+        await self.assert_rejected(self.provider.claims(aud=[]))
+
+    async def test_single_element_audience_list_of_another_client_is_rejected(self):
+        await self.assert_rejected(self.provider.claims(aud=["another-client"]))
 
     async def test_multi_audience_requires_matching_azp(self):
         await self.assert_rejected(

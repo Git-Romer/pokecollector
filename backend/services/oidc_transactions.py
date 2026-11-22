@@ -436,6 +436,36 @@ def preview_handoff_transaction(
         )
 
 
+def handoff_operation(
+    db: Session,
+    *,
+    handoff_secret: str,
+    browser_secret: str,
+    now: datetime | None = None,
+) -> str | None:
+    """Return the stored operation of a live handoff without consuming it.
+
+    This answers one question before the bound claim: is an unusable bearer an
+    authentication failure (link) or simply irrelevant (login)? It deliberately
+    ignores the initiating user and token, reads without committing or extending
+    anything, and exposes no subject, user or token material.
+    """
+    handoff_digest = _digest(_HANDOFF_NAMESPACE, handoff_secret)
+    browser_digest = _digest(_BROWSER_NAMESPACE, browser_secret)
+    with db.no_autoflush:
+        return (
+            db.query(OidcAuthTransaction.operation)
+            .filter(
+                OidcAuthTransaction.handoff_digest == handoff_digest,
+                OidcAuthTransaction.browser_digest == browser_digest,
+                OidcAuthTransaction.phase == PHASE_HANDOFF,
+                OidcAuthTransaction.consumed_at.is_(None),
+                OidcAuthTransaction.expires_at > _utcnow(now),
+            )
+            .scalar()
+        )
+
+
 def claim_handoff_transaction(
     db: Session,
     *,

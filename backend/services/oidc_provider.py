@@ -14,6 +14,7 @@ deliberately never read, returned or used for account matching.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import math
 import re
@@ -33,6 +34,8 @@ from joserfc.errors import JoseError
 from services import auth_policy
 from services.auth_policy import OidcConfig
 
+logger = logging.getLogger(__name__)
+
 # Fixed asymmetric allowlist. Provider metadata may narrow this, never widen it.
 ALLOWED_ID_TOKEN_ALGORITHMS = ("RS256", "ES256")
 
@@ -45,6 +48,12 @@ DEFAULT_HTTP_TIMEOUT_SECONDS = 5.0
 METADATA_CACHE_SECONDS = 300.0
 
 OIDC_SCOPE = "openid profile"
+
+# Provider-controlled JSON documents are read with a hard byte cap so a
+# misbehaving or hostile provider cannot make the backend buffer an unbounded
+# response. Discovery metadata is small (a few KiB); UserInfo is a profile.
+MAX_DISCOVERY_BODY_BYTES = 64 * 1024
+MAX_USERINFO_BODY_BYTES = 32 * 1024
 _TOKEN_VALIDATION_LEEWAY_SECONDS = 60
 _LINK_AUTH_TIME_MAX_AGE_SECONDS = 300
 _LINK_AUTH_TIME_FUTURE_SKEW_SECONDS = 60
@@ -95,6 +104,37 @@ def _install_authlib_log_redaction() -> None:
 
 
 _install_authlib_log_redaction()
+
+
+class _ResponseBodyTooLarge(Exception):
+    """A provider response exceeded its fixed byte budget."""
+
+
+async def _read_capped_response(
+    client: httpx2.AsyncClient,
+    url: str,
+    *,
+    limit: int,
+    headers: dict[str, str] | None = None,
+) -> tuple[int, bytes]:
+    """GET ``url`` and return ``(status, body)`` with ``body`` bounded by ``limit``.
+
+    The body is read as a stream, so an absent or lying Content-Length cannot
+    make the process buffer more than ``limit`` bytes. A non-200 response is
+    returned without reading its body.
+    """
+    async with client.stream("GET", url, headers=headers) as response:
+        declared = response.headers.get("content-length", "")
+        if declared.strip().isdigit() and int(declared) > limit:
+            raise _ResponseBodyTooLarge()
+        if response.status_code != 200:
+            return response.status_code, b""
+        buffer = bytearray()
+        async for chunk in response.aiter_bytes():
+            buffer.extend(chunk)
+            if len(buffer) > limit:
+                raise _ResponseBodyTooLarge()
+        return response.status_code, bytes(buffer)
 
 
 class OidcProviderError(RuntimeError):
@@ -278,18 +318,24 @@ class OidcProvider:
                 follow_redirects=False,
                 transport=self._transport,
             ) as client:
-                response = await client.get(self.discovery_url)
+                status, body = await _read_capped_response(
+                    client, self.discovery_url, limit=MAX_DISCOVERY_BODY_BYTES
+                )
+        except _ResponseBodyTooLarge:
+            raise OidcDiscoveryError(
+                "OpenID Connect discovery document is too large"
+            ) from None
         except (httpx2.HTTPError, OSError, ValueError):
             raise OidcDiscoveryError(
                 "Could not load OpenID Connect discovery metadata"
             ) from None
 
-        if response.status_code != 200:
+        if status != 200:
             raise OidcDiscoveryError(
                 "OpenID Connect discovery returned an unexpected status"
             )
         try:
-            metadata = response.json()
+            metadata = json.loads(body)
         except ValueError:
             raise OidcDiscoveryError(
                 "OpenID Connect discovery did not return JSON"
@@ -462,7 +508,10 @@ class OidcProvider:
         # Fetch only after all ID-token checks, including link freshness. The
         # exact ID-token issuer/subject/auth_time remain authoritative; UserInfo
         # may only fill missing display hints after its subject is bound to them.
+        # It is best-effort: a profile-endpoint failure must not block sign-in.
         profile = await self._fetch_userinfo(endpoint, token, identity.subject)
+        if profile is None:
+            return identity
         return OidcIdentity(
             issuer=identity.issuer,
             subject=identity.subject,
@@ -474,7 +523,19 @@ class OidcProvider:
 
     async def _fetch_userinfo(
         self, endpoint: str, token: dict[str, Any], subject: str
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | None:
+        """Return UserInfo display claims, or ``None`` when unavailable.
+
+        UserInfo only fills ``preferred_username``/``name`` when the ID token
+        lacks them, so it is never a login precondition. Transport, HTTP, size
+        and JSON failures, and a response whose subject does not exactly match
+        the validated ID token, are all treated as "no hints": the sign-in
+        continues with the validated ID-token identity (and prompts for a name
+        when nothing usable is left).
+
+        Only an exception class name or a fixed reason code is logged, so a
+        provider error body or token can never reach the logs.
+        """
         access_token = token.get("access_token")
         token_type = token.get("token_type")
         # RFC 6750 bearer syntax excludes whitespace/control/header injection.
@@ -484,7 +545,8 @@ class OidcProvider:
             or not isinstance(token_type, str)
             or token_type.lower() != "bearer"
         ):
-            raise OidcTokenValidationError("UserInfo access token is invalid")
+            logger.warning("OIDC UserInfo skipped (%s)", "invalid_access_token")
+            return None
 
         try:
             # A plain client intentionally has no OAuth client credentials or
@@ -494,17 +556,24 @@ class OidcProvider:
                 follow_redirects=False,
                 transport=self._transport,
             ) as client:
-                response = await client.get(
+                status, body = await _read_capped_response(
+                    client,
                     endpoint,
+                    limit=MAX_USERINFO_BODY_BYTES,
                     headers={"Authorization": f"Bearer {access_token}"},
                 )
-            if response.status_code != 200:
-                raise OidcTokenValidationError("UserInfo request failed")
-            profile = response.json()
+            if status != 200:
+                logger.warning("OIDC UserInfo unavailable (%s)", "http_status")
+                return None
+            profile = json.loads(body)
         except asyncio.CancelledError:
             raise
-        except (httpx2.HTTPError, OSError, ValueError):
-            raise OidcTokenValidationError("UserInfo request failed") from None
+        except _ResponseBodyTooLarge:
+            logger.warning("OIDC UserInfo unavailable (%s)", "body_too_large")
+            return None
+        except (httpx2.HTTPError, OSError, ValueError) as exc:
+            logger.warning("OIDC UserInfo unavailable (%s)", type(exc).__name__)
+            return None
 
         if (
             not isinstance(profile, dict)
@@ -512,7 +581,8 @@ class OidcProvider:
             or profile["sub"] != subject
             or "error" in profile
         ):
-            raise OidcTokenValidationError("UserInfo validation failed")
+            logger.warning("OIDC UserInfo unavailable (%s)", "subject_mismatch")
+            return None
         return profile
 
     async def _validate_id_token(

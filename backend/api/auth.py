@@ -64,6 +64,7 @@ from services.oidc_transactions import (
     decrypted_code_verifier,
     decrypted_nonce,
     generate_transaction_secret,
+    handoff_operation,
     invalidate_identity_transactions,
     invalidate_user_transactions,
     preview_handoff_transaction,
@@ -665,6 +666,18 @@ async def oidc_complete(
 
     current_user = _bearer_user_for_completion(db, token)
     current_user_id = current_user.id if current_user is not None else None
+    if current_user_id is None and request.headers.get("authorization") is not None:
+        # A supplied bearer that does not resolve to an active user is an
+        # authentication failure for a link handoff: tell the client to renew its
+        # session instead of reporting a malformed request. Login handoffs ignore
+        # the header, because their own browser binding is authoritative.
+        if (
+            handoff_operation(
+                db, handoff_secret=handoff_secret, browser_secret=browser_secret
+            )
+            == OPERATION_LINK
+        ):
+            return _oidc_json(401, {"detail": "Authentication required"})
     binding = {
         "handoff_secret": handoff_secret,
         "browser_secret": browser_secret,
@@ -712,6 +725,10 @@ async def oidc_complete(
         user = resolve_identity_user(
             db, transaction.issuer, transaction.subject
         )
+        # The handoff is live at claim time; provisioning below commits
+        # internally, so the deadline is captured now and re-checked before
+        # any JWT is minted (it is never extended).
+        deadline = transaction.expires_at
         if user is None:
             # An identity seen by preview may have been removed after claim.
             # This already-consumed legacy path cannot safely prompt now: fail
@@ -736,6 +753,11 @@ async def oidc_complete(
         # account must never receive an application JWT.
         if not user.is_active:
             return _oidc_json(403, {"detail": "Account is not available"})
+
+        # Never mint a JWT after the one-use deadline, even if slow provisioning
+        # or index contention outlasted the original completion window.
+        if deadline <= datetime.utcnow():
+            return _oidc_json(400, {"detail": "Sign-in could not be completed"})
 
         return _oidc_login_response(user)
 
@@ -817,8 +839,12 @@ def _complete_oidc_with_username(
         return _oidc_json(409, {
             "code": "username_taken", "detail": "Username already taken",
         })
-    except Exception:
+    except Exception as exc:
         db.rollback()
+        # Class name only: exception text could echo a username or SQL.
+        logger.warning(
+            "OIDC username completion failed (%s)", type(exc).__name__
+        )
         return _oidc_json(500, {"detail": "Sign-in failed"})
     # No JWT is minted until the atomic unit is durably committed.
     return _oidc_login_response(user)

@@ -276,7 +276,9 @@ class OidcAuthTransaction(Base):
     # Keyed digest of the one-use handoff secret (handoff phase only).
     handoff_digest = Column(String(64), nullable=True)
     expires_at = Column(DateTime, nullable=False)
-    created_at = Column(DateTime, default=func.now(), nullable=False)
+    # Supplied by the transaction service; no database default, so an insert
+    # without an explicit creation time fails instead of silently using now().
+    created_at = Column(DateTime, nullable=False)
     consumed_at = Column(DateTime, nullable=True)
 
 
