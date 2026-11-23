@@ -537,6 +537,12 @@ class ArtistChecklistTests(unittest.TestCase):
             ["sv10-3_en", "sv10-3_ja"],
         )
 
+    def test_overlong_artist_is_rejected_with_400(self):
+        response = self.client.get(
+            "/api/cards/artist-checklist", params={"artist": "a" * 101}
+        )
+        self.assertEqual(response.status_code, 400, response.text)
+
 
 @unittest.skipUnless(
     API_TEST_DEPS_AVAILABLE,

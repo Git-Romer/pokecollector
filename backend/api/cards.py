@@ -976,7 +976,7 @@ def search_cards(
 
 @router.get("/artist-checklist")
 def artist_checklist(
-    artist: str = Query(..., min_length=1, max_length=100, description="Artist name substring"),
+    artist: str = Query(..., min_length=1, description="Artist name substring"),
     lang: Optional[str] = Query("all", description="Language filter: supported TCGdex language code or 'all'"),
     ownership: Optional[str] = Query(None, description="Ownership filter: 'owned' or 'missing'"),
     page: int = 1,
