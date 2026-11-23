@@ -80,7 +80,9 @@ ownership.
 `cards`, `progress`, `missing`), `sort_order`, `page` and `page_size`, and
 returns one row per artist with `total_count`, `owned_count`, `missing_count`,
 `progress`, `missing_value` and the artist's `languages`. Card identities are
-grouped exactly as in the checklist, so both pages report the same totals.
+grouped exactly as in the checklist, so a single matching artist reports the
+same totals on both pages; a substring that matches several artists is merged
+into one checklist scope but listed as separate directory rows.
 
 Custom cards belong to exactly one user. Owners may publish a card as a shared template, but other users must clone it before using it in collections, wishlists, binders, products, or trades. Clones have independent IDs, metadata, images, and prices. Manual image URLs must use public HTTPS destinations and are fetched through the size-limited image proxy. During upgrade, existing custom cards become shared templates owned by the first-created admin account, while each other referencing user receives one private clone and keeps their existing references.
 
