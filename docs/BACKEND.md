@@ -174,11 +174,14 @@ responses.
 | GET | `/api/github/rescue-donations` | Rescue donation total from `RESCUE_DONATIONS.csv` |
 
 `/api/analytics/species-duplicates` groups the collection by species and keeps only
-species with at least two distinct printings. A printing is a card, not a
-collection row: condition/variant rows of one card add up as one printing with a
-quantity-weighted unit price. Cards mapped to several dex ids count under each
-species. Species sort by printing count, then value; printings sort by value. The
-summary counts each distinct printing once. `/api/pokedex/directory` returns the
+species with at least two distinct printings. A printing is a language-specific
+card row, not an individual collection row: condition/variant rows of one card add
+up as one printing with a quantity-weighted unit price, while the same card in
+English and German counts as two printings. Card-identity completion views such
+as the Pokédex instead group by `tcg_card_id`, so one owned language covers the
+card. Cards mapped to several dex ids count under each species. Species sort by
+printing count, then value; printings sort by value. The summary counts each
+distinct printing once. `/api/pokedex/directory` returns the
 same catalogue order as `/api/pokedex`, without per-user ownership data.
 
 ### Pokédex, Profiles, and Public Sharing
