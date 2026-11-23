@@ -13,6 +13,7 @@ export function invalidateCardState(queryClient, { setId } = {}) {
   queryClient.invalidateQueries({ queryKey: ['dashboard'] })
   queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'card-search' })
   queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'artist-checklist' })
+  queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'artists-index' })
   queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'pokedex' })
   if (setId) {
     queryClient.invalidateQueries({ queryKey: ['set-checklist', setId] })
