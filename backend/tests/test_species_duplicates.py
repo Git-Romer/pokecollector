@@ -27,20 +27,20 @@ class SpeciesDuplicatesTests(unittest.TestCase):
     def tearDown(self):
         self.db.close()
 
-    def _card(self, card_id, name, dex_ids, *, price_market=None, price_trend=None, **kwargs):
+    def _card(self, card_id, name, dex_ids, *, lang="en", price_market=None, price_trend=None, **kwargs):
         card = Card(
             id=card_id, tcg_card_id=card_id.rsplit("_", 1)[0], name=name,
-            lang="en", is_custom=False, dex_ids=dex_ids,
+            lang=lang, is_custom=False, dex_ids=dex_ids,
             price_market=price_market, price_trend=price_trend,
             **kwargs,
         )
         self.db.add(card)
         return card
 
-    def _item(self, card, quantity, variant="Normal"):
+    def _item(self, card, quantity, variant="Normal", *, lang="en", user=None):
         item = CollectionItem(
-            card_id=card.id, user_id=self.user.id, quantity=quantity,
-            lang="en", variant=variant,
+            card_id=card.id, user_id=(user or self.user).id, quantity=quantity,
+            lang=lang, variant=variant,
         )
         self.db.add(item)
         return item
@@ -110,6 +110,86 @@ class SpeciesDuplicatesTests(unittest.TestCase):
 
         self.assertEqual([row["dex_id"] for row in result["species"]], [25])
         self.assertEqual(result["summary"]["copies"], 2)
+
+    def test_rows_of_another_user_do_not_count(self):
+        first = self._card("base-25_en", "Pikachu", [25], price_market=2.0)
+        second = self._card("sv01-44_en", "Pikachu", [25], price_market=3.0)
+        self._item(first, 1)
+        self._item(second, 1)
+        other = User(username="misty", hashed_password="x", role="user", is_active=True)
+        self.db.add(other)
+        self.db.flush()
+        foreign = self._card("swsh-1_en", "Pikachu", [25], price_market=9.0)
+        self._item(foreign, 3, user=other)
+        self.db.commit()
+
+        result = aggregate_species_duplicates(self.db, self.user.id)
+
+        species = self._species(result, 25)
+        self.assertEqual(species["printing_count"], 2)
+        self.assertEqual(
+            {row["card_id"] for row in species["printings"]}, {first.id, second.id},
+        )
+        self.assertEqual(result["summary"]["copies"], 2)
+
+    def test_card_hidden_by_language_visibility_does_not_count(self):
+        first = self._card("base-25_en", "Pikachu", [25], price_market=2.0)
+        second = self._card("sv01-44_en", "Pikachu", [25], price_market=3.0)
+        # French is outside tcgdex_sync_languages; with no set_id it cannot be
+        # pinned into visibility by ownership, so its rows stay hidden.
+        hidden = self._card("base-25_fr", "Pikachu", [25], lang="fr", price_market=5.0)
+        self._item(first, 1)
+        self._item(second, 1)
+        self._item(hidden, 4, lang="fr")
+        self.db.commit()
+
+        result = aggregate_species_duplicates(self.db, self.user.id)
+
+        species = self._species(result, 25)
+        self.assertEqual(species["printing_count"], 2)
+        self.assertEqual(
+            {row["card_id"] for row in species["printings"]}, {first.id, second.id},
+        )
+        self.assertEqual(result["summary"]["copies"], 2)
+
+    def test_same_card_in_two_languages_counts_as_two_printings(self):
+        english = self._card("base-25_en", "Pikachu", [25], lang="en", price_market=2.0)
+        german = self._card("base-25_de", "Pikachu", [25], lang="de", price_market=4.0)
+        self._item(english, 1, lang="en")
+        self._item(german, 1, lang="de")
+        self.db.commit()
+
+        result = aggregate_species_duplicates(self.db, self.user.id)
+
+        species = self._species(result, 25)
+        # A printing is a language-specific collection row, so the same card in
+        # EN and DE counts twice here. Card-identity completion views such as the
+        # artist checklist group by tcg_card_id instead, where one owned language
+        # covers the card.
+        self.assertEqual(english.tcg_card_id, german.tcg_card_id)
+        self.assertEqual(species["printing_count"], 2)
+        self.assertEqual(
+            {row["card_id"] for row in species["printings"]}, {english.id, german.id},
+        )
+        self.assertEqual(result["summary"]["printings"], 2)
+
+    def test_equal_count_and_value_rows_have_stable_order(self):
+        # Insert the higher dex id first: final tie-breakers must still produce
+        # dex order regardless of row order.
+        pikachu_a = self._card("sv01-44_en", "Pikachu", [25], price_market=5.0)
+        pikachu_b = self._card("base-25_en", "Pikachu", [25], price_market=5.0)
+        charizard_a = self._card("sv03-9_en", "Charizard", [6], price_market=5.0)
+        charizard_b = self._card("base-4_en", "Charizard", [6], price_market=5.0)
+        for card in (pikachu_a, pikachu_b, charizard_a, charizard_b):
+            self._item(card, 1)
+        self.db.commit()
+
+        result = aggregate_species_duplicates(self.db, self.user.id)
+
+        self.assertEqual([row["dex_id"] for row in result["species"]], [6, 25])
+        for row in result["species"]:
+            card_ids = [printing["card_id"] for printing in row["printings"]]
+            self.assertEqual(card_ids, sorted(card_ids))
 
     def test_species_directory_covers_the_national_dex(self):
         directory = species_directory()
