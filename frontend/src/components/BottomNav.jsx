@@ -4,7 +4,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   LayoutDashboard, Search, Library, Grid2X2, MoreHorizontal,
-  Heart, BookOpen, BarChart3, ShoppingBag, ArrowRightLeft, Settings, X, Zap, LogOut, ListOrdered
+  Heart, BookOpen, BarChart3, ShoppingBag, ArrowRightLeft, Settings, X, Zap, LogOut, ListOrdered, Palette
 } from 'lucide-react'
 import { getCustomMatches } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
@@ -32,6 +32,7 @@ export default function BottomNav() {
 
   const moreNav = [
     { to: '/pokedex',    icon: ListOrdered, label: t('nav.pokedex') },
+    { to: '/artists',    icon: Palette,    label: t('nav.artists') },
     { to: '/wishlist',   icon: Heart,      label: t('nav.wishlist') },
     { to: '/binders',    icon: BookOpen,   label: t('nav.binders') },
     { to: '/analytics',  icon: BarChart3,  label: t('nav.analytics') },
