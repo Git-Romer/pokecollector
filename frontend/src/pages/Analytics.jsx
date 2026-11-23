@@ -285,6 +285,9 @@ export default function Analytics() {
     rarity: printing.rarity,
     lang: printing.lang,
     images_small: printing.images_small,
+    // The endpoint returns one weighted unit price; expose it as the market
+    // price so the shared dialog's Prices tab has something to show.
+    price_market: printing.price,
   })
 
   const openPrinting = (printing) => {
