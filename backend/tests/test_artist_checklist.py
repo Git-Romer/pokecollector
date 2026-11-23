@@ -36,6 +36,7 @@ class ArtistChecklistTests(unittest.TestCase):
     - custom-1_en: user custom card, always excluded.
     - sv6-20_en: artist "Éclair Baron" for accent-insensitive matching.
     - sv10-1: en/de printings priced only in de (price fallback).
+    - sv10-3: en/ja printings without a tcg_card_id (stripped-id grouping).
     """
 
     def setUp(self):
@@ -240,6 +241,28 @@ class ArtistChecklistTests(unittest.TestCase):
                 lang="de",
                 is_custom=False,
                 price_market=7.5,
+            ),
+            Card(
+                id="sv10-3_en",
+                tcg_card_id=None,
+                name="No TCGdex Id",
+                set_id="sv6",
+                number="3",
+                artist="Suffix Artist",
+                lang="en",
+                is_custom=False,
+                price_market=1.25,
+            ),
+            Card(
+                id="sv10-3_ja",
+                tcg_card_id=None,
+                name="No TCGdex Id",
+                set_id="sv6",
+                number="3",
+                artist="Suffix Artist",
+                lang="ja",
+                is_custom=False,
+                price_market=2.0,
             ),
         ])
         self.db.commit()
@@ -501,6 +524,18 @@ class ArtistChecklistTests(unittest.TestCase):
         self.assertEqual(payload["owned_count"], 0)
         # The display-language (en) printing has no price, but de does.
         self.assertEqual(payload["missing_value"], 7.5)
+
+    def test_card_without_tcg_card_id_groups_by_stripped_id(self):
+        payload = self._checklist(artist="Suffix Artist", lang="all")
+
+        self.assertEqual(payload["total_count"], 1)
+        card = payload["cards"][0]
+        self.assertIsNone(card["tcg_card_id"])
+        self.assertEqual(card["id"], "sv10-3_en")
+        self.assertEqual(
+            [printing["id"] for printing in card["printings"]],
+            ["sv10-3_en", "sv10-3_ja"],
+        )
 
 
 @unittest.skipUnless(
