@@ -1305,11 +1305,16 @@ export default function Collection() {
     for (const entry of speciesDirectory?.species || []) map.set(Number(entry.dex_id), entry)
     return map
   }, [speciesDirectory])
-  const speciesGrouping = useMemo(() => groupCollectionBySpecies(filtered, {
-    speciesByDexId,
-    language: speciesLanguage,
-    itemValue: (item) => getEffectivePrice(item.card, item.variant) * (Number(item.quantity) || 0),
-  }), [filtered, speciesByDexId, speciesLanguage, pricePrimaryField])
+  const speciesGrouping = useMemo(() => {
+    // Grouping is opt-in; skip the whole-set pass while it is off, but keep the
+    // same shape so callers do not need a guard.
+    if (groupBy !== 'species') return { groups: [], other: { items: [], copies: 0, totalValue: 0 } }
+    return groupCollectionBySpecies(filtered, {
+      speciesByDexId,
+      language: speciesLanguage,
+      itemValue: (item) => getEffectivePrice(item.card, item.variant) * (Number(item.quantity) || 0),
+    })
+  }, [groupBy, filtered, speciesByDexId, speciesLanguage, pricePrimaryField])
   const [openSpeciesGroups, setOpenSpeciesGroups] = useState(() => new Set())
   const [openOtherCards, setOpenOtherCards] = useState(true)
   const speciesGroupsInitialised = useRef(false)
