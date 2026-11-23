@@ -35,6 +35,7 @@ class ArtistChecklistTests(unittest.TestCase):
     - sv8-99_fr: hidden (fr is not a configured language and no fr pair is pinned).
     - custom-1_en: user custom card, always excluded.
     - sv6-20_en: artist "Éclair Baron" for accent-insensitive matching.
+    - sv10-1: en/de printings priced only in de (price fallback).
     """
 
     def setUp(self):
@@ -217,6 +218,28 @@ class ArtistChecklistTests(unittest.TestCase):
                 lang="en",
                 is_custom=False,
                 price_market=0.75,
+            ),
+            Card(
+                id="sv10-1_en",
+                tcg_card_id="sv10-1",
+                name="Price Fallback",
+                set_id="sv6",
+                number="1",
+                artist="Fallback Artist",
+                lang="en",
+                is_custom=False,
+                price_market=None,
+            ),
+            Card(
+                id="sv10-1_de",
+                tcg_card_id="sv10-1",
+                name="Price Fallback",
+                set_id="sv6",
+                number="1",
+                artist="Fallback Artist",
+                lang="de",
+                is_custom=False,
+                price_market=7.5,
             ),
         ])
         self.db.commit()
@@ -470,6 +493,14 @@ class ArtistChecklistTests(unittest.TestCase):
         self.assertNotIn("custom-1_en", visible_ids)
         self.assertNotIn("sv8-99_fr", visible_ids)
         self.assertEqual(payload["total_count"], 6)
+
+    def test_missing_value_falls_back_to_a_priced_printing(self):
+        payload = self._checklist(artist="Fallback Artist", lang="all")
+
+        self.assertEqual(payload["total_count"], 1)
+        self.assertEqual(payload["owned_count"], 0)
+        # The display-language (en) printing has no price, but de does.
+        self.assertEqual(payload["missing_value"], 7.5)
 
 
 @unittest.skipUnless(

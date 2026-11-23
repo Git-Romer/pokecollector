@@ -295,16 +295,21 @@ def _pick_artist_representative(
 def _artist_index_representative_price(
     printings: dict[str, float | None], display_lang: str
 ) -> float | None:
-    """Market price of the printing that represents a card identity.
+    """Market price of the first printing that has one.
 
     Mirrors the artist checklist: display language, then ``en``, then ``ja``,
-    then any language in canonical order.
+    then any language in canonical order. Printings without a price are
+    skipped so an unpriced preferred printing does not hide a priced one.
     """
     for preferred in (display_lang, "en", "ja"):
-        if preferred in printings:
+        if printings.get(preferred) is not None:
             return printings[preferred]
-    fallback_lang = min(printings, key=lambda code: (_artist_lang_rank(code), code))
-    return printings[fallback_lang]
+    fallback_lang = min(
+        (code for code in printings if printings[code] is not None),
+        key=lambda code: (_artist_lang_rank(code), code),
+        default=None,
+    )
+    return printings[fallback_lang] if fallback_lang is not None else None
 
 
 def _empty_artist_index(page: int, page_size: int) -> dict:
@@ -1146,15 +1151,33 @@ def artist_checklist(
         owned_count = sum(1 for group in scope if group["owned"])
         list_count = len(filtered)
         progress = round(owned_count / total_count * 100, 1) if total_count else 0
-        missing_value = round(
-            sum(
-                float(group["representative"]["price_market"])
-                for group in scope
-                if not group["owned"]
-                and group["representative"]["price_market"] is not None
-            ),
-            2,
-        )
+        def representative_price(group: dict) -> float | None:
+            """First priced printing, preferring the display language.
+
+            The representative printing can lack a price while another
+            language's printing has one; use that price rather than treating
+            the whole card as priceless.
+            """
+            printings = group["printings"]
+            for preferred in (display_lang, "en", "ja"):
+                for printing in printings:
+                    if printing["lang"] == preferred and printing["price_market"] is not None:
+                        return printing["price_market"]
+            for printing in sorted(
+                printings, key=lambda item: (_artist_lang_rank(item["lang"]), item["id"])
+            ):
+                if printing["price_market"] is not None:
+                    return printing["price_market"]
+            return None
+
+        missing_value = 0.0
+        for group in scope:
+            if group["owned"]:
+                continue
+            price = representative_price(group)
+            if price is not None:
+                missing_value += float(price)
+        missing_value = round(missing_value, 2)
         languages = sorted({
             printing["lang"]
             for group in scope

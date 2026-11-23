@@ -30,8 +30,9 @@ class ArtistIndexTests(unittest.TestCase):
       sv8-45 ja, sv6-7 en (owned by another user only) and sv7-5 en.
     - 5ban Graphics: sv9-1 en (owned), sv9-2 en, sv9-3 en with no price.
     - Éclair Baron: sv6-20 en, for accent-insensitive matching.
-    - Alpha Artist and Zeta Artist: one unowned en card each, so the
-      one-card/0-progress ties exercise stable ordering.
+    - Alpha Artist: one unowned card priced only in de (its en printing has no
+      price); the one-card/0-progress ties exercise stable ordering.
+    - Zeta Artist: one unowned en card, so ties stay stable.
     - sv8-99_fr: hidden (fr is not configured and no fr set pair is pinned).
     - custom-1_en: user custom card, always excluded.
     """
@@ -181,7 +182,18 @@ class ArtistIndexTests(unittest.TestCase):
                 artist="Alpha Artist",
                 lang="en",
                 is_custom=False,
-                price_market=1.0,
+                price_market=None,
+            ),
+            Card(
+                id="sv9-10_de",
+                tcg_card_id="sv9-10",
+                name="Alpha Card",
+                set_id="sv9",
+                number="10",
+                artist="Alpha Artist",
+                lang="de",
+                is_custom=False,
+                price_market=1.5,
             ),
             Card(
                 id="sv9-11_en",
@@ -293,6 +305,9 @@ class ArtistIndexTests(unittest.TestCase):
             artists["Éclair Baron"]["missing_value"], 0.75
         )
 
+        # Alpha's en printing has no price; the de printing must be used.
+        self.assertEqual(artists["Alpha Artist"]["missing_value"], 1.5)
+
     def test_ownership_is_scoped_to_user_and_language(self):
         # sv6-7 is owned only by the other user, so Arita stays at 1 owned.
         arita = self._by_name(self._index(lang="all"))["Mitsuhiro Arita"]
@@ -311,10 +326,14 @@ class ArtistIndexTests(unittest.TestCase):
         self.assertEqual(arita_ja["missing_value"], 7.0)
 
         de = self._index(lang="de")
-        self.assertEqual([artist["name"] for artist in de["artists"]], ["Mitsuhiro Arita"])
-        self.assertEqual(de["artists"][0]["total_count"], 1)
-        self.assertEqual(de["artists"][0]["owned_count"], 0)
-        self.assertEqual(de["artists"][0]["missing_value"], 12.0)
+        self.assertEqual(
+            [artist["name"] for artist in de["artists"]],
+            ["Alpha Artist", "Mitsuhiro Arita"],
+        )
+        arita_de = self._by_name(de)["Mitsuhiro Arita"]
+        self.assertEqual(arita_de["total_count"], 1)
+        self.assertEqual(arita_de["owned_count"], 0)
+        self.assertEqual(arita_de["missing_value"], 12.0)
 
     def test_query_is_case_and_accent_insensitive(self):
         self.assertEqual(self._names(q="ARITA"), ["Mitsuhiro Arita"])
