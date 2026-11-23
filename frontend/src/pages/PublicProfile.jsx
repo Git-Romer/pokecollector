@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { useLocation, useParams, Link } from 'react-router-dom'
 import { Layers3, PackageCheck } from 'lucide-react'
 import { getPublicProfile } from '../api/publicClient'
-import { formatEur } from '../utils/formatEur'
 import { formatBinderCountSummary } from '../utils/binderCounts'
 import { useSettings } from '../contexts/SettingsContext'
 import PublicProfileShell from '../components/public/PublicProfileShell'
@@ -12,7 +11,7 @@ export default function PublicProfile() {
   const location = useLocation()
   const [profile, setProfile] = useState(null)
   const [error, setError] = useState(null)
-  const { t } = useSettings()
+  const { t, formatPrice } = useSettings()
 
   useEffect(() => {
     let cancelled = false
@@ -58,7 +57,7 @@ export default function PublicProfile() {
               <div className="font-semibold">{binder.name}</div>
               <div className="mt-1 text-sm text-text-secondary">
                 {formatBinderCountSummary(binder.card_count, binder.unique_card_count, t)}
-                {binder.total_value != null ? ` · ${formatEur(binder.total_value)}` : ''}
+                {binder.total_value != null ? ` · ${formatPrice(binder.total_value)}` : ''}
               </div>
             </Link>
           ))}

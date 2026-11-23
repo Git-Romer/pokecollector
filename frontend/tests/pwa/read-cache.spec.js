@@ -44,7 +44,7 @@ async function mockApi(context, state) {
     if (path === '/api/auth/mode') return route.fulfill({ json: { multi_user: true, locked: false } })
     if (path === '/api/auth/me') return route.fulfill({ json: state.user })
     if (path === '/api/collection/') return route.fulfill({ json: state.user.id === ada.id ? collection : [] })
-    if (path === '/api/settings/') return route.fulfill({ json: { language: 'en', currency: 'EUR' } })
+    if (path === '/api/settings/') return route.fulfill({ json: { language: 'en', currency: 'EUR', offline_collection_enabled: 'true' } })
     if (path === '/api/settings/exchange-rate') return route.fulfill({ json: { rate: 1 } })
     if (path === '/api/settings/tcgdex-filter-languages') return route.fulfill({ json: ['en'] })
     if (path === '/api/dashboard/') return route.fulfill({ json: { recent_additions: [], top_cards: [] } })

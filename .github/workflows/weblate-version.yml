@@ -1,0 +1,45 @@
+name: Weblate Version Bump
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# No repository write privileges for the built-in token. A dedicated token is
+# supplied only to the trusted metadata writer so its commit starts fresh CI.
+permissions:
+  contents: read
+
+concurrency:
+  group: weblate-version-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  weblate-version:
+    if: >-
+      github.repository == 'Git-Romer/pokecollector' &&
+      (github.event_name != 'pull_request_target' ||
+       (github.event.pull_request.head.repo.full_name == github.repository &&
+        github.event.pull_request.head.ref == 'weblate-translations'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout trusted main only
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git -c credential.helper= -c 'credential.helper=!gh auth git-credential' fetch --no-tags origin refs/heads/main
+          git checkout --detach FETCH_HEAD
+
+      - name: Add or refresh the Weblate patch version
+        env:
+          GH_TOKEN: ${{ secrets.WEBLATE_VERSION_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: node scripts/weblate-version-bot.mjs

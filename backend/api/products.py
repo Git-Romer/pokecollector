@@ -1,10 +1,12 @@
 import datetime
 import logging
 import uuid
-from typing import List, Optional
+from typing import Annotated, List, Optional
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from services.product_card_unlink import unlink_confirmed_product_cards, product_link_blockers
+from schemas import BulkProductUnlinkRequest, BulkProductUnlinkResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
@@ -809,6 +811,14 @@ def link_collection_items_to_product(
     return _refresh_product_response(db, current_user, product, normalize_price_field(price_field))
 
 
+@router.post('/cards/bulk-unlink', response_model=BulkProductUnlinkResponse)
+def bulk_unlink_product_cards(
+    request: BulkProductUnlinkRequest,
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    return unlink_confirmed_product_cards(db, current_user, request)
+
+
 @router.delete("/{product_id}/cards/{product_card_id}", response_model=ProductPurchaseResponse)
 def unlink_product_card(
     product_id: int,
@@ -816,8 +826,12 @@ def unlink_product_card(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
     price_field: str = Query(default="price_trend", description="Cardmarket price field for linked-card valuation"),
+    expected_collection_item_id: Annotated[Optional[int], Query(gt=0, description="Confirmed collection entry; pair with expected_active_quantity")] = None,
+    expected_active_quantity: Annotated[Optional[int], Query(ge=1, le=999, description="Confirmed active copies; a changed link returns 409")] = None,
 ):
     """Remove an active product-card link without touching collection inventory."""
+    if (expected_collection_item_id is None) != (expected_active_quantity is None):
+        raise HTTPException(status_code=422, detail="Provide both expected_collection_item_id and expected_active_quantity")
     product = _get_product_or_404(db, current_user, product_id, lock=True)
     # Serialize the history check with sales and trade-outs. Without the row
     # lock, an unlink can read the pre-trade state and delete this provenance
@@ -829,8 +843,11 @@ def unlink_product_card(
     ).with_for_update(of=ProductCard).first()
     if not product_card:
         raise HTTPException(status_code=404, detail="Linked product card not found")
-    if product_card.sold_quantity > 0 or product_card.ledger_entries:
-        raise HTTPException(status_code=409, detail="Cannot unlink a card that already has sale history")
+    blockers = product_link_blockers(product_card, expected_collection_item_id, expected_active_quantity)
+    if blockers:
+        if blockers[0]['code'] == 'product_link_changed':
+            raise HTTPException(status_code=409, detail="Product link changed. Review the updated link before trying again.")
+        raise HTTPException(status_code=409, detail="Cannot unlink a card that has sale or trade history")
 
     db.delete(product_card)
     db.commit()

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Trash2, Edit2, Check, X, Heart, Filter, SortAsc, ChevronUp, ChevronDown, Library, BookOpen, Minus, Plus } from 'lucide-react'
 import { getWishlist, removeFromWishlist, updateWishlistItem } from '../api/client'
@@ -22,20 +22,46 @@ const WISHLIST_FILTER_DEFINITIONS = {
   filterHasAlert: { param: 'has_alert', default: false, type: 'boolean' },
 }
 
-function WishlistItemEditor({ item, onDone }) {
-  const [quantity, setQuantity] = useState(item.quantity || 1)
-  const [above, setAbove] = useState(item.price_alert_above || '')
-  const [below, setBelow] = useState(item.price_alert_below || '')
-  const { t } = useSettings()
+export function shouldSyncWishlistAlertThresholds(initializedKey, nextKey, hasDirtyDraft) {
+  return initializedKey !== nextKey || !hasDirtyDraft
+}
+
+export function WishlistItemEditor({ item, onDone }) {
+  const { t, currency, currencySymbol, exchangeRate, exchangeRateReady, loaded: settingsLoaded, convertEurToDisplay, convertDisplayToEur } = useSettings()
   const queryClient = useQueryClient()
+  const thresholdKey = `${item.id}:${currency}:${exchangeRate}`
+  const canInitializeThresholds = settingsLoaded && exchangeRateReady
+  const toInputValue = useCallback(value => (
+    value == null ? '' : convertEurToDisplay(value).toFixed(2)
+  ), [convertEurToDisplay])
+  const [quantity, setQuantity] = useState(item.quantity || 1)
+  const [above, setAbove] = useState(() => canInitializeThresholds ? toInputValue(item.price_alert_above) : '')
+  const [below, setBelow] = useState(() => canInitializeThresholds ? toInputValue(item.price_alert_below) : '')
+  const [initializedThresholdKey, setInitializedThresholdKey] = useState(() => (
+    canInitializeThresholds ? thresholdKey : null
+  ))
+  const [thresholdsDirty, setThresholdsDirty] = useState(false)
+  const thresholdValuesReady = canInitializeThresholds && initializedThresholdKey === thresholdKey
 
   const normalizedQuantity = Math.max(1, Math.min(99, parseInt(quantity, 10) || 1))
+
+  useEffect(() => {
+    if (!canInitializeThresholds) {
+      setInitializedThresholdKey(null)
+      return
+    }
+    if (!shouldSyncWishlistAlertThresholds(initializedThresholdKey, thresholdKey, thresholdsDirty)) return
+    setAbove(toInputValue(item.price_alert_above))
+    setBelow(toInputValue(item.price_alert_below))
+    setInitializedThresholdKey(thresholdKey)
+    setThresholdsDirty(false)
+  }, [item.price_alert_above, item.price_alert_below, thresholdKey, canInitializeThresholds, toInputValue, initializedThresholdKey, thresholdsDirty])
 
   const updateMutation = useMutation({
     mutationFn: () => updateWishlistItem(item.id, {
       quantity: normalizedQuantity,
-      price_alert_above: above ? parseFloat(above) : null,
-      price_alert_below: below ? parseFloat(below) : null,
+      price_alert_above: above ? convertDisplayToEur(parseFloat(above)) : null,
+      price_alert_below: below ? convertDisplayToEur(parseFloat(below)) : null,
     }),
     onSuccess: () => {
       toast.success(t('wishlist.updated'))
@@ -55,17 +81,19 @@ function WishlistItemEditor({ item, onDone }) {
       </div>
       <div className="flex items-center gap-1">
         <span className="text-xs text-text-muted">↑</span>
+        <span className="text-xs text-text-muted">{currencySymbol}</span>
         <input type="number" step="0.01" placeholder={t('wishlist.aboveLabel')}
           value={above}
-          onChange={(e) => setAbove(e.target.value)} className="input w-20 py-1 text-xs" />
+          onChange={(e) => { setAbove(e.target.value); setThresholdsDirty(true) }} disabled={!thresholdValuesReady} className="input w-20 py-1 text-xs" />
       </div>
       <div className="flex items-center gap-1">
         <span className="text-xs text-text-muted">↓</span>
+        <span className="text-xs text-text-muted">{currencySymbol}</span>
         <input type="number" step="0.01" placeholder={t('wishlist.belowLabel')}
           value={below}
-          onChange={(e) => setBelow(e.target.value)} className="input w-20 py-1 text-xs" />
+          onChange={(e) => { setBelow(e.target.value); setThresholdsDirty(true) }} disabled={!thresholdValuesReady} className="input w-20 py-1 text-xs" />
       </div>
-      <button onClick={() => updateMutation.mutate()} className="text-green hover:text-green/80">
+      <button onClick={() => updateMutation.mutate()} disabled={!thresholdValuesReady} className="text-green hover:text-green/80 disabled:opacity-50">
         <Check size={14} />
       </button>
       <button onClick={onDone} className="text-text-muted hover:text-text-primary">

@@ -213,7 +213,7 @@ def build_price_alert_payload(card_name: str) -> str:
     name = (card_name or "").strip() or "Card"
     name = name[:120]
     while True:
-        payload = _encode_payload("PokéCollector", f"{name} price alert", ALERT_NAVIGATE_PATH)
+        payload = _encode_payload("Wishlist price alert", name, ALERT_NAVIGATE_PATH)
         if len(payload.encode("utf-8")) <= MAX_PAYLOAD_BYTES or len(name) <= 1:
             return payload
         name = name[: max(1, len(name) // 2)]
@@ -286,7 +286,7 @@ def send_to_user(db: Session, user_id: int, payload: dict | str) -> dict:
 
 
 def send_test(db: Session, user_id: int) -> dict:
-    payload = _encode_payload("PokéCollector", "Test notification", ALERT_NAVIGATE_PATH)
+    payload = _encode_payload("Test notification", "Notifications are working on this device.", ALERT_NAVIGATE_PATH)
     return send_to_user(db, user_id, payload)
 
 

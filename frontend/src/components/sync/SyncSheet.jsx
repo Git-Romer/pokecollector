@@ -227,7 +227,7 @@ export function SyncItemList() {
 }
 
 /** Storage usage, persistence state and the honest "only copy" wording (D12). */
-export function StorageSummary({ showSafari = true }) {
+export function StorageSummary({ showSafari = true, showTitle = true }) {
   const { t } = useSettings()
   const { outbox, items } = useOutbox()
   const [info, setInfo] = useState(null)
@@ -243,14 +243,18 @@ export function StorageSummary({ showSafari = true }) {
   const known = info && (info.usage !== null || info.persisted !== null)
   return (
     <div className="space-y-2 text-xs text-text-secondary">
-      <p className="text-sm font-medium text-text-primary">{t('sync.storageTitle')}</p>
+      {showTitle && <p className="text-sm font-medium text-text-primary">{t('sync.storageTitle')}</p>}
+      {info && <p>{`${t('sync.storageUsed')}: ${megabytes(info.photoBytes)} MB`}</p>}
       {known ? (
         <>
           {info.usage !== null && (
-            <p>
-              {`${t('sync.storageUsed')}: ${megabytes(info.photoBytes)} MB`}
-              {info.quota ? ` (${formatSize(info.usage)} / ${formatSize(info.quota)})` : ''}
-            </p>
+            <p>{`${t('sync.storageTotalUsed')}: ${formatSize(info.usage)}`}</p>
+          )}
+          {info.quota != null && (
+            <>
+              <p>{`${t('sync.storageQuota')}: ${formatSize(info.quota)}`}</p>
+              <p className="text-text-muted">{t('sync.storageQuotaHint')}</p>
+            </>
           )}
           {info.persisted !== null && (
             <p className="flex items-center gap-1.5">

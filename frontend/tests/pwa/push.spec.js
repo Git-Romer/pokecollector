@@ -15,6 +15,10 @@ async function mockApi(page, pushRequests) {
   await page.route(url => url.pathname.startsWith('/api/'), route => {
     const path = new URL(route.request().url()).pathname
     if (path.startsWith('/api/push/')) pushRequests.push(`${route.request().method()} ${path}`)
+    if (path === '/api/health') return route.fulfill({ json: {
+      status: 'ok', service: 'pokemon-tcg-collection', version: '1.57.9',
+      api_level: 1, features: ['idempotency-v1'],
+    } })
     if (path === '/api/auth/mode') return route.fulfill({ json: { multi_user: false, locked: false } })
     if (path === '/api/auth/me') return route.fulfill({ json: admin })
     if (path === '/api/settings/') return route.fulfill({ json: { language: 'en', currency: 'EUR' } })
@@ -28,7 +32,7 @@ async function mockApi(page, pushRequests) {
 
 async function openNotifications(page) {
   await page.goto('/settings')
-  await page.waitForFunction(async () => Boolean(await navigator.serviceWorker.getRegistration()), null, { timeout: 15000 })
+  await expect.poll(() => page.evaluate(async () => Boolean(await navigator.serviceWorker.getRegistration())), { timeout: 15000 }).toBe(true)
   await page.evaluate(() => navigator.serviceWorker.ready)
   await page.getByRole('button', { name: 'Notifications', exact: true }).click()
 }

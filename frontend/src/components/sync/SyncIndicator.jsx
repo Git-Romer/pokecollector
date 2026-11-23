@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, Clock3, CloudOff, Loader2 } from 'lucide-react'
+import { AlertTriangle, Clock3, CloudOff, Loader2, RefreshCw } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { useSettings } from '../../contexts/SettingsContext'
 import { useOffline } from '../../offline/useOffline'
 import { useOutbox } from '../../offline/useOutbox'
-import SyncSheet from './SyncSheet'
+
 
 function describe(snapshot, offline, t) {
   const { items, counts, engine } = snapshot
@@ -34,16 +35,17 @@ function useDebounced(value, delay) {
   return debounced
 }
 
-/** Floating status button, mounted once in Layout. Hidden when nothing waits and the server is reachable. */
+/** Persistent Sync center entry, with pending/failed/offline status when available. */
 export default function SyncIndicator({ belowNav = false }) {
   const { t } = useSettings()
+  const navigate = useNavigate()
   const snapshot = useOutbox()
   const offline = useOffline()
-  const [open, setOpen] = useState(false)
-  const state = snapshot.enabled ? describe(snapshot, offline, t) : null
+  const state = (snapshot.enabled ? describe(snapshot, offline, t) : null) || {
+    kind: 'idle', Icon: RefreshCw, count: 0, label: t('sync.centerTitle'), tone: 'text-text-secondary',
+  }
   const announcement = useDebounced(state?.label ?? '', 1000)
 
-  if (!snapshot.enabled) return null
 
   return (
     <>
@@ -54,8 +56,8 @@ export default function SyncIndicator({ belowNav = false }) {
           data-testid="sync-indicator"
           data-state={state.kind}
           aria-label={state.label}
-          aria-haspopup="dialog"
-          onClick={() => setOpen(true)}
+          title={t('sync.centerTitle')}
+          onClick={() => navigate('/offline')}
           className={`fixed right-3 ${belowNav ? 'top-[calc(max(1.25rem,env(safe-area-inset-top))_+_2.75rem)]' : 'top-[max(0.5rem,env(safe-area-inset-top))]'} z-[45] inline-flex h-10 items-center gap-1.5 rounded-full border border-border bg-card px-3 text-xs font-medium shadow-lg`}
         >
           <state.Icon
@@ -68,7 +70,7 @@ export default function SyncIndicator({ belowNav = false }) {
           )}
         </button>
       )}
-      {open && <SyncSheet isOpen onClose={() => setOpen(false)} />}
+
     </>
   )
 }

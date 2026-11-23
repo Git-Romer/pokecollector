@@ -27,18 +27,24 @@ function urlBase64ToUint8Array(value) {
   return Uint8Array.from(raw, char => char.charCodeAt(0))
 }
 
-async function readyRegistration() {
+async function bounded(operation, timeoutMs = READY_TIMEOUT_MS) {
+  let timer
   const timeout = new Promise((_, reject) => {
-    setTimeout(() => reject(new Error('service worker not ready')), READY_TIMEOUT_MS)
+    timer = setTimeout(() => reject(new Error('push operation timed out')), timeoutMs)
   })
-  return Promise.race([navigator.serviceWorker.ready, timeout])
+  try { return await Promise.race([operation, timeout]) }
+  finally { clearTimeout(timer) }
+}
+
+async function readyRegistration() {
+  return bounded(navigator.serviceWorker.ready)
 }
 
 export async function getCurrentSubscription() {
   if (!pushSupported()) return null
   try {
     const registration = await readyRegistration()
-    return await registration.pushManager.getSubscription()
+    return await bounded(registration.pushManager.getSubscription())
   } catch {
     return null
   }
@@ -61,13 +67,13 @@ export async function enablePush() {
     const permission = await Notification.requestPermission()
     if (permission !== 'granted') return { ok: false, reason: 'denied' }
     const registration = await readyRegistration()
-    let subscription = await registration.pushManager.getSubscription()
+    let subscription = await bounded(registration.pushManager.getSubscription())
     if (!subscription) {
       const { public_key: publicKey } = await getVapidPublicKey()
-      subscription = await registration.pushManager.subscribe({
+      subscription = await bounded(registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(publicKey),
-      })
+      }), 20000)
     }
     await subscribePush(toPayload(subscription))
     return { ok: true }
@@ -82,7 +88,7 @@ export async function disablePush() {
   const { endpoint } = subscription
   try {
     await unsubscribePush(endpoint)
-    await subscription.unsubscribe()
+    await bounded(subscription.unsubscribe())
     return { ok: true }
   } catch {
     return { ok: false, reason: 'failed' }

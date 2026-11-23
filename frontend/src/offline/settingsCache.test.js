@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   SETTINGS_CACHE_KEY,
+  stageOfflineCollectionPreference,
+  pendingOfflineCollectionPreference,
+  acknowledgeOfflineCollectionPreference,
   clearSettingsCache,
   loadSettingsWithCache,
   readCachedRate,
@@ -27,6 +30,30 @@ const broken = {
 }
 const gbp = { language: 'en', currency: 'GBP', price_primary: 'avg' }
 const offline = () => Promise.reject(new TypeError('Failed to fetch'))
+
+
+describe('offline collection preference', () => {
+  it('keeps a durable per-account choice over stale server settings until acknowledged', async () => {
+    const storage = memoryStorage()
+    const options = { storage }
+    writeCachedSettings(1, { currency: 'GBP', offline_collection_enabled: 'true' }, options)
+    expect(stageOfflineCollectionPreference(1, 'false', options)).toBe(true)
+    const pending = pendingOfflineCollectionPreference(1, options)
+    expect(pending.value).toBe('false')
+    expect(pendingOfflineCollectionPreference(2, options)).toBeNull()
+    expect(readCachedSettings(1, options).offline_collection_enabled).toBe('false')
+    expect((await loadSettingsWithCache(1, async () => ({ currency: 'GBP', offline_collection_enabled: 'true' }), options)).offline_collection_enabled).toBe('false')
+    expect(stageOfflineCollectionPreference(1, 'true', options)).toBe(true)
+    expect(acknowledgeOfflineCollectionPreference(1, pending.revision, options)).toBe(false)
+    const newer = pendingOfflineCollectionPreference(1, options)
+    expect(newer.revision).not.toBe(pending.revision)
+    expect(acknowledgeOfflineCollectionPreference(1, newer.revision, options)).toBe(true)
+    expect(pendingOfflineCollectionPreference(1, options)).toBeNull()
+    expect(readCachedSettings(1, options)).toEqual({ currency: 'GBP', offline_collection_enabled: 'true' })
+    expect(stageOfflineCollectionPreference(1, 'false', { storage: broken })).toBe(false)
+    expect(stageOfflineCollectionPreference(1, 'arbitrary', options)).toBe(false)
+  })
+})
 
 describe('settings cache', () => {
   it('round-trips settings per user and keeps users apart', () => {

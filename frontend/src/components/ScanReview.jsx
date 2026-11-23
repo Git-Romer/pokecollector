@@ -1,3 +1,4 @@
+import WindowedCardGrid from './WindowedCardGrid'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { AlertTriangle, Camera, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Loader2, Plus, RefreshCw, Sparkles, Trash2, X } from 'lucide-react'
@@ -617,8 +618,7 @@ function CandidateGrid({ jobId, itemId, matches, onSelect, onZoom, t }) {
   if (!matches?.length) return null
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-      {matches.map((match, matchIndex) => {
+    <WindowedCardGrid measureRows getKey={match => `${match.id}-${match.lang || match._lang || 'en'}`} className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4" items={matches} renderItem={(match, matchIndex) => {
         const language = match.lang || match._lang || 'en'
         const hdImage = match.image_hd || match.image?.replace('/low.webp', '/high.webp') || match.image
         return (
@@ -691,8 +691,7 @@ function CandidateGrid({ jobId, itemId, matches, onSelect, onZoom, t }) {
             </div>
           </div>
         )
-      })}
-    </div>
+}} />
   )
 }
 

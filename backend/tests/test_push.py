@@ -150,11 +150,24 @@ class PushDatabaseTestCase(unittest.TestCase):
 
 
 class PushPayloadTests(PushDatabaseTestCase):
+    def test_test_notification_describes_the_message_without_repeating_app_name(self):
+        self.add_sub()
+        with patch.object(push_service, "webpush") as sender:
+            result = push_service.send_test(self.db, self.user.id)
+        self.assertEqual(result, {"sent": 1, "removed": 0})
+        notification = json.loads(sender.call_args.kwargs["data"])["notification"]
+        self.assertEqual(notification, {
+            "title": "Test notification",
+            "body": "Notifications are working on this device.",
+            "navigate": "/wishlist",
+        })
+
     def test_payload_is_declarative_web_push_json_without_prices(self):
         payload = json.loads(push_service.build_price_alert_payload("Pikachu"))
         self.assertEqual(payload["web_push"], 8030)
         self.assertEqual(payload["notification"]["navigate"], "/wishlist")
-        self.assertEqual(payload["notification"]["body"], "Pikachu price alert")
+        self.assertEqual(payload["notification"]["title"], "Wishlist price alert")
+        self.assertEqual(payload["notification"]["body"], "Pikachu")
 
     def test_payload_never_exceeds_4_kb_even_for_huge_or_multibyte_names(self):
         for name in ("x" * 50000, "é" * 5000, "🃏" * 3000, ""):

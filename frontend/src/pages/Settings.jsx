@@ -1,13 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Crown, RefreshCw, Download, Upload, Plus, Pencil, Trash2, User, UserCheck, UserX, Zap, Copy } from 'lucide-react'
+import { Crown, Download, Upload, Plus, Pencil, Trash2, User, UserCheck, UserX, Copy } from 'lucide-react'
 import {
-  getSyncStatus, triggerSync, triggerAllPriceSync, rescheduleFullSync, reschedulePriceSync,
   downloadBackup, restoreBackup, exportCSV,
   getSetting, setSetting, getTelegramStatus, saveSettings, setAuthMode,
   getUsers, createUser, updateUser, deleteUser, changePassword, changeAvatar, changeUsername,
-  getContributors, getSupporters, getCustomMatches, downloadDebugLog,
+  getContributors, getSupporters, downloadDebugLog,
   getProfile, updateProfile, deleteScanDiagnostics,
   deleteAllCollectionCardPhotos,
 } from '../api/client'
@@ -20,133 +18,13 @@ import Modal from '../components/ui/Modal'
 import AvatarPicker from '../components/AvatarPicker'
 import ScannerSettingsCard from '../components/ScannerSettingsCard'
 import NotificationsCard from '../components/pwa/NotificationsCard'
-import { formatDistanceToNow } from 'date-fns'
+import { SectionHeader, SettingsCard, SettingsRow, Toggle, SelectControl } from '../components/ui/SettingsControls'
 import toast from 'react-hot-toast'
-import { TCGDEX_LANGUAGES, normalizeTcgdexLanguageCsv, tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { APP_LANGUAGES } from '../utils/appLanguages'
-import { invalidateCollectionPhotoState, invalidateTcgdexFilterLanguages } from '../utils/queryInvalidation'
+import { currencyOptionsFor } from '../utils/currencyOptions'
+import { invalidateCollectionPhotoState } from '../utils/queryInvalidation'
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
-
-function SectionHeader({ title }) {
-  return (
-    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted px-1 mb-3">
-      {title}
-    </p>
-  )
-}
-
-function SettingsCard({ children }) {
-  return (
-    <div
-      className="rounded-2xl overflow-hidden"
-      style={{
-        background: 'rgba(255,255,255,0.04)',
-        border: '1px solid rgba(255,255,255,0.07)',
-      }}
-    >
-      {children}
-    </div>
-  )
-}
-
-function SettingsRow({ label, description, children, last }) {
-  return (
-    <div
-      className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 px-4 py-3.5"
-      style={!last ? { borderBottom: '1px solid rgba(255,255,255,0.05)' } : {}}
-    >
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-text-primary">{label}</p>
-        {description && (
-          <p className="text-xs text-text-muted mt-0.5" style={{overflowWrap:"anywhere"}}>{description}</p>
-        )}
-      </div>
-      <div className="flex-shrink-0 w-full sm:w-auto">{children}</div>
-    </div>
-  )
-}
-
-function Toggle({ value, onChange, label, disabled = false }) {
-  return (
-    <button
-      type="button"
-      onClick={() => onChange(!value)}
-      disabled={disabled}
-      className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${
-        value ? 'bg-brand-red' : 'bg-bg-elevated border border-border'
-      } ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
-      aria-pressed={value}
-      aria-label={label}
-    >
-      <span
-        className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-200 ${
-          value ? 'translate-x-5' : 'translate-x-0'
-        }`}
-      />
-    </button>
-  )
-}
-
-function SelectControl({ value, options, onChange }) {
-  return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="select w-full max-w-full sm:w-auto text-xs font-semibold"
-    >
-      {options.map((opt) => (
-        <option key={opt.value} value={opt.value}>
-          {opt.label}
-        </option>
-      ))}
-    </select>
-  )
-}
-
-function TcgdexLanguageControl({ value, onChange, selectedLabel, fallbackNote }) {
-  const selected = new Set(normalizeTcgdexLanguageCsv(value).split(','))
-
-  const toggle = (lang) => {
-    const next = new Set(selected)
-    if (next.has(lang)) {
-      if (next.size === 1) return
-      next.delete(lang)
-    } else {
-      next.add(lang)
-    }
-    const normalized = TCGDEX_LANGUAGES
-      .map((language) => language.code)
-      .filter((code) => next.has(code))
-      .join(',')
-    onChange(normalized || 'en,de')
-  }
-
-  return (
-    <div className="space-y-2">
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-        {TCGDEX_LANGUAGES.map((language) => (
-          <button
-            key={language.code}
-            type="button"
-            onClick={() => toggle(language.code)}
-            className={`px-2 py-1.5 rounded-lg text-xs font-semibold text-left transition-colors border ${
-              selected.has(language.code)
-                ? 'bg-brand-red text-white border-brand-red'
-                : 'bg-bg-card text-text-muted border-border hover:text-text-primary'
-            }`}
-            title={language.name}
-          >
-            {tcgdexLanguageLabel(language.code)}
-          </button>
-        ))}
-      </div>
-      <p className="text-[11px] text-text-muted leading-relaxed">
-        {selected.size} {selectedLabel}. {fallbackNote}
-      </p>
-    </div>
-  )
-}
 
 function ContributorsSection({ t }) {
   const { data: contributors = [], isLoading } = useQuery({
@@ -383,9 +261,14 @@ export default function Settings() {
   const [editingUsername, setEditingUsername] = useState(false)
   const [usernameInput, setUsernameInput] = useState('')
   const queryClient = useQueryClient()
-  const navigate = useNavigate()
   const { user, updateCurrentUser, multiUser, modeLocked } = useAuth()
-  const { settings, updateSettings, t, pricePrimaryField, exchangeRate } = useSettings()
+  const { settings, updateSettings, t, pricePrimaryField, currency: displayCurrency, exchangeRateReady, usdExchangeRateReady, exchangeRateStale, exchangeRateDate } = useSettings()
+  const { data: currencyMetadata, isError: currencyListError } = useQuery({
+    queryKey: ['currencies'],
+    queryFn: () => api.get('/settings/currencies').then(r => r.data),
+    staleTime: 24 * 60 * 60 * 1000,
+  })
+  const currencyList = currencyMetadata?.currencies || []
   const supportPageUrl = settings.language === 'de'
     ? 'https://pokecollector.romerg.de/de/#support'
     : 'https://pokecollector.romerg.de/#support'
@@ -400,10 +283,6 @@ export default function Settings() {
   const [scanDiagnosticsDeleting, setScanDiagnosticsDeleting] = useState(false)
   const [geminiFallbackSaving, setGeminiFallbackSaving] = useState(false)
   const [cardPhotosDeleting, setCardPhotosDeleting] = useState(false)
-
-  // Recurring automatic full sync interval (days) and small price sync interval (minutes).
-  const [fullSyncIntervalDays, setFullSyncIntervalDays] = useState('5')
-  const [priceSyncIntervalMinutes, setPriceSyncIntervalMinutes] = useState('30')
 
   // Notification settings
   const [priceAlertsEnabled, setPriceAlertsEnabled] = useState(false)
@@ -432,16 +311,6 @@ export default function Settings() {
   }
 
   // Load individual settings from backend
-  const { data: fullSyncIntervalData } = useQuery({
-    queryKey: ['setting', 'full_sync_interval_days'],
-    queryFn: () => getSetting('full_sync_interval_days').catch(() => ({ value: '5' })),
-  })
-
-  const { data: priceSyncIntervalData } = useQuery({
-    queryKey: ['setting', 'price_sync_interval_minutes'],
-    queryFn: () => getSetting('price_sync_interval_minutes').catch(() => ({ value: '30' })),
-  })
-
   const { data: priceAlertsData } = useQuery({
     queryKey: ['setting', 'price_alerts_enabled'],
     queryFn: () => getSetting('price_alerts_enabled').catch(() => ({ value: 'false' })),
@@ -494,27 +363,6 @@ export default function Settings() {
     queryFn: () => getTelegramStatus().catch(() => ({ configured: false })),
   })
 
-  const { data: syncStatus } = useQuery({
-    queryKey: ['sync-status'],
-    queryFn: () => getSyncStatus().then((r) => r.data),
-    refetchInterval: 10000,
-  })
-
-  const { data: customMatches = [] } = useQuery({
-    queryKey: ['custom-matches'],
-    queryFn: () => getCustomMatches().then((r) => r.data),
-    refetchInterval: 60000,
-  })
-
-  // Sync fetched data → local state
-  useEffect(() => {
-    if (fullSyncIntervalData?.value) setFullSyncIntervalDays(fullSyncIntervalData.value)
-  }, [fullSyncIntervalData])
-
-  useEffect(() => {
-    if (priceSyncIntervalData?.value) setPriceSyncIntervalMinutes(priceSyncIntervalData.value)
-  }, [priceSyncIntervalData])
-
   useEffect(() => {
     if (priceAlertsData?.value) setPriceAlertsEnabled(priceAlertsData.value === 'true')
   }, [priceAlertsData])
@@ -535,26 +383,6 @@ export default function Settings() {
   useEffect(() => {
     if (telegramChatIdData?.value !== undefined && !telegramChatIdDirty) setTelegramChatId(telegramChatIdData.value)
   }, [telegramChatIdData])
-
-  // Sync mutation (full)
-  const syncMutation = useMutation({
-    mutationFn: triggerSync,
-    onSuccess: () => {
-      toast.success(t('settings.syncStarted'))
-      setTimeout(() => queryClient.invalidateQueries(), 5000)
-    },
-    onError: () => toast.error(t('settings.syncFailed')),
-  })
-
-  // Forced price sync mutation (all tracked collection/wishlist/binder cards)
-  const allPriceSyncMutation = useMutation({
-    mutationFn: triggerAllPriceSync,
-    onSuccess: () => {
-      toast.success(t('settings.syncStarted'))
-      setTimeout(() => queryClient.invalidateQueries(), 5000)
-    },
-    onError: () => toast.error(t('settings.syncFailed')),
-  })
 
   const avatarMutation = useMutation({
     mutationFn: (avatarId) => changeAvatar(avatarId),
@@ -619,8 +447,6 @@ export default function Settings() {
     }
   }
 
-  const isRunning = syncStatus?.is_running || syncStatus?.is_price_sync_running || syncMutation.isPending || allPriceSyncMutation.isPending
-
   // Save helper
   const saveSetting = async (key, value) => {
     try {
@@ -630,18 +456,6 @@ export default function Settings() {
     } catch {
       toast.error(t('settings.saveFailed'))
     }
-  }
-
-  const handlePriceSyncIntervalChange = async (val) => {
-    setPriceSyncIntervalMinutes(val)
-    await saveSetting('price_sync_interval_minutes', val)
-    try { await reschedulePriceSync(parseInt(val)) } catch {}
-  }
-
-  const handleFullSyncIntervalChange = async (val) => {
-    setFullSyncIntervalDays(val)
-    await saveSetting('full_sync_interval_days', val)
-    try { await rescheduleFullSync(parseInt(val)) } catch {}
   }
 
   const handlePriceAlertsToggle = async (val) => {
@@ -674,16 +488,6 @@ export default function Settings() {
   const handlePriceTypeChange = async (val) => {
     try {
       await updateSettings({ price_primary: val })
-      toast.success(t('settings.saved'))
-    } catch {
-      toast.error(t('settings.saveFailed'))
-    }
-  }
-
-  const handleTcgdexSyncLanguagesChange = async (val) => {
-    try {
-      await updateSettings({ tcgdex_sync_languages: normalizeTcgdexLanguageCsv(val) })
-      invalidateTcgdexFilterLanguages(queryClient)
       toast.success(t('settings.saved'))
     } catch {
       toast.error(t('settings.saveFailed'))
@@ -736,6 +540,15 @@ export default function Settings() {
     }
   }
 
+  const handleHoloEffectsToggle = async (enabled) => {
+    try {
+      await updateSettings({ holo_effects_enabled: enabled ? 'true' : 'false' })
+      toast.success(t('settings.saved'))
+    } catch {
+      toast.error(t('settings.saveFailed'))
+    }
+  }
+
   const handleDeleteCardPhotos = async () => {
     const confirmed = await confirmDialog({
       title: t('common.delete'),
@@ -772,18 +585,6 @@ export default function Settings() {
       toast.error(t('settings.scanDiagnosticsDeleteFailed'))
     } finally {
       setScanDiagnosticsDeleting(false)
-    }
-  }
-
-  const handleAdminBooleanSettingToggle = async (key, enabled) => {
-    try {
-      await updateSettings({ [key]: enabled ? 'true' : 'false' })
-      if (key === 'tcgdex_digital_sets_enabled') {
-        queryClient.invalidateQueries()
-      }
-      toast.success(t('settings.saved'))
-    } catch {
-      toast.error(t('settings.saveFailed'))
     }
   }
 
@@ -829,16 +630,28 @@ export default function Settings() {
   const currentAppLang = currentLang === 'zh' ? 'zh-cn' : currentLang
   const currentCurrency = settings.currency || 'EUR'
   const currentPriceType = settings.price_primary || 'trend'
-  const exportParams = { price_field: pricePrimaryField, currency: currentCurrency, exchange_rate: exchangeRate }
-  const currentTcgdexSyncLanguages = normalizeTcgdexLanguageCsv(settings.tcgdex_sync_languages || 'en,de')
-  const digitalSetsEnabled = settings.tcgdex_digital_sets_enabled === 'true'
-  const crossLanguagePriceFallback = settings.cross_language_price_fallback !== 'false'
-  const crossLanguageImageFallback = settings.cross_language_image_fallback !== 'false'
+  const currencyOptions = currencyOptionsFor(currencyList, currentCurrency)
+  const currencyDescription = currencyListError
+    ? t('settings.currencyListUnavailable')
+    : ((!exchangeRateReady || !usdExchangeRateReady)
+      ? t('settings.currencyRateUnavailable')
+      : (exchangeRateStale
+        ? `${t('settings.currencyRateCached')} ${exchangeRateDate || ''}`.trim()
+        : t('settings.currencyDesc')))
+  const exportParams = { price_field: pricePrimaryField, currency: displayCurrency }
+  const handleCsvExport = async () => {
+    try {
+      await exportCSV(exportParams)
+    } catch (error) {
+      toast.error(error.response?.data?.detail || t('common.error'))
+    }
+  }
   const scanDiagnosticsEnabled = settings.scan_diagnostics_enabled === 'true'
   const scanDiagnosticsAvailable = settings.scan_diagnostics_available === 'true'
   const scanDiagnosticsDeletionAvailable = settings.scan_diagnostics_deletion_available === 'true'
   const geminiFallbackEnabled = settings.scanner_gemini_fallback === 'true'
   const preferOwnCardPhotos = settings.prefer_own_card_photos === 'true'
+  const holoEffectsEnabled = settings.holo_effects_enabled === 'true'
 
   const usernameMutation = useMutation({
     mutationFn: (username) => changeUsername(username),
@@ -856,13 +669,6 @@ export default function Settings() {
     avatarMutation.mutate(avatarId)
   }
 
-  const lastFullSyncText = syncStatus?.last_full_sync?.finished_at
-    ? formatDistanceToNow(new Date(syncStatus.last_full_sync.finished_at), { addSuffix: true })
-    : t('settings.neverSynced')
-  const lastFullSyncDescription = syncStatus?.last_full_sync?.status === 'error'
-    ? `${t('settings.lastSyncFailed')} ${lastFullSyncText}${syncStatus.last_full_sync.error_message ? `: ${syncStatus.last_full_sync.error_message}` : ''}`
-    : lastFullSyncText
-
   return (
     <div className="space-y-6 py-6">
       <div className="px-1">
@@ -872,7 +678,7 @@ export default function Settings() {
       <div className="flex border-b border-border overflow-x-auto scrollbar-none -mx-4 px-4" style={{WebkitOverflowScrolling:"touch"}}>
         {[
           { key: 'general', label: t('settings.tabs.general') },
-          ...(user?.role === 'admin' ? [{ key: 'sync', label: t('settings.tabs.dataSync') }] : []),
+          ...(user?.role === 'admin' ? [{ key: 'sync', label: t('settings.sectionData') }] : []),
           { key: 'notifications', label: t('settings.tabs.notifications') },
           { key: 'community', label: t('settings.tabs.community') },
           ...(user?.role === 'admin' && multiUser ? [{ key: 'users', label: t('settings.tabs.users') }] : []),
@@ -1151,14 +957,12 @@ export default function Settings() {
                   onChange={handleLanguageChange}
                 />
               </SettingsRow>
-              <SettingsRow label={t('settings.currency')} description={t('settings.currencyDesc')}>
+              <SettingsRow label={t('settings.currency')} description={currencyDescription}>
                 <SelectControl
                   value={currentCurrency}
-                  options={[
-                    { value: 'EUR', label: '€ EUR' },
-                    { value: 'USD', label: '$ USD' },
-                  ]}
+                  options={currencyOptions}
                   onChange={handleCurrencyChange}
+                  disabled={!currencyList.length}
                 />
               </SettingsRow>
               <SettingsRow label={t('settings.priceType')} description={t('settings.priceTypeDesc')}>
@@ -1183,6 +987,16 @@ export default function Settings() {
                   value={preferOwnCardPhotos}
                   label={t('settings.preferOwnCardPhotos')}
                   onChange={handlePhotoPreferenceToggle}
+                />
+              </SettingsRow>
+              <SettingsRow
+                label={t('settings.holoEffects')}
+                description={t('settings.holoEffectsDesc')}
+              >
+                <Toggle
+                  value={holoEffectsEnabled}
+                  label={t('settings.holoEffects')}
+                  onChange={handleHoloEffectsToggle}
                 />
               </SettingsRow>
               <SettingsRow
@@ -1312,121 +1126,6 @@ export default function Settings() {
 
       {activeTab === 'sync' && (
         <>
-          {/* ── 3. SYNCHRONISATION ── */}
-          <section className="space-y-1">
-            <SectionHeader title={t('settings.sectionSync')} />
-
-            {/* Card 1: Full Sync */}
-            <SettingsCard>
-              <SettingsRow label={t('settings.syncSetsCards')} description={lastFullSyncDescription}>
-                <button
-                  onClick={() => syncMutation.mutate()}
-                  disabled={isRunning}
-                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity disabled:opacity-50"
-                  style={{ background: 'rgba(227,0,11,0.15)', color: '#e3000b', border: '1px solid rgba(227,0,11,0.3)' }}
-                >
-                  <RefreshCw size={13} className={isRunning ? 'animate-spin' : ''} />
-                  {isRunning ? t('settings.running') : t('settings.syncButton')}
-                </button>
-              </SettingsRow>
-              {user?.role === 'admin' && (
-                <SettingsRow label={t('settings.tcgdexSyncLanguages')} description={t('settings.tcgdexSyncLanguagesDesc')}>
-                  <TcgdexLanguageControl
-                    value={currentTcgdexSyncLanguages}
-                    onChange={handleTcgdexSyncLanguagesChange}
-                    selectedLabel={t('settings.tcgdexSyncLanguagesSelected')}
-                    fallbackNote={t('settings.tcgdexSyncLanguagesFallbackNote')}
-                  />
-                </SettingsRow>
-              )}
-              {user?.role === 'admin' && (
-                <>
-                  <SettingsRow label={t('settings.digitalSets')} description={t('settings.digitalSetsDesc')}>
-                    <Toggle
-                      value={digitalSetsEnabled}
-                      label={t('settings.digitalSets')}
-                      onChange={(val) => handleAdminBooleanSettingToggle('tcgdex_digital_sets_enabled', val)}
-                    />
-                  </SettingsRow>
-                  <SettingsRow label={t('settings.crossLanguagePriceFallback')} description={t('settings.crossLanguagePriceFallbackDesc')}>
-                    <Toggle
-                      value={crossLanguagePriceFallback}
-                      label={t('settings.crossLanguagePriceFallback')}
-                      onChange={(val) => handleAdminBooleanSettingToggle('cross_language_price_fallback', val)}
-                    />
-                  </SettingsRow>
-                  <SettingsRow label={t('settings.crossLanguageImageFallback')} description={t('settings.crossLanguageImageFallbackDesc')}>
-                    <Toggle
-                      value={crossLanguageImageFallback}
-                      label={t('settings.crossLanguageImageFallback')}
-                      onChange={(val) => handleAdminBooleanSettingToggle('cross_language_image_fallback', val)}
-                    />
-                  </SettingsRow>
-                </>
-              )}
-              {customMatches.length > 0 && (
-                <SettingsRow label={t('migration.title')} description={`${customMatches.length} ${t('migration.pendingMatches')}`}>
-                  <button
-                    onClick={() => navigate('/migration')}
-                    className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity"
-                    style={{ background: 'rgba(245,200,66,0.15)', color: '#f5c842', border: '1px solid rgba(245,200,66,0.35)' }}
-                  >
-                    <Zap size={13} />
-                    {t('migration.title')}
-                  </button>
-                </SettingsRow>
-              )}
-              {user?.role === 'admin' && (
-                <SettingsRow label={t('settings.interval')} description={t('settings.syncSetsCardsDesc')} last>
-                  <SelectControl
-                    value={fullSyncIntervalDays}
-                    options={[
-                      { value: '1',  label: t('settings.day1') },
-                      { value: '2',  label: t('settings.days2') },
-                      { value: '3',  label: t('settings.days3') },
-                      { value: '5',  label: t('settings.days5') },
-                      { value: '7',  label: t('settings.days7') },
-                      { value: '14', label: t('settings.days14') },
-                      { value: '30', label: t('settings.days30') },
-                    ]}
-                    onChange={handleFullSyncIntervalChange}
-                  />
-                </SettingsRow>
-              )}
-            </SettingsCard>
-
-            {/* Card 2: Price Sync */}
-            <SettingsCard>
-              <SettingsRow label={t('settings.syncPricesOnly')} description={t('settings.syncPricesOnlyDesc')}>
-                <button
-                  onClick={() => allPriceSyncMutation.mutate()}
-                  disabled={isRunning}
-                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity disabled:opacity-50"
-                  style={{ background: 'rgba(227,0,11,0.15)', color: '#e3000b', border: '1px solid rgba(227,0,11,0.3)' }}
-                >
-                  <RefreshCw size={13} className={isRunning ? 'animate-spin' : ''} />
-                  {isRunning ? t('settings.running') : t('settings.syncButton')}
-                </button>
-              </SettingsRow>
-              {user?.role === 'admin' && (
-                <SettingsRow label={t('settings.priceInterval')} description={t('settings.autoSmallSyncDesc')} last>
-                  <SelectControl
-                    value={priceSyncIntervalMinutes}
-                    options={[
-                      { value: '60',   label: t('settings.min60') },
-                      { value: '120',  label: t('settings.min120') },
-                      { value: '180',  label: t('settings.min180') },
-                      { value: '360',  label: t('settings.min360') },
-                      { value: '720',  label: t('settings.min720') },
-                      { value: '1440', label: t('settings.min1440') },
-                    ]}
-                    onChange={handlePriceSyncIntervalChange}
-                  />
-                </SettingsRow>
-              )}
-            </SettingsCard>
-          </section>
-
           {/* ── 5. DATEN ── */}
           <section className="space-y-1">
             <SectionHeader title={t('settings.sectionData')} />
@@ -1451,7 +1150,7 @@ export default function Settings() {
                     const confirmed = await confirmDialog({
                       title: t('settings.clearImageCache'),
                       message: t('settings.clearImageCacheConfirm'),
-                      confirmLabel: t('common.clear'),
+                      confirmLabel: t('settings.clearImageCache'),
                       destructive: true,
                     })
                     if (!confirmed) return
@@ -1470,7 +1169,7 @@ export default function Settings() {
               </SettingsRow>
               <SettingsRow label={t('settings.csvExport')} description={t('settings.csvExportDesc')}>
                 <button
-                  onClick={() => exportCSV(exportParams)}
+                  onClick={handleCsvExport}
                   className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity"
                   style={{ background: 'rgba(255,255,255,0.07)', color: '#90a4ae', border: '1px solid rgba(255,255,255,0.1)' }}
                 >

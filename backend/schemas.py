@@ -1,5 +1,5 @@
-from pydantic import BaseModel, Field
-from typing import Optional, List, Any, Literal, Dict
+from pydantic import BaseModel, Field, field_validator
+from typing import Optional, List, Any, Literal, Dict, Annotated
 from datetime import datetime, date
 from services.collection_variants import CollectionVariant
 
@@ -8,6 +8,8 @@ class SetBase(BaseModel):
     id: str                             # Composite DB key: "sv1_en" / "sv1_zh-tw"
     tcg_set_id: Optional[str] = None   # Original TCGdex set ID: "sv1"
     name: str
+    translated_name: Optional[str] = None
+    translated_name_lang: Optional[str] = None
     series: Optional[str] = None
     release_date: Optional[str] = None
     total: int = 0
@@ -27,6 +29,7 @@ class SetBase(BaseModel):
 class CardBase(BaseModel):
     id: str
     tcg_card_id: Optional[str] = None
+    lang: Optional[str] = None
     name: str
     set_id: Optional[str] = None
     number: Optional[str] = None
@@ -190,6 +193,8 @@ class CollectionProductSourceResponse(BaseModel):
     active_quantity: int = 0
     initial_quantity: int = 0
     linked_at: Optional[datetime] = None
+    can_unlink: bool = False
+    unlink_blocked_reason: Optional[str] = None
 
 
 class CollectionItemResponse(BaseModel):
@@ -214,6 +219,14 @@ class CollectionItemResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class CollectionOfflineManifestResponse(BaseModel):
+    version: int = 1
+    user_id: int
+    items: List[CollectionItemResponse]
+    image_urls: List[str]
+    missing_artwork_card_ids: List[str]
 
 
 class WishlistItemCreate(BaseModel):
@@ -713,3 +726,63 @@ class ProfileUpdate(BaseModel):
     is_profile_public: Optional[bool] = None
     public_show_values: Optional[bool] = None
     wishlist_visibility: Optional[Literal["private", "trade_matches", "public"]] = None
+
+
+class BulkRemoveRequest(BaseModel):
+    item_ids: List[Annotated[int, Field(strict=True, gt=0)]] = Field(min_length=1, max_length=500)
+
+    @field_validator('item_ids')
+    @classmethod
+    def unique_item_ids(cls, values):
+        if len(values) != len(set(values)):
+            raise ValueError('item_ids must not contain duplicates')
+        return values
+
+
+class BulkRemoveResponse(BaseModel):
+    removed_ids: List[int]
+    removed_entries: int
+    removed_copies: int
+
+
+class ConfirmedAssignment(BaseModel):
+    assignment_id: Annotated[int, Field(strict=True, gt=0)]
+    list_id: Annotated[int, Field(strict=True, gt=0)]
+    item_id: Annotated[int, Field(strict=True, gt=0)]
+    quantity: Annotated[int, Field(strict=True, gt=0)]
+
+
+class ReleaseAssignmentsRequest(BulkRemoveRequest):
+    assignments: List[ConfirmedAssignment] = Field(min_length=1, max_length=5000)
+
+    @field_validator('assignments')
+    @classmethod
+    def unique_assignments(cls, values):
+        if len({v.assignment_id for v in values}) != len(values):
+            raise ValueError('assignments must not contain duplicates')
+        return values
+
+
+class ConfirmedProductLink(BaseModel):
+    product_id: Annotated[int, Field(strict=True, gt=0)]
+    product_card_id: Annotated[int, Field(strict=True, gt=0)]
+    collection_item_id: Annotated[int, Field(strict=True, gt=0)]
+    active_quantity: Annotated[int, Field(strict=True, ge=1, le=999)]
+
+
+class BulkProductUnlinkRequest(BaseModel):
+    links: List[ConfirmedProductLink] = Field(min_length=1, max_length=5000)
+
+    @field_validator('links')
+    @classmethod
+    def unique_product_links(cls, values):
+        ids = [link.product_card_id for link in values]
+        if len(ids) != len(set(ids)):
+            raise ValueError('links must not contain duplicate product_card_id values')
+        return values
+
+
+class BulkProductUnlinkResponse(BaseModel):
+    unlinked_ids: List[int]
+    unlinked_links: int
+    unlinked_copies: int

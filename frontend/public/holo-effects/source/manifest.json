@@ -1,0 +1,104 @@
+{
+  "repository": "https://github.com/simeydotme/pokemon-cards-css",
+  "commit": "acb1197633e749a1fba4412231db2f6581586d00",
+  "license": "GPL-3.0",
+  "author": "Simon Goellner (@simeydotme)",
+  "css": [
+    {
+      "path": "css/cards/base.css",
+      "sha256": "4c76b51851891fa6e8be6313e012e93df085ddc6be860b3181058368d9d92f77"
+    },
+    {
+      "path": "css/cards.css",
+      "sha256": "ff57eaa7cfa635e2e2389eddecddeb3ccd16ffe6fd5e0e37f1d7623b24cf3d44"
+    },
+    {
+      "path": "css/cards/amazing-rare.css",
+      "sha256": "d8454426c9cabcae47818d6d01b579c4762fafe278ce57132c0823cfb8618487"
+    },
+    {
+      "path": "css/cards/basic.css",
+      "sha256": "d06a2d6770a9ace7036744426e461564252078ce24cf7ca860651c83d4ae1a16"
+    },
+    {
+      "path": "css/cards/cosmos-holo.css",
+      "sha256": "061e2f844a1a7b522fa41c488159184641447a30c09f0b3a8ef3c4a36e6bf871"
+    },
+    {
+      "path": "css/cards/radiant-holo.css",
+      "sha256": "5f785d497c1f13bc7b5874a0a30c39fe3f58cb4d4b9e80cd1f3ab505cda8dca6"
+    },
+    {
+      "path": "css/cards/rainbow-alt.css",
+      "sha256": "0f66e08d0f2be14136c023e264deeb178771931acd331474da4fe52b9ea52bcd"
+    },
+    {
+      "path": "css/cards/rainbow-holo.css",
+      "sha256": "0476e35579cc4fc1570d98812f0dc2706d8b99dcc129ba8d6796f53d853f684b"
+    },
+    {
+      "path": "css/cards/regular-holo.css",
+      "sha256": "8ddb875af9dddacc1a01a530e7e47e3b614448133c00077cdbd4b7e57a56a970"
+    },
+    {
+      "path": "css/cards/reverse-holo.css",
+      "sha256": "bf7f585f6c160050d4f2861a5e3265440826466f0e380bb5b9cb193c4f4525ea"
+    },
+    {
+      "path": "css/cards/secret-rare.css",
+      "sha256": "e284507d4dd99fe378ea1dbd2b2b64c1faf3627423b7e18749729108e19bbe40"
+    },
+    {
+      "path": "css/cards/shiny-rare.css",
+      "sha256": "c89ff946f1f07e20ffc09df8c6906802557d0cb5d9a6b8e7a04834962e7b0cc1"
+    },
+    {
+      "path": "css/cards/shiny-v.css",
+      "sha256": "0103fa0de56f6539a8f4ddc2103b8f76fb35c0b4c4ea38b2df56195c11ee4d3d"
+    },
+    {
+      "path": "css/cards/shiny-vmax.css",
+      "sha256": "77a31e941402abce027ed2ea8ae78fe2661965e153b87e786062ec4acc833f23"
+    },
+    {
+      "path": "css/cards/swsh-pikachu.css",
+      "sha256": "dc00d3a4176448b2ab356a37e5ae6e246d63987e6d5de18e44b3a56fb03fd3ba"
+    },
+    {
+      "path": "css/cards/trainer-full-art.css",
+      "sha256": "86a01a06ac16f0f5eebdf08e1dae39c7333512a7167d18aeab5189ae84b02536"
+    },
+    {
+      "path": "css/cards/trainer-gallery-holo.css",
+      "sha256": "d61772b93c818c867d8d7ca520d6a5a2a4fdadbfe0e4d199c4bd9ca982f4ae19"
+    },
+    {
+      "path": "css/cards/trainer-gallery-secret-rare.css",
+      "sha256": "51f55f4f4325baf90677cbb04fd66002cb3be9c802c8be75958f219bf5d66929"
+    },
+    {
+      "path": "css/cards/trainer-gallery-v-max.css",
+      "sha256": "15831cf12a641a0ceddda92d0830fb2a120c4b74505cb258fa8644c6c35afc7f"
+    },
+    {
+      "path": "css/cards/trainer-gallery-v-regular.css",
+      "sha256": "77d25d79d972784fbc8e30458e853670379e40645d3ece719627f0bd220c6725"
+    },
+    {
+      "path": "css/cards/v-full-art.css",
+      "sha256": "7f72c8e7764cb6999d39fc48e51b89fdf4141895e7914a26835dbcc693765626"
+    },
+    {
+      "path": "css/cards/v-max.css",
+      "sha256": "be7eb88ebdb82f162324f4ff4acb8ee17ad998977cbb6494956b4563544b39be"
+    },
+    {
+      "path": "css/cards/v-regular.css",
+      "sha256": "e56fb533178c6ad8da8d5b3a0aaa846f962c0e848d9c853258ee4c24dd0fb585"
+    },
+    {
+      "path": "css/cards/v-star.css",
+      "sha256": "158d22e3e8b3636f2346a405f8242d77e886bc778e739fd2fde3b36996cb1cb4"
+    }
+  ]
+}

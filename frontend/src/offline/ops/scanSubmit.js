@@ -78,6 +78,7 @@ export async function submitScanBatch({
       const item = await outbox.enqueue({ type: 'scan.upload', payload: { individualPositions: positions }, photos })
       itemIds.push(item.id)
     } catch (error) {
+      error.savedPhotoCount = chunk.start
       if (itemIds.length) error.queuedCount = itemIds.length
       throw error
     }

@@ -27,7 +27,7 @@ test('security header snippet carries the CSP with script-src self', () => {
 test('nginx.conf includes the snippet at server level and moved the inline headers', () => {
   const serverLevel = conf.split(/^\s{4}location\s/m)[0];
   assert.match(serverLevel, INCLUDE);
-  assert.ok(!conf.includes('Content-Security-Policy'), 'CSP must live only in the snippet');
+  assert.doesNotMatch(conf, /add_header\s+Content-Security-Policy\s/, 'CSP must live only in the snippet');
 });
 
 test('every location that sets add_header also includes the snippet', () => {

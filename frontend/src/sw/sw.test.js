@@ -19,9 +19,9 @@ class FakeCache {
   async put(key, response) { const k = String(key?.url ?? key); this.map.delete(k); this.map.set(k, response) }
   async match(key, options = {}) {
     const k = String(key?.url ?? key)
-    if (!options.ignoreSearch) return this.map.get(k)
+    if (!options.ignoreSearch) return this.map.get(k)?.clone()
     const bare = u => u.split('?')[0]
-    for (const [stored, response] of this.map) if (bare(stored) === bare(k)) return response
+    for (const [stored, response] of this.map) if (bare(stored) === bare(k)) return response.clone()
   }
   async keys() { return [...this.map.keys()].map(url => ({ url })) }
   async delete(key) { return this.map.delete(String(key?.url ?? key)) }
@@ -72,6 +72,48 @@ const req = (path, init = {}) => {
   return request
 }
 const classifyPath = (api, path, init) => api.classify(req(path, init), new URL(ORIGIN + path))
+
+describe('offline collection preference', () => {
+  it.each(['pc-images-v1', 'pc-collection-originals-v1'])('does not recreate %s when disabled while opening the cache', async name => {
+    const policy = new FakeCache()
+    await policy.put(ORIGIN + '/__pc_offline_collection_policy__', new Response('on'))
+    const { listeners, store, caches } = load({
+      existingCaches: { 'pc-offline-policy-v1': policy, [name]: new FakeCache() },
+      fetchImpl: async () => res('network', { headers: { 'Content-Type': 'image/jpeg' } }),
+    })
+    const open = caches.open
+    caches.open = async cacheName => {
+      if (cacheName === name) {
+        await policy.put(ORIGIN + '/__pc_offline_collection_policy__', new Response('off'))
+        store.delete(cacheName)
+      }
+      return open(cacheName)
+    }
+    let response
+    const waits = []
+    listeners.fetch({ request: req('/api/images/card/c1/large'), respondWith: p => { response = p }, waitUntil: p => waits.push(p) })
+    expect(await (await response).text()).toBe('network')
+    await Promise.all(waits)
+    expect(store.has(name)).toBe(false)
+  })
+
+  it('does not serve or recreate image caches when automatic offline storage is off', async () => {
+    const policy = new FakeCache()
+    await policy.put(ORIGIN + '/__pc_offline_collection_policy__', new Response('off'))
+    const originals = new FakeCache()
+    await originals.put(ORIGIN + '/api/images/card/c1/large', res('saved', { headers: { 'Content-Type': 'image/jpeg' } }))
+    const { listeners, store } = load({
+      existingCaches: { 'pc-offline-policy-v1': policy, 'pc-collection-originals-v1': originals },
+      fetchImpl: async () => res('network', { headers: { 'Content-Type': 'image/jpeg' } }),
+    })
+    let response
+    const waits = []
+    listeners.fetch({ request: req('/api/images/card/c1/large'), respondWith: p => { response = p }, waitUntil: p => waits.push(p) })
+    expect(await (await response).text()).toBe('network')
+    await Promise.all(waits)
+    expect(store.has('pc-images-v1')).toBe(false)
+  })
+})
 
 describe('placeholders', () => {
   it('is valid JS unreplaced and exposes helpers only in test mode', () => {
@@ -175,6 +217,16 @@ describe('large image fallback', () => {
     await images.put(ORIGIN + smallUrl, png('small'))
     return { images, ...load({ fetchImpl, existingCaches: { 'pc-images-v1': images } }) }
   }
+
+  it.each(['small', 'large'])('serves downloaded originals for %s without another network request', async size => {
+    const originals = new FakeCache()
+    await originals.put(ORIGIN + '/api/images/card/c1/large', png('original'))
+    const fetchImpl = async () => { throw new Error('network must not be used') }
+    const { listeners } = load({ fetchImpl, existingCaches: { 'pc-collection-originals-v1': originals } })
+    const { responded } = run(listeners, req(`/api/images/card/c1/${size}`))
+    expect(await (await responded).text()).toBe('original')
+    expect((await originals.keys()).length).toBe(1)
+  })
 
   it('serves the cached small copy when the network fails', async () => {
     const { listeners } = await withSmall(async () => { throw new Error('offline') })

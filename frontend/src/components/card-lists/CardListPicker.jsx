@@ -1,3 +1,4 @@
+import WindowedCardGrid from '../WindowedCardGrid'
 import { useEffect, useId, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronUp, RotateCcw } from 'lucide-react'
@@ -37,7 +38,7 @@ function filterExactCollectionItems(items, filters) {
     if (filters.condition && item.condition !== filters.condition) return false
     if (!query) return true
 
-    const shortcode = /^([A-Za-z]+\d*)\s+(\d+)$/.exec(query)
+    const shortcode = /^([A-Za-z0-9]+)\s+(\d+)$/.exec(query)
     const shortcodeMatches = shortcode && [card.set_ref?.abbreviation, card.set_id, card.set_ref?.tcg_set_id]
       .some(value => normalizeSearchText(value) === shortcode[1])
       && cardNumberMatches(card.number, String(parseInt(shortcode[2], 10)))
@@ -140,12 +141,12 @@ export default function CardListPicker({
     setVisibleCount(PAGE_SIZE)
   }, [source, search, type, set, language, variant, condition])
 
-  const displayedOwnedItems = filteredOwnedItems.slice(0, visibleCount)
+  const displayedOwnedItems = filteredOwnedItems
   const catalogCards = catalogData?.data || []
   const totalCatalogCards = Number(catalogData?.total_count) || catalogCards.length
   const hasMore = source === 'catalog'
     ? catalogCards.length < totalCatalogCards
-    : displayedOwnedItems.length < filteredOwnedItems.length
+    : false
   const hasFilters = Boolean(search || type || set || language || variant || condition)
 
   const clearSelection = () => setSelectedItems({})
@@ -270,18 +271,16 @@ export default function CardListPicker({
           </div>}
 
           <div className="max-h-[38rem] overflow-y-auto pr-1">
-            <div className="grid grid-cols-3 items-start gap-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8" data-testid="card-list-picker-grid">
-              {source === 'owned' && displayedOwnedItems.map(renderOwnedCard)}
-              {source === 'catalog' && catalogCards.map(card => {
+            <WindowedCardGrid className="grid grid-cols-3 items-start gap-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8" data-testid="card-list-picker-grid" items={source === 'owned' ? displayedOwnedItems : catalogCards} renderItem={card => {
+                if (source === 'owned') return renderOwnedCard(card)
                 const selected = selectedIds.has(String(card.id))
                 const alreadyAdded = existingIds.has(String(card.id))
                 return <CardDisplay key={card.id} card={card} image={resolveCardImageUrl(card)} selected={selected} unavailableReason={alreadyAdded ? t('binderTypes.alreadyUsed') : ''} actionLabel={label?.('cardListPicker.selectCardAction', { name: card.name })} onClick={() => toggleSelection(card)} />
-              })}
+              }} />
               {catalogLoading && <p className="col-span-full py-8 text-center text-xs text-text-muted">{t('common.loading')}</p>}
               {!catalogLoading && source === 'catalog' && debouncedSearch.length < 2 && <p className="col-span-full py-8 text-center text-xs text-text-muted">{t('cardListPicker.searchAllHint')}</p>}
               {!catalogLoading && source === 'catalog' && debouncedSearch.length >= 2 && catalogCards.length === 0 && <p className="col-span-full py-8 text-center text-xs text-text-muted">{t('cardListPicker.noCatalogCards')}</p>}
               {source === 'owned' && filteredOwnedItems.length === 0 && <p className="col-span-full py-8 text-center text-xs text-text-muted">{t('cardListPicker.noOwnedCards')}</p>}
-            </div>
             {hasMore && <div className="flex justify-center py-4"><button type="button" className="btn-secondary" onClick={() => setVisibleCount(current => current + PAGE_SIZE)}>{t('common.more')}</button></div>}
           </div>
 

@@ -27,18 +27,18 @@ test.afterEach(() => {
 })
 
 async function waitForRegistration(page) {
-  await page.waitForFunction(async () => Boolean(await navigator.serviceWorker.getRegistration()), null, { timeout: 15000 })
+  await expect.poll(() => page.evaluate(async () => Boolean(await navigator.serviceWorker.getRegistration())), { timeout: 15000 }).toBe(true)
   await page.evaluate(() => navigator.serviceWorker.ready)
 }
 
 // Resolves once no registration and no pc-* cache exists at the same time. The wait is a poll
 // because the kill worker and the page-side reset finish their cleanup asynchronously.
 async function waitForCleanState(page) {
-  await page.waitForFunction(async () => {
+  await expect.poll(() => page.evaluate(async () => {
     const registrations = await navigator.serviceWorker.getRegistrations()
     const names = (await caches.keys()).filter(name => name.startsWith('pc-'))
     return registrations.length === 0 && names.length === 0
-  }, null, { timeout: 15000, polling: 50 })
+  }), { timeout: 15000, intervals: [50] }).toBe(true)
 }
 
 // First load registers; after a reload the worker controls the page.
@@ -90,27 +90,29 @@ test('page API requests are not served by the service worker', async ({ page }) 
   for (const response of apiResponses) expect(response.fromServiceWorker()).toBe(false)
 })
 
-test('shows the update banner and activates the new worker after one reload', async ({ page }) => {
+test('shows the update banner and activates two consecutive workers after one reload each', async ({ page }) => {
+  test.setTimeout(60000)
   await loadControlled(page)
-  appendFileSync(resolve(dist, 'sw.js'), '\n// byte-different update\n')
+  for (const update of [1, 2]) {
+    appendFileSync(resolve(dist, 'sw.js'), `\n// byte-different update ${update}\n`)
+    await page.evaluate(async () => {
+      await (await navigator.serviceWorker.getRegistration()).update()
+    })
+    const banner = page.getByTestId('update-banner')
+    await expect(banner).toBeVisible()
+    await expect(banner).toContainText('A new version is available.')
 
-  await page.evaluate(async () => {
-    await (await navigator.serviceWorker.getRegistration()).update()
-  })
-  const banner = page.getByTestId('update-banner')
-  await expect(banner).toBeVisible()
-  await expect(banner).toContainText('A new version is available.')
-
-  await page.evaluate(() => { window.__beforeUpdate = true })
-  await banner.getByRole('button', { name: 'Update' }).click()
-  await page.waitForFunction(() => window.__beforeUpdate === undefined)
-  await expect(page.getByText('Hello,')).toBeVisible()
-  await expect(page.getByTestId('update-banner')).toHaveCount(0)
-  const state = await page.evaluate(async () => {
-    const registration = await navigator.serviceWorker.getRegistration()
-    return { waiting: Boolean(registration.waiting), controlled: Boolean(navigator.serviceWorker.controller) }
-  })
-  expect(state).toEqual({ waiting: false, controlled: true })
+    await page.evaluate(() => { window.__beforeUpdate = true })
+    await banner.getByRole('button', { name: 'Update' }).click()
+    await page.waitForFunction(() => window.__beforeUpdate === undefined)
+    await expect(page.getByText('Hello,')).toBeVisible()
+    await expect(page.getByTestId('update-banner')).toHaveCount(0)
+    const state = await page.evaluate(async () => {
+      const registration = await navigator.serviceWorker.getRegistration()
+      return { waiting: Boolean(registration.waiting), controlled: Boolean(navigator.serviceWorker.controller) }
+    })
+    expect(state).toEqual({ waiting: false, controlled: true })
+  }
 })
 
 test('shows an updating screen after Update and offers a manual reload if nothing reloads', async ({ page }) => {
@@ -166,9 +168,14 @@ test('kill switch removes the registration and pc-* caches but leaves IndexedDB 
   }))
 
   copyFileSync(resolve(dist, 'sw.kill.js'), resolve(dist, 'sw.js'))
-  await page.evaluate(async () => {
-    await (await navigator.serviceWorker.getRegistration()).update()
-  })
+  // The kill worker navigates its clients after clearing caches and unregistering.
+  // Subscribe before update so the IndexedDB assertion runs in the new document.
+  await Promise.all([
+    page.waitForEvent('domcontentloaded'),
+    page.evaluate(async () => {
+      await (await navigator.serviceWorker.getRegistration()).update()
+    }),
+  ])
 
   await waitForCleanState(page)
   const databases = await page.evaluate(async () => (await indexedDB.databases()).map(db => db.name))
@@ -181,4 +188,8 @@ test('/?pc_sw=off unregisters the worker and strips the parameter', async ({ pag
   await page.waitForFunction(() => !location.search.includes('pc_sw'))
   await waitForCleanState(page)
   expect(new URL(page.url()).search).toBe('')
+  await page.waitForTimeout(3500)
+  await waitForCleanState(page)
+  await page.reload()
+  await waitForRegistration(page)
 })

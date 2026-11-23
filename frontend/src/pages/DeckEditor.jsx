@@ -1,3 +1,6 @@
+import { bulkRemoveDeckEntries } from '../api/client'
+import { useBulkRemoval } from '../hooks/useBulkRemoval'
+import BulkRemovalToolbar, { BulkRemovalToggle, BulkRemovalActions } from '../components/BulkRemovalToolbar'
 import { useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -127,6 +130,11 @@ export default function DeckEditor() {
     },
     onError: error => toast.error(error.response?.data?.detail || t('binderTypes.printSwitchFailed')),
   })
+  const bulkRemoval = useBulkRemoval({
+    items: entries, kind: 'deck', scopeKey: `deck:${deckId}`, t,
+    remove: ids => bulkRemoveDeckEntries(deckId, ids),
+    blocked: pendingEntryIds.size > 0 || removeMutation.isPending || importMutation.isPending || addEntriesMutation.isPending,
+  })
   if (isLoading) return <div className="skeleton h-96 rounded-xl" />
   if (!deck) return null
 
@@ -145,8 +153,8 @@ export default function DeckEditor() {
   }
 
   return (
-    <div className="space-y-4 pb-6">
-      <header className="space-y-4">
+    <div className={`space-y-4 ${bulkRemoval.active ? 'pb-48 lg:pb-6' : 'pb-6'}`}>
+      <header className={`space-y-4 ${bulkRemoval.active ? 'lg:sticky lg:top-3 lg:z-30 lg:bg-bg-surface/95 lg:py-2 lg:backdrop-blur' : ''}`}>
         <button onClick={() => navigate('/binders')} className="btn-ghost py-1.5 text-sm">
           <ArrowLeft size={14} /> {t('nav.binders')}
         </button>
@@ -164,7 +172,9 @@ export default function DeckEditor() {
             {deck.description && <p className="mt-1 text-sm text-text-secondary">{deck.description}</p>}
             <p className="mt-1 text-xs text-text-muted">{progress.current} / {progress.target} {t('decks.cards')} · {t(`decks.format${deck.format || 'Casual'}`)}</p>
           </div>
+          <BulkRemovalActions selection={bulkRemoval} empty={entries.length === 0}>
           <div className="flex flex-wrap items-center gap-2">
+            <BulkRemovalToggle selection={bulkRemoval} empty={entries.length === 0} />
             <button className="btn-primary flex-shrink-0" onClick={() => setDeckPickerOpen(!pickerOpen)} aria-expanded={pickerOpen} aria-controls="deck-owned-cards-content"><Plus size={16} /> {t('decks.addCards')}</button>
             {isRealDeck ? (
               <button className="btn-ghost flex-shrink-0 px-2" disabled={convertMutation.isPending} onClick={async () => { if (await confirm({ title: t('decks.convertToPlanned'), message: t('decks.convertToPlannedConfirm') })) convertMutation.mutate('deck') }}><Layers3 size={16} /> {t('decks.convertToPlanned')}</button>
@@ -179,6 +189,7 @@ export default function DeckEditor() {
             <button className="btn-ghost px-3 text-brand-red hover:text-brand-red" disabled={deleteMutation.isPending} title={t('common.delete')} aria-label={t('common.delete')} onClick={async () => { if (await confirm({ title: t('common.delete'), message: label('decks.deleteConfirm', { name: deck.name }) })) deleteMutation.mutate() }}><Trash2 size={16} /></button>
             <input ref={csvInputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) importMutation.mutate(file); event.target.value = '' }} />
           </div>
+        </BulkRemovalActions>
         </div>
       </header>
 
@@ -213,6 +224,7 @@ export default function DeckEditor() {
           label={label}
         />
         <section className="space-y-3">
+          <BulkRemovalToolbar selection={bulkRemoval} kind="deck" empty={entries.length === 0} />
            <DeckCompositionBar entries={entries} progress={progress} t={t} label={label} />
            <DeckValidationPanel validation={deck.validation} t={t} />
           {entries.length === 0 ? (
@@ -220,6 +232,7 @@ export default function DeckEditor() {
           ) : (
             <CardListGallery
               entries={entries}
+              selection={bulkRemoval}
               mode={isRealDeck ? 'physical' : 'planned'}
               onOpen={(_entry, index) => setViewerIndex(index)}
               t={t}

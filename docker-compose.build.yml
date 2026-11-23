@@ -10,3 +10,5 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
+      args:
+        VITE_HOLO_EFFECTS_API_BASE_URL: ${VITE_HOLO_EFFECTS_API_BASE_URL-https://pokecollector.romerg.de}

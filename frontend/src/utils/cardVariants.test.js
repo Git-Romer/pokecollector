@@ -128,3 +128,11 @@ describe('card tile ownership normalization', () => {
     expect(getCardOwnedVariants({ owned_quantity: 3 })).toEqual([])
   })
 })
+
+
+describe('advanced effect independence', () => {
+  it('does not introduce a synthetic physical finish', () => {
+    expect(getOwnedVariants([row({ variant: 'Special' })])).toEqual([])
+    expect(getAvailableVariants({ variants_holo: true, variants_reverse: true })).toEqual(['Reverse Holo', 'Holo'])
+  })
+})

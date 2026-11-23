@@ -41,7 +41,7 @@ test.describe('offline banner without a queue', () => {
     await mockApi(context, state)
     await signIn(page)
     await page.goto('/collection')
-    await expect(page.getByText('Starting PokéCollector')).toHaveCount(0)
+    await expect(page.getByPlaceholder('Search cards...')).toBeVisible()
     await expect(page.getByTestId('offline-banner')).toHaveCount(0)
 
     state.mode = 'hang'

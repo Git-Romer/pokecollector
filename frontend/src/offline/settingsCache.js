@@ -1,6 +1,7 @@
 // Per-user cache of the last good settings response and exchange rates, so an offline
-// launch keeps the user's currency instead of falling back to EUR. Display-only: the
-// server stays the source of truth. Every storage access is guarded.
+// launch keeps the user's currency instead of falling back to EUR. A narrowly scoped
+// pending download preference takes effect locally until the server acknowledges it.
+// All other settings remain display-only offline. Every storage access is guarded.
 
 export const SETTINGS_CACHE_KEY = 'pc.settings.cache'
 
@@ -46,11 +47,39 @@ function update(userId, storage, mutate) {
   }
 }
 
+/** Only this device-storage choice can be changed without a server connection. */
+export function pendingOfflineCollectionPreference(userId, { storage = getStorage() } = {}) {
+  const pending = readAll(storage).users[userKey(userId)]?.offlineCollectionPreference
+  return pending && ['true', 'false'].includes(pending.value) && typeof pending.revision === 'string'
+    ? pending : null
+}
+
+export function stageOfflineCollectionPreference(userId, value, { storage = getStorage() } = {}) {
+  if (!['true', 'false'].includes(value)) return false
+  return update(userId, storage, entry => {
+    entry.offlineCollectionPreference = { value, revision: globalThis.crypto.randomUUID() }
+    entry.settings = { ...entry.settings, offline_collection_enabled: value }
+  })
+}
+
+export function acknowledgeOfflineCollectionPreference(userId, revision, { storage = getStorage() } = {}) {
+  let acknowledged = false
+  const saved = update(userId, storage, entry => {
+    if (entry.offlineCollectionPreference?.revision !== revision) return
+    entry.settings = { ...entry.settings, offline_collection_enabled: entry.offlineCollectionPreference.value }
+    delete entry.offlineCollectionPreference
+    acknowledged = true
+  })
+  return saved && acknowledged
+}
+
 /** Save the whole settings object from a successful `GET /api/settings/`. */
 export function writeCachedSettings(userId, settings, { storage = getStorage(), now = Date.now } = {}) {
   if (!settings || typeof settings !== 'object') return false
   return update(userId, storage, entry => {
-    entry.settings = settings
+    entry.settings = entry.offlineCollectionPreference
+      ? { ...settings, offline_collection_enabled: entry.offlineCollectionPreference.value }
+      : settings
     entry.settingsAt = now()
   })
 }
@@ -132,8 +161,10 @@ export function clearSettingsCache({ storage = getStorage() } = {}) {
 export async function loadSettingsWithCache(userId, fetchSettings, options) {
   try {
     const data = await withTimeout(fetchSettings, options)
-    writeCachedSettings(userId, data, options)
-    return data
+    const pending = pendingOfflineCollectionPreference(userId, options)
+    const effective = pending ? { ...data, offline_collection_enabled: pending.value } : data
+    writeCachedSettings(userId, effective, options)
+    return effective
   } catch (err) {
     const cached = readCachedSettings(userId, options)
     if (cached) return cached

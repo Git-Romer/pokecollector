@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Minus, Plus, RotateCcw, X } from 'lucide-react'
 import { useDialogBehavior } from './ui/dialogBehavior'
 import { useSettings } from '../contexts/SettingsContext'
+import HoloEffectOverlay from './HoloEffectOverlay'
 
 const MIN_SCALE = 1
 const MAX_SCALE = 4
@@ -30,9 +31,10 @@ function midpoint(touches) {
  * controls exist both as a fallback for devices without wheel/pinch input
  * and as the visual hint that the image is zoomable.
  */
-export default function ImageZoomOverlay({ src, alt = '', onClose }) {
+export default function ImageZoomOverlay({ src, alt = '', onClose, holoCard, holoVariantSource }) {
   const { t } = useSettings()
   const [scale, setScale] = useState(MIN_SCALE)
+  const [imageAspect, setImageAspect] = useState(2.5 / 3.5)
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [showHint, setShowHint] = useState(true)
   const [isDragging, setIsDragging] = useState(false)
@@ -198,20 +200,27 @@ export default function ImageZoomOverlay({ src, alt = '', onClose }) {
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
-        <img
-          ref={imgRef}
-          src={src}
-          alt={alt}
-          draggable={false}
-          className="absolute left-1/2 top-1/2 select-none object-contain"
+        <div
+          data-holo-host
+          className="absolute left-1/2 top-1/2"
           style={{
-            width: 'min(80vw, 480px)',
-            maxHeight: 'calc(100dvh - 9rem)',
-            cursor: scale > MIN_SCALE ? (isDragging ? 'grabbing' : 'grab') : 'zoom-in',
+            width: `min(80vw, 480px, calc((100dvh - 9rem) * ${imageAspect}))`,
             transform: `translate(-50%, -50%) translate(${position.x}px, ${position.y}px) scale(${scale})`,
             transition: isDragging || pinchState.current ? 'none' : 'transform 120ms ease-out',
           }}
-        />
+        >
+          <div data-holo-rotator>
+            <div data-holo-artwork className="holo-zoom-artwork">
+              <img
+                ref={imgRef} src={src} alt={alt} draggable={false}
+                onLoad={event => setImageAspect(event.currentTarget.naturalWidth / event.currentTarget.naturalHeight)}
+                className="block h-auto w-full select-none object-contain"
+                style={{ cursor: scale > MIN_SCALE ? (isDragging ? 'grabbing' : 'grab') : 'zoom-in' }}
+              />
+              {holoCard && <HoloEffectOverlay card={holoCard} imageUrl={src} variantSource={holoVariantSource} mode="interactive" />}
+            </div>
+          </div>
+        </div>
 
         {showHint && (
           <div className="pointer-events-none absolute bottom-20 left-1/2 -translate-x-1/2 rounded-full bg-black/70 px-4 py-2 text-xs font-medium text-white shadow-lg">

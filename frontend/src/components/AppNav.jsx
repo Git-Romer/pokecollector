@@ -18,6 +18,7 @@ const PAGE_TITLE_KEYS = {
   '/leaderboard': 'nav.leaderboard',
   '/achievements': 'nav.achievements',
   '/settings':   'nav.settings',
+  '/offline':    'sync.centerTitle',
   '/migration':  'migration.title',
   '/scans':      'scanner.queueTitle',
   '/dashboard':  'nav.dashboard',

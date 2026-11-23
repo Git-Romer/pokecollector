@@ -6,6 +6,7 @@ import {
   READ_CACHE_DB_NAME,
   READ_CACHE_MAX_AGE_MS,
   READ_CACHE_MAX_QUERY_BYTES,
+  READ_CACHE_MAX_COLLECTION_BYTES,
   READ_CACHE_MAX_TOTAL_BYTES,
   applyCaps,
   persist,
@@ -14,6 +15,7 @@ import {
   purgeOthers,
   recordKey,
   restore,
+  saveCollectionSnapshot,
 } from './readCache.js'
 
 const origin = 'https://pokes.test'
@@ -73,6 +75,58 @@ afterEach(() => {
 })
 
 describe('read cache', () => {
+  it('accepts an unchanged snapshot retained by query structural sharing', async () => {
+    client.setQueryData(['collection', {}], [])
+    expect(await saveCollectionSnapshot(client, [], { origin, userId: 1, indexedDB })).toBe(true)
+  })
+
+  it('persists the requested snapshot even if an older online fetch completes during the write', async () => {
+    const items = [{ id: 1, card_id: 'new-snapshot' }]
+    const saving = saveCollectionSnapshot(client, items, { origin, userId: 1, indexedDB })
+    client.setQueryData(['collection', {}], [{ id: 2, card_id: 'older-fetch' }])
+    expect(await saving).toBe(true)
+    const fresh = newClient()
+    await restore(fresh, { origin, userId: 1, indexedDB })
+    expect(fresh.getQueryData(['collection', {}])).toEqual(items)
+  })
+
+  it('commits an explicit full collection before reporting it saved', async () => {
+    const items = Array.from({ length: 2000 }, (_, id) => ({ id, card_id: `card-${id}` }))
+    expect(await saveCollectionSnapshot(client, items, { origin, userId: 1, indexedDB })).toBe(true)
+    const fresh = newClient()
+    await restore(fresh, { origin, userId: 1, indexedDB })
+    expect(fresh.getQueryData(['collection', {}])).toEqual(items)
+    const otherUser = newClient()
+    expect(await restore(otherUser, { origin, userId: 2, indexedDB })).toBe(null)
+  })
+
+  it('persists 2,000 metadata-rich cards, not only minimal mocked rows', async () => {
+    const items = Array.from({ length: 2000 }, (_, id) => ({
+      id, card_id: `card-${id}_en`, quantity: 1,
+      card: { id: `card-${id}_en`, name: `Card ${id}`, rules: ['x'.repeat(2900)] },
+    }))
+    // The real 2,000-card manifest exceeds the generic 5 MiB query limit.
+    expect(JSON.stringify(items).length).toBeGreaterThan(5 * 1024 * 1024)
+    expect(await saveCollectionSnapshot(client, items, { origin, userId: 1, indexedDB })).toBe(true)
+    const fresh = newClient()
+    await restore(fresh, { origin, userId: 1, indexedDB })
+    expect(fresh.getQueryData(['collection', {}])).toEqual(items)
+  })
+
+  it('rejects a collection above the UTF-8 byte limit even when its character count fits', async () => {
+    const items = [{ card: { name: '界'.repeat(Math.ceil(READ_CACHE_MAX_COLLECTION_BYTES / 3)) } }]
+    expect(JSON.stringify(items).length).toBeLessThan(READ_CACHE_MAX_COLLECTION_BYTES)
+    expect(new TextEncoder().encode(JSON.stringify(items)).byteLength).toBeGreaterThan(READ_CACHE_MAX_COLLECTION_BYTES)
+    expect(await saveCollectionSnapshot(client, items, { origin, userId: 1, indexedDB })).toBe(false)
+    expect(await getRecord(recordKey(origin, 1))).toBeUndefined()
+  })
+
+  it('does not report a capped or unavailable snapshot as durable', async () => {
+    expect(await saveCollectionSnapshot(client, [{ x: 'x'.repeat(READ_CACHE_MAX_COLLECTION_BYTES + 1) }], { origin, userId: 1, indexedDB })).toBe(false)
+    expect(await saveCollectionSnapshot(client, [], { origin, userId: 1, indexedDB: null })).toBe(false)
+    expect(await saveCollectionSnapshot(client, [], { origin, userId: 1, indexedDB, isCurrentUser: () => false })).toBe(false)
+  })
+
   it('saves only successful allow-listed queries', async () => {
     seed(['collection', { page: 1 }], [{ id: 1 }])
     seed(['wishlist'], [{ id: 2 }])
@@ -104,10 +158,15 @@ describe('read cache', () => {
   })
 
   it('drops a query over 5 MiB and keeps the rest', async () => {
-    seed(['collection'], 'x'.repeat(READ_CACHE_MAX_QUERY_BYTES + 10))
+    seed(['dashboard'], 'x'.repeat(READ_CACHE_MAX_QUERY_BYTES + 10))
     seed(['wishlist'], ['ok'])
     await save()
     expect(hashes(await getRecord(recordKey(origin, 1)))).toEqual(['["wishlist"]'])
+  })
+
+  it('applies the generic query cap to UTF-8 bytes too', () => {
+    const query = { queryKey: ['dashboard'], state: { data: '界'.repeat(Math.ceil(READ_CACHE_MAX_QUERY_BYTES / 3)) } }
+    expect(applyCaps([query])).toEqual([])
   })
 
   it('drops the oldest queries until the total fits in 20 MiB', () => {

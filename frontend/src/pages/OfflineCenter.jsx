@@ -1,15 +1,19 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
+import { useConfirmDialog } from '../contexts/ConfirmDialogContext'
 import { Check, X } from 'lucide-react'
 import InstallHint from '../components/pwa/InstallHint'
+import CollectionDownload from '../components/pwa/CollectionDownload'
+import ServerSyncSettings from '../components/sync/ServerSyncSettings'
 import { StorageSummary, SyncControls, SyncItemList } from '../components/sync/SyncSheet'
 import { useSettings } from '../contexts/SettingsContext'
 import { getCapabilities } from '../offline/capabilities'
 import { probe } from '../offline/outbox/probe'
 import { purgeAll } from '../offline/readCache'
 import { useOutbox } from '../offline/useOutbox'
+import { useAutomaticCollection } from '../offline/AutomaticCollectionProvider'
 import { resetServiceWorker } from '../pwa/register'
+import { retryMissingArtwork } from '../utils/artworkRetry'
 
 function appVersion() {
   // eslint-disable-next-line no-undef
@@ -60,7 +64,16 @@ function Capability({ label, ok }) {
 
 export default function OfflineCenter() {
   const { t } = useSettings()
-  const { enabled, outbox, reachability } = useOutbox()
+  const confirmDialog = useConfirmDialog()
+  const mounted = useRef(false)
+  const resetPending = useRef(false)
+  const [resetting, setResetting] = useState(false)
+  useEffect(() => {
+    mounted.current = true
+    return () => { mounted.current = false }
+  }, [])
+  const { enabled, outbox, reachability, otherAccountCount } = useOutbox()
+  const automaticCollection = useAutomaticCollection()
   const [unavailable, setUnavailable] = useState(false)
   const [live, setLive] = useState(null)
   const [buildId, setBuildId] = useState(null)
@@ -74,24 +87,44 @@ export default function OfflineCenter() {
   }, [outbox])
 
   useEffect(() => {
-    if (!enabled) return undefined
     check()
+    const disconnected = () => setLive({ state: 'unreachable' })
     window.addEventListener('online', check)
-    return () => window.removeEventListener('online', check)
-  }, [enabled, check])
+    window.addEventListener('offline', disconnected)
+    return () => {
+      window.removeEventListener('online', check)
+      window.removeEventListener('offline', disconnected)
+    }
+  }, [check])
 
   useEffect(() => { readBuildId().then(setBuildId) }, [])
-
-  if (!enabled) return <Navigate to="/" replace />
 
   const state = live?.state || reachability.state
   const stateText = state === 'reachable' ? t('pwa.reachable') : state === 'captive' ? t('pwa.captive') : state === 'unknown' ? '…' : t('pwa.unreachable')
   const info = live?.serverInfo
 
   const reset = async () => {
-    await purgeAll()
-    await resetServiceWorker()
-    toast.success(t('pwa.resetDone'))
+    if (resetPending.current) return
+    resetPending.current = true
+    setResetting(true)
+    try {
+      const session = localStorage.getItem('token')
+      if (!await confirmDialog({
+        title: t('pwa.resetConfirmTitle'),
+        message: t('pwa.resetConfirmMessage'),
+        confirmLabel: t('pwa.resetConfirmAction'),
+        destructive: true,
+      })) return
+      // A dialog from an old page or sign-in must not reset the current session.
+      if (!mounted.current || session !== localStorage.getItem('token')) return
+      await automaticCollection?.stop()
+      await purgeAll()
+      await resetServiceWorker()
+      toast.success(t('pwa.resetDone'))
+    } finally {
+      resetPending.current = false
+      if (mounted.current) setResetting(false)
+    }
   }
 
   return (
@@ -108,7 +141,22 @@ export default function OfflineCenter() {
         {live && <p className="text-xs text-text-muted">{new Date().toLocaleTimeString()}</p>}
       </Section>
 
-      <Section title={t('sync.centerTitle')}>
+      <Section title={t('sync.artworkTitle')}>
+        <p className="text-xs text-text-secondary">{t('sync.artworkRetryHint')}</p>
+        <button type="button" className="btn-ghost text-sm" disabled={state !== 'reachable' || automaticCollection?.phase === 'downloading'}
+          onClick={() => {
+            retryMissingArtwork()
+            void automaticCollection?.retry()
+            toast.success(t('sync.artworkRetryRequested'))
+          }}>
+          {t('sync.artworkRetry')}
+        </button>
+      </Section>
+
+      <CollectionDownload />
+
+      {enabled && <Section title={t('sync.queueTitle')}>
+        <p className="text-xs text-text-secondary">{t('sync.queueDescription')}</p>
         {unavailable ? (
           <p className="text-sm text-text-secondary">{t('sync.unavailableQueue')}</p>
         ) : (
@@ -117,13 +165,18 @@ export default function OfflineCenter() {
             <SyncItemList />
           </>
         )}
-      </Section>
+      </Section>}
 
-      <Section title={t('sync.storageTitle')}>
-        {unavailable ? <p className="text-sm text-text-secondary">{t('sync.storageUnavailable')}</p> : <StorageSummary />}
-      </Section>
+      {enabled && <Section title={t('sync.storageTitle')}>
+        {unavailable ? <p className="text-sm text-text-secondary">{t('sync.storageUnavailable')}</p> : <StorageSummary showTitle={false} />}
+        {otherAccountCount > 0 && (
+          <p className="text-xs text-text-muted">{`${t('sync.otherAccountsNote')}: ${otherAccountCount}`}</p>
+        )}
+      </Section>}
 
-      <Section title={t('pwa.settingsTitle')}>
+      <ServerSyncSettings />
+
+      {enabled && <Section title={t('pwa.settingsTitle')}>
         <ul className="space-y-2">
           <Capability label={t('pwa.capSecureContext')} ok={capabilities.secureContext} />
           <Capability label={t('pwa.capServiceWorker')} ok={capabilities.serviceWorker && capabilities.secureContext} />
@@ -133,12 +186,12 @@ export default function OfflineCenter() {
         </ul>
         {!capabilities.secureContext && <p className="text-xs text-text-secondary">{t('pwa.httpsHint')}</p>}
         <InstallHint force />
-      </Section>
+      </Section>}
 
-      <Section title={t('pwa.resetTitle')}>
+      {enabled && <Section title={t('pwa.resetTitle')}>
         <p className="text-xs text-text-secondary">{t('pwa.resetDescription')}</p>
-        <button type="button" className="btn-ghost" onClick={reset}>{t('pwa.resetAction')}</button>
-      </Section>
+        <button type="button" className="btn-ghost" disabled={resetting} onClick={reset}>{t('pwa.resetAction')}</button>
+      </Section>}
 
       <p className="text-center text-xs text-text-muted">
         {`${t('pwa.version')}: ${appVersion() || '–'}${buildId ? ` · ${buildId}` : ''}`}

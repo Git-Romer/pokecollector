@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { onlineManager, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { useAuth } from '../contexts/AuthContext'
@@ -16,6 +16,7 @@ import { createOutbox } from './outbox/index.js'
 import { persist, purge, purgeOthers, restore } from './readCache'
 import { createSyncReporter } from './syncToasts'
 import { OutboxContext } from './useOutbox'
+import AutomaticCollectionProvider from './AutomaticCollectionProvider'
 
 const ignore = () => {}
 const RESTORE_WAIT_MS = 1500
@@ -86,7 +87,8 @@ async function decideLogout({ outbox, ask, setBusy, close }) {
 export function OfflineProvider({ children }) {
   const { user, status, setLogoutGuard } = useAuth()
   const queryClient = useQueryClient()
-  const { t } = useSettings()
+  const { t, settings, loaded: settingsLoaded } = useSettings()
+  const collectionEnabled = settings.offline_collection_enabled === 'true'
   const tRef = useRef(t)
   tRef.current = t
   const enabled = useMemo(() => readPwaFlags().queue && getCapabilities().indexedDB, [])
@@ -97,6 +99,8 @@ export function OfflineProvider({ children }) {
   const [restoreDone, setRestoreDone] = useState(false)
   const resolveRef = useRef(null)
   const persisterRef = useRef(null)
+  const automaticRef = useRef(null)
+  const stoppedWriterRef = useRef(Promise.resolve())
   const restoreStartedRef = useRef(false)
   const userIdRef = useRef(null)
   userIdRef.current = typeof user?.id === 'number' ? user.id : null
@@ -148,7 +152,7 @@ export function OfflineProvider({ children }) {
 
   // A degraded start puts the saved data back before protected routes mount (or after 1.5 s).
   useEffect(() => {
-    if (!enabled || status !== 'degraded' || userId === null || restoreStartedRef.current) return
+    if (!enabled || !settingsLoaded || !collectionEnabled || status !== 'degraded' || userId === null || restoreStartedRef.current) return
     restoreStartedRef.current = true
     const timer = window.setTimeout(() => setRestoreDone(true), RESTORE_WAIT_MS)
     restore(queryClient, { origin: window.location.origin, userId })
@@ -158,7 +162,7 @@ export function OfflineProvider({ children }) {
         window.clearTimeout(timer)
         setRestoreDone(true)
       })
-  }, [enabled, status, userId, queryClient])
+  }, [enabled, settingsLoaded, collectionEnabled, status, userId, queryClient])
 
   // The server answered again: the pages hold fresh data, so the "saved data" label goes.
   useEffect(() => {
@@ -171,14 +175,21 @@ export function OfflineProvider({ children }) {
   // start's restore so a half-empty cache never replaces the saved record.
   const persistReady = status === 'ready' || restoreDone
   useEffect(() => {
-    if (!enabled || !active || !persistReady) return undefined
+    if (!enabled || !settingsLoaded || !collectionEnabled || !active || !persistReady) return undefined
     const persister = persist(queryClient, { origin: window.location.origin, userId })
     persisterRef.current = persister
     return () => {
-      persister.stop()
+      stoppedWriterRef.current = persister.stop()
       if (persisterRef.current === persister) persisterRef.current = null
     }
-  }, [enabled, active, persistReady, userId, queryClient])
+  }, [enabled, settingsLoaded, collectionEnabled, active, persistReady, userId, queryClient])
+
+  const clearOfflineMetadata = useCallback(async ownerId => {
+    if (userIdRef.current === ownerId) await persisterRef.current?.stop()
+    await stoppedWriterRef.current
+    if (await purge({ origin: window.location.origin, userId: ownerId, strict: true }) !== true) throw new Error('cleanup_failed')
+  }, [])
+  const registerAutomatic = useCallback(controller => { automaticRef.current = controller }, [])
 
   // Storage protection (D12): persist() after the first enqueue and on every start while items
   // wait, and notice when the browser removed the database behind our back.
@@ -253,7 +264,9 @@ export function OfflineProvider({ children }) {
     // Stop the writer first so a pending save cannot bring the data back after the purge.
     const clearCache = async () => {
       if (userIdRef.current === null) return
+      await automaticRef.current?.stop()
       await persisterRef.current?.stop()
+      await stoppedWriterRef.current
       await purge({ origin: window.location.origin, userId: userIdRef.current })
     }
     const guard = () => runLogoutGuard({ outbox, ask, setBusy: busy => setDialog({ busy }), close, clearCache })
@@ -269,12 +282,14 @@ export function OfflineProvider({ children }) {
   if (!enabled) return children
 
   const choose = choice => resolveRef.current?.(choice)
-  const gated = status === 'degraded' && userId !== null && !restoreDone
+  const gated = collectionEnabled && status === 'degraded' && userId !== null && !restoreDone
 
   return (
     <OutboxContext.Provider value={outbox}>
       <SavedAtContext.Provider value={savedAt}>
-        {gated ? null : children}
+        <AutomaticCollectionProvider clearMetadata={clearOfflineMetadata} onController={registerAutomatic}>
+          {gated ? null : children}
+        </AutomaticCollectionProvider>
       </SavedAtContext.Provider>
       <EvictedNotice isOpen={evicted} onClose={() => setEvicted(false)} />
       <LogoutGuardDialog

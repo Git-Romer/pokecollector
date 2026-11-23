@@ -3,8 +3,10 @@
 import { FOREGROUND_UPDATE_CHECK_MS } from '../offline/constants'
 
 const CHECKED_AT_KEY = 'pc.swCheckedAt'
-const RELOADED_KEY = 'pc.reloaded'
+// A new document must be able to apply its next update. Session storage outlives it.
+let reloadScheduled = false
 const PRELOAD_RELOAD_KEY = 'pc.preloadReloaded'
+const RESET_DOCUMENT_KEY = 'pc.resetDocument'
 
 // Update guards: other features register a function that returns true while a reload
 // would lose work (staged scanner photos, an outbox item being sent).
@@ -32,6 +34,26 @@ function session() {
   } catch {
     return null
   }
+}
+
+// Keep the URL escape hatch off for its redirected document too. Otherwise the
+// default-on downloader immediately recreates caches that the escape hatch removed.
+// A later manual reload has a different timeOrigin and enables normal operation.
+export function isOfflineResetting() {
+  if (typeof window === 'undefined') return false
+  if (new URL(window.location.href).searchParams.get('pc_sw') === 'off') return true
+  try {
+    const store = session()
+    const marker = store?.getItem(RESET_DOCUMENT_KEY)
+    const documentId = String(window.performance.timeOrigin)
+    if (marker === 'next') {
+      store.setItem(RESET_DOCUMENT_KEY, documentId)
+      return true
+    }
+    if (marker === documentId) return true
+    if (marker) store.removeItem(RESET_DOCUMENT_KEY)
+  } catch { /* Session storage may be unavailable. */ }
+  return false
 }
 
 // Unregisters every service worker and deletes the pc-* caches. Never touches IndexedDB.
@@ -62,14 +84,9 @@ export function applyUpdate(registration) {
   if (isUpdateBlocked()) return { applied: false, blocked: true }
   const waiting = registration?.waiting
   if (!waiting) return { applied: false, blocked: false }
-  const store = session()
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    try {
-      if (store?.getItem(RELOADED_KEY)) return
-      store?.setItem(RELOADED_KEY, '1')
-    } catch {
-      // ignore
-    }
+    if (reloadScheduled) return
+    reloadScheduled = true
     window.location.reload()
   }, { once: true })
   waiting.postMessage({ type: 'SKIP_WAITING' })
@@ -122,12 +139,13 @@ export async function initServiceWorker({ flags, onUpdateReady }) {
 
   const url = new URL(window.location.href)
   if (url.searchParams.get('pc_sw') === 'off') {
+    try { session()?.setItem(RESET_DOCUMENT_KEY, 'next') } catch { /* best effort */ }
     await resetServiceWorker()
     window.location.replace(stripResetParam(window.location.href))
     return
   }
 
-  if (!flags?.sw) {
+  if (!flags?.sw || isOfflineResetting()) {
     await resetServiceWorker()
     return
   }

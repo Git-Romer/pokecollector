@@ -34,7 +34,7 @@ function stubBrowser({ secure = true, standalone, permission = 'granted', existi
 }
 
 beforeEach(() => vi.clearAllMocks())
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
 
 describe('pushSupported', () => {
   it('needs a secure context, PushManager and Notification', () => {
@@ -57,6 +57,15 @@ describe('pushSupported', () => {
 })
 
 describe('enablePush', () => {
+  it('returns a failure when the browser push service never completes subscription', async () => {
+    vi.useFakeTimers()
+    const { pushManager } = stubBrowser()
+    pushManager.subscribe.mockImplementation(() => new Promise(() => {}))
+    const attempt = enablePush()
+    await vi.advanceTimersByTimeAsync(30000)
+    expect(await Promise.race([attempt, Promise.resolve('not bounded')])).toEqual({ ok: false, reason: 'failed' })
+    expect(api.subscribePush).not.toHaveBeenCalled()
+  })
   it('subscribes with the server key and registers the subscription', async () => {
     const { pushManager } = stubBrowser()
     expect(await enablePush()).toEqual({ ok: true })

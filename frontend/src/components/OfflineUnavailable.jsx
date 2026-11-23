@@ -16,7 +16,6 @@ export default function OfflineUnavailable() {
         <p className="text-sm text-text-secondary">{t('sync.needsConnection')}</p>
       </div>
       <div className="flex flex-wrap justify-center gap-2">
-        <Link to="/offline" className="btn-primary">{t('sync.centerTitle')}</Link>
         <Link to="/" className="btn-ghost">{t('sync.goHome')}</Link>
       </div>
     </div>

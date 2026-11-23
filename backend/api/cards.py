@@ -37,15 +37,19 @@ from services.card_numbers import card_number_filter
 from services.tcgdex_languages import english_fallback_languages, has_lang_suffix, is_supported_tcgdex_language, normalize_tcgdex_language
 from services.text_search import accent_insensitive_contains, json_array_text_matches, normalize_search_term
 from services.card_state import card_state_summaries
+from services.product_sources import annotate_product_sources
 import datetime
 import re
 from uuid import uuid4
 
 router = APIRouter()
 
-# Pattern: an alphanumeric set code beginning with a letter, then a numeric card
-# number (e.g. "MEP 022", "sv08 032", "M2a 228").
-_CODE_NUMBER_RE = re.compile(r'^([A-Za-z][A-Za-z0-9]*)\s+(\d+)$')
+# Pattern: an alphanumeric set code (e.g. "MEP 022", "sv08 032", "M2a 228",
+# "30C 001"), then a numeric card number. Set codes may begin with a digit
+# (e.g. the 30th anniversary set "30C"). The set is resolved by an exact,
+# case-insensitive match on abbreviation/id; a code that matches no set falls
+# back to the name search, so a card named "151 025" stays reachable.
+_CODE_NUMBER_RE = re.compile(r'^([A-Za-z0-9]+)\s+(\d+)$')
 
 
 def _card_to_dict(card: Card, current_user_id: int | None = None) -> dict:
@@ -65,6 +69,7 @@ def _card_to_dict(card: Card, current_user_id: int | None = None) -> dict:
     } if set_ref else None
     return {
         "id": card.id,
+        "tcg_card_id": card.tcg_card_id,
         "name": card.name,
         "number": card.number,
         "localId": card.number,
@@ -142,6 +147,7 @@ def _with_collection_summary(db: Session, current_user: User, card_dicts: List[d
         CollectionItem.user_id == current_user.id,
         CollectionItem.card_id.in_(card_ids),
     ).all()
+    annotate_product_sources(db, current_user, items)
     summaries = card_state_summaries(
         db,
         current_user.id,
@@ -163,6 +169,7 @@ def _with_collection_summary(db: Session, current_user: User, card_dicts: List[d
                 "printing_details": [tag.name for tag in item.printing_detail_tags],
                 "lang": item.lang,
                 "purchase_price": item.purchase_price,
+                "product_sources": item.product_sources,
             }
             for item in by_card.get(card.get("id"), [])
         ]
@@ -194,9 +201,14 @@ def _search_by_code_number(
     lang: str = "all",
     background_tasks: BackgroundTasks | None = None,
     rule_text: str | None = None,
-) -> dict:
+) -> dict | None:
     """Search for a card by set abbreviation/id + card number (localId).
     Returns cards for ALL languages unless lang is specified.
+
+    Returns None when the set code does not resolve to any set. Callers then
+    fall back to a name search, so a card whose name looks like a code-number
+    pair stays reachable. An empty result with a resolved set is final: the
+    set code was understood, so only that set may answer the query.
     """
     set_code_upper = set_code.upper()
 
@@ -219,7 +231,7 @@ def _search_by_code_number(
         try:
             active_languages = get_configured_sync_languages(db)
             if lang != "all" and lang not in set(active_languages):
-                return {"data": [], "total_count": 0, "page": page, "page_size": page_size}
+                return None
             api_languages = [lang] if lang != "all" else active_languages
             api_sets = pokemon_api.get_all_sets(languages=api_languages, include_digital=digital_sets_enabled(db))
             for api_set in api_sets:
@@ -246,7 +258,8 @@ def _search_by_code_number(
             pass
 
     if not set_objs:
-        return {"data": [], "total_count": 0, "page": page, "page_size": page_size}
+        # The code matches no known set, so it cannot be a set reference.
+        return None
 
     # Collect unique TCGdex set IDs
     tcg_set_ids = list({s.tcg_set_id or s.id for s in set_objs})
@@ -287,7 +300,7 @@ def _search_by_code_number(
                 for card_data in set_data.get("cards", []):
                     parsed = pokemon_api.parse_card_for_db(card_data, default_set_id=tcg_set_id, lang=set_lang)
                     parsed = apply_cross_language_fallbacks(db, parsed)
-                    upsert_card(db, parsed)
+                    upsert_card(db, parsed, partial=True)
                 db.commit()
             except Exception:
                 db.rollback()
@@ -307,7 +320,7 @@ def _search_by_code_number(
                             )
                             if not parsed:
                                 continue
-                            upsert_card(db, parsed)
+                            upsert_card(db, parsed, partial=True)
                         db.commit()
                     except Exception:
                         db.rollback()
@@ -611,13 +624,13 @@ def search_cards(
     search_term = normalize_search_term(q) or normalize_search_term(name)
 
     try:
-        # ── Code + number pattern: "MEP 022", "SSP 136", "sv08 032" ──────────
+        # ── Code + number pattern: "MEP 022", "SSP 136", "sv08 032", "30C 001" ─
         if search_term:
             m = _CODE_NUMBER_RE.match(search_term)
             if m:
                 set_code = m.group(1)
                 card_number = m.group(2)
-                return _search_by_code_number(
+                code_result = _search_by_code_number(
                     db,
                     current_user,
                     set_code,
@@ -628,6 +641,11 @@ def search_cards(
                     background_tasks=background_tasks,
                     rule_text=rule_text,
                 )
+                if code_result is not None:
+                    return code_result
+                # The code resolved to no set, so the term is not a set
+                # reference. Continue with the name search below, which keeps
+                # card names such as "151 025" reachable.
 
         # ── Pure DB search ────────────────────────────────────────────────────
         query = db.query(Card).filter(Card.is_custom == False, visible_card_filter(db, current_user.id, search_lang))

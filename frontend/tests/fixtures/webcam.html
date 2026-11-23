@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Webcam test fixture</title></head>
+<body><div id="root" style="max-width:640px;margin:auto"></div>
+<script type="module">
+import React from 'react'
+import { createRoot } from 'react-dom/client'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { MemoryRouter } from 'react-router-dom'
+import SettingsContext from '/src/contexts/SettingsContext.jsx'
+import WebcamCapture from '/src/components/WebcamCapture.jsx'
+import UnifiedCardScanner from '/src/components/UnifiedCardScanner.jsx'
+import en from '/src/i18n/en.js'
+import '/src/index.css'
+
+const root = createRoot(document.getElementById('root'))
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+const t = path => path.split('.').reduce((value, key) => value?.[key], en) ?? path
+const control = window.webcamTest = {
+  captures: [], streams: [], requests: [], encodings: [], deferred: false,
+  stopped: 0, drawn: [], delayEncoding: false,
+}
+const nativePlay = HTMLMediaElement.prototype.play
+HTMLMediaElement.prototype.play = function () {
+  return control.playError ? Promise.reject(new DOMException('Fixture playback failure', 'NotAllowedError')) : nativePlay.call(this)
+}
+const nativeToBlob = HTMLCanvasElement.prototype.toBlob
+HTMLCanvasElement.prototype.toBlob = function (callback, ...args) {
+  if (control.delayEncoding) control.encodings.push(() => nativeToBlob.call(this, callback, ...args))
+  else nativeToBlob.call(this, callback, ...args)
+}
+const nativeDrawImage = CanvasRenderingContext2D.prototype.drawImage
+CanvasRenderingContext2D.prototype.drawImage = function (...args) {
+  if (this.canvas.width === 64) control.drawn.push(args.slice(1))
+  return nativeDrawImage.apply(this, args)
+}
+control.makeStream = (deviceId = 'camera-a') => {
+  const canvas = document.createElement('canvas')
+  canvas.width = 640; canvas.height = 480
+  const ctx = canvas.getContext('2d')
+  ctx.fillStyle = '#888'; ctx.fillRect(0, 0, 640, 480)
+  const stream = canvas.captureStream(10)
+  for (const track of stream.getTracks()) {
+    const getSettings = track.getSettings.bind(track)
+    track.getSettings = () => ({ ...getSettings(), deviceId })
+    Object.defineProperty(track, 'label', { value: deviceId === 'camera-b' ? 'Camera B' : 'Camera A' })
+    const stop = track.stop.bind(track)
+    track.stop = () => { control.stopped++; stop() }
+  }
+  control.streams.push(stream)
+  control.canvas = canvas
+  return stream
+}
+Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { configurable: true, value: async constraints => {
+  control.requests.push(constraints)
+  if (control.error) throw new DOMException('Fixture camera error', control.error)
+  if (control.deferred) return new Promise(resolve => { control.grant = () => resolve(control.makeStream(constraints.video.deviceId?.exact)) })
+  return control.makeStream(constraints.video.deviceId?.exact)
+} })
+Object.defineProperty(navigator.mediaDevices, 'enumerateDevices', { configurable: true, value: async () => [
+  { deviceId: 'camera-a', kind: 'videoinput', label: 'Camera A' },
+  { deviceId: 'camera-b', kind: 'videoinput', label: 'Camera B' },
+] })
+control.unmount = () => root.render(null)
+control.mount = (kind = 'webcam', props = {}) => {
+  const component = kind === 'scanner'
+    ? React.createElement(UnifiedCardScanner, { isOpen: true, onClose: control.unmount, ...props })
+    : React.createElement(WebcamCapture, {
+      onCapture: file => control.captures.push({ name: file.name, size: file.size, type: file.type }),
+      onExit: control.unmount, maxReached: false, ...props,
+    })
+  root.render(React.createElement(SettingsContext.Provider, { value: { t } },
+    React.createElement(QueryClientProvider, { client: queryClient },
+      React.createElement(MemoryRouter, null, component))))
+}
+control.ready = true
+</script></body></html>

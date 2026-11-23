@@ -1,7 +1,8 @@
+import WindowedCardGrid from './WindowedCardGrid'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Camera, Check, HelpCircle, ImagePlus, Loader2, Trash2, Upload, X } from 'lucide-react'
+import { Camera, Check, HelpCircle, ImagePlus, Loader2, Trash2, Upload, Video, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 import { enqueueScanJob, getScannerConfiguration } from '../api/client'
@@ -13,6 +14,13 @@ import { addUpdateGuard } from '../pwa/register'
 import { isSupportedScannerImage, SCANNER_IMAGE_ACCEPT } from '../utils/scannerImages'
 import ConfirmDialog from './ui/ConfirmDialog'
 import Modal from './ui/Modal'
+import WebcamCapture from './WebcamCapture'
+
+const isWebcamSupported = () => (
+  typeof window !== 'undefined'
+  && window.isSecureContext
+  && Boolean(window.navigator?.mediaDevices?.getUserMedia)
+)
 
 
 function PhotoPositionGuide({ title, description }) {
@@ -46,8 +54,16 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
   const [confirmation, setConfirmation] = useState(null)
   const [photoGuidePinned, setPhotoGuidePinned] = useState(false)
   const [photoGuideHovered, setPhotoGuideHovered] = useState(false)
+  const [mode, setMode] = useState('staging')
+  const [webcamSupported] = useState(isWebcamSupported)
   const cameraRef = useRef()
   const galleryRef = useRef()
+  const singlePhotoRef = useRef()
+  const takePhotosRef = useRef()
+
+  useEffect(() => {
+    if (mode === 'camera-choice') singlePhotoRef.current?.focus()
+  }, [mode])
   const stagedFilesRef = useRef([])
   const submittingRef = useRef(false)
   const { enabled: queueEnabled, outbox, reachability } = useOutbox()
@@ -77,6 +93,7 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
 
   useEffect(() => {
     if (!isOpen) {
+      setMode('staging')
       setPhotoGuidePinned(false)
       setPhotoGuideHovered(false)
     }
@@ -124,10 +141,12 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
     setPhotoGuidePinned(false)
     setPhotoGuideHovered(false)
     setConfirmation(null)
+    setMode('staging')
     onClose?.()
   }
 
   const closeScanner = () => {
+    setMode('staging')
     if (stagedFiles.length) {
       setConfirmation('close')
       return
@@ -135,7 +154,10 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
     finishClose()
   }
 
-  const requestClear = () => setConfirmation('clear')
+  const requestClear = () => {
+    setMode('staging')
+    setConfirmation('clear')
+  }
 
   const confirmDiscard = () => {
     if (confirmation === 'close') finishClose()
@@ -163,9 +185,10 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
   const canComposite = scannerConfiguration?.visual_verification === 'automatic'
 
   const startScanning = async () => {
-    if (!stagedFiles.length || submitting) return
+    if (mode !== 'staging' || !stagedFiles.length || submitting) return
     submittingRef.current = true
     setSubmitting(true)
+    setMode('staging')
     try {
       const individualPositions = stagedFiles
         .map((item, position) => item.individual ? position : null)
@@ -192,6 +215,16 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
       onClose?.()
       navigate(`/scans/${job.id}`)
     } catch (error) {
+      // Only the durable prefix left staging. Keep the unsaved photos and their
+      // individual flags for retry; already queued chunks have their own identity.
+      if (queueEnabled && Number.isInteger(error?.savedPhotoCount) && error.savedPhotoCount > 0) {
+        const persisted = new Set(stagedFiles.slice(0, error.savedPhotoCount).map(item => item.id))
+        stagedFiles.filter(item => persisted.has(item.id)).forEach(item => URL.revokeObjectURL(item.previewUrl))
+        const remaining = stagedFilesRef.current.filter(item => !persisted.has(item.id))
+        stagedFilesRef.current = remaining
+        setStagedFiles(remaining)
+        toast.success(t('sync.savedOffline'))
+      }
       if (error?.code === 'quota' || error?.code === 'too_many_items') toast.error(t('sync.storageFull'))
       else if (error?.code === 'server_old') toast.error(t('sync.serverTooOld'))
       else if (error?.code === 'too_large' || error?.code === 'photo_too_large') toast.error(t('sync.photoTooLarge'))
@@ -212,8 +245,8 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
         isObscured={Boolean(confirmation)}
       >
         <div className="space-y-4 p-4 sm:p-5">
-          <p className="text-sm text-text-secondary">{t('scanner.subtitle')}</p>
-          {scannerConfiguration?.visual_verification === 'disabled' && (
+          {mode !== 'webcam' && <p className="text-sm text-text-secondary">{t('scanner.subtitle')}</p>}
+          {mode !== 'webcam' && scannerConfiguration?.visual_verification === 'disabled' && (
             <div role="status" className="rounded-xl border border-brand-yellow/35 bg-brand-yellow/10 px-3 py-2.5">
               <p className="text-xs font-semibold text-brand-yellow">{t('settings.scannerDegradedTitle')}</p>
               <p className="mt-1 text-[11px] text-text-secondary">{t('settings.scannerDegradedWarning')}</p>
@@ -261,9 +294,14 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
             )}
           </div>
 
-          {stagedFiles.length > 0 ? (
-            <div className="grid grid-cols-3 gap-3 sm:grid-cols-5 md:grid-cols-7">
-              {stagedFiles.map((item, index) => (
+          {mode === 'webcam' ? (
+            <WebcamCapture
+              onCapture={file => appendFiles([file])}
+              onExit={() => setMode('staging')}
+              maxReached={stagedFiles.length >= 50}
+            />
+          ) : stagedFiles.length > 0 ? (
+            <WindowedCardGrid measureRows className="grid grid-cols-3 gap-3 sm:grid-cols-5 md:grid-cols-7" items={stagedFiles} renderItem={(item, index) => (
                 <div key={item.id} className="space-y-1.5">
                   <div className="relative aspect-[2.5/3.5] overflow-hidden rounded-xl border border-white/10 bg-bg-surface">
                     <img src={item.previewUrl} alt="" className="h-full w-full object-contain" />
@@ -294,24 +332,70 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
                     </button>
                   )}
                 </div>
-              ))}
-            </div>
+)} />
           ) : (
             <div className="rounded-2xl border-2 border-dashed border-white/10 py-12 text-center text-sm text-text-muted">
               {t('scanner.noPhotosStaged')}
             </div>
           )}
 
+          {mode === 'camera-choice' && (
+            <div role="group" aria-label={t('scanner.takePhotos')} className="space-y-3 rounded-2xl border border-border bg-bg-surface p-4">
+              <p className="text-sm font-semibold text-text-primary">{t('scanner.takePhotos')}</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <button
+                    ref={singlePhotoRef}
+                    type="button"
+                    disabled={stagedFiles.length >= 50}
+                    onClick={() => {
+                      cameraRef.current?.click()
+                      setMode('staging')
+                    }}
+                    aria-describedby="scanner-single-photo-help"
+                    className="btn-secondary flex w-full items-center justify-center gap-2"
+                  >
+                    <Camera size={16} />
+                    <span>{t('scanner.singlePhoto')}</span>
+                  </button>
+                  <p id="scanner-single-photo-help" className="text-xs text-text-secondary">{t('scanner.singlePhotoDescription')}</p>
+                </div>
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => setMode('webcam')}
+                    disabled={stagedFiles.length >= 50 || !webcamSupported}
+                    aria-describedby="scanner-continuous-help"
+                    className="btn-secondary flex w-full items-center justify-center gap-2"
+                  >
+                    <Video size={16} />
+                    <span>{t('scanner.continuousCapture')}</span>
+                  </button>
+                  <p id="scanner-continuous-help" className="text-xs text-text-secondary">
+                    {t('scanner.continuousCaptureDescription')}
+                    {!webcamSupported && <span className="mt-1 block">{t('scanner.webcamUnsupported')}</span>}
+                  </p>
+                </div>
+              </div>
+              <button type="button" className="btn-ghost" onClick={() => {
+                setMode('staging')
+                requestAnimationFrame(() => takePhotosRef.current?.focus())
+              }}>{t('common.cancel')}</button>
+            </div>
+          )}
+
+          {mode === 'staging' && (
           <div className="grid gap-2 sm:grid-cols-2">
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => cameraRef.current?.click()}
+                ref={takePhotosRef}
+                onClick={() => setMode('camera-choice')}
                 disabled={stagedFiles.length >= 50}
                 className="btn-secondary flex flex-1 items-center justify-center gap-2"
               >
                 <Camera size={16} />
-                <span>{t('scanner.takePhoto')}</span>
+                <span>{t('scanner.takePhotos')}</span>
               </button>
               <div
                 className="group relative z-20"
@@ -363,8 +447,9 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
               <span>{t('scanner.chooseFromGallery')}</span>
             </button>
           </div>
+          )}
 
-          {stagedFiles.length > 1 && canComposite && (
+          {mode === 'staging' && stagedFiles.length > 1 && canComposite && (
             <button
               type="button"
               onClick={toggleAllIndividual}
@@ -375,7 +460,7 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
             </button>
           )}
 
-          <button
+          {mode === 'staging' && <button
             type="button"
             onClick={startScanning}
             disabled={!stagedFiles.length || submitting}
@@ -383,7 +468,7 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
           >
             {submitting ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={16} />}
             <span>{submitting ? t('scanner.submittingBatch') : t('scanner.startScanning')}</span>
-          </button>
+          </button>}
         </div>
       </Modal>
 

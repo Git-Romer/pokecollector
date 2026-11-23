@@ -1,12 +1,20 @@
-import { useState, useMemo, useId, useRef, useEffect } from 'react'
+import { bulkRemoveCollectionItems } from '../api/client'
+
+import { useBulkRemoval } from '../hooks/useBulkRemoval'
+import BulkRemovalToolbar, { BulkRemovalToggle, BulkRemovalActions } from '../components/BulkRemovalToolbar'
+import { useState, useMemo, useId, useRef, useEffect, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Trash2, Check, X, Filter, SortAsc, Download, Upload, Loader2, ChevronUp, ChevronDown, Search, PenLine, Grid2X2, List, Library, BookOpen, Heart, Copy, ArrowLeft, Package, Tags } from 'lucide-react'
 import { getCollection, updateCollectionItem, updateCardCustomImage, removeFromCollection, importCollectionCsv, exportCSV, exportPDF, getSets, addToCollection, getBinders, addCollectionItemToBinder, getWishlist, getApiErrorMessage, uploadCollectionItemPhoto, deleteCollectionItemPhoto } from '../api/client'
 import { CustomCardModal } from '../components/CardItem'
+import ActionErrorNotice, { productLinkErrorNotice } from '../components/ActionErrorNotice'
+import ProductSourceList from '../components/ProductSourceList'
 import { useSettings } from '../contexts/SettingsContext'
 import { useConfirmDialog } from '../contexts/ConfirmDialogContext'
 import CardImage from '../components/CardImage'
+import WindowedCardGrid from '../components/WindowedCardGrid'
+import { useListScrollRestoration } from '../hooks/useListScrollRestoration'
 import { CardDialog, CardLegend, CardPriceDetails, withCollectionItemState } from '../components/card-system'
 import { CollectionCardDisplay, CollectionCardIdentity, CollectionCardRow, OwnPhotoOverlayBadge, useCollectionPhotoUrl } from '../components/CollectionCardImage'
 import MoneyInput from '../components/MoneyInput'
@@ -316,6 +324,8 @@ function CollectionEditModal({ item, onClose }) {
   const [savedCustomImageUrl, setSavedCustomImageUrl] = useState(card?.custom_image_url || '')
   const [customImageVersion, setCustomImageVersion] = useState(0)
   const [activeTab, setActiveTab] = useState('manage')
+  const [actionError, setActionError] = useState(null)
+
   const [hasOwnPhoto, setHasOwnPhoto] = useState(Boolean(item.has_scan_photo))
   const [selectedImageSource, setSelectedImageSource] = useState(
     settings.prefer_own_card_photos === 'true' ? 'own' : 'catalogue'
@@ -434,23 +444,35 @@ function CollectionEditModal({ item, onClose }) {
       purchase_price: parseMoneyInputValue(price, exchangeRate, null),
     }),
     onSuccess: () => {
+      setActionError(null)
       toast.success(t('collection.updated'))
       invalidateCardState(queryClient)
       invalidateTcgdexFilterLanguages(queryClient)
       onClose()
     },
-    onError: () => toast.error(t('collection.updateFailed')),
+    onMutate: () => setActionError(null),
+    onError: (error) => {
+      const notice = productLinkErrorNotice(error, t('collection.updateFailed'))
+      if (notice) setActionError(notice)
+      else toast.error(getApiErrorMessage(error, t('collection.updateFailed')))
+    },
   })
 
   const deleteMutation = useMutation({
     mutationFn: () => removeFromCollection(item.id),
     onSuccess: () => {
+      setActionError(null)
       toast.success(t('collection.removed'))
       invalidateCardState(queryClient)
       invalidateTcgdexFilterLanguages(queryClient)
       onClose()
     },
-    onError: () => toast.error(t('collection.removeFailed')),
+    onMutate: () => setActionError(null),
+    onError: (error) => {
+      const notice = productLinkErrorNotice(error, t('collection.removeFailed'))
+      if (notice) setActionError(notice)
+      else toast.error(getApiErrorMessage(error, t('collection.removeFailed')))
+    },
   })
 
   const cloneMutation = useMutation({
@@ -678,6 +700,13 @@ function CollectionEditModal({ item, onClose }) {
       }}
       onClose={onClose}
     >
+      {actionError && (
+        <ActionErrorNotice
+          message={actionError.message}
+          productSources={actionError.productSources}
+          t={t}
+        />
+      )}
       {activeTab === 'overview' && (
         <div className="space-y-3">
         <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
@@ -724,7 +753,7 @@ function CollectionEditModal({ item, onClose }) {
 
       {activeTab === 'owned' && (
         <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-bg-card p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/50 pb-3">
             <div className="min-w-0">
               <p className="font-bold text-text-primary">{item.variant || 'Normal'}</p>
               <p className="mt-1 text-xs text-text-muted">
@@ -732,25 +761,12 @@ function CollectionEditModal({ item, onClose }) {
               </p>
               <PrintingDetailBadges details={item.printing_details} className="mt-2" />
             </div>
-            <span className="inline-flex min-w-12 items-center justify-center rounded-lg border border-brand-red/35 bg-brand-red/15 px-3 py-2 text-sm font-black text-brand-red">
+            <span className="shrink-0 text-sm font-bold text-brand-red">
               ×{item.quantity}
             </span>
           </div>
           {productSourceSummary && (
-            <div className="rounded-xl border border-yellow/25 bg-yellow/10 p-3">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-yellow">
-                <Package size={14} aria-hidden />
-                <span>{t('collection.foundIn')}</span>
-              </div>
-              <div className="mt-2 space-y-1">
-                {productSourceSummary.sources.map(source => (
-                  <div key={source.product_card_id} className="flex items-center justify-between gap-3 text-sm">
-                    <p className="truncate font-medium text-text-primary">{source.product_name}</p>
-                    <span className="shrink-0 text-xs font-bold text-yellow">×{source.active_quantity}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <ProductSourceList sources={productSourceSummary.sources} t={t} />
           )}
         </div>
       )}
@@ -777,34 +793,6 @@ function CollectionEditModal({ item, onClose }) {
                 : 'translate-x-0 rotate-0 scale-100 opacity-100'
             )}
           >
-            {productSourceSummary && (
-              <div className="mb-4 rounded-xl border border-yellow/25 bg-yellow/10 px-3 py-2">
-                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-yellow">
-                  <Package size={14} />
-                  <span>{t('collection.foundIn')}</span>
-                </div>
-                <div className="mt-2 space-y-1">
-                  {productSourceSummary.sources.map(source => (
-                    <div key={source.product_card_id} className="flex items-center justify-between gap-3 text-sm">
-                      <div className="min-w-0">
-                        <p className="truncate font-medium text-text-primary">{source.product_name}</p>
-                        {[source.product_type, source.purchase_date].filter(Boolean).length > 0 && (
-                          <p className="truncate text-xs text-text-muted">
-                            {[source.product_type, source.purchase_date].filter(Boolean).join(' · ')}
-                          </p>
-                        )}
-                      </div>
-                      {source.active_quantity > 1 && (
-                        <span className="flex-shrink-0 rounded-full bg-bg/70 px-2 py-0.5 text-xs font-bold text-yellow">
-                          x{source.active_quantity}
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {/* Edit Form */}
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
@@ -1034,7 +1022,7 @@ function CollectionEditModal({ item, onClose }) {
 }
 
 export default function Collection() {
-  const { t, settings, formatPrice, pricePrimaryField, currency, exchangeRate } = useSettings()
+  const { t, settings, formatPrice, pricePrimaryField, currency } = useSettings()
   const visibleLanguages = useVisibleTcgdexLanguages()
   const [viewMode, setViewMode] = useState('grid')
   const [editingCollectionItem, setEditingCollectionItem] = useState(null) // for CollectionEditModal
@@ -1081,6 +1069,21 @@ export default function Collection() {
     refetchInterval: 60000,
     placeholderData: collectionQuery.placeholderData,
   })
+
+  const { saveScrollPosition } = useListScrollRestoration({ key: 'collection', isReady: !isLoading })
+  useLayoutEffect(() => {
+    if (isLoading) return undefined
+    let lastScrollY = window.scrollY
+    const remember = () => { lastScrollY = window.scrollY }
+    window.addEventListener('scroll', remember, { passive: true })
+    document.addEventListener('click', remember, true)
+    return () => {
+      window.removeEventListener('scroll', remember)
+      document.removeEventListener('click', remember, true)
+      // DOM removal can already have changed native scroll anchoring by here.
+      saveScrollPosition('collection-grid', undefined, lastScrollY)
+    }
+  }, [isLoading, saveScrollPosition])
 
   const { data: wishlistItems = [] } = useQuery({
     queryKey: ['wishlist'],
@@ -1260,8 +1263,8 @@ export default function Collection() {
         const nameMatch = textIncludes(card?.name, q)
         const setMatch = textIncludes(card?.set_name, q) || textIncludes(card?.set?.name, q) || textIncludes(card?.set_ref?.name, q)
         const numberMatch = cardNumberMatches(card?.number, q) || cardNumberMatches(card?.localId, q)
-        // Support "SET NUMBER" shortcode (e.g. "PFL 001", "OBF 125")
-        const codeMatch = /^([A-Za-z]+\d*)\s+(\d+)$/.exec(q)
+        // Support "SET NUMBER" shortcode (e.g. "PFL 001", "OBF 125", "30C 001")
+        const codeMatch = /^([A-Za-z0-9]+)\s+(\d+)$/.exec(q)
         let shortcodeMatch = false
         if (codeMatch) {
           const [, setCode, num] = codeMatch
@@ -1297,9 +1300,26 @@ export default function Collection() {
     return result
   }, [items, filterRarity, filterCondition, filterVariant, filterPrintingDetail, filterSet, filterType, filterCategories, filterSubtypes, filterLegality, filterLang, filterMinPrice, filterMaxPrice, filterDuplicates, searchText, sortBy, sortOrder, pricePrimaryField])
 
+  const bulkRemoval = useBulkRemoval({
+    items: filtered, kind: 'collection', scopeKey: 'collection', t,
+    remove: bulkRemoveCollectionItems,
+    blocked: csvImportMutation.isPending,
+  })
+  const selectionCheckbox = item => (
+    <input type="checkbox" className="h-4 w-4 accent-brand-red" checked={bulkRemoval.selectedIds.has(item.id)}
+      disabled={bulkRemoval.locked} aria-label={`${t('bulkRemoval.select')} ${item.card?.name || item.id}`}
+      onClick={event => event.stopPropagation()} onChange={() => bulkRemoval.toggle(item)} />
+  )
   const totalValue = filtered.reduce((sum, item) => sum + (getEffectivePrice(item.card, item.variant) * item.quantity), 0)
   const totalCards = filtered.reduce((sum, item) => sum + item.quantity, 0)
-  const exportParams = { price_field: pricePrimaryField, currency, exchange_rate: exchangeRate }
+  const exportParams = { price_field: pricePrimaryField, currency }
+  const handleExport = async (exporter) => {
+    try {
+      await exporter(exportParams)
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, t('common.error')))
+    }
+  }
 
   const setDynamicFilter = (key, value) => updateFilter(key, value)
 
@@ -1325,19 +1345,21 @@ export default function Collection() {
 
   return (
     <>
-      <div className="space-y-4 pb-2">
+      <div className={`space-y-4 ${bulkRemoval.active ? 'pb-48 lg:pb-6' : 'pb-2'}`}>
         <TabNav tabs={COLLECTION_TABS} />
 
       {/* ─── Header ───────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
+      <header className={`flex items-center justify-between gap-2 mb-4 flex-wrap ${bulkRemoval.active ? 'lg:sticky lg:top-3 lg:z-30 lg:bg-bg-surface/95 lg:py-2 lg:backdrop-blur' : ''}`}>
         <div className="min-w-0">
           <h1 className="text-xl font-bold text-text-primary">{t('collection.title')}</h1>
           <p className="text-sm text-text-secondary mt-1">
             {totalCards.toLocaleString()} {t('collection.cards')} · {formatPrice(totalValue)} {t('collection.totalValue')}
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <BulkRemovalActions selection={bulkRemoval} empty={filtered.length === 0}>
+          <div className="flex items-center gap-2 flex-wrap">
 
+          <BulkRemovalToggle selection={bulkRemoval} empty={filtered.length === 0} />
           {/* VIEW TOGGLE */}
           <div className="flex items-center gap-0.5 bg-bg-elevated rounded-lg p-1">
             <button
@@ -1385,15 +1407,18 @@ export default function Collection() {
           >
             <Upload size={14} />CSV
           </button>
-          <button onClick={() => exportCSV(exportParams)} className="btn-ghost text-sm py-1.5 px-2" title="CSV" aria-label="CSV"><Download size={14} />CSV</button>
-          <button onClick={() => exportPDF(exportParams)} className="btn-ghost text-sm py-1.5"><Download size={14} />PDF</button>
+          <button onClick={() => handleExport(exportCSV)} className="btn-ghost text-sm py-1.5 px-2" title="CSV" aria-label="CSV"><Download size={14} />CSV</button>
+          <button onClick={() => handleExport(exportPDF)} className="btn-ghost text-sm py-1.5"><Download size={14} />PDF</button>
         </div>
-      </div>
+        </BulkRemovalActions>
+      </header>
 
       <PrintingDetailTagManager
         isOpen={showPrintingDetailManager}
         onClose={() => setShowPrintingDetailManager(false)}
       />
+
+
 
       {/* ─── Filter & Sort Bar ────────────────────────────────────── */}
       <div className="card space-y-3">
@@ -1590,6 +1615,8 @@ export default function Collection() {
         />
       )}
 
+      <BulkRemovalToolbar selection={bulkRemoval} kind="collection" empty={filtered.length === 0} />
+
       {/* ─── GRID BINDER VIEW ─────────────────────────────────────── */}
       {viewMode === 'grid' && (
         <>
@@ -1601,8 +1628,7 @@ export default function Collection() {
             </div>
           ) : (
             <div className="binder-grid">
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
-                {filtered.map(item => {
+              <WindowedCardGrid listKey="collection" items={filtered} label={t('collection.title')} renderItem={item => {
                   const card = item.card
                   const marketPrice = getEffectivePrice(card, item.variant)
                   const cardState = {
@@ -1621,7 +1647,10 @@ export default function Collection() {
                       languageLabel={hasMixedCollectionLanguages && item.lang ? tcgdexLanguageLabel(item.lang) : null}
                       variantEffectSource={item.variant}
                       stateIndicatorProps={{ card: cardState, alwaysShowQuantity: true }}
-                      onClick={() => setEditingCollectionItem(item)}
+                      onClick={bulkRemoval.active ? undefined : () => setEditingCollectionItem(item)}
+                      onSelect={bulkRemoval.active ? () => bulkRemoval.toggle(item) : undefined}
+                      selected={bulkRemoval.selectedIds.has(item.id)}
+                      unavailableReason={bulkRemoval.active && bulkRemoval.locked ? t('common.loading') : undefined}
                       overlay={(
                         <>
                           <ProductSourceBadge item={item} t={t} compact className="absolute bottom-2 left-2 z-20 h-6 w-6" />
@@ -1630,8 +1659,7 @@ export default function Collection() {
                       )}
                     />
                   )
-                })}
-              </div>
+                }} />
             </div>
           )}
           {filtered.length > 0 && (
@@ -1681,9 +1709,10 @@ export default function Collection() {
                         <tr
                           key={item.id}
                           className="border-b border-border/50 hover:bg-bg-elevated/50 transition-colors cursor-pointer"
-                          onClick={() => setEditingCollectionItem(item)}
+                          onClick={() => bulkRemoval.active ? bulkRemoval.toggle(item) : setEditingCollectionItem(item)}
                         >
                           <td className="px-4 py-3">
+                            {bulkRemoval.active && <span className="mr-3 inline-flex">{selectionCheckbox(item)}</span>}
                             <CollectionCardIdentity
                               item={item}
                               name={card?.name}
@@ -1730,7 +1759,8 @@ export default function Collection() {
                               className="rounded-lg p-2 text-text-muted transition-colors hover:bg-bg-card hover:text-text-primary"
                               onClick={(event) => {
                                 event.stopPropagation()
-                                setEditingCollectionItem(item)
+                                if (bulkRemoval.active) bulkRemoval.toggle(item)
+                                else setEditingCollectionItem(item)
                               }}
                               aria-label={`${t('common.edit')} ${card?.name || ''}`}
                             >
@@ -1780,7 +1810,8 @@ export default function Collection() {
                       badges={badges}
                       value={marketPrice > 0 ? formatPrice(totalVal) : '-'}
                       valueSecondary={pnl !== null ? `${pnl >= 0 ? '+' : ''}${formatPrice(pnl)}` : undefined}
-                      onClick={() => setEditingCollectionItem(item)}
+                      onClick={() => bulkRemoval.active ? bulkRemoval.toggle(item) : setEditingCollectionItem(item)}
+                      rightAction={bulkRemoval.active ? selectionCheckbox(item) : undefined}
                       variantEffectSource={item.variant}
                     />
                   )

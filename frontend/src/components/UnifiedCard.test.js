@@ -13,6 +13,11 @@ import {
   withCollectionItemState,
 } from './UnifiedCard'
 
+vi.mock('@tanstack/react-query', async importOriginal => {
+  const actual = await importOriginal()
+  return { ...actual, useQuery: () => ({ data: null }) }
+})
+
 vi.mock('../contexts/SettingsContext', () => ({
   useSettings: () => ({
     t: key => key,

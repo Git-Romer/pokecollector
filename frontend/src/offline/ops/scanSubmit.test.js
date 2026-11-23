@@ -100,6 +100,25 @@ describe('submitScanBatch', () => {
     expect(outbox.sendNow).not.toHaveBeenCalled()
   })
 
+  it('reports exactly the durable photo prefix so retry never duplicates an earlier chunk', async () => {
+    const files = Array.from({ length: 13 }, () => photo(10))
+    const saved = []
+    let fail = true
+    const outbox = fakeOutbox()
+    outbox.enqueue.mockImplementation(async item => {
+      if (saved.length === 1 && fail) throw Object.assign(new Error('full'), { code: 'quota' })
+      saved.push(item)
+      return { id: `saved-${saved.length}` }
+    })
+    const error = await submitScanBatch({ files, individualPositions: [1, 12], outbox }).catch(e => e)
+    expect(error.savedPhotoCount).toBe(12)
+    expect(error.queuedCount).toBe(1)
+    fail = false
+    await submitScanBatch({ files: files.slice(error.savedPhotoCount), individualPositions: [0], outbox })
+    expect(saved.map(item => item.photos.length)).toEqual([12, 1])
+    expect(saved.map(item => item.payload.individualPositions)).toEqual([[1], [0]])
+  })
+
   it('validates before saving anything', async () => {
     const outbox = fakeOutbox()
     await expect(submitScanBatch({ files: [photo(16 * MIB)], outbox })).rejects.toMatchObject({ code: 'too_large' })

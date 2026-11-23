@@ -1,3 +1,5 @@
+from schemas import BulkRemoveRequest, BulkRemoveResponse, ReleaseAssignmentsRequest
+from services.collection_removal_conflicts import removal_conflicts, release_confirmed_assignments, owned_items
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Request, Response
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import func, or_
@@ -7,15 +9,16 @@ from api.auth import get_current_user
 from database import get_db
 from models import (
     Binder, BinderCard, CollectionItem, CollectionCardPhoto, Card,
-    PrintingDetailTag, ProductCard, ProductPurchase, Set, User,
+    PrintingDetailTag, ProductCard, Set, User,
 )
 from schemas import (
-    CollectionItemCreate, CollectionItemUpdate, CollectionItemResponse,
+    CollectionItemCreate, CollectionItemUpdate, CollectionItemResponse, CollectionOfflineManifestResponse,
     BulkCollectionAddRequest, BulkCollectionAddResponse,
     PrintingDetailTagCreate, PrintingDetailTagUpdate, PrintingDetailTagResponse,
 )
 from services import pokemon_api
 from services.card_fallbacks import apply_cross_language_fallbacks, build_missing_language_card
+from services.card_upsert import update_existing_card
 from services.card_numbers import card_number_matches
 from services.collection_photos import MAX_UPLOAD_BYTES, InvalidPhoto, normalize_photo
 from services.card_visibility import visible_any_card_filter, visible_card_filter
@@ -43,10 +46,14 @@ from services.idempotency import (
     fingerprint_json,
     replay_response,
 )
+from services.product_sources import annotate_product_sources, product_sources_by_collection_item
 import datetime
 import csv
 import io
 import logging
+import hashlib
+import json
+from urllib.parse import quote
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -103,58 +110,9 @@ def _annotate_standard_legality(items: list[CollectionItem], legal_fingerprints:
     return items
 
 
-def _product_source_payload(product_card: ProductCard, product) -> dict:
-    return {
-        "product_card_id": product_card.id,
-        "product_id": product.id,
-        "product_name": product.product_name,
-        "product_type": product.product_type,
-        "purchase_date": product.purchase_date,
-        "active_quantity": int(product_card.active_quantity or 0),
-        "initial_quantity": int(product_card.initial_quantity or 0),
-        "linked_at": product_card.linked_at,
-    }
-
-
 def _chunks(values: list, size: int):
     for start in range(0, len(values), size):
         yield values[start:start + size]
-
-
-def _annotate_product_sources(db: Session, current_user: User, items: list[CollectionItem]) -> list[CollectionItem]:
-    for item in items:
-        item.product_sources = []
-
-    item_ids = [item.id for item in items if item.id is not None]
-    if not item_ids:
-        return items
-
-    sources_by_item_id: dict[int, list[dict]] = {}
-    for chunk in _chunks(item_ids, 500):
-        rows = db.query(ProductCard, ProductPurchase).join(
-            ProductPurchase,
-            ProductPurchase.id == ProductCard.product_id,
-        ).filter(
-            ProductCard.user_id == current_user.id,
-            ProductPurchase.user_id == current_user.id,
-            ProductCard.collection_item_id.in_(chunk),
-            ProductCard.active_quantity > 0,
-        ).order_by(
-            ProductPurchase.purchase_date.desc(),
-            ProductCard.linked_at.desc(),
-            ProductCard.id.desc(),
-        ).all()
-
-        for product_card, product in rows:
-            if product_card.collection_item_id is None:
-                continue
-            sources_by_item_id.setdefault(product_card.collection_item_id, []).append(
-                _product_source_payload(product_card, product)
-            )
-
-    for item in items:
-        item.product_sources = sources_by_item_id.get(item.id, [])
-    return items
 
 
 def _annotate_scan_photos(db: Session, current_user: User, items: list[CollectionItem]) -> list[CollectionItem]:
@@ -192,7 +150,7 @@ def _annotate_collection_items(db: Session, current_user: User, items: list[Coll
         item.available_quantity = max(int(item.quantity or 0) - allocated, 0)
     _annotate_standard_legality(items, _collection_standard_legal_fingerprints(db))
     _annotate_scan_photos(db, current_user, items)
-    return _annotate_product_sources(db, current_user, items)
+    return annotate_product_sources(db, current_user, items)
 
 
 def _annotate_collection_item(db: Session, current_user: User, item: CollectionItem) -> CollectionItem:
@@ -204,6 +162,20 @@ def _active_product_link_quantity(db: Session, current_user: User, collection_it
         ProductCard.user_id == current_user.id,
         ProductCard.collection_item_id == collection_item_id,
     ).scalar() or 0)
+
+
+def _product_link_conflict_detail(
+    db: Session,
+    current_user: User,
+    collection_item_id: int,
+    message: str,
+) -> dict:
+    sources = product_sources_by_collection_item(db, current_user, [collection_item_id])
+    return {
+        "code": "collection_product_link_conflict",
+        "message": message,
+        "product_sources": jsonable_encoder(sources.get(collection_item_id, [])),
+    }
 
 
 def _ensure_set_exists_for_card(db: Session, parsed: dict, lang: str, card_data: Optional[dict] = None) -> None:
@@ -476,9 +448,7 @@ def _find_card_by_code(db: Session, set_code: str, card_number: str, lang: str) 
                 parsed = apply_cross_language_fallbacks(db, parsed)
                 existing = db.query(Card).filter(Card.id == parsed["id"]).first()
                 if existing:
-                    for key, value in parsed.items():
-                        if key != "id":
-                            setattr(existing, key, value)
+                    update_existing_card(existing, parsed, partial=True)
                 else:
                     db.add(Card(**parsed))
             db.commit()
@@ -601,6 +571,45 @@ def get_collection(
 
     items = query.all()
     return _annotate_collection_items(db, current_user, items)
+
+
+@router.get("/offline-manifest", response_model=CollectionOfflineManifestResponse)
+def get_collection_offline_manifest(
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Full owner-scoped snapshot and original artwork URLs for device downloads.
+
+    No ownership or private photo bytes are stored in HTTP caches. Artwork uses
+    the existing public image proxy; missing artwork is explicitly identified.
+    This read-only endpoint does not download anything onto the server or device.
+    """
+    items = get_collection(current_user=current_user, db=db, sort_by="added_at", order="desc", rule_text=None)
+    image_urls = set()
+    missing = set()
+    for item in items:
+        card = item.card
+        # The public image proxy deliberately marks custom artwork private/no-store.
+        # Its large endpoint can also fall back to a thumbnail. Neither is a public
+        # original, so show an explicit placeholder instead of reporting it as saved.
+        if card and not card.is_custom and card.images_large:
+            revision = hashlib.sha256(json.dumps(
+                [card.images_large, card.images_small, card.custom_image_url],
+                separators=(',', ':'),
+            ).encode()).hexdigest()[:16]
+            image_urls.add(f"/api/images/card/{quote(card.id, safe='')}/large?v={revision}")
+        else:
+            image_urls.add("/cardback.jpg")
+            missing.add(item.card_id)
+    response.headers["Cache-Control"] = "private, no-store"
+    return {
+        "version": 1,
+        "user_id": current_user.id,
+        "items": items,
+        "image_urls": sorted(image_urls),
+        "missing_artwork_card_ids": sorted(missing),
+    }
 
 
 @router.post("/", response_model=CollectionItemResponse)
@@ -943,7 +952,12 @@ def update_collection_item(
         if update_data["quantity"] < active_linked_quantity:
             raise HTTPException(
                 status_code=409,
-                detail=f"Collection quantity cannot be lower than {active_linked_quantity} active product-linked {'copy' if active_linked_quantity == 1 else 'copies'}. Sell or unlink {'that product card' if active_linked_quantity == 1 else 'those product cards'} first.",
+                detail=_product_link_conflict_detail(
+                    db,
+                    current_user,
+                    item.id,
+                    f"Collection quantity cannot be lower than {active_linked_quantity} active product-linked {'copy' if active_linked_quantity == 1 else 'copies'}. Sell or unlink {'that product card' if active_linked_quantity == 1 else 'those product cards'} first.",
+                ),
             )
         if update_data["quantity"] < allocated_quantity:
             raise HTTPException(
@@ -963,7 +977,12 @@ def update_collection_item(
     if active_linked_quantity > 0 and protected_changes:
         raise HTTPException(
             status_code=409,
-            detail="This exact collection row is linked to a product. Unlink or sell the product-linked copies before changing variant, printing details, condition, language, or purchase price.",
+            detail=_product_link_conflict_detail(
+                db,
+                current_user,
+                item.id,
+                "This exact collection row is linked to a product. Unlink or sell the product-linked copies before changing variant, printing details, condition, language, or purchase price.",
+            ),
         )
 
     old_card_id = item.card_id
@@ -1016,49 +1035,59 @@ def update_collection_item(
     return _annotate_collection_item(db, current_user, item)
 
 
+def _remove_collection_items(db: Session, current_user: User, item_ids: list[int]):
+    try:
+        lock_user_card_allocations(db, current_user.id)
+        items = owned_items(db, current_user, item_ids)
+        detail = removal_conflicts(db, current_user, items)
+        if detail:
+            raise HTTPException(status_code=409, detail=detail)
+        copies = sum(int(item.quantity or 0) for item in items)
+        card_ids = {item.card_id for item in items if item.card_id is not None}
+        for item in items:
+            db.delete(item)
+        db.flush()
+        remaining_card_ids = {card_id for card_id, in db.query(CollectionItem.card_id).filter(
+            CollectionItem.user_id == current_user.id, CollectionItem.card_id.in_(card_ids),
+        ).distinct().all()}
+        orphaned = card_ids - remaining_card_ids
+        if orphaned:
+            db.query(CollectionCardPhoto).filter(
+                CollectionCardPhoto.user_id == current_user.id,
+                CollectionCardPhoto.card_id.in_(orphaned),
+            ).delete(synchronize_session=False)
+        db.commit()
+        return {"removed_ids": item_ids, "removed_entries": len(item_ids), "removed_copies": copies}
+    except Exception:
+        db.rollback()
+        raise
+
+
+@router.post('/bulk-delete', response_model=BulkRemoveResponse)
+def bulk_remove_collection_items(
+    request: BulkRemoveRequest,
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    return _remove_collection_items(db, current_user, request.item_ids)
+
+
+@router.post('/release-assignments')
+def release_collection_assignments(
+    request: ReleaseAssignmentsRequest,
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    return release_confirmed_assignments(db, current_user, request)
+
+
 @router.delete("/{item_id}")
 def remove_from_collection(
     item_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Remove a card from collection."""
-    lock_user_card_allocations(db, current_user.id)
-    item = db.query(CollectionItem).filter(
-        CollectionItem.id == item_id,
-        CollectionItem.user_id == current_user.id,
-    ).with_for_update(of=CollectionItem).first()
-    if not item:
-        raise HTTPException(status_code=404, detail="Collection item not found")
-
-    active_linked_quantity = _active_product_link_quantity(db, current_user, item.id)
-    if active_linked_quantity > 0:
-        raise HTTPException(
-            status_code=409,
-            detail="This collection item is linked to a product. Sell or unlink the product card before removing it from the active collection.",
-        )
-
-    allocated_quantity = collection_item_allocated_quantity(db, current_user.id, item.id)
-    if allocated_quantity > 0:
-        raise HTTPException(
-            status_code=409,
-            detail=f"This collection item has {allocated_quantity} {'copy' if allocated_quantity == 1 else 'copies'} allocated to Card Lists. Release {'that copy' if allocated_quantity == 1 else 'those copies'} first.",
-        )
-
-    card_id = item.card_id
-    db.delete(item)
-    db.flush()
-    remaining = db.query(CollectionItem.id).filter(
-        CollectionItem.user_id == current_user.id,
-        CollectionItem.card_id == card_id,
-    ).first()
-    if not remaining:
-        db.query(CollectionCardPhoto).filter(
-            CollectionCardPhoto.user_id == current_user.id,
-            CollectionCardPhoto.card_id == card_id,
-        ).delete(synchronize_session=False)
-    db.commit()
+    _remove_collection_items(db, current_user, [item_id])
     return {"message": "Removed from collection"}
+
 
 
 @router.get("/{item_id}/photo")

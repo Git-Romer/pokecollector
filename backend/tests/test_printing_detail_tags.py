@@ -151,6 +151,14 @@ class PrintingDetailTagApiTests(unittest.TestCase):
             "lang": "en",
         })
 
+    def test_holo_variants_do_not_require_a_published_effect(self):
+        for variant in ['Holo', 'Reverse Holo']:
+            response = self._add([], variant=variant)
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.json()['variant'], variant)
+        response = self._add([], variant='Special')
+        self.assertEqual(response.status_code, 422, response.text)
+
     def test_tags_are_reused_and_are_part_of_exact_collection_identity(self):
         first = self._add(["Poké Ball", "Cosmos Holo"])
         self.assertEqual(first.status_code, 200, first.text)

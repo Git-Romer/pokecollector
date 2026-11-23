@@ -184,6 +184,7 @@ export const dismissCustomMatch = (matchId) => api.post(`/cards/custom/dismiss/$
 
 // Collection
 export const getCollection = (params) => api.get('/collection/', { params })
+export const getCollectionOfflineManifest = (signal) => api.get('/collection/offline-manifest', { signal }).then(r => r.data)
 export const getUserCollection = (userId, params = {}) => api.get(`/collection/user/${userId}`, { params }).then(r => r.data)
 export const searchCollection = (params) => api.get('/collection/', { params })
 export const addToCollection = (data) => api.post('/collection/', data)
@@ -226,6 +227,10 @@ export const importCollectionCsv = async (file) => {
 }
 export const updateCollectionItem = (id, data) => api.put(`/collection/${id}`, data)
 export const removeFromCollection = (id) => api.delete(`/collection/${id}`)
+export const bulkRemoveCollectionItems = itemIds => api.post('/collection/bulk-delete', { item_ids: itemIds })
+export const releaseCollectionAssignments = payload => api.post('/collection/release-assignments', payload)
+export const bulkRemoveBinderEntries = (binderId, itemIds) => api.post(`/binders/${binderId}/entries/bulk-delete`, { item_ids: itemIds })
+export const bulkRemoveDeckEntries = (deckId, itemIds) => api.post(`/decks/${deckId}/entries/bulk-delete`, { item_ids: itemIds })
 export const getCollectionStats = (params = {}) => api.get('/collection/stats/summary', { params })
 export const getPrintingDetailTags = () => api.get('/collection/printing-detail-tags').then(r => r.data)
 export const createPrintingDetailTag = (name) => api.post('/collection/printing-detail-tags', { name }).then(r => r.data)
@@ -340,7 +345,8 @@ export const deleteProduct = (id) => api.delete(`/products/${id}`)
 export const getProductsSummary = (params = {}) => api.get('/products/summary', { params })
 export const linkProductCard = (productId, data) => api.post(`/products/${productId}/cards`, data).then(r => r.data)
 export const linkProductCards = (productId, data) => api.post(`/products/${productId}/cards/bulk`, data).then(r => r.data)
-export const unlinkProductCard = (productId, productCardId) => api.delete(`/products/${productId}/cards/${productCardId}`).then(r => r.data)
+export const unlinkProductCard = (productId, productCardId, params = {}) => api.delete(`/products/${productId}/cards/${productCardId}`, { params }).then(r => r.data)
+export const bulkUnlinkProductCards = data => api.post('/products/cards/bulk-unlink', data).then(r => r.data)
 export const sellProductCard = (productId, productCardId, data) => api.post(`/products/${productId}/cards/${productCardId}/sell`, data).then(r => r.data)
 export const addProductLedgerEntry = (productId, data) => api.post(`/products/${productId}/ledger`, data).then(r => r.data)
 

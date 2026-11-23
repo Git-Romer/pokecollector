@@ -32,9 +32,14 @@ export function filterCollectionCards(items = [], { search = '', type = '', set 
     if (set && setId !== set) return false
     if (language && cardLanguage !== language) return false
     if (!search) return true
+    const shortcode = /^([A-Za-z0-9]+)\s+(\d+)$/.exec(normalizeSearchText(search))
+    const shortcodeMatches = shortcode && [card.set_ref?.abbreviation, card.set_id, card.set_ref?.tcg_set_id]
+      .some(value => normalizeSearchText(value) === shortcode[1])
+      && cardNumberMatches(card.number, shortcode[2])
     return textIncludes(card.name, search)
       || textIncludes(card.set_ref?.name || card.set_name || card.set?.name, search)
       || cardNumberMatches(card.number, search)
+      || Boolean(shortcodeMatches)
   })
 }
 

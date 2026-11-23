@@ -1,0 +1,4 @@
+.collection-holo-surface { display:block; width:100%; aspect-ratio:2.5 / 3.5; perspective:900px; background:none; touch-action:pan-y; }
+.collection-holo-surface > [data-holo-rotator] { display:block; width:100%; height:100%; }
+.collection-holo-surface [data-holo-artwork] { display:block; position:relative; width:100%; height:100%; border-radius:4.55% / 3.5%; overflow:hidden; isolation:isolate; }
+.collection-holo-surface [data-holo-artwork] > img { display:block; width:100%; height:100%; object-fit:contain; border-radius:inherit; }

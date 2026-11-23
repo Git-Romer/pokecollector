@@ -141,9 +141,20 @@ function smallImagePath(pathname) {
   return match ? match[1] + '/small' : null
 }
 
+async function imageCachingEnabled() {
+  try {
+    const policy = await caches.match(new URL('/__pc_offline_collection_policy__', self.location.origin).href, { cacheName: 'pc-offline-policy-v1' })
+    return !policy || await policy.text() !== 'off'
+  } catch {
+    return false // Do not retain artwork when its storage preference cannot be read.
+  }
+}
+
 async function storeImage(cache, request, res) {
   if (!isCacheableImage(res)) return
-  await cache.put(request, res.clone())
+  const copy = res.clone() // Reserve our stream before the browser consumes its response.
+  if (!await imageCachingEnabled()) return
+  await cache.put(request, copy)
   await trimCache(cache, IMAGE_CAP)
 }
 
@@ -178,7 +189,24 @@ async function fetchLargeImage(event, cache, smallPath) {
 
 function handleImage(event) {
   event.respondWith((async () => {
+    if (!await imageCachingEnabled()) return fetch(event.request, { cache: 'no-store' })
+    const originalUrl = new URL(event.request.url)
+    if (/^\/api\/images\/card\/.+\/(small|large)$/.test(originalUrl.pathname)
+      && await caches.has('pc-collection-originals-v1')) {
+      originalUrl.pathname = originalUrl.pathname.replace(/\/(small|large)$/, '/large')
+      const originals = await caches.open('pc-collection-originals-v1')
+      if (!await imageCachingEnabled()) {
+        await caches.delete('pc-collection-originals-v1')
+        return fetch(event.request, { cache: 'no-store' })
+      }
+      const original = await originals.match(originalUrl.href, { ignoreSearch: true })
+      if (original) return original
+    }
     const cache = await caches.open(IMAGES_NAME)
+    if (!await imageCachingEnabled()) {
+      await caches.delete(IMAGES_NAME)
+      return fetch(event.request, { cache: 'no-store' })
+    }
     const hit = await cache.match(event.request)
     if (hit) return hit
     const smallPath = smallImagePath(new URL(event.request.url).pathname)

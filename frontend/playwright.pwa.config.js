@@ -24,17 +24,17 @@ export default defineConfig({
     {
       name: 'chromium-sw',
       use: { ...devices['Desktop Chrome'], serviceWorkers: 'allow' },
-      testMatch: /(service-worker|push|large-image)\.spec\.js/,
+      testMatch: /(service-worker|push|large-image|collection-download)\.spec\.js/,
     },
     {
       name: 'chromium-page',
       use: { ...devices['Desktop Chrome'], serviceWorkers: 'block' },
-      testIgnore: /(service-worker|push|large-image)\.spec\.js/,
+      testIgnore: /(service-worker|push|large-image|collection-download)\.spec\.js/,
     },
     {
       name: 'webkit-page',
       use: { ...devices['Desktop Safari'], serviceWorkers: 'block' },
-      testIgnore: /(service-worker|push|large-image)\.spec\.js/,
+      testIgnore: /(service-worker|push|large-image|collection-download)\.spec\.js/,
     },
   ],
 })

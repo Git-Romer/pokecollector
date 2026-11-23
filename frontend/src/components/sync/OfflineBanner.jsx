@@ -13,7 +13,7 @@ export default function OfflineBanner() {
     <div
       role="status"
       data-testid="offline-banner"
-      className="flex items-start gap-2 pb-2 pl-4 pr-20 text-xs text-text-primary sm:text-sm"
+      className="flex items-start gap-2 pb-2 px-4 text-xs text-text-primary sm:text-sm"
       style={{
         paddingTop: 'max(0.5rem, env(safe-area-inset-top))',
         backgroundColor: 'color-mix(in srgb, var(--color-yellow) 18%, var(--color-bg))',
@@ -21,7 +21,7 @@ export default function OfflineBanner() {
       }}
     >
       <CloudOff size={16} className="mt-0.5 flex-shrink-0 text-yellow" aria-hidden />
-      <p className="min-w-0 flex-1 leading-snug">{t('sync.offlineBanner')}</p>
+      <p className="min-w-0 flex-1 break-words leading-snug">{t('sync.offlineBanner')} <span className="text-text-muted">{t('sync.artworkOfflineHint')}</span></p>
     </div>
   )
 }

@@ -14,6 +14,8 @@ export const READ_CACHE_DB_VERSION = 1
 export const READ_CACHE_STORE = 'qc'
 export const READ_CACHE_RECORD_VERSION = 1
 export const READ_CACHE_MAX_QUERY_BYTES = 5 * MIB
+// Genuine 2,000-card manifests exceed the generic query budget; keep the total cap unchanged.
+export const READ_CACHE_MAX_COLLECTION_BYTES = 10 * MIB
 export const READ_CACHE_MAX_TOTAL_BYTES = 20 * MIB
 export const READ_CACHE_MAX_AGE_MS = 30 * DAY_MS
 export const READ_CACHE_THROTTLE_MS = 5000
@@ -42,7 +44,7 @@ const isAllowed = query => query.state.status === 'success' && READ_CACHE_ALLOW.
 
 function sizeOf(data) {
   try {
-    return JSON.stringify(data)?.length ?? 0
+    return new TextEncoder().encode(JSON.stringify(data) ?? '').byteLength
   } catch {
     return Infinity
   }
@@ -118,7 +120,8 @@ const readRecord = (indexedDB, key) => withStore(indexedDB, 'readonly', store =>
 export function applyCaps(queries) {
   const sized = queries
     .map(query => ({ query, bytes: sizeOf(query.state?.data) }))
-    .filter(entry => entry.bytes <= READ_CACHE_MAX_QUERY_BYTES)
+    .filter(entry => entry.bytes <= (entry.query.queryKey?.[0] === 'collection'
+      ? READ_CACHE_MAX_COLLECTION_BYTES : READ_CACHE_MAX_QUERY_BYTES))
   let total = sized.reduce((sum, entry) => sum + entry.bytes, 0)
   if (total > READ_CACHE_MAX_TOTAL_BYTES) {
     sized.sort((a, b) => (b.query.state.dataUpdatedAt || 0) - (a.query.state.dataUpdatedAt || 0))
@@ -211,8 +214,30 @@ export async function restore(queryClient, { origin, userId, indexedDB = globalT
   }
 }
 
-export async function purge({ origin, userId, indexedDB = globalThis.indexedDB } = {}) {
-  return withStore(indexedDB, 'readwrite', store => { store.delete(recordKey(origin, userId)) }, undefined)
+/** Explicit downloads await the transaction and reject snapshots that caps would omit. */
+export async function saveCollectionSnapshot(queryClient, items, {
+  origin, userId, indexedDB = globalThis.indexedDB, isCurrentUser = () => true,
+} = {}) {
+  if (!isCurrentUser() || !Number.isInteger(userId) || !Array.isArray(items)
+    || sizeOf(items) > READ_CACHE_MAX_COLLECTION_BYTES) return false
+  queryClient.setQueryData(['collection', {}], items)
+  const isSnapshot = query => JSON.stringify(query.queryKey) === '["collection",{}]'
+  const snapshot = dehydrate(queryClient, { shouldDehydrateQuery: isSnapshot }).queries[0]
+  return withStore(indexedDB, 'readwrite', async store => {
+    const previous = await promisify(store.get(recordKey(origin, userId)))
+    if (!isCurrentUser()) return false
+    const record = buildRecord(queryClient, previous)
+    record.state.queries = applyCaps([...record.state.queries.filter(query => !isSnapshot(query)), snapshot])
+    const saved = record.state.queries.find(isSnapshot)
+    if (!saved || saved.state.data !== snapshot.state.data) return false
+    store.put(record, recordKey(origin, userId))
+    return true
+  }, false)
+}
+
+export async function purge({ origin, userId, indexedDB = globalThis.indexedDB, strict = false } = {}) {
+  const removed = await withStore(indexedDB, 'readwrite', store => { store.delete(recordKey(origin, userId)); return true }, false)
+  return strict ? removed : undefined
 }
 
 /** Deletes every record except the one of `keepUserId`. */

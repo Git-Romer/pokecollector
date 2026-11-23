@@ -1,7 +1,13 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { describe, expect, it, vi } from 'vitest'
 import CardListItem, { CompactCardIdentity } from './CardListItem'
+
+function renderWithQueryClient(element) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return renderToStaticMarkup(createElement(QueryClientProvider, { client }, element))
+}
 
 vi.mock('../contexts/SettingsContext', () => ({
   useSettings: () => ({
@@ -11,7 +17,7 @@ vi.mock('../contexts/SettingsContext', () => ({
 
 describe('CompactCardIdentity', () => {
   it('shares one contained thumbnail and metadata structure across table callers', () => {
-    const markup = renderToStaticMarkup(createElement(CompactCardIdentity, {
+    const markup = renderWithQueryClient(createElement(CompactCardIdentity, {
       card: { id: 'sv8-001', name: 'Pikachu' },
       image: 'https://example.test/pikachu.webp',
       name: 'Pikachu',
@@ -26,7 +32,7 @@ describe('CompactCardIdentity', () => {
   })
 
   it('shows the wider custom text badge in compact rows', () => {
-    const markup = renderToStaticMarkup(createElement(CompactCardIdentity, {
+    const markup = renderWithQueryClient(createElement(CompactCardIdentity, {
       card: { id: 'custom-1', name: 'Manual Pikachu', is_custom: true },
       name: 'Manual Pikachu',
     }))
@@ -38,7 +44,7 @@ describe('CompactCardIdentity', () => {
 
 describe('CardListItem', () => {
   it('builds its row identity with the same compact primitive', () => {
-    const markup = renderToStaticMarkup(createElement(CardListItem, {
+    const markup = renderWithQueryClient(createElement(CardListItem, {
       card: { id: 'sv8-001', name: 'Pikachu' },
       image: 'https://example.test/pikachu.webp',
       name: 'Pikachu',

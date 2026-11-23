@@ -393,6 +393,58 @@ class PokedexBackfillTests(unittest.TestCase):
         self.assertTrue(result["skipped"])
         enrich.assert_not_called()
 
+    def test_previous_completed_revision_reenriches_lost_pokedex_mapping(self):
+        card = Card(
+            id="sv05-078_en",
+            tcg_card_id="sv05-078",
+            name="Flutter Mane",
+            lang="en",
+            is_custom=False,
+            supertype="Pokemon",
+            dex_ids=None,
+            pokedex_entry_ids=None,
+            cardmarket_products=[],
+        )
+        self.db.add_all([
+            Setting(key=COMPLETED_SETTING_KEY, value="true"),
+            Setting(key=REVISION_SETTING_KEY, value="form-entries-v1"),
+            card,
+        ])
+        self.db.commit()
+
+        def enrich(db, cards, **_kwargs):
+            for row in cards:
+                row.dex_ids = [987]
+                row.pokedex_entry_ids = ["987"]
+                row.cardmarket_products = []
+                db.add(row)
+            db.commit()
+            return {
+                "attempted": len(cards),
+                "updated": len(cards),
+                "missing": 0,
+                "failed": 0,
+                "deferred": 0,
+                "ids": [row.id for row in cards],
+            }
+
+        with patch("services.pokedex_backfill.enrich_cards_metadata", side_effect=enrich) as metadata:
+            result = run_pokedex_metadata_backfill(
+                self.db,
+                batch_limit=10,
+                batch_delay_seconds=0,
+            )
+
+        self.db.refresh(card)
+        self.assertFalse(result["skipped"])
+        self.assertTrue(result["completed"])
+        self.assertEqual(result["attempted"], 1)
+        self.assertEqual(card.dex_ids, [987])
+        self.assertEqual(card.pokedex_entry_ids, ["987"])
+        self.assertEqual(metadata.call_count, 1)
+        revision = self.db.query(Setting).filter(Setting.key == REVISION_SETTING_KEY).one()
+        self.assertEqual(revision.value, CURRENT_BACKFILL_REVISION)
+
     def test_backfill_marks_complete_after_missing_rows_are_enriched(self):
         self.db.add(Card(
             id="base-25_en",

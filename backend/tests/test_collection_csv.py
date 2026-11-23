@@ -15,6 +15,12 @@ class CollectionCsvTests(unittest.TestCase):
         self.assertEqual(normalize_collection_variant(None), 'Normal')
         self.assertEqual(normalize_collection_variant(' Holo '), 'Holo')
 
+    def test_removed_special_is_not_a_physical_variant(self):
+        with self.assertRaises(ValueError):
+            normalize_collection_variant('Special')
+        self.assertEqual(normalize_collection_variant('Holo'), 'Holo')
+        self.assertEqual(normalize_collection_variant('Reverse Holo'), 'Reverse Holo')
+
     def test_purchase_price_must_be_finite_and_non_negative(self):
         self.assertTrue(is_valid_collection_purchase_price(0))
         self.assertTrue(is_valid_collection_purchase_price(12.5))

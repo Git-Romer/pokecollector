@@ -27,7 +27,7 @@ export default function MoneyInput({
         value={value}
         onChange={onChange}
         disabled={disabled}
-        className={clsx(className, 'pl-7')}
+        className={clsx(className, currencySymbol.length > 1 ? 'pl-8' : 'pl-7')}
       />
     </div>
   )

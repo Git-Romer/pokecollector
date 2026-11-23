@@ -32,7 +32,7 @@ Both are environment variables of the **frontend** container, read when it start
 | Variable | Default | Effect |
 |---|---|---|
 | `PWA_ENABLED` | off | `true` serves the real service worker at `/sw.js`; the app caches its own files and can start offline. `false` serves the kill worker, which removes any installed worker. |
-| `OFFLINE_QUEUE_ENABLED` | off | `true` turns on the upload hardening below, the cached sign-in, the logout protection, the sync center and the offline scan queue. Setting it back to `false` stops the queue; items already waiting stay on the device, so turn it on briefly to sync them before disabling. |
+| `OFFLINE_QUEUE_ENABLED` | off | `true` turns on the upload hardening below, the cached sign-in, the logout protection and the offline scan queue. Setting it back to `false` stops the queue; items already waiting stay on the device, so turn it on briefly to sync them before disabling. The Sync center remains available for server synchronization when offline features are disabled. |
 
 Accepted values: `true`, `1`, `yes`, `on`, `false`, `0`, `no`, `off` (any case). An invalid value logs a warning and uses the default.
 
@@ -89,27 +89,50 @@ Sync before moving the app to a different address or port: waiting items belong 
 
 ## Sync center
 
-With `OFFLINE_QUEUE_ENABLED` on, anything that waits on this device is visible:
+The existing red **Sync** button at the top right of **Home** opens **Sync center** at **/offline**, instead of starting synchronization immediately. It is the only in-app entry to the center; there is no additional global button or shortcut on other pages. It is available to all signed-in users for their personal controls, including when the queue is empty or a server job is running. Shared server actions inside the center remain admin-only.
 
-- A small button at the top right shows the state: *Offline mode*, *Waiting to sync*, *Syncing…* or *Needs attention*, with a count. It is hidden when nothing waits and the server answers. Tap it to open the sheet.
-- The sheet lists each waiting item with its state and age. **Retry** puts a failed or blocked item back in line, **Discard** removes it after a confirmation (it has not reached the server and cannot be recovered). **Sync now** sends everything immediately, even with **Automatic sync** switched off; the switch only stops the background attempts.
+Page navigation uses one shared scroll policy across the app. Opening a different page starts at the top once it is ready. Back/Forward keeps the existing browser or list restoration, while in-page filters, tabs and explicit section anchors do not trigger a page reset.
+
+**Reset offline app data** requires confirmation before clearing cached app files, saved pages and downloaded artwork. Cancel, Escape or closing the dialog leaves data untouched. Queued changes and scan photos, along with the online collection, are preserved after a confirmed reset. A confirmation from a previous page or sign-in cannot reset a later session.
+
+- **Automatic offline downloads** saves the signed-in user's collection and artwork on this device. It has moved out of Settings → General and remains off by default. This is separate from sending waiting changes to the server.
+- With offline features enabled, the button also shows *Offline mode*, *Waiting to sync*, *Syncing…* or *Needs attention*, with a count. **Changes waiting on this device** lists each waiting item with its state and age. **Retry** puts a failed or blocked item back in line, **Discard** removes it after a confirmation (it has not reached the server and cannot be recovered). **Sync now** sends everything immediately, even with **Automatic sync** switched off; that switch only stops background attempts to send queued changes.
+- **Server catalogue and prices** is admin-only. It contains the existing full catalogue and price sync actions, intervals, catalogue languages, digital-set and cross-language fallback options, plus the custom-card matching shortcut. These settings affect the installation, not just the signed-in user's device. Existing API endpoints and scheduling behavior are unchanged. They have moved out of Settings → Data & Sync; that tab is now **Data**, with backups, import and export still there.
 - A banner appears when the server could not be reached twice in a row, or when the device says it is offline. It is based on actually asking the server (`/api/health`), not on the phone's own online flag, and it disappears after the first successful answer. While it shows, pages that need the server (anything except Home, Dashboard, Collection, Wishlist, Sets, Binders, Search and the sync center) show "This page isn't available offline." instead.
-- **/offline** is the full sync center: connection state, server version, the same item list, storage use, what this browser supports (HTTPS, service worker, storage, installed, push), the iPhone install hint and **Reset offline app data**. Reset removes cached app files and the saved copies of your data and keeps waiting items.
+- The page also shows connection state and server version. With offline features enabled, it includes device storage use, what this browser supports (HTTPS, service worker, storage, installed, push), the iPhone install hint and **Reset offline app data**. Reset removes cached app files and the saved copies of your data and keeps waiting items. Items for other accounts are counted without exposing their contents.
 
 Items waiting here exist only on this device until they reach the server. The app asks the browser to protect its storage (`navigator.storage.persist()`), shows how much space is used, and keeps a marker so it can tell you when the browser deleted its offline data anyway ("Some offline data was removed by the browser…"). In a Safari tab (not the Home Screen app) it warns once an item is 3 days old, and more strongly after 7 days, because Safari can delete data of websites that were not opened for about a week. Sync items in the browser before adding the app to the Home Screen: the installed app has its own storage.
 
-Only scan uploads are queued from the app. Offline collection and wishlist adds are not part of this work, so there is no *Edit* for queued adds; the sheet offers Retry and Discard only.
+Only scan uploads are queued from the app. Offline collection and wishlist adds are not part of this work, so there is no *Edit* for queued adds; the center offers Retry and Discard only.
 
 ## What you can see offline
 
-With `OFFLINE_QUEUE_ENABLED` on, the app keeps a copy of the data you have already looked at, so a degraded start (server unreachable) shows it instead of empty pages. Above the page it says *Showing saved data from <time ago>* while the server cannot be reached.
+With `OFFLINE_QUEUE_ENABLED` and **Automatic offline collection** on, the app keeps a copy of the data you have already looked at, so a degraded start (server unreachable) shows it instead of empty pages. Above the page it says *Showing saved data from <time ago>* while the server cannot be reached.
 
 - **Which pages:** Collection, Wishlist, Dashboard, Sets and their checklists, Binders and their cards, the scanner configuration, printing tags and the investment tracker. Only data you actually opened is saved, after a successful load (at most every 5 seconds). Saved pages you do not open again are kept until they are 30 days old.
-- **Limits:** a single page of data over 5 MiB is skipped; the total stays under 20 MiB (the oldest data goes first); a copy older than 30 days, or saved by a different app version, is ignored.
+- **Limits:** collection metadata has a 10 MiB limit; other pages have a 5 MiB limit. The total stays under 20 MiB (the oldest data goes first); a copy older than 30 days, or saved by a different app version, is ignored.
 - **Per user:** each account on this device and server address has its own copy, in a separate browser database from the waiting items. Signing in as someone else deletes every other account's copy.
 - **Cleared at logout:** logging out (whatever you choose about waiting items; cancelling keeps you signed in) deletes your copy. **Reset offline app data** on /offline deletes every copy.
 - **Settings and exchange rates:** the last settings (per user) and exchange rate (per currency pair) are also kept in the browser, so an offline start keeps your currency instead of falling back to EUR. They are cleared at logout.
 - **Read-only:** you can look, but changes still need the server. Pages outside this list say "This page isn't available offline."
+
+## Save the whole collection for offline use
+
+With `PWA_ENABLED` and `OFFLINE_QUEUE_ENABLED` on, **Sync center → Automatic offline downloads** is off by default for each user. After explicitly enabling it, while signed in, online and using the app, it saves the complete collection metadata and downloads every available public card original automatically, regardless of the current page or filter. Downloads can use mobile data; iPhone web apps cannot reliably detect Wi-Fi, so enable this only when comfortable with that data usage. Explicitly saved user preferences are preserved. It uses a separate cache, so the browsing cache's 800-image limit does not remove these originals.
+
+- The Sync center shows saved and total image counts. Reopening or reconnecting resumes the download. Each cached URL and revision is checked, so completed files are reused and only missing files or changed artwork are downloaded again.
+- Switching the setting off first asks for confirmation with **Cancel** and **Deactivate and delete**. Cancelling or dismissing the dialog leaves downloads, saved data and the preference unchanged. Confirming cancels the transfer, waits for already-started storage writes, and removes saved read-only snapshots and public artwork from this browser. A persistent worker policy prevents ordinary browsing from recreating artwork caches while it is off. Other open tabs using the same account and storage receive the changed preference. The installed shell, push registration, waiting scan photos and online collection are preserved. Reset and logout also stop the automatic writer before clearing metadata.
+- Downloads run while the app can execute JavaScript, not as a guaranteed closed-app background job. iPhone may pause them when the app closes or the screen locks. Automatic downloads can use mobile data.
+- Custom, private, or thumbnail-only artwork is not downloaded. The count is shown explicitly and those cards use a card back offline. Owner photos are never placed in the public image cache.
+- A failed or oversized metadata save is reported as a failure, never as a completed download. Collection metadata is limited to 10 MiB and all saved query data to 20 MiB. Image requests have a timeout and storage/quota failures stop the download without deleting waiting scan uploads.
+- Public image bytes and private collection metadata use different storage. Metadata stays account-specific and is removed at logout or an offline-data reset. Reset also removes downloaded artwork but keeps waiting uploads.
+- Browsers can still remove stored data. This is a download, not a permanent backup. Offline changes to collection ownership are not supported.
+
+For other clients, authenticated **`GET /api/collection/offline-manifest`** returns `version`, `user_id`, the complete `items`, distinct versioned `image_urls`, and `missing_artwork_card_ids`. Its response is private and must not be cached by a shared proxy. The endpoint reads only the signed-in account's collection and does not change ownership or download files onto a device. A client must fetch the listed same-origin artwork URLs and save its own account-scoped metadata. The opt-in per-user preference is `offline_collection_enabled` (`"true"` or `"false"`, default `"false"`) through the existing authenticated settings API, including **`PUT /api/settings/`**. An API change is applied when an app instance loads the updated setting; the server cannot directly delete storage from a closed browser.
+
+To keep an older request from overwriting a newer choice, read **`GET /api/settings/`** and send its `offline_collection_revision` value in the **`X-Offline-Preference-Revision`** header with the preference PUT. For example, send `{"offline_collection_enabled":"false"}` with `X-Offline-Preference-Revision: 0` if GET returned `"offline_collection_revision":"0"`. A successful save increments the revision and returns it in the settings response. A stale revision returns **409 Conflict** without changing the preference. Read the revision again and retry only if that choice is still the user's latest intent. The revision belongs to the signed-in account and is read-only; including it in the JSON body returns 422. Existing clients without the header retain unconditional-save compatibility, but should use the header when requests can overlap.
+
+The app saves a confirmed disable locally before contacting the server, including while offline. It keeps that account's pending choice across reloads and uses conditional saves after reconnecting. An acknowledgement for an older choice cannot clear a newer pending choice.
 
 ## Scanning without a connection
 

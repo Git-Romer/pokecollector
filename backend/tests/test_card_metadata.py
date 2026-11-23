@@ -317,6 +317,87 @@ class CardMetadataAttemptPersistenceTests(unittest.TestCase):
         self.assertEqual(newer.last_metadata_enrichment_attempt_at, newer_attempt)
         self.assertEqual(recent.last_metadata_enrichment_attempt_at, recent_attempt)
 
+    def test_full_sync_refreshes_complete_cards_in_a_bounded_oldest_first_batch(self):
+        now = datetime.datetime.utcnow()
+        oldest_attempt = now - datetime.timedelta(days=40)
+        newer_attempt = now - datetime.timedelta(days=35)
+        oldest = Card(
+            id="tagteam-25-133_en",
+            tcg_card_id="tagteam-25-133",
+            name="Pikachu & Eevee GX",
+            rarity="Rare",
+            types=["Lightning"],
+            supertype="Pokemon",
+            subtypes=["Tag Team"],
+            dex_ids=[25],
+            pokedex_entry_ids=["25"],
+            cardmarket_products=[],
+            price_market=4.25,
+            price_source_lang="de",
+            lang="en",
+            is_custom=False,
+            last_metadata_enrichment_attempt_at=oldest_attempt,
+        )
+        newer = Card(
+            id="tagteam-26-133_en",
+            tcg_card_id="tagteam-26-133",
+            name="Raichu & Eevee GX",
+            rarity="Rare",
+            types=["Lightning"],
+            supertype="Pokemon",
+            subtypes=["Tag Team"],
+            dex_ids=[26],
+            pokedex_entry_ids=["26"],
+            cardmarket_products=[],
+            lang="en",
+            is_custom=False,
+            last_metadata_enrichment_attempt_at=newer_attempt,
+        )
+        self.db.add_all([newer, oldest])
+        self.db.commit()
+        parsed = {
+            "id": oldest.id,
+            "tcg_card_id": oldest.tcg_card_id,
+            "name": oldest.name,
+            "rarity": "Rare Holo GX",
+            "types": ["Lightning", "Psychic"],
+            "supertype": "Pokemon",
+            "subtypes": ["Tag Team"],
+            "dex_ids": [25, 133],
+            "pokedex_entry_ids": ["25", "133"],
+            "cardmarket_products": [],
+            "price_market": 9.99,
+            "price_source_lang": "fr",
+            "lang": "en",
+            "is_custom": False,
+        }
+
+        with patch(
+            "services.card_metadata.pokemon_api.get_card",
+            return_value={"id": oldest.tcg_card_id},
+        ) as get_card, patch(
+            "services.card_metadata.pokemon_api.parse_card_for_db",
+            return_value=parsed,
+        ), patch(
+            "services.card_metadata.apply_cross_language_fallbacks",
+            side_effect=lambda _db, value, **_kwargs: value,
+        ):
+            result = enrich_missing_card_metadata(self.db, limit=1)
+
+        self.db.refresh(oldest)
+        self.db.refresh(newer)
+        self.assertEqual(result["attempted"], 1)
+        self.assertEqual(result["updated"], 1)
+        self.assertEqual(result["refreshed"], 1)
+        self.assertEqual(oldest.dex_ids, [25, 133])
+        self.assertEqual(oldest.rarity, "Rare Holo GX")
+        self.assertEqual(oldest.price_market, 4.25)
+        self.assertEqual(oldest.price_source_lang, "de")
+        self.assertEqual(result["ids"], [])
+        self.assertGreater(oldest.last_metadata_enrichment_attempt_at, oldest_attempt)
+        self.assertEqual(newer.last_metadata_enrichment_attempt_at, newer_attempt)
+        get_card.assert_called_once_with(oldest.tcg_card_id, lang="en")
+
 
 if __name__ == "__main__":
     unittest.main()

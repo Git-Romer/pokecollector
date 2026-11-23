@@ -2,11 +2,13 @@ import { BrowserRouter, Navigate, Outlet, Route, Routes, useParams } from 'react
 import { Suspense, lazy, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import PokeBallLoader from './components/PokeBallLoader'
+import HoloDeviceMotionController from './components/HoloDeviceMotionController'
 import AuthStartupScreen from './components/AuthStartupScreen'
 import { SettingsProvider } from './contexts/SettingsContext'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { forceChangePassword } from './api/client'
 import Layout from './components/Layout'
+import { usePageScrollReset } from './hooks/useListScrollRestoration'
 import { useSettings } from './contexts/SettingsContext'
 import PublicHomeButton from './components/PublicHomeButton'
 import { ConfirmDialogProvider } from './contexts/ConfirmDialogContext'
@@ -147,8 +149,14 @@ function ForcePasswordChangeScreen() {
   )
 }
 
+function PageScrollBoundary({ children }) {
+  usePageScrollReset()
+  return children
+}
+
 function lazyRoute(element) {
-  return <Suspense fallback={<RouteLoader />}>{element}</Suspense>
+  // Commit the reset with the resolved page, not with its loading placeholder.
+  return <Suspense fallback={<RouteLoader />}><PageScrollBoundary>{element}</PageScrollBoundary></Suspense>
 }
 
 function PublicRoutes() {
@@ -225,6 +233,7 @@ export default function App() {
     <AuthProvider>
       <SettingsProvider>
         <OfflineProvider>
+        <HoloDeviceMotionController />
         <ConfirmDialogProvider>
           <BrowserRouter>
             <Routes>
