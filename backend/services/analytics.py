@@ -140,11 +140,13 @@ def aggregate_species_duplicates(db: Session, user_id: int, price_field: str = "
             continue
         bucket["total_value"] = round(bucket["total_value"], 2)
         bucket["printings"].sort(key=lambda row: (
-            -row["total_value"], (row["set_name"] or "").casefold(), (row["name"] or "").casefold(),
+            -row["total_value"], (row["set_name"] or "").casefold(),
+            (row["name"] or "").casefold(), row["card_id"],
         ))
         results.append(bucket)
 
-    results.sort(key=lambda row: (-row["printing_count"], -row["total_value"]))
+    # dex_id is a stable final tie-breaker so equal rows keep their order.
+    results.sort(key=lambda row: (-row["printing_count"], -row["total_value"], row["dex_id"]))
 
     reported_ids = {payload["card_id"] for row in results for payload in row["printings"]}
     summary = {
