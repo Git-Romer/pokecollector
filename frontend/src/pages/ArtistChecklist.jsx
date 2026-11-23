@@ -26,15 +26,9 @@ const OWNERSHIP_OPTIONS = ['owned', 'missing']
 const UNKNOWN_SET_KEY = '__unknown_set__'
 
 // React Router already decodes route params, so a name that legitimately
-// contains "%" would make a second decode throw. Prefer the decoded value and
-// fall back to the raw one.
+// contains "%" must not be decoded again: that would throw or corrupt it.
 export function decodeArtistParam(value) {
-  const raw = String(value || '')
-  try {
-    return decodeURIComponent(raw)
-  } catch {
-    return raw
-  }
+  return String(value || '')
 }
 
 export function parseArtistChecklistState(searchParams) {
@@ -330,6 +324,10 @@ export default function ArtistChecklist() {
                 aria-valuenow={safeProgress}
                 aria-valuemin={0}
                 aria-valuemax={100}
+                aria-valuetext={t('artists.progressValue')
+                  .replace('{owned}', ownedCount.toLocaleString())
+                  .replace('{total}', rootTotal.toLocaleString())
+                  .replace('{percent}', safeProgress)}
               >
                 <div
                   className={clsx('hp-bar-fill', safeProgress >= 66 ? 'healthy' : safeProgress >= 33 ? 'medium' : 'low')}
