@@ -873,7 +873,7 @@ export default function CardSearch() {
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-sm text-text-secondary">
                 {data.total_count?.toLocaleString()} {t('cardSearch.results')}
-                {typeof data.owned_count === 'number' && (
+                {typeof data.owned_count === 'number' && !filters.ownership && (
                   <span className="ml-1.5 text-text-muted">
                     · {data.owned_count.toLocaleString()} / {data.total_count?.toLocaleString()} {t('cardSearch.owned')}
                   </span>
