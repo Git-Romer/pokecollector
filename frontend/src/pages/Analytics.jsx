@@ -197,6 +197,7 @@ export default function Analytics() {
   const { data: speciesDuplicates = null, isLoading: speciesLoading } = useQuery({
     queryKey: ['species-duplicates', pricePrimaryField],
     queryFn: () => getSpeciesDuplicates({ price_field: pricePrimaryField }).then(r => r.data),
+    enabled: activeTab === 'species',
   })
   const speciesRows = Array.isArray(speciesDuplicates?.species) ? speciesDuplicates.species : []
   const speciesSummary = speciesDuplicates?.summary || null
