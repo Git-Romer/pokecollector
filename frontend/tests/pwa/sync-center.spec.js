@@ -147,11 +147,13 @@ test.describe('sync center', () => {
     test(`storage separates queued photos from total site usage at ${width}px`, async ({ page, context }) => {
       await page.setViewportSize({ width, height: 900 })
       await page.addInitScript(() => {
-        // Override the prototype so the fixture also reaches WebKit's wrappers.
-        Object.defineProperty(Object.getPrototypeOf(navigator.storage), 'estimate', {
+        // Some browser contexts do not expose StorageManager at all.
+        const storage = navigator.storage ?? {}
+        Object.defineProperty(storage, 'estimate', {
           configurable: true,
           value: async () => ({ usage: 128 * 1024 * 1024, quota: 40 * 1024 * 1024 * 1024 }),
         })
+        Object.defineProperty(navigator, 'storage', { configurable: true, value: storage })
       })
       await mockApi(context, { health: 'down' })
       await page.goto('/offline')
@@ -427,6 +429,7 @@ test.describe('sync center', () => {
     await expect(page.getByTestId('offline-banner')).toHaveAttribute('role', 'status')
 
     state.health = 'up'
+    await expect(syncNow).toHaveAttribute('aria-disabled', 'false')
     await syncNow.click()
     await expect(page.getByTestId('offline-banner')).toHaveCount(0)
   })

@@ -189,7 +189,11 @@ test('keyboard focus survives responsive regrouping and pins only its own offscr
   await page.setViewportSize({ width: 390, height: 844 })
   await collectionFixture(page, { routePath: '/pokedex/1', extraResponses: sharedResponses })
   await page.evaluate(() => scrollTo(0, 18000))
-  const id = await page.locator('[data-window-item]').evaluateAll(items => items.find(e => { const r = e.getBoundingClientRect(); return r.top > 120 && r.bottom < innerHeight - 70 })?.dataset.windowItem)
+  let id
+  await expect.poll(async () => {
+    id = await page.locator('[data-window-item]').evaluateAll(items => items.find(e => { const r = e.getBoundingClientRect(); return r.top > 120 && r.bottom < innerHeight - 70 })?.dataset.windowItem)
+    return id
+  }).toBeTruthy()
   const item = page.locator(`[data-window-item="${id}"]`)
   const action = item.locator('.unified-card-primary-action')
   await action.focus()
