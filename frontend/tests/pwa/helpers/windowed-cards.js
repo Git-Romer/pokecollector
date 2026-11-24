@@ -37,6 +37,13 @@ export async function collectionFixture(page, { holo = false, readySelector = '.
   const errors = []
   fixtureErrors.set(page, errors)
   page.on('pageerror', error => errors.push(error.message))
+  // Holo stays enabled in settings, but ordinary card fixtures have no published
+  // designs. Mock the cross-origin publisher too, including its CORS response.
+  // The explicit Holo fixture below overrides this route with verified assets.
+  await page.route('**/api/holo/list', route => route.fulfill({
+    headers: { 'access-control-allow-origin': '*' },
+    json: { schemaVersion: 1, entries: [] },
+  }))
   if (holo) {
     // Explicitly mocked publisher, real hash-verified PNG bytes and motion engine.
     const png = readFileSync(new URL('../../../public/holo-effects/textures/geometric.png', import.meta.url))

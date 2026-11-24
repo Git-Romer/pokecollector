@@ -143,6 +143,8 @@ test('deactivation confirmation keeps downloads and saved images until explicitl
   expect(writes).toBe(0)
   await change(panel).click()
   await expect(dialog).toBeVisible()
+  // Dialog focus is scheduled on an animation frame, after it becomes visible.
+  await expect(dialog).toBeFocused()
   await page.keyboard.press('Escape')
   await expect(dialog).toHaveCount(0)
   await expect(change(panel)).toBeChecked()
