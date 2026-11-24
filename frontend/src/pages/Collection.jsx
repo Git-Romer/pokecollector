@@ -12,7 +12,6 @@ import ActionErrorNotice, { productLinkErrorNotice } from '../components/ActionE
 import ProductSourceList from '../components/ProductSourceList'
 import { useSettings } from '../contexts/SettingsContext'
 import { useConfirmDialog } from '../contexts/ConfirmDialogContext'
-import CardImage from '../components/CardImage'
 import WindowedCardGrid from '../components/WindowedCardGrid'
 import { useListScrollRestoration } from '../hooks/useListScrollRestoration'
 import { CardDialog, CardLegend, CardPriceDetails, withCollectionItemState } from '../components/card-system'

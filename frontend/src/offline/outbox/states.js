@@ -1,31 +1,5 @@
 // State machine of docs/PWA_OFFLINE_DESIGN.md §6.2.4 as data.
 
-export const STATES = Object.freeze({
-  PENDING: 'pending',
-  SENDING: 'sending',
-  RETRY_WAIT: 'retry_wait',
-  BLOCKED: 'blocked',
-  FAILED: 'failed',
-})
-
-/** Terminal outcomes: the item no longer exists afterwards. */
-export const TERMINAL = Object.freeze({ SENT: 'sent', CANCELLED: 'cancelled' })
-
-export const BLOCK_CODES = Object.freeze({
-  AUTH: 'auth',
-  PROXY: 'proxy',
-  WRONG_ACCOUNT: 'wrong_account',
-  SERVER_OLD: 'server_old',
-  NEWER_SCHEMA: 'newer_schema',
-})
-
-export const ACTORS = Object.freeze({
-  UI: 'ui',
-  REPLAYER: 'replayer',
-  ENGINE: 'engine',
-  PROVIDER: 'provider',
-})
-
 const ANY = '*'
 const LIVE = ['pending', 'sending', 'retry_wait', 'blocked', 'failed']
 
@@ -66,5 +40,3 @@ export function canTransition(from, to, actor) {
 export function transitionRows(from, to, actor) {
   return TRANSITIONS.filter(row => matches(row, from, to, actor)).map(row => row.id)
 }
-
-export const isEligibleState = state => state === 'pending' || state === 'retry_wait'

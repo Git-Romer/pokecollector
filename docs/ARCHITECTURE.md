@@ -168,9 +168,9 @@ Settings are split between two stores:
 - Global `settings` table
 - Per-user `user_settings` table
 
-The split is defined in `backend/api/settings.py`:
+The API in `backend/api/settings.py` uses `ADMIN_ONLY_KEYS` to select global settings. Other preferences are stored for the authenticated user; scanner configuration has dedicated endpoint guards. Per-user preferences include:
 
-- `PER_USER_KEYS`
+- User-owned settings
   - language
   - currency
   - price display preferences

@@ -709,19 +709,6 @@ class TradeValuationRequest(BaseModel):
     incoming: List[TradeValuationItem] = Field(default_factory=list)
 
 
-class SyncLogResponse(BaseModel):
-    id: int
-    started_at: Optional[datetime] = None
-    finished_at: Optional[datetime] = None
-    cards_updated: int = 0
-    sets_updated: int = 0
-    status: str
-    error_message: Optional[str] = None
-
-    class Config:
-        from_attributes = True
-
-
 class ProfileUpdate(BaseModel):
     is_profile_public: Optional[bool] = None
     public_show_values: Optional[bool] = None

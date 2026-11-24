@@ -18,7 +18,6 @@ import threading
 from urllib.parse import urlparse
 
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import ec
 from sqlalchemy.orm import Session
 
 from models import PushSubscription

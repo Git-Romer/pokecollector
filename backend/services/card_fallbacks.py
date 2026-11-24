@@ -24,7 +24,6 @@ from models import Card, Set, Setting
 from services import pokemon_api
 from services.price_utils import PRICE_FIELDS, has_valid_price, is_valid_price
 from services.tcgdex_languages import (
-    SUPPORTED_TCGDEX_LANGUAGES,
     english_fallback_languages,
     is_supported_tcgdex_language,
     normalize_tcgdex_language,
@@ -32,7 +31,6 @@ from services.tcgdex_languages import (
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_LANGS = set(SUPPORTED_TCGDEX_LANGUAGES)
 IMAGE_FIELDS = ("images_small", "images_large")
 CARD_COPY_FIELDS = (
     "tcg_card_id",

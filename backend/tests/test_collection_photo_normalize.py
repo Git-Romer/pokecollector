@@ -23,7 +23,6 @@ try:
     from PIL import Image
     from services.collection_photos import (
         InvalidPhoto,
-        JPEG_QUALITY,
         MAX_EDGE,
         MAX_SOURCE_PIXELS,
         MAX_UPLOAD_BYTES,

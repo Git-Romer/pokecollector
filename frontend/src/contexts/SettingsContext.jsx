@@ -4,7 +4,7 @@ import { priceFieldFromPrimary } from '../utils/prices'
 import { normalizeTcgdexLanguageCsv } from '../utils/tcgdexLanguages'
 import { currencySymbolFor, formatSelectedCurrency, rateForSelectedCurrency } from '../utils/currencyFormatting'
 import { useAuth } from './AuthContext'
-import { stageOfflineCollectionPreference, pendingOfflineCollectionPreference, acknowledgeOfflineCollectionPreference, loadSettingsWithCache, readCachedRate, readCachedSettings, withRateCache, withTimeout, writeCachedSettings, SETTINGS_CACHE_KEY } from '../offline/settingsCache'
+import { stageOfflineCollectionPreference, pendingOfflineCollectionPreference, acknowledgeOfflineCollectionPreference, loadSettingsWithCache, readCachedSettings, withTimeout, writeCachedSettings, SETTINGS_CACHE_KEY } from '../offline/settingsCache'
 
 const TRANSLATION_LOADERS = {
   de: () => import('../i18n/de'),

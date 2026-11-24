@@ -131,7 +131,7 @@ class ScanQueueTests(unittest.TestCase):
         self.assertGreaterEqual(scan_queue.LEASE_SECONDS, minimum)
 
     def test_batch_claim_groups_four_photos_and_keeps_forced_single_out(self):
-        job = self._job(self.users[0], positions=(0, 1, 2, 3, 4))
+        self._job(self.users[0], positions=(0, 1, 2, 3, 4))
         items = self.db.query(ScanJobItem).order_by(ScanJobItem.position).all()
         for item in items:
             item.batch_mode = True

@@ -12,7 +12,7 @@ function fakeOutbox({ items = [{ id: 'a' }], syncNow = vi.fn(), discardAllForUse
   }
 }
 
-function guardWith(outbox, choices, clearCache) {
+function guardWith(outbox, choices) {
   const queue = [...choices]
   const calls = { busy: [], closed: 0 }
   const promise = runLogoutGuard({

@@ -42,7 +42,7 @@ Routes are defined in `frontend/src/App.jsx`.
 | `/search` | `pages/CardSearch.jsx` | Card search, scanner entry, and multi-select bulk add |
 | `/scans` | `pages/ScanQueue.jsx` | Persistent scan inbox |
 | `/scans/:jobId` | `pages/ScanQueue.jsx` | Review one queued scan job |
-| `/offline` | `pages/OfflineCenter.jsx` | Sync center: connection, waiting items, storage, capabilities, reset (needs `OFFLINE_QUEUE_ENABLED`; redirects to `/` otherwise) |
+| `/offline` | `pages/OfflineCenter.jsx` | Home-only Sync center: admin server synchronization; connection, waiting items, storage, capabilities and reset when `OFFLINE_QUEUE_ENABLED` is on |
 | `/collection` | `pages/Collection.jsx` | User collection |
 | `/collection/user/:userId` | `pages/UserCollection.jsx` | Read-only view of another user's collection |
 | `/pokedex` | `pages/Pokedex.jsx` | Grouped or exact-form National Pokédex completion overview |
@@ -443,13 +443,12 @@ Notable frontend API bindings include:
 
 ### Sync center components (P6)
 
-All render nothing unless `OFFLINE_QUEUE_ENABLED` is on.
+The red Sync button on Home opens `/offline` directly. There is no floating global sync button, intermediate sheet, or Settings entry. Server synchronization remains available there to admins even with offline features disabled; offline controls require `OFFLINE_QUEUE_ENABLED`.
 
 | Component | Role |
 |-----------|------|
 | `components/sync/StaleDataLabel.jsx` | "Showing saved data from …" in `Layout` while a restored copy is shown and the server is not reachable; also exports `SavedAtContext`/`useSavedAt` |
-| `components/sync/SyncIndicator.jsx` | Floating button (offline / waiting / syncing / needs attention) mounted once in `Layout`; opens the sheet |
-| `components/sync/SyncSheet.jsx` | Sheet with Sync now, Automatic sync, item list (Retry / Discard), storage lines; also exports `SyncControls`, `SyncItemList`, `StorageSummary` for `/offline` |
+| `components/sync/SyncSheet.jsx` | Shared `SyncControls`, `SyncItemList`, and `StorageSummary` rendered by `/offline`; no modal wrapper |
 | `components/sync/OfflineBanner.jsx` | Banner at the top of `Layout` while offline |
 | `components/sync/EvictedNotice.jsx` | Blocking notice when the browser removed the offline database |
 | `components/OfflineUnavailable.jsx` | Replaces pages that need the server while offline (anything outside `OFFLINE_ROUTES`) |

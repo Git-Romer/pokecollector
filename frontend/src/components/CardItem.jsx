@@ -24,18 +24,6 @@ import PrintingDetailSelector from './PrintingDetailSelector'
 import ProductSourceList from './ProductSourceList'
 import ActionErrorNotice, { productLinkErrorNotice } from './ActionErrorNotice'
 
-const RARITY_COLORS = {
-  'Common': 'text-text-secondary',
-  'Uncommon': 'text-green',
-  'Rare': 'text-blue',
-  'Rare Holo': 'text-purple-400',
-  'Rare Ultra': 'text-yellow',
-  'Rare Secret': 'text-orange-400',
-  'Illustration Rare': 'text-pink-400',
-  'Special Illustration Rare': 'text-pink-500',
-  'Hyper Rare': 'text-yellow',
-}
-
 const POKEMON_TYPES = ['Fire', 'Water', 'Grass', 'Lightning', 'Psychic', 'Fighting', 'Darkness', 'Metal', 'Dragon', 'Colorless', 'Fairy', 'Stellar']
 
 export function CustomCardModal({ onClose, onCreated, sets: setsProp = [], autoAddCollection = false, editCard = null }) {

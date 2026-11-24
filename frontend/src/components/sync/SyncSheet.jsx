@@ -1,13 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import {
-  AlertTriangle, Camera, Clock3, CloudOff, Heart, Loader2, PlusCircle, RefreshCw, ShieldCheck,
+  AlertTriangle, Camera, Clock3, Heart, Loader2, PlusCircle, RefreshCw, ShieldCheck,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import Modal from '../ui/Modal'
 import ConfirmDialog from '../ui/ConfirmDialog'
 import { useSettings } from '../../contexts/SettingsContext'
-import { useOffline } from '../../offline/useOffline'
 import { useOutbox } from '../../offline/useOutbox'
 import { isStandalone } from '../../offline/capabilities'
 import { ageWarning } from '../../offline/durability'
@@ -273,42 +270,5 @@ export function StorageSummary({ showSafari = true, showTitle = true }) {
         </p>
       )}
     </div>
-  )
-}
-
-export default function SyncSheet({ isOpen, onClose }) {
-  const { t } = useSettings()
-  const { otherAccountCount } = useOutbox()
-  const offline = useOffline()
-  const navigate = useNavigate()
-
-  // A button, not a link: Safari skips links when tabbing, which would break the dialog's focus wrap.
-  const openCenter = () => {
-    onClose()
-    navigate('/offline')
-  }
-
-  return (
-    <Modal isOpen={isOpen} onClose={onClose} title={t('sync.centerTitle')} size="md">
-      <div className="space-y-5 p-5" data-testid="sync-sheet">
-        {offline && (
-          <p className="flex items-start gap-2 text-xs text-text-secondary">
-            <CloudOff size={14} className="mt-0.5 flex-shrink-0 text-yellow" aria-hidden />
-            {t('sync.offlineShort')}
-          </p>
-        )}
-        <SyncControls />
-        <SyncItemList />
-        <div className="space-y-3 border-t border-border pt-4">
-          <StorageSummary />
-          {otherAccountCount > 0 && (
-            <p className="text-xs text-text-muted">{`${t('sync.otherAccountsNote')}: ${otherAccountCount}`}</p>
-          )}
-          <button type="button" onClick={openCenter} className="text-sm text-blue hover:underline">
-            {t('pwa.settingsTitle')}
-          </button>
-        </div>
-      </div>
-    </Modal>
   )
 }

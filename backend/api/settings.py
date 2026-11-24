@@ -53,7 +53,6 @@ from services.scan_providers import (
     configured_provider_name,
     enabled_providers,
     image_part,
-    installation_model,
     openai_base_url,
     openai_enabled,
     openai_requires_key,
@@ -76,22 +75,6 @@ logger = logging.getLogger(__name__)
 PHOTO_PREFERENCE_SETTING_KEY = "prefer_own_card_photos"
 HOLO_EFFECTS_SETTING_KEY = "holo_effects_enabled"
 OFFLINE_COLLECTION_SETTING_KEY = "offline_collection_enabled"
-
-PER_USER_KEYS = {
-    "language", "currency", "price_primary", "price_display",
-    "set_overview_filters", "hidden_set_ids",
-    "telegram_bot_token", "telegram_chat_id", "telegram_enabled",
-    "price_alerts_enabled", "price_alert_threshold",
-    "gemini_api_key", "trainer_name", "portfolio_display_mode",
-    "openai_api_key",
-    SCANNER_PROVIDER_SETTING, *SCANNER_MODEL_SETTINGS.values(),
-    *SCANNER_REQUEST_TIMEOUT_SETTINGS.values(),
-    *SCANNER_CUSTOM_MODEL_SETTINGS.values(),
-    *SCANNER_CAPABILITY_SETTINGS.values(),
-    SCAN_DIAGNOSTICS_SETTING_KEY, PHOTO_PREFERENCE_SETTING_KEY,
-    HOLO_EFFECTS_SETTING_KEY, OFFLINE_COLLECTION_SETTING_KEY,
-    SCANNER_GEMINI_FALLBACK_SETTING_KEY,
-}
 
 MANAGED_SCANNER_KEYS = {
     "gemini_api_key",

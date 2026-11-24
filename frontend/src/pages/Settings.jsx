@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Crown, Download, Upload, Plus, Pencil, Trash2, User, UserCheck, UserX, Copy } from 'lucide-react'
 import {
   downloadBackup, restoreBackup, exportCSV,
-  getSetting, setSetting, getTelegramStatus, saveSettings, setAuthMode,
+  getSetting, setSetting, getTelegramStatus, setAuthMode,
   getUsers, createUser, updateUser, deleteUser, changePassword, changeAvatar, changeUsername,
   getContributors, getSupporters, downloadDebugLog,
   getProfile, updateProfile, deleteScanDiagnostics,

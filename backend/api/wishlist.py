@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List
 from api.auth import get_current_user
 from database import get_db
-from models import WishlistItem, Card, Set, User
+from models import WishlistItem, Card, User
 from schemas import WishlistItemCreate, WishlistItemUpdate, WishlistItemResponse
 from api.collection import ensure_card_exists
 from services.card_visibility import visible_any_card_filter

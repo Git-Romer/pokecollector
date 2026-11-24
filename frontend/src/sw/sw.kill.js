@@ -11,13 +11,13 @@ self.addEventListener('activate', event => {
       for (const name of await caches.keys()) {
         if (name.startsWith('pc-')) await caches.delete(name)
       }
-    } catch (error) { /* ignore */ }
-    try { await self.registration.unregister() } catch (error) { /* ignore */ }
+    } catch { /* ignore */ }
+    try { await self.registration.unregister() } catch { /* ignore */ }
     try {
       const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
       for (const client of windows) {
-        try { await client.navigate(client.url) } catch (error) { /* ignore */ }
+        try { await client.navigate(client.url) } catch { /* ignore */ }
       }
-    } catch (error) { /* ignore */ }
+    } catch { /* ignore */ }
   })())
 })

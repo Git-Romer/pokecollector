@@ -123,7 +123,7 @@ export default function DeckEditor() {
   })
   const switchPrintMutation = useMutation({
     mutationFn: cardId => switchBinderEntryCard(deckId, activeEntry.id, cardId),
-    onSuccess: result => {
+    onSuccess: _result => {
       onSuccess()
       setViewerIndex(null)
       toast.success(t('binderTypes.printSwitched'))

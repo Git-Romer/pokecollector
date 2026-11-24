@@ -426,14 +426,14 @@ export default function Analytics() {
                 <ResponsiveContainer width="100%" height={300}>
                   <PieChart>
                     <Pie data={rarityStats} dataKey="count" nameKey="rarity" cx="50%" cy="50%" outerRadius={100}
-                      label={({ rarity, percentage }) => `${percentage}%`}>
+                      label={({ rarity: _rarity, percentage }) => `${percentage}%`}>
                       {rarityStats.map((_, i) => <Cell key={i} fill={RARITY_COLORS[i % RARITY_COLORS.length]} />)}
                     </Pie>
                     <Tooltip
                       contentStyle={{ background: '#1e1e2e', border: '1px solid #2a2a3d', borderRadius: '8px', color: '#fff' }}
                       labelStyle={{ color: '#fff' }}
                       itemStyle={{ color: '#fff' }}
-                      formatter={(val, name) => [val, t('analytics.count')]}
+                      formatter={(val, _name) => [val, t('analytics.count')]}
                     />
                     <Legend wrapperStyle={{ color: '#a0a0b8' }} />
                   </PieChart>

@@ -8,7 +8,7 @@ import tempfile
 from datetime import datetime, timedelta
 
 import bcrypt
-from jose import JWTError, jwt
+from jose import jwt
 from sqlalchemy.orm import Session
 
 from models import User, UserSetting

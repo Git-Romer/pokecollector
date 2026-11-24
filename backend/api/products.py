@@ -33,7 +33,6 @@ from services.product_ledger import (
     entry_live_value,
     entry_realized_value,
     finite_non_negative,
-    ledger_totals,
     positive_quantity,
     product_effective_value,
     product_has_completed_sale,

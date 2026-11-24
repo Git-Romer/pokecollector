@@ -168,7 +168,7 @@ export const CLASSIFY_ROWS = [
   {
     id: 'in_progress',
     when: ctx => ctx.status === 409 && ctx.detail.code === 'idempotency_in_progress',
-    result: ctx => outcome('retry_wait', 'in_progress', {
+    result: () => outcome('retry_wait', 'in_progress', {
       kind: 'http',
       status: 409,
       code: 'idempotency_in_progress',

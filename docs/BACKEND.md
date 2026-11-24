@@ -408,9 +408,9 @@ endpoint exposes user settings or collection data.
 
 ## Settings Scope
 
-Current settings are split in `backend/api/settings.py`:
+The API in `backend/api/settings.py` routes `ADMIN_ONLY_KEYS` to the global store and other preferences to the authenticated user's `UserSetting` rows. Dedicated scanner settings must use their atomic configuration endpoint; this is not a fixed per-user key allowlist. Examples of each scope:
 
-- `PER_USER_KEYS`
+- Per-user settings
   - `language`
   - `currency`
   - `price_primary`

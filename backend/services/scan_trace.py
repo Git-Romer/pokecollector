@@ -158,12 +158,6 @@ def _write_private(path: Path, content: bytes | str) -> None:
             raise
 
 
-def redact_sensitive(message: str) -> str:
-    """Public wrapper: strip known credential shapes from text before it is
-    stored, returned to a caller, or logged."""
-    return _redact_error(message)
-
-
 def _redact_error(message: str) -> str:
     redacted = str(message)
     for pattern, replacement in _SENSITIVE_ERROR_PATTERNS:

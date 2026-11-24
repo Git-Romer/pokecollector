@@ -313,7 +313,7 @@ class DeckApiTests(unittest.TestCase):
         source.color = "#3b82f6"
         source.icon_pokemon_id = 25
         self.db.commit()
-        original = add_deck_entry(deck.id, DeckEntryCreate(card_id=self.card.id, required_quantity=4), current_user=self.user, db=self.db)
+        add_deck_entry(deck.id, DeckEntryCreate(card_id=self.card.id, required_quantity=4), current_user=self.user, db=self.db)
         copied = duplicate_deck(deck.id, current_user=self.user, db=self.db)
         self.assertNotEqual(copied.id, deck.id)
         self.assertEqual(copied.binder_type, "deck")
