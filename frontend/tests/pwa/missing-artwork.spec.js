@@ -3,19 +3,18 @@ import { cardArtwork, collectionFixture, expectNoCardPageErrors } from './helper
 
 test('one Sync center retry retries failed artwork without starting a server sync', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
-  await collectionFixture(page)
   let failing = true
   const retried = []
   const serverSync = []
   page.on('request', request => {
     if (new URL(request.url()).pathname.startsWith('/api/sync') && request.method() === 'POST') serverSync.push(request.url())
   })
-  await page.route('**/api/images/**', route => {
+  // Start with failed artwork; a hard reload can cancel outgoing WebKit fetches.
+  await collectionFixture(page, { artworkRoute: route => {
     if (failing) return route.abort('connectionfailed')
     retried.push(route.request().url())
     return route.fulfill({ body: cardArtwork, contentType: 'image/jpeg' })
-  })
-  await page.reload()
+  } })
   await expect(page.locator('.unified-card-image-error').first()).toBeVisible()
   // The placeholder may sit behind Home but must never cover its hit target.
   const home = page.getByRole('button', { name: 'Navigation', exact: true })
@@ -30,7 +29,8 @@ test('one Sync center retry retries failed artwork without starting a server syn
   await page.goBack()
   await expect(page.locator('.unified-card-frame-interactive').first().locator('img')).toBeVisible()
   await expect(page.locator('.unified-card-frame-interactive').first().locator('.unified-card-image-error')).toHaveCount(0)
-  expect(retried.some(url => new URL(url).searchParams.has('retry'))).toBe(true)
+  await expect.poll(() => retried.some(url => new URL(url).searchParams.has('retry'))).toBe(true)
+  await expect.poll(() => page.locator('.unified-card-frame-interactive').first().locator('img').evaluate(img => img.complete && img.naturalWidth > 0)).toBe(true)
   expect(serverSync).toEqual([])
   expectNoCardPageErrors(page)
 })
@@ -38,13 +38,12 @@ test('one Sync center retry retries failed artwork without starting a server syn
 for (const width of [320, 390, 1280]) {
   test(`missing artwork remains compact and opens the card at ${width}px`, async ({ page, context }) => {
     await page.setViewportSize({ width, height: 844 })
-    await collectionFixture(page)
-    await page.route('**/api/images/**', route => route.abort('connectionfailed'))
-    await page.reload()
+    await collectionFixture(page, { artworkRoute: route => route.abort('connectionfailed') })
     await expect(page.locator('.unified-card-caption').first()).toBeAttached({ timeout: 30000 })
     const frame = page.locator('.unified-card-frame-interactive').first()
     const error = frame.locator('.unified-card-image-error')
     await expect(error).toBeVisible()
+    await page.waitForLoadState('networkidle')
     await context.setOffline(true)
     const banner = page.getByTestId('offline-banner')
     await expect(banner).toBeVisible()
