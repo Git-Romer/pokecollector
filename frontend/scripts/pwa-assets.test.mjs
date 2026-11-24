@@ -60,16 +60,46 @@ test('index.html has the iOS meta tags and no cache-busting query strings', () =
   assert.match(html, /rel="apple-touch-icon" sizes="180x180" href="\/icons\/pc-apple-touch-180-v3\.png"/);
 });
 
+function isGoogleFontsStylesheet(tag) {
+  const href = tag.match(/\bhref\s*=\s*(["'])(.*?)\1/i)?.[2];
+  if (!href) return false;
+  try {
+    const url = new URL(href);
+    return url.origin === 'https://fonts.googleapis.com' && url.pathname === '/css2';
+  } catch {
+    return false;
+  }
+}
+
+test('Google Fonts detection accepts the genuine stylesheet URL', () => {
+  assert.equal(isGoogleFontsStylesheet('<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter">'), true);
+});
+
+test('Google Fonts detection rejects misleading and invalid URLs', () => {
+  const urls = [
+    'https://fonts.googleapis.com.example.invalid/css2',
+    'https://not-fonts.googleapis.com/css2',
+    'https://example.invalid/fonts.googleapis.com/css2',
+    'https://example.invalid/css2?host=fonts.googleapis.com',
+    'https://fonts.googleapis.com@example.invalid/css2',
+    'http://fonts.googleapis.com/css2',
+    'not-a-url',
+  ];
+  for (const href of urls) {
+    assert.equal(isGoogleFontsStylesheet(`<link rel="stylesheet" href="${href}">`), false, href);
+  }
+  assert.equal(isGoogleFontsStylesheet('<link rel="stylesheet">'), false);
+});
+
 test('index.html keeps Google Fonts from blocking the first paint', () => {
   const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   assert.match(html, /<style>@layer pc-fallback \{[^}]*background-color: #08080f/);
-  const fontLinks = html.match(/<link[^>]*fonts\.googleapis\.com\/css2[^>]*>/g) ?? [];
+  const stylesheets = html.match(/<link[^>]*rel="stylesheet"[^>]*>/g) ?? [];
+  const fontLinks = stylesheets.filter(isGoogleFontsStylesheet);
   assert.equal(fontLinks.length, 1);
   assert.match(fontLinks[0], /rel="stylesheet"/);
   assert.match(fontLinks[0], /media="print"/);
   assert.match(fontLinks[0], /data-pc-fonts/);
-  const blocking = (html.match(/<link[^>]*rel="stylesheet"[^>]*>/g) ?? []).filter(
-    (tag) => tag.includes('fonts.googleapis.com') && !tag.includes('media="print"'),
-  );
+  const blocking = fontLinks.filter((tag) => !tag.includes('media="print"'));
   assert.deepEqual(blocking, []);
 });
