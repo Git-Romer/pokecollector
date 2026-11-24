@@ -135,6 +135,7 @@ Key ORM models in `backend/models.py`:
 - `ScanJob`
 - `ScanJobItem`
 - `ScanQueueUserState`
+- `IdempotencyKey`
 - `GeminiQuotaState`
 - `ScannerProviderLimitState`
 
@@ -167,9 +168,9 @@ Settings are split between two stores:
 - Global `settings` table
 - Per-user `user_settings` table
 
-The split is defined in `backend/api/settings.py`:
+The API in `backend/api/settings.py` uses `ADMIN_ONLY_KEYS` to select global settings. Other preferences are stored for the authenticated user; scanner configuration has dedicated endpoint guards. Per-user preferences include:
 
-- `PER_USER_KEYS`
+- User-owned settings
   - language
   - currency
   - price display preferences
@@ -254,6 +255,7 @@ Current frontend state layers:
 - Settings and i18n state: `SettingsContext`
 - Local UI state: component-level `useState`
 - Theme state: `useTheme` with `data-theme` and local storage
+- Outbox: IndexedDB + replay engine (`frontend/src/offline/`; library only until it is wired in, see `docs/FRONTEND.md`)
 
 `AuthContext` is now a core part of the app architecture, not an optional enhancement.
 
@@ -367,5 +369,7 @@ publication. See [`DEPLOYMENT.md`](DEPLOYMENT.md).
 ## Migration Notes
 
 Schema changes are handled by idempotent SQL in `backend/database.py`, not Alembic.
+
+The `idempotency_keys` table (`IdempotencyKey`) is additive: it is created by `create_all` plus two raw statements at the end of the migration list, is cleaned hourly by the scheduler, and is ignored by older backends.
 
 Some migration comments still mention historical features, but the current runtime architecture does not include eBay integration and does not expose grading in the active UI or ORM model.

@@ -117,6 +117,23 @@ def run_scan_queue_maintenance():
         logger.exception("Scan queue processing failed")
 
 
+def run_idempotency_cleanup():
+    """Delete expired Idempotency-Key rows."""
+    from database import SessionLocal
+    from services.idempotency import purge_expired_idempotency_keys
+
+    db = SessionLocal()
+    try:
+        removed = purge_expired_idempotency_keys(db)
+        if removed:
+            logger.info("Idempotency cleanup removed %s expired key(s)", removed)
+    except Exception:
+        db.rollback()
+        logger.exception("Idempotency key cleanup failed")
+    finally:
+        db.close()
+
+
 def run_pokedex_metadata_backfill():
     """One-time startup backfill for Pokédex mappings added to existing card rows."""
     from database import SessionLocal
@@ -218,6 +235,15 @@ def start_scheduler():
             next_run_time=now_utc + datetime.timedelta(seconds=45),
             misfire_grace_time=_SCAN_QUEUE_MISFIRE_GRACE_SECONDS,
             coalesce=True,
+        )
+
+        scheduler.add_job(
+            run_idempotency_cleanup,
+            trigger=IntervalTrigger(hours=1),
+            id="idempotency_key_cleanup_job",
+            name="Idempotency Key Cleanup",
+            replace_existing=True,
+            next_run_time=now_utc + datetime.timedelta(minutes=5),
         )
 
         if needs_pokedex_backfill:

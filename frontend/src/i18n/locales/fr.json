@@ -665,11 +665,11 @@
     "backupCards": "Données des cartes",
     "backupProducts": "Produits",
     "backupImages": "Cache d'images",
-    "clearImageCache": "Vider le cache d'images",
-    "clearImageCacheDesc": "Supprimer toutes les images de cartes mises en cache (Admin uniquement)",
-    "clearImageCacheConfirm": "Êtes-vous sûr ? Toutes les images en cache seront supprimées.",
-    "clearImageCacheSuccess": "Cache d'images vidé",
-    "clearImageCacheFailed": "Échec du nettoyage du cache",
+    "clearImageCache": "Supprimer le cache d’images du serveur",
+    "clearImageCacheDesc": "Supprime les images en cache sur le serveur pour tous les utilisateurs. Les téléchargements sur les appareils et les fichiers originaux envoyés sont conservés.",
+    "clearImageCacheConfirm": "Supprimer le cache d’images du serveur pour tous les utilisateurs ? Le serveur récupérera les images selon les besoins. Les téléchargements hors ligne et les fichiers originaux envoyés ne seront pas supprimés.",
+    "clearImageCacheSuccess": "Cache d’images du serveur supprimé",
+    "clearImageCacheFailed": "Impossible de supprimer le cache d’images du serveur",
     "backupButton": "Sauvegarder",
     "backupImport": "Importer une sauvegarde",
     "backupImportDesc": "Importer un fichier .sql",
@@ -1148,5 +1148,16 @@
     "traderDesc": "Vendez 10 produits",
     "rareFinder": "Chercheur Rare",
     "rareFinderDesc": "Possédez une carte Illustration Rare"
+  },
+  "sync": {
+    "artworkTitle": "Images des cartes",
+    "artworkRetry": "Réessayer les images manquantes",
+    "artworkRetryHint": "Reconnecte-toi, puis réessaie ici et rouvre les cartes. Si les téléchargements automatiques sont activés, le téléchargement de la collection est aussi relancé.",
+    "artworkRetryRequested": "Nouvelle tentative demandée. Rouvre les cartes pour recharger leurs images.",
+    "artworkOfflineHint": "Les images manquantes peuvent être rechargées dans le centre de synchronisation après reconnexion."
+  },
+  "offlineCollection": {
+    "preferencePending": "Enregistré sur cet appareil. Le réglage du compte sera synchronisé dès qu’une connexion sera disponible.",
+    "preferenceFailed": "Impossible d’enregistrer ce réglage sur cet appareil. Vérifie le stockage du navigateur et réessaie."
   }
 }

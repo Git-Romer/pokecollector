@@ -32,7 +32,7 @@ export async function attachScanFallbackPhoto({ created, getPhoto, uploadPhoto =
 
 // ─── Add-to-Collection Modal für Scan-Ergebnis ──────────────────────────────
 // `getPhoto`, when given, resolves to the Blob/File the user actually scanned.
-// Callers decide how to source it: CardScanner has the raw File in hand,
+// Callers decide how to source it: UnifiedCardScanner has the raw File in hand,
 // ScanQueue fetches it from the job's stored bytes. Called only after the
 // collection item exists, and only matters for cards TCGdex has no scan of —
 // and only when the matched card has no catalogue artwork and no saved fallback.
@@ -213,4 +213,3 @@ export function ScanAddModal({
     document.body
   )
 }
-

@@ -402,13 +402,15 @@ endpoint exposes user settings or collection data.
 - `ImageCache`
 - `CustomCardMatch`
 - `ScanJob` / `ScanJobItem` / `ScanQueueUserState`
+- `IdempotencyKey` (replayable `Idempotency-Key` results; see [Idempotency](#idempotency))
+- `PushSubscription` (Web Push subscriptions, one row per device; see [Web push](#web-push))
 - `GeminiQuotaState` / `ScannerProviderLimitState`
 
 ## Settings Scope
 
-Current settings are split in `backend/api/settings.py`:
+The API in `backend/api/settings.py` routes `ADMIN_ONLY_KEYS` to the global store and other preferences to the authenticated user's `UserSetting` rows. Dedicated scanner settings must use their atomic configuration endpoint; this is not a fixed per-user key allowlist. Examples of each scope:
 
-- `PER_USER_KEYS`
+- Per-user settings
   - `language`
   - `currency`
   - `price_primary`
@@ -503,7 +505,12 @@ and queued-photo files remain filesystem data and are not part of SQL backups.
 `POST /api/backup/restore` accepts only a non-empty `.sql` upload, streams it to
 a temporary file, and invokes `psql` with `ON_ERROR_STOP=1`, `--no-psqlrc`, and
 `--single-transaction`. Any SQL error rolls back the whole restore. The
-temporary file is removed whether the operation succeeds or fails.
+temporary file is removed whether the operation succeeds or fails. After a
+successful restore the endpoint also deletes every row in `idempotency_keys`
+(best effort): an older dump would otherwise leave keys whose business rows no
+longer exist, and replaying one would silently drop the add. After a manual
+`psql` restore run `DELETE FROM idempotency_keys;`. The table is not part of
+the selective backup groups but is included in full dumps.
 
 ### Automatic Pre-upgrade Backup
 
@@ -623,12 +630,62 @@ race. That suite creates and removes only a randomly named test schema.
 
 Each item is committed independently, so one invalid or unavailable card does not roll back the rest of the batch. Existing rows are matched by card, variant, language, and current user.
 
+`bulk-add` and `import-csv` ignore the `Idempotency-Key` header (see below).
+
+## Idempotency
+
+Three append operations can be retried safely with an `Idempotency-Key` header, so a client that lost the response can resend the request without applying it twice:
+
+| Route | Scope |
+|---|---|
+| `POST /api/collection/` | `collection.add` |
+| `POST /api/wishlist/` | `wishlist.add` |
+| `POST /api/cards/recognize/jobs` | `scan.enqueue` |
+
+Every other route, including `bulk-add` and `import-csv`, ignores the header. Without the header the three routes behave exactly as before and never touch the `idempotency_keys` table.
+
+**Headers.** `Idempotency-Key` is 16-64 characters of `A-Z a-z 0-9 _ -` (one pair of surrounding double quotes is stripped); a UUID works. `X-Expected-User-Id` is an optional integer; on the three routes a value that differs from the authenticated user is rejected with `409 wrong_account`, with or without a key. A replayed response carries `Idempotent-Replayed: true`.
+
+**Semantics.** Results are deduplicated per `(user, key)`. The key row is written in the same database transaction as the business write, and only successful (2xx) results are stored, so a failed request leaves nothing behind and a retry runs again. A key is kept for 14 days (`KEY_TTL`); an expired key is treated as new, and the scheduler removes expired rows hourly. A key reused with a different scope or request fingerprint (the JSON body, or for scans the selection and the SHA-256 of each photo) is rejected. On PostgreSQL an advisory try-lock detects a duplicate that is still running without ever waiting.
+
+| HTTP | `detail.code` | Meaning |
+|---|---|---|
+| 400 | `idempotency_key_invalid` | `Idempotency-Key` or `X-Expected-User-Id` is malformed |
+| 409 | `idempotency_in_progress` | Another request holds the key (sets `Retry-After: 2`); retry shortly |
+| 409 | `wrong_account` | `X-Expected-User-Id` does not match the token's user |
+| 422 | `idempotency_key_reused` | Same key, different scope or payload |
+
+FastAPI's own validation `422` keeps its array `detail`; the two are told apart by `detail.code`. A restore clears all stored keys (see Manual restore).
+
+**Health.** `GET /api/health` also returns `version`, `api_level` (`1`) and `features` (`["idempotency-v1"]`, from `services/api_info.py`) so clients can tell whether the backend supports replays.
+
 ## Notifications
 
 `backend/services/telegram.py` reads Telegram credentials and currency from that
 user's `UserSetting` rows. Price alerts convert both the EUR market price and
 threshold to the selected currency using the shared rate cache; if no rate has
 ever been synced, both values are marked unavailable in the selected currency.
+
+### Web push
+
+Optional Web Push for wishlist price alerts, sent next to Telegram from `check_wishlist_alerts`. A push failure never stops Telegram or the alert loop. Design: [PWA_OFFLINE_DESIGN.md](PWA_OFFLINE_DESIGN.md) §6.7.
+
+All routes need a signed-in user (`backend/api/push.py`, prefix `/api/push`):
+
+| Route | Purpose |
+|---|---|
+| `GET /vapid-public-key` | `{"public_key": "<base64url P-256 point>"}` for `pushManager.subscribe` |
+| `POST /subscribe` | Body `{endpoint, keys:{p256dh, auth}, user_agent?}`. Upserts by `endpoint` (re-assigns it to the caller, resets the failure count) and returns `{"id": n}` |
+| `DELETE /subscribe` | Body `{endpoint}`. Removes only the caller's row. `204` |
+| `POST /test` | Sends a test notification to the caller's devices: `{"sent": n, "removed": m}` |
+
+- **Table** `push_subscriptions`: `user_id` (cascade on user delete), unique `endpoint`, `p256dh`, `auth`, `user_agent`, `created_at`, `last_seen_at`, `last_success_at`, `failure_count`.
+- **SSRF allow-list.** The server POSTs to the stored endpoint, so `subscribe` accepts only `https` URLs up to 2048 characters on port 443 whose host is `fcm.googleapis.com` or ends in `.push.apple.com`, `.push.services.mozilla.com` or `.notify.windows.com`. IP literals, credentials and every other host return `422`.
+- **Keys.** `VAPID_PRIVATE_KEY` (PEM, `
+` escapes allowed) overrides the key file, which defaults to `/app/data/auth/vapid_private.pem` (`VAPID_PRIVATE_KEY_FILE` changes the path). Without either, a P-256 key is created once with mode `0600`. The stock `docker-compose.yml` does not pass these variables to the backend, so Compose installs use the key file (add them under `environment:` in an override if needed). `VAPID_SUBJECT` is the contact URL or `mailto:` sent to the push services (default: the project URL). The private key is never logged.
+- **Payload.** At most 4096 bytes: only the card name and `/wishlist`, no prices or collection data; encrypted end to end.
+- **Outcomes.** `404`/`410` delete the row; `403` is logged and kept; `429` is skipped; any other failure adds one to `failure_count` and the tenth deletes the row.
+- **Dependency.** `pywebpush==2.5.0` (MPL-2.0, used unmodified).
 
 ## Migrations
 

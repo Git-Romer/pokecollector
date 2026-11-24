@@ -20,7 +20,8 @@ async function waitForGallery(page) {
           image.addEventListener('error', resolve, { once: true })
         })))
   })
-  await expect(page.getByTestId('interaction-combinations').getByRole('button', { name: /retry/i })).toBeVisible()
+  await expect(page.getByTestId('image-error-state').locator('.unified-card-image-error')).toBeVisible()
+  await expect(page.getByTestId('image-error-state').getByRole('button', { name: /retry/i })).toHaveCount(0)
   await expect(page.locator('.unified-card-skeleton')).toHaveCount(0)
   await page.evaluate(() => window.scrollTo(0, 0))
 }
@@ -239,7 +240,7 @@ test('card artwork zoom keeps interaction on the image and fits short screens', 
   await expect(cardDialog).toHaveCount(0)
 })
 
-test('failed dialog artwork keeps Retry valid and withholds zoom until recovery', async ({ page }) => {
+test('failed dialog artwork stays non-interactive and withholds zoom until central recovery', async ({ page }) => {
   await waitForGallery(page)
   const cardBackResponse = await page.request.get('/cardback.jpg')
   const cardBack = await cardBackResponse.body()
@@ -252,11 +253,15 @@ test('failed dialog artwork keeps Retry valid and withholds zoom until recovery'
   await page.getByTestId('open-card-dialog-error').evaluate(button => button.click())
 
   const cardDialog = page.getByRole('dialog', { name: 'Cinccino ex', exact: true })
-  const retry = cardDialog.getByRole('button', { name: /Retry.*artwork/i })
-  await expect(retry).toBeVisible()
+  await expect(cardDialog.locator('.unified-card-image-error')).toBeVisible()
+  await expect(cardDialog.getByRole('button', { name: /Retry.*artwork/i })).toHaveCount(0)
   await expect(cardDialog.getByRole('button', { name: /Zoom image/ })).toHaveCount(0)
 
-  await retry.click()
+  // Exercise the same shared action used by Sync center; the gallery has no app navigation.
+  await page.evaluate(async () => {
+    const { retryMissingArtwork } = await import('/src/utils/artworkRetry.js')
+    retryMissingArtwork()
+  })
   const zoomTrigger = cardDialog.getByRole('button', { name: /Zoom image/ })
   await expect(zoomTrigger).toBeVisible()
   await zoomTrigger.click()
@@ -288,11 +293,16 @@ test('shared card keyboard and touch paths activate the intended action', async 
   }
 })
 
-test('retry and selected markers preserve their intended pointer targets', async ({ page }, testInfo) => {
+test('missing artwork and selected markers preserve their intended pointer targets', async ({ page }, testInfo) => {
   await waitForGallery(page)
-  const retry = page.getByTestId('image-error-state').getByRole('button', { name: /retry/i })
-  await retry.click()
-  await expect(page.getByTestId('interaction-result')).toHaveCount(0)
+  const failedCard = page.getByTestId('image-error-state')
+  const placeholder = failedCard.locator('.unified-card-image-error')
+  await expect(placeholder).toHaveCSS('pointer-events', 'none')
+  await expect(failedCard.getByRole('button', { name: /retry/i })).toHaveCount(0)
+  const failedPrimary = failedCard.locator('.unified-card-primary-action')
+  if (testInfo.project.use.hasTouch) await failedPrimary.tap()
+  else await failedPrimary.click()
+  await expect(page.getByTestId('interaction-result')).toHaveText('details')
 
   const selectedCard = page.getByTestId('selected-card-state')
   const marker = selectedCard.locator('.unified-card-selection')

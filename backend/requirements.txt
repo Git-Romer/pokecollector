@@ -12,3 +12,4 @@ pillow-heif>=0.20.0,<2
 bcrypt
 python-jose[cryptography]
 slowapi==0.1.9
+pywebpush==2.5.0

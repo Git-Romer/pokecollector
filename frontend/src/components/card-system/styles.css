@@ -44,7 +44,7 @@
   }
   .unified-card-primary-action:focus-visible { outline: none; }
   .unified-card-primary-action:disabled { cursor: not-allowed; }
-  .unified-card-image-error { z-index: 40; }
+  .unified-card-image-error { pointer-events: none; }
   .unified-card-caption {
     height: var(--pc-card-caption-height);
     overflow: hidden;

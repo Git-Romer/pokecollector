@@ -4,7 +4,7 @@ import re
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
 from api.auth import get_current_user
@@ -74,22 +74,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 PHOTO_PREFERENCE_SETTING_KEY = "prefer_own_card_photos"
 HOLO_EFFECTS_SETTING_KEY = "holo_effects_enabled"
-
-PER_USER_KEYS = {
-    "language", "currency", "price_primary", "price_display",
-    "set_overview_filters", "hidden_set_ids",
-    "telegram_bot_token", "telegram_chat_id", "telegram_enabled",
-    "price_alerts_enabled", "price_alert_threshold",
-    "gemini_api_key", "trainer_name", "portfolio_display_mode",
-    "openai_api_key",
-    SCANNER_PROVIDER_SETTING, *SCANNER_MODEL_SETTINGS.values(),
-    *SCANNER_REQUEST_TIMEOUT_SETTINGS.values(),
-    *SCANNER_CUSTOM_MODEL_SETTINGS.values(),
-    *SCANNER_CAPABILITY_SETTINGS.values(),
-    SCAN_DIAGNOSTICS_SETTING_KEY, PHOTO_PREFERENCE_SETTING_KEY,
-    HOLO_EFFECTS_SETTING_KEY,
-    SCANNER_GEMINI_FALLBACK_SETTING_KEY,
-}
+OFFLINE_COLLECTION_SETTING_KEY = "offline_collection_enabled"
 
 MANAGED_SCANNER_KEYS = {
     "gemini_api_key",
@@ -184,6 +169,7 @@ DEFAULT_SETTINGS = {
     SCAN_DIAGNOSTICS_SETTING_KEY: "false",
     PHOTO_PREFERENCE_SETTING_KEY: "false",
     HOLO_EFFECTS_SETTING_KEY: "false",
+    OFFLINE_COLLECTION_SETTING_KEY: "false",
     SCANNER_GEMINI_FALLBACK_SETTING_KEY: "false",
 }
 
@@ -202,7 +188,7 @@ def _coerce_setting_value(key: str, value) -> str:
         "debug_mode", "cross_language_price_fallback",
         "cross_language_image_fallback", DIGITAL_SETS_SETTING_KEY,
         PUBLIC_PROFILES_SETTING_KEY, SCAN_DIAGNOSTICS_SETTING_KEY,
-        PHOTO_PREFERENCE_SETTING_KEY, HOLO_EFFECTS_SETTING_KEY,
+        PHOTO_PREFERENCE_SETTING_KEY, HOLO_EFFECTS_SETTING_KEY, OFFLINE_COLLECTION_SETTING_KEY,
         SCANNER_GEMINI_FALLBACK_SETTING_KEY,
     }:
         return "true" if str(value).lower() in {"true", "1", "yes", "on"} else "false"
@@ -261,6 +247,7 @@ def _get_user_settings(db: Session, user_id: int) -> dict:
 
     for key, value in DEFAULT_SETTINGS.items():
         result.setdefault(key, value)
+    result.setdefault("offline_collection_revision", "0")
     result["scan_diagnostics_available"] = "true" if trace_available() else "false"
     result["scan_diagnostics_deletion_available"] = (
         "true" if trace_deletion_available() else "false"
@@ -700,7 +687,27 @@ def get_tcgdex_filter_languages(db: Session = Depends(get_db), current_user: Use
 
 
 @router.put("/")
-def update_settings(data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def update_settings(data: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_user), request: Request = None):
+    if "offline_collection_revision" in data:
+        raise HTTPException(status_code=422, detail="Offline preference revision is read-only")
+    if OFFLINE_COLLECTION_SETTING_KEY in data:
+        # Lock an existing account row, including on the first preference save.
+        # PostgreSQL's row lock orders revision reads and writes across tabs and
+        # workers; a timed-out older HTTP request cannot overwrite a newer save.
+        db.query(User).filter(User.id == current_user.id).with_for_update().first()
+        revision_row = db.query(UserSetting).filter(
+            UserSetting.user_id == current_user.id,
+            UserSetting.key == "offline_collection_revision",
+        ).populate_existing().first()
+        revision = revision_row.value if revision_row else "0"
+        expected = request.headers.get("x-offline-preference-revision") if request else None
+        if expected is not None and expected != revision:
+            raise HTTPException(status_code=409, detail="Offline preference changed; reload its revision and retry")
+        next_revision = str(int(revision) + 1)
+        if revision_row:
+            revision_row.value = next_revision
+        else:
+            db.add(UserSetting(user_id=current_user.id, key="offline_collection_revision", value=next_revision))
     if MANAGED_SCANNER_KEYS.intersection(data):
         raise HTTPException(
             status_code=409,

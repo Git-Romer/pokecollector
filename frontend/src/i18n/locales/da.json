@@ -1189,11 +1189,11 @@
     "backupCards": "Kortdata",
     "backupProducts": "Produkter",
     "backupImages": "Billedcache",
-    "clearImageCache": "Ryd billedcache",
-    "clearImageCacheDesc": "Slet alle cachede kortbilleder (kun admin)",
-    "clearImageCacheConfirm": "Er du sikker? Alle cachede billeder vil blive slettet.",
-    "clearImageCacheSuccess": "Billedcache ryddet",
-    "clearImageCacheFailed": "Kunne ikke rydde cache",
+    "clearImageCache": "Slet serverens billedcache",
+    "clearImageCacheDesc": "Slet cachelagrede billeder på serveren for alle brugere. Downloads på enheder og originale uploads bevares.",
+    "clearImageCacheConfirm": "Slet serverens billedcache for alle brugere? Serveren henter billeder igen efter behov. Offline-downloads og originale uploads slettes ikke.",
+    "clearImageCacheSuccess": "Serverens billedcache er slettet",
+    "clearImageCacheFailed": "Kunne ikke slette serverens billedcache",
     "backupButton": "Backup",
     "backupImport": "Importér backup",
     "backupImportDesc": "Importér .sql-fil",
@@ -1853,5 +1853,16 @@
     "traderDesc": "Sælg 10 produkter",
     "rareFinder": "Rare Finder",
     "rareFinderDesc": "Få et Illustration Rare-kort"
+  },
+  "sync": {
+    "artworkTitle": "Kortbilleder",
+    "artworkRetry": "Prøv manglende billeder igen",
+    "artworkRetryHint": "Opret forbindelse igen, prøv her, og åbn kortene igen. Hvis automatiske downloads er slået til, prøves samlingsdownload også igen.",
+    "artworkRetryRequested": "Nyt forsøg anmodet. Åbn kortene igen for at indlæse billederne.",
+    "artworkOfflineHint": "Manglende billeder kan prøves igen i synkroniseringscentret, når forbindelsen er tilbage."
+  },
+  "offlineCollection": {
+    "preferencePending": "Gemt på denne enhed. Kontoindstillingen synkroniseres, når der er forbindelse.",
+    "preferenceFailed": "Indstillingen kunne ikke gemmes på enheden. Kontrollér browserlageret, og prøv igen."
   }
 }

@@ -665,11 +665,11 @@
     "backupCards": "Kaartdata",
     "backupProducts": "Producten",
     "backupImages": "Afbeeldingscache",
-    "clearImageCache": "Afbeeldingscache wissen",
-    "clearImageCacheDesc": "Verwijder alle opgeslagen kaartafbeeldingen (alleen admins)",
-    "clearImageCacheConfirm": "Weet je het zeker? Alle gecachte afbeeldingen worden verwijderd.",
-    "clearImageCacheSuccess": "Afbeeldingscache gewist",
-    "clearImageCacheFailed": "Kon cache niet wissen",
+    "clearImageCache": "Afbeeldingscache op de server verwijderen",
+    "clearImageCacheDesc": "Verwijder gecachte afbeeldingen op de server voor alle gebruikers. Downloads op apparaten en originele uploads blijven behouden.",
+    "clearImageCacheConfirm": "De afbeeldingscache op de server voor alle gebruikers verwijderen? De server haalt afbeeldingen zo nodig opnieuw op. Offline downloads en originele uploads worden niet verwijderd.",
+    "clearImageCacheSuccess": "Afbeeldingscache op de server verwijderd",
+    "clearImageCacheFailed": "Kan de afbeeldingscache op de server niet verwijderen",
     "backupButton": "Back-up",
     "backupImport": "Back-up Importeren",
     "backupImportDesc": "Importeer .sql bestand",
@@ -1148,5 +1148,16 @@
     "traderDesc": "Verkoop 10 producten",
     "rareFinder": "Rare Zoeker",
     "rareFinderDesc": "Bezit een Illustration Rare kaart"
+  },
+  "sync": {
+    "artworkTitle": "Kaartafbeeldingen",
+    "artworkRetry": "Ontbrekende afbeeldingen opnieuw proberen",
+    "artworkRetryHint": "Maak opnieuw verbinding, probeer het hier en open de kaarten opnieuw. Als automatische downloads aanstaan, wordt ook de collectiedownload opnieuw geprobeerd.",
+    "artworkRetryRequested": "Nieuwe poging aangevraagd. Open de kaarten opnieuw om de afbeeldingen te laden.",
+    "artworkOfflineHint": "Ontbrekende afbeeldingen kun je na het verbinden opnieuw proberen in het synchronisatiecentrum."
+  },
+  "offlineCollection": {
+    "preferencePending": "Opgeslagen op dit apparaat. Je accountvoorkeur wordt gesynchroniseerd zodra er verbinding is.",
+    "preferenceFailed": "Deze voorkeur kon niet op je apparaat worden opgeslagen. Controleer de browseropslag en probeer opnieuw."
   }
 }

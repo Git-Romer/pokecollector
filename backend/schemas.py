@@ -221,6 +221,14 @@ class CollectionItemResponse(BaseModel):
         from_attributes = True
 
 
+class CollectionOfflineManifestResponse(BaseModel):
+    version: int = 1
+    user_id: int
+    items: List[CollectionItemResponse]
+    image_urls: List[str]
+    missing_artwork_card_ids: List[str]
+
+
 class WishlistItemCreate(BaseModel):
     card_id: str
     quantity: int = Field(1, ge=1, le=99)

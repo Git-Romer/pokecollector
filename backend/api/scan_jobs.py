@@ -6,7 +6,8 @@ import datetime
 import json
 from typing import List
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -15,6 +16,15 @@ from api.auth import get_current_user
 from database import get_db
 from models import ScanJob, ScanJobItem, User
 from schemas import CollectionItemCreate, CollectionItemResponse
+from services.idempotency import (
+    SCOPE_SCAN_ENQUEUE,
+    begin_idempotent,
+    check_expected_user,
+    digest_uploads,
+    fingerprint_scan,
+    has_idempotency_key,
+    replay_response,
+)
 from services.scan_candidate_images import fetch_and_cache_candidate_image
 from services.scan_queue import (
     drain_scan_queue,
@@ -103,6 +113,22 @@ def _item_payload(item: ScanJobItem) -> dict:
     }
 
 
+def _requested_individual_positions(raw: str | None, file_count: int) -> list[int]:
+    """Parse and validate the client's "scan this photo on its own" selection."""
+    try:
+        requested_individual = json.loads(raw or "[]")
+        if (
+            not isinstance(requested_individual, list)
+            or any(type(position) is not int for position in requested_individual)
+            or len(set(requested_individual)) != len(requested_individual)
+            or any(position < 0 or position >= file_count for position in requested_individual)
+        ):
+            raise ValueError
+    except (TypeError, ValueError, json.JSONDecodeError):
+        raise HTTPException(status_code=400, detail="Invalid individual scan selection.")
+    return requested_individual
+
+
 @router.post("/recognize/jobs")
 async def enqueue_scan_job(
     background_tasks: BackgroundTasks,
@@ -110,6 +136,7 @@ async def enqueue_scan_job(
     individual_positions: str | None = Form(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
 ):
     """Sanitize a batch, persist it, and return without waiting for its provider."""
     from services.scan_providers import (
@@ -117,6 +144,23 @@ async def enqueue_scan_job(
         get_provider,
         require_scanner_capability_mode,
     )
+
+    headers = request.headers if request is not None else None
+    check_expected_user(current_user, headers)
+    idem = None
+    if has_idempotency_key(headers):
+        # Keyed path: validate the selection, fingerprint the photos, and replay
+        # before any provider/credential check so a retry after success never
+        # fails because the user removed a key in the meantime.
+        requested_individual = _requested_individual_positions(individual_positions, len(files))
+        digests = await digest_uploads(files)
+        idem = begin_idempotent(
+            db, current_user, headers,
+            scope=SCOPE_SCAN_ENQUEUE,
+            fingerprint=fingerprint_scan(SCOPE_SCAN_ENQUEUE, requested_individual, digests),
+        )
+        if idem.replay is not None:
+            return replay_response(idem.replay)
 
     provider = get_provider(db, current_user.id)
     capability_mode = require_scanner_capability_mode(
@@ -127,17 +171,8 @@ async def enqueue_scan_job(
             status_code=400,
             detail=provider.missing_credential_message(),
         )
-    try:
-        requested_individual = json.loads(individual_positions or "[]")
-        if (
-            not isinstance(requested_individual, list)
-            or any(type(position) is not int for position in requested_individual)
-            or len(set(requested_individual)) != len(requested_individual)
-            or any(position < 0 or position >= len(files) for position in requested_individual)
-        ):
-            raise ValueError
-    except (TypeError, ValueError, json.JSONDecodeError):
-        raise HTTPException(status_code=400, detail="Invalid individual scan selection.")
+    if idem is None:
+        requested_individual = _requested_individual_positions(individual_positions, len(files))
 
     # A composite asks the model to read several cards out of one image, which
     # needs the same multi-image capability visual verification does. A model
@@ -153,12 +188,18 @@ async def enqueue_scan_job(
         and capability_mode != SCANNER_CAPABILITY_DEGRADED
         for position in range(len(files))
     ]
+    before_commit = None
+    if idem is not None and idem.active:
+        def before_commit(job):
+            idem.record(db, 200, jsonable_encoder(job_progress(db, job)))
+
     try:
         job = await create_scan_job(
             db,
             current_user.id,
             files,
             batch_modes=batch_modes,
+            before_commit=before_commit,
         )
     except ScanUploadError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

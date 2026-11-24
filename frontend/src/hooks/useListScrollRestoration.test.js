@@ -10,6 +10,7 @@ import {
   restoreListScrollPosition,
   saveListScrollPosition,
   scheduleManualHistoryScrollRestorationRelease,
+  shouldResetPageScroll,
 } from './useListScrollRestoration'
 
 const createSessionStorage = () => {
@@ -193,5 +194,26 @@ describe('restoring a saved list position', () => {
     restoreListScrollPosition({ scrollY: 640, anchorId: 'set-me04_de' }, fakeWindow, fakeDocument)
 
     expect(anchorOptions).toEqual({ block: 'center', behavior: 'auto' })
+  })
+})
+
+
+describe('fresh page scroll policy', () => {
+  it.each(['PUSH', 'REPLACE'])('starts a different page at the top on %s', type => {
+    expect(shouldResetPageScroll('/settings', { pathname: '/collection', hash: '' }, type)).toBe(true)
+    expect(shouldResetPageScroll(null, { pathname: '/collection', hash: '' }, type)).toBe(true)
+  })
+
+  it('never overwrites Back or Forward restoration', () => {
+    expect(shouldResetPageScroll('/sets/example', { pathname: '/sets', hash: '' }, 'POP')).toBe(false)
+    expect(shouldResetPageScroll(null, { pathname: '/sets', hash: '' }, 'POP')).toBe(false)
+  })
+
+  it.each(['PUSH', 'REPLACE'])('preserves in-page filters and tabs on %s', type => {
+    expect(shouldResetPageScroll('/collection', { pathname: '/collection', search: '?search=pika', hash: '' }, type)).toBe(false)
+  })
+
+  it('leaves explicit anchor navigation alone', () => {
+    expect(shouldResetPageScroll('/settings', { pathname: '/collection', hash: '#saved-card' }, 'PUSH')).toBe(false)
   })
 })

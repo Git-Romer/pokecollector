@@ -76,6 +76,31 @@ docker compose up -d
 The published frontend image applies `PUBLIC_MODE` when the container starts,
 so public/private SEO behavior does not require a different frontend build.
 
+### Service worker flags, headers and rollback
+
+The frontend image also applies `PWA_ENABLED` and `OFFLINE_QUEUE_ENABLED` at
+start (both default to off; see [`PWA.md`](PWA.md)). Entry-point scripts in
+`/docker-entrypoint.d/` run in name order: `40-configure-public-mode.sh` resets
+`index.html` from its template, then `45-configure-pwa.sh` selects `/sw.js` and
+adds the flags meta tag, so restarts never accumulate edits.
+
+nginx sends `Cache-Control: no-cache` for `/sw.js`, `/sw.real.js`, `/sw.kill.js`,
+`/index.html`, `/manifest.json` and SPA routes, and a one-year `immutable` header for
+hashed assets. A reverse proxy in front must not cache `/sw.js`; with Nginx Proxy
+Manager turn **Cache Assets** off for the host.
+
+To roll back a bad service worker (the kill switch), set `PWA_ENABLED=false` and recreate the
+frontend container: phones replace the worker with a kill worker on their next
+update check. Reverting to the previous image tag also works.
+
+### Push notification key
+
+Web push (see [`PWA.md`](PWA.md)) signs with a private key stored at
+`./data/auth/vapid_private.pem` (or `VAPID_PRIVATE_KEY`). It is a file, not a database
+row, so SQL dumps and the backups in `./backups` do not contain it: include
+`./data/auth` in your file backups. If it is lost, a new key is created and everyone
+turns notifications on again. `VAPID_SUBJECT` can set a contact URL or `mailto:`.
+
 ## Update
 
 First create and retain a manual database backup:
@@ -137,7 +162,10 @@ docker compose up -d
 The Settings restore action accepts `.sql` files, streams the upload into a
 temporary file, and executes it with PostgreSQL `ON_ERROR_STOP` in a single
 transaction. Any statement failure rolls back the complete restore, and the
-temporary upload is deleted afterward.
+temporary upload is deleted afterward. After a successful restore the app also
+clears its stored idempotency keys; after a manual `psql` restore, run
+`DELETE FROM idempotency_keys;` yourself so a retried request cannot be
+mistaken for one that was already applied.
 
 Selective backup groups are useful for targeted exports, but they may depend on
 rows outside their group and do not currently include every newer feature

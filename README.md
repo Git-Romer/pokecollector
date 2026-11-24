@@ -20,9 +20,9 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - 👤 **Creator:** [Gilles Romer](https://romerg.de/)
 - ✉️ **Contact:** [info@romerg.de](mailto:info@romerg.de)
 
-![Version](https://img.shields.io/badge/version-v1.57.10-e3000b?style=flat-square) ![Dark Theme](https://img.shields.io/badge/theme-dark-1a1a2e?style=flat-square) ![TCGdex](https://img.shields.io/badge/card%20data-TCGdex-e3000b?style=flat-square) ![Docker](https://img.shields.io/badge/deploy-Docker-2496ed?style=flat-square) ![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square) ![React](https://img.shields.io/badge/frontend-React%2018-61dafb?style=flat-square) [![Support animal rescue](https://img.shields.io/badge/support-animal%20rescue-e3000b?style=flat-square)](https://pokecollector.romerg.de/#support)
+![Version](https://img.shields.io/badge/version-v1.58.1-e3000b?style=flat-square) ![Dark Theme](https://img.shields.io/badge/theme-dark-1a1a2e?style=flat-square) ![TCGdex](https://img.shields.io/badge/card%20data-TCGdex-e3000b?style=flat-square) ![Docker](https://img.shields.io/badge/deploy-Docker-2496ed?style=flat-square) ![FastAPI](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square) ![React](https://img.shields.io/badge/frontend-React%2018-61dafb?style=flat-square) [![Support animal rescue](https://img.shields.io/badge/support-animal%20rescue-e3000b?style=flat-square)](https://pokecollector.romerg.de/#support)
 
-**Current version:** `v1.57.10` · Releases are tracked on the [GitHub Releases page](https://github.com/Git-Romer/pokecollector/releases).
+**Current version:** `v1.58.1` · Releases are tracked on the [GitHub Releases page](https://github.com/Git-Romer/pokecollector/releases).
 
 ![WebApp Preview](preview-homescreen.png)
 
@@ -51,6 +51,7 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 ## ✨ Features
 
 ### 📦 Collection Management
+- Installable on iPhone and Android: add it to the Home Screen for a full-screen app with its own icon (optional offline start and offline scan queue with `PWA_ENABLED=true` / `OFFLINE_QUEUE_ENABLED=true`, see [`docs/PWA.md`](docs/PWA.md))
 - Add cards with quantity, condition, variant, and purchase price
 - Variants are now limited to `Normal`, `Holo`, `Reverse Holo`, and `First Edition`
 - Add reusable, owner-scoped printing-detail tags such as signed, stamped, misprint, or altered; tags follow the physical copy through products and trades
@@ -85,7 +86,7 @@ Be kind. Be clear. Assume good intent. Keep feedback constructive.
 - Persistent Deck Builder for 20-, 40-, and 60-card lists, with editable targets, ownership totals, shortage warnings, validation, analytics, and probabilities
 - Explicit actions send missing Planned Binder or Deck copies to the global Wishlist
 - Convert between Planned and physical Binders, import/export Binder CSV files, and populate a physical Binder from an owned set
-- Wishlist with Telegram price alerts and profile-wide Private, Trade matches, or Public visibility
+- Wishlist with Telegram (and optional web push) price alerts and profile-wide Private, Trade matches, or Public visibility
 
 ### 📈 Prices, Portfolio & Analytics
 - Cardmarket EUR pricing and TCGPlayer USD pricing via TCGdex
@@ -349,6 +350,9 @@ If you are already locked out of multi-user mode, set `USER_MODE=single` in the 
 | `TCGDEX_SYNC_LANGUAGES` | Initial admin default for TCGdex set/card sync languages on first launch only. After bootstrap, the DB setting in Settings is authoritative. Comma-separated TCGdex language codes, or `all` to enable every supported TCGdex language. Empty or invalid values safely fall back to `en,de`. Extra languages increase sync time, API calls, and database size. | `en,de` |
 | `USER_MODE` | Pin the mode from the environment, overriding the stored setting and disabling the in-app toggle. `single` forces single-user (no login screen) and is the recovery hatch after a multi-user lockout; `multi` forces multi-user. Because `single` disables authentication, use it only on a local/LAN install and unset it once recovered. Unset means the in-app setting controls the mode. | *(unset)* |
 | `PUBLIC_MODE` | Enable SEO meta tags, Open Graph, and allow search engine indexing. Default blocks all crawlers. Recreate the frontend container after changing it. | `false` |
+| `PWA_ENABLED` | Let the frontend save its own files on the device for offline start (needs HTTPS). Off by default. `false` is also the kill switch: it removes an installed service worker. Recreate the frontend container after changing it. See [docs/PWA.md](docs/PWA.md). | `false` |
+| `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | Optional web push (price alerts). Both are optional and are not passed through by the stock `docker-compose.yml`: the signing key is created in `./data/auth` on first use. See [docs/PWA.md](docs/PWA.md). | *(unset)* |
+| `OFFLINE_QUEUE_ENABLED` | Offline scan queue, cached sign-in, sync center and iOS photo-upload hardening. Off by default; setting it back to `false` stops the queue and keeps waiting items on the device. | `false` |
 | `POKECOLLECTOR_VERSION` | Optional frontend and backend image-tag override for controlled deployments and rollbacks. Leave unset to use the exact release bundled with `docker-compose.yml`; `latest` is available only when deliberately requested. | Bundled release version |
 | `CORS_ORIGINS` | Comma-separated list of allowed origins for CORS. If empty, allows all origins. Set to your domain for production (e.g. `https://pokecollector.romerg.de`). | *(all)* |
 | `PRE_UPGRADE_BACKUP_ENABLED` | Create an automatic SQL backup before startup migrations when an existing install starts on a new app version | `true` |
@@ -488,6 +492,7 @@ Published installations pull frontend and backend images from `ghcr.io` and Post
 | [`docs/CARD_SYSTEM.md`](docs/CARD_SYSTEM.md) | Public card components, variants, gallery, and extension workflow |
 | [`docs/CARD_LISTS.md`](docs/CARD_LISTS.md) | Binders, planned lists, Decks, owned-copy allocation, conversions, and CSV workflows |
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | GHCR images, Compose installation, updates, rollback, and release automation |
+| [`docs/PWA.md`](docs/PWA.md) | Installing on iPhone, offline start, HTTPS, flags, kill switch |
 | [`docs/POKEDEX.md`](docs/POKEDEX.md) | National Pokédex completion, metadata, images, routes, and Cardmarket links |
 | [`docs/REVERSE_PROXY_AUTH.md`](docs/REVERSE_PROXY_AUTH.md) | Forward-auth exceptions for public profiles and binders |
 | [`docs/scanner-providers.md`](docs/scanner-providers.md) | Gemini, hosted OpenAI, Ollama, and compatible scanner-provider setup |
