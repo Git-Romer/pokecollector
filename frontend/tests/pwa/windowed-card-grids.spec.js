@@ -171,8 +171,11 @@ test('a far-down card-owned dialog survives responsive column changes', async ({
   await collectionFixture(page, { routePath: '/pokedex/1', extraResponses: sharedResponses })
   await page.evaluate(() => scrollTo(0, 18000))
   const item = page.locator('[data-window-item]').filter({ has: page.locator('.unified-card-primary-action') })
-  const id = await item.evaluateAll(items => items.find(e => { const r = e.getBoundingClientRect(); return r.top > 120 && r.bottom < innerHeight - 70 })?.dataset.windowItem)
-  expect(id).toBeTruthy()
+  let id
+  await expect.poll(async () => {
+    id = await item.evaluateAll(items => items.find(e => { const r = e.getBoundingClientRect(); return r.top > 120 && r.bottom < innerHeight - 70 })?.dataset.windowItem)
+    return id
+  }).toBeTruthy()
   await page.locator(`[data-window-item="${id}"] .unified-card-primary-action`).press('Enter')
   await expect(page.getByRole('dialog')).toHaveCount(1)
   await page.setViewportSize({ width: 1440, height: 1000 })
@@ -189,6 +192,7 @@ test('keyboard focus survives responsive regrouping and pins only its own offscr
   await page.setViewportSize({ width: 390, height: 844 })
   await collectionFixture(page, { routePath: '/pokedex/1', extraResponses: sharedResponses })
   await page.evaluate(() => scrollTo(0, 18000))
+
   let id
   await expect.poll(async () => {
     id = await page.locator('[data-window-item]').evaluateAll(items => items.find(e => { const r = e.getBoundingClientRect(); return r.top > 120 && r.bottom < innerHeight - 70 })?.dataset.windowItem)
@@ -197,9 +201,18 @@ test('keyboard focus survives responsive regrouping and pins only its own offscr
   const item = page.locator(`[data-window-item="${id}"]`)
   const action = item.locator('.unified-card-primary-action')
   await action.focus()
+  const originalWidth = await item.evaluate(e => e.getBoundingClientRect().width)
   await page.setViewportSize({ width: 1440, height: 1000 })
+  // Keep the resized headless page composited while observing the virtual grid.
+  await page.bringToFront()
+  await expect.poll(() => item.evaluate(e => e.getBoundingClientRect().width)).toBeGreaterThan(originalWidth + 1)
+  // Let WebKit deliver the resize/scroll observers before the next user action.
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
   await expect(action).toBeFocused()
   await page.evaluate(() => scrollTo(0, 50000))
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+
+  await expect.poll(() => page.locator('[data-window-item]').evaluateAll(items => items.filter(e => { const r = e.getBoundingClientRect(); return r.bottom > 0 && r.top < innerHeight }).length)).toBeGreaterThan(0)
   await expect(action).toBeFocused()
   await expect(item).toHaveCount(1)
   await expect.poll(() => page.locator('[data-window-item]').count()).toBeLessThan(160)
