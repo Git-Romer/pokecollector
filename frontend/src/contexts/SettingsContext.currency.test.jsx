@@ -13,7 +13,7 @@ function CurrencyProbe() {
   return createElement(
     'span',
     null,
-    `${currency}|${formatPrice(10)}|${formatUsdPrice(5)}|holo:${settings.holo_effects_enabled}`,
+    `${currency}|${formatPrice(10)}|${formatUsdPrice(5)}|holo:${settings.holo_effects_enabled}|offline:${settings.offline_collection_enabled}`,
   )
 }
 
@@ -36,6 +36,7 @@ describe('SettingsContext selected-currency fallback', () => {
     expect(markup).not.toContain('€')
     expect(markup).not.toContain('$')
     expect(markup).toContain('holo:false')
+    expect(markup).toContain('offline:false')
     vi.unstubAllGlobals()
   })
 })

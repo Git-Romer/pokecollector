@@ -64,3 +64,6 @@ jobs:
 
       - name: Run WebKit card-list regression test
         run: npm run test:visual:webkit
+
+      - name: Run PWA service-worker tests (Chromium)
+        run: npm run test:pwa

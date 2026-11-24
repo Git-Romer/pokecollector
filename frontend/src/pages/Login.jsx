@@ -62,7 +62,7 @@ export default function Login() {
           </div>
 
           {lastUser && !showSwitchUser ? (
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit} method="post" action="/login" className="space-y-5">
               <div className="flex flex-col items-center text-center">
                 <div
                   className={`flex items-center justify-center rounded-full border border-white/10 bg-bg-primary shadow-[0_20px_50px_rgba(0,0,0,0.35)] ${
@@ -83,10 +83,28 @@ export default function Login() {
                 <p className="mt-4 text-xl font-semibold text-text-primary">{lastUser}</p>
               </div>
 
+              <input
+                type="text"
+                name="username"
+                id="login-username-saved"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoComplete="username"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                tabIndex={-1}
+                aria-label={t('auth.username')}
+                className="sr-only"
+              />
+
               <div>
-                <label className="mb-1 block text-xs text-text-secondary">{t('auth.password')}</label>
+                <label htmlFor="login-password-saved" className="mb-1 block text-xs text-text-secondary">{t('auth.password')}</label>
                 <input
                   type="password"
+                  name="password"
+                  id="login-password-saved"
+                  autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="input w-full"
@@ -116,11 +134,17 @@ export default function Login() {
               </button>
             </form>
           ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} method="post" action="/login" className="space-y-4">
               <div>
-                <label className="mb-1 block text-xs text-text-secondary">{t('auth.username')}</label>
+                <label htmlFor="login-username" className="mb-1 block text-xs text-text-secondary">{t('auth.username')}</label>
                 <input
                   type="text"
+                  name="username"
+                  id="login-username"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   className="input w-full"
@@ -130,9 +154,12 @@ export default function Login() {
               </div>
 
               <div>
-                <label className="mb-1 block text-xs text-text-secondary">{t('auth.password')}</label>
+                <label htmlFor="login-password" className="mb-1 block text-xs text-text-secondary">{t('auth.password')}</label>
                 <input
                   type="password"
+                  name="password"
+                  id="login-password"
+                  autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="input w-full"

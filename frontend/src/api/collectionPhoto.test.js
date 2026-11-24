@@ -36,15 +36,15 @@ const { uploadCollectionItemPhoto, deleteAllCollectionCardPhotos, getApiErrorMes
 describe('uploadCollectionItemPhoto', () => {
   beforeEach(() => post.mockClear())
 
-  it('overrides the client-wide JSON content type', () => {
-    uploadCollectionItemPhoto(64, new File(['x'], 'card.jpg', { type: 'image/jpeg' }))
+  it('overrides the client-wide JSON content type', async () => {
+    await uploadCollectionItemPhoto(64, new File(['x'], 'card.jpg', { type: 'image/jpeg' }))
     const [, , config] = post.mock.calls[0]
     expect(config?.headers?.['Content-Type']).toBe('multipart/form-data')
   })
 
-  it('posts the file as form data under the field the server reads', () => {
+  it('posts the file as form data under the field the server reads', async () => {
     const file = new File(['x'], 'card.jpg', { type: 'image/jpeg' })
-    uploadCollectionItemPhoto(64, file)
+    await uploadCollectionItemPhoto(64, file)
     const [url, body] = post.mock.calls[0]
     expect(url).toBe('/collection/64/photo')
     expect(body).toBeInstanceOf(FormData)

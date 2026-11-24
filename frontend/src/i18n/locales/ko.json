@@ -665,11 +665,11 @@
     "backupCards": "카드 데이터",
     "backupProducts": "상품",
     "backupImages": "이미지 캐시",
-    "clearImageCache": "이미지 캐시 지우기",
-    "clearImageCacheDesc": "캐시된 모든 카드 이미지 삭제 (관리자 전용)",
-    "clearImageCacheConfirm": "확실한가요? 캐시된 모든 이미지가 삭제됩니다.",
-    "clearImageCacheSuccess": "이미지 캐시가 지워졌습니다",
-    "clearImageCacheFailed": "캐시 지우기 실패",
+    "clearImageCache": "서버 이미지 캐시 삭제",
+    "clearImageCacheDesc": "모든 사용자의 서버 이미지 캐시를 삭제합니다. 기기의 다운로드와 업로드된 원본 파일은 유지됩니다.",
+    "clearImageCacheConfirm": "모든 사용자의 서버 이미지 캐시를 삭제할까요? 서버는 필요할 때 이미지를 다시 가져옵니다. 오프라인 다운로드와 업로드된 원본 파일은 삭제되지 않습니다.",
+    "clearImageCacheSuccess": "서버 이미지 캐시가 삭제되었습니다",
+    "clearImageCacheFailed": "서버 이미지 캐시를 삭제하지 못했습니다",
     "backupButton": "백업",
     "backupImport": "백업 가져오기",
     "backupImportDesc": ".sql 파일 가져오기",
@@ -1148,5 +1148,16 @@
     "traderDesc": "상품 10개를 판매하세요",
     "rareFinder": "희귀 카드 발견자",
     "rareFinderDesc": "Illustration Rare 카드를 보유하세요"
+  },
+  "sync": {
+    "artworkTitle": "카드 이미지",
+    "artworkRetry": "누락된 이미지 다시 시도",
+    "artworkRetryHint": "다시 연결한 뒤 여기서 재시도하고 카드를 다시 여세요. 자동 다운로드가 켜져 있으면 컬렉션 다운로드도 다시 시도합니다.",
+    "artworkRetryRequested": "재시도를 요청했습니다. 카드를 다시 열면 이미지를 다시 불러옵니다.",
+    "artworkOfflineHint": "누락된 이미지는 다시 연결한 후 동기화 센터에서 재시도할 수 있습니다."
+  },
+  "offlineCollection": {
+    "preferencePending": "이 기기에 저장했습니다. 연결이 가능해지면 계정 설정이 동기화됩니다.",
+    "preferenceFailed": "이 기기에 설정을 저장하지 못했습니다. 브라우저 저장 공간을 확인하고 다시 시도하세요."
   }
 }

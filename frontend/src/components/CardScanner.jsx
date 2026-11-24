@@ -1,3 +1,4 @@
+import WindowedCardGrid from './WindowedCardGrid'
 import { useEffect, useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
@@ -445,8 +446,7 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
             </div>
 
             {stagedFiles.length > 0 ? (
-              <div className="grid grid-cols-3 gap-3 sm:grid-cols-5 md:grid-cols-7">
-                {stagedFiles.map((item, index) => (
+              <WindowedCardGrid measureRows className="grid grid-cols-3 gap-3 sm:grid-cols-5 md:grid-cols-7" items={stagedFiles} renderItem={(item, index) => (
                   <div key={item.id} className="relative aspect-[2.5/3.5] overflow-hidden rounded-xl border border-white/10 bg-bg-surface">
                     <img src={item.previewUrl} alt="" className="h-full w-full object-contain" />
                     <span className="absolute bottom-1 left-1 rounded bg-black/75 px-1.5 py-0.5 text-[10px] font-bold text-white">
@@ -458,8 +458,7 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
                       <X size={13} />
                     </button>
                   </div>
-                ))}
-              </div>
+)} />
             ) : (
               <div className="rounded-2xl border-2 border-dashed border-white/10 py-12 text-center text-sm text-text-muted">
                 {t('scanner.noPhotosStaged')}
@@ -542,8 +541,7 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
                     <p className="mb-3 text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
                       {t('scanner.bestMatches')} ({results.matches.length})
                     </p>
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                      {results.matches.map(match => {
+                    <WindowedCardGrid className="grid grid-cols-2 gap-3 sm:grid-cols-3" items={results.matches} renderItem={match => {
                         const matchLang = match.lang || match._lang || 'en'
                         const selected = selectedMatch?.id === match.id
                           && (selectedMatch?.lang || selectedMatch?._lang || 'en') === matchLang
@@ -559,8 +557,7 @@ export default function CardScanner({ isOpen, onClose, onCardSelected }) {
                             onSelect={() => setSelectedMatch(match)}
                           />
                         )
-                      })}
-                    </div>
+}} />
                   </div>
                 ) : (
                   <div className="space-y-2 py-6 text-center">

@@ -1,3 +1,4 @@
+import WindowedCardGrid from '../components/WindowedCardGrid'
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
@@ -755,11 +756,9 @@ export default function CardSearch() {
           <p className="text-xs text-yellow font-medium mb-2 flex items-center gap-1">
             <PenLine size={12} /> {t('cardSearch.customCard')}
           </p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-            {matchedCustomCards.map((card) => (
+          <WindowedCardGrid className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4" items={matchedCustomCards} renderItem={(card) => (
               <CardItem key={card.id} card={card} />
-            ))}
-          </div>
+)} />
         </div>
       )}
 
@@ -872,8 +871,7 @@ export default function CardSearch() {
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-              {data.data?.map((card) => {
+            <WindowedCardGrid className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4" items={data.data || []} renderItem={(card) => {
                 const imgSrc = card.images?.small || card.images_small || (card.image ? `${card.image}/low.webp` : null)
                 const isSelected = selectedItems.has(card.id)
                 const cardPrice = card.price_market ?? card.price_trend ?? null
@@ -899,8 +897,7 @@ export default function CardSearch() {
                     } : undefined}
                   />
                 )
-              })}
-            </div>
+}} />
           )}
         </>
       )}

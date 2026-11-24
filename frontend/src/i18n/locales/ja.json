@@ -665,11 +665,11 @@
     "backupCards": "カードデータ",
     "backupProducts": "商品",
     "backupImages": "画像キャッシュ",
-    "clearImageCache": "画像キャッシュをクリア",
-    "clearImageCacheDesc": "キャッシュ済みカード画像をすべて削除 (管理者のみ)",
-    "clearImageCacheConfirm": "よろしいですか? キャッシュ済み画像はすべて削除されます。",
-    "clearImageCacheSuccess": "画像キャッシュをクリアしました",
-    "clearImageCacheFailed": "キャッシュのクリアに失敗しました",
+    "clearImageCache": "サーバーの画像キャッシュを削除",
+    "clearImageCacheDesc": "すべてのユーザーのサーバー画像キャッシュを削除します。端末のダウンロードとアップロードされた元のファイルは保持されます。",
+    "clearImageCacheConfirm": "すべてのユーザーのサーバー画像キャッシュを削除しますか？必要に応じてサーバーが画像を再取得します。オフラインダウンロードとアップロードされた元のファイルは削除されません。",
+    "clearImageCacheSuccess": "サーバーの画像キャッシュを削除しました",
+    "clearImageCacheFailed": "サーバーの画像キャッシュを削除できませんでした",
     "backupButton": "バックアップ",
     "backupImport": "バックアップをインポート",
     "backupImportDesc": ".sql ファイルをインポート",
@@ -1148,5 +1148,16 @@
     "traderDesc": "商品を 10 個売却する",
     "rareFinder": "レア発見者",
     "rareFinderDesc": "Illustration Rare カードを所持"
+  },
+  "sync": {
+    "artworkTitle": "カード画像",
+    "artworkRetry": "未取得の画像を再試行",
+    "artworkRetryHint": "再接続後、ここで再試行してからカードを開き直してください。自動ダウンロードが有効な場合は、コレクションのダウンロードも再試行します。",
+    "artworkRetryRequested": "再試行を要求しました。カードを開き直すと画像を再読み込みします。",
+    "artworkOfflineHint": "未取得の画像は再接続後に同期センターから再試行できます。"
+  },
+  "offlineCollection": {
+    "preferencePending": "この端末に保存しました。接続が利用可能になるとアカウント設定を同期します。",
+    "preferenceFailed": "この端末に設定を保存できませんでした。ブラウザーのストレージを確認して再試行してください。"
   }
 }

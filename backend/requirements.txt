@@ -17,3 +17,4 @@ alembic==1.13.1
 bcrypt
 python-jose[cryptography]
 slowapi==0.1.9
+pywebpush==2.5.0

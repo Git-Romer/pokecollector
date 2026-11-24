@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session, joinedload
 from typing import List
 from api.auth import get_current_user
@@ -7,6 +8,12 @@ from models import WishlistItem, Card, Set, User
 from schemas import WishlistItemCreate, WishlistItemUpdate, WishlistItemResponse
 from api.collection import ensure_card_exists
 from services.card_visibility import visible_any_card_filter
+from services.idempotency import (
+    SCOPE_WISHLIST_ADD,
+    begin_idempotent,
+    fingerprint_json,
+    replay_response,
+)
 import datetime
 
 router = APIRouter()
@@ -43,8 +50,17 @@ def add_to_wishlist(
     item: WishlistItemCreate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    request: Request = None,
 ):
     """Add a card to the wishlist, incrementing quantity when it already exists."""
+    idem = begin_idempotent(
+        db, current_user, request.headers if request is not None else None,
+        scope=SCOPE_WISHLIST_ADD,
+        fingerprint=fingerprint_json(SCOPE_WISHLIST_ADD, item.model_dump(mode="json")),
+    )
+    if idem.replay is not None:
+        return replay_response(idem.replay)
+
     ensure_card_exists(db, item.card_id, user_id=current_user.id)
 
     existing = db.query(WishlistItem).filter(
@@ -58,22 +74,27 @@ def add_to_wishlist(
             existing.price_alert_above = item.price_alert_above
         if item.price_alert_below is not None:
             existing.price_alert_below = item.price_alert_below
-        db.commit()
-        db.refresh(existing)
-        return existing
+        db_item = existing
+    else:
+        db_item = WishlistItem(
+            card_id=item.card_id,
+            quantity=item.quantity,
+            price_alert_above=item.price_alert_above,
+            price_alert_below=item.price_alert_below,
+            user_id=current_user.id,
+            created_at=datetime.datetime.utcnow(),
+        )
+        db.add(db_item)
 
-    db_item = WishlistItem(
-        card_id=item.card_id,
-        quantity=item.quantity,
-        price_alert_above=item.price_alert_above,
-        price_alert_below=item.price_alert_below,
-        user_id=current_user.id,
-        created_at=datetime.datetime.utcnow(),
-    )
-    db.add(db_item)
+    if not idem.active:  # unchanged legacy behaviour
+        db.commit()
+        db.refresh(db_item)
+        return db_item
+    db.flush()
+    body = jsonable_encoder(WishlistItemResponse.model_validate(db_item))
+    idem.record(db, 200, body)
     db.commit()
-    db.refresh(db_item)
-    return db_item
+    return body
 
 
 @router.put("/{item_id}", response_model=WishlistItemResponse)

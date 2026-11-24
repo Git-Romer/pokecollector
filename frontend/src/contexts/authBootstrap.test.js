@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import { authRetryDelay, loadAuthState } from './authBootstrap'
+import { AUTH_STARTUP_TIMEOUT_MS, authRetryDelay, loadAuthState } from './authBootstrap'
+
+const timeoutError = () => Object.assign(new Error('timeout of 5000ms exceeded'), { code: 'ECONNABORTED' })
 
 describe('loadAuthState', () => {
   it('loads the automatic user in single-user mode', async () => {
@@ -16,7 +18,37 @@ describe('loadAuthState', () => {
       clearSession: false,
       clearToken: false,
     })
-    expect(getMe).toHaveBeenCalledWith({ withoutToken: true, preserveSession: true })
+    expect(getMe).toHaveBeenCalledWith({
+      withoutToken: true,
+      preserveSession: true,
+      timeout: AUTH_STARTUP_TIMEOUT_MS,
+    })
+  })
+
+  it('gives the startup calls a 5 second timeout', async () => {
+    const getAuthMode = vi.fn().mockResolvedValue({ multi_user: true, locked: false })
+    const getMe = vi.fn().mockResolvedValue({ id: 2, username: 'misty' })
+
+    await loadAuthState({ token: 'valid-token', getAuthMode, getMe })
+
+    expect(AUTH_STARTUP_TIMEOUT_MS).toBe(5000)
+    expect(getAuthMode).toHaveBeenCalledWith({ timeout: 5000 })
+    expect(getMe).toHaveBeenCalledWith(expect.objectContaining({ timeout: 5000 }))
+  })
+
+  it.each([
+    ['mode', { getAuthMode: () => Promise.reject(timeoutError()), getMe: vi.fn() }],
+    ['user', {
+      getAuthMode: () => Promise.resolve({ multi_user: true, locked: false }),
+      getMe: () => Promise.reject(timeoutError()),
+    }],
+  ])('treats a %s timeout as a retryable network failure, not a 401', async (_name, fns) => {
+    // Rejecting (rather than resolving clearSession/clearToken) is what keeps
+    // the stored token and auth snapshot intact and sends AuthContext to its
+    // degraded/offline branch plus the retry timer.
+    await expect(loadAuthState({ token: 'valid-token', ...fns })).rejects.toMatchObject({
+      code: 'ECONNABORTED',
+    })
   })
 
   it('resolves multi-user mode without requesting a user when no token exists', async () => {
@@ -62,7 +94,11 @@ describe('loadAuthState', () => {
       clearSession: false,
       clearToken: false,
     })
-    expect(getMe).toHaveBeenCalledWith({ withoutToken: false, preserveSession: true })
+    expect(getMe).toHaveBeenCalledWith({
+      withoutToken: false,
+      preserveSession: true,
+      timeout: AUTH_STARTUP_TIMEOUT_MS,
+    })
   })
 
   it('treats an expired token as a resolved login state', async () => {
