@@ -203,8 +203,14 @@ def _load_user_stats(db: Session, user_ids: list[int] | None = None, price_field
     price_field = normalize_price_field(price_field)
     sharing_enabled = public_profiles_enabled(db)
 
+    from services.card_values import effective_price_quote, cross_language_tcgplayer_fallback_enabled
+
+    def _get_quote(row):
+        return effective_price_quote(row, getattr(row, "variant", None), price_field,
+            allow_cross_language=cross_language_tcgplayer_fallback_enabled(db))
+
     def _get_price(row):
-        return effective_market_price(row, getattr(row, "variant", None), price_field)
+        return _get_quote(row)["amount"]
 
     user_query = db.query(User).filter(User.is_active == True)
     if user_ids is not None:
@@ -241,6 +247,11 @@ def _load_user_stats(db: Session, user_ids: list[int] | None = None, price_field
         Card.price_avg1_holo,
         Card.price_avg7_holo,
         Card.price_avg30_holo,
+        Card.price_tcg_normal_market,
+        Card.price_tcg_holo_market,
+        Card.price_tcg_reverse_market,
+        Card.price_tcg_first_edition_market,
+        Card.price_tcg_usd_to_eur,
         Card.set_id,
         Card.lang,
         Card.rarity,
@@ -371,14 +382,18 @@ def _load_user_stats(db: Session, user_ids: list[int] | None = None, price_field
             payload = _card_payload(cards.get(row.card_db_id))
             if payload is None:
                 continue
+            quote = _get_quote(row)
             # The row carries the variant-aware price and the language the copy
             # was actually valued in, which the card alone cannot know.
             payload.update({
                 "id": row.card_db_id,
                 "card_id": row.card_db_id,
                 "price_market": round(_get_price(row), 2),
+                "market_value": round(quote["amount"], 2),
+                "price_source": quote["source"],
+                "variant": row.variant,
                 "data_source_lang": row.data_source_lang,
-                "price_source_lang": row.price_source_lang,
+                "price_source_lang": "en" if quote["source"] == "tcgplayer" else row.price_source_lang,
                 "image_source_lang": row.image_source_lang,
             })
             stats[user_id]["most_valuable_card"] = payload

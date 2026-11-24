@@ -32,12 +32,12 @@ export function getCardPriceValue(card, priceKey) {
 }
 
 function positivePrice(value) {
-  if (value == null) return null
+  if (value == null || typeof value === 'boolean') return null
   const price = Number(value)
   return Number.isFinite(price) && price > 0 ? price : null
 }
 
-export function getEffectiveCardPrice(card, variant, priceField = 'price_trend') {
+function cardmarketPrice(card, variant, priceField = 'price_trend') {
   if (!card) return 0
   if (REVERSE_HOLO_VARIANTS.has(variant)) {
     const holoField = HOLO_FIELD_MAP[priceField]
@@ -59,6 +59,41 @@ export function getEffectiveCardPrice(card, variant, priceField = 'price_trend')
     if (price != null) return price
   }
   return 0
+}
+
+export function getEffectiveCardPriceDetails(card, variant, priceField = 'price_trend') {
+  const value = cardmarketPrice(card, variant, priceField)
+  if (value > 0) return { amount: value, currency: 'EUR', source: card?.price_source === 'tcgplayer' ? 'tcgplayer' : 'cardmarket' }
+  if (card?.lang !== 'en' && !(card?.lang === 'de' && card?.tcgplayer_fallback_allowed === true)) {
+    return { amount: 0, currency: 'EUR', source: null }
+  }
+  const selectedVariant = variant ?? (card?.variants_holo && card?.variants_normal === false ? 'Holo' : 'Normal')
+  const field = {
+    Normal: 'price_tcg_normal_market',
+    Holo: 'price_tcg_holo_market',
+    'Reverse Holo': 'price_tcg_reverse_market',
+    'First Edition': 'price_tcg_first_edition_market',
+  }[selectedVariant]
+  const usd = positivePrice(field ? card?.[field] : null)
+  const rate = positivePrice(card?.price_tcg_usd_to_eur)
+  if (usd != null && rate != null && Number.isFinite(usd * rate)) {
+    return { amount: usd * rate, currency: 'EUR', source: 'tcgplayer', sourceAmount: usd, sourceCurrency: 'USD' }
+  }
+  return { amount: 0, currency: 'EUR', source: null }
+}
+
+export function getEffectiveCardPrice(card, variant, priceField = 'price_trend') {
+  return getEffectiveCardPriceDetails(card, variant, priceField).amount
+}
+
+export function getCardFallbackQuote(card, priceField = 'price_trend') {
+  // Public tiles carry a resolved value instead of the private catalogue fields.
+  const publicValue = positivePrice(card?.market_value ?? card?.total_value)
+  if (card?.price_source === 'tcgplayer' && publicValue != null) {
+    return { amount: publicValue, currency: 'EUR', source: 'tcgplayer' }
+  }
+  const variant = card?.variant ?? (card?.owned_variants?.length === 1 ? card.owned_variants[0].variant : undefined)
+  return getEffectiveCardPriceDetails(card, variant, priceField)
 }
 
 export function getPrimaryCardPrice(card, variant, pricePrimary = 'trend', priceField = priceFieldFromPrimary(pricePrimary)) {

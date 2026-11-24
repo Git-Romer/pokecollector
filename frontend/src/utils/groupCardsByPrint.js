@@ -18,12 +18,14 @@ export function groupCardsByPrint(cards) {
         lang: c.lang,
         data_source_lang: c.data_source_lang,
         price_source_lang: c.price_source_lang,
+        price_source: c.price_source,
         image_source_lang: c.image_source_lang,
         has_custom_image_fallback: c.has_custom_image_fallback,
         prints: [],
       }
       byId.set(c.id, tile)
     }
+    if (c.price_source === 'tcgplayer') tile.price_source = 'tcgplayer'
     tile.prints.push({
       variant: c.variant,
       printing_details: c.printing_details || [],

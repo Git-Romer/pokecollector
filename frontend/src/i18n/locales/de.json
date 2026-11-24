@@ -1178,6 +1178,7 @@
     "debugLogDownloadFailed": "Debug-Log konnte nicht heruntergeladen werden",
     "crossLanguagePriceFallback": "Sprachübergreifender Preis-Fallback",
     "crossLanguagePriceFallbackDesc": "Nutzt englische Preise, wenn die gewählte Sprache keine öffentlichen TCGdex-Preisdaten für dieselbe TCGdex-ID hat. Fallback-Preise werden markiert.",
+    "crossLanguagePriceFallbackMarketNote": "Wenn kein nutzbarer Cardmarket-Preis vorliegt, werden passende TCGplayer-Preise über TCGdex verwendet, in deine Währung umgerechnet und mit der gelben Preis-Fallback-Markierung gekennzeichnet. Das sind Schätzwerte für englische Karten, keine Preise für den deutschen Markt. Diese Einstellung steuert auch ihre Verwendung für deutsche Karten. Sobald eine Preissynchronisierung wieder einen nutzbaren Cardmarket-Preis liefert, hat dieser Vorrang.",
     "crossLanguageImageFallback": "Sprachübergreifender Bild-Fallback",
     "crossLanguageImageFallbackDesc": "Nutzt englische Bilder, wenn die gewählte Sprache kein öffentliches TCGdex-Bild für dieselbe TCGdex-ID hat. Fallback-Bilder werden markiert.",
     "priceTrend": "Trend",

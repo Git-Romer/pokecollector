@@ -1191,6 +1191,7 @@
     "debugLogDownload": "Download Log",
     "debugLogDownloadFailed": "Debug log download failed",
     "crossLanguagePriceFallback": "Cross-language price fallback",
+    "crossLanguagePriceFallbackMarketNote": "If no usable Cardmarket price is available, matching TCGplayer prices supplied through TCGdex are converted to your currency and marked with the amber price-fallback indicator. These are English-market estimates, not German-market prices. This setting also controls their use for German cards. Cardmarket takes priority again after a price sync restores a usable price.",
     "crossLanguagePriceFallbackDesc": "Use English prices when the selected language has no public TCGdex price data for the same TCGdex ID. Fallback prices are tagged.",
     "crossLanguageImageFallback": "Cross-language image fallback",
     "crossLanguageImageFallbackDesc": "Use English images when the selected language has no public TCGdex image for the same TCGdex ID. Fallback images are tagged.",

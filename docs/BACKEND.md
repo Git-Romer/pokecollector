@@ -36,6 +36,7 @@ FastAPI app entry point: `backend/main.py`.
 | POST | `/api/cards/custom/dismiss/{match_id}` | Dismiss match |
 | GET | `/api/cards/{card_id}/lang/{lang}` | Resolve equivalent card in another language |
 | GET | `/api/cards/{card_id}/price-history` | Price history |
+| GET | `/api/cards/{card_id}/valuation` | Matching-variant value with source and selected-currency conversion |
 | PUT | `/api/cards/{card_id}/custom-image` | Set/clear a validated HTTPS fallback image for an API card with no TCGdex artwork |
 | GET | `/api/cards/{card_id}` | Card detail |
 | POST | `/api/cards/recognize` | Card recognition through the user's configured vision provider |
@@ -60,6 +61,16 @@ with a digit. A code that matches no set falls back to the name search, so card
 names that look like a code-number pair (`151 025`) stay reachable.
 
 Custom cards belong to exactly one user. Owners may publish a card as a shared template, but other users must clone it before using it in collections, wishlists, binders, products, or trades. Clones have independent IDs, metadata, images, and prices. Manual image URLs must use public HTTPS destinations and are fetched through the size-limited image proxy. During upgrade, existing custom cards become shared templates owned by the first-created admin account, while each other referencing user receives one private clone and keeps their existing references.
+
+#### Card valuation
+
+`GET /api/cards/{card_id}/valuation` is authenticated and uses the same EUR valuation as collection totals. Optional query parameters are `variant` (a supported collection variant), `price_field` (for example `price_trend` or `price_avg7`), and `currency` (an uppercase three-letter currency code, default `EUR`). Without a variant, a holo-only card uses Holo; otherwise Normal is selected.
+
+The selected Cardmarket field and its existing market-price fallback take precedence. If neither is usable, the matching TCGplayer Normal, Holo, Reverse Holo, or First Edition market price supplied through TCGdex is converted from USD using the rate saved during price upserts. English cards are eligible directly. German cards are eligible only when the existing admin setting `cross_language_price_fallback` is enabled (default `true`); this is an English-market estimate, not a German-market quote. The existing `PUT /api/settings/` endpoint controls that preference, and `GET /api/settings/` reads it back. Card payloads expose the derived `tcgplayer_fallback_allowed` flag so frontend valuation agrees with APIs and portfolio totals. Other and unknown card languages are not newly opted into this marketplace fallback. Existing cross-language Cardmarket references remain unchanged. Eligibility follows the physical card's language, not the interface language. Other variants never borrow a different edition or finish. Raw TCGplayer fields stay in USD and stored Cardmarket fields stay in EUR. The existing amber price-fallback indicator is reused, with `TCGplayer (EN)` identifying the marketplace source. A later sync that restores a usable Cardmarket price takes priority automatically.
+
+The response includes `amount`, `currency`, `amount_eur`, `source` (`cardmarket`, `tcgplayer`, or `null`), `source_amount`, and `source_currency`. A TCGplayer quote also includes `usd_to_eur`. For example, a USD 8 first-edition price with a saved USD/EUR rate of 0.9 has `amount_eur: 7.2`, independently of the requested display currency. Missing prices or a missing saved USD/EUR rate return zero with a null source, not dollars labelled as euros. A failed display-currency conversion returns HTTP 503 rather than an invented amount. Nonexistent or inaccessible private custom cards return HTTP 404.
+
+Valuation does not trigger a sync. Existing sync APIs refresh the raw provider prices and saved conversion; a provider outage can reuse the last saved exchange rate. Price-history records retain their existing Cardmarket meaning. Manual price overrides are separate from this fallback.
 
 ### Set display metadata
 

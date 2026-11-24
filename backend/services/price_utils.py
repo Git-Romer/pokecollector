@@ -30,6 +30,7 @@ PRICE_FIELDS = (
     "price_tcg_holo_low",
     "price_tcg_holo_mid",
     "price_tcg_holo_market",
+    "price_tcg_first_edition_market",
 )
 
 
