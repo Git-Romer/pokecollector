@@ -539,7 +539,6 @@ class ErrorMappingTests(unittest.TestCase):
     def test_a_rejected_gemini_model_also_points_at_settings(self):
         # A user who named their own Gemini model must not be sent after
         # GEMINI_MODEL, which only an administrator can change.
-        import httpx as _httpx
 
         from api.recognize import post_gemini_generate
 

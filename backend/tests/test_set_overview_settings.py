@@ -33,6 +33,21 @@ class SetOverviewSettingsTests(unittest.TestCase):
     def tearDown(self):
         self.db.close()
 
+    def test_offline_preference_rejects_a_late_write_from_an_older_revision(self):
+        from types import SimpleNamespace
+        self.assertEqual(_get_user_settings(self.db, self.user.id)["offline_collection_revision"], "0")
+        request = SimpleNamespace(headers={"x-offline-preference-revision": "0"})
+        saved = update_settings({"offline_collection_enabled": "false"}, db=self.db, current_user=self.user, request=request)
+        self.assertEqual(saved["offline_collection_revision"], "1")
+        with self.assertRaises(HTTPException) as error:
+            update_settings({"offline_collection_enabled": "true"}, db=self.db, current_user=self.user, request=request)
+        self.assertEqual(error.exception.status_code, 409)
+        self.db.rollback()
+        self.assertEqual(_get_user_settings(self.db, self.user.id)["offline_collection_enabled"], "false")
+        self.assertEqual(_get_user_settings(self.db, self.other_user.id)["offline_collection_revision"], "0")
+        with self.assertRaises(HTTPException):
+            update_settings({"offline_collection_revision": "0"}, db=self.db, current_user=self.user)
+
     def test_set_overview_settings_have_safe_defaults(self):
         settings = _get_user_settings(self.db, self.user.id)
 
@@ -68,6 +83,17 @@ class SetOverviewSettingsTests(unittest.TestCase):
             _get_user_settings(self.db, self.user.id)["portfolio_display_mode"],
             "capital_invested",
         )
+
+    def test_offline_collection_downloads_default_off_and_are_per_user(self):
+        self.assertEqual(_get_user_settings(self.db, self.user.id)["offline_collection_enabled"], "false")
+        result = update_settings({"offline_collection_enabled": True}, db=self.db, current_user=self.user)
+        self.assertEqual(result["offline_collection_enabled"], "true")
+        self.assertEqual(_get_user_settings(self.db, self.user.id)["offline_collection_enabled"], "true")
+        self.assertEqual(_get_user_settings(self.db, self.other_user.id)["offline_collection_enabled"], "false")
+        result = update_settings({"offline_collection_enabled": False}, db=self.db, current_user=self.user)
+        self.assertEqual(result["offline_collection_enabled"], "false")
+        self.assertEqual(_get_user_settings(self.db, self.other_user.id)["offline_collection_enabled"], "false")
+        self.assertEqual(self.db.query(Setting).filter(Setting.key == "offline_collection_enabled").count(), 0)
 
     def test_holo_rendering_preference_is_per_user_and_defaults_off(self):
         self.assertEqual(_get_user_settings(self.db, self.user.id)["holo_effects_enabled"], "false")

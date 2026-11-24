@@ -151,7 +151,7 @@ def reschedule_full_sync(
     db.commit()
     try:
         _reschedule_full(interval_days)
-    except Exception as e:
+    except Exception:
         pass  # Scheduler may not be running in all contexts
     return {"message": f"Full sync rescheduled to every {interval_days} days"}
 
@@ -177,7 +177,7 @@ def reschedule_price_sync(
     # Reschedule
     try:
         _reschedule_price(interval_minutes)
-    except Exception as e:
+    except Exception:
         pass  # Scheduler may not be running in all contexts
     return {"message": f"Price sync rescheduled to every {interval_minutes} minutes"}
 

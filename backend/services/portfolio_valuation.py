@@ -40,29 +40,6 @@ class PortfolioValuation:
     product_card_realized_gains: float
     products_realized_pnl: float
 
-    def as_dict(self) -> dict:
-        return {
-            "calculation_version": PORTFOLIO_CALCULATION_VERSION,
-            "card_value": round(self.card_value, 2),
-            "product_value": round(self.product_value, 2),
-            "total_value": round(self.total_value, 2),
-            "card_cost_basis": round(self.card_cost_basis, 2),
-            "product_cost_basis": round(self.product_cost_basis, 2),
-            "active_cost_basis": round(self.active_cost_basis, 2),
-            "performance_cost_basis": round(self.performance_cost_basis, 2),
-            "realized_value": round(self.realized_value, 2),
-            "unrealized_pnl": round(self.unrealized_pnl, 2),
-            "realized_pnl": round(self.realized_pnl, 2),
-            "total_pnl": round(self.total_pnl, 2),
-            "total_cards": self.total_cards,
-            "product_value_fallback_count": self.product_value_fallback_count,
-            "products_needing_review_count": self.products_needing_review_count,
-            "products_sold_cost": round(self.products_sold_cost, 2),
-            "products_sold_revenue": round(self.products_sold_revenue, 2),
-            "product_card_realized_gains": round(self.product_card_realized_gains, 2),
-            "products_realized_pnl": round(self.products_realized_pnl, 2),
-        }
-
 
 def portfolio_snapshot_fields(valuation: PortfolioValuation) -> dict:
     """Return the complete versioned value payload for a snapshot row."""

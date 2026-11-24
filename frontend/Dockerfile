@@ -22,10 +22,12 @@ LABEL org.opencontainers.image.source="https://github.com/Git-Romer/pokecollecto
 
 COPY --from=builder /app/dist /usr/share/nginx/html
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+COPY frontend/nginx-security-headers.conf /etc/nginx/snippets/pc-security-headers.conf
 COPY frontend/docker-entrypoint.d/40-configure-public-mode.sh /docker-entrypoint.d/40-configure-public-mode.sh
+COPY frontend/docker-entrypoint.d/45-configure-pwa.sh /docker-entrypoint.d/45-configure-pwa.sh
 
 RUN cp /usr/share/nginx/html/index.html /usr/share/nginx/html/index.html.template \
-    && chmod +x /docker-entrypoint.d/40-configure-public-mode.sh \
+    && chmod +x /docker-entrypoint.d/40-configure-public-mode.sh /docker-entrypoint.d/45-configure-pwa.sh \
     && mkdir -p /var/cache/nginx/images \
     && chown -R nginx:nginx /var/cache/nginx
 

@@ -4,9 +4,10 @@
  *
  * Usage: <CardImage src={url} alt={card.name} className="w-full h-full object-cover" />
  */
-import { AlertTriangle, RefreshCw } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useSettings } from '../contexts/SettingsContext'
+import { ARTWORK_RETRY_EVENT, artworkRetryAttempt, markArtworkMissing, markArtworkLoaded } from '../utils/artworkRetry'
 
 const CARD_BACK = '/cardback.jpg'
 const VIEWPORT_MARGIN = 300
@@ -107,10 +108,10 @@ export default function CardImage({
   const [shouldLoad, setShouldLoad] = useState(() => (
     loading !== 'lazy' || typeof IntersectionObserver === 'undefined'
   ))
-  const [status, setStatus] = useState(() => ({ source: src, failed: false, loaded: false, attempt: 0 }))
+  const [status, setStatus] = useState(() => ({ source: src, failed: false, loaded: false, attempt: artworkRetryAttempt(src) }))
   const currentStatus = status.source === src
     ? status
-    : { source: src, failed: false, loaded: false, attempt: 0 }
+    : { source: src, failed: false, loaded: false, attempt: artworkRetryAttempt(src) }
   const { failed, loaded, attempt } = currentStatus
   const showOverlay = !src || showName
   const displaySrc = !src
@@ -157,7 +158,7 @@ export default function CardImage({
 
     const nextFailed = image.naturalWidth === 0
     setStatus(previous => {
-      const nextAttempt = previous.source === src ? previous.attempt : 0
+      const nextAttempt = previous.source === src ? previous.attempt : artworkRetryAttempt(src)
       if (
         previous.source === src
         && previous.loaded
@@ -179,20 +180,25 @@ export default function CardImage({
       source: src,
       failed: true,
       loaded: true,
-      attempt: previous.source === src ? previous.attempt : 0,
+      attempt: previous.source === src ? previous.attempt : artworkRetryAttempt(src),
     }))
   }
 
-  const retry = (event) => {
-    event.preventDefault()
-    event.stopPropagation()
-    setStatus(previous => ({
+  useEffect(() => {
+    if (!failed) {
+      if (loaded) markArtworkLoaded(src)
+      return undefined
+    }
+    markArtworkMissing(src)
+    const retry = () => setStatus({
       source: src,
       failed: false,
       loaded: false,
-      attempt: previous.source === src ? previous.attempt + 1 : 1,
-    }))
-  }
+      attempt: artworkRetryAttempt(src),
+    })
+    window.addEventListener(ARTWORK_RETRY_EVENT, retry)
+    return () => window.removeEventListener(ARTWORK_RETRY_EVENT, retry)
+  }, [failed, loaded, src])
 
   return (
     <div ref={containerRef} className="unified-card-image relative w-full h-full bg-bg-elevated">
@@ -211,32 +217,18 @@ export default function CardImage({
             source: src,
             failed: false,
             loaded: true,
-            attempt: previous.source === src ? previous.attempt : 0,
+            attempt: previous.source === src ? previous.attempt : artworkRetryAttempt(src),
           }))}
         />
       )}
       {failed && (
-        <div className="unified-card-image-error absolute inset-0 flex flex-col items-center justify-center gap-2 bg-bg-elevated p-3 text-center">
-          {!compactError && (
-            <>
-              <span className="grid h-10 w-10 place-items-center rounded-full border border-brand-red/40 bg-brand-red/15 text-brand-red">
-                <AlertTriangle size={18} aria-hidden />
-              </span>
-              <strong className="text-xs text-text-primary">{t('card.artworkUnavailable')}</strong>
-              <span className="text-[10px] leading-tight text-text-muted">{t('card.artworkUnavailableHint')}</span>
-            </>
-          )}
-          <button
-            type="button"
-            className={compactError
-              ? 'grid h-full w-full place-items-center text-brand-red focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-red'
-              : 'btn-ghost mt-1 min-h-8 px-3 py-1.5 text-xs'}
-            onClick={retry}
-            aria-label={t('card.retryImage')}
-            title={compactError ? t('card.retryImage') : undefined}
-          >
-            {compactError ? <AlertTriangle size={14} aria-hidden /> : <><RefreshCw size={13} aria-hidden />{t('common.retry')}</>}
-          </button>
+        <div
+          className="unified-card-image-error pointer-events-none absolute inset-0 grid place-items-center bg-bg-elevated"
+          role="img"
+          aria-label={`${alt || ''}: ${t('card.artworkUnavailable')}`}
+          title={t('card.artworkUnavailable')}
+        >
+          <AlertTriangle size={compactError ? 14 : 20} className="max-h-full max-w-full text-text-muted" aria-hidden />
         </div>
       )}
       {!failed && showOverlay && alt && (

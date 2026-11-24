@@ -6,14 +6,14 @@ and a plain number match next to it is not treated as unique evidence.
 """
 
 import unittest
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, patch
 
 try:
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 
     from database import Base
-    from models import Card, Set
+    from models import Card
     from api.recognize import (
         _gallery_number_match,
         _metadata_decision,

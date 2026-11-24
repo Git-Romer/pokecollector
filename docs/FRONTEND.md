@@ -6,6 +6,30 @@ React 18 SPA built with Vite. Source lives under `frontend/src/`.
 
 The frontend uses Tailwind CSS v4, which requires Safari 16.4+, Chrome 111+, or Firefox 128+. Older browser versions are not supported by this frontend build.
 
+## Installable web app
+
+The app can be added to an iPhone Home Screen (Share, then Add to Home Screen) and runs in its own window. Installability needs no flag. Offline start needs the opt-in service worker described below.
+
+- `public/manifest.json` declares `id`, `scope`, `start_url: /`, `display: standalone`, `theme_color`/`background_color` `#08080f` and four icons (`any` and `maskable`, 192 and 512 px).
+- Icons live in `public/icons/` with a version suffix in the filename (`pc-*-v3.png`). nginx serves `.png` as `immutable` for a year, so a changed icon needs a new filename, not a query string. The older root icons stay for `og:image` and proxy allow-lists.
+- `index.html` links the 180 px opaque `apple-touch-icon` and sets the iOS meta tags (`apple-mobile-web-app-capable`, `mobile-web-app-capable`, `apple-mobile-web-app-title`, `apple-mobile-web-app-status-bar-style=black`).
+- `AppNav.jsx` pads the top strip and positions the floating Home button with `env(safe-area-inset-*)`, so they clear the notch and home indicator.
+- Standalone detection (`offline/capabilities.js`): `navigator.standalone === true || matchMedia('(display-mode: standalone)').matches`.
+- nginx revalidates `/`, `/index.html`, `/manifest.json` and SPA deep links (`Cache-Control: no-cache`); the security headers live in `nginx-security-headers.conf`, which `nginx.conf` includes in every location that sets its own `add_header`.
+- `scripts/pwa-assets.test.mjs` and `scripts/nginx-config.test.mjs` guard these files and run as part of `npm test`.
+
+## Service worker (opt-in)
+
+The service worker is off by default. `PWA_ENABLED=true` on the frontend container turns it on; user-facing behaviour is in [`PWA.md`](PWA.md), the design in `PWA_OFFLINE_DESIGN.md` §6.3.
+
+- `src/sw/sw.js` is the worker: a classic script with no imports and two build-time placeholders (`__BUILD_ID__`, `/*__PRECACHE__*/`) that are valid JavaScript unreplaced. `src/sw/sw.kill.js` is the kill worker.
+- `npm run build` runs `vite build` and then `scripts/build-sw.mjs`, which writes `dist/sw.real.js` and a byte-identical `dist/sw.js`, copies `dist/sw.kill.js`, prints the precache size and fails above 12 MiB. `index.html`, `robots*.txt` and `sw*.js` are never precached; the HTML shell is fetched at install and kept only if every `/assets/*` it references is in the manifest.
+- At container start `docker-entrypoint.d/45-configure-pwa.sh` (after `40-configure-public-mode.sh`, which resets `index.html`) copies `sw.real.js` or `sw.kill.js` over `sw.js` and inserts `<meta name="pokecollector-pwa" content="sw=1;queue=0">`. `src/pwa/flags.js` reads it; without the tag the build-time `VITE_PWA_DEFAULT=on|off` applies (default off).
+- `src/pwa/register.js` registers the worker (production, secure context, flag on), checks for updates when the app returns to the foreground, handles `?pc_sw=off` and exposes `addUpdateGuard(fn)` so features can block an update while work is in flight. `components/pwa/UpdateBanner.jsx` shows the update bar.
+- `src/utils/memoryBlob.js` copies upload files into memory when a PWA flag is on (WebKit empty-body bug); `api/client.js` uses it for its six multipart uploads.
+- Tests: `src/sw/sw.test.js` (worker loaded in a `node:vm` context), `scripts/build-sw.test.mjs`, `scripts/configure-pwa.test.mjs` run in `npm test`. `npm run test:pwa` builds with `VITE_PWA_DEFAULT=on`, serves `dist/` on port 4175 and drives real Chromium (`tests/pwa/`; install the browser with `npx playwright install chromium`).
+- Shell scripts must keep LF line endings (`.gitattributes`); a CRLF entrypoint fails inside the container.
+
 ## Route Table
 
 Routes are defined in `frontend/src/App.jsx`.
@@ -18,6 +42,7 @@ Routes are defined in `frontend/src/App.jsx`.
 | `/search` | `pages/CardSearch.jsx` | Card search, scanner entry, and multi-select bulk add |
 | `/scans` | `pages/ScanQueue.jsx` | Persistent scan inbox |
 | `/scans/:jobId` | `pages/ScanQueue.jsx` | Review one queued scan job |
+| `/offline` | `pages/OfflineCenter.jsx` | Home-only Sync center: admin server synchronization; connection, waiting items, storage, capabilities and reset when `OFFLINE_QUEUE_ENABLED` is on |
 | `/collection` | `pages/Collection.jsx` | User collection |
 | `/collection/user/:userId` | `pages/UserCollection.jsx` | Read-only view of another user's collection |
 | `/pokedex` | `pages/Pokedex.jsx` | Grouped or exact-form National Pokédex completion overview |
@@ -74,10 +99,15 @@ Responsibilities:
 - Exposes:
   - `user`
   - `loading`
+  - `status` (`loading`, `ready`, `offline` or `degraded`)
+  - `offline` (`degraded` or `offline`)
   - `multiUser`
   - `loginUser(token, userData)`
   - `updateCurrentUser(updates)`
-  - `logout()`
+  - `logout()` (async; asks the offline logout guard first)
+  - `setLogoutGuard(fn)`
+
+With the offline queue flag on, a failed startup with a valid cached sign-in (`pc.auth.snapshot`, see `docs/PWA.md`) sets `status` to `degraded`: the cached user is shown, the retry timer keeps running and a success returns to `ready`. `OfflineProvider` (`src/offline/`) owns the outbox and registers the logout guard.
 
 Security-related behavior:
 
@@ -350,6 +380,8 @@ Each photo retains the full camera frame and joins the local staging batch, up t
 
 The automatic trigger waits for a scene change after a capture before it can fire again, but this is not identity-based duplicate detection. Prefer manual capture when lighting or movement prevents a reliable automatic capture. Browser permission and a secure context (HTTPS or localhost) are required. An unavailable API or insecure context disables **Continuous capture**; native photo/gallery capture stays available.
 
+With the offline queue enabled, submissions use `offline/ops/scanSubmit.js` to save the batch before upload, wait at most five seconds for immediate delivery and otherwise show the saved-on-device state. Staged photos and in-progress submissions block service-worker updates. With the queue disabled, the existing online upload path is retained.
+
 `pages/ScanQueue.jsx` and `components/ScanReview.jsx` show job progress, retry countdowns/reasons, sanitized source photos, ranked candidates, failed items, individual retry, dismissal, and collection-add review. The navigation badge counts outstanding items. A confirmed candidate id is sent when resolving an item so opted-in diagnostics can be labelled with human-reviewed ground truth.
 
 Opening a candidate starts a full-screen linked pan/zoom comparison (`CardZoomModal`, `useLinkedZoom` in `components/ScanReview.jsx`): scroll or click to zoom toward the pointer (up to 6x), drag to pan, arrow keys step through the other candidates for that photo while the zoom/pan position is preserved, and Escape backs out of the zoom before closing the modal. Candidate images load progressively (`useCandidateFullImage`): a blurred thumbnail stand-in shows instantly and crossfades to the full-resolution image once decoded, sourced from the backend's candidate-image cache with a CDN fallback. Thumbnails are prefetched as soon as a photo's candidates arrive; the high-resolution image prefetches on hover/touch (`usePrefetchMatchImages`, `prefetchImage`). Accepting a match from the zoom view routes through the same add-to-collection modal used elsewhere — there is no auto-accept — and atomically adds and resolves the scan before automatically opening the next unresolved photo in the job (`openNextReview` in `ScanQueue.jsx`), so a failed request stays on the current review and a batch can be cleared without returning to the list between cards. A candidate whose printed set total contradicts the recognized photo shows a ⚠ badge in the grid. Once an item is resolved it collapses to a compact green-check row (recognized name and number), re-expandable as a read-only review on click, so a long batch stays scannable without allowing the same scan to be added twice.
@@ -378,6 +410,79 @@ Notable frontend API bindings include:
 - product lifecycle, linked-card ledger, and trade endpoints
 - Pokédex, profile, and anonymous public-profile endpoints
 - authenticated collection-card photo and printing-detail-tag endpoints
+
+## Offline outbox
+
+`frontend/src/offline/` holds the client side of the offline queue designed in `docs/PWA_OFFLINE_DESIGN.md` (§6.2). The library is wired in by `OfflineProvider` (P5) and the sync center (P6). The scanner queues scan photos through `ops/scanSubmit.js`. Items are kept in IndexedDB and replayed from the page (Safari has no Background Sync); the server's `Idempotency-Key` contract makes a repeated send harmless.
+
+### Module map
+
+| Module | Role |
+|--------|------|
+| `constants.js` | Every tunable of design §6.2.1, plus `uploadTimeoutMs(bytes)` and `attemptTimeoutMs(item)` |
+| `uuid.js` | `uuidv4()` from `crypto.getRandomValues` (never `randomUUID`) |
+| `debug.js` | `applyDebugParams()`, `debugFlag(name)` — see flags below |
+| `capabilities.js` | `getCapabilities()` by feature detection only |
+| `outbox/db.js` | `openOutboxDb()`, ordered `migrations`, `versionchange` handling |
+| `outbox/store.js` | `createStore(db)`: enqueue, claim, outcomes, retry/edit/discard, history, meta — single transactions, compare-and-set |
+| `outbox/states.js` | State transition table as data, `canTransition()` |
+| `outbox/classify.js` | Table-driven HTTP outcome classification (`classifyResponse`) |
+| `outbox/probe.js` | `/api/health` reachability probe and banner tracking |
+| `outbox/backoff.js` | Full-jitter backoff and `parseRetryAfter` |
+| `outbox/lease.js` | Single-flight lease row in `meta` |
+| `outbox/events.js` | `BroadcastChannel` change notifications with a `storage`-event fallback |
+| `outbox/replay.js` | The replay session (probe → claim → fetch → classify → apply), circuit breaker, 429 pause |
+| `outbox/ops/*.js` | `scanUpload`, `collectionAdd`, `wishlistAdd`: request builders, response validators, post-sync cache invalidation |
+| `outbox/index.js` | `createOutbox({ctx, flags, fetchImpl, now, rng, queryClient, …})` |
+| `durability.js` | `requestPersistence()`, `readEstimate()`, canary (`initCanary`/`checkCanary`), `ageWarning()` (design D12) |
+| `routes.js` | `OFFLINE_ROUTES` and `isOfflineRoute(pathname)`: pages that stay usable while the server is unreachable |
+| `useOffline.js` | `useOffline()`: two failed probes or `navigator.onLine === false` |
+| `syncToasts.js` | Coalesced "synced" / "failed" toasts and the last-synced time |
+| `readCache.js` | Read cache (P8): `persist`, `restore`, `purge`, `purgeOthers`, `purgeAll` over the `pokecollector-readcache` database (allow-listed TanStack queries per origin and user id; 10 MiB per collection query, 5 MiB per other query, 20 MiB total, 30 days, `appVersion` match) |
+| `OfflineProvider.jsx` | Owns the outbox, the logout guard (`runLogoutGuard`, which also purges the read cache), storage protection, the eviction notice and the read cache wiring: `purgeOthers` on user change, `restore` before protected routes mount on a degraded start (1.5 s cap), `persist` while signed in |
+
+### Sync center components (P6)
+
+The red Sync button on Home opens `/offline` directly. There is no floating global sync button, intermediate sheet, or Settings entry. Server synchronization remains available there to admins even with offline features disabled; offline controls require `OFFLINE_QUEUE_ENABLED`.
+
+| Component | Role |
+|-----------|------|
+| `components/sync/StaleDataLabel.jsx` | "Showing saved data from …" in `Layout` while a restored copy is shown and the server is not reachable; also exports `SavedAtContext`/`useSavedAt` |
+| `components/sync/SyncSheet.jsx` | Shared `SyncControls`, `SyncItemList`, and `StorageSummary` rendered by `/offline`; no modal wrapper |
+| `components/sync/OfflineBanner.jsx` | Banner at the top of `Layout` while offline |
+| `components/sync/EvictedNotice.jsx` | Blocking notice when the browser removed the offline database |
+| `components/OfflineUnavailable.jsx` | Replaces pages that need the server while offline (anything outside `OFFLINE_ROUTES`) |
+| `components/pwa/InstallHint.jsx` | iOS "Add to Home Screen" card (Home and `/offline`) |
+
+### Item states
+
+States: `pending`, `sending`, `retry_wait`, `blocked` (`lastError.code` is `auth`, `proxy`, `wrong_account`, `server_old` or `newer_schema`), `failed`. Terminal: `sent` (item deleted, history row written) and `cancelled` (item and photos deleted).
+
+| Trigger | Result |
+|---------|--------|
+| Enqueue committed | `pending` |
+| Claim (compare-and-set) | `sending` with an expiring claim |
+| Valid 2xx JSON | `sent` (also for `Idempotent-Replayed: true`) |
+| Network error, timeout, 500, 502/503/504, 409 `idempotency_in_progress` | `retry_wait` (`maybeApplied` when the request may have reached the server) |
+| 429 | back to `pending`; the whole engine pauses (`Retry-After` or 60 s, doubling, max 900 s) |
+| 401 JSON, HTML/redirect/non-JSON 400-404, 409 `wrong_account`, old server | `blocked` |
+| Other definitive 4xx, malformed 2xx, 12 server errors | `failed` |
+| Claim expired (app killed) | `retry_wait`, `maybeApplied` |
+| User Retry / Edit / Discard | `pending` (Retry keeps the key; Edit of a never-sent add rotates it) / `cancelled` |
+
+### Constants
+
+`PACE_MS` 2000, `PROBE_TIMEOUT_MS` 5000, `PROBE_BACKOFF_MS` 15/30/60/120 s, `JSON_TIMEOUT_MS` 20 s, upload timeout `clamp(30 s + bytes/40 KiB/s, 60 s, 290 s)`, backoff 5 s base / 15 min cap with full jitter, `MAX_SERVER_ERRORS_PER_ITEM` 12, lease 30 s TTL with 10 s heartbeat, `STALE_UNKNOWN_OUTCOME_MS` 12 days, history 100 rows / 14 days, outbox caps 500 items / 300 MiB / 100 MiB kept free, item caps 12 photos / 10 MiB (a single photo may be up to 15 MiB). The authoritative values are in `constants.js`.
+
+### Debug flags
+
+Production builds honour three harmless `localStorage` flags, set by opening `/?pc_debug=<names>` (comma-separated, fixed allow-list; the parameter is stripped afterwards). `/?pc_debug=off` clears all three.
+
+| Name | Effect |
+|------|--------|
+| `forceUnreachable` | The reachability probe fails without touching the network |
+| `forceQuota` | `enqueue` rejects with `{code: 'quota'}` |
+| `forceLostResponse` | A replay response is discarded and treated as a network error (tests the lost-response path) |
 
 ## Removed / No Longer Documented
 

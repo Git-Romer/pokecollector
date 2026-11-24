@@ -12,11 +12,6 @@ from models import Card, CollectionItem
 from services.card_visibility import visible_card_filter
 
 MAX_DEX_ID = 1025
-REGION_RANGES = {
-    1: (1, 151), 2: (152, 251), 3: (252, 386), 4: (387, 493),
-    5: (494, 649), 6: (650, 721), 7: (722, 809), 8: (810, 905),
-    9: (906, 1025),
-}
 
 
 def _catalogue_path() -> Path:

@@ -77,8 +77,6 @@ const normalizeType = value => {
   return TYPE_ALIASES[key] || String(value || '').trim() || 'other_unknown'
 }
 
-const percentage = value => `${(Number(value || 0) * 100).toFixed(1)}%`
-
 function DistributionBars({ data, colorOffset = 0, t, labelKeys = ANALYTICS_LABELS, colorMap = {}, normalizeKey }) {
   const totals = new Map()
   Object.entries(data || {}).forEach(([rawName, rawValue]) => {

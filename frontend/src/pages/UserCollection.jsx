@@ -1,3 +1,4 @@
+import WindowedCardGrid from '../components/WindowedCardGrid'
 import { useState, useMemo, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -217,8 +218,7 @@ export default function UserCollection() {
       ) : filtered.length === 0 ? (
         <div className="card text-center py-12 text-text-muted">{t('collection.empty')}</div>
       ) : (
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
-          {filtered.map((item) => {
+        <WindowedCardGrid className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3" items={filtered} renderItem={(item) => {
             const card = item.card
             if (!card) return null
             const imgSrc = resolveCardImageUrl(card)
@@ -242,8 +242,7 @@ export default function UserCollection() {
                 onClick={() => setSelectedCard(card)}
               />
             )
-          })}
-        </div>
+}} />
       )}
 
       {selectedCard && (

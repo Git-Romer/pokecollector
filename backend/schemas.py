@@ -221,6 +221,14 @@ class CollectionItemResponse(BaseModel):
         from_attributes = True
 
 
+class CollectionOfflineManifestResponse(BaseModel):
+    version: int = 1
+    user_id: int
+    items: List[CollectionItemResponse]
+    image_urls: List[str]
+    missing_artwork_card_ids: List[str]
+
+
 class WishlistItemCreate(BaseModel):
     card_id: str
     quantity: int = Field(1, ge=1, le=99)
@@ -699,19 +707,6 @@ class TradeValuationItem(BaseModel):
 class TradeValuationRequest(BaseModel):
     outgoing: List[TradeValuationItem] = Field(default_factory=list)
     incoming: List[TradeValuationItem] = Field(default_factory=list)
-
-
-class SyncLogResponse(BaseModel):
-    id: int
-    started_at: Optional[datetime] = None
-    finished_at: Optional[datetime] = None
-    cards_updated: int = 0
-    sets_updated: int = 0
-    status: str
-    error_message: Optional[str] = None
-
-    class Config:
-        from_attributes = True
 
 
 class ProfileUpdate(BaseModel):

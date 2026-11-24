@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 from api.auth import get_current_user
 from api.cards import _card_to_dict
 from database import get_db
-from models import Card, CollectionItem, ProductPurchase, Set, User, WishlistItem
+from models import Card, CollectionItem, ProductPurchase, User, WishlistItem
 from services.card_values import effective_market_price, normalize_price_field
 from services.card_visibility import visible_card_filter
 from services.digital_sets import digital_sets_enabled

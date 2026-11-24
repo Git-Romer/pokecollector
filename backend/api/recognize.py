@@ -47,7 +47,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 from api.auth import get_current_user
 from database import get_db
-from models import Card, Setting, UserSetting, User, Set
+from models import Card, UserSetting, User, Set
 
 logger = logging.getLogger(__name__)
 

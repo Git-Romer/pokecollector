@@ -19,10 +19,6 @@ def printing_detail_keys(tags) -> frozenset[str]:
     )
 
 
-def printing_detail_names(tags) -> list[str]:
-    return [tag.name for tag in (tags or [])]
-
-
 def get_or_create_printing_detail_tags(
     db: Session,
     user_id: int,

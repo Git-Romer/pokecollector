@@ -6,10 +6,11 @@
   "scripts": {
     "dev": "vite",
     "prebuild": "node scripts/build-holo-css.mjs",
-    "build": "vite build",
+    "build": "vite build && node scripts/build-sw.mjs",
     "check:translations": "node scripts/check-translations.mjs",
     "preview": "vite preview",
-    "test": "npm run check:translations && node --test scripts/translation-validation.test.mjs scripts/configure-public-mode.test.mjs scripts/holo-deployment.test.mjs && vitest run src",
+    "test": "npm run check:translations && node --test scripts/translation-validation.test.mjs scripts/holo-deployment.test.mjs scripts/configure-public-mode.test.mjs scripts/pwa-assets.test.mjs scripts/nginx-config.test.mjs scripts/build-sw.test.mjs scripts/configure-pwa.test.mjs && vitest run src",
+    "test:pwa": "playwright test --config=playwright.pwa.config.js",
     "test:visual": "playwright test",
     "test:visual:webkit": "playwright test --config=playwright.webkit.config.js",
     "test:visual:update": "playwright test --update-snapshots",
@@ -17,6 +18,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.18.0",
+    "@tanstack/react-virtual": "3.14.27",
     "axios": "^1.20.0",
     "clsx": "^2.1.0",
     "date-fns": "^3.3.1",
@@ -33,6 +35,7 @@
     "@types/react": "^18.2.55",
     "@types/react-dom": "^18.2.19",
     "@vitejs/plugin-react": "^6.0.2",
+    "fake-indexeddb": "6.2.5",
     "tailwindcss": "^4.3.3",
     "vite": "^8.3.5",
     "vitest": "^4.1.12"

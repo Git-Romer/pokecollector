@@ -93,21 +93,6 @@ def collection_item_allocated_quantity(
     ).get(collection_item_id, 0)
 
 
-def collection_item_available_quantity(
-    db: Session,
-    user_id: int,
-    collection_item: CollectionItem,
-    exclude_binder_card_id: int | None = None,
-) -> int:
-    allocated = collection_item_allocated_quantity(
-        db,
-        user_id,
-        collection_item.id,
-        exclude_binder_card_id=exclude_binder_card_id,
-    )
-    return max(int(collection_item.quantity or 0) - allocated, 0)
-
-
 def trim_deck_allocations(
     db: Session,
     binder_id: int,

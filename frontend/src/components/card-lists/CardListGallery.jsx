@@ -1,3 +1,4 @@
+import WindowedCardGrid from '../WindowedCardGrid'
 import { CollectionCardDisplay } from '../CollectionCardImage'
 import { CardDisplay, CardRequirementProgress, withCollectionItemState } from '../card-system'
 import { getEffectiveCardPrice } from '../../utils/prices'
@@ -18,8 +19,7 @@ export default function CardListGallery({
   const publicView = mode === 'public'
 
   return (
-    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 sm:gap-3 md:grid-cols-6 lg:grid-cols-8" data-testid="card-list-gallery">
-      {entries.map((entry, index) => {
+    <WindowedCardGrid className="grid grid-cols-3 gap-2 sm:grid-cols-4 sm:gap-3 md:grid-cols-6 lg:grid-cols-8" data-testid="card-list-gallery" items={entries} renderItem={(entry, index) => {
         const card = entry.card || entry
         const requiredQuantity = Math.max(1, Number(entry.required_quantity ?? card.required_quantity ?? card.quantity) || 1)
         const ownedQuantity = Math.min(requiredQuantity, Math.max(0, Number(entry.available_quantity ?? entry.owned_quantity ?? card.owned_quantity) || 0))
@@ -84,7 +84,6 @@ export default function CardListGallery({
             actionLabel={label?.('cardListPicker.openCard', { name: card.name || card.id })}
           />
         )
-      })}
-    </div>
+      }} />
   )
 }

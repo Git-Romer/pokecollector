@@ -1,3 +1,4 @@
+import WindowedCardGrid from '../components/WindowedCardGrid'
 import { useMemo, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -10,7 +11,7 @@ import CardItem from '../components/CardItem'
 import { useVisibleTcgdexLanguages } from '../hooks/useVisibleTcgdexLanguages'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import { getEffectiveCardPrice } from '../utils/prices'
-import { getNextDetailNavigationState, useDetailBackNavigation, useScrollToTopOnPush } from '../hooks/useListScrollRestoration'
+import { getNextDetailNavigationState, useDetailBackNavigation } from '../hooks/useListScrollRestoration'
 import { CardLegend } from '../components/card-system'
 
 function SpeciesArtwork({ species, name }) {
@@ -65,7 +66,6 @@ export default function PokedexSpecies() {
   const entryId = String(dexId || '')
   const location = useLocation()
   const goBack = useDetailBackNavigation('pokedex', '/pokedex')
-  useScrollToTopOnPush()
   const [searchParams] = useSearchParams()
   const isFormMode = searchParams.get('mode') === 'forms' || entryId.includes(':')
   const { t, settings, pricePrimary, pricePrimaryField } = useSettings()
@@ -239,9 +239,7 @@ export default function PokedexSpecies() {
         {!cardsQuery.isLoading && cards.length === 0 && (
           <p className="rounded-2xl border border-border bg-bg-card p-6 text-center text-text-muted">{t('pokedex.noCards')}</p>
         )}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-          {cards.map((card) => <CardItem key={card.id} card={card} dimWhenUnowned />)}
-        </div>
+        <WindowedCardGrid className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6" items={cards} renderItem={card => <CardItem card={card} dimWhenUnowned />} />
       </section>
     </div>
   )

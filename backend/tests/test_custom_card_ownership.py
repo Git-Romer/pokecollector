@@ -243,7 +243,7 @@ class CustomCardOwnershipTests(unittest.TestCase):
 
     def test_analytics_payloads_mark_manual_cards(self):
         private_card = self._create()
-        item = add_to_collection(
+        add_to_collection(
             CollectionItemCreate(card_id=private_card["id"], quantity=2, lang="en"),
             current_user=self.owner,
             db=self.db,

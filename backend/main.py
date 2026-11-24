@@ -1,6 +1,5 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.middleware import SlowAPIMiddleware
@@ -10,6 +9,8 @@ import logging
 import os
 import time
 from pathlib import Path
+
+from services.api_info import API_FEATURES, API_LEVEL
 
 logging.basicConfig(
     level=logging.INFO,
@@ -118,7 +119,7 @@ app.add_middleware(
     allow_origins=os.environ.get("CORS_ORIGINS", "").split(",") if os.environ.get("CORS_ORIGINS") else ["*"],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Expected-User-Id"],
 )
 
 
@@ -148,7 +149,7 @@ async def debug_request_logging(request: Request, call_next):
     return response
 
 # Include routers
-from api import auth, cards, collection, sets, wishlist, binders, decks, dashboard, analytics, sync, products, trades, export, backup, settings, images, social, pokedex, public, profile, scan_jobs, community
+from api import auth, cards, collection, sets, wishlist, binders, decks, dashboard, analytics, sync, products, trades, export, backup, settings, images, social, pokedex, public, profile, scan_jobs, community, push
 from api.github import router as github_router
 from api.recognize import router as recognize_router
 
@@ -203,8 +204,15 @@ app.include_router(public.router, prefix="/api/public", tags=["public"])
 app.include_router(profile.router, prefix="/api/profile", tags=["profile"])
 app.include_router(github_router, prefix="/api/github", tags=["github"])
 app.include_router(community.router, prefix="/api/community", tags=["community"])
+app.include_router(push.router, prefix="/api/push", tags=["push"])
 
 
 @app.get("/api/health")
 def health_check():
-    return {"status": "ok", "service": "pokemon-tcg-collection"}
+    return {
+        "status": "ok",
+        "service": "pokemon-tcg-collection",
+        "version": read_app_version(),
+        "api_level": API_LEVEL,
+        "features": list(API_FEATURES),
+    }

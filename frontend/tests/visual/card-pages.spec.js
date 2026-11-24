@@ -1451,16 +1451,19 @@ test('Deck picker preserves card proportions for a large scrollable collection',
   }))
   await page.goto('/decks/1')
   await expandDeckPicker(page)
+  const grid = page.getByTestId('card-list-picker-grid')
+  await expect(grid.locator('[data-window-item]').first()).toHaveAttribute('aria-setsize', '80')
+  await expect.poll(() => grid.locator('.unified-card-frame').count()).toBeLessThan(80)
+  await expect(page.getByRole('button', { name: 'Load more', exact: true })).toHaveCount(0)
   const firstArtwork = page.getByRole('button', { name: 'Select Bulk card 1', exact: true }).locator('..').locator('.unified-card-art')
-  const laterArtwork = page.getByRole('button', { name: 'Select Bulk card 25', exact: true }).locator('..').locator('.unified-card-art')
   await expect(firstArtwork).toBeVisible()
-  await expect(laterArtwork).toHaveCount(0)
-  await page.getByRole('button', { name: 'Load more' }).click()
-  await expect(laterArtwork).toBeVisible()
-  for (const artwork of [firstArtwork, laterArtwork]) {
-    const box = await artwork.boundingBox()
-    expect(box.height / box.width).toBeGreaterThan(1.3)
-  }
+  const firstBox = await firstArtwork.boundingBox()
+  expect(firstBox.height / firstBox.width).toBeGreaterThan(1.3)
+  await grid.evaluate(element => { element.parentElement.scrollTop = element.parentElement.scrollHeight })
+  const lastArtwork = page.getByRole('button', { name: 'Select Bulk card 80', exact: true }).locator('..').locator('.unified-card-art')
+  await expect(lastArtwork).toBeVisible()
+  const lastBox = await lastArtwork.boundingBox()
+  expect(lastBox.height / lastBox.width).toBeGreaterThan(1.3)
 })
 
 
@@ -1502,7 +1505,7 @@ test('shared Card List picker preserves failed Deck selections after a partial b
   await expect(page.getByLabel('Selected')).toHaveCount(1)
 })
 
-test('Planned Binder and Deck share the same 24-card incremental picker', async ({ page }) => {
+test('Planned Binder picker windows the full collection and selects its final card', async ({ page }) => {
   const largeCollection = Array.from({ length: 80 }, (_, index) => ({
     ...collection[index % collection.length],
     id: 2000 + index,
@@ -1513,10 +1516,15 @@ test('Planned Binder and Deck share the same 24-card incremental picker', async 
 
   await page.goto('/binders/10')
   await page.getByRole('button', { name: 'Add cards' }).click()
-  await expect(page.getByTestId('card-list-picker-grid').locator('.unified-card-frame')).toHaveCount(24)
-  await expect(page.getByRole('button', { name: 'Select Shared card 25' })).toHaveCount(0)
-  await page.getByRole('button', { name: 'Load more' }).click()
-  await expect(page.getByRole('button', { name: 'Select Shared card 25' })).toBeVisible()
+  const grid = page.getByTestId('card-list-picker-grid')
+  await expect(grid.locator('[data-window-item]').first()).toHaveAttribute('aria-setsize', '80')
+  await expect.poll(() => grid.locator('.unified-card-frame').count()).toBeLessThan(80)
+  await expect(page.getByRole('button', { name: 'Load more', exact: true })).toHaveCount(0)
+  await grid.evaluate(element => { element.parentElement.scrollTop = element.parentElement.scrollHeight })
+  const finalCard = page.getByRole('button', { name: 'Select Shared card 80', exact: true })
+  await expect(finalCard).toBeVisible()
+  await finalCard.click()
+  await expect(page.getByRole('button', { name: 'Add (1)', exact: true })).toBeVisible()
 })
 
 test('shared picker keeps exact physical Binder copies independently selectable', async ({ page }) => {

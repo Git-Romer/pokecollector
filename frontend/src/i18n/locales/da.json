@@ -1189,11 +1189,11 @@
     "backupCards": "Kortdata",
     "backupProducts": "Produkter",
     "backupImages": "Billedcache",
-    "clearImageCache": "Ryd billedcache",
-    "clearImageCacheDesc": "Slet alle cachede kortbilleder (kun admin)",
-    "clearImageCacheConfirm": "Er du sikker? Alle cachede billeder vil blive slettet.",
-    "clearImageCacheSuccess": "Billedcache ryddet",
-    "clearImageCacheFailed": "Kunne ikke rydde cache",
+    "clearImageCache": "Slet serverens billedcache",
+    "clearImageCacheDesc": "Slet cachelagrede billeder på serveren for alle brugere. Downloads på enheder og originale uploads bevares.",
+    "clearImageCacheConfirm": "Slet serverens billedcache for alle brugere? Serveren henter billeder igen efter behov. Offline-downloads og originale uploads slettes ikke.",
+    "clearImageCacheSuccess": "Serverens billedcache er slettet",
+    "clearImageCacheFailed": "Kunne ikke slette serverens billedcache",
     "backupButton": "Backup",
     "backupImport": "Importér backup",
     "backupImportDesc": "Importér .sql-fil",
@@ -1357,7 +1357,7 @@
     "min720": "Hver 12. time",
     "min1440": "Hver 24. time",
     "holoEffects": "Avancerede holo-effekter",
-    "holoEffectsDesc": "Matchende godkendte effekter erstatter standardbehandlingen for Holo- og Reverse Holo-kort. Bevæg musen hen over kortene for at afsløre folien med et meget let tilt i din samling. Kortdialogen og den forstørrede visning bruger en fyldigere tilt-effekt. Ingen automatisk glans, når kortet er inaktivt. På understøttede telefoner aktiveres enhedens bevægelsessensor med indbygget browsetilladelse; hold din telefon næsten helt stille i 1,3 sekunder for langsomt at centrere igen. Slået fra som standard; private billeder og brugertilpasset kunst forblir uændrede. Bevægelsen følger din præference for reduceret bevægelse. Effekter: Simon Goellner / pokemon-cards-css (GPL v3)."
+    "holoEffectsDesc": "Matchende godkendte effekter erstatter standardbehandlingen for Holo- og Reverse Holo-kort. Bevæg musen hen over kortene for at afsløre folien med et meget let tilt i din samling. Kortdialogen og den forstørrede visning bruger en fyldigere tilt-effekt. Ingen automatisk glans, når kortet er inaktivt. På understøttede telefoner aktiveres enhedens bevægelsessensor med indbygget browsetilladelse; hold din telefon næsten helt stille i 1,3 sekunder for langsomt at centrere igen. Slået fra som standard; private billeder og brugertilpasset kunst forbliver uændrede. Bevægelsen følger din præference for reduceret bevægelse. Effekter: Simon Goellner / pokemon-cards-css (GPL v3)."
   },
   "publicProfiles": {
     "directory": "Offentlige profiler",
@@ -1582,7 +1582,7 @@
     "continuousCaptureDescription": "Hold kameraet åbent, og tag automatisk billeder, når hvert kort holdes helt stille.",
     "webcamUnsupported": "Kræver HTTPS eller localhost",
     "webcamGuideText": "Hold et kort roligt inden for rammen",
-    "webcamPermissionDenied": "Kameratjenesten blev afvist. Tillad kamerabadgang i dine browserindstillinger, og prøv igen.",
+    "webcamPermissionDenied": "Kameraadgang blev afvist. Tillad kameraadgang i dine browserindstillinger, og prøv igen.",
     "webcamNoCamera": "Intet kamera blev fundet på denne enhed.",
     "webcamStreamError": "Kamerastrømmen kunne ikke startes.",
     "webcamTryAgain": "Prøv igen",
@@ -1870,6 +1870,17 @@
     "rareFinder": "Rare Finder",
     "rareFinderDesc": "Få et Illustration Rare-kort"
   },
+  "sync": {
+    "artworkTitle": "Kortbilleder",
+    "artworkRetry": "Prøv manglende billeder igen",
+    "artworkRetryHint": "Opret forbindelse igen, prøv her, og åbn kortene igen. Hvis automatiske downloads er slået til, prøves samlingsdownload også igen.",
+    "artworkRetryRequested": "Nyt forsøg anmodet. Åbn kortene igen for at indlæse billederne.",
+    "artworkOfflineHint": "Manglende billeder kan prøves igen i synkroniseringscentret, når forbindelsen er tilbage."
+  },
+  "offlineCollection": {
+    "preferencePending": "Gemt på denne enhed. Kontoindstillingen synkroniseres, når der er forbindelse.",
+    "preferenceFailed": "Indstillingen kunne ikke gemmes på enheden. Kontrollér browserlageret, og prøv igen."
+  },
   "bulkRemoval": {
     "select": "Vælg kort",
     "actions": "Valghandlinger",
@@ -1906,7 +1917,7 @@
     "confirmDeck": "Fjern {entries} poster indeholdende {copies} eksemplarer fra dette deck? Din samling og andre lister forbliver uændrede.",
     "collectionHint": "Alle eksemplarer i hver af de markerede poster fjernes. Allokeringer i samlemapper og decks skal frigives separat først.",
     "listHint": "Kun poster på denne liste vil blive fjernet. Din samling og andre lister forbliver uændrede.",
-    "limit": "Vælg op til 500 poster ad gangen. Afgrænset filtret for at vælge færre synlige poster.",
+    "limit": "Vælg op til 500 poster ad gangen. Afgræns filteret for at vælge færre synlige poster.",
     "changed": "Markeringen ændrede sig under bekræftelsen. Kontrollér posterne, og bekræft igen.",
     "failed": "Fjernelsen kunne ikke bekræftes. Genopfrisk siden, før du prøver igen."
   }

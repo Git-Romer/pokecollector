@@ -1,3 +1,4 @@
+import WindowedCardGrid from './WindowedCardGrid'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -6,6 +7,10 @@ import toast from 'react-hot-toast'
 
 import { enqueueScanJob, getScannerConfiguration } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
+import { MAX_PHOTO_BYTES } from '../offline/constants'
+import { submitScanBatch } from '../offline/ops/scanSubmit'
+import { useOutbox } from '../offline/useOutbox'
+import { addUpdateGuard } from '../pwa/register'
 import { isSupportedScannerImage, SCANNER_IMAGE_ACCEPT } from '../utils/scannerImages'
 import ConfirmDialog from './ui/ConfirmDialog'
 import Modal from './ui/Modal'
@@ -60,6 +65,9 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
     if (mode === 'camera-choice') singlePhotoRef.current?.focus()
   }, [mode])
   const stagedFilesRef = useRef([])
+  const submittingRef = useRef(false)
+  const { enabled: queueEnabled, outbox, reachability } = useOutbox()
+  const reachabilityRef = useRef(reachability.state)
   const { t } = useSettings()
   const navigate = useNavigate()
   const { data: scannerConfiguration } = useQuery({
@@ -71,6 +79,13 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
   useEffect(() => {
     stagedFilesRef.current = stagedFiles
   }, [stagedFiles])
+
+  useEffect(() => {
+    reachabilityRef.current = reachability.state
+  }, [reachability.state])
+
+  // The update banner must not reload the page while photos are staged or being saved.
+  useEffect(() => addUpdateGuard(() => stagedFilesRef.current.length > 0 || submittingRef.current), [])
 
   useEffect(() => () => {
     stagedFilesRef.current.forEach(item => URL.revokeObjectURL(item.previewUrl))
@@ -91,6 +106,10 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
       return false
     })
     if (!incoming.length) return
+    if (queueEnabled && incoming.some(file => file.size > MAX_PHOTO_BYTES)) {
+      toast.error(t('sync.photoTooLarge'))
+      return
+    }
     const remaining = Math.max(0, 50 - stagedFilesRef.current.length)
     const accepted = incoming.slice(0, remaining)
     if (accepted.length < incoming.length) toast.error(t('scanner.batchLimitReached'))
@@ -167,12 +186,27 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
 
   const startScanning = async () => {
     if (mode !== 'staging' || !stagedFiles.length || submitting) return
+    submittingRef.current = true
     setSubmitting(true)
     setMode('staging')
     try {
       const individualPositions = stagedFiles
         .map((item, position) => item.individual ? position : null)
         .filter(position => position !== null)
+      if (queueEnabled) {
+        const result = await submitScanBatch({
+          files: stagedFiles.map(item => item.file),
+          individualPositions,
+          outbox,
+          reachability: reachabilityRef.current,
+        })
+        clearFiles()
+        onClose?.()
+        if (result.mode === 'sent' && result.jobIds.length === 1) navigate(`/scans/${result.jobIds[0]}`)
+        else if (result.mode === 'sent') navigate('/scans')
+        else toast.success(t('sync.savedOffline'))
+        return
+      }
       const job = await enqueueScanJob(
         stagedFiles.map(item => item.file),
         individualPositions,
@@ -181,8 +215,22 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
       onClose?.()
       navigate(`/scans/${job.id}`)
     } catch (error) {
-      toast.error(error?.response?.data?.detail || t('scanner.batchSubmitFailed'))
+      // Only the durable prefix left staging. Keep the unsaved photos and their
+      // individual flags for retry; already queued chunks have their own identity.
+      if (queueEnabled && Number.isInteger(error?.savedPhotoCount) && error.savedPhotoCount > 0) {
+        const persisted = new Set(stagedFiles.slice(0, error.savedPhotoCount).map(item => item.id))
+        stagedFiles.filter(item => persisted.has(item.id)).forEach(item => URL.revokeObjectURL(item.previewUrl))
+        const remaining = stagedFilesRef.current.filter(item => !persisted.has(item.id))
+        stagedFilesRef.current = remaining
+        setStagedFiles(remaining)
+        toast.success(t('sync.savedOffline'))
+      }
+      if (error?.code === 'quota' || error?.code === 'too_many_items') toast.error(t('sync.storageFull'))
+      else if (error?.code === 'server_old') toast.error(t('sync.serverTooOld'))
+      else if (error?.code === 'too_large' || error?.code === 'photo_too_large') toast.error(t('sync.photoTooLarge'))
+      else toast.error(error?.response?.data?.detail || t('scanner.batchSubmitFailed'))
     } finally {
+      submittingRef.current = false
       setSubmitting(false)
     }
   }
@@ -253,8 +301,7 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
               maxReached={stagedFiles.length >= 50}
             />
           ) : stagedFiles.length > 0 ? (
-            <div className="grid grid-cols-3 gap-3 sm:grid-cols-5 md:grid-cols-7">
-              {stagedFiles.map((item, index) => (
+            <WindowedCardGrid measureRows className="grid grid-cols-3 gap-3 sm:grid-cols-5 md:grid-cols-7" items={stagedFiles} renderItem={(item, index) => (
                 <div key={item.id} className="space-y-1.5">
                   <div className="relative aspect-[2.5/3.5] overflow-hidden rounded-xl border border-white/10 bg-bg-surface">
                     <img src={item.previewUrl} alt="" className="h-full w-full object-contain" />
@@ -285,8 +332,7 @@ export default function UnifiedCardScanner({ isOpen, onClose }) {
                     </button>
                   )}
                 </div>
-              ))}
-            </div>
+)} />
           ) : (
             <div className="rounded-2xl border-2 border-dashed border-white/10 py-12 text-center text-sm text-text-muted">
               {t('scanner.noPhotosStaged')}

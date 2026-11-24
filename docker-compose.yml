@@ -85,6 +85,8 @@ services:
       - backend
     environment:
       PUBLIC_MODE: ${PUBLIC_MODE:-false}
+      PWA_ENABLED: ${PWA_ENABLED:-}
+      OFFLINE_QUEUE_ENABLED: ${OFFLINE_QUEUE_ENABLED:-}
     ports:
       - "${FRONTEND_PORT:-3000}:80"
 

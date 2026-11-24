@@ -7,7 +7,7 @@ from typing import Optional, List
 from api.auth import get_current_user
 from database import get_db
 from models import Binder, BinderCard, Card, Set, PriceHistory, CustomCardMatch, CollectionCardPhoto, CollectionItem, WishlistItem, User, ImageCache, ProductCard, ProductLedgerEntry, TradeItem
-from schemas import CardBase, CardWithSet, PriceHistoryResponse, CardCustomCreate, CustomCardUpdate, CardCustomImageUpdate
+from schemas import CardBase, PriceHistoryResponse, CardCustomCreate, CustomCardUpdate, CardCustomImageUpdate
 from services import pokemon_api
 from services.card_fallbacks import (
     apply_cross_language_fallbacks,
@@ -38,7 +38,6 @@ from services.tcgdex_languages import english_fallback_languages, has_lang_suffi
 from services.text_search import accent_insensitive_contains, json_array_text_matches, normalize_search_term
 from services.card_state import card_state_summaries
 from services.product_sources import annotate_product_sources
-import datetime
 import re
 from uuid import uuid4
 
