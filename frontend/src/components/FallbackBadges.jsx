@@ -1,14 +1,17 @@
 import clsx from 'clsx'
 import { useSettings } from '../contexts/SettingsContext'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
+import { getCardFallbackQuote } from '../utils/prices'
 
 const sourceLabel = (lang) => (lang ? tcgdexLanguageLabel(lang) : '')
 
 export default function FallbackBadges({ card, className = '', compact = false, variant = 'default' }) {
-  const { t } = useSettings()
+  const { t, pricePrimaryField } = useSettings()
   if (!card) return null
   const dataLang = card.data_source_lang
-  const priceLang = card.price_source_lang
+  const tcgplayer = getCardFallbackQuote(card, pricePrimaryField).source === 'tcgplayer'
+  const priceLang = tcgplayer ? 'en' : card.price_source_lang
+  const priceLabel = tcgplayer ? 'TCGplayer (EN)' : sourceLabel(priceLang)
   const imageLang = card.image_source_lang
   if (!dataLang && !priceLang && !imageLang) return null
 
@@ -51,10 +54,10 @@ export default function FallbackBadges({ card, className = '', compact = false, 
       {priceLang && (
         <span
           className={badgeClass('price')}
-          title={t('fallback.priceFrom').replace('{lang}', sourceLabel(priceLang))}
+          title={t('fallback.priceFrom').replace('{lang}', priceLabel)}
         >
           <span className={dotClass('price')} aria-hidden />
-          {t('fallback.price')} {sourceLabel(priceLang)}
+          {t('fallback.price')} {priceLabel}
         </span>
       )}
       {imageLang && (

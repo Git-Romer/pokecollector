@@ -8,6 +8,7 @@ from api.auth import get_current_user
 from database import get_db
 from models import Binder, BinderCard, Card, Set, PriceHistory, CustomCardMatch, CollectionCardPhoto, CollectionItem, WishlistItem, User, ImageCache, ProductCard, ProductLedgerEntry, TradeItem
 from schemas import CardBase, PriceHistoryResponse, CardCustomCreate, CustomCardUpdate, CardCustomImageUpdate
+from services.collection_variants import CollectionVariant
 from services import pokemon_api
 from services.card_fallbacks import (
     apply_cross_language_fallbacks,
@@ -128,6 +129,9 @@ def _card_to_dict(card: Card, current_user_id: int | None = None) -> dict:
         "price_tcg_normal_market": getattr(card, 'price_tcg_normal_market', None),
         "price_tcg_reverse_market": getattr(card, 'price_tcg_reverse_market', None),
         "price_tcg_holo_market": getattr(card, 'price_tcg_holo_market', None),
+        "price_tcg_first_edition_market": getattr(card, "price_tcg_first_edition_market", None),
+        "price_tcg_usd_to_eur": getattr(card, "price_tcg_usd_to_eur", None),
+        "tcgplayer_fallback_allowed": card.tcgplayer_fallback_allowed,
         "price_source_lang": getattr(card, "price_source_lang", None),
         "variants_normal": getattr(card, "variants_normal", None),
         "variants_reverse": getattr(card, "variants_reverse", None),
@@ -1172,6 +1176,43 @@ def update_card_custom_image(
     db.commit()
     db.refresh(card)
     return _card_to_dict(card)
+
+
+@router.get("/{card_id}/valuation")
+def get_card_valuation(
+    card_id: str,
+    variant: Optional[CollectionVariant] = Query(None),
+    price_field: str = Query("price_trend"),
+    currency: str = Query("EUR", pattern="^[A-Z]{3}$"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return the shared card value and its market/currency provenance.
+
+    Stored Cardmarket prices remain EUR; TCGplayer fallback values use the
+    conversion saved during sync. Display conversion uses the existing rate
+    service. This read never runs a catalogue sync or exposes another owner's
+    private custom cards.
+    """
+    from services.card_values import effective_price_quote
+    from services.exchange_rates import ExchangeRateUnavailable, get_exchange_rate
+
+    card = db.query(Card).filter(
+        Card.id == card_id,
+        visible_any_card_filter(db, current_user.id, "all"),
+    ).first()
+    if card is None:
+        raise HTTPException(status_code=404, detail="Card not found")
+    quote = effective_price_quote(card, variant.value if variant else None, price_field)
+    quote["amount_eur"] = quote["amount"]
+    if currency != "EUR" and quote["amount"] > 0:
+        try:
+            rate = get_exchange_rate("EUR", currency)["rate"]
+        except ExchangeRateUnavailable:
+            raise HTTPException(status_code=503, detail="Currency conversion unavailable") from None
+        quote["amount"] *= rate
+    quote["currency"] = currency
+    return quote
 
 
 @router.get("/{card_id}", response_model=CardBase)

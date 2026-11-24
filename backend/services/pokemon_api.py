@@ -88,6 +88,7 @@ def extract_prices(card_data: Dict) -> Dict[str, Optional[float]]:
         "price_tcg_holo_low": None,
         "price_tcg_holo_mid": None,
         "price_tcg_holo_market": None,
+        "price_tcg_first_edition_market": None,
     }
 
     pricing = card_data.get("pricing") or {}
@@ -114,8 +115,8 @@ def extract_prices(card_data: Dict) -> Dict[str, Optional[float]]:
 
     # TCGPlayer
     tcgplayer = pricing.get("tcgplayer") or {}
-    if tcgplayer:
-        normal = tcgplayer.get("normal") or {}
+    if isinstance(tcgplayer, dict) and tcgplayer.get("unit", "USD") == "USD":
+        normal = tcgplayer.get("normal") or tcgplayer.get("unlimited") or {}
         if normal:
             prices["price_tcg_normal_low"] = normal.get("lowPrice")
             prices["price_tcg_normal_mid"] = normal.get("midPrice")
@@ -126,11 +127,14 @@ def extract_prices(card_data: Dict) -> Dict[str, Optional[float]]:
             prices["price_tcg_reverse_low"] = reverse.get("lowPrice")
             prices["price_tcg_reverse_mid"] = reverse.get("midPrice")
             prices["price_tcg_reverse_market"] = reverse.get("marketPrice")
-        holo = tcgplayer.get("holofoil") or {}
+        holo = tcgplayer.get("holofoil") or tcgplayer.get("unlimited-holofoil") or {}
         if holo:
             prices["price_tcg_holo_low"] = holo.get("lowPrice")
             prices["price_tcg_holo_mid"] = holo.get("midPrice")
             prices["price_tcg_holo_market"] = holo.get("marketPrice")
+        first_edition = tcgplayer.get("1st-edition") or tcgplayer.get("1st-edition-holofoil") or {}
+        if first_edition:
+            prices["price_tcg_first_edition_market"] = first_edition.get("marketPrice")
 
     return prices
 

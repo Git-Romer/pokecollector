@@ -113,6 +113,8 @@ class Card(Base):
     price_tcg_holo_low = Column(Float)
     price_tcg_holo_mid = Column(Float)
     price_tcg_holo_market = Column(Float)
+    price_tcg_first_edition_market = Column(Float)
+    price_tcg_usd_to_eur = Column(Float)  # Saved conversion for fallback valuation only
     price_source_lang = Column(String, nullable=True)  # Set when prices are copied from another TCGdex language
     last_price_sync_attempt_at = Column(DateTime, nullable=True)
     last_price_sync_success_at = Column(DateTime, nullable=True)
@@ -123,6 +125,18 @@ class Card(Base):
     variants_holo = Column(Boolean)
     variants_first_edition = Column(Boolean)
     updated_at = Column(DateTime, default=func.now())
+
+    @property
+    def tcgplayer_fallback_allowed(self):
+        # Derived permission, not a persisted price or a separate preference.
+        if self.lang == "en":
+            return True
+        if self.lang != "de":
+            return False
+        from sqlalchemy.orm import object_session
+        from services.card_values import cross_language_tcgplayer_fallback_enabled
+        db = object_session(self)
+        return db is not None and cross_language_tcgplayer_fallback_enabled(db)
 
     # Relationship to Set via tcg_set_id (viewonly, no DB FK)
     set_ref = relationship(

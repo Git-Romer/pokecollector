@@ -223,6 +223,7 @@ function AdminServerSyncSettings({ user }) {
                       onChange={(val) => handleAdminBooleanSettingToggle('cross_language_price_fallback', val)}
                     />
                   </SettingsRow>
+                  <p className="text-xs text-text-muted" data-testid="price-fallback-market-note">{t('settings.crossLanguagePriceFallbackMarketNote')}</p>
                   <SettingsRow label={t('settings.crossLanguageImageFallback')} description={t('settings.crossLanguageImageFallbackDesc')}>
                     <Toggle
                       value={crossLanguageImageFallback}

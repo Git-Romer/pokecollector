@@ -92,6 +92,9 @@ class CardBase(BaseModel):
     price_tcg_holo_low: Optional[float] = None
     price_tcg_holo_mid: Optional[float] = None
     price_tcg_holo_market: Optional[float] = None
+    price_tcg_first_edition_market: Optional[float] = None
+    price_tcg_usd_to_eur: Optional[float] = None
+    tcgplayer_fallback_allowed: bool = False
     price_source_lang: Optional[str] = None
     # Variants
     variants_normal: Optional[bool] = None
