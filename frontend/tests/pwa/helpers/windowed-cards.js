@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 
 const fixtureErrors = new WeakMap()
+export const cardArtwork = readFileSync(new URL('../../../public/cardback.jpg', import.meta.url))
 export function expectNoCardPageErrors(page) {
   expect(fixtureErrors.get(page) ?? []).toEqual([])
 }
@@ -21,7 +22,7 @@ export async function collectionFixture(page, { holo = false, readySelector = '.
   await page.route('**/api/**', route => {
     const path = new URL(route.request().url()).pathname
     if (path.endsWith('/fingerprint')) return route.fulfill({ json: { tcgCardId: path.split('/').at(-2).replace('_en', ''), language: 'en', sha256: 'a'.repeat(64) } })
-    if (path.startsWith('/api/images/')) return route.fulfill({ status: 302, headers: { location: '/cardback.jpg' } })
+    if (path.startsWith('/api/images/')) return route.fulfill({ body: cardArtwork, contentType: 'image/jpeg' })
     const responses = {
       '/api/health': { status: 'ok', service: 'pokemon-tcg-collection', api_level: 1, features: ['idempotency-v1'] },
       '/api/auth/mode': { multi_user: true }, '/api/auth/me': user,

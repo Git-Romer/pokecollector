@@ -147,13 +147,17 @@ test.describe('sync center', () => {
     test(`storage separates queued photos from total site usage at ${width}px`, async ({ page, context }) => {
       await page.setViewportSize({ width, height: 900 })
       await page.addInitScript(() => {
-        Object.defineProperty(navigator.storage, 'estimate', {
+        // Override the prototype so the fixture also reaches WebKit's wrappers.
+        Object.defineProperty(Object.getPrototypeOf(navigator.storage), 'estimate', {
           configurable: true,
           value: async () => ({ usage: 128 * 1024 * 1024, quota: 40 * 1024 * 1024 * 1024 }),
         })
       })
       await mockApi(context, { health: 'down' })
       await page.goto('/offline')
+      expect(await page.evaluate(() => navigator.storage.estimate())).toEqual({
+        usage: 128 * 1024 * 1024, quota: 40 * 1024 * 1024 * 1024,
+      })
       await expect(page.getByTestId('offline-center')).toBeVisible()
       await expect(page.getByText('Storage', { exact: true })).toHaveCount(1)
       await expect(page.getByText('Photos waiting to upload: 0.0 MB', { exact: true })).toBeVisible()

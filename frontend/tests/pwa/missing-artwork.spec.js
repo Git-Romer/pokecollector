@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { collectionFixture, expectNoCardPageErrors } from './helpers/windowed-cards'
+import { cardArtwork, collectionFixture, expectNoCardPageErrors } from './helpers/windowed-cards'
 
 test('one Sync center retry retries failed artwork without starting a server sync', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
@@ -13,7 +13,7 @@ test('one Sync center retry retries failed artwork without starting a server syn
   await page.route('**/api/images/**', route => {
     if (failing) return route.abort('connectionfailed')
     retried.push(route.request().url())
-    return route.fulfill({ status: 302, headers: { location: '/cardback.jpg' } })
+    return route.fulfill({ body: cardArtwork, contentType: 'image/jpeg' })
   })
   await page.reload()
   await expect(page.locator('.unified-card-image-error').first()).toBeVisible()

@@ -363,6 +363,7 @@ test('Reset requires confirmation and cancellation preserves offline data', asyn
   await saved(panel)
   await page.getByRole('button', { name: 'Reset', exact: true }).click()
   await expect(dialog).toBeVisible()
+  await expect(dialog).toBeFocused()
   await page.keyboard.press('Escape')
   await expect(dialog).toHaveCount(0)
   expect(await imageCount(page)).toBe(3)
