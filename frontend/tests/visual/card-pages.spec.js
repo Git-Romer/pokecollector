@@ -1141,6 +1141,9 @@ test('real Analytics duplicate list stays visually aligned with Collection', asy
   await page.goto('/analytics')
   await expect(page.getByRole('heading', { name: 'Analytics' })).toBeVisible()
   await expectVisibleArtwork(page)
+  const views = page.getByRole('group', { name: 'Duplicate view', exact: true })
+  await expect(views.getByRole('button', { name: 'By card', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(views.getByRole('button', { name: 'By Pokémon', exact: true })).toHaveAttribute('aria-pressed', 'false')
   await expect(page.locator('main')).toHaveScreenshot('analytics-duplicates.png')
 })
 
