@@ -882,7 +882,7 @@ export default function CardSearch() {
               {filters.artist && (
                 <button
                   type="button"
-                  onClick={() => navigate(`/artist/${encodeURIComponent(filters.artist)}`)}
+                  onClick={() => navigate(`/artist/${encodeURIComponent(filters.artist)}?artist_match=contains`)}
                   className="btn-ghost text-sm py-1.5"
                 >
                   <ListChecks size={14} /> {t('artistChecklist.title')}

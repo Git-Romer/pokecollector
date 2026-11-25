@@ -5,6 +5,7 @@ import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Search, LayoutGrid, 
 import CardImage from '../components/CardImage'
 import WindowedCardGrid from '../components/WindowedCardGrid'
 import { resolveCardImageUrl } from '../utils/imageUrl'
+import { priceFieldFromPrimary } from '../utils/prices'
 import clsx from 'clsx'
 import { getArtistsIndex } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
@@ -215,7 +216,7 @@ export default function Artists() {
     sort_order: sortOrder,
     page,
     page_size: PAGE_SIZE,
-    price_field: `price_${settings?.price_primary || 'trend'}`,
+    price_field: priceFieldFromPrimary(settings?.price_primary),
   }), [q, lang, sortBy, sortOrder, page, settings?.price_primary])
 
   const { data, isLoading, isFetching, error, refetch } = useQuery({

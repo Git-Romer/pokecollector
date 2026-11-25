@@ -65,9 +65,12 @@ recognizes code-number pairs such as `PFL 001` or `30C 001`. Set codes may start
 with a digit. A code that matches no set falls back to the name search, so card
 names that look like a code-number pair (`151 025`) stay reachable.
 
-`GET /api/cards/artist-checklist` takes `artist` (accent-insensitive substring),
-`lang`, `ownership`, `sort_by` (`number`, `name`, `price`), `sort_order`, `page`
-and `page_size`. Rows are grouped by card identity (`tcg_card_id`), so one card
+`GET /api/cards/artist-checklist` takes `artist`, `artist_match`, `lang`,
+`ownership`, `sort_by` (`number`, `name`, `price`), `sort_order`, `price_field`,
+`page` and `page_size`. The artist page sends `artist_match=exact`, matching the
+trimmed catalogue name exactly so similarly named artists stay separate. API
+clients can use `artist_match=contains` (the compatibility default) for an
+accent-insensitive substring search; unknown matching modes return HTTP 400. Rows are grouped by card identity (`tcg_card_id`), so one card
 with several language printings appears once; with `lang=all` a card counts as
 owned when any printing is owned, while a specific `lang` judges only that
 printing. Ownership filters the returned page only: the response reports
@@ -82,8 +85,8 @@ ownership.
 returns one row per artist with `total_count`, `owned_count`, `missing_count`,
 `progress`, `missing_value` and the artist's `languages`. Card identities are
 grouped exactly as in the checklist, so a single matching artist reports the
-same totals on both pages; a substring that matches several artists is merged
-into one checklist scope but listed as separate directory rows. The default sort
+same totals on both pages. Only an explicit substring checklist scope can merge
+several artists; directory links always request the exact artist. The default sort
 is completion descending (`sort_by=progress&sort_order=desc`), with artist names
 ascending as the stable tie-breaker. Explicit sort parameters override it.
 
@@ -95,10 +98,22 @@ multiple slots. Ties use the canonical identity and printing ID for stable order
 Artists with fewer than three identities return fewer cards; unpriced identities
 fill any remaining slots after priced cards, with a null amount rather than zero.
 
-The optional `price_field` query parameter selects the shared valuation field
+On both endpoints, the optional `price_field` query parameter selects the shared valuation field
 (default `price_trend`, with the same Cardmarket fallbacks and matching-variant
 TCGplayer EUR conversion as other valuations). German TCGplayer fallback respects
 `cross_language_price_fallback`; other non-English languages do not gain it.
+Missing-value totals and checklist price sorting use those same resolved EUR
+values, not raw provider amounts. For a grouped identity, the first priced visible
+printing is selected in display-language, English, Japanese, then canonical
+language order. Unknown prices contribute nothing to the missing-value estimate
+and sort last, without changing the printing's stored prices. The frontend sends
+the account's price preference to both endpoints.
+
+The directory scans lightweight visible catalogue columns once per request,
+with bounded ownership/settings queries, and values gallery artwork only for
+the requested artist page. Rendering windowing does not eliminate that backend
+scan; larger installations should measure API latency separately from rendering.
+
 Preview entries include `id`, `tcg_card_id`, `name`, `lang`, `images_small`,
 `images_large`, and a `valuation` object with its amount and price provenance.
 Artwork can be requested through `/api/images/card/{id}/small`. Ranking uses

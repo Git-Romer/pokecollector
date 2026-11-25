@@ -40,6 +40,7 @@ from services.tcgdex_languages import english_fallback_languages, has_lang_suffi
 from services.text_search import accent_insensitive_contains, json_array_text_matches, normalize_search_term
 from services.card_state import card_state_summaries
 from services.artist_gallery import select_artist_previews
+from services.card_values import effective_market_price, cross_language_tcgplayer_fallback_enabled
 from models import Setting
 from services.product_sources import annotate_product_sources
 import re
@@ -226,6 +227,8 @@ def _owned_card_ids(db: Session, user_id: int, card_ids: List[str]) -> set[str]:
 
 
 _ARTIST_LANG_ORDER = {"en": 0, "de": 1, "ja": 2}
+_ARTIST_VALUE_COLUMNS = [column for column in Card.__table__.columns
+                         if column.name.startswith(("price_", "variants_"))]
 
 
 def _artist_lang_rank(lang: str | None) -> tuple:
@@ -933,13 +936,15 @@ def search_cards(
 
 @router.get("/artist-checklist")
 def artist_checklist(
-    artist: str = Query(..., min_length=1, description="Artist name substring"),
+    artist: str = Query(..., min_length=1, description="Artist name"),
+    artist_match: str = "contains",
     lang: Optional[str] = Query("all", description="Language filter: supported TCGdex language code or 'all'"),
     ownership: Optional[str] = Query(None, description="Ownership filter: 'owned' or 'missing'"),
     page: int = 1,
     page_size: int = 60,
     sort_by: str = "number",
     sort_order: str = "asc",
+    price_field: str = "price_trend",
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -949,6 +954,8 @@ def artist_checklist(
     one checklist entry. Ownership is aggregated across every visible printing
     unless a specific language narrows participation to that language's rows.
     """
+    if artist_match not in {"exact", "contains"}:
+        raise HTTPException(status_code=400, detail="artist_match must be 'exact' or 'contains'")
     artist_query = normalize_search_term(artist)
     ownership_value = normalize_search_term(ownership).lower()
     if not artist_query or len(artist_query) > 100:
@@ -968,7 +975,8 @@ def artist_checklist(
     display_lang = get_tcgdex_display_language(db, current_user.id)
 
     try:
-        artist_clause = accent_insensitive_contains(db, Card.artist, artist_query)
+        artist_clause = (func.trim(Card.artist) == artist_query if artist_match == "exact"
+                         else accent_insensitive_contains(db, Card.artist, artist_query))
         if artist_clause is None:
             return _empty_artist_checklist(artist_query, page, page_size)
 
@@ -982,8 +990,8 @@ def artist_checklist(
                 Card.number,
                 Card.set_id,
                 Card.artist,
-                Card.price_market,
                 Card.name,
+                *_ARTIST_VALUE_COLUMNS,
             )
             .filter(
                 Card.is_custom == False,
@@ -1017,6 +1025,7 @@ def artist_checklist(
                 set_fallback[tcg_set_id] = (rank, set_name, release_date)
 
         summaries = card_state_summaries(db, current_user.id, [row.id for row in rows])
+        allow_cross_language = cross_language_tcgplayer_fallback_enabled(db)
 
         def set_meta(set_id: str | None, row_lang: str | None):
             if not set_id:
@@ -1071,6 +1080,8 @@ def artist_checklist(
                 "owned_variants": summary.get("owned_variants", []),
                 "wishlisted": summary.get("wishlisted", False),
                 "price_market": row.price_market,
+                "_value": effective_market_price(row, price_field=price_field,
+                                                 allow_cross_language=allow_cross_language) or None,
                 "_name": row.name,
             })
 
@@ -1116,17 +1127,10 @@ def artist_checklist(
             language's printing has one; use that price rather than treating
             the whole card as priceless.
             """
-            printings = group["printings"]
-            for preferred in (display_lang, "en", "ja"):
-                for printing in printings:
-                    if printing["lang"] == preferred and printing["price_market"] is not None:
-                        return printing["price_market"]
-            for printing in sorted(
-                printings, key=lambda item: (_artist_lang_rank(item["lang"]), item["id"])
-            ):
-                if printing["price_market"] is not None:
-                    return printing["price_market"]
-            return None
+            return _artist_index_representative_price(
+                {printing["lang"]: printing["_value"] for printing in group["printings"]},
+                display_lang,
+            )
 
         missing_value = 0.0
         for group in scope:
@@ -1162,7 +1166,7 @@ def artist_checklist(
 
         def price_sort_key(group: dict):
             representative = group["representative"]
-            price = representative["price_market"]
+            price = representative_price(group)
             return (
                 float(price) if price is not None else 0.0,
                 group["set_release_date"] or "",
@@ -1173,7 +1177,7 @@ def artist_checklist(
             )
 
         def price_primary_missing(group: dict) -> bool:
-            return group["representative"]["price_market"] is None
+            return representative_price(group) is None
 
         def name_sort_key(group: dict):
             representative = group["representative"]
@@ -1322,8 +1326,7 @@ def artists_index(
             Card.name,
             Card.images_small,
             Card.images_large,
-            *[column for column in Card.__table__.columns
-              if column.name.startswith(("price_", "variants_"))],
+            *_ARTIST_VALUE_COLUMNS,
         ).filter(
             Card.is_custom == False,
             visible_card_filter(db, current_user.id, search_lang),
@@ -1342,8 +1345,7 @@ def artists_index(
         gallery_rows = {}
         for row in rows:
             gallery_rows.setdefault((row.artist or "").strip(), []).append(row)
-        fallback_setting = db.query(Setting).filter(Setting.key == "cross_language_price_fallback").first()
-        allow_cross_language = (fallback_setting is None or str(fallback_setting.value).lower() in {"true", "1", "yes", "on"})
+        allow_cross_language = cross_language_tcgplayer_fallback_enabled(db)
 
         # One query for this user's owned printings; a user's collection is far
         # smaller than the catalogue, so no IN list over 54k card ids is needed.
@@ -1364,7 +1366,9 @@ def artists_index(
         card_identity: dict[str, str] = {}
         scope_languages: set[str] = set()
         for row in rows:
-            card_id, tcg_card_id, row_lang, artist, price = row.id, row.tcg_card_id, row.lang, row.artist, row.price_market
+            card_id, tcg_card_id, row_lang, artist = row.id, row.tcg_card_id, row.lang, row.artist
+            price = effective_market_price(row, price_field=price_field,
+                                           allow_cross_language=allow_cross_language) or None
             name = (artist or "").strip()
             if not name:
                 continue

@@ -16,8 +16,8 @@ import WindowedCardGrid from '../components/WindowedCardGrid'
 import { useSettings } from '../contexts/SettingsContext'
 import { resolveCardImageUrl } from '../utils/imageUrl'
 import { normalizeTcgdexLanguage } from '../utils/tcgdexLanguages'
-import { useScrollToTopOnPush } from '../hooks/useListScrollRestoration'
 import { CardDisplay } from '../components/card-system'
+import { getEffectiveCardPrice, priceFieldFromPrimary } from '../utils/prices'
 import { CardModal } from '../components/CardItem'
 import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
 
@@ -103,8 +103,7 @@ export default function ArtistChecklist() {
   const navigate = useNavigate()
   const { artistName } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { t, formatPrice } = useSettings()
-  useScrollToTopOnPush()
+  const { t, formatPrice, settings } = useSettings()
 
   const artistQuery = decodeArtistParam(artistName)
   const { lang, ownership, sortBy, sortOrder, page } = useMemo(
@@ -132,13 +131,15 @@ export default function ArtistChecklist() {
 
   const queryParams = useMemo(() => ({
     artist: artistQuery,
+    artist_match: searchParams.get('artist_match') === 'contains' ? 'contains' : 'exact',
     lang,
     ownership: ownership || undefined,
     page,
     page_size: PAGE_SIZE,
     sort_by: sortBy,
     sort_order: sortOrder,
-  }), [artistQuery, lang, ownership, page, sortBy, sortOrder])
+    price_field: priceFieldFromPrimary(settings?.price_primary),
+  }), [artistQuery, lang, ownership, page, sortBy, sortOrder, settings?.price_primary, searchParams])
 
   const { data, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ['artist-checklist', queryParams],
@@ -216,7 +217,7 @@ export default function ArtistChecklist() {
 
   const renderCard = (card) => {
     const printings = Array.isArray(card.printings) ? card.printings : []
-    const price = card.price_market ?? card.price_trend ?? null
+    const price = getEffectiveCardPrice(card, null, priceFieldFromPrimary(settings?.price_primary))
     return (
       <CardDisplay
         key={card.id}
