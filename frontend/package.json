@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.18.0",
+    "@tanstack/react-virtual": "3.14.27",
     "axios": "^1.20.0",
     "clsx": "^2.1.0",
     "date-fns": "^3.3.1",

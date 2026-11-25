@@ -920,7 +920,10 @@
     "setLangFilter": "언어별 세트 필터",
     "searchLangFilter": "언어별 검색 필터"
   },
-  "variants": {
+  "artists": {
+    "galleryView": "갤러리 보기",
+    "listView": "목록 보기",
+    "featuredCards": "대표 카드",
     "label": "변형",
     "none": "- 변형 없음 -",
     "Normal": "Normal",

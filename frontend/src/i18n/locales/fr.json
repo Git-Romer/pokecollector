@@ -920,7 +920,10 @@
     "setLangFilter": "Filtrer les sets par langue",
     "searchLangFilter": "Filtrer la recherche par langue"
   },
-  "variants": {
+  "artists": {
+    "galleryView": "Vue galerie",
+    "listView": "Vue liste",
+    "featuredCards": "Cartes à la une",
     "label": "Variante",
     "none": "- Aucune variante -",
     "Normal": "Normal",

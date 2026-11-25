@@ -98,6 +98,7 @@ Review should focus on whether the idea belongs in the shared system and whether
 
 ## Contributor checklist
 
+- Use `WindowedCardGrid` for new or changed card grids, including grouped checklists and artwork-led overview tiles. Lazy images and pagination alone do not bound mounted card controllers. Follow the [grid performance contract](FRONTEND.md#card-grid-performance) and explain any intentionally small, fixed-size exception in the pull request.
 - Identify the closest existing full-card, compact-row, ranking, selectable, comparison, stack, dialog, and legend patterns before starting.
 - Use shared components where they fit; explain intentional differences in the pull request.
 - Check real data combinations: owned/unowned, wishlist, multiple variants,
@@ -124,5 +125,6 @@ Maintainers and AI-assisted reviews should use this checklist for every pull req
 6. Test representative real pages on desktop and mobile. Use Chromium and WebKit/Safari for browser-facing loading or layout changes.
 7. If the design is genuinely new, help the contributor integrate it cleanly or promote it into a shared pattern instead of rejecting the idea.
 8. Rework inconsistent details before merge and update this guide when the accepted visual language changes.
+9. Confirm grid windowing is shared rather than reimplemented. Check mounted counts with a large result, the last item, full-data totals and selection, group headings, keyboard focus, open dialogs, responsive reflow, and unchanged Holo behaviour. Do not accept a shorter data array as a performance fix.
 
 Automated unit, translation, build, and visual-regression tests remain useful safety nets. The visual suite covers the component gallery plus representative real Collection and Analytics pages on desktop and mobile, with a dedicated WebKit large-list check. Visual consistency is ultimately a review responsibility rather than a code-enforced import restriction.

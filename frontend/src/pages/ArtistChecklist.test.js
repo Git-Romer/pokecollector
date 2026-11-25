@@ -1,11 +1,23 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   decodeArtistParam,
   groupCardsBySet,
   isCardOwned,
+  navigateBackFromArtist,
   parseArtistChecklistState,
 } from './ArtistChecklist'
 import { parseArtistsState } from './Artists'
+
+describe('artist checklist back navigation', () => {
+  it.each([undefined, null, {}, { idx: 0 }, { idx: 2 }, { idx: -1 }, { idx: '2' }])(
+    'always goes up to the artist directory regardless of browser history (%j)',
+    (historyState) => {
+      const navigate = vi.fn()
+      navigateBackFromArtist(navigate, historyState)
+      expect(navigate).toHaveBeenCalledExactlyOnceWith('/artists')
+    },
+  )
+})
 
 describe('artist checklist helpers', () => {
   it('keeps decoded artist names, including ones containing a percent sign', () => {
@@ -93,8 +105,8 @@ describe('artist directory URL state', () => {
     expect(parseArtistsState(new URLSearchParams('sort_by=rarity&page=0'))).toEqual({
       q: '',
       lang: 'all',
-      sortBy: 'name',
-      sortOrder: 'asc',
+      sortBy: 'progress',
+      sortOrder: 'desc',
       page: 1,
     })
   })

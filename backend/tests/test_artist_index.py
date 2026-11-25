@@ -272,6 +272,23 @@ class ArtistIndexTests(unittest.TestCase):
     def _by_name(payload):
         return {artist["name"]: artist for artist in payload["artists"]}
 
+    def test_gallery_previews_are_distinct_descending_and_language_scoped(self):
+        artists = self._index(lang="all")["artists"]
+        for artist in artists:
+            previews = artist["preview_cards"]
+            self.assertLessEqual(len(previews), 3)
+            self.assertEqual(len({c["tcg_card_id"] for c in previews}), len(previews))
+            values = [c["valuation"]["amount"] for c in previews]
+            self.assertEqual(values, sorted(values, key=lambda value: (value is None, -(value or 0))))
+        english = self._index(lang="en")["artists"]
+        self.assertTrue(all(card["lang"] == "en" for artist in english for card in artist["preview_cards"]))
+
+    def test_gallery_uses_whole_catalogue_not_owned_cards_only(self):
+        arita = self._by_name(self._index(lang="en"))["Mitsuhiro Arita"]
+        self.assertEqual(arita["owned_count"], 1)
+        self.assertEqual(len(arita["preview_cards"]), 3)
+        self.assertEqual([card["valuation"]["amount"] for card in arita["preview_cards"]], [10.0, 6.0, 3.5])
+
     def _names(self, **params):
         return [artist["name"] for artist in self._index(**params)["artists"]]
 
@@ -359,6 +376,9 @@ class ArtistIndexTests(unittest.TestCase):
         # Empty q is the same as omitting it.
         self.assertEqual(self._names(q=""), self._names())
 
+    def test_default_sort_is_completion_descending(self):
+        self.assertEqual(self._names(lang="all"), self._names(lang="all", sort_by="progress", sort_order="desc"))
+
     def test_sorting_modes_and_stable_ties(self):
         self.assertEqual(
             self._names(lang="all", sort_by="name", sort_order="asc"),
@@ -409,11 +429,11 @@ class ArtistIndexTests(unittest.TestCase):
 
         self.assertEqual(
             [artist["name"] for artist in first["artists"]],
-            ["5ban Graphics", "Alpha Artist"],
+            ["5ban Graphics", "Mitsuhiro Arita"],
         )
         self.assertEqual(
             [artist["name"] for artist in second["artists"]],
-            ["Mitsuhiro Arita", "Zeta Artist"],
+            ["Alpha Artist", "Zeta Artist"],
         )
         self.assertEqual([artist["name"] for artist in third["artists"]], ["Éclair Baron"])
         self.assertEqual(fourth["artists"], [])

@@ -38,6 +38,8 @@ from services.collection_variants import CANONICAL_VARIANTS
 from services.tcgdex_languages import english_fallback_languages, has_lang_suffix, is_supported_tcgdex_language, normalize_tcgdex_language, strip_lang_suffix
 from services.text_search import accent_insensitive_contains, json_array_text_matches, normalize_search_term
 from services.card_state import card_state_summaries
+from services.artist_gallery import select_artist_previews
+from models import Setting
 from services.product_sources import annotate_product_sources
 import datetime
 import re
@@ -1278,10 +1280,11 @@ def artist_checklist(
 def artists_index(
     q: Optional[str] = Query(None, description="Accent-insensitive artist name substring"),
     lang: Optional[str] = Query("all", description="Language filter: supported TCGdex language code or 'all'"),
-    sort_by: str = "name",
-    sort_order: str = "asc",
+    sort_by: str = "progress",
+    sort_order: str = "desc",
     page: int = 1,
     page_size: int = 50,
+    price_field: str = "price_trend",
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -1313,7 +1316,11 @@ def artists_index(
             Card.tcg_card_id,
             Card.lang,
             Card.artist,
-            Card.price_market,
+            Card.name,
+            Card.images_small,
+            Card.images_large,
+            *[column for column in Card.__table__.columns
+              if column.name.startswith(("price_", "variants_"))],
         ).filter(
             Card.is_custom == False,
             visible_card_filter(db, current_user.id, search_lang),
@@ -1329,6 +1336,11 @@ def artists_index(
         rows = rows_query.all()
         if not rows:
             return _empty_artist_index(page, page_size)
+        gallery_rows = {}
+        for row in rows:
+            gallery_rows.setdefault((row.artist or "").strip(), []).append(row)
+        fallback_setting = db.query(Setting).filter(Setting.key == "cross_language_price_fallback").first()
+        allow_cross_language = (fallback_setting is None or str(fallback_setting.value).lower() in {"true", "1", "yes", "on"})
 
         # One query for this user's owned printings; a user's collection is far
         # smaller than the catalogue, so no IN list over 54k card ids is needed.
@@ -1348,7 +1360,8 @@ def artists_index(
         artist_cards: dict[str, dict[str, dict[str, float | None]]] = {}
         card_identity: dict[str, str] = {}
         scope_languages: set[str] = set()
-        for card_id, tcg_card_id, row_lang, artist, price in rows:
+        for row in rows:
+            card_id, tcg_card_id, row_lang, artist, price = row.id, row.tcg_card_id, row.lang, row.artist, row.price_market
             name = (artist or "").strip()
             if not name:
                 continue
@@ -1415,6 +1428,11 @@ def artists_index(
         total_count = len(artists)
         start_offset = (page - 1) * page_size
         page_artists = artists[start_offset:start_offset + page_size]
+        for artist in page_artists:
+            artist["preview_cards"] = select_artist_previews(
+                gallery_rows[artist["name"]], price_field=price_field,
+                lang=search_lang, allow_cross_language=allow_cross_language,
+            )
 
         return {
             "artists": page_artists,

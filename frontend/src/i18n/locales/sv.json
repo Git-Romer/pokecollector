@@ -920,7 +920,10 @@
     "setLangFilter": "Filtrera set efter språk",
     "searchLangFilter": "Filtrera sökning efter språk"
   },
-  "variants": {
+  "artists": {
+    "galleryView": "Gallerivy",
+    "listView": "Listvy",
+    "featuredCards": "Utvalda kort",
     "label": "Variant",
     "none": "- Ingen variant -",
     "Normal": "Normal",

@@ -112,6 +112,8 @@ class Card(Base):
     price_tcg_holo_low = Column(Float)
     price_tcg_holo_mid = Column(Float)
     price_tcg_holo_market = Column(Float)
+    price_tcg_first_edition_market = Column(Float)
+    price_tcg_usd_to_eur = Column(Float)
     price_source_lang = Column(String, nullable=True)  # Set when prices are copied from another TCGdex language
     last_price_sync_attempt_at = Column(DateTime, nullable=True)
     last_price_sync_success_at = Column(DateTime, nullable=True)

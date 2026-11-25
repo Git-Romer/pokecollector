@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Search } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Search, LayoutGrid, List } from 'lucide-react'
+import CardImage from '../components/CardImage'
+import WindowedCardGrid from '../components/WindowedCardGrid'
+import { resolveCardImageUrl } from '../utils/imageUrl'
 import clsx from 'clsx'
 import { getArtistsIndex } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
@@ -10,6 +13,7 @@ import { normalizeTcgdexLanguage } from '../utils/tcgdexLanguages'
 import TcgdexLanguageSelect from '../components/TcgdexLanguageSelect'
 
 const PAGE_SIZE = 50
+const artistKey = artist => artist.name
 const SEARCH_DEBOUNCE_MS = 300
 const SORT_OPTIONS = ['name', 'cards', 'progress', 'missing']
 
@@ -19,8 +23,8 @@ export function parseArtistsState(searchParams) {
   return {
     q: read('q'),
     lang: normalizeTcgdexLanguage(read('lang') || 'all', 'all'),
-    sortBy: SORT_OPTIONS.includes(requestedSort) ? requestedSort : 'name',
-    sortOrder: read('sort_order') === 'desc' ? 'desc' : 'asc',
+    sortBy: SORT_OPTIONS.includes(requestedSort) ? requestedSort : 'progress',
+    sortOrder: read('sort_order') === 'asc' ? 'asc' : 'desc',
     page: /^[1-9]\d*$/.test(read('page')) ? Number(read('page')) : 1,
   }
 }
@@ -31,7 +35,12 @@ function clampPercent(value) {
   return Math.min(100, Math.max(0, Math.round(numeric * 10) / 10))
 }
 
-function ArtistRow({ artist, t, formatPrice }) {
+export function artistHref(name, lang = 'all') {
+  const path = `/artist/${encodeURIComponent(name || '')}`
+  return lang === 'all' ? path : `${path}?${new URLSearchParams({ lang })}`
+}
+
+function ArtistRow({ artist, t, formatPrice, lang }) {
   const total = Math.max(0, Number(artist?.total_count) || 0)
   const owned = Math.max(0, Number(artist?.owned_count) || 0)
   const missing = Math.max(0, Number(artist?.missing_count ?? total - owned) || 0)
@@ -44,7 +53,7 @@ function ArtistRow({ artist, t, formatPrice }) {
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 px-3 py-2.5 sm:px-4">
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
           <Link
-            to={`/artist/${encodeURIComponent(artist.name || '')}`}
+            to={artistHref(artist.name, lang)}
             title={artist.name}
             className="min-w-0 truncate text-sm font-medium text-text-primary transition-colors group-hover:text-brand-red focus-visible:text-brand-red after:absolute after:inset-0 after:content-['']"
           >
@@ -111,9 +120,44 @@ function ArtistRow({ artist, t, formatPrice }) {
   )
 }
 
+export function ArtistGalleryTile({ artist, t, lang, formatPrice }) {
+  const total = Math.max(0, Number(artist.total_count) || 0)
+  const owned = Math.max(0, Number(artist.owned_count) || 0)
+  const missing = Math.max(0, Number(artist.missing_count ?? total - owned) || 0)
+  const percent = clampPercent(artist.progress ?? (total ? owned / total * 100 : 0))
+  const cards = Array.isArray(artist.preview_cards) ? artist.preview_cards.slice(0, 3) : []
+  return (
+    <article className="card group relative flex min-w-0 flex-col overflow-hidden p-0 transition-colors hover:border-text-muted/50 focus-within:ring-2 focus-within:ring-brand-red" data-artist={artist.name}>
+      <div className="grid grid-cols-6 items-center gap-2 bg-bg-primary/40 p-4 pb-3" aria-label={t('artists.featuredCards')}>
+        {cards.map((card, index) => (
+          <div key={card.tcg_card_id} className={clsx('col-span-2 aspect-[2.5/3.5] min-w-0', cards.length === 1 && 'col-start-3', cards.length === 2 && index === 0 && 'col-start-2')} title={`${card.name}${card.valuation?.amount != null ? ` · ${formatPrice(card.valuation.amount)}` : ''}`}>
+            <CardImage src={resolveCardImageUrl(card)} alt={card.name} className="h-full w-full rounded-md object-contain" compactError />
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-1 flex-col gap-2.5 p-4 pt-2">
+        <h2 className="min-w-0 text-base font-semibold leading-snug text-text-primary">
+          <Link to={artistHref(artist.name, lang)} className="after:absolute after:inset-0 after:content-[''] focus:outline-none" title={artist.name}>
+            {artist.name}
+          </Link>
+        </h2>
+        <div className="mt-auto flex flex-wrap items-baseline gap-x-1 text-xs tabular-nums text-text-secondary">
+          <span className={percent === 100 ? 'text-green' : 'text-text-primary'}>{owned.toLocaleString()} / {total.toLocaleString()}</span>
+          <span>{t('artists.ownedOf')}</span>
+          <span className="ml-auto text-text-muted">{t('artists.missing').replace('{count}', missing.toLocaleString())}</span>
+        </div>
+        <div className="hp-bar-track" role="progressbar" aria-label={t('artists.progress').replace('{artist}', artist.name)} aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100}>
+          <div className={clsx('hp-bar-fill', percent >= 66 ? 'healthy' : percent >= 33 ? 'medium' : 'low')} style={{ width: `${percent}%` }} />
+        </div>
+      </div>
+    </article>
+  )
+}
+
 export default function Artists() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const { t, formatPrice } = useSettings()
+  const { t, formatPrice, settings } = useSettings()
+  const view = searchParams.get('view') === 'list' ? 'list' : 'gallery'
 
   const { q, lang, sortBy, sortOrder, page } = useMemo(
     () => parseArtistsState(searchParams),
@@ -137,8 +181,8 @@ export default function Artists() {
       const value = String(rawValue ?? '').trim()
       const isDefault = (key === 'q' && value === '')
         || (key === 'lang' && value === 'all')
-        || (key === 'sort_by' && value === 'name')
-        || (key === 'sort_order' && value === 'asc')
+        || (key === 'sort_by' && value === 'progress')
+        || (key === 'sort_order' && value === 'desc')
         || (key === 'page' && (value === '' || value === '1'))
       if (!value || isDefault) next.delete(key)
       else next.set(key, value)
@@ -171,7 +215,8 @@ export default function Artists() {
     sort_order: sortOrder,
     page,
     page_size: PAGE_SIZE,
-  }), [q, lang, sortBy, sortOrder, page])
+    price_field: `price_${settings?.price_primary || 'trend'}`,
+  }), [q, lang, sortBy, sortOrder, page, settings?.price_primary])
 
   const { data, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ['artists-index', queryParams],
@@ -329,10 +374,21 @@ export default function Artists() {
           </div>
         </div>
 
-        <p className="border-t border-border pt-3 text-xs text-text-muted" aria-live="polite">
-          {showing}
-          {isFetching && <span className="ml-1">{t('common.updating')}</span>}
-        </p>
+        <div className="flex items-center justify-between gap-2 border-t border-border pt-3">
+          <p className="text-xs text-text-muted" aria-live="polite">
+            {showing}
+            {isFetching && <span className="ml-1">{t('common.updating')}</span>}
+          </p>
+          <div className="flex gap-1" role="group" aria-label={t('artists.title')}>
+            {[['gallery', LayoutGrid, 'galleryView'], ['list', List, 'listView']].map(([value, Icon, label]) => (
+              <button key={value} type="button" aria-label={t(`artists.${label}`)} title={t(`artists.${label}`)} aria-pressed={view === value}
+                onClick={() => updateParams({ view: value === 'gallery' ? '' : value }, { resetPage: false, replace: true })}
+                className={`btn-ghost h-11 w-11 justify-center p-0 ${view === value ? 'bg-bg-card text-text-primary' : 'text-text-muted'}`}>
+                <Icon size={18} aria-hidden="true" />
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* ─── Artist list ──────────────────────────────────────────── */}
@@ -359,6 +415,16 @@ export default function Artists() {
             </button>
           )}
         </div>
+      ) : view === 'gallery' ? (
+        <WindowedCardGrid
+          items={artists}
+          getKey={artistKey}
+          measureRows
+          overscanItems={12}
+          label={t('artists.title')}
+          className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3"
+          renderItem={artist => <ArtistGalleryTile artist={artist} t={t} lang={lang} formatPrice={formatPrice} />}
+        />
       ) : (
         <ul className="card divide-y divide-border overflow-hidden p-0">
           {artists.map((artist) => (
@@ -367,6 +433,7 @@ export default function Artists() {
               artist={artist}
               t={t}
               formatPrice={formatPrice}
+              lang={lang}
             />
           ))}
         </ul>

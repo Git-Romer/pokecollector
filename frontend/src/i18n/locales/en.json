@@ -339,9 +339,12 @@
     "ownershipMissing": "Missing"
   },
   "artists": {
+    "galleryView": "Gallery view",
+    "listView": "List view",
+    "featuredCards": "Featured cards",
     "title": "Artists",
     "count": "artists",
-    "subtitle": "Every artist in the catalogue, with how many of their cards you own.",
+    "subtitle": "Every artist in the catalogue, with how many of their cards you own. Each gallery preview shows up to three of their most valuable cards.",
     "searchPlaceholder": "Search artists",
     "language": "Language",
     "allLanguages": "All languages",

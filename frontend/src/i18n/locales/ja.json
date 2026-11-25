@@ -920,7 +920,10 @@
     "setLangFilter": "言語でセットをフィルター",
     "searchLangFilter": "言語で検索をフィルター"
   },
-  "variants": {
+  "artists": {
+    "galleryView": "ギャラリー表示",
+    "listView": "リスト表示",
+    "featuredCards": "注目のカード",
     "label": "バリアント",
     "none": "- バリアントなし -",
     "Normal": "Normal",

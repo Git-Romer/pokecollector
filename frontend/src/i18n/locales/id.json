@@ -921,7 +921,10 @@
     "setLangFilter": "Filter set berdasarkan bahasa",
     "searchLangFilter": "Filter pencarian berdasarkan bahasa"
   },
-  "variants": {
+  "artists": {
+    "galleryView": "Tampilan galeri",
+    "listView": "Tampilan daftar",
+    "featuredCards": "Kartu unggulan",
     "label": "Varian",
     "none": "- Tanpa Varian -",
     "Normal": "Normal",

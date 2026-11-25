@@ -174,6 +174,8 @@ def _run_migrations(conn):
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS price_tcg_holo_low FLOAT",
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS price_tcg_holo_mid FLOAT",
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS price_tcg_holo_market FLOAT",
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS price_tcg_first_edition_market FLOAT",
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS price_tcg_usd_to_eur FLOAT",
         # v40: Add variant boolean columns
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS variants_normal BOOLEAN",
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS variants_reverse BOOLEAN",
