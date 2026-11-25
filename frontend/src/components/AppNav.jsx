@@ -9,6 +9,8 @@ const PAGE_TITLE_KEYS = {
   '/pokedex':    'nav.pokedex',
   '/search':     'nav.cardSearch',
   '/sets':       'nav.sets',
+  '/artists':    'nav.artists',
+  '/artist':     'artistChecklist.title',
   '/analytics':  'nav.analytics',
   '/binders':    'nav.binders',
   '/decks':      'nav.binders',

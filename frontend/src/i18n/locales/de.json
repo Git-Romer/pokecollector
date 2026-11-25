@@ -1611,7 +1611,10 @@
     "setLangFilter": "Sets nach Sprache filtern",
     "searchLangFilter": "Suche nach Sprache filtern"
   },
-  "variants": {
+  "artists": {
+    "galleryView": "Galerieansicht",
+    "listView": "Listenansicht",
+    "featuredCards": "Ausgewählte Karten",
     "label": "Variante",
     "none": "- Keine Variante -",
     "Normal": "Normal",

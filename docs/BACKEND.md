@@ -26,6 +26,8 @@ FastAPI app entry point: `backend/main.py`.
 | Method | Path | Notes |
 |--------|------|-------|
 | GET | `/api/cards/search` | Local card search |
+| GET | `/api/cards/artist-checklist` | Every catalogue card by an artist with per-printing ownership and progress |
+| GET | `/api/cards/artists` | Artist directory with per-artist owned counts and missing value |
 | GET | `/api/cards/custom` | List the current user's custom cards and shared templates |
 | POST | `/api/cards/custom` | Create an owner-scoped custom card |
 | POST | `/api/cards/custom/{card_id}/clone` | Copy a shared template into an independent private card |
@@ -52,13 +54,70 @@ FastAPI app entry point: `backend/main.py`.
 
 `GET /api/cards/search` accepts `q` (with `name` as a compatibility alias),
 `number`, `set_id`, `type`, `category`, `subtype`, `rarity`, `artist`,
-`rule_text`, `hp_min`, `hp_max`, `dex_id`, `lang`, `sort_by`, `sort_order`,
-`page`, and `page_size`. Text filters are accent-insensitive. `rule_text`
+`rule_text`, `hp_min`, `hp_max`, `dex_id`, `lang`, `ownership`, `sort_by`,
+`sort_order`, `page`, and `page_size`. `ownership=owned|missing` keeps cards
+whose collection quantity is positive or zero respectively, and the response
+carries an `owned_count` alongside `total_count`. Text filters are
+accent-insensitive. `rule_text`
 searches card effects plus attack/ability names and effects. Card numbers use
 the same leading-zero and alphanumeric matching as exact lookup, and `q` also
 recognizes code-number pairs such as `PFL 001` or `30C 001`. Set codes may start
 with a digit. A code that matches no set falls back to the name search, so card
 names that look like a code-number pair (`151 025`) stay reachable.
+
+`GET /api/cards/artist-checklist` takes `artist`, `artist_match`, `lang`,
+`ownership`, `sort_by` (`number`, `name`, `price`), `sort_order`, `price_field`,
+`page` and `page_size`. The artist page sends `artist_match=exact`, matching the
+trimmed catalogue name exactly so similarly named artists stay separate. API
+clients can use `artist_match=contains` (the compatibility default) for an
+accent-insensitive substring search; unknown matching modes return HTTP 400. Rows are grouped by card identity (`tcg_card_id`), so one card
+with several language printings appears once; with `lang=all` a card counts as
+owned when any printing is owned, while a specific `lang` judges only that
+printing. Ownership filters the returned page only: the response reports
+`owned_count`, `total_count`, `progress` and `missing_value` over the whole
+artist scope plus `list_count` for the filtered list being paged, and the
+matched `artists`, and each row carries its `printings` with per-language
+ownership.
+
+`GET /api/cards/artists` is the directory behind that page: it takes `q`
+(accent-insensitive substring on the artist name), `lang`, `sort_by` (`name`,
+`cards`, `progress`, `missing`), `sort_order`, `page` and `page_size`, and
+returns one row per artist with `total_count`, `owned_count`, `missing_count`,
+`progress`, `missing_value` and the artist's `languages`. Card identities are
+grouped exactly as in the checklist, so a single matching artist reports the
+same totals on both pages. Only an explicit substring checklist scope can merge
+several artists; directory links always request the exact artist. The default sort
+is completion descending (`sort_by=progress&sort_order=desc`), with artist names
+ascending as the stable tie-breaker. Explicit sort parameters override it.
+
+Each artist also includes `preview_cards`, the three highest-valued distinct
+card identities in the visible catalogue, independent of ownership. `lang`
+restricts both the counts and previews. For `lang=all`, the highest-valued visible
+language printing represents each identity, so translated versions cannot take
+multiple slots. Ties use the canonical identity and printing ID for stable order.
+Artists with fewer than three identities return fewer cards; unpriced identities
+fill any remaining slots after priced cards, with a null amount rather than zero.
+
+On both endpoints, the optional `price_field` query parameter selects the shared valuation field
+(default `price_trend`, with the same Cardmarket fallbacks and matching-variant
+TCGplayer EUR conversion as other valuations). German TCGplayer fallback respects
+`cross_language_price_fallback`; other non-English languages do not gain it.
+Missing-value totals and checklist price sorting use those same resolved EUR
+values, not raw provider amounts. For a grouped identity, the first priced visible
+printing is selected in display-language, English, Japanese, then canonical
+language order. Unknown prices contribute nothing to the missing-value estimate
+and sort last, without changing the printing's stored prices. The frontend sends
+the account's price preference to both endpoints.
+
+The directory scans lightweight visible catalogue columns once per request,
+with bounded ownership/settings queries, and values gallery artwork only for
+the requested artist page. Rendering windowing does not eliminate that backend
+scan; larger installations should measure API latency separately from rendering.
+
+Preview entries include `id`, `tcg_card_id`, `name`, `lang`, `images_small`,
+`images_large`, and a `valuation` object with its amount and price provenance.
+Artwork can be requested through `/api/images/card/{id}/small`. Ranking uses
+locally synchronized prices and does not trigger provider requests or updates.
 
 Custom cards belong to exactly one user. Owners may publish a card as a shared template, but other users must clone it before using it in collections, wishlists, binders, products, or trades. Clones have independent IDs, metadata, images, and prices. Manual image URLs must use public HTTPS destinations and are fetched through the size-limited image proxy. During upgrade, existing custom cards become shared templates owned by the first-created admin account, while each other referencing user receives one private clone and keeps their existing references.
 

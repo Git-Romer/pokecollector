@@ -920,7 +920,10 @@
     "setLangFilter": "กรองชุดตามภาษา",
     "searchLangFilter": "กรองการค้นหาตามภาษา"
   },
-  "variants": {
+  "artists": {
+    "galleryView": "มุมมองแกลเลอรี",
+    "listView": "มุมมองรายการ",
+    "featuredCards": "การ์ดเด่น",
     "label": "แบบพิมพ์",
     "none": "- ไม่มีแบบพิมพ์ -",
     "Normal": "Normal",

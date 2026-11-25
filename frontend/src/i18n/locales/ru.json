@@ -920,7 +920,10 @@
     "setLangFilter": "Фильтр наборов по языку",
     "searchLangFilter": "Фильтр поиска по языку"
   },
-  "variants": {
+  "artists": {
+    "galleryView": "Вид галереи",
+    "listView": "Вид списка",
+    "featuredCards": "Избранные карты",
     "label": "Вариант",
     "none": "- Нет варианта -",
     "Normal": "Normal",

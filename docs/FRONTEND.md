@@ -49,6 +49,8 @@ Routes are defined in `frontend/src/App.jsx`.
 | `/pokedex/:dexId` | `pages/PokedexSpecies.jsx` | Species/form detail, related forms, and exact matching card printings |
 | `/sets` | `pages/Sets.jsx` | Set browser |
 | `/sets/:setId` | `pages/SetDetail.jsx` | Set checklist |
+| `/artist/:artistName` | `pages/ArtistChecklist.jsx` | Every card by an artist with owned/missing progress |
+| `/artists` | `pages/Artists.jsx` | Artist directory with collection progress |
 | `/wishlist` | `pages/Wishlist.jsx` | Wishlist and alerts |
 | `/binders` | `pages/Binders.jsx` | Unified Binders, Planned Binders, Planned Decks, and Real Decks |
 | `/binders/:binderId` | `pages/BinderDetail.jsx` | Binder or Planned Binder detail |
@@ -332,6 +334,36 @@ on private user-owned lists. Reverse-proxy installations must also allow the nar
 [`REVERSE_PROXY_AUTH.md`](REVERSE_PROXY_AUTH.md).
 
 ## Card UI
+
+### Card grid performance
+
+New features and updates that render card grids must reuse
+`components/WindowedCardGrid.jsx`, alongside the shared card renderer. This also
+applies to artist gallery tiles and each set group in the artist checklist.
+Pagination and lazy artwork are useful, but do not replace windowing: a window
+mounts only nearby rows while reserving space for the complete result.
+
+Pass the complete filtered page as `items`, a stable identity through `getKey`
+when an item has no card `id`, and the existing renderer as `renderItem`. Keep
+totals, grouping, sorting, API pagination and bulk selection based on the full
+data, never the currently mounted DOM. The 500-entry selection limit still
+applies. Do not change API responses to fit the visible window.
+
+The component detects the page or nearest constrained vertical scroller,
+preserves keyboard focus and fixed-card controllers during responsive reflow,
+and retains the existing CardImage viewport gate and Holo behaviour. Preserve
+these contracts rather than building a page-specific virtualizer. Use
+`measureRows` for composite tiles whose metadata is outside the standard card
+caption. `overscanItems` defaults to 40 extra items on either side; the artist
+gallery uses 12 tiles because each can contain three artworks. A genuinely
+small, fixed-size display can remain static, with its bound explained in the PR.
+
+For every new consumer, test desktop and mobile layouts, a large result with
+bounded mounted items, reaching the final item, scrolling back, resizing while
+scrolled, keyboard focus, dialogs and actions, and complete totals/selection.
+Check grouped and ungrouped layouts, image remounts and enabled Holo effects
+where applicable. Include Chromium and WebKit/Safari checks for layout or
+loading changes, and distinguish automated fixtures from real-backend checks.
 
 ### Shared card system
 

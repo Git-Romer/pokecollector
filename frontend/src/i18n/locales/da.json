@@ -1607,7 +1607,10 @@
     "setLangFilter": "Filtrer sæt efter sprog",
     "searchLangFilter": "Filtrer søgning efter sprog"
   },
-  "variants": {
+  "artists": {
+    "galleryView": "Gallerivisning",
+    "listView": "Listevisning",
+    "featuredCards": "Udvalgte kort",
     "label": "Variant",
     "none": "- Ingen variant -",
     "Normal": "Normal",

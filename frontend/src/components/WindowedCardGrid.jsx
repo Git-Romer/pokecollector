@@ -4,6 +4,23 @@ import { defaultRangeExtractor, useVirtualizer, observeWindowRect, observeWindow
 const defaultItemKey = (item, index) => item.id ?? item.binder_card_id ?? item.card?.id ?? index
 
 const GRID = 'grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2'
+const FOCUS_TARGETS = 'a[href], button, input, select, textarea, [tabindex]'
+
+export function gridFocusSnapshot(element, activeElement) {
+  const item = activeElement?.closest?.('[data-window-item]')
+  if (!item || !element.contains(item)) return null
+  const index = [...item.querySelectorAll(FOCUS_TARGETS)].indexOf(activeElement)
+  return index < 0 ? null : { key: item.dataset.windowItem, index }
+}
+
+export function restoreGridFocus(element, snapshot) {
+  if (!snapshot) return false
+  const item = [...element.querySelectorAll('[data-window-item]')].find(item => item.dataset.windowItem === snapshot.key)
+  const target = item?.querySelectorAll(FOCUS_TARGETS)[snapshot.index]
+  if (!target) return false
+  target.focus({ preventScroll: true })
+  return true
+}
 
 // The shared card system has a fixed artwork ratio and caption height. Reserving
 // that same geometry for every row keeps the scrollbar stable before images load.
@@ -13,9 +30,10 @@ export function cardGridRowHeight(width, columns, gap, framePadding, captionHeig
 }
 
 /** A buffered grid using its nearest vertical scroller, or the page window. */
-export default function WindowedCardGrid({ items, renderItem, label, listKey, className = GRID, measureRows = false, getKey = defaultItemKey, ...gridProps }) {
+export default function WindowedCardGrid({ items, renderItem, label, listKey, className = GRID, measureRows = false, overscanItems = 40, getKey = defaultItemKey, ...gridProps }) {
   const ref = useRef(null)
   const pendingScroll = useRef(null)
+  const pendingFocus = useRef(null)
   const reflowItems = useRef([])
   const releaseReflow = useRef(null)
   const [metrics, setMetrics] = useState({ width: 0, columns: 3, gap: 8, rowHeight: 210, top: 0, scrollElement: null })
@@ -33,6 +51,11 @@ export default function WindowedCardGrid({ items, renderItem, label, listKey, cl
     const columns = style.gridTemplateColumns.split(' ').filter(Boolean).length
     const focusedItem = element.contains(document.activeElement) && document.activeElement.closest('[data-window-item]')
     if (focusedItem) setFocusedRow(Math.floor((Number(focusedItem.getAttribute('aria-posinset')) - 1) / columns))
+    // Measured composite rows regroup their children at a column breakpoint.
+    // Remember the exact control before React replaces its row parent.
+    if (measureRows && focusedItem && columns !== currentMetrics.current.columns) {
+      pendingFocus.current = gridFocusSnapshot(element, document.activeElement)
+    }
     const gap = parseFloat(style.columnGap) || 8
     const estimatedRowHeight = cardGridRowHeight(rect.width, columns, gap,
       parseFloat(style.getPropertyValue('--pc-card-frame-padding')) || 4,
@@ -82,6 +105,12 @@ export default function WindowedCardGrid({ items, renderItem, label, listKey, cl
   }, [measure])
 
   useLayoutEffect(() => {
+    if (!pendingFocus.current || metrics.columns !== currentMetrics.current.columns) return
+    restoreGridFocus(ref.current, pendingFocus.current)
+    pendingFocus.current = null
+  }, [metrics.columns])
+
+  useLayoutEffect(() => {
     if (pendingScroll.current === null) return
     (metrics.scrollElement || window).scrollTo({ top: pendingScroll.current, behavior: 'instant' })
     pendingScroll.current = null
@@ -115,8 +144,8 @@ export default function WindowedCardGrid({ items, renderItem, label, listKey, cl
     count: Math.ceil(items.length / metrics.columns),
     estimateSize: () => metrics.rowHeight,
     gap: metrics.gap,
-    // About 40 cards on each side, not 40 rows on a wide display.
-    overscan: Math.ceil(40 / metrics.columns),
+    // Count items, not rows; composite tiles can use a smaller artwork budget.
+    overscan: Math.ceil(overscanItems / metrics.columns),
     scrollMargin: metrics.top,
     getItemKey,
     rangeExtractor,

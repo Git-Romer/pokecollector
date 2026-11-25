@@ -920,7 +920,10 @@
     "setLangFilter": "Filter sets op taal",
     "searchLangFilter": "Filter zoekopdracht op taal"
   },
-  "variants": {
+  "artists": {
+    "galleryView": "Galerijweergave",
+    "listView": "Lijstweergave",
+    "featuredCards": "Uitgelichte kaarten",
     "label": "Variant",
     "none": "- Geen Variant -",
     "Normal": "Normal",

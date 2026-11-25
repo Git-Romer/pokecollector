@@ -920,7 +920,10 @@
     "setLangFilter": "按语言筛选系列",
     "searchLangFilter": "按语言筛选搜索"
   },
-  "variants": {
+  "artists": {
+    "galleryView": "画廊视图",
+    "listView": "列表视图",
+    "featuredCards": "精选卡牌",
     "label": "版本",
     "none": "- 无版本 -",
     "Normal": "普通",
