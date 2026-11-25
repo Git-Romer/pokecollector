@@ -332,6 +332,9 @@
     "alreadyOwned": "Bereits in Sammlung"
   },
   "collection": {
+    "byPokemon": "Nach Pokémon",
+    "otherCards": "Andere Karten",
+    "speciesHint": "Karten mit mehreren Pokémon erscheinen einmal, unter der zuerst aufgeführten Art.",
     "title": "Kollektion",
     "userCollection": "Sammlung",
     "ownPhoto": "Dein eigenes Foto dieser Karte",
@@ -804,6 +807,17 @@
     "retreatSupport": "Rückzugsunterstützung"
   },
   "analytics": {
+    "byCard": "Nach Karte",
+    "duplicateView": "Duplikatansicht",
+    "speciesDuplicates": "Pokémon mit mehreren Karten",
+    "speciesDuplicatesDesc": "Pokémon, von denen du mehrere Kartenversionen besitzt, nach Art gruppiert",
+    "noSpeciesDuplicates": "Keine Pokémon mit mehreren Kartenversionen",
+    "speciesWithDuplicates": "Pokémon mit mehreren Karten",
+    "perCopy": "pro Exemplar",
+    "printing": "Druck",
+    "printings": "Drucke",
+    "copy": "Exemplar",
+    "copies": "Exemplare",
     "title": "Analyse",
     "subtitle": "Tiefe Einblicke in deine Sammlung",
     "newSetsDetected": "neue Sets erkannt",

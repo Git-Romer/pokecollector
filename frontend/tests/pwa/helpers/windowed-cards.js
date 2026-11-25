@@ -63,6 +63,8 @@ export async function collectionFixture(page, { holo = false, readySelector = '.
     })
   }
   await page.goto(routePath)
-  await expect(page.locator(readySelector).first()).toBeAttached({ timeout: 30000 })
+  // Allow full collection/auth bootstrap; subsequent interaction assertions keep
+  // their normal deadlines. This is not a rendering-latency assertion.
+  await expect(page.locator(readySelector).first()).toBeAttached({ timeout: 20_000 })
   expect(errors).toEqual([])
 }

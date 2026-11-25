@@ -285,7 +285,10 @@
     "allTypes": "Alle Types",
     "searchCards": "Zoek kaarten...",
     "clearFilters": "Filters wissen",
-    "foundIn": "Gevonden in"
+    "foundIn": "Gevonden in",
+    "otherCards": "Andere kaarten",
+    "byPokemon": "Per Pokémon",
+    "speciesHint": "Kaarten met meerdere Pokémon staan één keer bij de eerst vermelde soort."
   },
   "printingDetails": {
     "label": "Printing details",
@@ -459,7 +462,11 @@
     "statusSold": "Verkocht ✓",
     "statusOwned": "In Bezit",
     "soldFor": "Verkocht voor",
-    "profit": "Winst"
+    "profit": "Winst",
+    "printing": "uitgave",
+    "printings": "uitgaven",
+    "copy": "exemplaar",
+    "copies": "exemplaren"
   },
   "products": {
     "title": "Product Investeringen",

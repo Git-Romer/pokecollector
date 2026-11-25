@@ -13,6 +13,9 @@ import ProductSourceList from '../components/ProductSourceList'
 import { useSettings } from '../contexts/SettingsContext'
 import { useConfirmDialog } from '../contexts/ConfirmDialogContext'
 import WindowedCardGrid from '../components/WindowedCardGrid'
+import CollectionSpeciesView from '../components/CollectionSpeciesView'
+import { cardDexIds } from '../utils/species'
+import { getSpeciesDirectory } from '../api/client'
 import { useListScrollRestoration } from '../hooks/useListScrollRestoration'
 import { CardDialog, CardLegend, CardPriceDetails, withCollectionItemState } from '../components/card-system'
 import { CollectionCardDisplay, CollectionCardIdentity, CollectionCardRow, OwnPhotoOverlayBadge, useCollectionPhotoUrl } from '../components/CollectionCardImage'
@@ -1069,6 +1072,12 @@ export default function Collection() {
     placeholderData: collectionQuery.placeholderData,
   })
 
+  const { data: speciesDirectory = [] } = useQuery({
+    queryKey: ['species-directory'], queryFn: getSpeciesDirectory,
+    enabled: viewMode === 'species', staleTime: 24 * 60 * 60 * 1000,
+  })
+  const speciesByDexId = useMemo(() => new Map(speciesDirectory.map(entry => [entry.dex_id, entry])), [speciesDirectory])
+
   const { saveScrollPosition } = useListScrollRestoration({ key: 'collection', isReady: !isLoading })
   useLayoutEffect(() => {
     if (isLoading) return undefined
@@ -1342,6 +1351,45 @@ export default function Collection() {
     )
   }
 
+  const renderCollectionCard = item => {
+    const card = item.card
+    const marketPrice = getEffectivePrice(card, item.variant)
+    const cardState = {
+      ...withCollectionItemState(card, item),
+      wishlisted: [
+        item.card_id,
+        card?.id,
+        card?.tcg_card_id,
+      ].filter(Boolean).some(id => wishlistedCardIds.has(String(id))),
+    }
+    return (
+      <CollectionCardDisplay
+        key={item.id}
+        item={item}
+        price={marketPrice > 0 ? formatPrice(marketPrice) : null}
+        languageLabel={hasMixedCollectionLanguages && item.lang ? tcgdexLanguageLabel(item.lang) : null}
+        variantEffectSource={item.variant}
+        stateIndicatorProps={{ card: cardState, alwaysShowQuantity: true }}
+        captionAccessory={viewMode === 'species' && cardDexIds(item).length > 1 ? (
+          <span className="badge badge-gray px-1 py-0 text-[9px]"
+            title={t('collection.multiSpeciesHint')} aria-label={t('collection.multiSpeciesHint')}>
+            +{cardDexIds(item).length - 1}
+          </span>
+        ) : null}
+        onClick={bulkRemoval.active ? undefined : () => setEditingCollectionItem(item)}
+        onSelect={bulkRemoval.active ? () => bulkRemoval.toggle(item) : undefined}
+        selected={bulkRemoval.selectedIds.has(item.id)}
+        unavailableReason={bulkRemoval.active && bulkRemoval.locked ? t('common.loading') : undefined}
+        overlay={(
+          <>
+            <ProductSourceBadge item={item} t={t} compact className="absolute bottom-2 left-2 z-20 h-6 w-6" />
+            <PrintingDetailBadges details={item.printing_details} limit={1} className="absolute left-2 top-2 z-20 max-w-[calc(100%-1rem)]" />
+          </>
+        )}
+      />
+    )
+  }
+
   return (
     <>
       <div className={`space-y-4 ${bulkRemoval.active ? 'pb-48 lg:pb-6' : 'pb-2'}`}>
@@ -1363,13 +1411,23 @@ export default function Collection() {
           <div className="flex items-center gap-0.5 bg-bg-elevated rounded-lg p-1">
             <button
               onClick={() => setViewMode('grid')}
+              aria-label={t('collection.binderView')} aria-pressed={viewMode === 'grid'}
               title={t('collection.binderView')}
               className={`p-1.5 rounded-md transition-colors ${viewMode === 'grid' ? 'bg-brand-red text-white' : 'text-text-muted hover:text-text-primary'}`}
             >
               <Grid2X2 size={15} />
             </button>
             <button
+              type="button" onClick={() => setViewMode('species')}
+              className={`flex items-center gap-1 p-1.5 rounded-md text-xs transition-colors ${viewMode === 'species' ? 'bg-brand-red text-white' : 'text-text-muted hover:text-text-primary'}`}
+              aria-label={t('collection.byPokemon')} aria-pressed={viewMode === 'species'}
+              title={t('collection.byPokemon')}
+            >
+              <span data-pikachu-silhouette aria-hidden="true" className="block h-5 w-5 bg-current" style={{ mask: 'url(/pikachu-silhouette.svg) center / contain no-repeat', WebkitMask: 'url(/pikachu-silhouette.svg) center / contain no-repeat' }} />
+            </button>
+            <button
               onClick={() => setViewMode('list')}
+              aria-label={t('collection.listView')} aria-pressed={viewMode === 'list'}
               title={t('collection.listView')}
               className={`p-1.5 rounded-md transition-colors ${viewMode === 'list' ? 'bg-brand-red text-white' : 'text-text-muted hover:text-text-primary'}`}
             >
@@ -1616,6 +1674,22 @@ export default function Collection() {
 
       <BulkRemovalToolbar selection={bulkRemoval} kind="collection" empty={filtered.length === 0} />
 
+      {viewMode === 'species' && (
+        <>
+          <p className="text-xs text-text-muted">{t('collection.speciesHint')}</p>
+          {filtered.length === 0 ? <p className="card text-text-muted">{t('collection.empty')}</p> : (
+            <CollectionSpeciesView items={filtered} speciesByDexId={speciesByDexId}
+              language={settings?.language} t={t} formatPrice={formatPrice}
+              itemValue={item => getEffectivePrice(item.card, item.variant) * item.quantity}
+              renderItem={renderCollectionCard} />
+          )}
+          <div className="flex justify-between text-sm px-1">
+            <span className="text-text-muted">{filtered.length} {t('collection.filtered')}</span>
+            <span className="font-bold text-gold">{formatPrice(totalValue)}</span>
+          </div>
+        </>
+      )}
+
       {/* ─── GRID BINDER VIEW ─────────────────────────────────────── */}
       {viewMode === 'grid' && (
         <>
@@ -1627,38 +1701,7 @@ export default function Collection() {
             </div>
           ) : (
             <div className="binder-grid">
-              <WindowedCardGrid listKey="collection" items={filtered} label={t('collection.title')} renderItem={item => {
-                  const card = item.card
-                  const marketPrice = getEffectivePrice(card, item.variant)
-                  const cardState = {
-                    ...withCollectionItemState(card, item),
-                    wishlisted: [
-                      item.card_id,
-                      card?.id,
-                      card?.tcg_card_id,
-                    ].filter(Boolean).some(id => wishlistedCardIds.has(String(id))),
-                  }
-                  return (
-                    <CollectionCardDisplay
-                      key={item.id}
-                      item={item}
-                      price={marketPrice > 0 ? formatPrice(marketPrice) : null}
-                      languageLabel={hasMixedCollectionLanguages && item.lang ? tcgdexLanguageLabel(item.lang) : null}
-                      variantEffectSource={item.variant}
-                      stateIndicatorProps={{ card: cardState, alwaysShowQuantity: true }}
-                      onClick={bulkRemoval.active ? undefined : () => setEditingCollectionItem(item)}
-                      onSelect={bulkRemoval.active ? () => bulkRemoval.toggle(item) : undefined}
-                      selected={bulkRemoval.selectedIds.has(item.id)}
-                      unavailableReason={bulkRemoval.active && bulkRemoval.locked ? t('common.loading') : undefined}
-                      overlay={(
-                        <>
-                          <ProductSourceBadge item={item} t={t} compact className="absolute bottom-2 left-2 z-20 h-6 w-6" />
-                          <PrintingDetailBadges details={item.printing_details} limit={1} className="absolute left-2 top-2 z-20 max-w-[calc(100%-1rem)]" />
-                        </>
-                      )}
-                    />
-                  )
-                }} />
+              <WindowedCardGrid listKey="collection" items={filtered} label={t('collection.title')} renderItem={renderCollectionCard} />
             </div>
           )}
           {filtered.length > 0 && (

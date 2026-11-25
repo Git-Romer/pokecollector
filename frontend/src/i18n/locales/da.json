@@ -293,6 +293,9 @@
     "alreadyOwned": "Allerede i samlingen"
   },
   "collection": {
+    "byPokemon": "Efter Pokémon",
+    "otherCards": "Andre kort",
+    "speciesHint": "Kort med flere Pokémon vises én gang under den først angivne art.",
     "title": "Samling",
     "userCollection": "Samling",
     "ownPhoto": "Dit eget foto af dette kort",
@@ -766,6 +769,10 @@
     "retreatSupport": "Retreat-support"
   },
   "analytics": {
+    "printing": "udgave",
+    "printings": "udgaver",
+    "copy": "eksemplar",
+    "copies": "eksemplarer",
     "title": "Analyse",
     "subtitle": "Dyb indsigt i din samling",
     "newSetsDetected": "nye sæt opdaget",

@@ -140,6 +140,11 @@ def _catalogue_for_mode(mode: str, available: dict[str, set[str]]) -> list[dict]
     return sorted(catalogue, key=lambda row: (int(row["dex_id"]), row.get("form", "base")))
 
 
+def species_directory() -> list[dict]:
+    """Static species names shared with the Pokédex, without collection data."""
+    return [dict(entry) for entry in load_pokedex()]
+
+
 def aggregate_pokedex(
     db: Session,
     user_id: int,

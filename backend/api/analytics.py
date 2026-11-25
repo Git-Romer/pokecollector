@@ -5,7 +5,7 @@ from api.collection import _annotate_scan_photos
 from database import get_db
 from services.card_values import effective_market_price, normalize_price_field
 from services.card_visibility import visible_any_card_filter, visible_set_filter
-from services.analytics import sort_top_movers
+from services.analytics import aggregate_species_duplicates, sort_top_movers
 from services.portfolio_valuation import (
     calculate_portfolio_valuation,
     portfolio_snapshot_fields,
@@ -80,6 +80,16 @@ def get_duplicates(
 
     result.sort(key=lambda x: x["total_value"], reverse=True)
     return result
+
+
+@router.get("/species-duplicates")
+def get_species_duplicates(
+    price_field: str = Query(default="price_trend", description="Price field to use for value calculation"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get species owned in more than one printing, valued per printing."""
+    return aggregate_species_duplicates(db, current_user.id, price_field=price_field)
 
 
 @router.get("/top-movers")

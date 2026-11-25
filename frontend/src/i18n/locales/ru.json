@@ -285,7 +285,10 @@
     "allTypes": "Все типы",
     "searchCards": "Искать карты...",
     "clearFilters": "Очистить фильтры",
-    "foundIn": "Найдена в"
+    "foundIn": "Найдена в",
+    "otherCards": "Другие карты",
+    "byPokemon": "По покемонам",
+    "speciesHint": "Карты с несколькими покемонами показаны один раз, у первого указанного вида."
   },
   "printingDetails": {
     "label": "Printing details",
@@ -459,7 +462,11 @@
     "statusSold": "Продано ✓",
     "statusOwned": "В наличии",
     "soldFor": "Продано за",
-    "profit": "Прибыль"
+    "profit": "Прибыль",
+    "printing": "издание",
+    "printings": "издания",
+    "copy": "копия",
+    "copies": "копии"
   },
   "products": {
     "title": "Инвестиции в товары",

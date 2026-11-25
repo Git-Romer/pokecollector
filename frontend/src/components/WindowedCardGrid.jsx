@@ -30,15 +30,17 @@ export function cardGridRowHeight(width, columns, gap, framePadding, captionHeig
 }
 
 /** A buffered grid using its nearest vertical scroller, or the page window. */
-export default function WindowedCardGrid({ items, renderItem, label, listKey, className = GRID, measureRows = false, overscanItems = 40, getKey = defaultItemKey, ...gridProps }) {
+export default function WindowedCardGrid({ items, renderItem, label, listKey, className = GRID, measureRows = false, overscanItems = 40, deferOffscreen = false, rowHeightEstimate = null, getKey = defaultItemKey, ...gridProps }) {
   const ref = useRef(null)
   const pendingScroll = useRef(null)
   const pendingFocus = useRef(null)
   const reflowItems = useRef([])
   const releaseReflow = useRef(null)
+  const reservedFootprint = useRef(null)
   const [metrics, setMetrics] = useState({ width: 0, columns: 3, gap: 8, rowHeight: 210, top: 0, scrollElement: null })
   const currentMetrics = useRef(metrics)
   const [focusedRow, setFocusedRow] = useState(null)
+  const [nearViewport, setNearViewport] = useState(!deferOffscreen)
 
   const measure = useCallback(() => {
     const element = ref.current
@@ -57,14 +59,17 @@ export default function WindowedCardGrid({ items, renderItem, label, listKey, cl
       pendingFocus.current = gridFocusSnapshot(element, document.activeElement)
     }
     const gap = parseFloat(style.columnGap) || 8
-    const estimatedRowHeight = cardGridRowHeight(rect.width, columns, gap,
+    const estimatedRowHeight = rowHeightEstimate ?? cardGridRowHeight(rect.width, columns, gap,
       parseFloat(style.getPropertyValue('--pc-card-frame-padding')) || 4,
       parseFloat(style.getPropertyValue('--pc-card-caption-height')) || 48)
     // A stack/photo/candidate can add metadata outside the standard caption.
     // Use its actual row footprint for *all* reserved rows, not only mounted ones.
     const measuredHeight = measureRows && currentMetrics.current.width === rect.width && currentMetrics.current.columns === columns
       ? Math.max(0, ...[...element.querySelectorAll('[data-window-row]')].map(row => parseFloat(getComputedStyle(row).height))) : 0
-    const rowHeight = measuredHeight || estimatedRowHeight
+    // Offscreen rows are intentionally unmounted. Keep their last measured
+    // footprint rather than reverting a compact list to artwork-sized rows.
+    const sameLayout = currentMetrics.current.width === rect.width && currentMetrics.current.columns === columns
+    const rowHeight = measuredHeight || (measureRows && sameLayout ? currentMetrics.current.rowHeight : estimatedRowHeight)
     let scrollElement = element.parentElement
     while (scrollElement && scrollElement !== document.body && scrollElement !== document.documentElement) {
       // overflow-x:hidden also computes overflow-y:auto on an auto-height
@@ -92,7 +97,7 @@ export default function WindowedCardGrid({ items, renderItem, label, listKey, cl
     const next = { width: rect.width, columns, gap, rowHeight, top, scrollElement }
     currentMetrics.current = next
     setMetrics(next)
-  }, [measureRows])
+  }, [measureRows, rowHeightEstimate])
 
   useLayoutEffect(() => {
     measure()
@@ -103,6 +108,22 @@ export default function WindowedCardGrid({ items, renderItem, label, listKey, cl
     window.addEventListener('resize', measure)
     return () => { observer.disconnect(); window.removeEventListener('resize', measure); cancelAnimationFrame(releaseReflow.current) }
   }, [measure])
+
+  // Grouped layouts can contain hundreds of grids. Reserve their complete
+  // height, but do not multiply each grid's artwork/controller overscan budget.
+  useLayoutEffect(() => {
+    if (!deferOffscreen) return
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) measure()
+      setNearViewport(entry.isIntersecting)
+    }, { root: metrics.scrollElement, rootMargin: '600px 0px' })
+    observer.observe(ref.current)
+    return () => observer.disconnect()
+  }, [deferOffscreen, metrics.scrollElement, measure])
+
+  // Folding a preceding section moves this grid without changing its size.
+  // Far-away grids need their new position only when they enter the viewport.
+  useLayoutEffect(() => { if (deferOffscreen && nearViewport) measure() })
 
   useLayoutEffect(() => {
     if (!pendingFocus.current || metrics.columns !== currentMetrics.current.columns) return
@@ -124,15 +145,19 @@ export default function WindowedCardGrid({ items, renderItem, label, listKey, cl
   // Include height so a resize within the same column breakpoint reflows too.
   const getItemKey = useCallback(index => `${metrics.columns}:${getKey(items[index * metrics.columns] ?? {}, index * metrics.columns)}`, [items, metrics.columns, metrics.rowHeight, getKey])
   const rangeExtractor = useCallback(range => {
-    const indexes = defaultRangeExtractor(range)
+    const indexes = deferOffscreen && !nearViewport ? [] : defaultRangeExtractor(range)
     for (const itemIndex of reflowItems.current) {
       const row = Math.floor(itemIndex / metrics.columns)
       if (row < range.count && !indexes.includes(row)) indexes.push(row)
     }
     if (focusedRow !== null && focusedRow < range.count && !indexes.includes(focusedRow)) indexes.push(focusedRow)
     return indexes.sort((a, b) => a - b)
-  }, [focusedRow, metrics.columns])
+  }, [focusedRow, metrics.columns, deferOffscreen, nearViewport])
+  const windowingEnabled = !deferOffscreen || nearViewport || focusedRow !== null
   const virtualizer = useVirtualizer({
+    // Empty ranges alone still subscribe every offscreen grid to every scroll.
+    // Disable its observers as well; the wrapper retains the complete footprint.
+    enabled: windowingEnabled,
     // TanStack's default rounds measured rows to whole pixels, accumulating
     // error across many fractional-height rows. Preserve the CSS footprint.
     ...(measureRows ? { measureElement: element => parseFloat(getComputedStyle(element).height) } : {}),
@@ -163,9 +188,15 @@ export default function WindowedCardGrid({ items, renderItem, label, listKey, cl
     </div>
   )
 
+  const footprintKey = `${listKey}:${items.length}:${metrics.width}:${metrics.columns}:${metrics.gap}:${metrics.rowHeight}`
+  const estimatedFootprint = Math.max(0, Math.ceil(items.length / metrics.columns) * (metrics.rowHeight + metrics.gap) - metrics.gap)
+  const height = windowingEnabled ? virtualizer.getTotalSize()
+    : reservedFootprint.current?.key === footprintKey ? reservedFootprint.current.height : estimatedFootprint
+  if (windowingEnabled) reservedFootprint.current = { key: footprintKey, height }
+
   return (
     <div ref={ref} {...gridProps} className={className} role="list" aria-label={label} data-windowed-grid data-scroll-list={listKey} id={listKey ? `${listKey}-grid` : undefined}
-      style={{ height: virtualizer.getTotalSize(), position: 'relative', overflowAnchor: 'none' }}
+      style={{ height, position: 'relative', overflowAnchor: 'none' }}
       onFocusCapture={event => {
         const item = event.target.closest('[data-window-item]')
         if (item) setFocusedRow(Math.floor((Number(item.getAttribute('aria-posinset')) - 1) / metrics.columns))

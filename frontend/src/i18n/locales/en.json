@@ -412,6 +412,10 @@
     "pageOf": "Page {page} of {pages}"
   },
   "collection": {
+    "byPokemon": "By Pokémon",
+    "multiSpeciesHint": "This card depicts more than one species",
+    "otherCards": "Other cards",
+    "speciesHint": "Cards with several Pokémon appear once, under the first listed species.",
     "title": "Collection",
     "userCollection": "Collection",
     "ownPhoto": "Your own photo of this card",
@@ -885,6 +889,17 @@
     "retreatSupport": "Retreat Support"
   },
   "analytics": {
+    "byCard": "By card",
+    "duplicateView": "Duplicate view",
+    "speciesDuplicates": "Species duplicates",
+    "speciesDuplicatesDesc": "Pokémon you own in more than one printing, grouped by species",
+    "noSpeciesDuplicates": "No Pokémon with multiple printings",
+    "speciesWithDuplicates": "Species with duplicates",
+    "perCopy": "each",
+    "printing": "printing",
+    "printings": "printings",
+    "copy": "copy",
+    "copies": "copies",
     "title": "Analytics",
     "subtitle": "Deep insights into your collection",
     "newSetsDetected": "new sets detected",

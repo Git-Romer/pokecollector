@@ -6,7 +6,7 @@ from api.auth import get_current_user
 from database import get_db
 from models import User
 from services.display_language import get_tcgdex_display_language
-from services.pokedex import aggregate_pokedex, species_detail
+from services.pokedex import aggregate_pokedex, species_detail, species_directory
 from services.pokedex_forms import FORM_FAMILY_PATTERN, get_entry
 from services.pokedex_images import cache_path, fetch_image
 from services.tcgdex_languages import is_supported_tcgdex_language, normalize_tcgdex_language
@@ -64,6 +64,17 @@ def get_species_image(kind: str, entry_id: str):
         media_type="image/png",
         headers={"Cache-Control": "public, max-age=604800"},
     )
+
+
+@router.get("/directory")
+def get_species_directory_compat(current_user: User = Depends(get_current_user)):
+    """Contributor API contract; the Collection lookup uses the same catalogue."""
+    return {"species": species_directory()}
+
+
+@router.get("/species")
+def get_species_directory(current_user: User = Depends(get_current_user)):
+    return species_directory()
 
 
 @router.get("/{entry_id}")

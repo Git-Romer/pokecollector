@@ -285,7 +285,10 @@
     "allTypes": "すべてのタイプ",
     "searchCards": "カードを検索...",
     "clearFilters": "フィルターをクリア",
-    "foundIn": "入手元"
+    "foundIn": "入手元",
+    "otherCards": "その他のカード",
+    "byPokemon": "ポケモン別",
+    "speciesHint": "複数のポケモンが描かれたカードは、最初の種類に一度だけ表示されます。"
   },
   "printingDetails": {
     "label": "Printing details",
@@ -459,7 +462,11 @@
     "statusSold": "売却済み ✓",
     "statusOwned": "保有中",
     "soldFor": "売却額",
-    "profit": "利益"
+    "profit": "利益",
+    "printing": "種類",
+    "printings": "種類",
+    "copy": "枚",
+    "copies": "枚"
   },
   "products": {
     "title": "商品投資",

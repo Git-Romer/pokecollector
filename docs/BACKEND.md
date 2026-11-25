@@ -156,6 +156,7 @@ so time-zone conversion cannot move a release into the preceding month.
 | Method | Path | Notes |
 |--------|------|-------|
 | GET | `/api/collection/` | User-scoped collection |
+| GET | `/api/collection/by-species` | Owner-scoped groups with collection rows, copies and canonical value; accepts `price_field`, `rule_text`, and species-name `language` (`en` or `de`). Every visible row occurs once, under its first valid species, or in `other` for Trainer, Energy, custom and unclassified cards. `groups` use National Dex order; each group includes `dex_id`, `name`, `printing_count`, `copies`, `total_value`, `items`. `other` contains `copies`, `total_value`, `items`; `summary` covers `entries`, `copies`, `total_value`. The existing collection endpoint remains unchanged. |
 | GET | `/api/collection/user/{user_id}` | View another user's collection (read-only, auth required) |
 | POST | `/api/collection/` | Add to collection |
 | POST | `/api/collection/bulk-add` | Bulk-add selected cards; commits each item independently and reports added/updated/failed counts |
@@ -234,6 +235,7 @@ responses.
 | GET | `/api/analytics/rarity-stats` | Rarity distribution |
 | GET | `/api/analytics/trades-summary` | Aggregate trade counts, totals, and deltas |
 | GET | `/api/analytics/investment-tracker` | Portfolio history |
+| GET | `/api/analytics/species-duplicates` | Owner-scoped species with at least two distinct language-specific printings; accepts `price_field` and returns printing quantities, weighted unit prices, values and owner-photo flags |
 | GET | `/api/analytics/new-sets` | Analytics new sets |
 | GET | `/api/social/leaderboard` | Multi-user leaderboard |
 | GET | `/api/social/compare/{user_id}` | Multi-user comparison |
@@ -242,11 +244,22 @@ responses.
 | GET | `/api/community/supporters` | Fresh, strictly validated public supporter registry projection; returns `503` with `Cache-Control: no-store` on any upstream or validation failure |
 | GET | `/api/github/rescue-donations` | Rescue donation total from `RESCUE_DONATIONS.csv` |
 
+`/api/analytics/species-duplicates` counts distinct language-specific cards,
+not separate condition/variant collection entries: their quantities and values
+are combined. English and German copies of the same card count as two printings.
+This differs from identity-based Pokédex completion. Multi-species cards count
+under each depicted species; the summary counts each distinct printing once.
+Species sort by printing count, then value, then dex number; printings sort by
+value, set, name and card ID. Trainers without species and custom cards are not
+included in these species statistics, but remain reachable in Collection.
+
 ### Pokédex, Profiles, and Public Sharing
 
 | Method | Path | Notes |
 |--------|------|-------|
 | GET | `/api/pokedex` | Grouped or exact-form completion overview with generation/status/search/form filters |
+| GET | `/api/pokedex/directory` | Original contributor API: `{ species: [...] }`, using the same static catalogue without per-user ownership |
+| GET | `/api/pokedex/species` | Authenticated static species directory reused by Collection; includes localized names and no ownership data |
 | GET | `/api/pokedex/{entry_id}` | One species/form with ownership, related forms, and printing summary |
 | GET | `/api/pokedex/images/{kind}/{entry_id}.png` | Cached `sprites` or `artwork` image, including form artwork |
 | GET | `/api/profile/` | Current user's public-profile, value, and Wishlist-visibility preferences and handle |

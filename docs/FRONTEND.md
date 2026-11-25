@@ -248,6 +248,46 @@ the installation.
 
 ### Collection and Card Lists
 
+Collection has three layouts: the existing grid and list, and **By Pokémon**.
+The species layout groups the already filtered and sorted collection, with names
+from the existing Pokédex catalogue (`GET /api/pokedex/species`). Group headers
+show distinct localized printings, copy totals and the same canonical value used
+by the collection summary. Cards depicting several species appear once under
+the first valid species. Trainer, Energy, custom and unclassified cards remain
+available under **Other cards**. This organises owned cards; the Pokédex remains
+the separate discovery and completion view.
+
+Analytics retains the contributor's species-duplicates feature as an alternate
+view inside the existing **Duplicates** tab, not another top-level tab. The
+existing **By card** view stays the default; the **By Pokémon** icon uses the
+same Pikachu silhouette as Collection. Species data is requested only when that
+view is selected, and the chosen view and folds survive switching Analytics tabs. Species show distinct printings, combined copies and
+values, with every group initially open and independently foldable.
+Each printing opens the shared card dialog, including owner-supplied photos.
+Large printing lists use the same shared windowing component with measured rows;
+collection edits and photo changes invalidate the species summary. Multi-species
+Collection cards retain the contributor's extra-species badge.
+
+Every Collection species panel starts expanded and can be folded independently. Closed
+panels do not mount card controllers. Open panels pass their complete arrays to
+the shared `WindowedCardGrid` with `deferOffscreen`: an IntersectionObserver
+keeps distant grids as full-height placeholders without multiplying the card
+controller or scroll-observer budget. Inactive virtualizers retain their measured
+footprint; compact Analytics rows supply a conservative initial row estimate.
+Focused cards remain mounted. Do not replace this with mapped
+grids or truncate the data. The icon-only layout button retains a localized
+accessible name and tooltip. Its bundled Pikachu silhouette is derived from
+[PokeAPI dream-world artwork](https://github.com/PokeAPI/sprites/blob/master/sprites/pokemon/other/dream-world/25.svg),
+with all fills made monochrome. Pokémon artwork remains the property of
+Nintendo, Creatures, GAME FREAK and The Pokémon Company; this is not an
+assertion of an independent open-source artwork license.
+The existing collection tile renderer, edit dialog and full filtered selection
+scope are reused, including the 500-entry selection limit. Closing a panel does
+not discard selection. Group order is National Dex order; the selected collection
+sort applies within each group. No separate species analytics screen is added.
+API clients can obtain the same grouping through `GET /api/collection/by-species`.
+
+
 `pages/Collection.jsx` owns filtering, strict CSV import, export actions,
 printing-detail tags, and private owner-card photos. Owner photos are loaded
 through authenticated endpoints and can be preferred over catalogue artwork in

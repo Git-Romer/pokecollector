@@ -572,6 +572,23 @@ def get_collection(
     return _annotate_collection_items(db, current_user, items)
 
 
+@router.get("/by-species")
+def get_collection_by_species(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    price_field: str = "price_trend",
+    rule_text: Optional[str] = None,
+    language: str = "en",
+):
+    """Owner-scoped species groups; each collection row appears exactly once."""
+    from services.collection_species import collection_species
+    items = get_collection(current_user=current_user, db=db, rule_text=rule_text)
+    result = collection_species(items, price_field=normalize_price_field(price_field), language=language)
+    for group in [*result['groups'], result['other']]:
+        group['items'] = [CollectionItemResponse.model_validate(item).model_dump(mode='json') for item in group['items']]
+    return result
+
+
 @router.get("/offline-manifest", response_model=CollectionOfflineManifestResponse)
 def get_collection_offline_manifest(
     response: Response,

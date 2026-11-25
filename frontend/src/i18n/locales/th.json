@@ -285,7 +285,10 @@
     "allTypes": "ทุกประเภท",
     "searchCards": "ค้นหาการ์ด...",
     "clearFilters": "ล้างตัวกรอง",
-    "foundIn": "พบใน"
+    "foundIn": "พบใน",
+    "otherCards": "การ์ดอื่น",
+    "byPokemon": "ตามโปเกมอน",
+    "speciesHint": "การ์ดที่มีโปเกมอนหลายชนิดจะแสดงครั้งเดียวในชนิดแรกที่ระบุ"
   },
   "printingDetails": {
     "label": "Printing details",
@@ -459,7 +462,11 @@
     "statusSold": "ขายแล้ว ✓",
     "statusOwned": "ยังครอบครองอยู่",
     "soldFor": "ขายในราคา",
-    "profit": "กำไร"
+    "profit": "กำไร",
+    "printing": "แบบ",
+    "printings": "แบบ",
+    "copy": "ใบ",
+    "copies": "ใบ"
   },
   "products": {
     "title": "การลงทุนสินค้า",

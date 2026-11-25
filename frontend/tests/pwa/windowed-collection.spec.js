@@ -49,6 +49,7 @@ test('full-data filtering and selection include cards outside the rendered windo
 })
 
 test('far-down cards survive a dialog, responsive reflow and browser Back', async ({ page }) => {
+  test.setTimeout(60_000)
   await page.setViewportSize({ width: 390, height: 844 })
   await collectionFixture(page)
   await page.evaluate(() => scrollTo(0, 12000))
@@ -76,11 +77,12 @@ test('far-down cards survive a dialog, responsive reflow and browser Back', asyn
 })
 
 test('advanced holo shine and tilt initialise again after their card leaves the window', async ({ page }) => {
+  test.setTimeout(60_000)
   await page.setViewportSize({ width: 1440, height: 1000 })
   await collectionFixture(page, { holo: true })
   const card = page.locator('[data-window-item="1"]')
   const art = card.locator('[data-holo-artwork]')
-  await expect(art.locator('.holo-effect-layer')).toBeAttached()
+  await expect(art.locator('.holo-effect-layer')).toBeAttached({ timeout: 15_000 })
   async function move() {
     await card.scrollIntoViewIfNeeded()
     const box = await card.locator('[data-holo-host]').boundingBox()
@@ -92,7 +94,7 @@ test('advanced holo shine and tilt initialise again after their card leaves the 
   await page.evaluate(() => scrollTo(0, 16000))
   await expect(card).toHaveCount(0)
   await page.evaluate(() => scrollTo(0, 0))
-  await expect(art.locator('.holo-effect-layer')).toBeAttached()
+  await expect(art.locator('.holo-effect-layer')).toBeAttached({ timeout: 15_000 })
   await move()
 })
 

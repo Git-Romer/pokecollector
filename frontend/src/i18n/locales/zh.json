@@ -285,7 +285,10 @@
     "allTypes": "所有类型",
     "searchCards": "搜索卡牌...",
     "clearFilters": "清空筛选",
-    "foundIn": "获得自"
+    "foundIn": "获得自",
+    "otherCards": "其他卡牌",
+    "byPokemon": "按宝可梦",
+    "speciesHint": "包含多只宝可梦的卡牌仅在第一个种类下显示一次。"
   },
   "printingDetails": {
     "label": "Printing details",
@@ -459,7 +462,11 @@
     "statusSold": "已售出 ✓",
     "statusOwned": "在库存中",
     "soldFor": "售出价格",
-    "profit": "利润"
+    "profit": "利润",
+    "printing": "种版本",
+    "printings": "种版本",
+    "copy": "张",
+    "copies": "张"
   },
   "products": {
     "title": "产品投资",

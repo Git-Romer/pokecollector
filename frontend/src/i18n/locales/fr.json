@@ -322,7 +322,10 @@
     "allTypes": "Tous les types",
     "searchCards": "Rechercher des cartes...",
     "clearFilters": "Effacer les filtres",
-    "foundIn": "Trouvée dans"
+    "foundIn": "Trouvée dans",
+    "otherCards": "Autres cartes",
+    "byPokemon": "Par Pokémon",
+    "speciesHint": "Les cartes avec plusieurs Pokémon apparaissent une seule fois, sous la première espèce indiquée."
   },
   "printingDetails": {
     "label": "Printing details",
@@ -496,7 +499,11 @@
     "statusSold": "Vendu ✓",
     "statusOwned": "En possession",
     "soldFor": "Vendu pour",
-    "profit": "Bénéfice"
+    "profit": "Bénéfice",
+    "printing": "édition",
+    "printings": "éditions",
+    "copy": "exemplaire",
+    "copies": "exemplaires"
   },
   "products": {
     "title": "Investissements Produits",

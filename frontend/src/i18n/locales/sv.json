@@ -285,7 +285,10 @@
     "allTypes": "Alla typer",
     "searchCards": "Sök kort...",
     "clearFilters": "Rensa filter",
-    "foundIn": "Hittad i"
+    "foundIn": "Hittad i",
+    "otherCards": "Övriga kort",
+    "byPokemon": "Efter Pokémon",
+    "speciesHint": "Kort med flera Pokémon visas en gång under den först angivna arten."
   },
   "printingDetails": {
     "label": "Printing details",
@@ -459,7 +462,11 @@
     "statusSold": "Såld ✓",
     "statusOwned": "I ägo",
     "soldFor": "Såld för",
-    "profit": "Vinst"
+    "profit": "Vinst",
+    "printing": "utgåva",
+    "printings": "utgåvor",
+    "copy": "exemplar",
+    "copies": "exemplar"
   },
   "products": {
     "title": "Produktinvesteringar",

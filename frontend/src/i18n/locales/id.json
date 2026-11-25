@@ -286,7 +286,10 @@
     "allTypes": "Semua Tipe",
     "searchCards": "Cari kartu...",
     "clearFilters": "Hapus filter",
-    "foundIn": "Ditemukan di"
+    "foundIn": "Ditemukan di",
+    "otherCards": "Kartu lain",
+    "byPokemon": "Menurut Pokémon",
+    "speciesHint": "Kartu dengan beberapa Pokémon muncul sekali di spesies pertama yang tercantum."
   },
   "printingDetails": {
     "label": "Printing details",
@@ -460,7 +463,11 @@
     "statusSold": "Terjual ✓",
     "statusOwned": "Dalam Kepemilikan",
     "soldFor": "Terjual seharga",
-    "profit": "Laba"
+    "profit": "Laba",
+    "printing": "cetakan",
+    "printings": "cetakan",
+    "copy": "salinan",
+    "copies": "salinan"
   },
   "products": {
     "title": "Investasi Produk",
