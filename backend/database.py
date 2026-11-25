@@ -174,6 +174,8 @@ def _run_migrations(conn):
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS price_tcg_holo_low FLOAT",
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS price_tcg_holo_mid FLOAT",
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS price_tcg_holo_market FLOAT",
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS price_tcg_first_edition_market FLOAT",
+        "ALTER TABLE cards ADD COLUMN IF NOT EXISTS price_tcg_usd_to_eur FLOAT",
         # v40: Add variant boolean columns
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS variants_normal BOOLEAN",
         "ALTER TABLE cards ADD COLUMN IF NOT EXISTS variants_reverse BOOLEAN",
@@ -682,6 +684,35 @@ def _run_migrations(conn):
                 );
             END IF;
         END$$""",
+        # PWA P1: replayable results for Idempotency-Key requests.
+        """CREATE TABLE IF NOT EXISTS idempotency_keys (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            key VARCHAR(64) NOT NULL,
+            scope VARCHAR(64) NOT NULL,
+            request_hash VARCHAR(64) NOT NULL,
+            response_status INTEGER NOT NULL,
+            response_body JSONB NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            expires_at TIMESTAMP NOT NULL,
+            CONSTRAINT uq_idempotency_user_key UNIQUE (user_id, key)
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_idempotency_keys_expires_at ON idempotency_keys(expires_at)",
+        # PWA P10: Web Push subscriptions for price alerts.
+        """CREATE TABLE IF NOT EXISTS push_subscriptions (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            endpoint TEXT NOT NULL,
+            p256dh VARCHAR(255) NOT NULL,
+            auth VARCHAR(255) NOT NULL,
+            user_agent VARCHAR(255),
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            last_seen_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            last_success_at TIMESTAMP,
+            failure_count INTEGER NOT NULL DEFAULT 0,
+            CONSTRAINT uq_push_subscription_endpoint UNIQUE (endpoint)
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_push_subscriptions_user_id ON push_subscriptions(user_id)",
     ]
     for stmt in migrations:
         try:

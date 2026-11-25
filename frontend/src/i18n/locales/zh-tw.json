@@ -285,7 +285,10 @@
     "allTypes": "所有類型",
     "searchCards": "搜尋卡牌...",
     "clearFilters": "清空篩選",
-    "foundIn": "獲得自"
+    "foundIn": "獲得自",
+    "otherCards": "其他卡牌",
+    "byPokemon": "依寶可夢",
+    "speciesHint": "包含多隻寶可夢的卡牌僅在第一個種類下顯示一次。"
   },
   "printingDetails": {
     "label": "Printing details",
@@ -459,7 +462,11 @@
     "statusSold": "已售出 ✓",
     "statusOwned": "在庫存中",
     "soldFor": "售出價格",
-    "profit": "利潤"
+    "profit": "利潤",
+    "printing": "種版本",
+    "printings": "種版本",
+    "copy": "張",
+    "copies": "張"
   },
   "products": {
     "title": "產品投資",
@@ -665,11 +672,11 @@
     "backupCards": "卡牌資料",
     "backupProducts": "產品",
     "backupImages": "圖片快取",
-    "clearImageCache": "清空圖片快取",
-    "clearImageCacheDesc": "刪除所有快取的卡牌圖片（僅管理員）",
-    "clearImageCacheConfirm": "確定嗎？所有快取圖片都會被刪除。",
-    "clearImageCacheSuccess": "圖片快取已清空",
-    "clearImageCacheFailed": "清空快取失敗",
+    "clearImageCache": "刪除伺服器圖片快取",
+    "clearImageCacheDesc": "刪除所有使用者的伺服器圖片快取。裝置上的下載內容和上傳的原始檔案會保留。",
+    "clearImageCacheConfirm": "確定刪除所有使用者的伺服器圖片快取嗎？伺服器會在需要時重新取得圖片。離線下載和上傳的原始檔案不會被刪除。",
+    "clearImageCacheSuccess": "伺服器圖片快取已刪除",
+    "clearImageCacheFailed": "無法刪除伺服器圖片快取",
     "backupButton": "備份",
     "backupImport": "匯入備份",
     "backupImportDesc": ".sql 檔案匯入",
@@ -920,7 +927,10 @@
     "setLangFilter": "按語言篩選系列",
     "searchLangFilter": "按語言篩選搜尋"
   },
-  "variants": {
+  "artists": {
+    "galleryView": "圖庫檢視",
+    "listView": "清單檢視",
+    "featuredCards": "精選卡牌",
     "label": "版本",
     "none": "- 無版本 -",
     "Normal": "普通",
@@ -1148,5 +1158,16 @@
     "traderDesc": "出售10個產品",
     "rareFinder": "稀有獵人",
     "rareFinderDesc": "擁有一張 Illustration Rare 卡牌"
+  },
+  "sync": {
+    "artworkTitle": "卡牌圖片",
+    "artworkRetry": "重試缺少的圖片",
+    "artworkRetryHint": "重新連線後在此重試，然後重新開啟卡牌。若已啟用自動下載，也會重試收藏下載。",
+    "artworkRetryRequested": "已要求重試。重新開啟卡牌以再次載入圖片。",
+    "artworkOfflineHint": "重新連線後，可在同步中心重試缺少的圖片。"
+  },
+  "offlineCollection": {
+    "preferencePending": "已儲存在此裝置上。連線可用時將同步帳戶偏好設定。",
+    "preferenceFailed": "無法在此裝置上儲存偏好設定。請檢查瀏覽器儲存空間後重試。"
   }
 }

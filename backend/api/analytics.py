@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func
 from api.auth import get_current_user
 from api.collection import _annotate_scan_photos
 from database import get_db
@@ -13,7 +12,6 @@ from services.portfolio_valuation import (
     portfolio_snapshot_payload,
 )
 from models import CollectionItem, Card, PriceHistory, PortfolioSnapshot, Set, ProductLedgerEntry, Trade, TradeItem, User
-from typing import Optional
 import datetime
 
 router = APIRouter()

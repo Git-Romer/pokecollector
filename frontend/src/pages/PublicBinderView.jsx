@@ -1,3 +1,4 @@
+import WindowedCardGrid from '../components/WindowedCardGrid'
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { ArrowLeft, HelpCircle } from 'lucide-react'
@@ -75,8 +76,7 @@ export default function PublicBinderView() {
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-        {tiles.map(tile => {
+        <WindowedCardGrid measureRows className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4" items={tiles} renderItem={tile => {
           // Depth follows distinct prints: 1 layer behind for 2 variants, 2 for 3+.
           const backLayers = Math.min(tile.variantCount - 1, 2)
           const layerOffset = 8
@@ -103,8 +103,7 @@ export default function PublicBinderView() {
               )}
             </article>
           )
-        })}
-        </div>
+}} />
     </PublicProfileShell>
   )
 }

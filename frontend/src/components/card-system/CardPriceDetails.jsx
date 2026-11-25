@@ -4,7 +4,7 @@ import { ExternalLink } from 'lucide-react'
 import { getPriceHistory } from '../../api/client'
 import { useSettings } from '../../contexts/SettingsContext'
 import { cardmarketLinks } from '../../utils/cardmarket'
-import { getCardPriceValue, getPrimaryCardPrice } from '../../utils/prices'
+import { getCardPriceValue, getPrimaryCardPrice, getEffectiveCardPriceDetails } from '../../utils/prices'
 
 const CARDMARKET_PRICE_KEYS = ['trend', 'avg', 'avg1', 'avg7', 'avg30', 'low']
 const CARDMARKET_REVERSE_PRICE_FIELDS = [
@@ -37,6 +37,7 @@ export function tcgplayerPriceBreakdown(card) {
     card?.price_tcg_normal_market != null ? { key: 'tcg-normal', val: card.price_tcg_normal_market, label: 'Normal' } : null,
     card?.price_tcg_reverse_market != null ? { key: 'tcg-reverse', val: card.price_tcg_reverse_market, label: 'Reverse' } : null,
     card?.price_tcg_holo_market != null ? { key: 'tcg-holo', val: card.price_tcg_holo_market, label: 'Holo' } : null,
+    card?.price_tcg_first_edition_market != null ? { key: 'tcg-first-edition', val: card.price_tcg_first_edition_market, label: 'First Edition' } : null,
   ].filter(Boolean)
 }
 
@@ -56,6 +57,7 @@ export default function CardPriceDetails({ card, variant = 'Normal', summary = n
   const cardmarketPrices = cardmarketPriceBreakdown(card, variant)
   const tcgplayerPrices = tcgplayerPriceBreakdown(card)
   const selectedPrimaryPrice = getPrimaryCardPrice(card, variant, pricePrimary, pricePrimaryField)
+  const selectedQuote = getEffectiveCardPriceDetails(card, variant, pricePrimaryField)
   const historyPriceField = ['price_market', 'price_trend', 'price_low'].includes(pricePrimaryField)
     ? pricePrimaryField
     : 'price_market'
@@ -67,12 +69,19 @@ export default function CardPriceDetails({ card, variant = 'Normal', summary = n
     <div className="space-y-4">
       {summary}
 
+      {selectedQuote.source === 'tcgplayer' && (
+        <div className="bg-bg-card rounded-xl p-3 space-y-2" data-price-source="tcgplayer">
+          <p className="text-xs text-text-muted font-medium uppercase tracking-wide">TCGPlayer (EN) · {variant}</p>
+          <p className="text-2xl font-bold text-green">{formatPrice(selectedQuote.amount)}</p>
+        </div>
+      )}
+
       {cardmarketPrices.length > 0 && (
         <div className="bg-bg-card rounded-xl p-3 space-y-3">
           <p className="text-xs text-text-muted font-medium uppercase tracking-wide">
             {t('prices.cardmarketTitle')} · {variant}
           </p>
-          {selectedPrimaryPrice != null && (
+          {selectedPrimaryPrice != null && selectedQuote.source !== 'tcgplayer' && (
             <p className="text-2xl font-bold text-green">{formatPrice(selectedPrimaryPrice)}</p>
           )}
           <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 text-xs border-t border-border pt-2">

@@ -8,7 +8,8 @@ const publisher = 'https://pokecollector.romerg.de'
 
 test('shipped frontend CSP permits the exact official publisher without widening unrelated directives', () => {
   const nginx = read('nginx.conf')
-  const policy = nginx.match(/add_header Content-Security-Policy "([^"]+)" always;/)?.[1]
+  assert.match(nginx, /include\s+\/etc\/nginx\/snippets\/pc-security-headers\.conf;/)
+  const policy = read('nginx-security-headers.conf').match(/add_header Content-Security-Policy "([^"]+)" always;/)?.[1]
   assert.ok(policy, 'production CSP must be explicit')
   const directives = Object.fromEntries(policy.split(';').map(part => part.trim().split(/\s+/)).filter(parts => parts[0]).map(([name, ...values]) => [name, values]))
   assert.deepEqual(directives['connect-src'], [

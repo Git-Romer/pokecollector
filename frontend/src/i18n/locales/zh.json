@@ -285,7 +285,10 @@
     "allTypes": "所有类型",
     "searchCards": "搜索卡牌...",
     "clearFilters": "清空筛选",
-    "foundIn": "获得自"
+    "foundIn": "获得自",
+    "otherCards": "其他卡牌",
+    "byPokemon": "按宝可梦",
+    "speciesHint": "包含多只宝可梦的卡牌仅在第一个种类下显示一次。"
   },
   "printingDetails": {
     "label": "Printing details",
@@ -459,7 +462,11 @@
     "statusSold": "已售出 ✓",
     "statusOwned": "在库存中",
     "soldFor": "售出价格",
-    "profit": "利润"
+    "profit": "利润",
+    "printing": "种版本",
+    "printings": "种版本",
+    "copy": "张",
+    "copies": "张"
   },
   "products": {
     "title": "产品投资",
@@ -665,11 +672,11 @@
     "backupCards": "卡牌数据",
     "backupProducts": "产品",
     "backupImages": "图片缓存",
-    "clearImageCache": "清空图片缓存",
-    "clearImageCacheDesc": "删除所有缓存的卡牌图片（仅管理员）",
-    "clearImageCacheConfirm": "确定吗？所有缓存图片都会被删除。",
-    "clearImageCacheSuccess": "图片缓存已清空",
-    "clearImageCacheFailed": "清空缓存失败",
+    "clearImageCache": "删除服务器图片缓存",
+    "clearImageCacheDesc": "删除所有用户的服务器图片缓存。设备上的下载内容和上传的原始文件将保留。",
+    "clearImageCacheConfirm": "确定删除所有用户的服务器图片缓存吗？服务器会在需要时重新获取图片。离线下载和上传的原始文件不会被删除。",
+    "clearImageCacheSuccess": "服务器图片缓存已删除",
+    "clearImageCacheFailed": "无法删除服务器图片缓存",
     "backupButton": "备份",
     "backupImport": "导入备份",
     "backupImportDesc": ".sql 文件导入",
@@ -920,7 +927,10 @@
     "setLangFilter": "按语言筛选系列",
     "searchLangFilter": "按语言筛选搜索"
   },
-  "variants": {
+  "artists": {
+    "galleryView": "画廊视图",
+    "listView": "列表视图",
+    "featuredCards": "精选卡牌",
     "label": "版本",
     "none": "- 无版本 -",
     "Normal": "普通",
@@ -1148,5 +1158,16 @@
     "traderDesc": "出售10个产品",
     "rareFinder": "稀有猎人",
     "rareFinderDesc": "拥有一张Illustration Rare卡牌"
+  },
+  "sync": {
+    "artworkTitle": "卡牌图片",
+    "artworkRetry": "重试缺失的图片",
+    "artworkRetryHint": "重新连接后在此重试，然后重新打开卡牌。如果已开启自动下载，也会重试收藏下载。",
+    "artworkRetryRequested": "已请求重试。重新打开卡牌以再次加载图片。",
+    "artworkOfflineHint": "重新连接后，可在同步中心重试缺失的图片。"
+  },
+  "offlineCollection": {
+    "preferencePending": "已保存在此设备上。连接可用时将同步账户偏好设置。",
+    "preferenceFailed": "无法在此设备上保存偏好设置。请检查浏览器存储空间后重试。"
   }
 }

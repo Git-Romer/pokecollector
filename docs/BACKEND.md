@@ -26,6 +26,8 @@ FastAPI app entry point: `backend/main.py`.
 | Method | Path | Notes |
 |--------|------|-------|
 | GET | `/api/cards/search` | Local card search |
+| GET | `/api/cards/artist-checklist` | Every catalogue card by an artist with per-printing ownership and progress |
+| GET | `/api/cards/artists` | Artist directory with per-artist owned counts and missing value |
 | GET | `/api/cards/custom` | List the current user's custom cards and shared templates |
 | POST | `/api/cards/custom` | Create an owner-scoped custom card |
 | POST | `/api/cards/custom/{card_id}/clone` | Copy a shared template into an independent private card |
@@ -36,6 +38,7 @@ FastAPI app entry point: `backend/main.py`.
 | POST | `/api/cards/custom/dismiss/{match_id}` | Dismiss match |
 | GET | `/api/cards/{card_id}/lang/{lang}` | Resolve equivalent card in another language |
 | GET | `/api/cards/{card_id}/price-history` | Price history |
+| GET | `/api/cards/{card_id}/valuation` | Matching-variant value with source and selected-currency conversion |
 | PUT | `/api/cards/{card_id}/custom-image` | Set/clear a validated HTTPS fallback image for an API card with no TCGdex artwork |
 | GET | `/api/cards/{card_id}` | Card detail |
 | POST | `/api/cards/recognize` | Card recognition through the user's configured vision provider |
@@ -51,15 +54,82 @@ FastAPI app entry point: `backend/main.py`.
 
 `GET /api/cards/search` accepts `q` (with `name` as a compatibility alias),
 `number`, `set_id`, `type`, `category`, `subtype`, `rarity`, `artist`,
-`rule_text`, `hp_min`, `hp_max`, `dex_id`, `lang`, `sort_by`, `sort_order`,
-`page`, and `page_size`. Text filters are accent-insensitive. `rule_text`
+`rule_text`, `hp_min`, `hp_max`, `dex_id`, `lang`, `ownership`, `sort_by`,
+`sort_order`, `page`, and `page_size`. `ownership=owned|missing` keeps cards
+whose collection quantity is positive or zero respectively, and the response
+carries an `owned_count` alongside `total_count`. Text filters are
+accent-insensitive. `rule_text`
 searches card effects plus attack/ability names and effects. Card numbers use
 the same leading-zero and alphanumeric matching as exact lookup, and `q` also
 recognizes code-number pairs such as `PFL 001` or `30C 001`. Set codes may start
 with a digit. A code that matches no set falls back to the name search, so card
 names that look like a code-number pair (`151 025`) stay reachable.
 
+`GET /api/cards/artist-checklist` takes `artist`, `artist_match`, `lang`,
+`ownership`, `sort_by` (`number`, `name`, `price`), `sort_order`, `price_field`,
+`page` and `page_size`. The artist page sends `artist_match=exact`, matching the
+trimmed catalogue name exactly so similarly named artists stay separate. API
+clients can use `artist_match=contains` (the compatibility default) for an
+accent-insensitive substring search; unknown matching modes return HTTP 400. Rows are grouped by card identity (`tcg_card_id`), so one card
+with several language printings appears once; with `lang=all` a card counts as
+owned when any printing is owned, while a specific `lang` judges only that
+printing. Ownership filters the returned page only: the response reports
+`owned_count`, `total_count`, `progress` and `missing_value` over the whole
+artist scope plus `list_count` for the filtered list being paged, and the
+matched `artists`, and each row carries its `printings` with per-language
+ownership.
+
+`GET /api/cards/artists` is the directory behind that page: it takes `q`
+(accent-insensitive substring on the artist name), `lang`, `sort_by` (`name`,
+`cards`, `progress`, `missing`), `sort_order`, `page` and `page_size`, and
+returns one row per artist with `total_count`, `owned_count`, `missing_count`,
+`progress`, `missing_value` and the artist's `languages`. Card identities are
+grouped exactly as in the checklist, so a single matching artist reports the
+same totals on both pages. Only an explicit substring checklist scope can merge
+several artists; directory links always request the exact artist. The default sort
+is completion descending (`sort_by=progress&sort_order=desc`), with artist names
+ascending as the stable tie-breaker. Explicit sort parameters override it.
+
+Each artist also includes `preview_cards`, the three highest-valued distinct
+card identities in the visible catalogue, independent of ownership. `lang`
+restricts both the counts and previews. For `lang=all`, the highest-valued visible
+language printing represents each identity, so translated versions cannot take
+multiple slots. Ties use the canonical identity and printing ID for stable order.
+Artists with fewer than three identities return fewer cards; unpriced identities
+fill any remaining slots after priced cards, with a null amount rather than zero.
+
+On both endpoints, the optional `price_field` query parameter selects the shared valuation field
+(default `price_trend`, with the same Cardmarket fallbacks and matching-variant
+TCGplayer EUR conversion as other valuations). German TCGplayer fallback respects
+`cross_language_price_fallback`; other non-English languages do not gain it.
+Missing-value totals and checklist price sorting use those same resolved EUR
+values, not raw provider amounts. For a grouped identity, the first priced visible
+printing is selected in display-language, English, Japanese, then canonical
+language order. Unknown prices contribute nothing to the missing-value estimate
+and sort last, without changing the printing's stored prices. The frontend sends
+the account's price preference to both endpoints.
+
+The directory scans lightweight visible catalogue columns once per request,
+with bounded ownership/settings queries, and values gallery artwork only for
+the requested artist page. Rendering windowing does not eliminate that backend
+scan; larger installations should measure API latency separately from rendering.
+
+Preview entries include `id`, `tcg_card_id`, `name`, `lang`, `images_small`,
+`images_large`, and a `valuation` object with its amount and price provenance.
+Artwork can be requested through `/api/images/card/{id}/small`. Ranking uses
+locally synchronized prices and does not trigger provider requests or updates.
+
 Custom cards belong to exactly one user. Owners may publish a card as a shared template, but other users must clone it before using it in collections, wishlists, binders, products, or trades. Clones have independent IDs, metadata, images, and prices. Manual image URLs must use public HTTPS destinations and are fetched through the size-limited image proxy. During upgrade, existing custom cards become shared templates owned by the first-created admin account, while each other referencing user receives one private clone and keeps their existing references.
+
+#### Card valuation
+
+`GET /api/cards/{card_id}/valuation` is authenticated and uses the same EUR valuation as collection totals. Optional query parameters are `variant` (a supported collection variant), `price_field` (for example `price_trend` or `price_avg7`), and `currency` (an uppercase three-letter currency code, default `EUR`). Without a variant, a holo-only card uses Holo; otherwise Normal is selected.
+
+The selected Cardmarket field and its existing market-price fallback take precedence. If neither is usable, the matching TCGplayer Normal, Holo, Reverse Holo, or First Edition market price supplied through TCGdex is converted from USD using the rate saved during price upserts. English cards are eligible directly. German cards are eligible only when the existing admin setting `cross_language_price_fallback` is enabled (default `true`); this is an English-market estimate, not a German-market quote. The existing `PUT /api/settings/` endpoint controls that preference, and `GET /api/settings/` reads it back. Card payloads expose the derived `tcgplayer_fallback_allowed` flag so frontend valuation agrees with APIs and portfolio totals. Other and unknown card languages are not newly opted into this marketplace fallback. Existing cross-language Cardmarket references remain unchanged. Eligibility follows the physical card's language, not the interface language. Other variants never borrow a different edition or finish. Raw TCGplayer fields stay in USD and stored Cardmarket fields stay in EUR. The existing amber price-fallback indicator is reused, with `TCGplayer (EN)` identifying the marketplace source. A later sync that restores a usable Cardmarket price takes priority automatically.
+
+The response includes `amount`, `currency`, `amount_eur`, `source` (`cardmarket`, `tcgplayer`, or `null`), `source_amount`, and `source_currency`. A TCGplayer quote also includes `usd_to_eur`. For example, a USD 8 first-edition price with a saved USD/EUR rate of 0.9 has `amount_eur: 7.2`, independently of the requested display currency. Missing prices or a missing saved USD/EUR rate return zero with a null source, not dollars labelled as euros. A failed display-currency conversion returns HTTP 503 rather than an invented amount. Nonexistent or inaccessible private custom cards return HTTP 404.
+
+Valuation does not trigger a sync. Existing sync APIs refresh the raw provider prices and saved conversion; a provider outage can reuse the last saved exchange rate. Price-history records retain their existing Cardmarket meaning. Manual price overrides are separate from this fallback.
 
 ### Set display metadata
 
@@ -86,6 +156,7 @@ so time-zone conversion cannot move a release into the preceding month.
 | Method | Path | Notes |
 |--------|------|-------|
 | GET | `/api/collection/` | User-scoped collection |
+| GET | `/api/collection/by-species` | Owner-scoped groups with collection rows, copies and canonical value; accepts `price_field`, `rule_text`, and species-name `language` (`en` or `de`). Every visible row occurs once, under its first valid species, or in `other` for Trainer, Energy, custom and unclassified cards. `groups` use National Dex order; each group includes `dex_id`, `name`, `printing_count`, `copies`, `total_value`, `items`. `other` contains `copies`, `total_value`, `items`; `summary` covers `entries`, `copies`, `total_value`. The existing collection endpoint remains unchanged. |
 | GET | `/api/collection/user/{user_id}` | View another user's collection (read-only, auth required) |
 | POST | `/api/collection/` | Add to collection |
 | POST | `/api/collection/bulk-add` | Bulk-add selected cards; commits each item independently and reports added/updated/failed counts |
@@ -164,8 +235,8 @@ responses.
 | GET | `/api/analytics/rarity-stats` | Rarity distribution |
 | GET | `/api/analytics/trades-summary` | Aggregate trade counts, totals, and deltas |
 | GET | `/api/analytics/investment-tracker` | Portfolio history |
+| GET | `/api/analytics/species-duplicates` | Owner-scoped species with at least two distinct language-specific printings; accepts `price_field` and returns printing quantities, weighted unit prices, values and owner-photo flags |
 | GET | `/api/analytics/new-sets` | Analytics new sets |
-| GET | `/api/analytics/species-duplicates` | Species owned in two or more printings, with per-printing quantities and values |
 | GET | `/api/social/leaderboard` | Multi-user leaderboard |
 | GET | `/api/social/compare/{user_id}` | Multi-user comparison |
 | GET | `/api/social/achievements/{user_id}` | Achievement progress |
@@ -173,23 +244,22 @@ responses.
 | GET | `/api/community/supporters` | Fresh, strictly validated public supporter registry projection; returns `503` with `Cache-Control: no-store` on any upstream or validation failure |
 | GET | `/api/github/rescue-donations` | Rescue donation total from `RESCUE_DONATIONS.csv` |
 
-`/api/analytics/species-duplicates` groups the collection by species and keeps only
-species with at least two distinct printings. A printing is a language-specific
-card row, not an individual collection row: condition/variant rows of one card add
-up as one printing with a quantity-weighted unit price, while the same card in
-English and German counts as two printings. Card-identity completion views such
-as the Pokédex instead group by `tcg_card_id`, so one owned language covers the
-card. Cards mapped to several dex ids count under each species. Species sort by
-printing count, then value; printings sort by value. The summary counts each
-distinct printing once. `/api/pokedex/directory` returns the
-same catalogue order as `/api/pokedex`, without per-user ownership data.
+`/api/analytics/species-duplicates` counts distinct language-specific cards,
+not separate condition/variant collection entries: their quantities and values
+are combined. English and German copies of the same card count as two printings.
+This differs from identity-based Pokédex completion. Multi-species cards count
+under each depicted species; the summary counts each distinct printing once.
+Species sort by printing count, then value, then dex number; printings sort by
+value, set, name and card ID. Trainers without species and custom cards are not
+included in these species statistics, but remain reachable in Collection.
 
 ### Pokédex, Profiles, and Public Sharing
 
 | Method | Path | Notes |
 |--------|------|-------|
 | GET | `/api/pokedex` | Grouped or exact-form completion overview with generation/status/search/form filters |
-| GET | `/api/pokedex/directory` | Static species catalogue (names, slug, generation, region, types) for UI lookups; no database access |
+| GET | `/api/pokedex/directory` | Original contributor API: `{ species: [...] }`, using the same static catalogue without per-user ownership |
+| GET | `/api/pokedex/species` | Authenticated static species directory reused by Collection; includes localized names and no ownership data |
 | GET | `/api/pokedex/{entry_id}` | One species/form with ownership, related forms, and printing summary |
 | GET | `/api/pokedex/images/{kind}/{entry_id}.png` | Cached `sprites` or `artwork` image, including form artwork |
 | GET | `/api/profile/` | Current user's public-profile, value, and Wishlist-visibility preferences and handle |
@@ -415,13 +485,15 @@ endpoint exposes user settings or collection data.
 - `ImageCache`
 - `CustomCardMatch`
 - `ScanJob` / `ScanJobItem` / `ScanQueueUserState`
+- `IdempotencyKey` (replayable `Idempotency-Key` results; see [Idempotency](#idempotency))
+- `PushSubscription` (Web Push subscriptions, one row per device; see [Web push](#web-push))
 - `GeminiQuotaState` / `ScannerProviderLimitState`
 
 ## Settings Scope
 
-Current settings are split in `backend/api/settings.py`:
+The API in `backend/api/settings.py` routes `ADMIN_ONLY_KEYS` to the global store and other preferences to the authenticated user's `UserSetting` rows. Dedicated scanner settings must use their atomic configuration endpoint; this is not a fixed per-user key allowlist. Examples of each scope:
 
-- `PER_USER_KEYS`
+- Per-user settings
   - `language`
   - `currency`
   - `price_primary`
@@ -516,7 +588,12 @@ and queued-photo files remain filesystem data and are not part of SQL backups.
 `POST /api/backup/restore` accepts only a non-empty `.sql` upload, streams it to
 a temporary file, and invokes `psql` with `ON_ERROR_STOP=1`, `--no-psqlrc`, and
 `--single-transaction`. Any SQL error rolls back the whole restore. The
-temporary file is removed whether the operation succeeds or fails.
+temporary file is removed whether the operation succeeds or fails. After a
+successful restore the endpoint also deletes every row in `idempotency_keys`
+(best effort): an older dump would otherwise leave keys whose business rows no
+longer exist, and replaying one would silently drop the add. After a manual
+`psql` restore run `DELETE FROM idempotency_keys;`. The table is not part of
+the selective backup groups but is included in full dumps.
 
 ### Automatic Pre-upgrade Backup
 
@@ -636,12 +713,62 @@ race. That suite creates and removes only a randomly named test schema.
 
 Each item is committed independently, so one invalid or unavailable card does not roll back the rest of the batch. Existing rows are matched by card, variant, language, and current user.
 
+`bulk-add` and `import-csv` ignore the `Idempotency-Key` header (see below).
+
+## Idempotency
+
+Three append operations can be retried safely with an `Idempotency-Key` header, so a client that lost the response can resend the request without applying it twice:
+
+| Route | Scope |
+|---|---|
+| `POST /api/collection/` | `collection.add` |
+| `POST /api/wishlist/` | `wishlist.add` |
+| `POST /api/cards/recognize/jobs` | `scan.enqueue` |
+
+Every other route, including `bulk-add` and `import-csv`, ignores the header. Without the header the three routes behave exactly as before and never touch the `idempotency_keys` table.
+
+**Headers.** `Idempotency-Key` is 16-64 characters of `A-Z a-z 0-9 _ -` (one pair of surrounding double quotes is stripped); a UUID works. `X-Expected-User-Id` is an optional integer; on the three routes a value that differs from the authenticated user is rejected with `409 wrong_account`, with or without a key. A replayed response carries `Idempotent-Replayed: true`.
+
+**Semantics.** Results are deduplicated per `(user, key)`. The key row is written in the same database transaction as the business write, and only successful (2xx) results are stored, so a failed request leaves nothing behind and a retry runs again. A key is kept for 14 days (`KEY_TTL`); an expired key is treated as new, and the scheduler removes expired rows hourly. A key reused with a different scope or request fingerprint (the JSON body, or for scans the selection and the SHA-256 of each photo) is rejected. On PostgreSQL an advisory try-lock detects a duplicate that is still running without ever waiting.
+
+| HTTP | `detail.code` | Meaning |
+|---|---|---|
+| 400 | `idempotency_key_invalid` | `Idempotency-Key` or `X-Expected-User-Id` is malformed |
+| 409 | `idempotency_in_progress` | Another request holds the key (sets `Retry-After: 2`); retry shortly |
+| 409 | `wrong_account` | `X-Expected-User-Id` does not match the token's user |
+| 422 | `idempotency_key_reused` | Same key, different scope or payload |
+
+FastAPI's own validation `422` keeps its array `detail`; the two are told apart by `detail.code`. A restore clears all stored keys (see Manual restore).
+
+**Health.** `GET /api/health` also returns `version`, `api_level` (`1`) and `features` (`["idempotency-v1"]`, from `services/api_info.py`) so clients can tell whether the backend supports replays.
+
 ## Notifications
 
 `backend/services/telegram.py` reads Telegram credentials and currency from that
 user's `UserSetting` rows. Price alerts convert both the EUR market price and
 threshold to the selected currency using the shared rate cache; if no rate has
 ever been synced, both values are marked unavailable in the selected currency.
+
+### Web push
+
+Optional Web Push for wishlist price alerts, sent next to Telegram from `check_wishlist_alerts`. A push failure never stops Telegram or the alert loop. Design: [PWA_OFFLINE_DESIGN.md](PWA_OFFLINE_DESIGN.md) §6.7.
+
+All routes need a signed-in user (`backend/api/push.py`, prefix `/api/push`):
+
+| Route | Purpose |
+|---|---|
+| `GET /vapid-public-key` | `{"public_key": "<base64url P-256 point>"}` for `pushManager.subscribe` |
+| `POST /subscribe` | Body `{endpoint, keys:{p256dh, auth}, user_agent?}`. Upserts by `endpoint` (re-assigns it to the caller, resets the failure count) and returns `{"id": n}` |
+| `DELETE /subscribe` | Body `{endpoint}`. Removes only the caller's row. `204` |
+| `POST /test` | Sends a test notification to the caller's devices: `{"sent": n, "removed": m}` |
+
+- **Table** `push_subscriptions`: `user_id` (cascade on user delete), unique `endpoint`, `p256dh`, `auth`, `user_agent`, `created_at`, `last_seen_at`, `last_success_at`, `failure_count`.
+- **SSRF allow-list.** The server POSTs to the stored endpoint, so `subscribe` accepts only `https` URLs up to 2048 characters on port 443 whose host is `fcm.googleapis.com` or ends in `.push.apple.com`, `.push.services.mozilla.com` or `.notify.windows.com`. IP literals, credentials and every other host return `422`.
+- **Keys.** `VAPID_PRIVATE_KEY` (PEM, `
+` escapes allowed) overrides the key file, which defaults to `/app/data/auth/vapid_private.pem` (`VAPID_PRIVATE_KEY_FILE` changes the path). Without either, a P-256 key is created once with mode `0600`. The stock `docker-compose.yml` does not pass these variables to the backend, so Compose installs use the key file (add them under `environment:` in an override if needed). `VAPID_SUBJECT` is the contact URL or `mailto:` sent to the push services (default: the project URL). The private key is never logged.
+- **Payload.** At most 4096 bytes: only the card name and `/wishlist`, no prices or collection data; encrypted end to end.
+- **Outcomes.** `404`/`410` delete the row; `403` is logged and kept; `429` is skipped; any other failure adds one to `failure_count` and the tenth deletes the row.
+- **Dependency.** `pywebpush==2.5.0` (MPL-2.0, used unmodified).
 
 ## Migrations
 

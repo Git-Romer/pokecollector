@@ -44,14 +44,6 @@ def get_pokedex(
     )
 
 
-@router.get("/directory")
-def get_species_directory(
-    current_user: User = Depends(get_current_user),
-):
-    """Static species names, slugs and classification; reads the catalogue only."""
-    return {"species": species_directory()}
-
-
 @router.get("/images/{kind}/{entry_id}.png", include_in_schema=False)
 def get_species_image(kind: str, entry_id: str):
     """Serve a persistent local image, populating a missing cache entry lazily."""
@@ -72,6 +64,17 @@ def get_species_image(kind: str, entry_id: str):
         media_type="image/png",
         headers={"Cache-Control": "public, max-age=604800"},
     )
+
+
+@router.get("/directory")
+def get_species_directory_compat(current_user: User = Depends(get_current_user)):
+    """Contributor API contract; the Collection lookup uses the same catalogue."""
+    return {"species": species_directory()}
+
+
+@router.get("/species")
+def get_species_directory(current_user: User = Depends(get_current_user)):
+    return species_directory()
 
 
 @router.get("/{entry_id}")

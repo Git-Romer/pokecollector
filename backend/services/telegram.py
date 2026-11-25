@@ -50,12 +50,6 @@ def _get_telegram_credentials(db=None, user_id=None):
     return token, chat_id
 
 
-def is_configured(db=None, user_id=None) -> bool:
-    """Check if Telegram is configured (from DB or env)."""
-    token, chat_id = _get_telegram_credentials(db, user_id=user_id)
-    return bool(token and chat_id)
-
-
 def send_message(text: str, db=None, user_id=None) -> bool:
     """Send a message via Telegram Bot API."""
     token, chat_id = _get_telegram_credentials(db, user_id=user_id)
@@ -124,11 +118,6 @@ def _format_currency_amount(
     return f"{currency} {converted:,.2f}"
 
 
-def _format_user_eur(amount: float, db=None, user_id=None) -> str:
-    currency = _get_user_currency(db=db, user_id=user_id)
-    return _format_currency_amount(amount, currency, _get_eur_exchange_rate(currency))
-
-
 def send_price_alert(card_name: str, current_price: float, threshold: float, alert_type: str, db=None, user_id=None):
     """Send both price values in the selected currency, or mark them unavailable."""
     emoji = "📈" if alert_type == "above" else "📉"
@@ -142,19 +131,5 @@ def send_price_alert(card_name: str, current_price: float, threshold: float, ale
         f"Current price: <b>{_format_currency_amount(current_price, currency, rate)}</b>\n"
         f"Alert threshold ({direction}): <b>{_format_currency_amount(threshold, currency, rate)}</b>\n\n"
         f"Check your collection! 🎯"
-    )
-    return send_message(text, db=db, user_id=user_id)
-
-
-def send_new_sets_notification(new_sets: list, db=None, user_id=None):
-    """Notify about newly detected sets."""
-    if not new_sets:
-        return False
-
-    sets_list = "\n".join([f"• {s['name']} ({s['series']})" for s in new_sets[:10]])
-    text = (
-        f"🆕 <b>New Pokemon Sets Detected!</b>\n\n"
-        f"{sets_list}\n\n"
-        f"Check your collection app to explore! 🎮"
     )
     return send_message(text, db=db, user_id=user_id)

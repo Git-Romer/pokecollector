@@ -1,13 +1,14 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
-from sqlalchemy import and_, func, cast, Integer, String, or_
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import and_, func, cast, Integer, String, not_, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.dialects.postgresql import JSONB
 from typing import Optional, List
 from api.auth import get_current_user
 from database import get_db
 from models import Binder, BinderCard, Card, Set, PriceHistory, CustomCardMatch, CollectionCardPhoto, CollectionItem, WishlistItem, User, ImageCache, ProductCard, ProductLedgerEntry, TradeItem
-from schemas import CardBase, CardWithSet, PriceHistoryResponse, CardCustomCreate, CustomCardUpdate, CardCustomImageUpdate
+from schemas import CardBase, PriceHistoryResponse, CardCustomCreate, CustomCardUpdate, CardCustomImageUpdate
+from services.collection_variants import CollectionVariant
 from services import pokemon_api
 from services.card_fallbacks import (
     apply_cross_language_fallbacks,
@@ -33,12 +34,15 @@ from services.display_language import get_tcgdex_display_language
 from services.image_url_security import validate_public_https_image_url
 from services.pokedex import card_pokedex_entry_ids
 from services.pokedex_forms import get_entry as get_pokedex_entry
-from services.card_numbers import card_number_filter
-from services.tcgdex_languages import english_fallback_languages, has_lang_suffix, is_supported_tcgdex_language, normalize_tcgdex_language
+from services.card_numbers import card_number_filter, natural_card_number_key
+from services.collection_variants import CANONICAL_VARIANTS
+from services.tcgdex_languages import english_fallback_languages, has_lang_suffix, is_supported_tcgdex_language, normalize_tcgdex_language, strip_lang_suffix
 from services.text_search import accent_insensitive_contains, json_array_text_matches, normalize_search_term
 from services.card_state import card_state_summaries
+from services.artist_gallery import select_artist_previews
+from services.card_values import effective_market_price, cross_language_tcgplayer_fallback_enabled
+from models import Setting
 from services.product_sources import annotate_product_sources
-import datetime
 import re
 from uuid import uuid4
 
@@ -129,6 +133,9 @@ def _card_to_dict(card: Card, current_user_id: int | None = None) -> dict:
         "price_tcg_normal_market": getattr(card, 'price_tcg_normal_market', None),
         "price_tcg_reverse_market": getattr(card, 'price_tcg_reverse_market', None),
         "price_tcg_holo_market": getattr(card, 'price_tcg_holo_market', None),
+        "price_tcg_first_edition_market": getattr(card, "price_tcg_first_edition_market", None),
+        "price_tcg_usd_to_eur": getattr(card, "price_tcg_usd_to_eur", None),
+        "tcgplayer_fallback_allowed": card.tcgplayer_fallback_allowed,
         "price_source_lang": getattr(card, "price_source_lang", None),
         "variants_normal": getattr(card, "variants_normal", None),
         "variants_reverse": getattr(card, "variants_reverse", None),
@@ -191,6 +198,108 @@ def _schedule_search_page_metadata_enrichment(
         background_tasks.add_task(enrich_card_metadata_ids_in_background, card_ids)
 
 
+def _owned_card_exists(db: Session, user_id: int):
+    """EXISTS predicate: this user owns at least one row of the card."""
+    return (
+        db.query(CollectionItem.id)
+        .filter(
+            CollectionItem.user_id == user_id,
+            CollectionItem.card_id == Card.id,
+            CollectionItem.quantity > 0,
+        )
+        .exists()
+    )
+
+
+def _owned_card_ids(db: Session, user_id: int, card_ids: List[str]) -> set[str]:
+    """Owned card ids among ``card_ids``, queried in bounded IN chunks."""
+    owned: set[str] = set()
+    unique_ids = list(dict.fromkeys(card_id for card_id in card_ids if card_id))
+    for start in range(0, len(unique_ids), 5000):
+        chunk = unique_ids[start:start + 5000]
+        rows = db.query(CollectionItem.card_id).filter(
+            CollectionItem.user_id == user_id,
+            CollectionItem.card_id.in_(chunk),
+            CollectionItem.quantity > 0,
+        ).distinct().all()
+        owned.update(card_id for (card_id,) in rows if card_id)
+    return owned
+
+
+_ARTIST_LANG_ORDER = {"en": 0, "de": 1, "ja": 2}
+_ARTIST_VALUE_COLUMNS = [column for column in Card.__table__.columns
+                         if column.name.startswith(("price_", "variants_"))]
+
+
+def _artist_lang_rank(lang: str | None) -> tuple:
+    """Stable language ordering: en, de, ja, then other codes alphabetically."""
+    code = normalize_tcgdex_language(lang or "en")
+    if code in _ARTIST_LANG_ORDER:
+        return (_ARTIST_LANG_ORDER[code], "")
+    return (3, code)
+
+
+def _pick_artist_representative(
+    printings: List[dict], specific_lang: str | None, display_lang: str
+) -> dict:
+    """Choose the card row that represents a grouped card identity."""
+    if specific_lang:
+        return printings[0]
+    for preferred in (display_lang, "en", "ja"):
+        for printing in printings:
+            if printing["lang"] == preferred:
+                return printing
+    return printings[0]
+
+
+def _artist_index_representative_price(
+    printings: dict[str, float | None], display_lang: str
+) -> float | None:
+    """Market price of the first printing that has one.
+
+    Mirrors the artist checklist: display language, then ``en``, then ``ja``,
+    then any language in canonical order. Printings without a price are
+    skipped so an unpriced preferred printing does not hide a priced one.
+    """
+    for preferred in (display_lang, "en", "ja"):
+        if printings.get(preferred) is not None:
+            return printings[preferred]
+    fallback_lang = min(
+        (code for code in printings if printings[code] is not None),
+        key=lambda code: (_artist_lang_rank(code), code),
+        default=None,
+    )
+    return printings[fallback_lang] if fallback_lang is not None else None
+
+
+def _empty_artist_index(page: int, page_size: int) -> dict:
+    return {
+        "artists": [],
+        "total_count": 0,
+        "page": page,
+        "page_size": page_size,
+        "languages": [],
+    }
+
+
+def _empty_artist_checklist(
+    artist_query: str, page: int, page_size: int
+) -> dict:
+    return {
+        "artist_query": artist_query,
+        "artists": [],
+        "total_count": 0,
+        "owned_count": 0,
+        "list_count": 0,
+        "progress": 0,
+        "missing_value": 0,
+        "page": page,
+        "page_size": page_size,
+        "languages": [],
+        "cards": [],
+    }
+
+
 def _search_by_code_number(
     db: Session,
     current_user: User,
@@ -199,6 +308,7 @@ def _search_by_code_number(
     page: int,
     page_size: int,
     lang: str = "all",
+    ownership: str | None = None,
     background_tasks: BackgroundTasks | None = None,
     rule_text: str | None = None,
 ) -> dict | None:
@@ -331,7 +441,20 @@ def _search_by_code_number(
         cards = query_matching_cards()
 
     if not cards:
-        return {"data": [], "total_count": 0, "page": page, "page_size": page_size}
+        return {
+            "data": [],
+            "total_count": 0,
+            "owned_count": 0,
+            "page": page,
+            "page_size": page_size,
+        }
+
+    owned_ids = _owned_card_ids(db, current_user.id, [card.id for card in cards])
+    if ownership == "owned":
+        cards = [card for card in cards if card.id in owned_ids]
+    elif ownership == "missing":
+        cards = [card for card in cards if card.id not in owned_ids]
+    owned_count = sum(1 for card in cards if card.id in owned_ids)
 
     start = (page - 1) * page_size
     page_cards = cards[start:start + page_size]
@@ -340,6 +463,7 @@ def _search_by_code_number(
     return {
         "data": card_dicts,
         "total_count": len(cards),
+        "owned_count": owned_count,
         "page": page,
         "page_size": page_size,
     }
@@ -607,6 +731,7 @@ def search_cards(
     page: int = 1,
     page_size: int = 20,
     lang: Optional[str] = Query(None, description="Language filter: supported TCGdex language code or 'all'"),
+    ownership: Optional[str] = Query(None, description="Ownership filter: 'owned' or 'missing'"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     background_tasks: BackgroundTasks = None,
@@ -618,10 +743,14 @@ def search_cards(
     - q is the preferred free-text parameter; name remains a compatible alias
     - number uses the same leading-zero and alphanumeric matching as exact lookup
     - lang: supported TCGdex language code or "all" for all languages
+    - ownership: "owned" or "missing" filters on this user's collection
     """
     requested_lang = normalize_tcgdex_language(lang or get_tcgdex_display_language(db, current_user.id))
     search_lang = requested_lang if is_supported_tcgdex_language(requested_lang) else "all"
     search_term = normalize_search_term(q) or normalize_search_term(name)
+    ownership_value = normalize_search_term(ownership).lower() if isinstance(ownership, str) else ""
+    if ownership_value not in {"", "owned", "missing"}:
+        raise HTTPException(status_code=400, detail="ownership must be 'owned' or 'missing'")
 
     try:
         # ── Code + number pattern: "MEP 022", "SSP 136", "sv08 032", "30C 001" ─
@@ -638,6 +767,7 @@ def search_cards(
                     page,
                     page_size,
                     lang=search_lang,
+                    ownership=ownership_value or None,
                     background_tasks=background_tasks,
                     rule_text=rule_text,
                 )
@@ -727,6 +857,12 @@ def search_cards(
                 # NULL, so let the shared classifier post-filter the visible
                 # rows instead of relying on dialect-specific JSON matching.
 
+        owned_exists = _owned_card_exists(db, current_user.id)
+        if ownership_value == "owned":
+            query = query.filter(owned_exists)
+        elif ownership_value == "missing":
+            query = query.filter(not_(owned_exists))
+
         if sort_by == "name":
             col = Card.name
         elif sort_by == "number":
@@ -759,9 +895,27 @@ def search_cards(
             total_count = len(matching_cards)
             start = (page - 1) * page_size
             cards = matching_cards[start:start + page_size]
+            if ownership_value == "owned":
+                owned_count = total_count
+            elif ownership_value == "missing":
+                owned_count = 0
+            else:
+                matching_owned_ids = _owned_card_ids(
+                    db, current_user.id, [card.id for card in matching_cards]
+                )
+                owned_count = sum(
+                    1 for card in matching_cards if card.id in matching_owned_ids
+                )
         else:
             total_count = query.count()
             cards = query.offset((page - 1) * page_size).limit(page_size).all()
+            if ownership_value == "owned":
+                owned_count = total_count
+            elif ownership_value == "missing":
+                owned_count = 0
+            else:
+                owned_count = query.filter(owned_exists).count()
+
         _schedule_search_page_metadata_enrichment(background_tasks, cards)
         card_dicts = _with_collection_summary(
             db,
@@ -772,9 +926,530 @@ def search_cards(
         return {
             "data": card_dicts,
             "total_count": total_count,
+            "owned_count": owned_count,
             "page": page,
             "page_size": page_size,
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/artist-checklist")
+def artist_checklist(
+    artist: str = Query(..., min_length=1, description="Artist name"),
+    artist_match: str = "contains",
+    lang: Optional[str] = Query("all", description="Language filter: supported TCGdex language code or 'all'"),
+    ownership: Optional[str] = Query(None, description="Ownership filter: 'owned' or 'missing'"),
+    page: int = 1,
+    page_size: int = 60,
+    sort_by: str = "number",
+    sort_order: str = "asc",
+    price_field: str = "price_trend",
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Artist completion checklist grouped by card identity across printings.
+
+    Cards sharing a ``tcg_card_id`` (or the bare id for rows without one) are
+    one checklist entry. Ownership is aggregated across every visible printing
+    unless a specific language narrows participation to that language's rows.
+    """
+    if artist_match not in {"exact", "contains"}:
+        raise HTTPException(status_code=400, detail="artist_match must be 'exact' or 'contains'")
+    artist_query = normalize_search_term(artist)
+    ownership_value = normalize_search_term(ownership).lower()
+    if not artist_query or len(artist_query) > 100:
+        raise HTTPException(status_code=400, detail="artist must be 1..100 characters")
+    if ownership_value not in {"", "owned", "missing"}:
+        raise HTTPException(status_code=400, detail="ownership must be 'owned' or 'missing'")
+    if sort_by not in {"number", "name", "price"}:
+        raise HTTPException(status_code=400, detail="sort_by must be one of: number, name, price")
+    if sort_order not in {"asc", "desc"}:
+        raise HTTPException(status_code=400, detail="sort_order must be 'asc' or 'desc'")
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), 200)
+
+    requested_lang = normalize_tcgdex_language(lang or "all")
+    search_lang = requested_lang if is_supported_tcgdex_language(requested_lang) else "all"
+    specific_lang = search_lang if search_lang != "all" else None
+    display_lang = get_tcgdex_display_language(db, current_user.id)
+
+    try:
+        artist_clause = (func.trim(Card.artist) == artist_query if artist_match == "exact"
+                         else accent_insensitive_contains(db, Card.artist, artist_query))
+        if artist_clause is None:
+            return _empty_artist_checklist(artist_query, page, page_size)
+
+        # Phase 1: lightweight rows only. A prolific artist can match thousands
+        # of cards, so full ORM rows are deferred to the current page.
+        rows = (
+            db.query(
+                Card.id,
+                Card.tcg_card_id,
+                Card.lang,
+                Card.number,
+                Card.set_id,
+                Card.artist,
+                Card.name,
+                *_ARTIST_VALUE_COLUMNS,
+            )
+            .filter(
+                Card.is_custom == False,
+                visible_card_filter(db, current_user.id, search_lang),
+                artist_clause,
+            )
+            .all()
+        )
+        if not rows:
+            return _empty_artist_checklist(artist_query, page, page_size)
+
+        set_ids = {row.set_id for row in rows if row.set_id}
+        set_rows = (
+            db.query(Set.tcg_set_id, Set.lang, Set.name, Set.release_date)
+            .filter(Set.tcg_set_id.in_(set_ids))
+            .all()
+            if set_ids else []
+        )
+        set_by_lang: dict[tuple[str, str], tuple[str | None, str | None]] = {}
+        set_fallback: dict[str, tuple[tuple, str | None, str | None]] = {}
+        for tcg_set_id, set_lang, set_name, release_date in set_rows:
+            if not tcg_set_id:
+                continue
+            normalized_set_lang = normalize_tcgdex_language(set_lang or "en")
+            set_by_lang.setdefault(
+                (tcg_set_id, normalized_set_lang), (set_name, release_date)
+            )
+            rank = _artist_lang_rank(set_lang)
+            current = set_fallback.get(tcg_set_id)
+            if current is None or rank < current[0]:
+                set_fallback[tcg_set_id] = (rank, set_name, release_date)
+
+        summaries = card_state_summaries(db, current_user.id, [row.id for row in rows])
+        allow_cross_language = cross_language_tcgplayer_fallback_enabled(db)
+
+        def set_meta(set_id: str | None, row_lang: str | None):
+            if not set_id:
+                return None, None
+            meta = set_by_lang.get(
+                (set_id, normalize_tcgdex_language(row_lang or "en"))
+            )
+            if meta is not None:
+                return meta
+            fallback = set_fallback.get(set_id)
+            if fallback is not None:
+                return fallback[1], fallback[2]
+            return None, None
+
+        groups: dict[str, dict] = {}
+        for row in rows:
+            row_lang = normalize_tcgdex_language(row.lang or "en")
+            group_key = row.tcg_card_id or strip_lang_suffix(row.id)[0]
+            group = groups.get(group_key)
+            if group is None:
+                group = {
+                    "key": group_key,
+                    "printings": [],
+                    "artists": set(),
+                    "owned_quantity": 0,
+                    "variant_totals": {},
+                }
+                groups[group_key] = group
+
+            summary = summaries.get(row.id, {})
+            row_quantity = summary.get("owned_quantity", 0)
+            row_variants = {
+                item["variant"]: item["quantity"]
+                for item in summary.get("owned_variants", [])
+            }
+            for variant, amount in row_variants.items():
+                group["variant_totals"][variant] = (
+                    group["variant_totals"].get(variant, 0) + amount
+                )
+            group["owned_quantity"] += row_quantity
+            if row.artist:
+                group["artists"].add(row.artist)
+
+            group["printings"].append({
+                "id": row.id,
+                "tcg_card_id": row.tcg_card_id,
+                "lang": row_lang,
+                "number": row.number,
+                "set_id": row.set_id,
+                "owned": row_quantity > 0,
+                "owned_quantity": row_quantity,
+                "owned_variants": summary.get("owned_variants", []),
+                "wishlisted": summary.get("wishlisted", False),
+                "price_market": row.price_market,
+                "_value": effective_market_price(row, price_field=price_field,
+                                                 allow_cross_language=allow_cross_language) or None,
+                "_name": row.name,
+            })
+
+        for group in groups.values():
+            group["owned"] = group["owned_quantity"] > 0
+            group["wishlisted"] = any(
+                printing["wishlisted"] for printing in group["printings"]
+            )
+            group["printings"].sort(
+                key=lambda printing: (
+                    _artist_lang_rank(printing["lang"]),
+                    natural_card_number_key(printing["number"]),
+                    printing["id"],
+                )
+            )
+            representative = _pick_artist_representative(
+                group["printings"], specific_lang, display_lang
+            )
+            group["representative"] = representative
+            set_name, release_date = set_meta(
+                representative["set_id"], representative["lang"]
+            )
+            group["set_name"] = set_name
+            group["set_release_date"] = release_date
+
+        # Header statistics describe the whole artist scope; the ownership
+        # filter only narrows the paginated list below.
+        scope = list(groups.values())
+        filtered = scope
+        if ownership_value == "owned":
+            filtered = [group for group in scope if group["owned"]]
+        elif ownership_value == "missing":
+            filtered = [group for group in scope if not group["owned"]]
+
+        total_count = len(scope)
+        owned_count = sum(1 for group in scope if group["owned"])
+        list_count = len(filtered)
+        progress = round(owned_count / total_count * 100, 1) if total_count else 0
+        def representative_price(group: dict) -> float | None:
+            """First priced printing, preferring the display language.
+
+            The representative printing can lack a price while another
+            language's printing has one; use that price rather than treating
+            the whole card as priceless.
+            """
+            return _artist_index_representative_price(
+                {printing["lang"]: printing["_value"] for printing in group["printings"]},
+                display_lang,
+            )
+
+        missing_value = 0.0
+        for group in scope:
+            if group["owned"]:
+                continue
+            price = representative_price(group)
+            if price is not None:
+                missing_value += float(price)
+        missing_value = round(missing_value, 2)
+        languages = sorted({
+            printing["lang"]
+            for group in scope
+            for printing in group["printings"]
+        })
+        artists = sorted({
+            artist_name
+            for group in scope
+            for artist_name in group["artists"]
+        })
+
+        def number_sort_key(group: dict):
+            representative = group["representative"]
+            return (
+                group["set_release_date"] or "",
+                natural_card_number_key(representative["number"]),
+                group["set_name"] or "",
+                _artist_lang_rank(representative["lang"]),
+                group["key"],
+            )
+
+        def number_primary_missing(group: dict) -> bool:
+            return not group["set_release_date"]
+
+        def price_sort_key(group: dict):
+            representative = group["representative"]
+            price = representative_price(group)
+            return (
+                float(price) if price is not None else 0.0,
+                group["set_release_date"] or "",
+                natural_card_number_key(representative["number"]),
+                group["set_name"] or "",
+                _artist_lang_rank(representative["lang"]),
+                group["key"],
+            )
+
+        def price_primary_missing(group: dict) -> bool:
+            return representative_price(group) is None
+
+        def name_sort_key(group: dict):
+            representative = group["representative"]
+            return (
+                (representative["_name"] or "").casefold(),
+                group["set_release_date"] or "",
+                natural_card_number_key(representative["number"]),
+                group["set_name"] or "",
+                _artist_lang_rank(representative["lang"]),
+                group["key"],
+            )
+
+        reverse = sort_order == "desc"
+        if sort_by == "name":
+            ordered = sorted(filtered, key=name_sort_key, reverse=reverse)
+        else:
+            if sort_by == "price":
+                sort_key = price_sort_key
+                primary_missing = price_primary_missing
+            else:
+                sort_key = number_sort_key
+                primary_missing = number_primary_missing
+            present = [group for group in filtered if not primary_missing(group)]
+            absent = [group for group in filtered if primary_missing(group)]
+            present.sort(key=sort_key, reverse=reverse)
+            absent.sort(key=sort_key, reverse=reverse)
+            ordered = present + absent
+
+        start_offset = (page - 1) * page_size
+        page_groups = ordered[start_offset:start_offset + page_size]
+
+        # Phase 2: full rows only for the representative and printings on this page.
+        page_ids = list(dict.fromkeys(
+            card_id
+            for group in page_groups
+            for card_id in (
+                [group["representative"]["id"]]
+                + [printing["id"] for printing in group["printings"]]
+            )
+        ))
+        full_cards: dict[str, Card] = {}
+        for start in range(0, len(page_ids), 5000):
+            chunk = page_ids[start:start + 5000]
+            for card in (
+                db.query(Card)
+                .options(joinedload(Card.set_ref))
+                .filter(Card.id.in_(chunk))
+                .all()
+            ):
+                full_cards[card.id] = card
+
+        cards = []
+        for group in page_groups:
+            representative_card = full_cards.get(group["representative"]["id"])
+            if representative_card is None:
+                for printing in group["printings"]:
+                    representative_card = full_cards.get(printing["id"])
+                    if representative_card is not None:
+                        break
+            if representative_card is None:
+                continue
+            card_dict = _card_to_dict(representative_card, current_user.id)
+            card_dict.update({
+                "owned": group["owned"],
+                "owned_quantity": group["owned_quantity"],
+                "owned_variants": [
+                    {"variant": variant, "quantity": group["variant_totals"][variant]}
+                    for variant in CANONICAL_VARIANTS
+                    if group["variant_totals"].get(variant, 0) > 0
+                ],
+                "wishlisted": group["wishlisted"],
+                "set_name": (
+                    group["set_name"]
+                    or (card_dict.get("set_ref") or {}).get("name")
+                ),
+                "printings": [
+                    {
+                        key: value
+                        for key, value in printing.items()
+                        if not key.startswith("_")
+                    }
+                    for printing in group["printings"]
+                ],
+            })
+            cards.append(card_dict)
+
+        return {
+            "artist_query": artist_query,
+            "artists": artists,
+            "total_count": total_count,
+            "owned_count": owned_count,
+            "list_count": list_count,
+            "progress": progress,
+            "missing_value": missing_value,
+            "page": page,
+            "page_size": page_size,
+            "languages": languages,
+            "cards": cards,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/artists")
+def artists_index(
+    q: Optional[str] = Query(None, description="Accent-insensitive artist name substring"),
+    lang: Optional[str] = Query("all", description="Language filter: supported TCGdex language code or 'all'"),
+    sort_by: str = "progress",
+    sort_order: str = "desc",
+    page: int = 1,
+    page_size: int = 50,
+    price_field: str = "price_trend",
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Artist index: per-artist completion across card identities.
+
+    Card identities are grouped exactly like the artist checklist (``tcg_card_id``
+    or the bare id), so the counts here match the checklist page. Catalogue rows
+    are read as lightweight columns and aggregated in Python; no ORM entities are
+    loaded.
+    """
+    search_term = normalize_search_term(q)
+    if sort_by not in {"name", "cards", "progress", "missing"}:
+        raise HTTPException(
+            status_code=400,
+            detail="sort_by must be one of: name, cards, progress, missing",
+        )
+    if sort_order not in {"asc", "desc"}:
+        raise HTTPException(status_code=400, detail="sort_order must be 'asc' or 'desc'")
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), 200)
+
+    requested_lang = normalize_tcgdex_language(lang or "all")
+    search_lang = requested_lang if is_supported_tcgdex_language(requested_lang) else "all"
+    display_lang = get_tcgdex_display_language(db, current_user.id)
+
+    try:
+        rows_query = db.query(
+            Card.id,
+            Card.tcg_card_id,
+            Card.lang,
+            Card.artist,
+            Card.name,
+            Card.images_small,
+            Card.images_large,
+            *_ARTIST_VALUE_COLUMNS,
+        ).filter(
+            Card.is_custom == False,
+            visible_card_filter(db, current_user.id, search_lang),
+            Card.artist.isnot(None),
+            Card.artist != "",
+        )
+        if search_term:
+            artist_clause = accent_insensitive_contains(db, Card.artist, search_term)
+            if artist_clause is None:
+                return _empty_artist_index(page, page_size)
+            rows_query = rows_query.filter(artist_clause)
+
+        rows = rows_query.all()
+        if not rows:
+            return _empty_artist_index(page, page_size)
+        gallery_rows = {}
+        for row in rows:
+            gallery_rows.setdefault((row.artist or "").strip(), []).append(row)
+        allow_cross_language = cross_language_tcgplayer_fallback_enabled(db)
+
+        # One query for this user's owned printings; a user's collection is far
+        # smaller than the catalogue, so no IN list over 54k card ids is needed.
+        owned_ids = {
+            card_id
+            for (card_id,) in db.query(CollectionItem.card_id)
+            .filter(
+                CollectionItem.user_id == current_user.id,
+                CollectionItem.quantity > 0,
+            )
+            .distinct()
+            .all()
+            if card_id
+        }
+
+        # artist -> identity -> {lang: market price of that printing}
+        artist_cards: dict[str, dict[str, dict[str, float | None]]] = {}
+        card_identity: dict[str, str] = {}
+        scope_languages: set[str] = set()
+        for row in rows:
+            card_id, tcg_card_id, row_lang, artist = row.id, row.tcg_card_id, row.lang, row.artist
+            price = effective_market_price(row, price_field=price_field,
+                                           allow_cross_language=allow_cross_language) or None
+            name = (artist or "").strip()
+            if not name:
+                continue
+            identity = tcg_card_id or strip_lang_suffix(card_id)[0]
+            lang_code = normalize_tcgdex_language(row_lang or "en")
+            card_identity[card_id] = identity
+            artist_cards.setdefault(name, {}).setdefault(identity, {}).setdefault(
+                lang_code, price
+            )
+            scope_languages.add(lang_code)
+
+        if not artist_cards:
+            return _empty_artist_index(page, page_size)
+
+        owned_identities = {
+            identity for card_id, identity in card_identity.items() if card_id in owned_ids
+        }
+
+        artists: list[dict] = []
+        for name, identities in artist_cards.items():
+            total_count = len(identities)
+            owned_count = sum(1 for identity in identities if identity in owned_identities)
+            missing_count = total_count - owned_count
+            missing_value = 0.0
+            languages: set[str] = set()
+            for identity, printings in identities.items():
+                languages.update(printings)
+                if identity in owned_identities:
+                    continue
+                price = _artist_index_representative_price(printings, display_lang)
+                if price is not None:
+                    missing_value += float(price)
+            artists.append({
+                "name": name,
+                "total_count": total_count,
+                "owned_count": owned_count,
+                "missing_count": missing_count,
+                "progress": (
+                    round(owned_count / total_count * 100, 1) if total_count else 0.0
+                ),
+                "missing_value": round(missing_value, 2),
+                "languages": sorted(languages),
+            })
+
+        # Sort by name first so ties keep an ascending, casefolded name order in
+        # both directions (Python's sort is stable, including with reverse=True).
+        artists.sort(key=lambda item: item["name"].casefold())
+        if sort_by == "name":
+            artists.sort(
+                key=lambda item: item["name"].casefold(),
+                reverse=sort_order == "desc",
+            )
+        else:
+            primary_key = {
+                "cards": "total_count",
+                "progress": "progress",
+                "missing": "missing_count",
+            }[sort_by]
+            artists.sort(
+                key=lambda item: item[primary_key],
+                reverse=sort_order == "desc",
+            )
+
+        total_count = len(artists)
+        start_offset = (page - 1) * page_size
+        page_artists = artists[start_offset:start_offset + page_size]
+        for artist in page_artists:
+            artist["preview_cards"] = select_artist_previews(
+                gallery_rows[artist["name"]], price_field=price_field,
+                lang=search_lang, allow_cross_language=allow_cross_language,
+            )
+
+        return {
+            "artists": page_artists,
+            "total_count": total_count,
+            "page": page,
+            "page_size": page_size,
+            "languages": sorted(scope_languages),
+        }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1173,6 +1848,43 @@ def update_card_custom_image(
     db.commit()
     db.refresh(card)
     return _card_to_dict(card)
+
+
+@router.get("/{card_id}/valuation")
+def get_card_valuation(
+    card_id: str,
+    variant: Optional[CollectionVariant] = Query(None),
+    price_field: str = Query("price_trend"),
+    currency: str = Query("EUR", pattern="^[A-Z]{3}$"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return the shared card value and its market/currency provenance.
+
+    Stored Cardmarket prices remain EUR; TCGplayer fallback values use the
+    conversion saved during sync. Display conversion uses the existing rate
+    service. This read never runs a catalogue sync or exposes another owner's
+    private custom cards.
+    """
+    from services.card_values import effective_price_quote
+    from services.exchange_rates import ExchangeRateUnavailable, get_exchange_rate
+
+    card = db.query(Card).filter(
+        Card.id == card_id,
+        visible_any_card_filter(db, current_user.id, "all"),
+    ).first()
+    if card is None:
+        raise HTTPException(status_code=404, detail="Card not found")
+    quote = effective_price_quote(card, variant.value if variant else None, price_field)
+    quote["amount_eur"] = quote["amount"]
+    if currency != "EUR" and quote["amount"] > 0:
+        try:
+            rate = get_exchange_rate("EUR", currency)["rate"]
+        except ExchangeRateUnavailable:
+            raise HTTPException(status_code=503, detail="Currency conversion unavailable") from None
+        quote["amount"] *= rate
+    quote["currency"] = currency
+    return quote
 
 
 @router.get("/{card_id}", response_model=CardBase)

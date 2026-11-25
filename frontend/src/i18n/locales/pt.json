@@ -285,7 +285,10 @@
     "allTypes": "Todos os tipos",
     "searchCards": "Pesquisar cartas...",
     "clearFilters": "Limpar filtros",
-    "foundIn": "Encontrada em"
+    "foundIn": "Encontrada em",
+    "otherCards": "Outras cartas",
+    "byPokemon": "Por Pokémon",
+    "speciesHint": "As cartas com vários Pokémon aparecem uma vez, na primeira espécie indicada."
   },
   "printingDetails": {
     "label": "Printing details",
@@ -459,7 +462,11 @@
     "statusSold": "Vendido ✓",
     "statusOwned": "Em posse",
     "soldFor": "Vendido por",
-    "profit": "Lucro"
+    "profit": "Lucro",
+    "printing": "edição",
+    "printings": "edições",
+    "copy": "cópia",
+    "copies": "cópias"
   },
   "products": {
     "title": "Investimentos em produtos",
@@ -665,11 +672,11 @@
     "backupCards": "Dados das cartas",
     "backupProducts": "Produtos",
     "backupImages": "Cache de imagens",
-    "clearImageCache": "Limpar cache de imagens",
-    "clearImageCacheDesc": "Eliminar todas as imagens de cartas em cache (apenas admin)",
-    "clearImageCacheConfirm": "Tem a certeza? Todas as imagens em cache serão eliminadas.",
-    "clearImageCacheSuccess": "Cache de imagens limpa",
-    "clearImageCacheFailed": "Falha ao limpar cache",
+    "clearImageCache": "Eliminar a cache de imagens do servidor",
+    "clearImageCacheDesc": "Elimina as imagens em cache no servidor para todos os utilizadores. Os downloads nos dispositivos e os ficheiros originais enviados são mantidos.",
+    "clearImageCacheConfirm": "Eliminar a cache de imagens do servidor para todos os utilizadores? O servidor voltará a obter as imagens quando necessário. Os downloads offline e os ficheiros originais enviados não serão eliminados.",
+    "clearImageCacheSuccess": "Cache de imagens do servidor eliminada",
+    "clearImageCacheFailed": "Não foi possível eliminar a cache de imagens do servidor",
     "backupButton": "Cópia de segurança",
     "backupImport": "Importar cópia de segurança",
     "backupImportDesc": "Importar ficheiro .sql",
@@ -920,7 +927,10 @@
     "setLangFilter": "Filtrar sets por idioma",
     "searchLangFilter": "Filtrar pesquisa por idioma"
   },
-  "variants": {
+  "artists": {
+    "galleryView": "Vista de galeria",
+    "listView": "Vista de lista",
+    "featuredCards": "Cartas em destaque",
     "label": "Variante",
     "none": "- Sem variante -",
     "Normal": "Normal",
@@ -1148,5 +1158,16 @@
     "traderDesc": "Venda 10 produtos",
     "rareFinder": "Caçador de raridades",
     "rareFinderDesc": "Tenha uma carta Illustration Rare"
+  },
+  "sync": {
+    "artworkTitle": "Imagens das cartas",
+    "artworkRetry": "Tentar novamente as imagens em falta",
+    "artworkRetryHint": "Volta a ligar-te, tenta aqui e reabre as cartas. Se as transferências automáticas estiverem ativas, a transferência da coleção também será tentada novamente.",
+    "artworkRetryRequested": "Nova tentativa solicitada. Reabre as cartas para carregar as imagens.",
+    "artworkOfflineHint": "Podes tentar novamente as imagens em falta no centro de sincronização depois de restabelecer a ligação."
+  },
+  "offlineCollection": {
+    "preferencePending": "Guardado neste dispositivo. A preferência da conta será sincronizada quando houver ligação.",
+    "preferenceFailed": "Não foi possível guardar esta preferência no dispositivo. Verifica o armazenamento do navegador e tenta novamente."
   }
 }

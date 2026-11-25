@@ -1,9 +1,9 @@
 /**
- * Species helpers shared by the Collection grid and the Analytics species view.
+ * Species helpers for the Collection species layout.
  *
  * A card can depict several species (`card.dex_ids`). Grouping deliberately uses
- * the FIRST id only: the card appears once, and the caller marks it as depicting
- * more than one species. Cards without dex ids (Trainers, Energy, manual cards)
+ * the first valid id only, so each card appears once. Cards without dex ids
+ * (Trainers, Energy, manual cards)
  * are returned in a separate `other` bucket so they stay reachable.
  *
  * Pure functions only — the callers own rendering and translation state.
@@ -14,9 +14,11 @@ export const MAX_DEX_ID = 1025
 /** Valid, de-duplicated National Dex ids of a collection item's card. */
 export const cardDexIds = (item) => {
   const raw = item?.card?.dex_ids ?? item?.dex_ids
-  if (!Array.isArray(raw)) return []
+  const card = item?.card ?? item
+  if (!Array.isArray(raw) || card?.is_custom || (card?.supertype && !['pokemon', 'pokémon'].includes(String(card.supertype).toLowerCase()))) return []
   const ids = []
   for (const value of raw) {
+    if (typeof value !== 'number' && typeof value !== 'string') continue
     const dexId = Number(value)
     if (!Number.isInteger(dexId) || dexId <= 0 || dexId > MAX_DEX_ID) continue
     if (ids.includes(dexId)) continue

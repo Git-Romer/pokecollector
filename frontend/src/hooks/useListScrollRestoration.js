@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import { useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 
 const storageKey = (key) => `pokecollector:list-scroll:${key}`
@@ -112,9 +112,9 @@ export function useListScrollRestoration({ key, isReady, listState = null }) {
     saveListScrollPosition(key, { ...saved, listState })
   }, [key, listState, location])
 
-  const saveScrollPosition = useCallback((anchorId, listState) => {
+  const saveScrollPosition = useCallback((anchorId, listState, scrollY = window.scrollY) => {
     const position = {
-      scrollY: window.scrollY,
+      scrollY,
       anchorId,
       pathname: location.pathname,
       search: location.search,
@@ -197,10 +197,22 @@ export function useReleaseManualHistoryScrollRestoration() {
   }, [location.key, location.state])
 }
 
-export function useScrollToTopOnPush() {
-  const navigationType = useNavigationType()
+// A new page starts at the top. POP belongs to native/list restoration;
+// query-only changes and explicit anchors stay under their page's control.
+export const shouldResetPageScroll = (previousPathname, location, navigationType) => (
+  (navigationType === 'PUSH' || navigationType === 'REPLACE')
+  && previousPathname !== location.pathname
+  && !location.hash
+)
 
-  useEffect(() => {
-    if (navigationType === 'PUSH') window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
-  }, [navigationType])
+export function usePageScrollReset() {
+  const location = useLocation()
+  const navigationType = useNavigationType()
+  const previousPathname = useRef(null)
+
+  useLayoutEffect(() => {
+    const reset = shouldResetPageScroll(previousPathname.current, location, navigationType)
+    previousPathname.current = location.pathname
+    if (reset) window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+  }, [location.pathname, location.hash, navigationType])
 }

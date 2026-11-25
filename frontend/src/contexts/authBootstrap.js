@@ -1,5 +1,10 @@
 const MAX_RETRY_DELAY_MS = 10_000
 
+// iOS keeps requests pending while offline instead of failing them, so the
+// startup check must give up on its own. A timeout is a network error (no
+// response), never a 401, so it takes the existing degraded/offline path.
+export const AUTH_STARTUP_TIMEOUT_MS = 5_000
+
 export function authRetryDelay(attempt) {
   const safeAttempt = Number.isInteger(attempt) && attempt > 0 ? attempt : 0
   return Math.min(1_000 * (2 ** safeAttempt), MAX_RETRY_DELAY_MS)
@@ -10,7 +15,7 @@ export function isUnauthorized(error) {
 }
 
 export async function loadAuthState({ token, getAuthMode, getMe }) {
-  const { multi_user: multiUser, locked } = await getAuthMode()
+  const { multi_user: multiUser, locked } = await getAuthMode({ timeout: AUTH_STARTUP_TIMEOUT_MS })
 
   if (typeof multiUser !== 'boolean') {
     throw new Error('Invalid authentication mode response')
@@ -34,6 +39,7 @@ export async function loadAuthState({ token, getAuthMode, getMe }) {
       // Bootstrap decides whether a 401 is an expired session. The shared
       // interceptor must not redirect or clear storage before that decision.
       preserveSession: true,
+      timeout: AUTH_STARTUP_TIMEOUT_MS,
     })
     return {
       user,

@@ -8,10 +8,13 @@ export function invalidateTcgdexFilterLanguages(queryClient) {
 /** Refresh every cached card-tile view affected by a collection/wishlist mutation. */
 export function invalidateCardState(queryClient, { setId } = {}) {
   queryClient.invalidateQueries({ queryKey: ['collection'] })
+  queryClient.invalidateQueries({ queryKey: ['species-duplicates'] })
   queryClient.invalidateQueries({ queryKey: ['printing-detail-tags'] })
   queryClient.invalidateQueries({ queryKey: ['wishlist'] })
   queryClient.invalidateQueries({ queryKey: ['dashboard'] })
   queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'card-search' })
+  queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'artist-checklist' })
+  queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'artists-index' })
   queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] === 'pokedex' })
   if (setId) {
     queryClient.invalidateQueries({ queryKey: ['set-checklist', setId] })
@@ -28,7 +31,6 @@ export function invalidateCollectionPhotoState(queryClient) {
   invalidateCardState(queryClient)
   const affected = new Set([
     'duplicates',
-    'species-duplicates',
     'binder-cards',
     'binder-entry-equivalents',
     'binder-print-optimization',

@@ -118,15 +118,6 @@ def backfill_pokedex_entry_ids(db: Session, cards: list[Card] | None = None) -> 
     return updated
 
 
-def mark_pokedex_metadata_backfill_incomplete(db: Session, *, reason: str) -> None:
-    _set_setting(db, COMPLETED_SETTING_KEY, "false")
-    _set_setting(
-        db,
-        STATUS_SETTING_KEY,
-        json.dumps({"status": "pending", "reason": reason, "updated_at": _now_iso()}),
-    )
-
-
 def mark_pokedex_metadata_backfill_complete(db: Session, *, result: dict | None = None) -> None:
     payload = {"status": "complete", "completed_at": _now_iso()}
     if result:

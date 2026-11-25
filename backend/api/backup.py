@@ -8,8 +8,12 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
+
 from api.auth import get_current_user
-from models import User
+from database import get_db
+from models import ImageCache, User
 from services.postgres_cli import parse_database_url
 
 router = APIRouter()
@@ -123,6 +127,23 @@ def download_backup(
         raise HTTPException(status_code=500, detail="pg_dump not found")
 
 
+def _clear_idempotency_keys() -> None:
+    """Best-effort: drop every stored Idempotency-Key result after a restore.
+
+    An older dump leaves newer keys whose business rows no longer exist, and
+    replaying one would silently drop the add. A visible duplicate is safer.
+    """
+    try:
+        from database import SessionLocal
+        from models import IdempotencyKey
+
+        with SessionLocal() as db:
+            db.query(IdempotencyKey).delete(synchronize_session=False)
+            db.commit()
+    except Exception:
+        logger.warning("Could not clear idempotency keys after restore", exc_info=True)
+
+
 @router.post("/restore")
 async def restore_backup(
     file: UploadFile = File(...),
@@ -179,6 +200,7 @@ async def restore_backup(
         if result.returncode != 0:
             raise HTTPException(status_code=500, detail=f"Restore failed: {result.stderr}")
 
+        _clear_idempotency_keys()
         return {"message": "Database restored successfully"}
 
     except subprocess.TimeoutExpired:
@@ -194,13 +216,18 @@ async def restore_backup(
 
 
 @router.post("/clear-image-cache")
-def clear_image_cache(current_user: User = Depends(get_current_user)):
-    """Clear the image cache directory (admin only)."""
+def clear_image_cache(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Delete the shared server image cache, not uploads or device downloads."""
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
-    import shutil
-    images_dir = "/app/images"
-    if os.path.exists(images_dir):
-        shutil.rmtree(images_dir)
-        os.makedirs(images_dir, exist_ok=True)
-    return {"message": "Image cache cleared"}
+    try:
+        deleted_count = db.query(ImageCache).delete(synchronize_session=False)
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        logger.exception("Could not delete the server image cache")
+        raise HTTPException(status_code=500, detail="Could not delete server image cache") from None
+    return {"message": "Server image cache deleted", "deleted_count": deleted_count}

@@ -1,7 +1,8 @@
+import WindowedCardGrid from '../components/WindowedCardGrid'
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
-import { Search, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, SortAsc, Hash, PenLine, SlidersHorizontal, Camera, CheckSquare, Plus, ScanLine, Tags } from 'lucide-react'
+import { Search, X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, SortAsc, Hash, PenLine, SlidersHorizontal, Camera, CheckSquare, Plus, ScanLine, Tags, ListChecks } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { searchCards, getSets, getCustomCards, bulkAddToCollection, getScanJobs } from '../api/client'
 import { CardItem, CustomCardModal, CardModal } from '../components/CardItem'
@@ -148,6 +149,7 @@ export function buildCardSearchParams(filters, langFilter, page, pageSize) {
     rarity: filters.rarity || undefined,
     set_id: filters.set_id || undefined,
     artist: filters.artist || undefined,
+    ownership: filters.ownership || undefined,
     rule_text: filters.rule_text.trim() || undefined,
     hp_min: filters.hp_min ? parseInt(filters.hp_min, 10) : undefined,
     hp_max: filters.hp_max ? parseInt(filters.hp_max, 10) : undefined,
@@ -240,6 +242,7 @@ export default function CardSearch() {
         series: selectedSeries,
         set_id: setIsValid ? selectedSet : '',
         artist: read('artist'),
+        ownership: enumValue('ownership', ['owned', 'missing']),
         rule_text: read('rule_text'),
         hp_min: hpValue('hp_min'),
         hp_max: hpValue('hp_max'),
@@ -612,6 +615,27 @@ export default function CardSearch() {
           onChange={(value) => updateSearchParams({ lang: value === defaultLangFilter ? '' : value })}
           className="select w-full sm:w-52 text-xs py-1.5"
         />
+        <div className="flex items-center gap-1" role="group" aria-label={t('cardSearch.ownershipFilter')}>
+          {[
+            { key: '', label: t('cardSearch.ownershipAll') },
+            { key: 'owned', label: t('cardSearch.ownershipOwned') },
+            { key: 'missing', label: t('cardSearch.ownershipMissing') },
+          ].map(({ key, label }) => (
+            <button
+              key={key || 'all'}
+              type="button"
+              aria-pressed={filters.ownership === key}
+              onClick={() => updateSearchParams({ ownership: key })}
+              className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                filters.ownership === key
+                  ? 'border-brand-red/30 bg-brand-red/20 text-brand-red'
+                  : 'border-transparent text-text-muted hover:text-text-primary'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <div className="flex items-center gap-2 sm:ml-auto">
           <SortAsc size={14} className="text-text-muted flex-shrink-0" />
           <select
@@ -755,11 +779,9 @@ export default function CardSearch() {
           <p className="text-xs text-yellow font-medium mb-2 flex items-center gap-1">
             <PenLine size={12} /> {t('cardSearch.customCard')}
           </p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-            {matchedCustomCards.map((card) => (
+          <WindowedCardGrid className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4" items={matchedCustomCards} renderItem={(card) => (
               <CardItem key={card.id} card={card} />
-            ))}
-          </div>
+)} />
         </div>
       )}
 
@@ -847,10 +869,26 @@ export default function CardSearch() {
           )}
 
           <div className="flex items-center justify-between flex-wrap gap-2">
-            <p className="text-sm text-text-secondary">
-              {data.total_count?.toLocaleString()} {t('cardSearch.results')}
-              {isFetching && <span className="ml-2 text-text-muted">{t('common.updating')}</span>}
-            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm text-text-secondary">
+                {data.total_count?.toLocaleString()} {t('cardSearch.results')}
+                {typeof data.owned_count === 'number' && !filters.ownership && (
+                  <span className="ml-1.5 text-text-muted">
+                    · {data.owned_count.toLocaleString()} / {data.total_count?.toLocaleString()} {t('cardSearch.owned')}
+                  </span>
+                )}
+                {isFetching && <span className="ml-2 text-text-muted">{t('common.updating')}</span>}
+              </p>
+              {filters.artist && (
+                <button
+                  type="button"
+                  onClick={() => navigate(`/artist/${encodeURIComponent(filters.artist)}?artist_match=contains`)}
+                  className="btn-ghost text-sm py-1.5"
+                >
+                  <ListChecks size={14} /> {t('artistChecklist.title')}
+                </button>
+              )}
+            </div>
             {totalPages > 1 && (
               <div className="flex items-center gap-2">
                 <button onClick={() => updateSearchParams({ page: Math.max(1, page - 1) }, { resetPage: false })} disabled={page <= 1} className="btn-ghost py-1.5 px-2 disabled:opacity-50">
@@ -872,8 +910,7 @@ export default function CardSearch() {
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-              {data.data?.map((card) => {
+            <WindowedCardGrid className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4" items={data.data || []} renderItem={(card) => {
                 const imgSrc = card.images?.small || card.images_small || (card.image ? `${card.image}/low.webp` : null)
                 const isSelected = selectedItems.has(card.id)
                 const cardPrice = card.price_market ?? card.price_trend ?? null
@@ -883,6 +920,7 @@ export default function CardSearch() {
                     card={card}
                     image={imgSrc}
                     price={cardPrice > 0 ? formatPrice(cardPrice) : null}
+                    dimWhenUnowned
                     languageLabel={card._lang && langFilter === 'all' ? tcgdexLanguageLabel(card._lang) : null}
                     selected={selectMode && isSelected}
                     onSelect={selectMode ? () => toggleSelected(card) : undefined}
@@ -899,8 +937,7 @@ export default function CardSearch() {
                     } : undefined}
                   />
                 )
-              })}
-            </div>
+}} />
           )}
         </>
       )}

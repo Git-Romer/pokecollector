@@ -1,14 +1,14 @@
 import { useState, useMemo, useId, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import {
   RefreshCw, TrendingUp, TrendingDown, Layers, Star, Wallet, LogOut,
-  Search, Library, Grid2X2, BarChart3, Settings, Trophy, ArrowRightLeft, ListOrdered, Info, Layers3,
+  Search, Library, Grid2X2, BarChart3, Settings, Trophy, ArrowRightLeft, ListOrdered, Info, Layers3, Palette,
 } from 'lucide-react'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts'
-import { getDashboard, triggerPriceSync, getSyncStatus, getInvestmentTracker, getScanJobs } from '../api/client'
+import { getDashboard, getSyncStatus, getInvestmentTracker, getScanJobs } from '../api/client'
 import { useSettings } from '../contexts/SettingsContext'
 import { useAuth } from '../contexts/AuthContext'
 import toast from 'react-hot-toast'
@@ -127,7 +127,6 @@ function ProductValueInfo({ label, detailsLabel, explanation }) {
 // ── Main component ────────────────────────────────────────────────────────────
 export default function HomeScreen() {
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
   const { formatPrice, t, pricePrimaryField, settings, updateSettings } = useSettings()
   const { user, logout, multiUser } = useAuth()
   const [chartPeriod, setChartPeriod] = useState('1W')
@@ -162,16 +161,7 @@ export default function HomeScreen() {
 
   const trainerName = user?.username || 'Trainer'
 
-  const syncMutation = useMutation({
-    mutationFn: triggerPriceSync,
-    onSuccess: () => {
-      toast.success(t('settings.syncStarted'))
-      setTimeout(() => queryClient.invalidateQueries(), 3000)
-    },
-    onError: () => toast.error(t('settings.syncFailed')),
-  })
-
-  const isRunning = syncStatus?.is_running || syncStatus?.is_price_sync_running || syncMutation.isPending
+  const isRunning = syncStatus?.is_running || syncStatus?.is_price_sync_running
 
   const totalValue = Number(data?.total_value ?? 0)
   const totalCost = Number(data?.total_cost ?? 0)
@@ -239,6 +229,7 @@ export default function HomeScreen() {
     },
     { to: '/sets',       icon: Grid2X2,    label: t('nav.sets'),        color: '#81c784' },
     { to: '/pokedex',    icon: ListOrdered, label: t('nav.pokedex'),    color: '#ffb74d' },
+    { to: '/artists',    icon: Palette,     label: t('nav.artists'),    color: '#4db6ac' },
     { to: '/binders',    icon: Layers3,     label: t('nav.binders'),    color: '#7986cb' },
     { to: '/analytics',  icon: BarChart3,  label: t('nav.analytics'),   color: '#f5c842' },
     { to: '/trades',     icon: ArrowRightLeft, label: t('nav.trades'),   color: '#ff8a65' },
@@ -292,7 +283,7 @@ export default function HomeScreen() {
         <div className="flex items-center justify-between">
           {multiUser ? (
             <button
-              onClick={() => { logout(); navigate('/login') }}
+              onClick={() => { logout() }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-text-muted hover:text-brand-red transition-colors"
               style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
             >
@@ -302,21 +293,22 @@ export default function HomeScreen() {
           ) : (
             <div />
           )}
-          {user?.role === 'admin' && (
           <button
-            onClick={() => syncMutation.mutate()}
-            disabled={isRunning}
+            type="button"
+            data-testid="home-sync-button"
+            aria-label={t('home.sync')}
+            title={t('sync.centerTitle')}
+            onClick={() => navigate('/offline')}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"
             style={{
-              background: isRunning ? 'rgba(255,255,255,0.05)' : 'rgba(227,0,11,0.12)',
-              color: isRunning ? '#888' : '#e3000b',
-              border: isRunning ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(227,0,11,0.25)',
+              background: 'rgba(227,0,11,0.12)',
+              color: '#e3000b',
+              border: '1px solid rgba(227,0,11,0.25)',
             }}
           >
-            <RefreshCw size={12} className={isRunning ? 'animate-spin' : ''} />
-            {isRunning ? t('home.syncing') : t('home.sync')}
+            <RefreshCw size={12} className={isRunning ? 'motion-safe:animate-spin' : ''} />
+            {t('home.sync')}
           </button>
-          )}
         </div>
 
         {/* ── PORTFOLIO VALUE (large, prominent) ── */}

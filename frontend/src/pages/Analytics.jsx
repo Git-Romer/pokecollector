@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -6,7 +6,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   AreaChart, Area
 } from 'recharts'
-import { TrendingUp, TrendingDown, Copy, BarChart3, Activity, Plus, X, ShoppingCart, Info, Layers } from 'lucide-react'
+import { TrendingUp, TrendingDown, Copy, BarChart3, Activity, Plus, X, ShoppingCart, Info } from 'lucide-react'
 import {
   getDuplicates, getTopMovers, getRarityStats, getSpeciesDuplicates,
   getInvestmentTracker, getTradeStats, getAnalyticsNewSets, getProducts, createProduct
@@ -24,6 +24,7 @@ import MoneyInput from '../components/MoneyInput'
 import { parseMoneyInputValue } from '../utils/moneyInput'
 import { tcgdexLanguageLabel } from '../utils/tcgdexLanguages'
 import CardGroupSection from '../components/CardGroupSection'
+import WindowedCardGrid from '../components/WindowedCardGrid'
 import { formatDexNumber, formatSpeciesCounts, speciesName, speciesSpriteUrl } from '../utils/species'
 
 const RARITY_COLORS = [
@@ -164,8 +165,9 @@ export default function Analytics() {
   const [moversPeriod, setMoversPeriod] = useState('7d')
   const [moversSort, setMoversSort] = useState('percentage')
   const [activeTab, setActiveTab] = useState('duplicates')
-  const [openSpecies, setOpenSpecies] = useState(() => new Set())
-  const autoOpenedSpecies = useRef(false)
+  const [duplicateView, setDuplicateView] = useState('cards')
+  const [collapsedSpecies, setCollapsedSpecies] = useState(() => new Set())
+  const toggledSpeciesHeader = useRef(null)
   const [showExpenseModal, setShowExpenseModal] = useState(false)
   const [selectedCard, setSelectedCard] = useState(null)
   const [selectedImageSource, setSelectedImageSource] = useState('catalogue')
@@ -197,16 +199,16 @@ export default function Analytics() {
   const { data: speciesDuplicates = null, isLoading: speciesLoading } = useQuery({
     queryKey: ['species-duplicates', pricePrimaryField],
     queryFn: () => getSpeciesDuplicates({ price_field: pricePrimaryField }).then(r => r.data),
-    enabled: activeTab === 'species',
+    enabled: activeTab === 'duplicates' && duplicateView === 'species',
   })
   const speciesRows = Array.isArray(speciesDuplicates?.species) ? speciesDuplicates.species : []
   const speciesSummary = speciesDuplicates?.summary || null
-  useEffect(() => {
-    // Keep the first species expanded so the printing list is discoverable.
-    if (autoOpenedSpecies.current || speciesRows.length === 0) return
-    autoOpenedSpecies.current = true
-    setOpenSpecies(new Set([speciesRows[0].dex_id]))
-  }, [speciesRows])
+  useLayoutEffect(() => {
+    const header = toggledSpeciesHeader.current
+    toggledSpeciesHeader.current = null
+    // Folding a large group can clamp the scroll offset; retain its header.
+    if (header?.isConnected) header.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' })
+  }, [collapsedSpecies])
 
   const moversDay = PERIOD_DAYS[moversPeriod] || 7
   const { data: topMovers = [], isLoading: moversLoading } = useQuery({
@@ -241,7 +243,6 @@ export default function Analytics() {
 
   const tabs = [
     { key: 'duplicates', label: t('analytics.duplicates'), icon: Copy },
-    { key: 'species', label: t('analytics.speciesDuplicates'), icon: Layers },
     { key: 'movers', label: t('analytics.topMovers'), icon: TrendingUp },
     { key: 'rarity', label: t('analytics.rarityStats'), icon: BarChart3 },
     { key: 'investment', label: t('analytics.investment'), icon: Activity },
@@ -265,12 +266,15 @@ export default function Analytics() {
   const totalPnl = latestSnapshot?.pnl ?? 0
   const hasTradeStats = tradeStats && tradeStats.trade_count > 0
 
-  const toggleSpecies = (dexId) => setOpenSpecies(current => {
-    const next = new Set(current)
-    if (next.has(dexId)) next.delete(dexId)
-    else next.add(dexId)
-    return next
-  })
+  const toggleSpecies = (dexId, event) => {
+    toggledSpeciesHeader.current = event.currentTarget
+    setCollapsedSpecies(current => {
+      const next = new Set(current)
+      if (next.has(dexId)) next.delete(dexId)
+      else next.add(dexId)
+      return next
+    })
+  }
 
   // A printing exposes only the fields this endpoint returns; the card dialog and
   // the own-photo helpers accept that flattened shape, as on the Duplicates tab.
@@ -331,10 +335,37 @@ export default function Analytics() {
         </div>
       </div>
 
-      {/* Duplicates Tab */}
+      {/* Both duplicate summaries live under the existing tab. */}
       {activeTab === 'duplicates' && (
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-sm text-text-secondary">
+            {t(duplicateView === 'cards' ? 'analytics.duplicatesDesc' : 'analytics.speciesDuplicatesDesc')}
+          </p>
+          <div role="group" aria-label={t('analytics.duplicateView')}
+            className="flex shrink-0 rounded-lg border border-border bg-bg-surface p-0.5">
+            <button type="button" onClick={() => setDuplicateView('cards')}
+              title={t('analytics.byCard')} aria-label={t('analytics.byCard')}
+              aria-pressed={duplicateView === 'cards'}
+              className={clsx('p-2 rounded-md transition-colors', duplicateView === 'cards'
+                ? 'bg-brand-red text-white' : 'text-text-secondary hover:text-text-primary hover:bg-bg-elevated')}>
+              <Copy size={20} aria-hidden="true" />
+            </button>
+            <button type="button" onClick={() => setDuplicateView('species')}
+              title={t('collection.byPokemon')} aria-label={t('collection.byPokemon')}
+              aria-pressed={duplicateView === 'species'}
+              className={clsx('p-2 rounded-md transition-colors', duplicateView === 'species'
+                ? 'bg-brand-red text-white' : 'text-text-secondary hover:text-text-primary hover:bg-bg-elevated')}>
+              <span aria-hidden="true" className="block h-5 w-5 bg-current"
+                style={{ mask: 'url(/pikachu-silhouette.svg) center / contain no-repeat',
+                  WebkitMask: 'url(/pikachu-silhouette.svg) center / contain no-repeat' }} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Existing duplicate-card view stays the default. */}
+      {activeTab === 'duplicates' && duplicateView === 'cards' && (
         <div className="space-y-4">
-          <p className="text-sm text-text-secondary">{t('analytics.duplicatesDesc')}</p>
           {dupLoading ? (
             <div className="skeleton h-64 rounded-xl" />
           ) : duplicates.length === 0 ? (
@@ -395,10 +426,9 @@ export default function Analytics() {
         </div>
       )}
 
-      {/* Species Duplicates Tab */}
-      {activeTab === 'species' && (
+      {/* Species view of the same Duplicates tab. */}
+      {activeTab === 'duplicates' && duplicateView === 'species' && (
         <div className="space-y-4">
-          <p className="text-sm text-text-secondary">{t('analytics.speciesDuplicatesDesc')}</p>
           {speciesLoading ? (
             <div className="skeleton h-64 rounded-xl" />
           ) : speciesRows.length === 0 ? (
@@ -444,11 +474,16 @@ export default function Analytics() {
                       summary={formatSpeciesCounts(t, species.printing_count, species.copies)}
                       totalValue={species.total_value}
                       formatPrice={formatPrice}
-                      open={openSpecies.has(species.dex_id)}
-                      onToggle={() => toggleSpecies(species.dex_id)}
+                      open={!collapsedSpecies.has(species.dex_id)}
+                      onToggle={event => toggleSpecies(species.dex_id, event)}
                       contentClassName="border-t border-border/60 divide-y divide-border/30"
                     >
-                      {(species.printings || []).map((printing) => {
+                      <WindowedCardGrid measureRows deferOffscreen rowHeightEstimate={128}
+                        items={species.printings || []} label={name}
+                        listKey={`analytics-species-${species.dex_id}`}
+                        className="grid grid-cols-1 gap-0" overscanItems={12}
+                        getKey={printing => printing.card_id}
+                        renderItem={(printing) => {
                         const card = printingAsCard(printing)
                         return (
                           <div key={printing.card_id} className="p-2 sm:px-3">
@@ -473,7 +508,7 @@ export default function Analytics() {
                             />
                           </div>
                         )
-                      })}
+                      }} />
                     </CardGroupSection>
                   )
                 })}
@@ -568,14 +603,14 @@ export default function Analytics() {
                 <ResponsiveContainer width="100%" height={300}>
                   <PieChart>
                     <Pie data={rarityStats} dataKey="count" nameKey="rarity" cx="50%" cy="50%" outerRadius={100}
-                      label={({ rarity, percentage }) => `${percentage}%`}>
+                      label={({ rarity: _rarity, percentage }) => `${percentage}%`}>
                       {rarityStats.map((_, i) => <Cell key={i} fill={RARITY_COLORS[i % RARITY_COLORS.length]} />)}
                     </Pie>
                     <Tooltip
                       contentStyle={{ background: '#1e1e2e', border: '1px solid #2a2a3d', borderRadius: '8px', color: '#fff' }}
                       labelStyle={{ color: '#fff' }}
                       itemStyle={{ color: '#fff' }}
-                      formatter={(val, name) => [val, t('analytics.count')]}
+                      formatter={(val, _name) => [val, t('analytics.count')]}
                     />
                     <Legend wrapperStyle={{ color: '#a0a0b8' }} />
                   </PieChart>

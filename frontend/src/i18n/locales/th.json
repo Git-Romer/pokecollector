@@ -285,7 +285,10 @@
     "allTypes": "ทุกประเภท",
     "searchCards": "ค้นหาการ์ด...",
     "clearFilters": "ล้างตัวกรอง",
-    "foundIn": "พบใน"
+    "foundIn": "พบใน",
+    "otherCards": "การ์ดอื่น",
+    "byPokemon": "ตามโปเกมอน",
+    "speciesHint": "การ์ดที่มีโปเกมอนหลายชนิดจะแสดงครั้งเดียวในชนิดแรกที่ระบุ"
   },
   "printingDetails": {
     "label": "Printing details",
@@ -459,7 +462,11 @@
     "statusSold": "ขายแล้ว ✓",
     "statusOwned": "ยังครอบครองอยู่",
     "soldFor": "ขายในราคา",
-    "profit": "กำไร"
+    "profit": "กำไร",
+    "printing": "แบบ",
+    "printings": "แบบ",
+    "copy": "ใบ",
+    "copies": "ใบ"
   },
   "products": {
     "title": "การลงทุนสินค้า",
@@ -665,11 +672,11 @@
     "backupCards": "ข้อมูลการ์ด",
     "backupProducts": "สินค้า",
     "backupImages": "แคชรูปภาพ",
-    "clearImageCache": "ล้างแคชรูปภาพ",
-    "clearImageCacheDesc": "ลบรูปภาพการ์ดที่แคชไว้ทั้งหมด (เฉพาะแอดมิน)",
-    "clearImageCacheConfirm": "แน่ใจหรือไม่? รูปภาพที่แคชไว้ทั้งหมดจะถูกลบ",
-    "clearImageCacheSuccess": "ล้างแคชรูปภาพแล้ว",
-    "clearImageCacheFailed": "ล้างแคชล้มเหลว",
+    "clearImageCache": "ลบแคชรูปภาพบนเซิร์ฟเวอร์",
+    "clearImageCacheDesc": "ลบรูปภาพที่แคชไว้บนเซิร์ฟเวอร์สำหรับผู้ใช้ทุกคน โดยเก็บข้อมูลที่ดาวน์โหลดบนอุปกรณ์และไฟล์ต้นฉบับที่อัปโหลดไว้",
+    "clearImageCacheConfirm": "ลบแคชรูปภาพบนเซิร์ฟเวอร์สำหรับผู้ใช้ทุกคนหรือไม่? เซิร์ฟเวอร์จะดึงรูปภาพอีกครั้งเมื่อจำเป็น โดยไม่ลบข้อมูลที่ดาวน์โหลดแบบออฟไลน์และไฟล์ต้นฉบับที่อัปโหลด",
+    "clearImageCacheSuccess": "ลบแคชรูปภาพบนเซิร์ฟเวอร์แล้ว",
+    "clearImageCacheFailed": "ไม่สามารถลบแคชรูปภาพบนเซิร์ฟเวอร์ได้",
     "backupButton": "สำรองข้อมูล",
     "backupImport": "นำเข้าข้อมูลสำรอง",
     "backupImportDesc": "นำเข้าไฟล์ .sql",
@@ -920,7 +927,10 @@
     "setLangFilter": "กรองชุดตามภาษา",
     "searchLangFilter": "กรองการค้นหาตามภาษา"
   },
-  "variants": {
+  "artists": {
+    "galleryView": "มุมมองแกลเลอรี",
+    "listView": "มุมมองรายการ",
+    "featuredCards": "การ์ดเด่น",
     "label": "แบบพิมพ์",
     "none": "- ไม่มีแบบพิมพ์ -",
     "Normal": "Normal",
@@ -1148,5 +1158,16 @@
     "traderDesc": "ขายสินค้า 10 ชิ้น",
     "rareFinder": "นักค้นหาของหายาก",
     "rareFinderDesc": "มีการ์ด Illustration Rare"
+  },
+  "sync": {
+    "artworkTitle": "รูปภาพการ์ด",
+    "artworkRetry": "ลองโหลดรูปภาพที่ขาดอีกครั้ง",
+    "artworkRetryHint": "เชื่อมต่ออีกครั้ง ลองใหม่ที่นี่ แล้วเปิดการ์ดใหม่ หากเปิดการดาวน์โหลดอัตโนมัติ จะลองดาวน์โหลดคอลเลกชันอีกครั้งด้วย",
+    "artworkRetryRequested": "ส่งคำขอลองใหม่แล้ว เปิดการ์ดใหม่เพื่อโหลดรูปภาพอีกครั้ง",
+    "artworkOfflineHint": "หลังเชื่อมต่ออีกครั้ง สามารถลองโหลดรูปภาพที่ขาดได้ในศูนย์ซิงค์"
+  },
+  "offlineCollection": {
+    "preferencePending": "บันทึกในอุปกรณ์นี้แล้ว การตั้งค่าบัญชีจะซิงค์เมื่อเชื่อมต่อได้",
+    "preferenceFailed": "บันทึกการตั้งค่าในอุปกรณ์นี้ไม่ได้ ตรวจสอบพื้นที่เก็บข้อมูลของเบราว์เซอร์แล้วลองอีกครั้ง"
   }
 }

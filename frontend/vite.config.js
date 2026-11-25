@@ -20,6 +20,7 @@ export default defineConfig({
   plugins: [tailwindcss(), react()],
   define: {
     __APP_VERSION__: JSON.stringify(readAppVersion()),
+    __PWA_DEFAULT__: JSON.stringify(process.env.VITE_PWA_DEFAULT === 'on' ? 'sw=1;queue=1' : 'sw=0;queue=0'),
   },
   server: {
     proxy: {

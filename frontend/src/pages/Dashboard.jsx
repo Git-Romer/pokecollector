@@ -112,7 +112,6 @@ export default function Dashboard() {
   const pnlPct = performanceCostBasis > 0 ? (pnl / performanceCostBasis * 100) : 0
   const totalValue = data?.total_value || 0
   const totalCards = data?.total_cards || 0
-  const uniqueCards = data?.unique_cards || 0
   const ownedSets = data?.owned_sets || 0
   const totalSets = data?.total_sets || 0
   const configuredTrainerName = settings?.trainer_name?.trim()

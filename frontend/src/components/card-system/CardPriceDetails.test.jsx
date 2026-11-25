@@ -45,6 +45,16 @@ function renderPriceDetails(props = {}) {
 }
 
 describe('CardPriceDetails', () => {
+  it('labels the converted first-edition fallback as TCGPlayer, not Cardmarket', () => {
+    const markup = renderPriceDetails({
+      card: { id: 42, lang: 'en', price_tcg_normal_market: 4, price_tcg_first_edition_market: 8, price_tcg_usd_to_eur: 0.9 },
+      variant: 'First Edition',
+    })
+    expect(markup).toContain('data-price-source="tcgplayer"')
+    expect(markup).toContain('DKK 7.20')
+    expect(markup).toContain('First Edition')
+    expect(markup).not.toContain('prices.cardmarketTitle')
+  })
   it('renders the shared Cardmarket, purchase, and TCGPlayer information', () => {
     const markup = renderPriceDetails()
 

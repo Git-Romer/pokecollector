@@ -28,6 +28,7 @@ for (const language of codes) {
         '/api/settings/': settings,
         '/api/settings/tcgdex-filter-languages': ['en', 'de'],
         '/api/sets/': [],
+        '/api/pokedex': { entries: [], summary: { total: 0, owned: 0, missing: 0 } },
       }
       return route.fulfill({ json: responses[path] ?? [] })
     })
@@ -46,6 +47,15 @@ for (const language of codes) {
     await page.reload()
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(messages.sets.title)
     await page.waitForLoadState('networkidle')
+    if (language === 'fr') {
+      await page.goto('/pokedex?mode=forms')
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText(messages.pokedex.title)
+      await expect(page.getByRole('button', { name: 'Formes séparées', exact: true })).toHaveAttribute('aria-pressed', 'true')
+      await expect(page.getByRole('group', { name: 'Type de forme', exact: true })).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Toutes les formes', exact: true })).toBeVisible()
+      await expect(page.getByRole('button', { name: english.pokedex.form_galar, exact: true })).toBeVisible()
+      await page.waitForLoadState('networkidle')
+    }
     expect(errors).toEqual([])
   })
 }
