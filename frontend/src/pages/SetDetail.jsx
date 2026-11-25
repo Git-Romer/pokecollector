@@ -1,3 +1,4 @@
+import WindowedCardGrid from '../components/WindowedCardGrid'
 import { useRef, useState } from 'react'
 import { createPortal, flushSync } from 'react-dom'
 import { useParams } from 'react-router-dom'
@@ -9,7 +10,7 @@ import toast from 'react-hot-toast'
 import clsx from 'clsx'
 import { resolveCardImageUrl, resolveSetImageUrl } from '../utils/imageUrl'
 import { HOLO_FIELD_MAP } from '../utils/prices'
-import { useDetailBackNavigation, useScrollToTopOnPush } from '../hooks/useListScrollRestoration'
+import { useDetailBackNavigation } from '../hooks/useListScrollRestoration'
 import { CardDisplay, CardLegend } from '../components/card-system'
 import { CardModal } from '../components/CardItem'
 
@@ -80,7 +81,6 @@ function sortSetCards(cards, sortBy, pricePrimaryField) {
 export default function SetDetail() {
   const { setId } = useParams()
   const goBack = useDetailBackNavigation('sets', '/sets')
-  useScrollToTopOnPush()
   const { t, pricePrimaryField, formatPrice } = useSettings()
   const queryClient = useQueryClient()
   const [filter, setFilter] = useState('all')
@@ -319,8 +319,7 @@ export default function SetDetail() {
       </div>
 
       {/* Card Grid */}
-      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2">
-        {filteredCards.map((card) => (
+      <WindowedCardGrid className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2" items={filteredCards} renderItem={(card) => (
           <CardDisplay
             key={card.id}
             card={card}
@@ -336,8 +335,7 @@ export default function SetDetail() {
               setSelectedCard(card)
             }}
           />
-        ))}
-      </div>
+        )} />
 
       {selectedCard && <CardModal
         key={selectedCard.id}

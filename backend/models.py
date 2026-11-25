@@ -8,6 +8,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from database import Base
 
 POKEDEX_JSON = JSON(none_as_null=True).with_variant(JSONB(none_as_null=True), "postgresql")
+IDEMPOTENCY_JSON = JSON(none_as_null=True).with_variant(JSONB(none_as_null=True), "postgresql")
 PORTFOLIO_CALCULATION_VERSION = 2
 COLLECTION_VARIANT_CHECK = "variant IN ('Normal', 'Holo', 'Reverse Holo', 'First Edition')"
 
@@ -113,7 +114,7 @@ class Card(Base):
     price_tcg_holo_mid = Column(Float)
     price_tcg_holo_market = Column(Float)
     price_tcg_first_edition_market = Column(Float)
-    price_tcg_usd_to_eur = Column(Float)
+    price_tcg_usd_to_eur = Column(Float)  # Saved conversion for fallback valuation only
     price_source_lang = Column(String, nullable=True)  # Set when prices are copied from another TCGdex language
     last_price_sync_attempt_at = Column(DateTime, nullable=True)
     last_price_sync_success_at = Column(DateTime, nullable=True)
@@ -124,6 +125,18 @@ class Card(Base):
     variants_holo = Column(Boolean)
     variants_first_edition = Column(Boolean)
     updated_at = Column(DateTime, default=func.now())
+
+    @property
+    def tcgplayer_fallback_allowed(self):
+        # Derived permission, not a persisted price or a separate preference.
+        if self.lang == "en":
+            return True
+        if self.lang != "de":
+            return False
+        from sqlalchemy.orm import object_session
+        from services.card_values import cross_language_tcgplayer_fallback_enabled
+        db = object_session(self)
+        return db is not None and cross_language_tcgplayer_fallback_enabled(db)
 
     # Relationship to Set via tcg_set_id (viewonly, no DB FK)
     set_ref = relationship(
@@ -812,6 +825,43 @@ class ScanQueueUserState(Base):
 
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     last_dispatched_at = Column(DateTime, nullable=True, index=True)
+
+
+class IdempotencyKey(Base):
+    """A completed, replayable result for one (user, Idempotency-Key). Only 2xx results are stored."""
+
+    __tablename__ = "idempotency_keys"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    key = Column(String(64), nullable=False)
+    scope = Column(String(64), nullable=False)
+    request_hash = Column(String(64), nullable=False)          # sha256 hex
+    response_status = Column(Integer, nullable=False)
+    response_body = Column(IDEMPOTENCY_JSON, nullable=False)
+    created_at = Column(DateTime, nullable=False, default=func.now())
+    expires_at = Column(DateTime, nullable=False, index=True)
+
+    __table_args__ = (UniqueConstraint("user_id", "key", name="uq_idempotency_user_key"),)
+
+
+class PushSubscription(Base):
+    """One Web Push subscription (one browser/device) of a user."""
+
+    __tablename__ = "push_subscriptions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    endpoint = Column(Text, nullable=False)
+    p256dh = Column(String(255), nullable=False)
+    auth = Column(String(255), nullable=False)
+    user_agent = Column(String(255), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=func.now())
+    last_seen_at = Column(DateTime, nullable=False, default=func.now())
+    last_success_at = Column(DateTime, nullable=True)
+    failure_count = Column(Integer, nullable=False, default=0)
+
+    __table_args__ = (UniqueConstraint("endpoint", name="uq_push_subscription_endpoint"),)
 
 
 class GeminiQuotaState(Base):

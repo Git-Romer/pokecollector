@@ -1,9 +1,10 @@
-import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import en from '../i18n/en'
 import { priceFieldFromPrimary } from '../utils/prices'
 import { normalizeTcgdexLanguageCsv } from '../utils/tcgdexLanguages'
 import { currencySymbolFor, formatSelectedCurrency, rateForSelectedCurrency } from '../utils/currencyFormatting'
 import { useAuth } from './AuthContext'
+import { stageOfflineCollectionPreference, pendingOfflineCollectionPreference, acknowledgeOfflineCollectionPreference, loadSettingsWithCache, readCachedSettings, withTimeout, writeCachedSettings, SETTINGS_CACHE_KEY } from '../offline/settingsCache'
 
 const TRANSLATION_LOADERS = {
   de: () => import('../i18n/de'),
@@ -44,6 +45,7 @@ const DEFAULT_SETTINGS = {
   public_profiles_enabled: 'false',
   prefer_own_card_photos: 'false',
   holo_effects_enabled: 'false',
+  offline_collection_enabled: 'false',
 }
 
 const LANGUAGE_STORAGE_KEY = 'app_language'
@@ -88,11 +90,13 @@ function cacheCurrency(currency) {
   }
 }
 
-function initialSettings() {
+function initialSettings(userId) {
+  const cached = readCachedSettings(userId) || {}
   return {
     ...DEFAULT_SETTINGS,
-    language: readCachedLanguage() || DEFAULT_SETTINGS.language,
-    currency: readCachedCurrency() || 'EUR',
+    ...cached,
+    language: readCachedLanguage() || cached.language || DEFAULT_SETTINGS.language,
+    currency: cached.currency || readCachedCurrency() || 'EUR',
   }
 }
 
@@ -100,8 +104,13 @@ const SettingsContext = createContext(null)
 
 export function SettingsProvider({ children }) {
   const { user, loading: authLoading, multiUser } = useAuth()
-  const [settings, setSettings] = useState(initialSettings)
+  const [settings, setSettings] = useState(() => initialSettings(user?.id))
+  const [downloadPreferencePending, setDownloadPreferencePending] = useState(false)
+  const flushDownloadPreference = useRef(null)
   const [loaded, setLoaded] = useState(false)
+  const [loadedUserId, setLoadedUserId] = useState(undefined)
+  const currentUserRef = useRef(user?.id)
+  currentUserRef.current = user?.id
   const [exchangeRate, setExchangeRate] = useState(() => (
     (settings.currency || 'EUR').toUpperCase() === 'EUR' ? 1 : null
   ))
@@ -126,22 +135,28 @@ export function SettingsProvider({ children }) {
   // token, but the backend still auto-authenticates the bootstrap admin.
   useEffect(() => {
     if (authLoading) return
-
+    let cancelled = false
     setLoaded(false)
     const token = localStorage.getItem('token')
     if (multiUser && !token) {
-      setSettings(initialSettings())
+      setSettings(initialSettings(user?.id))
+      setLoadedUserId(user?.id)
       setLoaded(true)
       return
     }
 
     const headers = token && multiUser ? { Authorization: `Bearer ${token}` } : {}
-    fetch('/api/settings/', { headers })
+    // Stale-while-revalidate: show this user's cached settings now (the user is only known
+    // here, not at mount), then let the network copy replace them. A hanging offline request
+    // times out and loadSettingsWithCache falls back to the same cache.
+    setSettings(initialSettings(user?.id))
+    loadSettingsWithCache(user?.id, signal => fetch('/api/settings/', { headers, signal })
       .then(r => {
         if (!r.ok) throw new Error('Settings load failed')
         return r.json()
-      })
+      }))
       .then(data => {
+        if (cancelled) return
         const language = data.language === 'zh' ? 'zh-cn' : data.language
         cacheLanguage(language)
         cacheCurrency(data.currency)
@@ -151,12 +166,16 @@ export function SettingsProvider({ children }) {
           language: language || prev.language,
           tcgdex_sync_languages: normalizeTcgdexLanguageCsv(data.tcgdex_sync_languages || prev.tcgdex_sync_languages),
         }))
+        setLoadedUserId(user?.id)
         setLoaded(true)
       })
       .catch(() => {
+        if (cancelled) return
         // Backend not available, use defaults
+        setLoadedUserId(user?.id)
         setLoaded(true)
       })
+    return () => { cancelled = true }
   }, [authLoading, multiUser, user?.id])
 
   const lang = settings.language || DEFAULT_SETTINGS.language
@@ -255,7 +274,84 @@ export function SettingsProvider({ children }) {
   }, [settings.currency, authLoading, multiUser, user?.id])
 
   // Update one or more settings
+  // Local deletion must not depend on reaching the server. Persist only this
+  // narrow preference, then replay it in order for the same account/session.
+  useEffect(() => {
+    if (!loaded || loadedUserId !== user?.id || authLoading) return undefined
+    const userId = user?.id
+    const token = localStorage.getItem('token')
+    if (multiUser && !token) return undefined
+    let cancelled = false
+    let flight = null
+    const active = () => !cancelled && currentUserRef.current === userId && localStorage.getItem('token') === token
+    const flush = async (conflictAttempt = 0) => {
+      if (!active() || flight || navigator.onLine === false) return
+      const pending = pendingOfflineCollectionPreference(userId)
+      setDownloadPreferencePending(Boolean(pending))
+      if (!pending) return
+      let conflict = false
+      flight = withTimeout(async signal => {
+        if (!active()) return
+        const headers = { 'Content-Type': 'application/json', ...(multiUser && token ? { Authorization: `Bearer ${token}` } : {}) }
+        const current = await fetch('/api/settings/', { headers, signal, cache: 'no-store' })
+        if (!current.ok) throw new Error('Download preference pending')
+        const server = await current.json()
+        // Another tab may have acknowledged or replaced this intent during GET.
+        if (!active() || pendingOfflineCollectionPreference(userId)?.revision !== pending.revision) return
+        const response = await fetch('/api/settings/', {
+          method: 'PUT', signal,
+          headers: { ...headers, 'X-Offline-Preference-Revision': server.offline_collection_revision || '0' },
+          body: JSON.stringify({ offline_collection_enabled: pending.value }),
+        })
+        if (response.status === 409) conflict = true
+        if (!response.ok) throw new Error('Download preference pending')
+        const saved = await response.json()
+        if (saved.offline_collection_enabled !== pending.value) throw new Error('Download preference not acknowledged')
+        if (active()) acknowledgeOfflineCollectionPreference(userId, pending.revision)
+      })
+      let succeeded = false
+      try { await flight; succeeded = true } catch { /* Keep the durable intent and the local setting. */ }
+      finally {
+        flight = null
+        if (active()) {
+          const latest = pendingOfflineCollectionPreference(userId)
+          setDownloadPreferencePending(Boolean(latest))
+          // A second choice made during the request supersedes its acknowledgement.
+          if (latest && succeeded && latest.revision !== pending.revision) void flush()
+          else if (latest && conflict && conflictAttempt < 2) void flush(conflictAttempt + 1)
+        }
+      }
+    }
+    flushDownloadPreference.current = flush
+    setDownloadPreferencePending(Boolean(pendingOfflineCollectionPreference(userId)))
+    void flush()
+    const wake = () => { if (document.visibilityState === 'visible') void flush() }
+    window.addEventListener('online', wake)
+    window.addEventListener('focus', wake)
+    window.addEventListener('pageshow', wake)
+    document.addEventListener('visibilitychange', wake)
+    const interval = setInterval(wake, 30000)
+    return () => {
+      cancelled = true
+      if (flushDownloadPreference.current === flush) flushDownloadPreference.current = null
+      clearInterval(interval)
+      window.removeEventListener('online', wake)
+      window.removeEventListener('focus', wake)
+      window.removeEventListener('pageshow', wake)
+      document.removeEventListener('visibilitychange', wake)
+    }
+  }, [loaded, loadedUserId, user?.id, multiUser, authLoading])
+
   const updateSettings = useCallback(async (updates) => {
+    if (Object.keys(updates).length === 1 && Object.hasOwn(updates, 'offline_collection_enabled')) {
+      if (!loaded || loadedUserId !== user?.id || !stageOfflineCollectionPreference(user?.id, updates.offline_collection_enabled)) {
+        throw new Error('Could not save device preference')
+      }
+      setSettings(prev => ({ ...prev, ...updates }))
+      setDownloadPreferencePending(true)
+      void flushDownloadPreference.current?.()
+      return updates
+    }
     const next = { ...settings, ...updates }
     setSettings(next)
     try {
@@ -263,13 +359,16 @@ export function SettingsProvider({ children }) {
       const headers = { 'Content-Type': 'application/json' }
       if (token && multiUser) headers.Authorization = `Bearer ${token}`
 
-      const resp = await fetch('/api/settings/', {
-        method: 'PUT',
-        headers,
-        body: JSON.stringify(updates),
+      const saved = await withTimeout(async signal => {
+        const resp = await fetch('/api/settings/', {
+          method: 'PUT', headers, body: JSON.stringify(updates), signal,
+        })
+        if (!resp.ok) throw new Error('Save failed')
+        return resp.json()
       })
-      if (!resp.ok) throw new Error('Save failed')
-      const saved = await resp.json()
+      if (!Object.hasOwn(updates, 'offline_collection_enabled')) delete saved.offline_collection_enabled
+      writeCachedSettings(user?.id, { ...readCachedSettings(user?.id), ...saved })
+      if (currentUserRef.current !== user?.id) return
       const language = saved.language === 'zh' ? 'zh-cn' : saved.language
       cacheLanguage(language)
       cacheCurrency(saved.currency)
@@ -279,11 +378,24 @@ export function SettingsProvider({ children }) {
         language: language || prev.language,
       }))
     } catch (err) {
-      setSettings(settings)
+      if (currentUserRef.current === user?.id) setSettings(previous => ({ ...settings, offline_collection_enabled: previous.offline_collection_enabled }))
       console.error('Failed to save settings:', err)
       throw err
     }
-  }, [settings, multiUser])
+  }, [settings, multiUser, user?.id, loaded, loadedUserId])
+
+  // A toggle in another tab must stop this tab's writer too.
+  useEffect(() => {
+    const changed = event => {
+      if (event.key !== SETTINGS_CACHE_KEY) return
+      const cached = readCachedSettings(user?.id)
+      if (cached) setSettings(previous => ({ ...previous, ...cached }))
+      setDownloadPreferencePending(Boolean(pendingOfflineCollectionPreference(user?.id)))
+      void flushDownloadPreference.current?.()
+    }
+    window.addEventListener('storage', changed)
+    return () => window.removeEventListener('storage', changed)
+  }, [user?.id])
 
   const msgs = loadedTranslations[lang] || en
 
@@ -362,12 +474,13 @@ export function SettingsProvider({ children }) {
     <SettingsContext.Provider value={{
       settings,
       updateSettings,
+      downloadPreferencePending,
       t,
       language: lang,
       priceDisplay: getPriceDisplay(),
       pricePrimary,
       pricePrimaryField,
-      loaded,
+      loaded: loaded && loadedUserId === user?.id,
       currency,
       currencySymbol,
       exchangeRate: displayRate,

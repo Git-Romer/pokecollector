@@ -92,6 +92,9 @@ class CardBase(BaseModel):
     price_tcg_holo_low: Optional[float] = None
     price_tcg_holo_mid: Optional[float] = None
     price_tcg_holo_market: Optional[float] = None
+    price_tcg_first_edition_market: Optional[float] = None
+    price_tcg_usd_to_eur: Optional[float] = None
+    tcgplayer_fallback_allowed: bool = False
     price_source_lang: Optional[str] = None
     # Variants
     variants_normal: Optional[bool] = None
@@ -219,6 +222,14 @@ class CollectionItemResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class CollectionOfflineManifestResponse(BaseModel):
+    version: int = 1
+    user_id: int
+    items: List[CollectionItemResponse]
+    image_urls: List[str]
+    missing_artwork_card_ids: List[str]
 
 
 class WishlistItemCreate(BaseModel):
@@ -699,19 +710,6 @@ class TradeValuationItem(BaseModel):
 class TradeValuationRequest(BaseModel):
     outgoing: List[TradeValuationItem] = Field(default_factory=list)
     incoming: List[TradeValuationItem] = Field(default_factory=list)
-
-
-class SyncLogResponse(BaseModel):
-    id: int
-    started_at: Optional[datetime] = None
-    finished_at: Optional[datetime] = None
-    cards_updated: int = 0
-    sets_updated: int = 0
-    status: str
-    error_message: Optional[str] = None
-
-    class Config:
-        from_attributes = True
 
 
 class ProfileUpdate(BaseModel):

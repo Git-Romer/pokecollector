@@ -18,14 +18,6 @@ export const PRODUCT_PERIODS = [
   { key: 'total', de: 'Gesamt', en: 'Total' },
 ]
 
-// Maps period key → Card DB price field
-export const PERIOD_PRICE_FIELD = {
-  '1d': 'price_avg1',
-  '7d': 'price_avg7',
-  '30d': 'price_avg30',
-  'total': 'price_trend',
-}
-
 // Maps period key → days (for top-movers API)
 export const PERIOD_DAYS = {
   '1d': 1,

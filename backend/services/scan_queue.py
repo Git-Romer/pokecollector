@@ -14,7 +14,6 @@ from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from models import ScanJob, ScanJobItem, ScanQueueUserState, User
-from services.gemini_rate_limit import gemini_priority_scope
 from services.scan_storage import (
     ScanUploadError,
     delete_job_directory,

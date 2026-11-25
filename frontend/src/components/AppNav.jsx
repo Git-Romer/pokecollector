@@ -20,6 +20,7 @@ const PAGE_TITLE_KEYS = {
   '/leaderboard': 'nav.leaderboard',
   '/achievements': 'nav.achievements',
   '/settings':   'nav.settings',
+  '/offline':    'sync.centerTitle',
   '/migration':  'migration.title',
   '/scans':      'scanner.queueTitle',
   '/dashboard':  'nav.dashboard',
@@ -70,7 +71,7 @@ export default function AppNav() {
     })
   }
 
-  const handleLogout = () => { logout(); navigate('/login') }
+  const handleLogout = () => { logout() }
 
   if (location.pathname === '/') return null
 
@@ -83,8 +84,8 @@ export default function AppNav() {
     <>
       {/* Page title — subtle top strip with logout */}
       {title && (
-        <div className="sticky top-0 z-40 px-4 pt-5 pb-3 flex items-center justify-between"
-          style={{ background: 'linear-gradient(to bottom, rgba(6,8,15,0.98) 70%, transparent)' }}>
+        <div className="sticky top-0 z-40 px-4 pb-3 flex items-center justify-between"
+          style={{ paddingTop: 'max(1.25rem, env(safe-area-inset-top))', background: 'linear-gradient(to bottom, rgba(6,8,15,0.98) 70%, transparent)' }}>
           <div className="w-8" />
           <p className="text-[11px] font-black uppercase tracking-[0.2em] text-text-muted text-center truncate flex-1 min-w-0">
             {title}
@@ -117,9 +118,11 @@ export default function AppNav() {
         onPointerLeave={handleHomePointerLeave}
         onPointerCancel={handleHomePointerLeave}
         aria-label={t('home.navigation')}
-        className="pokeball-home-button fixed bottom-6 left-4 z-40 w-12 h-12 rounded-full flex items-center justify-center
+        className="pokeball-home-button fixed z-40 w-12 h-12 rounded-full flex items-center justify-center
           transition-transform duration-200 active:scale-90"
         style={{
+          bottom: 'max(1.5rem, env(safe-area-inset-bottom))',
+          left: 'max(1rem, env(safe-area-inset-left))',
           background: 'linear-gradient(180deg, #e3000b 50%, #f5f5f5 50%)',
           boxShadow: '0 4px 20px rgba(0,0,0,0.5), 0 0 0 2px rgba(0,0,0,0.8), 0 0 16px rgba(227,0,11,0.3)',
           border: '2px solid #111',

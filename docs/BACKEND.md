@@ -38,6 +38,7 @@ FastAPI app entry point: `backend/main.py`.
 | POST | `/api/cards/custom/dismiss/{match_id}` | Dismiss match |
 | GET | `/api/cards/{card_id}/lang/{lang}` | Resolve equivalent card in another language |
 | GET | `/api/cards/{card_id}/price-history` | Price history |
+| GET | `/api/cards/{card_id}/valuation` | Matching-variant value with source and selected-currency conversion |
 | PUT | `/api/cards/{card_id}/custom-image` | Set/clear a validated HTTPS fallback image for an API card with no TCGdex artwork |
 | GET | `/api/cards/{card_id}` | Card detail |
 | POST | `/api/cards/recognize` | Card recognition through the user's configured vision provider |
@@ -104,6 +105,16 @@ Artwork can be requested through `/api/images/card/{id}/small`. Ranking uses
 locally synchronized prices and does not trigger provider requests or updates.
 
 Custom cards belong to exactly one user. Owners may publish a card as a shared template, but other users must clone it before using it in collections, wishlists, binders, products, or trades. Clones have independent IDs, metadata, images, and prices. Manual image URLs must use public HTTPS destinations and are fetched through the size-limited image proxy. During upgrade, existing custom cards become shared templates owned by the first-created admin account, while each other referencing user receives one private clone and keeps their existing references.
+
+#### Card valuation
+
+`GET /api/cards/{card_id}/valuation` is authenticated and uses the same EUR valuation as collection totals. Optional query parameters are `variant` (a supported collection variant), `price_field` (for example `price_trend` or `price_avg7`), and `currency` (an uppercase three-letter currency code, default `EUR`). Without a variant, a holo-only card uses Holo; otherwise Normal is selected.
+
+The selected Cardmarket field and its existing market-price fallback take precedence. If neither is usable, the matching TCGplayer Normal, Holo, Reverse Holo, or First Edition market price supplied through TCGdex is converted from USD using the rate saved during price upserts. English cards are eligible directly. German cards are eligible only when the existing admin setting `cross_language_price_fallback` is enabled (default `true`); this is an English-market estimate, not a German-market quote. The existing `PUT /api/settings/` endpoint controls that preference, and `GET /api/settings/` reads it back. Card payloads expose the derived `tcgplayer_fallback_allowed` flag so frontend valuation agrees with APIs and portfolio totals. Other and unknown card languages are not newly opted into this marketplace fallback. Existing cross-language Cardmarket references remain unchanged. Eligibility follows the physical card's language, not the interface language. Other variants never borrow a different edition or finish. Raw TCGplayer fields stay in USD and stored Cardmarket fields stay in EUR. The existing amber price-fallback indicator is reused, with `TCGplayer (EN)` identifying the marketplace source. A later sync that restores a usable Cardmarket price takes priority automatically.
+
+The response includes `amount`, `currency`, `amount_eur`, `source` (`cardmarket`, `tcgplayer`, or `null`), `source_amount`, and `source_currency`. A TCGplayer quote also includes `usd_to_eur`. For example, a USD 8 first-edition price with a saved USD/EUR rate of 0.9 has `amount_eur: 7.2`, independently of the requested display currency. Missing prices or a missing saved USD/EUR rate return zero with a null source, not dollars labelled as euros. A failed display-currency conversion returns HTTP 503 rather than an invented amount. Nonexistent or inaccessible private custom cards return HTTP 404.
+
+Valuation does not trigger a sync. Existing sync APIs refresh the raw provider prices and saved conversion; a provider outage can reuse the last saved exchange rate. Price-history records retain their existing Cardmarket meaning. Manual price overrides are separate from this fallback.
 
 ### Set display metadata
 
@@ -446,13 +457,15 @@ endpoint exposes user settings or collection data.
 - `ImageCache`
 - `CustomCardMatch`
 - `ScanJob` / `ScanJobItem` / `ScanQueueUserState`
+- `IdempotencyKey` (replayable `Idempotency-Key` results; see [Idempotency](#idempotency))
+- `PushSubscription` (Web Push subscriptions, one row per device; see [Web push](#web-push))
 - `GeminiQuotaState` / `ScannerProviderLimitState`
 
 ## Settings Scope
 
-Current settings are split in `backend/api/settings.py`:
+The API in `backend/api/settings.py` routes `ADMIN_ONLY_KEYS` to the global store and other preferences to the authenticated user's `UserSetting` rows. Dedicated scanner settings must use their atomic configuration endpoint; this is not a fixed per-user key allowlist. Examples of each scope:
 
-- `PER_USER_KEYS`
+- Per-user settings
   - `language`
   - `currency`
   - `price_primary`
@@ -547,7 +560,12 @@ and queued-photo files remain filesystem data and are not part of SQL backups.
 `POST /api/backup/restore` accepts only a non-empty `.sql` upload, streams it to
 a temporary file, and invokes `psql` with `ON_ERROR_STOP=1`, `--no-psqlrc`, and
 `--single-transaction`. Any SQL error rolls back the whole restore. The
-temporary file is removed whether the operation succeeds or fails.
+temporary file is removed whether the operation succeeds or fails. After a
+successful restore the endpoint also deletes every row in `idempotency_keys`
+(best effort): an older dump would otherwise leave keys whose business rows no
+longer exist, and replaying one would silently drop the add. After a manual
+`psql` restore run `DELETE FROM idempotency_keys;`. The table is not part of
+the selective backup groups but is included in full dumps.
 
 ### Automatic Pre-upgrade Backup
 
@@ -667,12 +685,62 @@ race. That suite creates and removes only a randomly named test schema.
 
 Each item is committed independently, so one invalid or unavailable card does not roll back the rest of the batch. Existing rows are matched by card, variant, language, and current user.
 
+`bulk-add` and `import-csv` ignore the `Idempotency-Key` header (see below).
+
+## Idempotency
+
+Three append operations can be retried safely with an `Idempotency-Key` header, so a client that lost the response can resend the request without applying it twice:
+
+| Route | Scope |
+|---|---|
+| `POST /api/collection/` | `collection.add` |
+| `POST /api/wishlist/` | `wishlist.add` |
+| `POST /api/cards/recognize/jobs` | `scan.enqueue` |
+
+Every other route, including `bulk-add` and `import-csv`, ignores the header. Without the header the three routes behave exactly as before and never touch the `idempotency_keys` table.
+
+**Headers.** `Idempotency-Key` is 16-64 characters of `A-Z a-z 0-9 _ -` (one pair of surrounding double quotes is stripped); a UUID works. `X-Expected-User-Id` is an optional integer; on the three routes a value that differs from the authenticated user is rejected with `409 wrong_account`, with or without a key. A replayed response carries `Idempotent-Replayed: true`.
+
+**Semantics.** Results are deduplicated per `(user, key)`. The key row is written in the same database transaction as the business write, and only successful (2xx) results are stored, so a failed request leaves nothing behind and a retry runs again. A key is kept for 14 days (`KEY_TTL`); an expired key is treated as new, and the scheduler removes expired rows hourly. A key reused with a different scope or request fingerprint (the JSON body, or for scans the selection and the SHA-256 of each photo) is rejected. On PostgreSQL an advisory try-lock detects a duplicate that is still running without ever waiting.
+
+| HTTP | `detail.code` | Meaning |
+|---|---|---|
+| 400 | `idempotency_key_invalid` | `Idempotency-Key` or `X-Expected-User-Id` is malformed |
+| 409 | `idempotency_in_progress` | Another request holds the key (sets `Retry-After: 2`); retry shortly |
+| 409 | `wrong_account` | `X-Expected-User-Id` does not match the token's user |
+| 422 | `idempotency_key_reused` | Same key, different scope or payload |
+
+FastAPI's own validation `422` keeps its array `detail`; the two are told apart by `detail.code`. A restore clears all stored keys (see Manual restore).
+
+**Health.** `GET /api/health` also returns `version`, `api_level` (`1`) and `features` (`["idempotency-v1"]`, from `services/api_info.py`) so clients can tell whether the backend supports replays.
+
 ## Notifications
 
 `backend/services/telegram.py` reads Telegram credentials and currency from that
 user's `UserSetting` rows. Price alerts convert both the EUR market price and
 threshold to the selected currency using the shared rate cache; if no rate has
 ever been synced, both values are marked unavailable in the selected currency.
+
+### Web push
+
+Optional Web Push for wishlist price alerts, sent next to Telegram from `check_wishlist_alerts`. A push failure never stops Telegram or the alert loop. Design: [PWA_OFFLINE_DESIGN.md](PWA_OFFLINE_DESIGN.md) §6.7.
+
+All routes need a signed-in user (`backend/api/push.py`, prefix `/api/push`):
+
+| Route | Purpose |
+|---|---|
+| `GET /vapid-public-key` | `{"public_key": "<base64url P-256 point>"}` for `pushManager.subscribe` |
+| `POST /subscribe` | Body `{endpoint, keys:{p256dh, auth}, user_agent?}`. Upserts by `endpoint` (re-assigns it to the caller, resets the failure count) and returns `{"id": n}` |
+| `DELETE /subscribe` | Body `{endpoint}`. Removes only the caller's row. `204` |
+| `POST /test` | Sends a test notification to the caller's devices: `{"sent": n, "removed": m}` |
+
+- **Table** `push_subscriptions`: `user_id` (cascade on user delete), unique `endpoint`, `p256dh`, `auth`, `user_agent`, `created_at`, `last_seen_at`, `last_success_at`, `failure_count`.
+- **SSRF allow-list.** The server POSTs to the stored endpoint, so `subscribe` accepts only `https` URLs up to 2048 characters on port 443 whose host is `fcm.googleapis.com` or ends in `.push.apple.com`, `.push.services.mozilla.com` or `.notify.windows.com`. IP literals, credentials and every other host return `422`.
+- **Keys.** `VAPID_PRIVATE_KEY` (PEM, `
+` escapes allowed) overrides the key file, which defaults to `/app/data/auth/vapid_private.pem` (`VAPID_PRIVATE_KEY_FILE` changes the path). Without either, a P-256 key is created once with mode `0600`. The stock `docker-compose.yml` does not pass these variables to the backend, so Compose installs use the key file (add them under `environment:` in an override if needed). `VAPID_SUBJECT` is the contact URL or `mailto:` sent to the push services (default: the project URL). The private key is never logged.
+- **Payload.** At most 4096 bytes: only the card name and `/wishlist`, no prices or collection data; encrypted end to end.
+- **Outcomes.** `404`/`410` delete the row; `403` is logged and kept; `429` is skipped; any other failure adds one to `failure_count` and the tenth deletes the row.
+- **Dependency.** `pywebpush==2.5.0` (MPL-2.0, used unmodified).
 
 ## Migrations
 

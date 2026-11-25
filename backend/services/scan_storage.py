@@ -10,6 +10,7 @@ import uuid
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy import text
@@ -206,6 +207,7 @@ async def create_scan_job(
     uploads: list,
     *,
     batch_modes: list[bool] | None = None,
+    before_commit: Callable[[ScanJob], None] | None = None,
 ) -> ScanJob:
     """Validate and persist a job without retaining any original upload bytes."""
     if not uploads:
@@ -266,6 +268,11 @@ async def create_scan_job(
                     updated_at=now,
                 )
             )
+        if before_commit is not None:
+            # Lets a caller stage rows (e.g. an idempotency record) in the same
+            # transaction as the job. Items must be visible to its queries.
+            db.flush()
+            before_commit(job)
         db.commit()
         db.refresh(job)
         return job

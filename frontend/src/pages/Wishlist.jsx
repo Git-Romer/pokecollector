@@ -464,8 +464,6 @@ export default function Wishlist() {
                 {filtered.map((item) => {
                   const card = item.card
                   const price = getEffectiveCardPrice(card, null, pricePrimaryField)
-                  const alertAbove = price && item.price_alert_above && price >= item.price_alert_above
-                  const alertBelow = price && item.price_alert_below && price <= item.price_alert_below
 
                   if (editingId === item.id) {
                     return (

@@ -665,11 +665,11 @@
     "backupCards": "Dati carte",
     "backupProducts": "Prodotti",
     "backupImages": "Cache immagini",
-    "clearImageCache": "Svuota cache immagini",
-    "clearImageCacheDesc": "Elimina tutte le immagini carte in cache (solo admin)",
-    "clearImageCacheConfirm": "Sei sicuro? Tutte le immagini in cache saranno eliminate.",
-    "clearImageCacheSuccess": "Cache immagini svuotata",
-    "clearImageCacheFailed": "Svuotamento cache non riuscito",
+    "clearImageCache": "Elimina la cache delle immagini del server",
+    "clearImageCacheDesc": "Elimina le immagini nella cache del server per tutti gli utenti. I download sui dispositivi e i file originali caricati vengono conservati.",
+    "clearImageCacheConfirm": "Eliminare la cache delle immagini del server per tutti gli utenti? Il server recupererà le immagini quando necessario. I download offline e i file originali caricati non vengono eliminati.",
+    "clearImageCacheSuccess": "Cache delle immagini del server eliminata",
+    "clearImageCacheFailed": "Impossibile eliminare la cache delle immagini del server",
     "backupButton": "Backup",
     "backupImport": "Importa backup",
     "backupImportDesc": "Importa file .sql",
@@ -1151,5 +1151,16 @@
     "traderDesc": "Vendi 10 prodotti",
     "rareFinder": "Cacciatore di rarità",
     "rareFinderDesc": "Possiedi una carta Illustration Rare"
+  },
+  "sync": {
+    "artworkTitle": "Immagini delle carte",
+    "artworkRetry": "Riprova le immagini mancanti",
+    "artworkRetryHint": "Riconnettiti, riprova qui e riapri le carte. Se i download automatici sono attivi, viene riprovato anche il download della collezione.",
+    "artworkRetryRequested": "Nuovo tentativo richiesto. Riapri le carte per ricaricare le immagini.",
+    "artworkOfflineHint": "Puoi riprovare le immagini mancanti nel centro di sincronizzazione dopo la riconnessione."
+  },
+  "offlineCollection": {
+    "preferencePending": "Salvato su questo dispositivo. La preferenza del tuo account verrà sincronizzata quando sarà disponibile una connessione.",
+    "preferenceFailed": "Impossibile salvare questa preferenza sul dispositivo. Controlla lo spazio del browser e riprova."
   }
 }

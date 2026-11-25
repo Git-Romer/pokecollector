@@ -10,7 +10,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from models import Card, Set, CollectionItem, WishlistItem, BinderCard, PriceHistory, SyncLog, PortfolioSnapshot, CustomCardMatch, User, UserSetting
-from services import pokemon_api, telegram
+from services import pokemon_api, push, telegram
 from services.card_fallbacks import apply_cross_language_fallbacks, build_missing_language_cards_for_set
 from services.card_metadata import enrich_missing_card_metadata
 from services.card_numbers import candidate_card_ids, number_matches_candidate
@@ -626,6 +626,10 @@ def check_wishlist_alerts(db: Session, updated_card_ids: list):
             telegram.send_price_alert(
                 card.name, current_price, threshold, alert_type, db=db, user_id=item.user_id
             )
+            try:
+                push.send_price_alert(db, item.user_id, card.name, current_price, threshold, alert_type)
+            except Exception:
+                logger.exception("Web push price alert failed for user %s", item.user_id)
             item.notified_at = now
 
     db.commit()

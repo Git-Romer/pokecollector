@@ -666,11 +666,11 @@
     "backupCards": "Data Kartu",
     "backupProducts": "Produk",
     "backupImages": "Cache Gambar",
-    "clearImageCache": "Hapus cache gambar",
-    "clearImageCacheDesc": "Hapus semua gambar kartu yang dicache (hanya admin)",
-    "clearImageCacheConfirm": "Apakah Anda yakin? Semua gambar yang dicache akan dihapus.",
-    "clearImageCacheSuccess": "Cache gambar dihapus",
-    "clearImageCacheFailed": "Gagal menghapus cache",
+    "clearImageCache": "Hapus cache gambar server",
+    "clearImageCacheDesc": "Hapus gambar dalam cache server untuk semua pengguna. Unduhan di perangkat dan unggahan asli tetap disimpan.",
+    "clearImageCacheConfirm": "Hapus cache gambar server untuk semua pengguna? Server akan mengambil gambar lagi saat diperlukan. Unduhan offline dan unggahan asli tidak dihapus.",
+    "clearImageCacheSuccess": "Cache gambar server dihapus",
+    "clearImageCacheFailed": "Tidak dapat menghapus cache gambar server",
     "backupButton": "Cadangkan",
     "backupImport": "Impor Cadangan",
     "backupImportDesc": "Impor file .sql",
@@ -1152,5 +1152,16 @@
     "traderDesc": "Jual 10 produk",
     "rareFinder": "Pemburu Rare",
     "rareFinderDesc": "Miliki kartu Illustration Rare"
+  },
+  "sync": {
+    "artworkTitle": "Gambar kartu",
+    "artworkRetry": "Coba lagi gambar yang hilang",
+    "artworkRetryHint": "Sambungkan kembali, coba di sini, lalu buka ulang kartu. Jika unduhan otomatis aktif, unduhan koleksi juga akan dicoba lagi.",
+    "artworkRetryRequested": "Percobaan ulang diminta. Buka ulang kartu untuk memuat gambarnya lagi.",
+    "artworkOfflineHint": "Gambar yang hilang dapat dicoba lagi di pusat sinkronisasi setelah terhubung kembali."
+  },
+  "offlineCollection": {
+    "preferencePending": "Disimpan di perangkat ini. Preferensi akun akan disinkronkan saat koneksi tersedia.",
+    "preferenceFailed": "Preferensi tidak dapat disimpan di perangkat ini. Periksa penyimpanan browser dan coba lagi."
   }
 }

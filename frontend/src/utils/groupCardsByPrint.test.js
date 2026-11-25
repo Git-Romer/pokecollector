@@ -7,6 +7,13 @@ const card = (over = {}) => ({
 })
 
 describe('groupCardsByPrint', () => {
+  it('retains a marketplace fallback when another grouped print uses Cardmarket', () => {
+    const [tile] = groupCardsByPrint([
+      card({ price_source: 'cardmarket', market_value: 2 }),
+      card({ variant: 'First Edition', price_source: 'tcgplayer', price_source_lang: 'en', market_value: 7.2 }),
+    ])
+    expect(tile.price_source).toBe('tcgplayer')
+  })
   it('merges variants of the same card into one tile', () => {
     const out = groupCardsByPrint([
       card({ variant: 'Normal', quantity: 2 }),

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useSettings } from '../contexts/SettingsContext'
 import { getCardVariantEffectClass } from '../utils/cardVariantEffect'
+import { getCardFallbackQuote } from '../utils/prices'
 import CardImage from './CardImage'
 import HoloEffectOverlay from './HoloEffectOverlay'
 import FallbackBadges from './FallbackBadges'
@@ -16,7 +17,7 @@ export const FALLBACK_KIND_ORDER = ['data', 'price', 'image']
 const FALLBACK_COLORS = CARD_SYSTEM_TOKENS.border
 const NORMAL_BORDER = CARD_SYSTEM_TOKENS.border.default
 
-export function getCardFallbackKinds(card = {}) {
+export function getCardFallbackKinds(card = {}, priceField = 'price_trend') {
   const hasOfficialArtwork = Boolean(
     card.images_small
     || card.images_large
@@ -29,6 +30,7 @@ export function getCardFallbackKinds(card = {}) {
 
   return FALLBACK_KIND_ORDER.filter((kind) => (
     Boolean(card?.[`${kind}_source_lang`])
+    || (kind === 'price' && getCardFallbackQuote(card, priceField).source === 'tcgplayer')
     || (kind === 'image' && hasManualArtworkFallback)
   ))
 }
@@ -120,8 +122,8 @@ export function CardArtworkFrame({
   loading = 'lazy',
   viewportRef,
 }) {
-  const { t } = useSettings()
-  const kinds = getCardFallbackKinds(card)
+  const { t, pricePrimaryField } = useSettings()
+  const kinds = getCardFallbackKinds(card, pricePrimaryField)
   const label = fallbackAriaLabel(t, kinds)
   const resolvedActionLabel = actionLabel || [alt, label].filter(Boolean).join(' · ') || undefined
 

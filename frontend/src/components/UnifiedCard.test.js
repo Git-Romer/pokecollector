@@ -128,6 +128,16 @@ describe('handleKeyboardActivation', () => {
 })
 
 describe('getCardFallbackKinds', () => {
+  it('reuses the price border for an eligible marketplace fallback, not recovered Cardmarket prices', () => {
+    const card = { lang: 'de', tcgplayer_fallback_allowed: true, price_tcg_normal_market: 4, price_tcg_usd_to_eur: 0.9 }
+    expect(getCardFallbackKinds(card)).toEqual(['price'])
+    expect(getCardFallbackKinds({ ...card, tcgplayer_fallback_allowed: false })).toEqual([])
+    expect(getCardFallbackKinds({ ...card, price_trend: 2 })).toEqual([])
+    expect(getCardFallbackKinds({ ...card, price_tcg_usd_to_eur: null })).toEqual([])
+    const firstEdition = { lang: 'en', price_tcg_first_edition_market: 8, price_tcg_usd_to_eur: 0.9, owned_variants: [{ variant: 'First Edition', quantity: 1 }] }
+    expect(getCardFallbackKinds(firstEdition)).toEqual(['price'])
+  })
+
   it('returns fallback kinds in a stable order', () => {
     expect(getCardFallbackKinds({
       price_source_lang: 'en',

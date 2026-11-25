@@ -1,6 +1,6 @@
 from schemas import BulkRemoveRequest, BulkRemoveResponse, ReleaseAssignmentsRequest
 from services.collection_removal_conflicts import removal_conflicts, release_confirmed_assignments, owned_items
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Request, Response
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -12,7 +12,7 @@ from models import (
     PrintingDetailTag, ProductCard, Set, User,
 )
 from schemas import (
-    CollectionItemCreate, CollectionItemUpdate, CollectionItemResponse,
+    CollectionItemCreate, CollectionItemUpdate, CollectionItemResponse, CollectionOfflineManifestResponse,
     BulkCollectionAddRequest, BulkCollectionAddResponse,
     PrintingDetailTagCreate, PrintingDetailTagUpdate, PrintingDetailTagResponse,
 )
@@ -40,11 +40,20 @@ from services.printing_detail_tags import (
     printing_detail_keys,
 )
 from services.card_values import effective_market_price, normalize_price_field
+from services.idempotency import (
+    SCOPE_COLLECTION_ADD,
+    begin_idempotent,
+    fingerprint_json,
+    replay_response,
+)
 from services.product_sources import annotate_product_sources, product_sources_by_collection_item
 import datetime
 import csv
 import io
 import logging
+import hashlib
+import json
+from urllib.parse import quote
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -55,7 +64,6 @@ CSV_IMPORT_MAX_BYTES = 256 * 1024
 CSV_IMPORT_MAX_ROWS = 1000
 ALLOWED_CONDITIONS = {"Mint", "NM", "LP", "MP", "HP"}
 ALLOWED_VARIANTS = set(CANONICAL_VARIANTS)
-ALLOWED_LANGS = set(SUPPORTED_TCGDEX_LANGUAGES)
 
 
 def _normalize_collection_variant(variant: Optional[str]) -> str:
@@ -564,17 +572,72 @@ def get_collection(
     return _annotate_collection_items(db, current_user, items)
 
 
+@router.get("/offline-manifest", response_model=CollectionOfflineManifestResponse)
+def get_collection_offline_manifest(
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Full owner-scoped snapshot and original artwork URLs for device downloads.
+
+    No ownership or private photo bytes are stored in HTTP caches. Artwork uses
+    the existing public image proxy; missing artwork is explicitly identified.
+    This read-only endpoint does not download anything onto the server or device.
+    """
+    items = get_collection(current_user=current_user, db=db, sort_by="added_at", order="desc", rule_text=None)
+    image_urls = set()
+    missing = set()
+    for item in items:
+        card = item.card
+        # The public image proxy deliberately marks custom artwork private/no-store.
+        # Its large endpoint can also fall back to a thumbnail. Neither is a public
+        # original, so show an explicit placeholder instead of reporting it as saved.
+        if card and not card.is_custom and card.images_large:
+            revision = hashlib.sha256(json.dumps(
+                [card.images_large, card.images_small, card.custom_image_url],
+                separators=(',', ':'),
+            ).encode()).hexdigest()[:16]
+            image_urls.add(f"/api/images/card/{quote(card.id, safe='')}/large?v={revision}")
+        else:
+            image_urls.add("/cardback.jpg")
+            missing.add(item.card_id)
+    response.headers["Cache-Control"] = "private, no-store"
+    return {
+        "version": 1,
+        "user_id": current_user.id,
+        "items": items,
+        "image_urls": sorted(image_urls),
+        "missing_artwork_card_ids": sorted(missing),
+    }
+
+
 @router.post("/", response_model=CollectionItemResponse)
 def add_to_collection(
     item: CollectionItemCreate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    request: Request = None,
 ):
     """Add a card to the collection, grouping only identical physical-copy details."""
+    idem = begin_idempotent(
+        db, current_user, request.headers if request is not None else None,
+        scope=SCOPE_COLLECTION_ADD,
+        fingerprint=fingerprint_json(SCOPE_COLLECTION_ADD, item.model_dump(mode="json")),
+    )
+    if idem.replay is not None:
+        return replay_response(idem.replay)
     _status, db_item = _upsert_collection_item(db, current_user, item)
+    if not idem.active:  # unchanged legacy behaviour
+        db.commit()
+        db.refresh(db_item)
+        return _annotate_collection_item(db, current_user, db_item)
+    db.flush()
+    body = jsonable_encoder(
+        CollectionItemResponse.model_validate(_annotate_collection_item(db, current_user, db_item))
+    )
+    idem.record(db, 200, body)
     db.commit()
-    db.refresh(db_item)
-    return _annotate_collection_item(db, current_user, db_item)
+    return body
 
 
 @router.post("/bulk-add", response_model=BulkCollectionAddResponse)

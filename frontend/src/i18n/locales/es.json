@@ -665,11 +665,11 @@
     "backupCards": "Datos de cartas",
     "backupProducts": "Productos",
     "backupImages": "Caché de imágenes",
-    "clearImageCache": "Borrar caché de imágenes",
-    "clearImageCacheDesc": "Eliminar todas las imágenes de cartas en caché (solo admin)",
-    "clearImageCacheConfirm": "¿Seguro? Se eliminarán todas las imágenes en caché.",
-    "clearImageCacheSuccess": "Caché de imágenes borrada",
-    "clearImageCacheFailed": "Error al borrar caché",
+    "clearImageCache": "Eliminar la caché de imágenes del servidor",
+    "clearImageCacheDesc": "Elimina las imágenes en caché del servidor para todos los usuarios. Se conservan las descargas en los dispositivos y los archivos originales subidos.",
+    "clearImageCacheConfirm": "¿Eliminar la caché de imágenes del servidor para todos los usuarios? El servidor volverá a obtener las imágenes cuando se necesiten. No se eliminan las descargas sin conexión ni los archivos originales subidos.",
+    "clearImageCacheSuccess": "Caché de imágenes del servidor eliminada",
+    "clearImageCacheFailed": "No se pudo eliminar la caché de imágenes del servidor",
     "backupButton": "Copia de seguridad",
     "backupImport": "Importar copia de seguridad",
     "backupImportDesc": "Importar archivo .sql",
@@ -1151,5 +1151,16 @@
     "traderDesc": "Vende 10 productos",
     "rareFinder": "Buscador de rarezas",
     "rareFinderDesc": "Posee una carta Illustration Rare"
+  },
+  "sync": {
+    "artworkTitle": "Imágenes de las cartas",
+    "artworkRetry": "Reintentar imágenes que faltan",
+    "artworkRetryHint": "Vuelve a conectarte, reintenta aquí y abre de nuevo las cartas. Si las descargas automáticas están activadas, también se reintenta la descarga de la colección.",
+    "artworkRetryRequested": "Reintento solicitado. Abre de nuevo las cartas para cargar sus imágenes.",
+    "artworkOfflineHint": "Puedes reintentar las imágenes que faltan en el centro de sincronización al reconectarte."
+  },
+  "offlineCollection": {
+    "preferencePending": "Guardado en este dispositivo. La preferencia de tu cuenta se sincronizará cuando haya conexión.",
+    "preferenceFailed": "No se pudo guardar esta preferencia en tu dispositivo. Revisa el almacenamiento del navegador e inténtalo de nuevo."
   }
 }

@@ -391,7 +391,9 @@ def _card_variant(bc: BinderCard) -> str | None:
 
 
 def _serialize_catalogue_card(card: Card, quantity: int, show_values: bool, *, variant: str | None = None, date_added=None) -> dict:
-    value = effective_market_price(card, variant, _PRICE_FIELD) if show_values else None
+    from services.card_values import effective_price_quote
+    quote = effective_price_quote(card, variant, _PRICE_FIELD) if show_values else None
+    value = quote["amount"] if quote else None
     data = {
         "id": card.id,
         "name": card.name,
@@ -405,7 +407,8 @@ def _serialize_catalogue_card(card: Card, quantity: int, show_values: bool, *, v
         "variant": variant,
         "printing_details": [],
         "data_source_lang": card.data_source_lang,
-        "price_source_lang": card.price_source_lang,
+        "price_source_lang": "en" if quote and quote["source"] == "tcgplayer" else card.price_source_lang,
+        "price_source": quote["source"] if quote else None,
         "image_source_lang": card.image_source_lang,
         "has_custom_image_fallback": bool(card.custom_image_url and not (card.images_small or card.images_large)),
         "quantity": quantity,

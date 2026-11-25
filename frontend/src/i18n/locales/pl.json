@@ -665,11 +665,11 @@
     "backupCards": "Dane kart",
     "backupProducts": "Produkty",
     "backupImages": "Pamięć podręczna obrazów",
-    "clearImageCache": "Wyczyść pamięć podręczną obrazów",
-    "clearImageCacheDesc": "Usuń wszystkie zapisane obrazy kart (tylko admin)",
-    "clearImageCacheConfirm": "Na pewno? Wszystkie zapisane obrazy zostaną usunięte.",
-    "clearImageCacheSuccess": "Pamięć podręczna obrazów wyczyszczona",
-    "clearImageCacheFailed": "Nie udało się wyczyścić pamięci podręcznej",
+    "clearImageCache": "Usuń pamięć podręczną obrazów na serwerze",
+    "clearImageCacheDesc": "Usuń obrazy z pamięci podręcznej serwera dla wszystkich użytkowników. Pobrane dane na urządzeniach i przesłane oryginały zostaną zachowane.",
+    "clearImageCacheConfirm": "Usunąć pamięć podręczną obrazów na serwerze dla wszystkich użytkowników? Serwer pobierze obrazy ponownie w razie potrzeby. Pobrane dane offline i przesłane oryginały nie zostaną usunięte.",
+    "clearImageCacheSuccess": "Pamięć podręczna obrazów na serwerze została usunięta",
+    "clearImageCacheFailed": "Nie udało się usunąć pamięci podręcznej obrazów na serwerze",
     "backupButton": "Kopia zapasowa",
     "backupImport": "Importuj kopię zapasową",
     "backupImportDesc": "Importuj plik .sql",
@@ -1151,5 +1151,16 @@
     "traderDesc": "Sprzedaj 10 produktów",
     "rareFinder": "Łowca rzadkości",
     "rareFinderDesc": "Posiadaj kartę Illustration Rare"
+  },
+  "sync": {
+    "artworkTitle": "Obrazy kart",
+    "artworkRetry": "Ponów brakujące obrazy",
+    "artworkRetryHint": "Połącz się ponownie, spróbuj tutaj i otwórz karty ponownie. Jeśli automatyczne pobieranie jest włączone, pobieranie kolekcji również zostanie ponowione.",
+    "artworkRetryRequested": "Zażądano ponowienia. Otwórz karty ponownie, aby wczytać obrazy.",
+    "artworkOfflineHint": "Brakujące obrazy można ponowić w centrum synchronizacji po przywróceniu połączenia."
+  },
+  "offlineCollection": {
+    "preferencePending": "Zapisano na tym urządzeniu. Ustawienie konta zostanie zsynchronizowane po przywróceniu połączenia.",
+    "preferenceFailed": "Nie udało się zapisać ustawienia na urządzeniu. Sprawdź pamięć przeglądarki i spróbuj ponownie."
   }
 }

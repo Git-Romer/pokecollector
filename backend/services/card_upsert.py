@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import datetime
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from models import Card, ImageCache, Set
-from services.price_utils import preserve_existing_prices_for_invalid_update
+from services.price_utils import PRICE_FIELDS, is_valid_price, preserve_existing_prices_for_invalid_update
 
 PARTIAL_NULL_CLEAR_FIELDS = frozenset({"data_source_lang"})
 
@@ -63,6 +63,21 @@ def upsert_card(
     _apply_set_digital_flag(db, card_data)
     if not metadata_only:
         preserve_existing_prices_for_invalid_update(card_data, existing)
+        if any(is_valid_price(card_data.get(field)) for field in PRICE_FIELDS if field.startswith("price_tcg_")):
+            from services.exchange_rates import ExchangeRateUnavailable, get_exchange_rate
+            # Share one lookup (including an unavailable result) across this sync
+            # session. The canonical service handles refresh and saved-rate fallback.
+            cache_key = "tcgplayer_usd_to_eur"
+            if cache_key not in db.info:
+                try:
+                    db.info[cache_key] = get_exchange_rate(
+                        "USD", "EUR", session_factory=sessionmaker(bind=db.get_bind())
+                    )["rate"]
+                except ExchangeRateUnavailable:
+                    db.info[cache_key] = None
+            rate = db.info[cache_key]
+            if is_valid_price(rate):
+                card_data["price_tcg_usd_to_eur"] = float(rate)
     has_api_image = bool(card_data.get("images_small") or card_data.get("images_large"))
     if existing:
         update_existing_card(

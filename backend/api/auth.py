@@ -143,20 +143,6 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     return user
 
 
-def get_optional_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    """Returns user if authenticated, None otherwise. For backward compat during transition."""
-    if not token:
-        return None
-    try:
-        payload = decode_token(token)
-        user_id = payload.get("sub")
-        if user_id is None:
-            return None
-    except JWTError:
-        return None
-    return db.query(User).filter(User.id == int(user_id), User.is_active == True).first()
-
-
 @router.post("/login", response_model=TokenResponse)
 def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == form_data.username, User.is_active == True).first()

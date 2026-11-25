@@ -5,7 +5,7 @@ TCGdex fallback. Identity symbols still distinguish names.
 
 import asyncio
 import unittest
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, patch
 from fastapi import HTTPException
 
 try:
@@ -13,7 +13,7 @@ try:
     from sqlalchemy.orm import sessionmaker
 
     from database import Base
-    from models import Card, Set
+    from models import Card
     from api.recognize import (
         _name_search_terms,
         _scanner_names_compatible,
