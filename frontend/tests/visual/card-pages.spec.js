@@ -367,11 +367,12 @@ test('digit-first Card Search keeps the query through direct links and reloads',
     const matches = /^30c\s+0*1$/i.test(query.trim())
     return route.fulfill({ json: { data: matches ? [card(99, { id: '30th-001_de', name: 'Owei', number: '001', set_id: '30th', set_ref: { id: '30th_de', name: 'Anniversary', abbreviation: '30C' } })] : [], total_count: matches ? 1 : 0, page: 1, page_size: 20 } })
   })
+  const result = page.getByRole('button', { name: 'Owei', exact: true })
   await page.goto('/search?q=30C%20001')
-  await expect(page.getByRole('heading', { name: 'Owei', exact: true })).toBeVisible()
+  await expect(result).toBeVisible()
   expect(queries).toContain('30C 001')
   await page.reload()
-  await expect(page.getByRole('heading', { name: 'Owei', exact: true })).toBeVisible()
+  await expect(result).toBeVisible()
   expect(queries.filter(q => q === '30C 001').length).toBeGreaterThanOrEqual(2)
 })
 
@@ -466,6 +467,8 @@ test('legacy physical-deck workflow redirects to the unified Deck editor', async
 })
 
 test('Real Deck uses the unified editor without a manual assignment step', async ({ page }) => {
+  const errors = []
+  page.on('pageerror', error => errors.push(error.message))
   const realDeck = {
     ...deck,
     binder_type: 'physical_deck',
@@ -475,10 +478,13 @@ test('Real Deck uses the unified editor without a manual assignment step', async
   }
   await page.route('**/api/decks/1', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(realDeck) }))
   await page.goto('/decks/1')
+  // Initial development compilation is readiness, not an editor interaction.
+  await expect(page.getByRole('heading', { name: realDeck.name, exact: true })).toBeVisible({ timeout: 15_000 })
   await expect(page.getByText('Real Deck', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Make Planned Deck' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Physical deck (optional)' })).toHaveCount(0)
   await expect(page.locator('header').getByRole('button', { name: 'Add missing to wishlist' })).toHaveCount(0)
+  expect(errors).toEqual([])
 })
 
 test('deck editor expands structured validation details', async ({ page }) => {

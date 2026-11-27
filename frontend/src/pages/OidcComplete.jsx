@@ -9,7 +9,7 @@ import { useSettings } from '../contexts/SettingsContext'
 import { oidcUsernameErrorTranslationKey, runOidcCompletion } from '../utils/oidcAuth'
 
 export default function OidcComplete() {
-  const { user, loginUser } = useAuth()
+  const { user, loginUser, loading } = useAuth()
   const { t } = useSettings()
   const navigate = useNavigate()
   const [status, setStatus] = useState('working')
@@ -35,7 +35,9 @@ export default function OidcComplete() {
   useEffect(() => {
     // Preserve the single initial request through StrictMode's double effect.
     // A name prompt does not redeem the handoff; only a successful completion does.
-    if (startedRef.current) return
+    // A late anonymous bootstrap must not overwrite the session issued by
+    // completion. Resolve startup first, then redeem the handoff exactly once.
+    if (loading || startedRef.current) return
     startedRef.current = true
 
     runOidcCompletion({ request: completeOidcLogin, loginUser })
@@ -44,7 +46,7 @@ export default function OidcComplete() {
 
     // Do not cancel the only response during StrictMode setup/cleanup/setup.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [loading, loginUser])
 
   useEffect(() => {
     if (status === 'username') inputRef.current?.focus()

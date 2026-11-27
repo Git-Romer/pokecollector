@@ -151,8 +151,18 @@ test('updates Card Search filters and URL dynamically without reloading', async 
   await page.getByLabel('Rarity').selectOption('Rare Holo')
   await expect(page).toHaveURL(/rarity=Rare(?:\+|%20)Holo/)
   await expect(page.getByLabel('Rarity')).toHaveValue('Rare Holo')
+})
 
+test('restores Card Search filters from direct links and reloads without overflow', async ({ page }) => {
+  const requests = await installApi(page)
+  await page.goto('/search?sort_by=name&rule_text=draw+3+cards&rarity=Rare+Holo')
+  await expect(page.getByRole('button', { name: 'Rule Text Result', exact: true })).toBeVisible()
   await page.reload()
+  await expect(page.getByRole('button', { name: 'Rule Text Result', exact: true })).toBeVisible()
+  await expect(page).toHaveURL(/rule_text=draw(?:\+|%20)3(?:\+|%20)cards/)
+  await expect(page).toHaveURL(/rarity=Rare(?:\+|%20)Holo/)
+  await expect(page.locator('#card-search-sort-by')).toHaveValue('name')
+  expect(requests.search.filter(value => value === 'draw 3 cards').length).toBeGreaterThanOrEqual(2)
   await page.getByRole('button', { name: 'Filters' }).click()
   await expect(page.locator('#card-search-rule-text')).toHaveValue('draw 3 cards')
   await expect(page.getByLabel('Rarity')).toHaveValue('Rare Holo')

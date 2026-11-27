@@ -1,4 +1,6 @@
-fastapi==0.109.2
+fastapi==0.165.0
+# Pin the serving layer too so installs retain the reviewed parser and URL fixes.
+starlette==1.10.0
 uvicorn[standard]==0.27.1
 sqlalchemy==2.0.27
 psycopg2-binary==2.9.9

@@ -31,7 +31,7 @@ test('nginx.conf includes the snippet at server level and moved the inline heade
 });
 
 test('every location that sets add_header also includes the snippet', () => {
-  const withHeaders = locations().filter((loc) => loc.body.includes('add_header'));
+  const withHeaders = locations().filter((loc) => /^\s*add_header\s/m.test(loc.body));
   assert.ok(withHeaders.length >= 4);
   for (const loc of withHeaders) {
     assert.match(loc.body, INCLUDE, `location ${loc.name} must include the security headers`);

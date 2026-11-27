@@ -1622,13 +1622,14 @@ class OidcRateLimitBucketTests(unittest.TestCase):
         self.assertTrue(keys[0][1].startswith("browser:"))
 
     def test_prune_is_bounded_per_request(self):
-        # An over-full map must not be swept wholesale on the request path.
+        # Sweep only a bounded slice, and fail closed while the remaining
+        # over-capacity map still has no room for another browser bucket.
         auth_api._oidc_rate_state.clear()
         for index in range(auth_api._OIDC_RATE_LIMIT_MAX_BUCKETS + 200):
             auth_api._oidc_rate_state[("start", f"ip:192.0.2.{index}")] = [0.0]
         before = len(auth_api._oidc_rate_state)
 
-        self.assertTrue(
+        self.assertFalse(
             auth_api._consume_oidc_rate_limit(
                 self._request(cookie="prune-cookie"), "start"
             )
@@ -1637,6 +1638,38 @@ class OidcRateLimitBucketTests(unittest.TestCase):
         removed = before - len(auth_api._oidc_rate_state)
         self.assertGreater(removed, 0)
         self.assertLessEqual(removed, auth_api._OIDC_RATE_LIMIT_PRUNE_BATCH)
+
+    def test_active_cookie_churn_cannot_grow_limiter_past_capacity(self):
+        with patch.object(auth_api, "_OIDC_RATE_LIMIT_MAX_BUCKETS", 8), patch.object(
+            auth_api.time, "monotonic", return_value=100.0
+        ):
+            for index in range(8):
+                self.assertTrue(auth_api._consume_oidc_rate_limit(
+                    self._request(cookie=f"active-browser-{index}"), "start"
+                ))
+            for index in range(64):
+                self.assertFalse(auth_api._consume_oidc_rate_limit(
+                    self._request(cookie=f"new-browser-{index}"), "start"
+                ))
+                self.assertLessEqual(len(auth_api._oidc_rate_state), 8)
+            # Saturation must not discard existing clients' request budgets.
+            request = self._request(cookie="active-browser-0")
+            self.assertTrue(all(self._consume(request, auth_api._OIDC_RATE_LIMIT_MAX - 1)))
+            self.assertFalse(auth_api._consume_oidc_rate_limit(request, "start"))
+
+    def test_expired_capacity_can_be_reused_without_evicting_active_budgets(self):
+        with patch.object(auth_api, "_OIDC_RATE_LIMIT_MAX_BUCKETS", 8), patch.object(
+            auth_api.time, "monotonic", return_value=100.0
+        ):
+            active = self._request(cookie="active-browser")
+            self._consume(active, auth_api._OIDC_RATE_LIMIT_MAX)
+            for index in range(7):
+                auth_api._oidc_rate_state[("start", f"expired-{index}")] = [40.0]
+            self.assertTrue(auth_api._consume_oidc_rate_limit(
+                self._request(cookie="new-browser"), "start"
+            ))
+            self.assertLessEqual(len(auth_api._oidc_rate_state), 8)
+            self.assertFalse(auth_api._consume_oidc_rate_limit(active, "start"))
 
     def test_buckets_are_separate_per_endpoint(self):
         request = self._request(cookie="browser-secret-four")
@@ -1727,6 +1760,33 @@ class ProductionStackMiddlewareTests(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertNotIn("access-control-allow-origin", response.headers)
         self.assert_security_headers(response)
+
+    def test_oidc_preflight_scope_is_not_changed_by_host_header(self):
+        for host in ("testserver/#", "testserver/?", "testserver/decoy#"):
+            for origin, expected_status in (
+                ("https://evil.example.test", 403),
+                (APP_ORIGIN, 204),
+            ):
+                with self.subTest(host=host, origin=origin):
+                    response = self.client.options(
+                        "/api/auth/oidc/complete",
+                        headers={
+                            "Host": host,
+                            "Origin": origin,
+                            "Access-Control-Request-Method": "POST",
+                        },
+                    )
+                    self.assertEqual(response.status_code, expected_status)
+                    self.assert_security_headers(response)
+                    if expected_status == 403:
+                        self.assertNotIn(
+                            "access-control-allow-origin", response.headers
+                        )
+                    else:
+                        self.assertEqual(
+                            response.headers.get("access-control-allow-origin"),
+                            APP_ORIGIN,
+                        )
 
     def test_oidc_preflight_allows_exact_origin_only(self):
         response = self.client.options(

@@ -423,7 +423,7 @@ def _consume_oidc_rate_limit(request: Request, bucket: str) -> bool:
     now = time.monotonic()
     key = _oidc_rate_limit_key(request, bucket)
     with _oidc_rate_lock:
-        if len(_oidc_rate_state) > _OIDC_RATE_LIMIT_MAX_BUCKETS:
+        if len(_oidc_rate_state) >= _OIDC_RATE_LIMIT_MAX_BUCKETS:
             cutoff = now - _OIDC_RATE_LIMIT_WINDOW_SECONDS
             # Bounded sweep: at most a fixed slice of keys is inspected per
             # request, never the whole map, and nothing mutates mid-iteration.
@@ -432,8 +432,13 @@ def _consume_oidc_rate_limit(request: Request, bucket: str) -> bool:
             )
             for existing_key in victims:
                 stamps = _oidc_rate_state.get(existing_key)
-                if not stamps or stamps[-1] < cutoff:
+                if not stamps or stamps[-1] <= cutoff:
                     _oidc_rate_state.pop(existing_key, None)
+        # A client controls its cookie and can present arbitrarily many keys.
+        # Reclaim only expired entries, then fail closed for a new key if full.
+        # Evicting live entries would let cookie churn reset existing budgets.
+        if key not in _oidc_rate_state and len(_oidc_rate_state) >= _OIDC_RATE_LIMIT_MAX_BUCKETS:
+            return False
         stamps = [
             stamp
             for stamp in _oidc_rate_state.get(key, [])

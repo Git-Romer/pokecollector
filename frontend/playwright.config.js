@@ -7,6 +7,8 @@ export default defineConfig({
   testIgnore: 'card-system-webkit.spec.js',
   outputDir: './test-results',
   fullyParallel: true,
+  // Keep CI deterministic when lazy routes compile alongside browser work.
+  workers: process.env.CI ? 1 : undefined,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? 'github' : 'list',
@@ -36,7 +38,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run dev -- --host 127.0.0.1 --port 4173',
+    command: process.env.PLAYWRIGHT_WEB_SERVER_COMMAND || 'npm run dev -- --host 127.0.0.1 --port 4173',
     url: 'http://127.0.0.1:4173/__card-system',
     reuseExistingServer: !process.env.CI,
   },

@@ -27,6 +27,12 @@ FastAPI app entry point: `backend/main.py`.
 | PUT | `/api/auth/me/avatar` | Update current user's avatar |
 | PUT | `/api/auth/me/username` | Update current user's profile name |
 
+Password-login request bodies are limited to 8 KiB before form parsing. The
+limit applies to both URL-encoded and multipart forms, including streamed
+requests. Oversized requests return HTTP `413` with a JSON `detail` and
+`Cache-Control: no-store`; ordinary login forms and other upload endpoints are
+unchanged.
+
 OIDC behavior, configuration, rollout and host-only identity recovery are
 documented in [OpenID Connect Authentication](OIDC_AUTHENTICATION.md). OIDC
 identity resolution uses exact `(issuer, subject)` pairs; email is not an

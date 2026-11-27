@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 from services.api_info import API_FEATURES, API_LEVEL
+from services.auth_request_limits import PasswordLoginBodyLimitMiddleware
 
 logging.basicConfig(
     level=logging.INFO,
@@ -135,6 +136,7 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
+app.add_middleware(PasswordLoginBodyLimitMiddleware)
 
 
 @app.middleware("http")
@@ -187,7 +189,9 @@ async def oidc_cors_and_error_boundary(request: Request, call_next):
     """
     from services.auth_policy import AuthConfigError, load_auth_policy
 
-    path = request.url.path
+    # Use the routing path, not a URL reconstructed from the untrusted Host
+    # header: malformed authority values must not change this boundary's scope.
+    path = request.scope["path"]
     if not path.startswith("/api/auth/oidc"):
         return await call_next(request)
 
