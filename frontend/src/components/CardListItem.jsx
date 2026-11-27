@@ -1,4 +1,5 @@
 import clsx from 'clsx'
+import { PricingWarningPrice } from './card-system/PricingWarning'
 import { CompactCardArtwork, handleKeyboardActivation } from './UnifiedCard'
 
 export function CompactCardIdentity({
@@ -153,7 +154,7 @@ export default function CardListItem({
           <div className="text-right">
             {value && (
               <p className="text-sm font-bold text-text-primary leading-tight">
-                {value}
+                <PricingWarningPrice card={card} value={value} variant={typeof variantEffectSource === 'string' ? variantEffectSource : undefined} />
               </p>
             )}
             {valueSecondary && (

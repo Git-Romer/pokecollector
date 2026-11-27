@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { PricingWarningDetails, PricingWarningPrice } from './PricingWarning'
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { ExternalLink } from 'lucide-react'
 import { getPriceHistory } from '../../api/client'
@@ -82,7 +83,7 @@ export default function CardPriceDetails({ card, variant = 'Normal', summary = n
             {t('prices.cardmarketTitle')} · {variant}
           </p>
           {selectedPrimaryPrice != null && selectedQuote.source !== 'tcgplayer' && (
-            <p className="text-2xl font-bold text-green">{formatPrice(selectedPrimaryPrice)}</p>
+            <p className="text-2xl font-bold text-green"><PricingWarningPrice card={card} value={formatPrice(selectedPrimaryPrice)} variant={variant} interactive={false} /></p>
           )}
           <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 text-xs border-t border-border pt-2">
             {cardmarketPrices.map(({ key, val }) => (
@@ -96,6 +97,8 @@ export default function CardPriceDetails({ card, variant = 'Normal', summary = n
           </div>
         </div>
       )}
+
+      <PricingWarningDetails card={card} />
 
       {!card?.is_custom && marketLinks.length > 0 && (
         <div className="bg-bg-card rounded-xl p-3 space-y-2 border border-border">
