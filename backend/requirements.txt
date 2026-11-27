@@ -12,7 +12,6 @@ python-multipart==0.0.31
 pillow==13.0.0
 pillow-heif>=0.20.0,<2
 bcrypt
-python-jose[cryptography]
 slowapi==0.1.9
 pywebpush==2.5.0
 Authlib>=1.9.3,<2

@@ -9,7 +9,10 @@ import tempfile
 from datetime import datetime, timedelta
 
 import bcrypt
-from jose import jwt
+from joserfc import jwt
+from joserfc.errors import InvalidClaimError
+from joserfc.jwk import OctKey
+from joserfc.jwt import JWTClaimsRegistry
 from sqlalchemy.orm import Session
 
 from models import User, UserSetting
@@ -150,11 +153,18 @@ def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
     to_encode = data.copy()
     expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return jwt.encode({"alg": ALGORITHM}, to_encode, OctKey.import_key(SECRET_KEY), algorithms=[ALGORITHM])
 
 
 def decode_token(token: str) -> dict:
-    return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    decoded = jwt.decode(token, OctKey.import_key(SECRET_KEY), algorithms=[ALGORITHM])
+    # Signature verification alone does not validate expiration or other claims.
+    JWTClaimsRegistry().validate(decoded.claims)
+    # Application sessions have no audience. Preserve the previous decoder's
+    # rejection of tokens addressed to another application.
+    if decoded.claims.get("aud") is not None:
+        raise InvalidClaimError("aud")
+    return decoded.claims
 
 
 def bootstrap_admin(db: Session):

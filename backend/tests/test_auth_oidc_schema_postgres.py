@@ -39,13 +39,13 @@ DESTRUCTIVE_TEST_OPT_IN_ENV = "OIDC_AUTH_POSTGRES_TEST"
 # when the destructive opt-in is unset). Project modules are deliberately absent:
 # their absence must propagate so broken imports can never masquerade as skips.
 EXTERNAL_DEPENDENCY_ROOTS = frozenset(
-    {"bcrypt", "fastapi", "jose", "psycopg2", "pydantic", "sqlalchemy"}
+    {"bcrypt", "fastapi", "joserfc", "psycopg2", "pydantic", "sqlalchemy"}
 )
 
 _MISSING_EXTERNAL_DEPENDENCY = None
 try:
     import bcrypt  # noqa: F401 - imported by services.auth
-    import jose  # noqa: F401 - imported by services.auth
+    import joserfc  # noqa: F401 - imported by services.auth
     import psycopg2  # noqa: F401 - SQLAlchemy's PostgreSQL driver
     import pydantic  # noqa: F401 - imported by project models
     from fastapi import HTTPException

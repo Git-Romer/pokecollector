@@ -176,6 +176,11 @@ database backup before manual identity repair.
   username when nothing usable is left. UserInfo can never replace the ID-token
   issuer, subject or fresh-authentication proof, and provider tokens and full
   UserInfo responses are never persisted or logged.
+- Application session tokens use `joserfc` with an explicit HS256 allowlist and
+  claim validation, including expiration. This replaces `python-jose` without
+  changing the signing secret, token format or seven-day default lifetime.
+  Existing valid sessions remain usable after the upgrade; no key rotation or
+  forced sign-in is required for this library change.
 - Existing application JWTs are not revoked by changing `AUTH_MODE`; they remain
   valid until expiry or user deactivation.
 - The JWT secret (`JWT_SECRET_KEY`) also derives the key that encrypts pending

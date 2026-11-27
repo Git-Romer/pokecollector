@@ -1,3 +1,7 @@
+import base64
+import hashlib
+import hmac
+import json
 import os
 import tempfile
 import unittest
@@ -5,8 +9,9 @@ from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
 try:
-    from jose import JWTError, jwt
+    from joserfc.errors import JoseError
 
+    from services import auth
     from services.auth import resolve_jwt_secret
 
     DEPS_AVAILABLE = True
@@ -37,9 +42,13 @@ class JwtSecretResolutionTests(unittest.TestCase):
     def test_token_forged_with_empty_key_is_rejected(self):
         with patch.dict(os.environ, self._env(JWT_SECRET_KEY=""), clear=False):
             secret = resolve_jwt_secret()
-        forged = jwt.encode({"sub": "1", "role": "admin"}, "", algorithm="HS256")
-        with self.assertRaises(JWTError):
-            jwt.decode(forged, secret, algorithms=["HS256"])
+        def segment(value):
+            return base64.urlsafe_b64encode(json.dumps(value).encode()).rstrip(b"=")
+        data = segment({"alg": "HS256", "typ": "JWT"}) + b"." + segment({"sub": "1", "role": "admin"})
+        signature = base64.urlsafe_b64encode(hmac.new(b"", data, hashlib.sha256).digest()).rstrip(b"=")
+        forged = (data + b"." + signature).decode()
+        with patch.object(auth, "SECRET_KEY", secret), self.assertRaises(JoseError):
+            auth.decode_token(forged)
 
     def test_configured_nonempty_secret_is_used_as_is(self):
         with patch.dict(os.environ, self._env(JWT_SECRET_KEY="  a-real-configured-secret  "), clear=False):

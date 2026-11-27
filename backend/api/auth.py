@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from jose import JWTError
+from joserfc.errors import JoseError
 from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -211,7 +211,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         user_id = payload.get("sub")
         if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid token")
-    except JWTError:
+    except (JoseError, TypeError, ValueError):
         raise HTTPException(status_code=401, detail="Invalid token")
     user = db.query(User).filter(User.id == int(user_id), User.is_active == True).first()
     if not user:
@@ -629,7 +629,7 @@ def _bearer_user_for_completion(db: Session, token: str | None) -> User | None:
     try:
         payload = decode_token(token)
         user_id = int(payload.get("sub"))
-    except (JWTError, TypeError, ValueError):
+    except (JoseError, TypeError, ValueError):
         return None
     return (
         db.query(User)
