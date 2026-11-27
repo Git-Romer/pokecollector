@@ -1,4 +1,5 @@
 import clsx from 'clsx'
+import { PricingWarningPrefetch, PricingWarningPrice } from './card-system/PricingWarning'
 import { Check, Plus, X, ZoomIn } from 'lucide-react'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -398,7 +399,7 @@ export function UnifiedCardDialog({
                 {(setNumber || price) && (
                   <div className="mt-1.5 flex min-w-0 items-center justify-between gap-2">
                     <span className="truncate font-mono text-xs font-black text-brand-red">{setNumber}</span>
-                    {price && <span className="shrink-0 text-sm font-black text-green">{price}</span>}
+                    {price && <span className="shrink-0 text-sm font-black text-green"><PricingWarningPrice card={card} value={price} variant={typeof variantEffectSource === 'string' ? variantEffectSource : undefined} interactive={false} /></span>}
                   </div>
                 )}
                 {card.rarity && <p className="mt-1 text-xs text-text-muted">{card.rarity}</p>}
@@ -477,6 +478,7 @@ export function CardCaption({
   name = card?.name,
   setNumber = getCardSetNumber(card),
   price,
+  priceVariant,
   languageLabel,
   captionAccessory,
   captionDetail,
@@ -498,9 +500,9 @@ export function CardCaption({
             {captionAccessory && <span className="ml-auto flex shrink-0 items-center">{captionAccessory}</span>}
           </div>
           {(setNumber || price) && (
-            <div className="mt-1 flex h-4 min-w-0 items-center justify-between gap-2 overflow-hidden">
-              <span className="truncate font-mono text-[11px] font-bold text-brand-red">{setNumber}</span>
-              {price && <span className="shrink-0 text-xs font-extrabold text-green">{price}</span>}
+            <div className="pricing-card-summary mt-1 flex h-4 min-w-0 items-center justify-between">
+              <span className="pricing-card-number truncate font-mono font-bold text-brand-red">{setNumber}</span>
+              {price && <span className="shrink-0 text-xs font-extrabold text-green"><PricingWarningPrice card={card} value={price} variant={priceVariant} /></span>}
             </div>
           )}
           {captionDetail && (
@@ -542,6 +544,7 @@ export default function UnifiedCard({
 
   return (
     <div ref={viewportRef} className={clsx('min-w-0', className)}>
+      {price && <PricingWarningPrefetch card={card} />}
       <CardArtworkFrame
         card={card}
         image={image}
@@ -565,6 +568,7 @@ export default function UnifiedCard({
         <CardCaption
           card={card}
           price={price}
+          priceVariant={typeof variantEffectSource === 'string' ? variantEffectSource : undefined}
           languageLabel={languageLabel}
           captionAccessory={captionAccessory}
           captionDetail={captionDetail}

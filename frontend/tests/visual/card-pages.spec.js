@@ -323,6 +323,99 @@ test.beforeEach(async ({ page }) => {
   await installApiFixtures(page)
 })
 
+async function installPricingMismatchFixtures(page) {
+  const rows = collection.slice(0, 3).map((item, index) => ({
+    ...item, quantity: 1, lang: 'en', variant: 'Holo',
+    card: { ...item.card, name: index < 2 ? 'Raikou ex' : 'Unaffected card',
+      number: ['136', '033', '012'][index], lang: 'en', dex_ids: [243],
+      price_trend: 0.13, price_market: 0.13,
+      cardmarket_products: [{ product_id: index < 2 ? 918849 : 123, variant: 'Holo' }],
+    },
+  }))
+  const calls = []
+  await page.route('**/api/collection/', route => route.fulfill({ json: rows }))
+  await page.route('**/api/pokedex/species', route => route.fulfill({ json: [{ dex_id: 243, name: 'Raikou' }] }))
+  await page.route('**/api/cards/pricing-warnings', route => {
+    const ids = route.request().postDataJSON().card_ids
+    calls.push(ids)
+    return route.fulfill({ json: { warnings: Object.fromEntries(ids.map(id => {
+      const index = rows.findIndex(item => item.card_id === id)
+      const other = rows[index === 0 ? 1 : 0].card
+      return [id, index >= 0 && index < 2 ? [{ code: 'shared_cardmarket_product', severity: 'possible_mismatch', product_id: 918849,
+        other_cards: [{ id: other.id, name: other.name, number: other.number, rarity: other.rarity, set_id: other.set_id, lang: 'en' }],
+      }] : []]
+    })) } })
+  })
+  return { rows, calls }
+}
+
+for (const layout of ['grid', 'list', 'species']) {
+  test(`pricing mismatch opens read-only Prices from ${layout} without changing the collection`, async ({ page }, testInfo) => {
+    const errors = []
+    const writes = []
+    page.on('pageerror', error => errors.push(error.message))
+    page.on('request', request => {
+      if (request.method() !== 'GET' && new URL(request.url()).pathname.startsWith('/api/') && !request.url().endsWith('/pricing-warnings')) writes.push(request.method() + ' ' + request.url())
+    })
+    const { calls } = await installPricingMismatchFixtures(page)
+    await page.goto('/collection')
+    await expect(page.locator('button[data-pricing-warning]:visible')).toHaveCount(2)
+    if (layout === 'list') await page.getByTitle('List view').click()
+    if (layout === 'species') await page.getByRole('button', { name: 'By Pokémon', exact: true }).click()
+    const badges = page.locator('button[data-pricing-warning]:visible')
+    await expect(badges).toHaveCount(2)
+    expect(calls).toHaveLength(1)
+    expect(new Set(calls[0]).size).toBe(3)
+    if (layout !== 'list') {
+      const numbers = page.locator('.unified-card-caption .font-mono')
+      await expect(numbers).toHaveCount(3)
+      expect(await numbers.evaluateAll(nodes => nodes.map(node => ({ number: node.textContent, clipped: node.scrollWidth > node.clientWidth })))).toEqual(expect.arrayContaining([
+        { number: 'VIS 136', clipped: false }, { number: 'VIS 033', clipped: false },
+      ]))
+    }
+    await page.screenshot({ path: testInfo.outputPath(`pricing-mismatch-${layout}-cards.png`) })
+    const rareBadge = page.getByRole('button', { name: 'Possible pricing mismatch: Raikou ex 136', exact: true })
+    await rareBadge.focus()
+    await page.keyboard.press('Enter')
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toBeVisible()
+    await expect(dialog.getByRole('tab', { name: 'Prices', exact: true })).toHaveAttribute('aria-selected', 'true')
+    const warning = dialog.locator('[data-pricing-warning-details]')
+    await expect(warning).toContainText('Possible pricing mismatch')
+    await expect(warning).toContainText('918849')
+    await expect(warning).toContainText('Raikou ex')
+    await expect(warning).toContainText('033')
+    await expect(warning).toContainText('Shared products can be legitimate')
+    await expect(dialog.getByRole('link', { name: 'Holo', exact: true })).toHaveAttribute('href', 'https://www.cardmarket.com/en/Pokemon/Products?idProduct=918849')
+    await expect(dialog).toContainText('0.13')
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    const warningBox = await warning.boundingBox()
+    expect(warningBox.width).toBeGreaterThan(200)
+    await page.screenshot({ path: testInfo.outputPath(`pricing-mismatch-${layout}.png`) })
+    await page.keyboard.press('Escape')
+    await expect(dialog).toHaveCount(0)
+    await expect(rareBadge).toBeFocused()
+    expect(calls).toHaveLength(1)
+    expect(writes).toEqual([])
+    expect(errors).toEqual([])
+  })
+}
+
+test('pricing mismatch remains visible in the normal card details and search results', async ({ page }) => {
+  const { rows } = await installPricingMismatchFixtures(page)
+  await page.route('**/api/cards/search?*', route => route.fulfill({ json: { data: rows.map(item => item.card), total_count: 3, page: 1, page_size: 40 } }))
+  await page.goto('/collection')
+  await expect(page.locator('button[data-pricing-warning]:visible')).toHaveCount(2)
+  await page.locator('.unified-card-primary-action[aria-label^="Raikou ex"]').first().click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByRole('tab', { name: 'Prices', exact: true }).click()
+  await expect(dialog.locator('[data-pricing-warning-details]')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await page.goto('/search?q=Raikou')
+  await expect(page.locator('button[data-pricing-warning]:visible')).toHaveCount(2)
+})
+
+
 for (const surface of ['collection', 'deck', 'planned binder', 'physical binder']) {
   test(`digit-first set codes work in the ${surface} browser`, async ({ page }) => {
     const errors = []

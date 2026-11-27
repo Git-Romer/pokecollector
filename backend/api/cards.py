@@ -46,7 +46,25 @@ from services.product_sources import annotate_product_sources
 import re
 from uuid import uuid4
 
+from schemas import PricingWarningsRequest, PricingWarningsResponse
+from services.pricing_warnings import find_pricing_warnings
+
 router = APIRouter()
+
+
+@router.post("/pricing-warnings", response_model=PricingWarningsResponse)
+def get_pricing_warnings(
+    body: PricingWarningsRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Read-only, batched hints for shared Cardmarket products in the local catalogue.
+
+    Compare different card numbers in the same set and language. Missing or
+    invisible cards return empty lists. Prices and links are never changed.
+    An empty list is not independent verification of a provider's pricing.
+    """
+    return {"warnings": find_pricing_warnings(db, body.card_ids, current_user.id)}
 
 # Pattern: an alphanumeric set code (e.g. "MEP 022", "sv08 032", "M2a 228",
 # "30C 001"), then a numeric card number. Set codes may begin with a digit

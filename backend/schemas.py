@@ -4,6 +4,30 @@ from datetime import datetime, date
 from services.collection_variants import CollectionVariant
 
 
+class PricingWarningsRequest(BaseModel):
+    card_ids: List[Annotated[str, Field(min_length=1, max_length=200)]] = Field(min_length=1, max_length=500)
+
+
+class PricingWarningCard(BaseModel):
+    id: str
+    name: str
+    number: str
+    rarity: Optional[str] = None
+    set_id: str
+    lang: str
+
+
+class PricingWarning(BaseModel):
+    code: Literal['shared_cardmarket_product'] = 'shared_cardmarket_product'
+    severity: Literal['possible_mismatch'] = 'possible_mismatch'
+    product_id: int
+    other_cards: List[PricingWarningCard]
+
+
+class PricingWarningsResponse(BaseModel):
+    warnings: Dict[str, List[PricingWarning]]
+
+
 class SetBase(BaseModel):
     id: str                             # Composite DB key: "sv1_en" / "sv1_zh-tw"
     tcg_set_id: Optional[str] = None   # Original TCGdex set ID: "sv1"

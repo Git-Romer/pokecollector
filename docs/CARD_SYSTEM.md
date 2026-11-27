@@ -73,6 +73,30 @@ Use these points when implementing or reviewing any screen that presents cards:
 - Dialogs use the shared floating, content-sized frame on desktop and mobile. The close action stays at the top-right and tabs/actions remain centered and usable with keyboard and touch.
 - Specialist workflows may optimize speed and selection behavior, but scanner, binder, optimizer, trade, bulk-selection, and migration views keep the shared card identity and state language.
 
+## Possible pricing mismatches
+
+Shared price captions show a small amber indicator when different card numbers
+in one localized set share a Cardmarket product. Collection grids, grouped
+Pokémon views, list rows and search results use the same component. Card details
+place the explanation below the Cardmarket prices and before the product links,
+including the other card's name, number and rarity. Prices and links remain
+visible and unchanged; this is a possible mismatch, not a confirmed data error.
+
+`PricingWarningPrice` is available from the public card-system entry point for
+page-specific market-price cells. Activating it opens the shared read-only Prices
+dialog, without triggering a card's selection, add or edit action. Converted
+TCGPlayer fallback prices are not mislabeled as Cardmarket warnings. New copy is
+translated in English and German; other languages use the normal English fallback.
+
+Mounted tiles batch their checks through `POST /api/cards/pricing-warnings` in
+groups of at most 500, with a one-minute per-card query cache. The check starts
+with tile mounting rather than image completion. Public share pages do not call
+the authenticated endpoint. An unavailable check is not a verified price, and the
+feature adds no pop-ups or toasts automatically. The focused `pricing mismatch`
+browser cases in `card-pages.spec.js` exercise both desktop and mobile layouts,
+keyboard dismissal, full card-number readability, unchanged product URLs and the
+absence of collection writes.
+
 ## Component gallery
 
 In development, run:

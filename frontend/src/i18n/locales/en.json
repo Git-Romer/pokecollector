@@ -101,6 +101,12 @@
     "sortSetNumber": "Set and card number",
     "noCards": "No mapped card printings are available locally yet. Run metadata backfill or sync more sets."
   },
+  "pricingWarning": {
+    "title": "Possible pricing mismatch",
+    "explanation": "The data provider links this card and another card in this set to the same Cardmarket product. The price and link may refer to a different printing.",
+    "sharedProduct": "Also linked to product {productId}",
+    "caution": "Shared products can be legitimate. Check the card number before relying on this price."
+  },
   "cardmarket": {
     "buy": "Buy on Cardmarket",
     "openProduct": "Open exact product",

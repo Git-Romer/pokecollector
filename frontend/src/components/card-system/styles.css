@@ -65,6 +65,16 @@
     font-weight: 600;
     color: var(--color-text-primary);
   }
+  .pricing-card-summary { gap: 0.5rem; }
+  .pricing-card-number { font-size: 11px; }
+  /* Keep card numbers readable beside a warning in three-column phone grids.
+     Unaffected captions retain their existing typography. */
+  @media (max-width: 639px) {
+    .pricing-card-summary:has([data-pricing-warning]) { gap: 4px; }
+    .unified-card-caption:has([data-pricing-warning]) .pricing-card-number { font-size: 9px; }
+    .unified-card-caption [data-pricing-warning] { font-size: 10px; gap: 2px; }
+    .unified-card-caption [data-pricing-warning] svg { width: 12px; height: 12px; }
+  }
   .unified-card-caption-skeleton {
     background: linear-gradient(105deg, #202733 0 38%, #333c49 48%, #202733 58% 100%);
     background-size: 220% 100%;

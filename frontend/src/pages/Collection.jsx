@@ -17,7 +17,7 @@ import CollectionSpeciesView from '../components/CollectionSpeciesView'
 import { cardDexIds } from '../utils/species'
 import { getSpeciesDirectory } from '../api/client'
 import { useListScrollRestoration } from '../hooks/useListScrollRestoration'
-import { CardDialog, CardLegend, CardPriceDetails, withCollectionItemState } from '../components/card-system'
+import { CardDialog, CardLegend, CardPriceDetails, PricingWarningPrice, withCollectionItemState } from '../components/card-system'
 import { CollectionCardDisplay, CollectionCardIdentity, CollectionCardRow, OwnPhotoOverlayBadge, useCollectionPhotoUrl } from '../components/CollectionCardImage'
 import MoneyInput from '../components/MoneyInput'
 import TabNav from '../components/TabNav'
@@ -1786,7 +1786,7 @@ export default function Collection() {
                             {item.purchase_price ? formatPrice(item.purchase_price) : '-'}
                           </td>
                           <td className="px-4 py-3 text-right text-text-primary font-medium">
-                            {marketPrice > 0 ? formatPrice(marketPrice) : '-'}
+                            {marketPrice > 0 ? <PricingWarningPrice card={card} value={formatPrice(marketPrice)} variant={item.variant} /> : '-'}
                           </td>
                           <td className="px-4 py-3 text-right text-xs font-medium">
                             {pnl !== null ? (

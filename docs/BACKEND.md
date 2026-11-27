@@ -44,6 +44,7 @@ never performs implicit admin bootstrap.
 | Method | Path | Notes |
 |--------|------|-------|
 | GET | `/api/cards/search` | Local card search |
+| POST | `/api/cards/pricing-warnings` | Read-only batch check for possible Cardmarket product collisions |
 | GET | `/api/cards/artist-checklist` | Every catalogue card by an artist with per-printing ownership and progress |
 | GET | `/api/cards/artists` | Artist directory with per-artist owned counts and missing value |
 | GET | `/api/cards/custom` | List the current user's custom cards and shared templates |
@@ -69,6 +70,25 @@ never performs implicit admin bootstrap.
 | POST | `/api/cards/recognize/jobs/{job_id}/items/{item_id}/resolve-and-add` | Atomically add the selected card and resolve the queued item |
 | POST | `/api/cards/recognize/jobs/{job_id}/items/{item_id}/retry` | Retry one reviewable item individually |
 | DELETE | `/api/cards/recognize/jobs/{job_id}` | Delete a job and its queued photos |
+
+`POST /api/cards/pricing-warnings` accepts a JSON body such as
+`{"card_ids": ["me06-136_en", "me06-033_en"]}` with 1 to 500 local card IDs
+(each 1 to 200 characters). It follows the normal card API authentication and
+catalogue-visibility rules and returns `{"warnings": {"<card_id>": [...]}}`.
+Each warning has `code: "shared_cardmarket_product"`,
+`severity: "possible_mismatch"`, the numeric `product_id`, and `other_cards`
+with `id`, `name`, `number`, `rarity`, `set_id` and `lang`.
+
+The check compares different card numbers within the same set and language.
+Repeated finishes and zero-padding differences in the same number do not count.
+Every requested ID has a result; missing, invisible, custom, unnumbered and
+unaffected cards have empty lists. Detection uses only the currently synced local
+catalogue, so an empty list is not independent verification of a price, and an
+unsynced other printing cannot be detected. Shared products can be legitimate.
+The endpoint performs no provider calls and changes no prices, product links or
+collection data. Its SQL reads are batched by localized set, not per requested
+card. Clients can use it without the frontend; response models are also available
+in the generated OpenAPI documentation.
 
 `GET /api/cards/search` accepts `q` (with `name` as a compatibility alias),
 `number`, `set_id`, `type`, `category`, `subtype`, `rarity`, `artist`,

@@ -143,6 +143,7 @@ export const updateProfile = (data) => api.put('/profile/', data).then(r => r.da
 export const searchCards = (params) => api.get('/cards/search', { params })
 export const getArtistChecklist = (params) => api.get('/cards/artist-checklist', { params })
 export const getArtistsIndex = (params) => api.get('/cards/artists', { params })
+export const getPricingWarnings = (cardIds) => api.post('/cards/pricing-warnings', { card_ids: cardIds }).then(r => r.data)
 export const getPriceHistory = (id) => api.get(`/cards/${id}/price-history`)
 export const createCustomCard = (data) => api.post('/cards/custom', data)
 export const updateCustomCard = (cardId, data) => api.put(`/cards/custom/${cardId}`, data).then(r => r.data)

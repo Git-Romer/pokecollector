@@ -100,6 +100,12 @@
     "sortSetNumber": "Set und Kartennummer",
     "noCards": "Noch keine zugeordneten Kartendrucke lokal verfügbar. Metadaten-Backfill ausführen oder weitere Sets synchronisieren."
   },
+  "pricingWarning": {
+    "title": "Mögliche Preisverwechslung",
+    "explanation": "Der Datenanbieter verknüpft diese Karte und eine andere Karte aus diesem Set mit demselben Cardmarket-Produkt. Preis und Link könnten sich auf eine andere Kartenausgabe beziehen.",
+    "sharedProduct": "Ebenfalls mit Produkt {productId} verknüpft",
+    "caution": "Gemeinsame Produktzuordnungen können korrekt sein. Prüfe die Kartennummer, bevor du dich auf diesen Preis verlässt."
+  },
   "cardmarket": {
     "buy": "Auf Cardmarket kaufen",
     "openProduct": "Genaues Produkt öffnen",
