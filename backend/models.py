@@ -166,7 +166,10 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String, unique=True, nullable=False)
-    hashed_password = Column(String, nullable=False)
+    # Nullable for SSO-only accounts: OIDC users are provisioned without a local
+    # password. Password consumers must treat NULL as "no password" instead of
+    # crashing (see services.auth.verify_password).
+    hashed_password = Column(String, nullable=True)
     role = Column(String, default="trainer")  # "admin" or "trainer"
     is_active = Column(Boolean, default=True)
     avatar_id = Column(Integer, nullable=True)  # Pokemon number (1-151) for avatar sprite
@@ -176,6 +179,107 @@ class User(Base):
     wishlist_visibility = Column(String, default="private", nullable=False)
     must_change_password = Column(Boolean, default=False)
     created_at = Column(DateTime, default=func.now())
+
+    oidc_identities = relationship(
+        "OidcIdentity",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+
+class OidcIdentity(Base):
+    """External OpenID Connect identity linked to one local user.
+
+    Identity is the exact configured issuer plus the provider's subject claim.
+    Email, username and display name are never lookup or merge keys. One user
+    can hold at most one identity per issuer, and an issuer+subject pair can
+    belong to only one user. Deleting the local user cascades to this row.
+    """
+
+    __tablename__ = "oidc_identities"
+    __table_args__ = (
+        UniqueConstraint(
+            "issuer", "subject", name="uq_oidc_identity_issuer_subject"
+        ),
+        UniqueConstraint("issuer", "user_id", name="uq_oidc_identity_issuer_user"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    issuer = Column(String(1024), nullable=False)
+    subject = Column(String(255), nullable=False)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+
+    user = relationship("User", back_populates="oidc_identities")
+
+
+class OidcAuthTransaction(Base):
+    """Short-lived, DB-backed OIDC login/link/handoff transaction.
+
+    Lookup and browser-binding values are stored only as irreversible keyed
+    digests. Recoverable secrets (nonce, PKCE verifier) are AES-GCM ciphertext
+    encrypted with a key derived from the application JWT secret; see
+    ``services.oidc_crypto``. A transaction is claimed with an atomic
+    conditional update and can never be redeemed twice.
+    """
+
+    __tablename__ = "oidc_auth_transactions"
+    __table_args__ = (
+        UniqueConstraint(
+            "state_digest", name="uq_oidc_transaction_state_digest"
+        ),
+        UniqueConstraint(
+            "handoff_digest", name="uq_oidc_transaction_handoff_digest"
+        ),
+        CheckConstraint(
+            "operation IN ('login', 'link')",
+            name="ck_oidc_transaction_operation",
+        ),
+        CheckConstraint(
+            "phase IN ('authorization', 'handoff')",
+            name="ck_oidc_transaction_phase",
+        ),
+        Index("ix_oidc_transaction_browser_digest", "browser_digest"),
+        Index("ix_oidc_transaction_expires_at", "expires_at"),
+        Index("ix_oidc_transaction_user_id", "user_id"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    operation = Column(String(16), nullable=False)  # login | link
+    phase = Column(String(16), nullable=False)  # authorization | handoff
+    issuer = Column(String(1024), nullable=False)
+    # Keyed digests of the random state and stable browser-binding secret.
+    state_digest = Column(String(64), nullable=True)
+    browser_digest = Column(String(64), nullable=False)
+    # AEAD ciphertext: 12-byte nonce || AES-GCM ciphertext/tag.
+    nonce_ciphertext = Column(LargeBinary, nullable=True)
+    verifier_ciphertext = Column(LargeBinary, nullable=True)
+    # Validated identity claims carried from callback to completion.
+    subject = Column(String(255), nullable=True)
+    auth_time = Column(Integer, nullable=True)
+    # Bounded, sanitized local display-name hint (preferred_username or name).
+    # Provider-controlled text is validated before storage and again before use;
+    # it is only a username hint, never an identity lookup key.
+    username_hint = Column(String(64), nullable=True)
+    # Linking binds the current local user and the initiating bearer token.
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    bearer_fingerprint = Column(String(64), nullable=True)
+    # Keyed digest of the one-use handoff secret (handoff phase only).
+    handoff_digest = Column(String(64), nullable=True)
+    expires_at = Column(DateTime, nullable=False)
+    # Supplied by the transaction service; no database default, so an insert
+    # without an explicit creation time fails instead of silently using now().
+    created_at = Column(DateTime, nullable=False)
+    consumed_at = Column(DateTime, nullable=True)
 
 
 collection_printing_detail_tags = Table(

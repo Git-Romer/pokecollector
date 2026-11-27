@@ -32,7 +32,7 @@ services:
       retries: 5
 
   backend:
-    image: ghcr.io/git-romer/pokecollector-backend:${POKECOLLECTOR_VERSION:-1.60.0}
+    image: ghcr.io/git-romer/pokecollector-backend:${POKECOLLECTOR_VERSION:-1.61.0}
     container_name: pokemon-backend
     restart: unless-stopped
     environment:
@@ -42,6 +42,12 @@ services:
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       USER_MODE: ${USER_MODE:-}
+      AUTH_MODE: ${AUTH_MODE:-local}
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-}
+      OIDC_DISPLAY_NAME: ${OIDC_DISPLAY_NAME:-Single sign-on}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-flash-latest}
@@ -78,7 +84,7 @@ services:
       - "${BACKEND_PORT:-8000}:8000"
 
   frontend:
-    image: ghcr.io/git-romer/pokecollector-frontend:${POKECOLLECTOR_VERSION:-1.60.0}
+    image: ghcr.io/git-romer/pokecollector-frontend:${POKECOLLECTOR_VERSION:-1.61.0}
     container_name: pokemon-frontend
     restart: unless-stopped
     depends_on:

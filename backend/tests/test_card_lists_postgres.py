@@ -40,7 +40,7 @@ POSTGRES_TEST_ENABLED = (
 class CardListsPostgresTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        init_db()
+        init_db(enable_oidc_schema=True)
 
     def setUp(self):
         self.prefix = f"card-lists-pg-{uuid.uuid4().hex}"

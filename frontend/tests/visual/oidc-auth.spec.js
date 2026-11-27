@@ -1,0 +1,494 @@
+import { expect, test } from '@playwright/test'
+
+const admin = {
+  id: 1,
+  username: 'admin',
+  role: 'admin',
+  avatar_id: null,
+  must_change_password: false,
+}
+
+const mixedMode = {
+  multi_user: true,
+  locked: true,
+  auth_mode: 'mixed',
+  password_login_enabled: true,
+  oidc_enabled: true,
+  oidc_display_name: 'Authelia',
+}
+
+const oidcOnlyMode = {
+  multi_user: true,
+  locked: true,
+  auth_mode: 'oidc-only',
+  password_login_enabled: false,
+  oidc_enabled: true,
+  oidc_display_name: 'Authelia',
+}
+
+async function mockApi(page, { mode = mixedMode, me = null, onRequest } = {}) {
+  await page.route(url => url.pathname.startsWith('/api/'), async route => {
+    const url = new URL(route.request().url())
+    if (onRequest && await onRequest(route, url)) return
+
+    if (url.pathname === '/api/auth/mode') {
+      return route.fulfill({ json: mode })
+    }
+    if (url.pathname === '/api/auth/me') {
+      return me
+        ? route.fulfill({ json: me })
+        : route.fulfill({ status: 401, json: { detail: 'Not authenticated' } })
+    }
+    if (url.pathname === '/api/auth/oidc/identity') {
+      return route.fulfill({ json: { linked: false, display_name: 'Authelia', unlink_permitted: false } })
+    }
+
+    // Minimal settings/dashboard responses so navigation away from the login
+    // flow renders without depending on a live backend.
+    if (url.pathname === '/api/settings/') {
+      return route.fulfill({ json: { language: 'en', currency: 'EUR' } })
+    }
+    if (url.pathname === '/api/settings/exchange-rate') {
+      return route.fulfill({ json: { rate: 1 } })
+    }
+    if (url.pathname === '/api/settings/currencies') {
+      return route.fulfill({ json: { currencies: [] } })
+    }
+    if (url.pathname === '/api/settings/scanner') {
+      return route.fulfill({
+        json: {
+          provider: 'gemini',
+          model: 'gemini-2.5-flash',
+          request_timeout_seconds: 30,
+          status: 'ready',
+          visual_verification: 'enabled',
+          providers: [{
+            id: 'gemini',
+            label: 'Google Gemini',
+            endpoint_type: 'hosted',
+            requires_api_key: true,
+            api_key_configured: true,
+            models: ['gemini-2.5-flash'],
+            default_model: 'gemini-2.5-flash',
+            custom_model: null,
+            custom_model_allowed: false,
+          }],
+        },
+      })
+    }
+    if (url.pathname.startsWith('/api/settings/') && url.pathname.split('/').length === 4) {
+      return route.fulfill({ json: { value: 'false' } })
+    }
+    if (url.pathname === '/api/profile/') {
+      return route.fulfill({ json: {} })
+    }
+    if (url.pathname === '/api/sync/status') {
+      return route.fulfill({ json: { is_running: false, is_price_sync_running: false } })
+    }
+    if (url.pathname === '/api/dashboard/') {
+      return route.fulfill({ json: { recent_additions: [], top_cards: [] } })
+    }
+    if (url.pathname === '/api/cards/recognize/jobs') {
+      return route.fulfill({ json: { jobs: [] } })
+    }
+    if (url.pathname === '/api/analytics/investment-tracker') {
+      return route.fulfill({ json: [] })
+    }
+    if (url.pathname === '/api/github/contributors' || url.pathname === '/api/community/supporters') {
+      return route.fulfill({ json: [] })
+    }
+    return route.fulfill({ json: {} })
+  })
+}
+
+test('completion waits for authentication bootstrap before issuing a new session', async ({ page }) => {
+  let releaseMode
+  const pendingMode = new Promise(resolve => { releaseMode = resolve })
+  await page.addInitScript(() => {
+    window.__oidcCompletionStarted = false
+    const open = XMLHttpRequest.prototype.open
+    XMLHttpRequest.prototype.open = function (method, url, ...args) {
+      if (String(url).includes('/auth/oidc/complete')) window.__oidcCompletionStarted = true
+      return open.call(this, method, url, ...args)
+    }
+  })
+  await mockApi(page, {
+    me: admin,
+    onRequest: async (route, url) => {
+      if (url.pathname === '/api/auth/mode') await pendingMode
+      if (url.pathname === '/api/auth/oidc/complete') {
+        await route.fulfill({ json: { access_token: 'new-oidc-token', user: admin } })
+        return true
+      }
+      return false
+    },
+  })
+  try {
+    // WebKit can hold the load event while the bootstrap response is gated.
+    // Assert the rendered UI rather than wait for that deliberately pending work.
+    await page.goto('/auth/oidc/complete', { waitUntil: 'domcontentloaded' })
+    await expect(page.getByRole('heading', { name: 'Finishing sign-in' })).toBeVisible()
+    // Cross a committed paint/effect boundary without a wall-clock sleep.
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+    expect(await page.evaluate(() => window.__oidcCompletionStarted)).toBe(false)
+    releaseMode()
+    await expect(page).toHaveURL('/')
+    await expect(page.getByText('Hello,')).toBeVisible()
+    expect(await page.evaluate(() => localStorage.getItem('token'))).toBe('new-oidc-token')
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('user')).id)).toBe(admin.id)
+  } finally {
+    releaseMode()
+  }
+})
+
+test('mixed mode offers password and provider sign-in, then completes through the fixed path', async ({ page }) => {
+  const navigations = []
+  page.on('framenavigated', frame => {
+    if (frame === page.mainFrame()) navigations.push(frame.url())
+  })
+
+  await mockApi(page, {
+    onRequest: async (route, url) => {
+      if (url.pathname === '/api/auth/oidc/start') {
+        // Playwright does not route the document reached by a fulfilled 302,
+        // so the mock IdP redirect is a client-side meta refresh. This keeps
+        // the subsequent /mock-idp navigation interceptable and still models a
+        // top-level browser navigation away from the app.
+        await route.fulfill({
+          contentType: 'text/html; charset=utf-8',
+          body: '<!doctype html><meta http-equiv="refresh" content="0;url=/mock-idp">',
+        })
+        return true
+      }
+      if (url.pathname === '/api/auth/oidc/complete') {
+        await route.fulfill({ json: { access_token: 'app-token', user: admin } })
+        return true
+      }
+      return false
+    },
+  })
+
+  // Register after mockApi so this more specific navigation wins. The mock
+  // document includes a charset: the link label contains a non-ASCII character
+  // and must still match the accessible name in the test.
+  await page.route(/\/mock-idp$/, route => route.fulfill({
+    contentType: 'text/html; charset=utf-8',
+    body: '<!doctype html><meta charset="utf-8"><title>Mock provider</title><a href="/auth/oidc/complete">Continue to PokéCollector</a>',
+  }))
+
+  await page.goto('/login')
+
+  await expect(page.getByLabel('Password')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Sign in with Authelia' })).toBeVisible()
+
+  await page.getByRole('link', { name: 'Sign in with Authelia' }).click()
+  await expect(page).toHaveURL('/mock-idp')
+  await page.getByRole('link', { name: 'Continue to PokéCollector' }).click()
+
+  await expect(page.getByText('Hello,')).toBeVisible()
+  await expect(page).toHaveURL('/')
+  expect(await page.evaluate(() => localStorage.getItem('token'))).toBe('app-token')
+
+  const completionUrls = [...new Set(
+    navigations.filter(url => new URL(url).pathname === '/auth/oidc/complete'),
+  )]
+  expect(completionUrls).toHaveLength(1)
+  // The provider callback hands off through a cookie, never query parameters.
+  expect(new URL(completionUrls[0]).search).toBe('')
+})
+
+test('OIDC-only mode shows no password form or user switcher', async ({ page }) => {
+  await mockApi(page, { mode: oidcOnlyMode })
+
+  await page.goto('/')
+
+  await expect(page).toHaveURL('/login')
+  await expect(page.getByRole('link', { name: 'Sign in with Authelia' })).toBeVisible()
+  await expect(page.getByLabel('Password')).toHaveCount(0)
+  await expect(page.getByLabel('Username')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Switch User' })).toHaveCount(0)
+})
+
+test('a failed completion keeps the existing local session', async ({ page }) => {
+  await page.addInitScript(user => {
+    localStorage.setItem('token', 'valid-token')
+    localStorage.setItem('user', JSON.stringify(user))
+  }, admin)
+
+  await mockApi(page, {
+    me: admin,
+    onRequest: async (route, url) => {
+      if (url.pathname === '/api/auth/oidc/complete') {
+        await route.fulfill({ status: 401, json: { detail: 'Handoff expired' } })
+        return true
+      }
+      return false
+    },
+  })
+
+  await page.goto('/auth/oidc/complete')
+
+  await expect(page.getByRole('heading', { name: 'Sign-in could not be completed' })).toBeVisible()
+  expect(await page.evaluate(() => localStorage.getItem('token'))).toBe('valid-token')
+  expect(await page.evaluate(() => localStorage.getItem('user'))).toContain('admin')
+  await expect(page).toHaveURL('/auth/oidc/complete')
+})
+
+test('a linked completion keeps the current token and returns to settings', async ({ page }) => {
+  await page.addInitScript(user => {
+    localStorage.setItem('token', 'existing-token')
+    localStorage.setItem('user', JSON.stringify(user))
+  }, admin)
+
+  await mockApi(page, {
+    me: admin,
+    onRequest: async (route, url) => {
+      if (url.pathname === '/api/auth/oidc/complete') {
+        await route.fulfill({ json: { linked: true } })
+        return true
+      }
+      if (url.pathname === '/api/auth/oidc/identity') {
+        await route.fulfill({ json: { linked: true, display_name: 'Authelia', unlink_permitted: true } })
+        return true
+      }
+      return false
+    },
+  })
+
+  await page.goto('/auth/oidc/complete')
+
+  await expect(page).toHaveURL('/settings')
+  expect(await page.evaluate(() => localStorage.getItem('token'))).toBe('existing-token')
+  expect(await page.evaluate(() => localStorage.getItem('user'))).toContain('admin')
+  await expect(page.getByText('Linked', { exact: true })).toBeVisible()
+})
+
+test('only allowlisted provider errors are explained, unknown values fall back', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/login?oidc_error=access_denied')
+  await expect(page.getByRole('alert')).toContainText('Sign-in was cancelled at the identity provider.')
+
+  await page.goto('/login?oidc_error=%3Cscript%3Eprovider%20detail%3C%2Fscript%3E')
+  await expect(page.getByRole('alert')).toContainText('Sign-in could not be completed. Please try again.')
+  await expect(page.getByRole('alert')).not.toContainText('provider detail')
+})
+
+// `constructor`, `__proto__` and `toString` are inherited by every plain
+// object. A prototype-unsafe allowlist lookup returned them instead of a
+// translation key, and the translation helper then called `.split` on a
+// function/object and crashed the login page. Each one must fall back to the
+// generic message without a page error or a console error.
+for (const code of ['constructor', '__proto__', 'toString']) {
+  test(`oidc_error=${code} falls back to the generic message without crashing`, async ({ page }) => {
+    const consoleErrors = []
+    const pageErrors = []
+    page.on('console', message => {
+      if (message.type() === 'error') consoleErrors.push(message.text())
+    })
+    page.on('pageerror', error => pageErrors.push(error.message))
+
+    await mockApi(page)
+    await page.goto(`/login?oidc_error=${encodeURIComponent(code)}`)
+
+    // The generic message renders instead of the value being trusted.
+    await expect(page.getByRole('alert')).toContainText('Sign-in could not be completed. Please try again.')
+    // The rest of the form still rendered, so React did not crash.
+    await expect(page.getByLabel('Password')).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Sign in with Authelia' })).toBeVisible()
+
+    expect(pageErrors).toEqual([])
+    expect(consoleErrors).toEqual([])
+  })
+}
+
+test('settings names AUTH_MODE as the pin when the mode is not local', async ({ page }) => {
+  await page.addInitScript(user => {
+    localStorage.setItem('token', 'valid-token')
+    localStorage.setItem('user', JSON.stringify(user))
+  }, admin)
+
+  await mockApi(page, { me: admin, mode: mixedMode })
+
+  await page.goto('/settings')
+
+  await expect(page.getByText('Managed by the AUTH_MODE environment variable; change it there and restart.')).toBeVisible()
+  await expect(page.getByText('Pinned by the USER_MODE environment variable; change it there and restart.')).toHaveCount(0)
+})
+
+test('an unavailable identity endpoint leaves settings explanatory rather than broken', async ({ page }) => {
+  await page.addInitScript(user => {
+    localStorage.setItem('token', 'valid-token')
+    localStorage.setItem('user', JSON.stringify(user))
+  }, admin)
+
+  await mockApi(page, {
+    me: admin,
+    onRequest: async (route, url) => {
+      if (url.pathname === '/api/auth/oidc/identity') {
+        await route.fulfill({ status: 404, json: { detail: 'Not found' } })
+        return true
+      }
+      return false
+    },
+  })
+
+  await page.goto('/settings')
+
+  await expect(page.getByText('Sign-in details are unavailable right now.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible()
+})
+
+test('an unnamed new identity prompts once, focuses the field and creates no session', async ({ page }, testInfo) => {
+  const bodies = []
+  await mockApi(page, {
+    onRequest: async (route, url) => {
+      if (url.pathname !== '/api/auth/oidc/complete') return false
+      bodies.push(route.request().postDataJSON())
+      await route.fulfill({ json: { username_required: true } })
+      return true
+    },
+  })
+
+  await page.goto('/auth/oidc/complete')
+  await expect(page.getByRole('heading', { name: 'Choose your username' })).toBeVisible()
+  await expect(page.getByLabel('Username', { exact: true })).toBeFocused()
+  await expect(page.getByText('Use 2–32 characters.', { exact: false })).toBeVisible()
+  await expect(page.getByText('Finish within 60 seconds', { exact: false })).toBeVisible()
+  expect(bodies).toEqual([{}]) // Includes StrictMode's double-effect cycle.
+  expect(await page.evaluate(() => localStorage.getItem('token'))).toBeNull()
+  expect(await page.evaluate(() => localStorage.getItem('user'))).toBeNull()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  await page.screenshot({ path: testInfo.outputPath('oidc-username-form.png'), fullPage: true })
+
+  await page.getByLabel('Username', { exact: true }).fill('Demo Collector')
+  await expect(page).toHaveURL('/auth/oidc/complete')
+  expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toContain('Demo Collector')
+  await page.getByRole('link', { name: 'Back to sign in' }).click()
+  await expect(page).toHaveURL('/login')
+  expect(bodies).toEqual([{}]) // Going back does not create the account.
+})
+
+test('username submission trims the name, prevents double posts and logs in on success', async ({ page }, testInfo) => {
+  const bodies = []
+  let finishSubmission
+  const submission = new Promise(resolve => { finishSubmission = resolve })
+  await mockApi(page, {
+    onRequest: async (route, url) => {
+      if (url.pathname !== '/api/auth/oidc/complete') return false
+      const body = route.request().postDataJSON()
+      bodies.push(body)
+      if (!body.username) {
+        await route.fulfill({ json: { username_required: true } })
+      } else {
+        await submission
+        await route.fulfill({ json: { access_token: 'demo-app-token', user: { ...admin, username: body.username } } })
+      }
+      return true
+    },
+  })
+
+  await page.goto('/auth/oidc/complete')
+  await page.getByLabel('Username', { exact: true }).fill('  Demo Collector  ')
+  await page.getByLabel('Username', { exact: true }).press('Enter')
+  try {
+    await expect(page.getByRole('button', { name: 'Creating account...' })).toBeDisabled()
+    await expect(page.getByLabel('Username', { exact: true })).toBeDisabled()
+    await expect(page.getByRole('link', { name: 'Back to sign in' })).toHaveAttribute('aria-disabled', 'true')
+    await page.locator('form').evaluate(form => { form.requestSubmit(); form.requestSubmit() })
+    expect(bodies).toEqual([{}, { username: 'Demo Collector' }])
+    expect(await page.evaluate(() => localStorage.getItem('token'))).toBeNull()
+    expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toContain('Demo Collector')
+    await page.screenshot({ path: testInfo.outputPath('oidc-username-submitting.png'), fullPage: true })
+  } finally {
+    finishSubmission()
+  }
+  await expect(page).toHaveURL('/')
+  expect(await page.evaluate(() => localStorage.getItem('token'))).toBe('demo-app-token')
+  expect(bodies).toHaveLength(2)
+})
+
+test('invalid and taken usernames stay editable with safe inline errors and preserve input', async ({ page }, testInfo) => {
+  const bodies = []
+  await mockApi(page, {
+    onRequest: async (route, url) => {
+      if (url.pathname !== '/api/auth/oidc/complete') return false
+      bodies.push(route.request().postDataJSON())
+      if (bodies.length === 1) {
+        await route.fulfill({ json: { username_required: true } })
+      } else if (bodies.length === 2) {
+        await route.fulfill({ status: 400, json: { code: 'invalid_username', detail: 'Untrusted provider detail' } })
+      } else if (bodies.length === 3) {
+        await route.fulfill({ status: 409, json: { code: 'username_taken', detail: 'Untrusted provider detail' } })
+      } else {
+        await route.fulfill({ json: { access_token: 'demo-app-token', user: { ...admin, username: 'Demo Trainer' } } })
+      }
+      return true
+    },
+  })
+
+  await page.goto('/auth/oidc/complete')
+  const input = page.getByLabel('Username', { exact: true })
+  const submit = page.getByRole('button', { name: 'Create account', exact: true })
+  await input.fill('  x  ')
+  await submit.click()
+  await expect(input).toHaveAttribute('aria-invalid', 'true')
+  await expect(input).toBeFocused()
+  await expect(page.getByText('Enter a username with 2–32 characters', { exact: false })).toBeVisible()
+  await expect(input).toHaveValue('  x  ')
+  await input.fill('x'.repeat(33))
+  await input.press('Enter')
+  await expect(input).toHaveAttribute('aria-invalid', 'true')
+  expect(bodies).toEqual([{}]) // Client-side length errors never post.
+
+  await input.fill('  Demo Collector  ')
+  await submit.click()
+  await expect(input).toBeFocused()
+  await expect(input).toHaveAttribute('aria-invalid', 'true')
+  await expect(input).toHaveValue('  Demo Collector  ')
+  await expect(page.getByText('Untrusted provider detail')).toHaveCount(0)
+  await page.screenshot({ path: testInfo.outputPath('oidc-username-invalid.png'), fullPage: true })
+
+  await input.press('Enter')
+  await expect(page.getByText('That username is already taken. Choose another and try again.')).toBeVisible()
+  await expect(input).toHaveValue('  Demo Collector  ')
+  await expect(input).toBeFocused()
+  await expect(submit).toBeEnabled()
+  expect(await page.evaluate(() => localStorage.getItem('token'))).toBeNull()
+  await page.screenshot({ path: testInfo.outputPath('oidc-username-taken.png'), fullPage: true })
+
+  await input.fill('Demo Trainer')
+  await expect(input).toHaveAttribute('aria-invalid', 'false')
+  await input.press('Enter')
+  await expect(page).toHaveURL('/')
+  expect(bodies).toEqual([{}, { username: 'Demo Collector' }, { username: 'Demo Collector' }, { username: 'Demo Trainer' }])
+})
+
+test('an expired username handoff requires a fresh sign-in without retrying or exposing detail', async ({ page }, testInfo) => {
+  const bodies = []
+  await mockApi(page, {
+    onRequest: async (route, url) => {
+      if (url.pathname !== '/api/auth/oidc/complete') return false
+      bodies.push(route.request().postDataJSON())
+      await route.fulfill(bodies.length === 1
+        ? { json: { username_required: true } }
+        : { status: 400, json: { detail: 'Untrusted provider detail' } })
+      return true
+    },
+  })
+
+  await page.goto('/auth/oidc/complete')
+  await page.getByLabel('Username', { exact: true }).fill('Demo Collector')
+  await page.getByRole('button', { name: 'Create account' }).click()
+  const heading = page.getByRole('heading', { name: 'Sign-in could not be completed' })
+  await expect(heading).toBeVisible()
+  await expect(heading).toBeFocused()
+  await expect(page.getByLabel('Username', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('Please start again from the sign-in page.', { exact: false })).toBeVisible()
+  await expect(page.getByText('Untrusted provider detail')).toHaveCount(0)
+  expect(await page.evaluate(() => localStorage.getItem('token'))).toBeNull()
+  expect(await page.evaluate(() => localStorage.getItem('user'))).toBeNull()
+  await page.screenshot({ path: testInfo.outputPath('oidc-username-expired.png'), fullPage: true })
+  await page.getByRole('link', { name: 'Back to sign in' }).click()
+  await expect(page).toHaveURL('/login')
+  expect(bodies).toHaveLength(2)
+})

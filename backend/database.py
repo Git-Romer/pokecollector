@@ -821,6 +821,426 @@ def harden_collection_variant_constraints(target_engine=None):
             """))
 
 
+OIDC_IDENTITY_TABLE = "oidc_identities"
+
+
+def migrate_oidc_auth_schema(target_engine=None):
+    """Apply and verify the authentication schema required for OIDC identities.
+
+    This is a security-critical boundary, not a best-effort cleanup: OIDC-only
+    deployments must never start against a database that silently lacks the
+    identity uniqueness/FK rules or still requires a local password hash. The
+    caller invokes this outside the legacy error-swallowing migration loop so a
+    failure aborts startup rather than leaving an unconstrained schema serving
+    traffic.
+
+    The function is idempotent: it is safe on a fresh database (``create_all``
+    has already created the table) and on an upgraded database, where it drops
+    the legacy NOT NULL on ``users.hashed_password`` and creates/repairs the
+    identity table constraints.
+    """
+    target_engine = target_engine or engine
+    dialect = target_engine.dialect.name
+
+    with target_engine.begin() as conn:
+        if dialect == "postgresql":
+            conn.execute(
+                text("ALTER TABLE users ALTER COLUMN hashed_password DROP NOT NULL")
+            )
+            conn.execute(text(f"""
+                CREATE TABLE IF NOT EXISTS {OIDC_IDENTITY_TABLE} (
+                    id SERIAL PRIMARY KEY,
+                    issuer VARCHAR(1024) NOT NULL,
+                    subject VARCHAR(255) NOT NULL,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                    CONSTRAINT uq_oidc_identity_issuer_subject
+                        UNIQUE (issuer, subject),
+                    CONSTRAINT uq_oidc_identity_issuer_user
+                        UNIQUE (issuer, user_id)
+                )
+            """))
+            # Repair a partially-created table from an interrupted earlier run.
+            for constraint_name, columns in (
+                ("uq_oidc_identity_issuer_subject", "issuer, subject"),
+                ("uq_oidc_identity_issuer_user", "issuer, user_id"),
+            ):
+                conn.execute(text(f"""
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1 FROM pg_constraint
+                            WHERE conname = '{constraint_name}'
+                              AND conrelid = '{OIDC_IDENTITY_TABLE}'::regclass
+                        ) THEN
+                            ALTER TABLE {OIDC_IDENTITY_TABLE}
+                                ADD CONSTRAINT {constraint_name} UNIQUE ({columns});
+                        END IF;
+                    END$$
+                """))
+            conn.execute(text(f"""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint
+                        WHERE conname = '{OIDC_IDENTITY_TABLE}_user_id_fkey'
+                          AND conrelid = '{OIDC_IDENTITY_TABLE}'::regclass
+                    ) THEN
+                        ALTER TABLE {OIDC_IDENTITY_TABLE}
+                            ADD CONSTRAINT {OIDC_IDENTITY_TABLE}_user_id_fkey
+                            FOREIGN KEY (user_id) REFERENCES users(id)
+                            ON DELETE CASCADE;
+                    END IF;
+                END$$
+            """))
+            _verify_oidc_auth_schema_postgres(conn)
+            return
+
+        if dialect == "sqlite":
+            columns = {
+                row[1]: row for row in conn.execute(text("PRAGMA table_info(users)"))
+            }
+            hashed_password = columns.get("hashed_password")
+            if hashed_password is None or hashed_password[3]:
+                raise RuntimeError(
+                    "Existing SQLite users.hashed_password is NOT NULL; this build "
+                    "requires nullable password hashes for SSO accounts. Upgrade "
+                    "with a PostgreSQL database or recreate the SQLite database."
+                )
+            exists = conn.execute(text(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = :name"
+            ), {"name": OIDC_IDENTITY_TABLE}).scalar()
+            if not exists:
+                raise RuntimeError(
+                    f"SQLite schema is missing the {OIDC_IDENTITY_TABLE} table"
+                )
+            return
+
+        raise RuntimeError(
+            f"OIDC auth schema migration is not implemented for {dialect}"
+        )
+
+
+def _verify_oidc_auth_schema_postgres(conn):
+    """Fail fast unless the PostgreSQL auth schema has the required shape."""
+    nullable = conn.execute(text("""
+        SELECT is_nullable
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'users'
+          AND column_name = 'hashed_password'
+    """)).scalar()
+    if nullable != "YES":
+        raise RuntimeError(
+            "users.hashed_password must be nullable for SSO-only accounts"
+        )
+
+    table_exists = conn.execute(text(
+        "SELECT to_regclass(:name)"
+    ), {"name": OIDC_IDENTITY_TABLE}).scalar()
+    if not table_exists:
+        raise RuntimeError(f"Missing required table {OIDC_IDENTITY_TABLE}")
+
+    constraints = {
+        row[0]
+        for row in conn.execute(text(f"""
+            SELECT conname FROM pg_constraint
+            WHERE conrelid = '{OIDC_IDENTITY_TABLE}'::regclass
+              AND contype = 'u'
+        """))
+    }
+    missing = {
+        "uq_oidc_identity_issuer_subject",
+        "uq_oidc_identity_issuer_user",
+    } - constraints
+    if missing:
+        raise RuntimeError(
+            "OIDC identity uniqueness constraints are missing: " + ", ".join(sorted(missing))
+        )
+
+    cascade = conn.execute(text(f"""
+        SELECT confdeltype FROM pg_constraint
+        WHERE conrelid = '{OIDC_IDENTITY_TABLE}'::regclass
+          AND contype = 'f'
+          AND confrelid = 'users'::regclass
+    """)).scalar()
+    if cascade != "c":
+        raise RuntimeError(
+            "OIDC identity user foreign key must use ON DELETE CASCADE"
+        )
+
+
+OIDC_TRANSACTION_TABLE = "oidc_auth_transactions"
+
+_OIDC_TRANSACTION_COLUMNS = {
+    "id",
+    "operation",
+    "phase",
+    "issuer",
+    "state_digest",
+    "browser_digest",
+    "nonce_ciphertext",
+    "verifier_ciphertext",
+    "subject",
+    "auth_time",
+    "username_hint",
+    "user_id",
+    "bearer_fingerprint",
+    "handoff_digest",
+    "expires_at",
+    "created_at",
+    "consumed_at",
+}
+
+_OIDC_TRANSACTION_CHECKS = {
+    "ck_oidc_transaction_operation": "operation IN ('login', 'link')",
+    "ck_oidc_transaction_phase": "phase IN ('authorization', 'handoff')",
+}
+
+
+def migrate_oidc_transaction_schema(target_engine=None):
+    """Apply and verify the DB-backed OIDC transaction schema.
+
+    Like the identity migration this is a fail-fast security boundary: without
+    the transaction table, unique one-use digests and the user cascade, OIDC
+    endpoints must not serve traffic. It runs outside the legacy
+    error-swallowing migration loop and is idempotent on fresh and upgraded
+    databases.
+
+    PostgreSQL also drops the ``created_at`` default: every insert supplies the
+    value, so a default would only mask a caller that forgot. SQLite keeps its
+    default because dropping it needs a full table rebuild; inserts still pass
+    the value explicitly there.
+    """
+    target_engine = target_engine or engine
+    dialect = target_engine.dialect.name
+
+    with target_engine.begin() as conn:
+        if dialect == "postgresql":
+            conn.execute(text(f"""
+                CREATE TABLE IF NOT EXISTS {OIDC_TRANSACTION_TABLE} (
+                    id SERIAL PRIMARY KEY,
+                    operation VARCHAR(16) NOT NULL,
+                    phase VARCHAR(16) NOT NULL,
+                    issuer VARCHAR(1024) NOT NULL,
+                    state_digest VARCHAR(64),
+                    browser_digest VARCHAR(64) NOT NULL,
+                    nonce_ciphertext BYTEA,
+                    verifier_ciphertext BYTEA,
+                    subject VARCHAR(255),
+                    auth_time INTEGER,
+                    username_hint VARCHAR(64),
+                    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                    bearer_fingerprint VARCHAR(64),
+                    handoff_digest VARCHAR(64),
+                    expires_at TIMESTAMP NOT NULL,
+                    created_at TIMESTAMP NOT NULL,
+                    consumed_at TIMESTAMP,
+                    CONSTRAINT uq_oidc_transaction_state_digest
+                        UNIQUE (state_digest),
+                    CONSTRAINT uq_oidc_transaction_handoff_digest
+                        UNIQUE (handoff_digest),
+                    CONSTRAINT ck_oidc_transaction_operation
+                        CHECK (operation IN ('login', 'link')),
+                    CONSTRAINT ck_oidc_transaction_phase
+                        CHECK (phase IN ('authorization', 'handoff'))
+                )
+            """))
+            # Upgrade an existing transaction table from before the bounded
+            # username-hint column. Fail-fast verification below still runs.
+            conn.execute(text(
+                f"ALTER TABLE {OIDC_TRANSACTION_TABLE} "
+                "ADD COLUMN IF NOT EXISTS username_hint VARCHAR(64)"
+            ))
+            # Every insert supplies created_at; a database default would only
+            # hide a caller that forgot. Metadata-only and idempotent on an
+            # upgraded table. SQLite keeps its default: dropping it there needs a
+            # full table rebuild, and inserts always pass the value anyway.
+            conn.execute(text(
+                f"ALTER TABLE {OIDC_TRANSACTION_TABLE} "
+                "ALTER COLUMN created_at DROP DEFAULT"
+            ))
+            # Repair constraints from an interrupted earlier run.
+            for constraint_name, columns in (
+                ("uq_oidc_transaction_state_digest", "state_digest"),
+                ("uq_oidc_transaction_handoff_digest", "handoff_digest"),
+            ):
+                conn.execute(text(f"""
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1 FROM pg_constraint
+                            WHERE conname = '{constraint_name}'
+                              AND conrelid = '{OIDC_TRANSACTION_TABLE}'::regclass
+                        ) THEN
+                            ALTER TABLE {OIDC_TRANSACTION_TABLE}
+                                ADD CONSTRAINT {constraint_name} UNIQUE ({columns});
+                        END IF;
+                    END$$
+                """))
+            for constraint_name, expression in _OIDC_TRANSACTION_CHECKS.items():
+                conn.execute(text(f"""
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1 FROM pg_constraint
+                            WHERE conname = '{constraint_name}'
+                              AND conrelid = '{OIDC_TRANSACTION_TABLE}'::regclass
+                        ) THEN
+                            ALTER TABLE {OIDC_TRANSACTION_TABLE}
+                                ADD CONSTRAINT {constraint_name} CHECK ({expression});
+                        END IF;
+                    END$$
+                """))
+            conn.execute(text(f"""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint
+                        WHERE conrelid = '{OIDC_TRANSACTION_TABLE}'::regclass
+                          AND contype = 'f'
+                          AND confrelid = 'users'::regclass
+                          AND confdeltype = 'c'
+                    ) THEN
+                        ALTER TABLE {OIDC_TRANSACTION_TABLE}
+                            ADD CONSTRAINT {OIDC_TRANSACTION_TABLE}_user_id_fkey
+                            FOREIGN KEY (user_id) REFERENCES users(id)
+                            ON DELETE CASCADE;
+                    END IF;
+                END$$
+            """))
+            conn.execute(text(
+                f"CREATE INDEX IF NOT EXISTS ix_oidc_transaction_browser_digest "
+                f"ON {OIDC_TRANSACTION_TABLE} (browser_digest)"
+            ))
+            conn.execute(text(
+                f"CREATE INDEX IF NOT EXISTS ix_oidc_transaction_expires_at "
+                f"ON {OIDC_TRANSACTION_TABLE} (expires_at)"
+            ))
+            conn.execute(text(
+                f"CREATE INDEX IF NOT EXISTS ix_oidc_transaction_user_id "
+                f"ON {OIDC_TRANSACTION_TABLE} (user_id)"
+            ))
+            _verify_oidc_transaction_schema_postgres(conn)
+            return
+
+        if dialect == "sqlite":
+            exists = conn.execute(text(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = :name"
+            ), {"name": OIDC_TRANSACTION_TABLE}).scalar()
+            if not exists:
+                raise RuntimeError(
+                    f"SQLite schema is missing the {OIDC_TRANSACTION_TABLE} table"
+                )
+            columns = {
+                row[1]
+                for row in conn.execute(
+                    text(f"PRAGMA table_info({OIDC_TRANSACTION_TABLE})")
+                )
+            }
+            if "username_hint" not in columns:
+                conn.execute(text(
+                    f"ALTER TABLE {OIDC_TRANSACTION_TABLE} "
+                    "ADD COLUMN username_hint VARCHAR(64)"
+                ))
+                columns.add("username_hint")
+            missing = _OIDC_TRANSACTION_COLUMNS - columns
+            if missing:
+                raise RuntimeError(
+                    "OIDC transaction schema is missing columns: "
+                    + ", ".join(sorted(missing))
+                )
+            unique_columns = set()
+            for index_row in conn.execute(
+                text(f"PRAGMA index_list({OIDC_TRANSACTION_TABLE})")
+            ):
+                if not index_row[2]:
+                    continue
+                index_name = index_row[1]
+                unique_columns.add(frozenset(
+                    row[2]
+                    for row in conn.execute(
+                        text(f"PRAGMA index_info('{index_name}')")
+                    )
+                    if row[2] is not None
+                ))
+            for required in ("state_digest", "handoff_digest"):
+                if frozenset({required}) not in unique_columns:
+                    raise RuntimeError(
+                        f"OIDC transaction schema is missing UNIQUE({required})"
+                    )
+            table_sql = conn.execute(text(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = :name"
+            ), {"name": OIDC_TRANSACTION_TABLE}).scalar() or ""
+            for constraint_name in _OIDC_TRANSACTION_CHECKS:
+                if constraint_name not in table_sql:
+                    raise RuntimeError(
+                        "OIDC transaction schema is missing CHECK constraint "
+                        f"{constraint_name}"
+                    )
+            return
+
+        raise RuntimeError(
+            f"OIDC transaction schema migration is not implemented for {dialect}"
+        )
+
+
+def _verify_oidc_transaction_schema_postgres(conn):
+    """Fail fast unless the PostgreSQL OIDC transaction schema is complete."""
+    table_exists = conn.execute(text(
+        "SELECT to_regclass(:name)"
+    ), {"name": OIDC_TRANSACTION_TABLE}).scalar()
+    if not table_exists:
+        raise RuntimeError(f"Missing required table {OIDC_TRANSACTION_TABLE}")
+
+    columns = {
+        row[0]
+        for row in conn.execute(text("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = :name
+        """), {"name": OIDC_TRANSACTION_TABLE})
+    }
+    missing = _OIDC_TRANSACTION_COLUMNS - columns
+    if missing:
+        raise RuntimeError(
+            "OIDC transaction schema is missing columns: "
+            + ", ".join(sorted(missing))
+        )
+
+    constraints = {
+        row[0]
+        for row in conn.execute(text(f"""
+            SELECT conname FROM pg_constraint
+            WHERE conrelid = '{OIDC_TRANSACTION_TABLE}'::regclass
+              AND contype IN ('u', 'c')
+        """))
+    }
+    required_constraints = {
+        "uq_oidc_transaction_state_digest",
+        "uq_oidc_transaction_handoff_digest",
+        *_OIDC_TRANSACTION_CHECKS,
+    }
+    missing_constraints = required_constraints - constraints
+    if missing_constraints:
+        raise RuntimeError(
+            "OIDC transaction schema is missing constraints: "
+            + ", ".join(sorted(missing_constraints))
+        )
+
+    cascade = conn.execute(text(f"""
+        SELECT confdeltype FROM pg_constraint
+        WHERE conrelid = '{OIDC_TRANSACTION_TABLE}'::regclass
+          AND contype = 'f'
+          AND confrelid = 'users'::regclass
+    """)).scalar()
+    if cascade != "c":
+        raise RuntimeError(
+            "OIDC transaction user foreign key must use ON DELETE CASCADE"
+        )
+
+
 def migrate_legacy_collection_binder_entries():
     """Link legacy card-level collection binder rows to an owned exact item."""
     from models import Binder, BinderCard, CollectionItem
@@ -1121,8 +1541,24 @@ def migrate_card_ids():
         db.close()
 
 
-def init_db():
-    """Initialize the database: create tables, run migrations, seed settings."""
+def init_db(*, enable_oidc_schema: bool | None = None):
+    """Initialize the database: create tables, run migrations, seed settings.
+
+    ``enable_oidc_schema`` gates the two OIDC schema boundaries. A fresh database
+    already has the correct shape from ``create_all``; the extra migrations only
+    matter for databases created by an earlier release, and running them in local
+    mode would abort startup on an existing SQLite database whose
+    ``users.hashed_password`` is still NOT NULL.
+
+    ``None`` (the default) resolves the configured policy here, so a caller that
+    omits the keyword cannot under-migrate a database that this process will then
+    serve with OIDC enabled.
+    """
+    if enable_oidc_schema is None:
+        from services.auth_policy import load_auth_policy
+
+        enable_oidc_schema = load_auth_policy().oidc is not None
+
     from models import Base as ModelBase, Setting, User
     ModelBase.metadata.create_all(bind=engine)
 
@@ -1132,6 +1568,19 @@ def init_db():
             _run_migrations(conn)
     except Exception:
         pass  # Non-blocking — may not be needed on fresh installs
+
+    if enable_oidc_schema:
+        # Authentication schema is a security boundary: OIDC identity uniqueness
+        # and nullable password hashes must be present before any traffic is
+        # served. It is deliberately outside the legacy error-swallowing loop
+        # above so a failure aborts startup instead of serving an unconstrained
+        # authentication schema.
+        migrate_oidc_auth_schema()
+        # Transaction persistence is the second half of the same fail-fast
+        # boundary: OIDC login/link callbacks must never run without a shared,
+        # one-use, browser-bound transaction store. Identity schema first, then
+        # transactions.
+        migrate_oidc_transaction_schema()
 
     # Migrate card IDs to composite format (idempotent)
     try:

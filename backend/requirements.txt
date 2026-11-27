@@ -1,4 +1,6 @@
-fastapi==0.109.2
+fastapi==0.165.0
+# Pin the serving layer too so installs retain the reviewed parser and URL fixes.
+starlette==1.10.0
 uvicorn[standard]==0.27.1
 sqlalchemy==2.0.27
 psycopg2-binary==2.9.9
@@ -10,6 +12,12 @@ python-multipart==0.0.31
 pillow==13.0.0
 pillow-heif>=0.20.0,<2
 bcrypt
-python-jose[cryptography]
 slowapi==0.1.9
 pywebpush==2.5.0
+Authlib>=1.9.3,<2
+joserfc>=1.6.8
+# Authlib 1.9's httpx_client integration imports httpx2 and only falls back to
+# the deprecated httpx (pinned at 0.26 above for the existing modules) with a
+# deprecation warning. The OIDC adapter uses the same httpx2 client, so this is
+# the auth stack's HTTP client, not a duplicate of the pinned httpx.
+httpx2==2.16.0

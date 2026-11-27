@@ -29,4 +29,8 @@ RUN mkdir -p /app/backups /app/debug /app/data/pokedex-images/sprites /app/data/
 
 EXPOSE 8000
 
+# Access logging stays enabled. OIDC query strings (the one-time callback
+# code/state) are stripped at the logging boundary by the uvicorn.access filter
+# installed from services/access_log.py; the bundled proxy logs those paths
+# path-only too (see frontend/nginx.conf).
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Crown, Download, Upload, Plus, Pencil, Trash2, User, UserCheck, UserX, Copy } from 'lucide-react'
+import { Crown, RefreshCw, Download, Upload, Plus, Pencil, Trash2, User, UserCheck, UserX, Copy, Link2, ShieldCheck, Unlink } from 'lucide-react'
 import {
   downloadBackup, restoreBackup, exportCSV,
   getSetting, setSetting, getTelegramStatus, setAuthMode,
@@ -8,6 +8,7 @@ import {
   getContributors, getSupporters, downloadDebugLog,
   getProfile, updateProfile, deleteScanDiagnostics,
   deleteAllCollectionCardPhotos,
+  getOidcIdentity, linkOidcIdentity, unlinkOidcIdentity,
 } from '../api/client'
 import api from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
@@ -23,6 +24,7 @@ import toast from 'react-hot-toast'
 import { APP_LANGUAGES } from '../utils/appLanguages'
 import { currencyOptionsFor } from '../utils/currencyOptions'
 import { invalidateCollectionPhotoState } from '../utils/queryInvalidation'
+import { parseOidcIdentity, safeAuthorizationUrl } from '../utils/oidcAuth'
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -261,7 +263,7 @@ export default function Settings() {
   const [editingUsername, setEditingUsername] = useState(false)
   const [usernameInput, setUsernameInput] = useState('')
   const queryClient = useQueryClient()
-  const { user, updateCurrentUser, multiUser, modeLocked } = useAuth()
+  const { user, updateCurrentUser, multiUser, modeLocked, authMode, passwordLoginEnabled, oidcEnabled, oidcDisplayName } = useAuth()
   const { settings, updateSettings, t, pricePrimaryField, currency: displayCurrency, exchangeRateReady, usdExchangeRateReady, exchangeRateStale, exchangeRateDate } = useSettings()
   const { data: currencyMetadata, isError: currencyListError } = useQuery({
     queryKey: ['currencies'],
@@ -274,6 +276,16 @@ export default function Settings() {
     : 'https://pokecollector.romerg.de/#support'
   const confirmDialog = useConfirmDialog()
   const publicProfilesEnabled = settings.public_profiles_enabled === 'true'
+  // AUTH_MODE=mixed/oidc-only forces the login screen on, so the toggle is
+  // pinned by that variable too. Say which variable is responsible instead of
+  // always blaming USER_MODE.
+  const modeManagedByAuthMode = authMode !== 'local'
+  const modeToggleLocked = modeLocked || modeManagedByAuthMode
+  const multiUserModeDescription = modeManagedByAuthMode
+    ? t('settings.multiUserModeManaged')
+    : modeLocked
+      ? t('settings.multiUserModeLocked')
+      : t('settings.multiUserModeDesc')
   const { theme, setTheme, themes } = useTheme()
   const [activeTab, setActiveTab] = useState('general')
 
@@ -291,6 +303,11 @@ export default function Settings() {
   // Changing authentication mode has immediate access consequences, so always warn first.
   const [multiUserModalMode, setMultiUserModalMode] = useState(null)
   const [multiUserSaving, setMultiUserSaving] = useState(false)
+
+  // Account linking uses the current password as a fresh re-authentication
+  // step; unlinking is deliberately a separate confirmation before the modal.
+  const [oidcDialog, setOidcDialog] = useState(null)
+  const [oidcPassword, setOidcPassword] = useState('')
 
   const applyMultiUserMode = async (val) => {
     try {
@@ -665,6 +682,93 @@ export default function Settings() {
     onError: (error) => toast.error(error.response?.data?.detail || t('common.error')),
   })
 
+  // Linking is only offered when the deployment has OIDC. The identity endpoint
+  // may not exist in an older running backend, so a failed lookup keeps the
+  // section explanatory instead of breaking the whole settings page.
+  const oidcIdentityQuery = useQuery({
+    queryKey: ['oidc-identity'],
+    queryFn: getOidcIdentity,
+    enabled: oidcEnabled,
+    retry: false,
+    staleTime: 30_000,
+  })
+  const oidcIdentity = parseOidcIdentity(oidcIdentityQuery.data)
+  const oidcProviderName = oidcDisplayName || t('auth.ssoDefaultName')
+  const oidcIdentityUnavailable = oidcIdentityQuery.isError
+    || (!oidcIdentityQuery.isLoading && !oidcIdentity)
+  const oidcIdentityLoading = oidcIdentityQuery.isLoading && !oidcIdentity
+
+  const oidcLinkMutation = useMutation({
+    mutationFn: linkOidcIdentity,
+    onSuccess: (payload) => {
+      const authorizationUrl = safeAuthorizationUrl(payload)
+      if (!authorizationUrl) {
+        toast.error(t('settings.oidc.linkFailed'))
+        return
+      }
+      setOidcDialog(null)
+      setOidcPassword('')
+      window.location.assign(authorizationUrl)
+    },
+    onError: (error) => toast.error(
+      error?.response?.status === 401
+        ? t('settings.oidc.incorrectPassword')
+        : t('settings.oidc.linkFailed')
+    ),
+  })
+
+  const oidcUnlinkMutation = useMutation({
+    mutationFn: unlinkOidcIdentity,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['oidc-identity'] })
+      setOidcDialog(null)
+      setOidcPassword('')
+      toast.success(t('settings.oidc.unlinked'))
+    },
+    onError: (error) => toast.error(
+      error?.response?.status === 401
+        ? t('settings.oidc.incorrectPassword')
+        : t('settings.oidc.unlinkFailed')
+    ),
+  })
+
+  const oidcPending = oidcLinkMutation.isPending || oidcUnlinkMutation.isPending
+  const oidcDialogError = oidcDialog === 'link' ? oidcLinkMutation.isError : oidcUnlinkMutation.isError
+
+  const openOidcDialog = (kind) => {
+    oidcLinkMutation.reset()
+    oidcUnlinkMutation.reset()
+    setOidcPassword('')
+    setOidcDialog(kind)
+  }
+
+  const startOidcUnlink = async () => {
+    const confirmed = await confirmDialog({
+      title: t('settings.oidc.unlinkTitle'),
+      message: t('settings.oidc.unlinkConfirm'),
+      confirmLabel: t('settings.oidc.unlink'),
+      cancelLabel: t('common.cancel'),
+      destructive: true,
+    })
+    if (confirmed) openOidcDialog('unlink')
+  }
+
+  const submitOidcPassword = (event) => {
+    event.preventDefault()
+    if (!oidcPassword || oidcPending) return
+    if (oidcDialog === 'link') {
+      oidcLinkMutation.mutate(oidcPassword)
+    } else {
+      oidcUnlinkMutation.mutate(oidcPassword)
+    }
+  }
+
+  const closeOidcDialog = () => {
+    if (oidcPending) return
+    setOidcDialog(null)
+    setOidcPassword('')
+  }
+
   const handleAvatarSelect = (avatarId) => {
     avatarMutation.mutate(avatarId)
   }
@@ -758,6 +862,92 @@ export default function Settings() {
 
             </SettingsCard>
           </section>
+
+          {/* ── SINGLE SIGN-ON ── */}
+          {oidcEnabled && (
+            <section className="space-y-1">
+              <SectionHeader title={t('settings.sectionSignIn')} />
+              <SettingsCard>
+                <SettingsRow
+                  label={t('settings.oidc.providerLabel')}
+                  description={`${oidcProviderName} · ${t('settings.oidc.providerDesc')}`}
+                  last={oidcIdentityLoading || oidcIdentityUnavailable || !oidcIdentity}
+                >
+                  {oidcIdentityLoading ? (
+                    <span role="status" aria-live="polite" className="text-xs text-text-muted">
+                      {t('settings.oidc.checking')}
+                    </span>
+                  ) : oidcIdentityUnavailable ? (
+                    <div className="flex flex-col items-start gap-2 sm:items-end">
+                      <span className="text-xs text-text-muted">{t('settings.oidc.unavailable')}</span>
+                      <button
+                        type="button"
+                        className="btn-ghost-sm"
+                        onClick={() => oidcIdentityQuery.refetch()}
+                        disabled={oidcIdentityQuery.isFetching}
+                      >
+                        <RefreshCw size={13} className={oidcIdentityQuery.isFetching ? 'animate-spin' : ''} aria-hidden="true" />
+                        {t('settings.oidc.retry')}
+                      </button>
+                    </div>
+                  ) : (
+                    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                      oidcIdentity.linked ? 'bg-green/10 text-green' : 'bg-white/5 text-text-muted'
+                    }`}>
+                      {oidcIdentity.linked
+                        ? <ShieldCheck size={13} aria-hidden="true" />
+                        : <Unlink size={13} aria-hidden="true" />}
+                      {oidcIdentity.linked ? t('settings.oidc.linked') : t('settings.oidc.notLinked')}
+                    </span>
+                  )}
+                </SettingsRow>
+
+                {oidcIdentity && !oidcIdentityUnavailable && (
+                  oidcIdentity.linked ? (
+                    <SettingsRow
+                      label={t('settings.oidc.unlinkLabel')}
+                      description={
+                        !passwordLoginEnabled
+                          ? t('settings.oidc.unlinkOidcOnly')
+                          : !oidcIdentity.unlinkPermitted
+                            ? t('settings.oidc.unlinkNotPermitted')
+                            : t('settings.oidc.unlinkDesc')
+                      }
+                      last
+                    >
+                      <button
+                        type="button"
+                        className="btn-ghost-sm border-brand-red/30 text-brand-red hover:bg-brand-red/10"
+                        disabled={!passwordLoginEnabled || !oidcIdentity.unlinkPermitted}
+                        onClick={startOidcUnlink}
+                      >
+                        <Unlink size={13} aria-hidden="true" />
+                        {t('settings.oidc.unlink')}
+                      </button>
+                    </SettingsRow>
+                  ) : (
+                    <SettingsRow
+                      label={t('settings.oidc.linkLabel')}
+                      description={passwordLoginEnabled
+                        ? t('settings.oidc.linkDesc')
+                        : t('settings.oidc.linkNeedsPassword')}
+                      last
+                    >
+                      <button
+                        type="button"
+                        className="btn-ghost-sm"
+                        disabled={!passwordLoginEnabled}
+                        onClick={() => openOidcDialog('link')}
+                      >
+                        <Link2 size={13} aria-hidden="true" />
+                        {t('settings.oidc.link')}
+                      </button>
+                    </SettingsRow>
+                  )
+                )}
+              </SettingsCard>
+            </section>
+          )}
 
           {/* ── PUBLIC PROFILE ── */}
           {(user?.role === 'admin' || publicProfilesEnabled) && <section className="space-y-1">
@@ -882,15 +1072,15 @@ export default function Settings() {
               <SettingsCard>
                 <SettingsRow
                   label={t('settings.multiUserMode')}
-                  description={modeLocked ? t('settings.multiUserModeLocked') : t('settings.multiUserModeDesc')}
+                  description={multiUserModeDescription}
                   last
                 >
                   <Toggle
                     value={multiUser}
-                    disabled={modeLocked}
+                    disabled={modeToggleLocked}
                     label={t('settings.multiUserMode')}
                     onChange={(val) => {
-                      if (modeLocked) return
+                      if (modeToggleLocked) return
                       setMultiUserModalMode(val ? 'enable' : 'disable')
                     }}
                   />
@@ -1401,6 +1591,69 @@ export default function Settings() {
       {activeTab === 'users' && user?.role === 'admin' && multiUser && (
         <UsersTab t={t} queryClient={queryClient} />
       )}
+
+      <Modal
+        isOpen={Boolean(oidcDialog)}
+        onClose={closeOidcDialog}
+        title={oidcDialog === 'link' ? t('settings.oidc.linkTitle') : t('settings.oidc.unlinkModalTitle')}
+        size="sm"
+        mobileSheet={false}
+      >
+        <form onSubmit={submitOidcPassword} className="space-y-4 p-4">
+          <p className="text-sm leading-relaxed text-text-muted">
+            {oidcDialog === 'link'
+              ? t('settings.oidc.linkPasswordHint')
+              : t('settings.oidc.unlinkPasswordHint')}
+          </p>
+          <div>
+            <label htmlFor="oidc-current-password" className="mb-1 block text-xs text-text-secondary">
+              {t('settings.users.currentPassword')}
+            </label>
+            <input
+              id="oidc-current-password"
+              type="password"
+              value={oidcPassword}
+              onChange={(e) => setOidcPassword(e.target.value)}
+              className="input w-full"
+              autoComplete="current-password"
+              autoFocus
+              required
+            />
+          </div>
+          {oidcDialogError && (
+            <p role="alert" className="text-sm text-brand-red">
+              {oidcDialog === 'link'
+                ? t('settings.oidc.linkFailed')
+                : t('settings.oidc.unlinkFailed')}
+            </p>
+          )}
+          <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              className="btn-ghost w-full sm:w-auto"
+              onClick={closeOidcDialog}
+              disabled={oidcPending}
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              type="submit"
+              className={
+                oidcDialog === 'unlink'
+                  ? 'btn-ghost w-full border-brand-red/30 text-brand-red hover:bg-brand-red/10 sm:w-auto'
+                  : 'btn-primary w-full sm:w-auto'
+              }
+              disabled={!oidcPassword || oidcPending}
+            >
+              {oidcPending
+                ? t('common.saving')
+                : oidcDialog === 'link'
+                  ? t('settings.oidc.link')
+                  : t('settings.oidc.unlink')}
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       <AvatarPicker
         isOpen={showAvatarPicker}

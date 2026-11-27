@@ -84,6 +84,27 @@ export const forceChangePassword = (newPassword) => api.put('/auth/me/force-pass
 export const changeAvatar = (avatarId) => api.put('/auth/me/avatar', { avatar_id: avatarId }).then(r => r.data)
 export const changeUsername = (username) => api.put('/auth/me/username', { username }).then(r => r.data)
 
+// The HttpOnly handoff cookie binds completion to the server-side transaction.
+// Only the fallback account-name step sends a username; no provider identity
+// or token data comes from the client. Failures must preserve a local session.
+export const completeOidcLogin = (body = {}) => api.post('/auth/oidc/complete', body, {
+  preserveSessionOnUnauthorized: true,
+}).then(r => r.data)
+export const getOidcIdentity = () => api.get('/auth/oidc/identity', {
+  preserveSessionOnUnauthorized: true,
+}).then(r => r.data)
+export const linkOidcIdentity = (currentPassword) => api.post('/auth/oidc/link', {
+  current_password: currentPassword,
+}, {
+  preserveSessionOnUnauthorized: true,
+}).then(r => r.data)
+export const unlinkOidcIdentity = (currentPassword) => api.post('/auth/oidc/unlink', {
+  current_password: currentPassword,
+  confirmation: true,
+}, {
+  preserveSessionOnUnauthorized: true,
+}).then(r => r.data)
+
 
 const formatApiErrorDetail = (detail) => {
   if (!detail) return ''

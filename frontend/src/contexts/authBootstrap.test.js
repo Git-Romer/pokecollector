@@ -1,7 +1,19 @@
 import { describe, expect, it, vi } from 'vitest'
-import { AUTH_STARTUP_TIMEOUT_MS, authRetryDelay, loadAuthState } from './authBootstrap'
+import {
+  AUTH_STARTUP_TIMEOUT_MS,
+  authRetryDelay,
+  loadAuthState,
+  normalizeAuthCapabilities,
+} from './authBootstrap'
 
 const timeoutError = () => Object.assign(new Error('timeout of 5000ms exceeded'), { code: 'ECONNABORTED' })
+
+const legacyCapabilities = {
+  authMode: 'local',
+  passwordLoginEnabled: true,
+  oidcEnabled: false,
+  oidcDisplayName: '',
+}
 
 describe('loadAuthState', () => {
   it('loads the automatic user in single-user mode', async () => {
@@ -15,6 +27,7 @@ describe('loadAuthState', () => {
       user: { id: 1, username: 'admin' },
       multiUser: false,
       modeLocked: false,
+      ...legacyCapabilities,
       clearSession: false,
       clearToken: false,
     })
@@ -62,6 +75,7 @@ describe('loadAuthState', () => {
       user: null,
       multiUser: true,
       modeLocked: true,
+      ...legacyCapabilities,
       clearSession: false,
       clearToken: false,
     })
@@ -110,6 +124,7 @@ describe('loadAuthState', () => {
       user: null,
       multiUser: true,
       modeLocked: false,
+      ...legacyCapabilities,
       clearSession: true,
       clearToken: true,
     })
@@ -144,6 +159,92 @@ describe('loadAuthState', () => {
       getMe,
     })).rejects.toThrow('Invalid authentication mode response')
     expect(getMe).not.toHaveBeenCalled()
+  })
+
+  it('carries OIDC capabilities through the authenticated bootstrap path', async () => {
+    await expect(loadAuthState({
+      token: 'valid-token',
+      getAuthMode: vi.fn().mockResolvedValue({
+        multi_user: true,
+        locked: true,
+        auth_mode: 'mixed',
+        password_login_enabled: true,
+        oidc_enabled: true,
+        oidc_display_name: 'Authelia',
+      }),
+      getMe: vi.fn().mockResolvedValue({ id: 2, username: 'misty' }),
+    })).resolves.toMatchObject({
+      user: { id: 2, username: 'misty' },
+      multiUser: true,
+      modeLocked: true,
+      authMode: 'mixed',
+      passwordLoginEnabled: true,
+      oidcEnabled: true,
+      oidcDisplayName: 'Authelia',
+    })
+  })
+})
+
+describe('normalizeAuthCapabilities', () => {
+  it('preserves legacy behaviour when the new fields are absent', () => {
+    expect(normalizeAuthCapabilities({ multi_user: true, locked: false })).toEqual({
+      multiUser: true,
+      modeLocked: false,
+      ...legacyCapabilities,
+    })
+  })
+
+  it('reports both methods in mixed mode', () => {
+    expect(normalizeAuthCapabilities({
+      multi_user: true,
+      locked: true,
+      auth_mode: 'mixed',
+      password_login_enabled: true,
+      oidc_enabled: true,
+      oidc_display_name: '  Company SSO  ',
+    })).toEqual({
+      multiUser: true,
+      modeLocked: true,
+      authMode: 'mixed',
+      passwordLoginEnabled: true,
+      oidcEnabled: true,
+      oidcDisplayName: 'Company SSO',
+    })
+  })
+
+  it('derives method availability from auth_mode when optional fields are absent', () => {
+    expect(normalizeAuthCapabilities({
+      multi_user: true,
+      locked: true,
+      auth_mode: 'oidc-only',
+    })).toEqual({
+      multiUser: true,
+      modeLocked: true,
+      authMode: 'oidc-only',
+      passwordLoginEnabled: false,
+      oidcEnabled: true,
+      oidcDisplayName: '',
+    })
+  })
+
+  it('keeps a null display name empty so the UI can use its default label', () => {
+    expect(normalizeAuthCapabilities({
+      multi_user: true,
+      locked: true,
+      auth_mode: 'local',
+      password_login_enabled: true,
+      oidc_enabled: false,
+      oidc_display_name: null,
+    }).oidcDisplayName).toBe('')
+  })
+
+  it.each([
+    { multi_user: true, auth_mode: 'password' },
+    { multi_user: true, password_login_enabled: 'yes' },
+    { multi_user: true, oidc_enabled: 1 },
+    { multi_user: true, oidc_display_name: {} },
+  ])('fails closed on a malformed capability response: %j', mode => {
+    expect(() => normalizeAuthCapabilities(mode)).toThrow('Invalid authentication mode response')
   })
 })
 
